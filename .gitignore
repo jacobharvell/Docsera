@@ -1,0 +1,41 @@
+# Internal workspace guidance
+AGENTS.md
+
+# Internal docs and PoC workspace
+internal/
+poc/
+
+# Local dependency and build output
+node_modules/
+**/node_modules/
+dist/
+lib/
+target/
+coverage/
+**/coverage/
+.cache/
+**/.cache/
+node_tmp/
+**/node_tmp/
+.tectonic/
+**/.tectonic/
+.tectonic-output
+**/.tectonic-output
+
+# Tooling and editor noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.iml
+.idea/
+.vscode/
+*.log
+*.local
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.p12
+*.tgz
