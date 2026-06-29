@@ -6,3 +6,7 @@ export {
 	createPageDraft,
 	slugifyPageTitle
 } from './page-domain.js';
+export {
+	buildWorkspaceShellViewModel,
+	createDocseraShellDemoPages
+} from './page-reader.js';

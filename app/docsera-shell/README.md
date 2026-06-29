@@ -7,7 +7,7 @@ Docsera product app shell scaffold
 - Real product-facing shell surface for Docsera.
 - Workspace domain foundation now exists in `src/workspaces/`.
 - My Workspaces launcher and self-service workspace creation now live in the shell.
-- Workspace routing remains a shell boundary placeholder until the reader shell lands.
+- Workspace reader mode now lives in the shell, with My Workspaces as the launcher entry point.
 - The closed PoC stays in `../../poc/tiptap-component/` as a reference artifact only.
 
 ## Shell structure
@@ -16,7 +16,7 @@ Docsera product app shell scaffold
 - `src/docsera-shell/index.js` registers `x-82900-docsera-shell`.
 - `src/workspaces/workspace-domain.js` contains the workspace slug and provisioning contract.
 - `src/pages/page-domain.js` contains the page ownership, ordering, and slug contract.
-- `src/docsera-shell/styles.scss` defines the initial Docsera shell token layer and layout conventions.
+- `src/docsera-shell/styles.scss` defines the Docsera shell token layer and launcher / reader layout conventions.
 - `now-ui.json` exposes the component to UI Builder.
 
 ## Workspace foundation
@@ -72,23 +72,24 @@ snc configure profile list --profile <profile>
 snc ui-component deploy --profile <profile> --fetch-assets-from-instance
 ```
 
-1. Open the shell and confirm the My Workspaces header, search bar, and list render.
-2. Confirm active workspaces with admin/editor capability appear and read-only or inactive workspaces do not.
-3. Open a workspace row and confirm the shell boundary path updates to `/docsera/:workspaceSlug`.
-4. Create a workspace from the modal with a name and optional description.
-5. Confirm the new workspace is added to the list and becomes the selected workspace.
-6. Confirm the creator is added to the generated Admin group when the PDI provisioning wiring is live.
-7. Confirm settings entry points are only visible when the current user has Admin capability for that workspace.
+1. Open the shell and confirm the workspace reader header, page tree, breadcrumbs, and ToC render.
+2. Confirm the active workspace icon and name render in the header and the workspace short description does not.
+3. Confirm the My Workspaces switcher entry point returns to the launcher surface.
+4. Select a page in the tree and confirm the visible content, breadcrumbs, ToC, and route target update.
+5. Toggle the navigation collapse and theme controls to confirm browser-side shell state updates.
+6. Use the My Workspaces surface to create a workspace from the modal with a name and optional description.
+7. Confirm the new workspace is added to the list and becomes the selected workspace.
+8. Confirm the creator is added to the generated Admin group when the PDI provisioning wiring is live.
 
 Expected result:
 
-- The workspace list is filtered to active authoring/admin workspaces.
-- Search and the no-results state behave as expected.
+- The launcher list is filtered to active authoring/admin workspaces.
+- Reader mode shows the active workspace identity, page tree, breadcrumbs, and ToC.
+- Page selection updates the reader content without a full refresh.
 - Workspace creation preserves the name, description, default icon, and slug behavior.
 - The shell still mounts successfully if you run the optional runtime smoke check.
 
 ## Remaining gaps
 
 - Live ServiceNow table persistence wiring
-- Full workspace shell routing and reader mode
-- Page tree and editor feature work
+- Page editor, autosave, settings overlay, and publish workflow

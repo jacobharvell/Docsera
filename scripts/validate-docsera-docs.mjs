@@ -52,7 +52,8 @@ mustContain(
 		'siblingOrder',
 		'benefits-1',
 		'published_with_unpublished_changes',
-		'/docsera/:workspaceSlug/:pageSlug'
+		'/docsera/:workspaceSlug/:pageSlug',
+		'reader shell now uses the flat route model'
 	],
 	'docs/process/Page Data Model and Slug Rules.md'
 );
@@ -68,6 +69,27 @@ mustContain(
 		'workspace capability contract'
 	],
 	'docs/process/Workspace Capability Checks.md'
+);
+
+const workspaceModelDoc = readText('docs/process/21 Workspace Model.md');
+mustContain(
+	workspaceModelDoc,
+	[
+		'Workspace Identity and Generated Fields',
+		'Optional user-provided fields',
+		'shortDescription is optional'
+	],
+	'docs/process/21 Workspace Model.md'
+);
+
+const myWorkspacesDoc = readText('docs/process/20 My Workspaces.md');
+mustContain(
+	myWorkspacesDoc,
+	[
+		'Full reader-mode shell behavior now lives in the product shell',
+		'launcher entry surface'
+	],
+	'docs/process/20 My Workspaces.md'
 );
 
 console.log('Docsera doc validation passed.');

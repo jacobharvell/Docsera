@@ -15,6 +15,10 @@ import {
 	summarizeWorkspaceCreationResult
 } from '../workspaces';
 import {
+	buildWorkspaceShellViewModel,
+	createDocseraShellDemoPages
+} from '../pages';
+import {
 	provisionWorkspace
 } from '../workspaces/workspace-domain.js';
 import styles from './styles.scss';
@@ -43,13 +47,18 @@ function createWorkspaceCapabilitiesForDemo(accessState) {
 
 function createInitialState() {
 	return {
+		surfaceMode: 'shell',
 		workspaceSearch: '',
 		selectedWorkspaceSlug: 'product-docs',
+		selectedPageSlug: '',
+		shellNavigationCollapsed: false,
+		shellTheme: 'light',
 		createModalOpen: false,
 		createModalError: '',
 		createModalBusy: false,
-		workspaceStatus: 'My Workspaces is ready.',
+		workspaceStatus: 'Workspace shell is ready.',
 		workspaces: createMyWorkspacesDemoWorkspaces(),
+		pages: createDocseraShellDemoPages(),
 		userAccess: createDemoAccessState(),
 		newWorkspace: createWorkspaceModalDefaults()
 	};
@@ -85,415 +94,851 @@ function resetNewWorkspaceForm() {
 	return createWorkspaceModalDefaults();
 }
 
-const view = (state, {updateState}) => {
-	const capabilityService = createWorkspaceCapabilitiesForDemo(state.userAccess);
-	const launcher = buildMyWorkspacesViewModel(state.workspaces, capabilityService, state.workspaceSearch);
-	const selectedWorkspace = getWorkspaceBySlug(state.workspaces, state.selectedWorkspaceSlug) ||
-		launcher.filteredRows[0] ||
-		launcher.accessibleRows[0] ||
-		null;
-	const selectedWorkspaceLabel = selectedWorkspace ? resolveWorkspaceCapabilityLabel(selectedWorkspace, capabilityService) : '';
-	const selectedWorkspaceRoute = selectedWorkspace ? buildWorkspaceRoutePath(selectedWorkspace) : '/docsera';
-
-	const openWorkspace = workspace => {
-		if (!workspace) {
-			return;
-		}
-
-		updateState({
-			selectedWorkspaceSlug: workspace.workspaceSlug,
-			workspaceStatus: `Opened ${workspace.name} at ${buildWorkspaceRoutePath(workspace)}`
-		});
-	};
-
-	const openSettings = workspace => {
-		if (!workspace) {
-			return;
-		}
-
-		updateState({
-			selectedWorkspaceSlug: workspace.workspaceSlug,
-			workspaceStatus: `${workspace.name} settings are available for admins only.`
-		});
-	};
-
-	const openCreateWorkspaceModal = () => updateState({
-		createModalOpen: true,
-		createModalError: '',
-		newWorkspace: resetNewWorkspaceForm()
-	});
-
-	const closeCreateWorkspaceModal = () => updateState({
-		createModalOpen: false,
-		createModalError: '',
-		createModalBusy: false,
-		newWorkspace: resetNewWorkspaceForm()
-	});
-
-	const updateCreateField = (field, value) => {
-		updateState({
-			newWorkspace: {
-				...state.newWorkspace,
-				[field]: value
-			}
-		});
-	};
-
-	const createWorkspace = async event => {
-		event.preventDefault();
-
-		try {
-			const input = prepareWorkspaceCreationInput(state.newWorkspace, CURRENT_USER_SYS_ID);
-			const retainedSlugs = state.workspaces.map(workspace => workspace.workspaceSlug);
-			const provisioningDependencies = createLocalWorkspaceProvisioningDependencies(
-				CURRENT_USER_SYS_ID,
-				state.userAccess.groups
-			);
-
-			updateState({
-				createModalBusy: true,
-				createModalError: ''
-			});
-
-			const result = await provisionWorkspace(
-				input,
-				provisioningDependencies,
-				retainedSlugs
-			);
-
-			const createdWorkspace = result.workspace;
-			const nextWorkspaces = [createdWorkspace, ...state.workspaces];
-
-			updateState({
-				workspaces: nextWorkspaces,
-				selectedWorkspaceSlug: createdWorkspace.workspaceSlug,
-				createModalOpen: false,
-				createModalBusy: false,
-				createModalError: '',
-				newWorkspace: resetNewWorkspaceForm(),
-				workspaceStatus: summarizeWorkspaceCreationResult(result)
-			});
-		} catch (error) {
-			updateState({
-				createModalBusy: false,
-				createModalError: error && error.message ? error.message : 'Workspace creation failed.'
-			});
-		}
-	};
+function renderPageTreeNodes(nodes, selectPage, selectedPageSlug) {
+	if (!Array.isArray(nodes) || nodes.length === 0) {
+		return null;
+	}
 
 	return (
-		<div className="docsera-shell">
-			<header className="docsera-shell__header">
-				<div className="docsera-shell__brand">
-					<span className="docsera-shell__brand-mark" aria-hidden="true">D</span>
-					<div>
-						<div className="docsera-shell__brand-name">Docsera</div>
-						<div className="docsera-shell__brand-subtitle">Workspace launcher</div>
-					</div>
-				</div>
-				<div className="docsera-shell__header-meta">
-					<span className="docsera-shell__badge">My Workspaces</span>
+		<ul className="docsera-shell__tree-list" role="list">
+			{nodes.map(node => (
+				<li key={node.sysId} className="docsera-shell__tree-item">
 					<button
 						type="button"
-						className="docsera-shell__button docsera-shell__button--secondary"
-						on-click={openCreateWorkspaceModal}
+						className={`docsera-shell__tree-button${node.pageSlug === selectedPageSlug ? ' docsera-shell__tree-button--selected' : ''}`}
+						on-click={() => selectPage(node)}
 					>
-						New Workspace
+						<span className="docsera-shell__tree-button-title">{node.title}</span>
+						{node.hasChildren ? (
+							<span className="docsera-shell__tree-button-count">{node.children.length}</span>
+						) : null}
 					</button>
-				</div>
-			</header>
+					{node.children.length ? renderPageTreeNodes(node.children, selectPage, selectedPageSlug) : null}
+				</li>
+			))}
+		</ul>
+	);
+}
 
-			<div className="docsera-shell__frame">
-				<aside className="docsera-shell__rail" aria-label="Docsera workspace launcher">
-					<div className="docsera-shell__rail-section">
-						<p className="docsera-shell__rail-title">Current surface</p>
-						<h2 className="docsera-shell__rail-headline">My Workspaces</h2>
-						<p className="docsera-shell__rail-copy">
-							Active workspaces where you have Docsera Admin, Workspace Admin, or Workspace Editor capability.
-						</p>
-					</div>
+function renderBreadcrumbs(breadcrumbs, selectBreadcrumb) {
+	if (!Array.isArray(breadcrumbs) || breadcrumbs.length === 0) {
+		return null;
+	}
 
-					<div className="docsera-shell__rail-section">
-						<p className="docsera-shell__rail-title">Selection</p>
-						<div className="docsera-shell__selector">
-							<div className="docsera-shell__selector-icon" aria-hidden="true">
-								{renderIconGlyph(selectedWorkspace || {name: 'Docsera'})}
-							</div>
-							<div className="docsera-shell__selector-copy">
-								<div className="docsera-shell__selector-name">
-									{selectedWorkspace ? selectedWorkspace.name : 'No workspace selected'}
-								</div>
-								<div className="docsera-shell__selector-note">
-									{selectedWorkspace ? selectedWorkspaceRoute : 'Open a workspace from the list to target the shell boundary.'}
-								</div>
-							</div>
-						</div>
-					</div>
+	return (
+		<nav className="docsera-shell__breadcrumbs" aria-label="Breadcrumb">
+			<ol className="docsera-shell__breadcrumb-list">
+				{breadcrumbs.map((crumb, index) => {
+					const isLast = index === breadcrumbs.length - 1;
+					const isWorkspaceCrumb = index === 0 && crumb.pageSlug === '';
+					const label = crumb.label || '';
 
-					<div className="docsera-shell__rail-section docsera-shell__rail-section--push">
-						<p className="docsera-shell__rail-title">Entry point</p>
-						<button
-							type="button"
-							className="docsera-shell__link-button"
-							on-click={() => updateState({workspaceStatus: 'My Workspaces is the launcher entry point for Docsera.'})}
-						>
-							My Workspaces
-						</button>
-						<div className="docsera-shell__rail-note">
-							Footer launcher entry point for shell navigation.
-						</div>
-					</div>
-				</aside>
-
-				<main className="docsera-shell__panel">
-					<section className="docsera-shell__surface">
-						<div className="docsera-shell__surface-head">
-							<div>
-								<h1 className="docsera-shell__headline">My Workspaces</h1>
-								<p className="docsera-shell__lede">
-									Search active workspaces, create a new workspace, or open workspace settings when your role allows it.
-								</p>
-							</div>
-							<div className="docsera-shell__surface-actions">
+					return (
+						<li key={`${crumb.workspaceSlug || 'workspace'}-${crumb.pageSlug || 'root'}-${index}`} className="docsera-shell__breadcrumb-item">
+							{isLast ? (
+								<span className="docsera-shell__breadcrumb-current">{label}</span>
+							) : (
 								<button
 									type="button"
-									className="docsera-shell__button"
-									on-click={openCreateWorkspaceModal}
+									className="docsera-shell__breadcrumb-link"
+									on-click={() => selectBreadcrumb(crumb, isWorkspaceCrumb)}
 								>
-									New Workspace
+									{label}
 								</button>
+							)}
+						</li>
+					);
+				})}
+			</ol>
+		</nav>
+	);
+}
+
+function renderTableOfContents(items, selectedPage) {
+	return (
+		<div className="docsera-shell__toc-panel">
+			<div className="docsera-shell__rail-title">Table of contents</div>
+			<h2 className="docsera-shell__toc-title">On this page</h2>
+			{items.length ? (
+				<ul className="docsera-shell__toc-list">
+					{items.map(item => (
+						<li key={item.id} className={`docsera-shell__toc-item docsera-shell__toc-item--level-${item.level}`}>
+							<a href={`#${item.id}`} className="docsera-shell__toc-link">
+								{item.label}
+							</a>
+						</li>
+					))}
+				</ul>
+			) : (
+				<div className="docsera-shell__toc-empty">
+					{selectedPage ? 'This page does not expose headings yet.' : 'Select a page to see headings here.'}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function renderWorkspaceReaderSurface(state, shell, updateState) {
+	const selectWorkspaceFromLauncher = workspace => {
+		if (!workspace) {
+			return;
+		}
+
+		const nextShell = buildWorkspaceShellViewModel({
+			workspaces: state.workspaces,
+			pages: state.pages,
+			capabilityService: createWorkspaceCapabilitiesForDemo(state.userAccess),
+			selectedWorkspaceSlug: workspace.workspaceSlug,
+			selectedPageSlug: ''
+		});
+
+		updateState({
+			surfaceMode: 'shell',
+			selectedWorkspaceSlug: workspace.workspaceSlug,
+			selectedPageSlug: nextShell.firstVisiblePageSlug || '',
+			shellNavigationCollapsed: false,
+			workspaceStatus: nextShell.status === 'empty-workspace'
+				? `${workspace.name} opened with no visible pages.`
+				: `Opened ${workspace.name} at ${nextShell.routeTargetPath}`
+		});
+	};
+
+	const openWorkspaceLauncher = () => updateState({
+		surfaceMode: 'launcher',
+		workspaceStatus: 'My Workspaces is the launcher entry point for Docsera.'
+	});
+
+	const selectPage = page => {
+		if (!page || !shell.workspace) {
+			return;
+		}
+
+		updateState({
+			selectedWorkspaceSlug: shell.workspace.workspaceSlug,
+			selectedPageSlug: page.pageSlug,
+			workspaceStatus: `Selected ${page.title} at ${shell.workspace.workspaceSlug}/${page.pageSlug}`
+		});
+	};
+
+	const selectBreadcrumb = (crumb, isWorkspaceCrumb) => {
+		if (!crumb || !shell.workspace) {
+			return;
+		}
+
+		if (isWorkspaceCrumb) {
+			updateState({
+				selectedWorkspaceSlug: shell.workspace.workspaceSlug,
+				selectedPageSlug: shell.firstVisiblePageSlug || '',
+				workspaceStatus: `Returned to ${shell.workspace.name}.`
+			});
+			return;
+		}
+
+		updateState({
+			selectedWorkspaceSlug: shell.workspace.workspaceSlug,
+			selectedPageSlug: crumb.pageSlug,
+			workspaceStatus: `Selected ${crumb.label} from breadcrumbs.`
+		});
+	};
+
+	const toggleNav = () => updateState({
+		shellNavigationCollapsed: !state.shellNavigationCollapsed
+	});
+
+	const toggleTheme = () => updateState({
+		shellTheme: state.shellTheme === 'dark' ? 'light' : 'dark'
+	});
+
+	const workspace = shell.workspace;
+	const workspaceName = workspace ? workspace.name : 'Workspace not found';
+	const workspaceDescription = workspace ? workspace.shortDescription : '';
+	const workspaceIcon = workspace ? renderIconGlyph(workspace) : 'D';
+	const navCollapsed = state.shellNavigationCollapsed;
+	const themeClass = state.shellTheme === 'dark' ? 'docsera-shell--theme-dark' : 'docsera-shell--theme-light';
+
+	if (shell.status === 'workspace-not-found') {
+		return (
+			<div className={`docsera-shell ${themeClass} docsera-shell--reader`}>
+				<header className="docsera-shell__header docsera-shell__header--reader">
+					<div className="docsera-shell__brand">
+						<span className="docsera-shell__brand-mark" aria-hidden="true">D</span>
+						<div>
+							<div className="docsera-shell__brand-name">Docsera</div>
+							<div className="docsera-shell__brand-subtitle">Workspace reader</div>
+						</div>
+					</div>
+					<div className="docsera-shell__header-meta">
+						<button type="button" className="docsera-shell__button docsera-shell__button--secondary" on-click={openWorkspaceLauncher}>
+							My Workspaces
+						</button>
+					</div>
+				</header>
+
+				<main className="docsera-shell__reader-empty">
+					<div className="docsera-shell__state">
+						<h1>Workspace not found</h1>
+						<p>
+							The selected workspace is unavailable or inactive. Return to My Workspaces to choose another workspace.
+						</p>
+						<div className="docsera-shell__state-actions">
+							<button type="button" className="docsera-shell__button" on-click={openWorkspaceLauncher}>
+								My Workspaces
+							</button>
+						</div>
+					</div>
+				</main>
+			</div>
+		);
+	}
+
+	if (state.surfaceMode === 'launcher') {
+		const capabilityService = createWorkspaceCapabilitiesForDemo(state.userAccess);
+		const launcher = buildMyWorkspacesViewModel(state.workspaces, capabilityService, state.workspaceSearch);
+		const selectedWorkspace = getWorkspaceBySlug(state.workspaces, state.selectedWorkspaceSlug) ||
+			launcher.filteredRows[0] ||
+			launcher.accessibleRows[0] ||
+			null;
+		const selectedWorkspaceLabel = selectedWorkspace ? resolveWorkspaceCapabilityLabel(selectedWorkspace, capabilityService) : '';
+		const selectedWorkspaceRoute = selectedWorkspace ? buildWorkspaceRoutePath(selectedWorkspace) : '/docsera';
+
+		const openWorkspace = workspaceItem => {
+			if (!workspaceItem) {
+				return;
+			}
+
+			const nextShell = buildWorkspaceShellViewModel({
+				workspaces: state.workspaces,
+				pages: state.pages,
+				capabilityService,
+				selectedWorkspaceSlug: workspaceItem.workspaceSlug,
+				selectedPageSlug: ''
+			});
+
+			updateState({
+				surfaceMode: 'shell',
+				selectedWorkspaceSlug: workspaceItem.workspaceSlug,
+				selectedPageSlug: nextShell.firstVisiblePageSlug || '',
+				shellNavigationCollapsed: false,
+				workspaceStatus: `Opened ${workspaceItem.name} at ${nextShell.routeTargetPath}`
+			});
+		};
+
+		const openSettings = workspaceItem => {
+			if (!workspaceItem) {
+				return;
+			}
+
+			updateState({
+				selectedWorkspaceSlug: workspaceItem.workspaceSlug,
+				workspaceStatus: `${workspaceItem.name} settings are available for admins only.`
+			});
+		};
+
+		const openCreateWorkspaceModal = () => updateState({
+			createModalOpen: true,
+			createModalError: '',
+			newWorkspace: resetNewWorkspaceForm()
+		});
+
+		const closeCreateWorkspaceModal = () => updateState({
+			createModalOpen: false,
+			createModalError: '',
+			createModalBusy: false,
+			newWorkspace: resetNewWorkspaceForm()
+		});
+
+		const updateCreateField = (field, value) => {
+			updateState({
+				newWorkspace: {
+					...state.newWorkspace,
+					[field]: value
+				}
+			});
+		};
+
+		const createWorkspace = async event => {
+			event.preventDefault();
+
+			try {
+				const input = prepareWorkspaceCreationInput(state.newWorkspace, CURRENT_USER_SYS_ID);
+				const retainedSlugs = state.workspaces.map(workspaceItem => workspaceItem.workspaceSlug);
+				const provisioningDependencies = createLocalWorkspaceProvisioningDependencies(
+					CURRENT_USER_SYS_ID,
+					state.userAccess.groups
+				);
+
+				updateState({
+					createModalBusy: true,
+					createModalError: ''
+				});
+
+				const result = await provisionWorkspace(
+					input,
+					provisioningDependencies,
+					retainedSlugs
+				);
+
+				const createdWorkspace = result.workspace;
+				const nextWorkspaces = [createdWorkspace, ...state.workspaces];
+
+				updateState({
+					workspaces: nextWorkspaces,
+					selectedWorkspaceSlug: createdWorkspace.workspaceSlug,
+					createModalOpen: false,
+					createModalBusy: false,
+					createModalError: '',
+					newWorkspace: resetNewWorkspaceForm(),
+					workspaceStatus: summarizeWorkspaceCreationResult(result)
+				});
+			} catch (error) {
+				updateState({
+					createModalBusy: false,
+					createModalError: error && error.message ? error.message : 'Workspace creation failed.'
+				});
+			}
+		};
+
+		return (
+			<div className={`docsera-shell ${themeClass}`}>
+				<header className="docsera-shell__header">
+					<div className="docsera-shell__brand">
+						<span className="docsera-shell__brand-mark" aria-hidden="true">D</span>
+						<div>
+							<div className="docsera-shell__brand-name">Docsera</div>
+							<div className="docsera-shell__brand-subtitle">Workspace launcher</div>
+						</div>
+					</div>
+					<div className="docsera-shell__header-meta">
+						<span className="docsera-shell__badge">My Workspaces</span>
+						<button
+							type="button"
+							className="docsera-shell__button docsera-shell__button--secondary"
+							on-click={openCreateWorkspaceModal}
+						>
+							New Workspace
+						</button>
+					</div>
+				</header>
+
+				<div className="docsera-shell__frame">
+					<aside className="docsera-shell__rail" aria-label="Docsera workspace launcher">
+						<div className="docsera-shell__rail-section">
+							<p className="docsera-shell__rail-title">Current surface</p>
+							<h2 className="docsera-shell__rail-headline">My Workspaces</h2>
+							<p className="docsera-shell__rail-copy">
+								Active workspaces where you have Docsera Admin, Workspace Admin, or Workspace Editor capability.
+							</p>
+						</div>
+
+						<div className="docsera-shell__rail-section">
+							<p className="docsera-shell__rail-title">Selection</p>
+							<div className="docsera-shell__selector">
+								<div className="docsera-shell__selector-icon" aria-hidden="true">
+									{renderIconGlyph(selectedWorkspace || {name: 'Docsera'})}
+								</div>
+								<div className="docsera-shell__selector-copy">
+									<div className="docsera-shell__selector-name">
+										{selectedWorkspace ? selectedWorkspace.name : 'No workspace selected'}
+									</div>
+									<div className="docsera-shell__selector-note">
+										{selectedWorkspace ? selectedWorkspaceRoute : 'Open a workspace from the list to target the shell boundary.'}
+									</div>
+								</div>
 							</div>
 						</div>
 
-						<div className="docsera-shell__toolbar">
-							<label className="docsera-shell__search">
-								<span className="docsera-shell__search-label">Search</span>
-								<input
-									type="search"
-									value={state.workspaceSearch}
-									placeholder="Search by workspace name or description"
-									on-input={event => updateState({workspaceSearch: event.target.value})}
-								/>
-							</label>
+						<div className="docsera-shell__rail-section docsera-shell__rail-section--push">
+							<p className="docsera-shell__rail-title">Entry point</p>
+							<button
+								type="button"
+								className="docsera-shell__link-button"
+								on-click={() => updateState({workspaceStatus: 'My Workspaces is the launcher entry point for Docsera.'})}
+							>
+								My Workspaces
+							</button>
+							<div className="docsera-shell__rail-note">
+								Footer launcher entry point for shell navigation.
+							</div>
+						</div>
+					</aside>
 
-							<div className="docsera-shell__toolbar-meta">
-								<span className="docsera-shell__toolbar-chip">
-									{launcher.accessibleRows.length} accessible
-								</span>
-								<span className="docsera-shell__toolbar-chip">
-									{launcher.filteredRows.length} shown
-								</span>
-								{state.workspaceSearch ? (
+					<main className="docsera-shell__panel">
+						<section className="docsera-shell__surface">
+							<div className="docsera-shell__surface-head">
+								<div>
+									<h1 className="docsera-shell__headline">My Workspaces</h1>
+									<p className="docsera-shell__lede">
+										Search active workspaces, create a new workspace, or open workspace settings when your role allows it.
+									</p>
+								</div>
+								<div className="docsera-shell__surface-actions">
 									<button
 										type="button"
-										className="docsera-shell__link-button"
-										on-click={() => updateState({workspaceSearch: ''})}
+										className="docsera-shell__button"
+										on-click={openCreateWorkspaceModal}
 									>
-										Clear filter
-									</button>
-								) : null}
-							</div>
-						</div>
-
-						{launcher.isEmptyState ? (
-							<div className="docsera-shell__state">
-								<h2>No workspaces yet</h2>
-								<p>
-									You do not currently have any active Docsera Admin, Workspace Admin, or Workspace Editor workspaces.
-								</p>
-								<div className="docsera-shell__state-actions">
-									<button type="button" className="docsera-shell__button" on-click={openCreateWorkspaceModal}>
 										New Workspace
 									</button>
 								</div>
 							</div>
-						) : launcher.isNoResultsState ? (
-							<div className="docsera-shell__state">
-								<h2>No matching workspaces</h2>
-								<p>
-									Try a different search term or clear the filter to return to your active workspace list.
+
+							<div className="docsera-shell__toolbar">
+								<label className="docsera-shell__search">
+									<span className="docsera-shell__search-label">Search</span>
+									<input
+										type="search"
+										value={state.workspaceSearch}
+										placeholder="Search by workspace name or description"
+										on-input={event => updateState({workspaceSearch: event.target.value})}
+									/>
+								</label>
+
+								<div className="docsera-shell__toolbar-meta">
+									<span className="docsera-shell__toolbar-chip">
+										{launcher.accessibleRows.length} accessible
+									</span>
+									<span className="docsera-shell__toolbar-chip">
+										{launcher.filteredRows.length} shown
+									</span>
+									{state.workspaceSearch ? (
+										<button
+											type="button"
+											className="docsera-shell__link-button"
+											on-click={() => updateState({workspaceSearch: ''})}
+										>
+											Clear filter
+										</button>
+									) : null}
+								</div>
+							</div>
+
+							{launcher.isEmptyState ? (
+								<div className="docsera-shell__state">
+									<h2>No workspaces yet</h2>
+									<p>
+										You do not currently have any active Docsera Admin, Workspace Admin, or Workspace Editor workspaces.
+									</p>
+									<div className="docsera-shell__state-actions">
+										<button type="button" className="docsera-shell__button" on-click={openCreateWorkspaceModal}>
+											New Workspace
+										</button>
+									</div>
+								</div>
+							) : launcher.isNoResultsState ? (
+								<div className="docsera-shell__state">
+									<h2>No matching workspaces</h2>
+									<p>
+										Try a different search term or clear the filter to return to your active workspace list.
+									</p>
+									<div className="docsera-shell__state-actions">
+										<button
+											type="button"
+											className="docsera-shell__button docsera-shell__button--secondary"
+											on-click={() => updateState({workspaceSearch: ''})}
+										>
+											Clear filter
+										</button>
+									</div>
+								</div>
+							) : (
+								<div className="docsera-shell__workspace-list" role="list" aria-label="Active workspaces">
+									{launcher.filteredRows.map(workspaceItem => (
+										<div key={workspaceItem.workspaceSlug} className="docsera-shell__workspace-row" role="listitem">
+											<div className="docsera-shell__workspace-icon" aria-hidden="true">
+												{renderIconGlyph(workspaceItem)}
+											</div>
+											<div className="docsera-shell__workspace-copy">
+												<div className="docsera-shell__workspace-headline">
+													<button
+														type="button"
+														className="docsera-shell__workspace-name"
+														on-click={() => openWorkspace(workspaceItem)}
+													>
+														{workspaceItem.name}
+													</button>
+													<span className="docsera-shell__role-pill">{workspaceItem.roleLabel}</span>
+												</div>
+												{workspaceItem.shortDescription ? (
+													<p className="docsera-shell__workspace-description">{workspaceItem.shortDescription}</p>
+												) : null}
+												<div className="docsera-shell__workspace-meta">
+													<span className="docsera-shell__workspace-slug">{workspaceItem.workspaceSlug}</span>
+													{workspaceItem.canManageSettings ? (
+														<button
+															type="button"
+															className="docsera-shell__link-button"
+															on-click={() => openSettings(workspaceItem)}
+														>
+															Workspace settings
+														</button>
+													) : (
+														<span className="docsera-shell__workspace-muted">Settings hidden for editors</span>
+													)}
+												</div>
+											</div>
+											<div className="docsera-shell__workspace-actions">
+												<button
+													type="button"
+													className="docsera-shell__button docsera-shell__button--secondary"
+													on-click={() => openWorkspace(workspaceItem)}
+												>
+													Open
+												</button>
+											</div>
+										</div>
+									))}
+								</div>
+							)}
+						</section>
+
+						<aside className="docsera-shell__inspector">
+							<div className="docsera-shell__inspector-panel">
+								<p className="docsera-shell__rail-title">Workspace boundary</p>
+								<h2>Route target</h2>
+								<p className="docsera-shell__inspector-copy">
+									Click a workspace to target the shell boundary. Full reader-mode shell behavior is still a future task.
 								</p>
-								<div className="docsera-shell__state-actions">
+								<div className="docsera-shell__inspector-route">{selectedWorkspaceRoute}</div>
+								{selectedWorkspace ? (
+									<div className="docsera-shell__inspector-meta">
+										<div>
+											<div className="docsera-shell__inspector-label">Selected workspace</div>
+											<div className="docsera-shell__inspector-value">{selectedWorkspace.name}</div>
+										</div>
+										<div>
+											<div className="docsera-shell__inspector-label">Capability</div>
+											<div className="docsera-shell__inspector-value">{selectedWorkspaceLabel || 'No access'}</div>
+										</div>
+									</div>
+								) : null}
+							</div>
+
+							<div className="docsera-shell__inspector-panel docsera-shell__inspector-panel--quiet">
+								<p className="docsera-shell__rail-title">Status</p>
+								<div className="docsera-shell__status-text">{state.workspaceStatus}</div>
+							</div>
+						</aside>
+					</main>
+				</div>
+
+				{state.createModalOpen ? (
+					<div className="docsera-shell__modal-backdrop" role="presentation" on-click={closeCreateWorkspaceModal}>
+						<div
+							className="docsera-shell__modal"
+							role="dialog"
+							aria-modal="true"
+							aria-labelledby="docsera-create-workspace-title"
+							on-click={event => event.stopPropagation()}
+						>
+							<form className="docsera-shell__modal-form" on-submit={createWorkspace}>
+								<div className="docsera-shell__modal-head">
+									<div>
+										<p className="docsera-shell__rail-title">New workspace</p>
+										<h2 id="docsera-create-workspace-title">Create workspace</h2>
+									</div>
+									<button type="button" className="docsera-shell__icon-button" on-click={closeCreateWorkspaceModal}>
+										Close
+									</button>
+								</div>
+
+								<p className="docsera-shell__modal-copy">
+									Workspace name is required. The default Docsera icon will be used until icon selection lands.
+								</p>
+
+								<label className="docsera-shell__field">
+									<span className="docsera-shell__field-label">Workspace name</span>
+									<input
+										type="text"
+										value={state.newWorkspace.name}
+										placeholder="e.g. Product Docs"
+										aria-required="true"
+										on-input={event => updateCreateField('name', event.target.value)}
+									/>
+								</label>
+
+								<label className="docsera-shell__field">
+									<span className="docsera-shell__field-label">Short description</span>
+									<textarea
+										rows="3"
+										value={state.newWorkspace.shortDescription}
+										placeholder="Optional workspace summary"
+										on-input={event => updateCreateField('shortDescription', event.target.value)}
+									/>
+								</label>
+
+								<div className="docsera-shell__field">
+									<span className="docsera-shell__field-label">Workspace icon</span>
+									<div className="docsera-shell__icon-picker">
+										<div className="docsera-shell__workspace-icon" aria-hidden="true">
+											D
+										</div>
+										<div>
+											<div className="docsera-shell__icon-picker-title">
+												{state.newWorkspace.icon.label}
+											</div>
+											<div className="docsera-shell__icon-picker-copy">
+												Default built-in icon
+											</div>
+										</div>
+									</div>
+								</div>
+
+								{state.createModalError ? (
+									<div className="docsera-shell__modal-error" role="alert">
+										{state.createModalError}
+									</div>
+								) : null}
+
+								<div className="docsera-shell__modal-actions">
 									<button
 										type="button"
 										className="docsera-shell__button docsera-shell__button--secondary"
-										on-click={() => updateState({workspaceSearch: ''})}
+										on-click={closeCreateWorkspaceModal}
+										disabled={state.createModalBusy}
 									>
-										Clear filter
+										Cancel
+									</button>
+									<button
+										type="submit"
+										className="docsera-shell__button"
+										disabled={state.createModalBusy}
+									>
+										{state.createModalBusy ? 'Creating...' : 'Create workspace'}
 									</button>
 								</div>
-							</div>
-						) : (
-							<div className="docsera-shell__workspace-list" role="list" aria-label="Active workspaces">
-								{launcher.filteredRows.map(workspace => (
-									<div key={workspace.workspaceSlug} className="docsera-shell__workspace-row" role="listitem">
-										<div className="docsera-shell__workspace-icon" aria-hidden="true">
-											{renderIconGlyph(workspace)}
-										</div>
-										<div className="docsera-shell__workspace-copy">
-											<div className="docsera-shell__workspace-headline">
-												<button
-													type="button"
-													className="docsera-shell__workspace-name"
-													on-click={() => openWorkspace(workspace)}
-												>
-													{workspace.name}
-												</button>
-												<span className="docsera-shell__role-pill">{workspace.roleLabel}</span>
-											</div>
-											{workspace.shortDescription ? (
-												<p className="docsera-shell__workspace-description">{workspace.shortDescription}</p>
-											) : null}
-											<div className="docsera-shell__workspace-meta">
-												<span className="docsera-shell__workspace-slug">{workspace.workspaceSlug}</span>
-												{workspace.canManageSettings ? (
-													<button
-														type="button"
-														className="docsera-shell__link-button"
-														on-click={() => openSettings(workspace)}
-													>
-														Workspace settings
-													</button>
-												) : (
-													<span className="docsera-shell__workspace-muted">Settings hidden for editors</span>
-												)}
-											</div>
-										</div>
-										<div className="docsera-shell__workspace-actions">
-											<button
-												type="button"
-												className="docsera-shell__button docsera-shell__button--secondary"
-												on-click={() => openWorkspace(workspace)}
-											>
-												Open
-											</button>
-										</div>
-									</div>
-								))}
+							</form>
+						</div>
+					</div>
+				) : null}
+			</div>
+		);
+	}
+
+	const openLauncher = () => updateState({
+		surfaceMode: 'launcher',
+		workspaceStatus: 'My Workspaces is the launcher entry point for Docsera.'
+	});
+
+	const toggleNav = () => updateState({
+		shellNavigationCollapsed: !state.shellNavigationCollapsed
+	});
+
+	const toggleTheme = () => updateState({
+		shellTheme: state.shellTheme === 'dark' ? 'light' : 'dark'
+	});
+
+	const selectPage = page => {
+		if (!page || !shell.workspace) {
+			return;
+		}
+
+		updateState({
+			selectedWorkspaceSlug: shell.workspace.workspaceSlug,
+			selectedPageSlug: page.pageSlug,
+			workspaceStatus: `Selected ${page.title} at /docsera/${shell.workspace.workspaceSlug}/${page.pageSlug}`
+		});
+	};
+
+	const selectBreadcrumb = (crumb, isWorkspaceCrumb) => {
+		if (!crumb || !shell.workspace) {
+			return;
+		}
+
+		if (isWorkspaceCrumb) {
+			updateState({
+				selectedWorkspaceSlug: shell.workspace.workspaceSlug,
+				selectedPageSlug: shell.firstVisiblePageSlug || '',
+				workspaceStatus: `Returned to ${shell.workspace.name}.`
+			});
+			return;
+		}
+
+		updateState({
+			selectedWorkspaceSlug: shell.workspace.workspaceSlug,
+			selectedPageSlug: crumb.pageSlug,
+			workspaceStatus: `Selected ${crumb.label} from breadcrumbs.`
+		});
+	};
+
+	const shellClass = `docsera-shell ${themeClass} docsera-shell--reader${navCollapsed ? ' docsera-shell--nav-collapsed' : ''}`;
+
+	return (
+		<div className={shellClass}>
+			<header className="docsera-shell__header docsera-shell__header--reader">
+				<div className="docsera-shell__brand">
+					<span className="docsera-shell__brand-mark" aria-hidden="true">D</span>
+					<div>
+						<div className="docsera-shell__brand-name">Docsera</div>
+						<div className="docsera-shell__brand-subtitle">Workspace reader</div>
+					</div>
+				</div>
+
+				<div className="docsera-shell__workspace-identity">
+					<div className="docsera-shell__workspace-identity-icon" aria-hidden="true">
+						{workspaceIcon}
+					</div>
+					<div>
+						<div className="docsera-shell__workspace-identity-name">{workspaceName}</div>
+						<div className="docsera-shell__workspace-identity-note">
+							{shell.workspaceSlug ? `/${shell.workspaceSlug}` : 'Workspace shell'}
+						</div>
+					</div>
+				</div>
+
+				<div className="docsera-shell__header-meta docsera-shell__header-meta--reader">
+					<span className="docsera-shell__badge">Reader mode</span>
+					<button type="button" className="docsera-shell__button docsera-shell__button--secondary" on-click={openLauncher}>
+						My Workspaces
+					</button>
+					<button type="button" className="docsera-shell__button docsera-shell__button--secondary" on-click={toggleNav}>
+						{navCollapsed ? 'Expand nav' : 'Collapse nav'}
+					</button>
+					<button type="button" className="docsera-shell__button docsera-shell__button--secondary" on-click={toggleTheme}>
+						{state.shellTheme === 'dark' ? 'Light mode' : 'Dark mode'}
+					</button>
+				</div>
+			</header>
+
+			<div className="docsera-shell__reader-frame">
+				<aside className={`docsera-shell__reader-nav${navCollapsed ? ' docsera-shell__reader-nav--collapsed' : ''}`} aria-label="Workspace pages">
+					<div className="docsera-shell__reader-nav-head">
+						<p className="docsera-shell__rail-title">Navigation</p>
+						<h2 className="docsera-shell__reader-nav-title">Page tree</h2>
+						<p className="docsera-shell__reader-nav-copy">
+							Read-only hierarchy. Viewer mode hides authoring controls.
+						</p>
+					</div>
+
+					<div className="docsera-shell__reader-nav-summary">
+						<span className="docsera-shell__toolbar-chip">{shell.visiblePages.length} visible pages</span>
+						<span className="docsera-shell__toolbar-chip">{shell.routeTargetPath}</span>
+					</div>
+
+					<nav className="docsera-shell__tree" aria-label="Workspace page tree">
+						{shell.pageTree.length ? renderPageTreeNodes(shell.pageTree, selectPage, shell.selectedPageSlug) : (
+							<div className="docsera-shell__toc-empty">
+								No visible pages in this workspace yet.
 							</div>
 						)}
-					</section>
+					</nav>
+				</aside>
 
-					<aside className="docsera-shell__inspector">
-						<div className="docsera-shell__inspector-panel">
-							<p className="docsera-shell__rail-title">Workspace boundary</p>
-							<h2>Route target</h2>
-							<p className="docsera-shell__inspector-copy">
-								Click a workspace to target the shell boundary. Full reader-mode shell behavior is still a future task.
+				<main className="docsera-shell__reader-main">
+					{renderBreadcrumbs(shell.breadcrumbs, selectBreadcrumb)}
+
+					{shell.status === 'empty-workspace' ? (
+						<section className="docsera-shell__reader-empty-state">
+							<h1>{workspaceName}</h1>
+							<p>
+								This workspace has no visible pages yet. Published pages will appear here when they are available.
 							</p>
-							<div className="docsera-shell__inspector-route">{selectedWorkspaceRoute}</div>
-							{selectedWorkspace ? (
-								<div className="docsera-shell__inspector-meta">
-									<div>
-										<div className="docsera-shell__inspector-label">Selected workspace</div>
-										<div className="docsera-shell__inspector-value">{selectedWorkspace.name}</div>
-									</div>
-									<div>
-										<div className="docsera-shell__inspector-label">Capability</div>
-										<div className="docsera-shell__inspector-value">{selectedWorkspaceLabel || 'No access'}</div>
-									</div>
-								</div>
-							) : null}
-						</div>
-
-						<div className="docsera-shell__inspector-panel docsera-shell__inspector-panel--quiet">
-							<p className="docsera-shell__rail-title">Status</p>
-							<div className="docsera-shell__status-text">{state.workspaceStatus}</div>
-						</div>
-					</aside>
-				</main>
-			</div>
-
-			{state.createModalOpen ? (
-				<div className="docsera-shell__modal-backdrop" role="presentation" on-click={closeCreateWorkspaceModal}>
-					<div
-						className="docsera-shell__modal"
-						role="dialog"
-						aria-modal="true"
-						aria-labelledby="docsera-create-workspace-title"
-						on-click={event => event.stopPropagation()}
-					>
-						<form className="docsera-shell__modal-form" on-submit={createWorkspace}>
-							<div className="docsera-shell__modal-head">
-								<div>
-									<p className="docsera-shell__rail-title">New workspace</p>
-									<h2 id="docsera-create-workspace-title">Create workspace</h2>
-								</div>
-								<button type="button" className="docsera-shell__icon-button" on-click={closeCreateWorkspaceModal}>
-									Close
-								</button>
-							</div>
-
-							<p className="docsera-shell__modal-copy">
-								Workspace name is required. The default Docsera icon will be used until icon selection lands.
+						</section>
+					) : shell.status === 'page-not-found' ? (
+						<section className="docsera-shell__reader-empty-state">
+							<h1>Page not found</h1>
+							<p>
+								The selected page is unavailable or not published for this reader surface.
 							</p>
-
-							<label className="docsera-shell__field">
-								<span className="docsera-shell__field-label">Workspace name</span>
-								<input
-									type="text"
-									value={state.newWorkspace.name}
-									placeholder="e.g. Product Docs"
-									aria-required="true"
-									on-input={event => updateCreateField('name', event.target.value)}
-								/>
-							</label>
-
-							<label className="docsera-shell__field">
-								<span className="docsera-shell__field-label">Short description</span>
-								<textarea
-									rows="3"
-									value={state.newWorkspace.shortDescription}
-									placeholder="Optional workspace summary"
-									on-input={event => updateCreateField('shortDescription', event.target.value)}
-								/>
-							</label>
-
-							<div className="docsera-shell__field">
-								<span className="docsera-shell__field-label">Workspace icon</span>
-								<div className="docsera-shell__icon-picker">
-									<div className="docsera-shell__workspace-icon" aria-hidden="true">
-										D
-									</div>
-									<div>
-										<div className="docsera-shell__icon-picker-title">
-											{state.newWorkspace.icon.label}
-										</div>
-										<div className="docsera-shell__icon-picker-copy">
-											Default built-in icon
-										</div>
-									</div>
-								</div>
-							</div>
-
-							{state.createModalError ? (
-								<div className="docsera-shell__modal-error" role="alert">
-									{state.createModalError}
-								</div>
-							) : null}
-
-							<div className="docsera-shell__modal-actions">
+							<div className="docsera-shell__state-actions">
 								<button
 									type="button"
 									className="docsera-shell__button docsera-shell__button--secondary"
-									on-click={closeCreateWorkspaceModal}
-									disabled={state.createModalBusy}
+									on-click={() => updateState({selectedPageSlug: shell.firstVisiblePageSlug || ''})}
 								>
-									Cancel
-								</button>
-								<button
-									type="submit"
-									className="docsera-shell__button"
-									disabled={state.createModalBusy}
-								>
-									{state.createModalBusy ? 'Creating...' : 'Create workspace'}
+									Open first visible page
 								</button>
 							</div>
-						</form>
+						</section>
+					) : (
+						<article className="docsera-shell__reader-content">
+							<div className="docsera-shell__reader-content-head">
+								<div>
+									<p className="docsera-shell__rail-title">Published content</p>
+									<h1 className="docsera-shell__reader-title">{shell.selectedPage ? shell.selectedPage.title : workspaceName}</h1>
+									<p className="docsera-shell__reader-lede">
+										{shell.selectedPage ? shell.selectedPage.summary || shell.selectedPage.bodyText : workspaceDescription || 'Select a page to read the workspace content.'}
+									</p>
+								</div>
+								<div className="docsera-shell__reader-meta">
+									<span className="docsera-shell__toolbar-chip">{shell.routeTargetPath}</span>
+									{shell.selectedPage ? (
+										<span className="docsera-shell__toolbar-chip">{shell.selectedPageSlug}</span>
+									) : null}
+								</div>
+							</div>
+
+							<div className="docsera-shell__reader-body">
+								{shell.selectedPage ? (
+									<>
+										<section className="docsera-shell__reader-prose">
+											<div className="docsera-shell__reader-text">
+												{shell.selectedPage.bodyText || shell.selectedPage.summary || 'This page does not expose a readable body yet.'}
+											</div>
+										</section>
+
+										{Array.isArray(shell.selectedPage.sections) && shell.selectedPage.sections.length ? (
+											<div className="docsera-shell__reader-sections">
+												{shell.selectedPage.sections.map(section => (
+													<section key={section.id || section.title} className="docsera-shell__reader-section" id={section.id}>
+														<h2 className="docsera-shell__reader-section-title">{section.title}</h2>
+														{section.body ? (
+															<p className="docsera-shell__reader-section-copy">{section.body}</p>
+														) : null}
+													</section>
+												))}
+											</div>
+										) : null}
+									</>
+								) : null}
+							</div>
+						</article>
+					)}
+				</main>
+
+				<aside className="docsera-shell__reader-rail" aria-label="Page context">
+					<div className="docsera-shell__inspector-panel">
+						<p className="docsera-shell__rail-title">Workspace identity</p>
+						<h2>{workspaceName}</h2>
+						<div className="docsera-shell__inspector-meta">
+							<div>
+								<div className="docsera-shell__inspector-label">Workspace slug</div>
+								<div className="docsera-shell__inspector-value">{shell.workspaceSlug || 'n/a'}</div>
+							</div>
+							<div>
+								<div className="docsera-shell__inspector-label">Route target</div>
+								<div className="docsera-shell__inspector-value">{shell.routeTargetPath}</div>
+							</div>
+						</div>
 					</div>
-				</div>
-			) : null}
+
+					{renderTableOfContents(shell.tableOfContents, shell.selectedPage)}
+
+					<div className="docsera-shell__inspector-panel docsera-shell__inspector-panel--quiet">
+						<p className="docsera-shell__rail-title">Status</p>
+						<div className="docsera-shell__status-text">
+							{state.workspaceStatus}
+						</div>
+					</div>
+				</aside>
+			</div>
 		</div>
+	);
+}
+
+const view = (state, {updateState}) => {
+	const capabilityService = createWorkspaceCapabilitiesForDemo(state.userAccess);
+	const shell = buildWorkspaceShellViewModel({
+		workspaces: state.workspaces,
+		pages: state.pages,
+		capabilityService,
+		selectedWorkspaceSlug: state.selectedWorkspaceSlug,
+		selectedPageSlug: state.selectedPageSlug
+	});
+
+	return renderWorkspaceReaderSurface(
+		state,
+		shell,
+		updateState
 	);
 };
 

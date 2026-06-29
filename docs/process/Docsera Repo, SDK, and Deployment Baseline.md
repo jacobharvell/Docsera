@@ -41,7 +41,7 @@ The current naming is aligned to the product shell surface rather than the PoC a
 - `app/docsera-shell/src/index.js` imports the real product shell module.
 - `app/docsera-shell/src/docsera-shell/index.js` defines the forward-looking shell custom element via `createCustomElement`.
 - Rendering uses `@servicenow/ui-core` with `@servicenow/ui-renderer-snabbdom`.
-- The product shell now includes a My Workspaces launcher surface and a shell-boundary placeholder for workspace routing.
+- The product shell now includes a My Workspaces launcher surface and a reader-mode workspace shell boundary for workspace routing.
 - The workspace domain foundation now lives in `app/docsera-shell/src/workspaces/`, but the PDI table and on-instance wiring still need to be completed.
 - The page domain foundation now lives in `app/docsera-shell/src/pages/`, but the PDI table and on-instance wiring still need to be completed.
 
@@ -175,7 +175,7 @@ Expected result:
 - The workspace domain contract exists in the app package, but the ServiceNow table and scripted persistence path still need to be created or connected in the PDI.
 - No permission/ownership model exists yet.
 - No shared repo-wide design-system token layer exists yet.
-- The shell surface now focuses on My Workspaces; richer reader/editor routing will come with the next workspace/page tasks.
+- The shell surface now covers My Workspaces and reader-mode workspace navigation; richer editor routing will come with later workspace/page tasks.
 - The page foundation keeps URLs flat at `/docsera/:workspaceSlug/:pageSlug` and leaves nested routing for later shell work.
 - The current package/artifact naming still reads as a PoC, not a product baseline.
 - Runtime validation still depends on the authenticated PDI and `snc` CLI being available locally.

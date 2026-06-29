@@ -34,6 +34,5 @@ My Workspaces is the launcher surface for Docsera authors and admins.
 ## Navigation Boundary
 
 - Clicking a workspace name or row targets the workspace shell boundary as far as the current shell supports.
-- Full reader-mode shell behavior is deferred.
+- Full reader-mode shell behavior now lives in the product shell; My Workspaces remains the launcher entry surface.
 - A launcher entry point may also appear in a workspace shell footer or switcher surface when available.
-

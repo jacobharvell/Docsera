@@ -23,9 +23,11 @@ import {
 import {
 	allocatePageSiblingOrder,
 	allocatePageSlug,
+	buildWorkspaceShellViewModel,
 	PAGE_PERSISTENCE_MODEL,
 	PAGE_PUBLICATION_STATES,
 	createPageDraft,
+	createDocseraShellDemoPages,
 	slugifyPageTitle
 } from '../src/pages/index.js';
 
@@ -68,6 +70,7 @@ const requiredFiles = [
 	'src/docsera-shell/styles.scss',
 	'src/docsera-shell/tokens.scss',
 	'src/pages/index.js',
+	'src/pages/page-reader.js',
 	'src/pages/page-domain.js',
 	'src/workspaces/index.js',
 	'src/workspaces/workspace-capabilities.js',
@@ -94,9 +97,10 @@ if (!entryPoint.includes("import './pages';")) {
 const shellSource = readText('src/docsera-shell/index.js');
 for (const needle of [
 	"createCustomElement('x-82900-docsera-shell'",
-	'My Workspaces',
-	'New Workspace',
-	'Search by workspace name or description'
+	'Workspace reader',
+	'Page tree',
+	'Table of contents',
+	'My Workspaces'
 ]) {
 	if (!shellSource.includes(needle)) {
 		throw new Error(`Missing "${needle}" in shell source.`);
@@ -497,6 +501,80 @@ assert.deepEqual(calls.addUserToGroup[0], {
 assert.equal(calls.createGroup[0].workspaceGroupKey, 'HR_Docs_2');
 assert.equal(calls.createGroup[0].workspaceSlug, 'hr-docs-2');
 
+const demoPages = createDocseraShellDemoPages();
+assert.ok(demoPages.length >= 5);
+
+const shellReaderCapabilityService = createWorkspaceCapabilityService({
+	hasRole: () => false,
+	isMemberOfGroup: () => false
+});
+
+const shellView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: demoPages,
+	capabilityService: shellReaderCapabilityService,
+	selectedWorkspaceSlug: 'product-docs'
+});
+
+assert.equal(shellView.status, 'ready');
+assert.equal(shellView.workspace.workspaceSlug, 'product-docs');
+assert.equal(shellView.selectedPageSlug, 'overview');
+assert.equal(shellView.routeTargetPath, '/docsera/product-docs/overview');
+assert.equal(shellView.visiblePages.length, 4);
+assert.equal(shellView.pageTree.length, 2);
+assert.equal(shellView.pageTree[0].title, 'Overview');
+assert.equal(shellView.pageTree[1].title, 'Guides');
+assert.equal(shellView.pageTree[1].children.length, 2);
+assert.deepEqual(shellView.breadcrumbs.map(item => item.label), ['Product Docs', 'Overview']);
+assert.equal(shellView.tableOfContents.length, 2);
+assert.equal(shellView.canShowAuthoringControls, false);
+
+const guidePageView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: demoPages,
+	capabilityService: shellReaderCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	selectedPageSlug: 'installation'
+});
+
+assert.equal(guidePageView.status, 'ready');
+assert.equal(guidePageView.selectedPageSlug, 'installation');
+assert.equal(guidePageView.routeTargetPath, '/docsera/product-docs/installation');
+assert.deepEqual(guidePageView.breadcrumbs.map(item => item.label), ['Product Docs', 'Guides', 'Installation']);
+assert.equal(guidePageView.tableOfContents.length, 2);
+
+const missingPageView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: demoPages,
+	capabilityService: shellReaderCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	selectedPageSlug: 'draft-playground'
+});
+
+assert.equal(missingPageView.status, 'page-not-found');
+assert.equal(missingPageView.routeTargetPath, '/docsera/product-docs/draft-playground');
+
+const emptyWorkspaceView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: demoPages,
+	capabilityService: shellReaderCapabilityService,
+	selectedWorkspaceSlug: 'reference-library'
+});
+
+assert.equal(emptyWorkspaceView.status, 'empty-workspace');
+assert.equal(emptyWorkspaceView.visiblePages.length, 0);
+assert.equal(emptyWorkspaceView.pageTree.length, 0);
+
+const unknownWorkspaceView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: demoPages,
+	capabilityService: shellReaderCapabilityService,
+	selectedWorkspaceSlug: 'missing-workspace'
+});
+
+assert.equal(unknownWorkspaceView.status, 'workspace-not-found');
+assert.equal(unknownWorkspaceView.routeTargetPath, '/docsera');
+
 const activeWorkspace = {
 	active: true,
 	adminGroupSysId: 'group-admin-001',
@@ -570,6 +648,22 @@ const workspaceSurface = readText('src/workspaces/workspace-domain.js') + readTe
 for (const needle of ['workspaceMembership', 'membershipTable', 'workspace_membership']) {
 	if (workspaceSurface.includes(needle)) {
 		throw new Error(`Unexpected custom workspace membership table reference: ${needle}`);
+	}
+}
+
+const shellSurface = readText('src/docsera-shell/index.js');
+for (const needle of [
+	'selectedWorkspaceSlug: workspace.workspaceSlug',
+	'shellNavigationCollapsed',
+	'shellTheme',
+	'Page tree',
+	'Table of contents',
+	'Workspace not found',
+	'Page not found',
+	'My Workspaces'
+]) {
+	if (!shellSurface.includes(needle)) {
+		throw new Error(`Missing "${needle}" in shell surface source.`);
 	}
 }
 

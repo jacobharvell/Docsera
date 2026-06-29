@@ -137,7 +137,8 @@ Routing notes:
 - the page slug alone identifies the page within its workspace
 - draft pages are authoring-only in the MVP
 - reader-only users must not be able to view draft pages through navigation, filtering, or direct URL access
-- full routing and page access behavior can be implemented in a later shell task
+- the reader shell now uses the flat route model for workspace/page selection and content lookup
+- future shell tasks can extend routing, editor access, and authoring behavior without changing the flat URL shape
 
 ## Local Validation
 
@@ -208,7 +209,6 @@ This task does not add:
 - drag-and-drop
 - editor/autosave behavior
 - publishing action
-- reader-mode workspace shell
 - full route resolution
 - page search
 - image upload or media insertion

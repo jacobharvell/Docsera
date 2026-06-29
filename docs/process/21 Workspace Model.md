@@ -6,7 +6,7 @@ Status: accepted requirement reference
 
 This note defines the workspace identity contract used by Docsera shell surfaces and provisioning flows.
 
-## Workspace Identity / Generated Fields
+## Workspace Identity and Generated Fields
 
 ### Required user-provided fields
 
@@ -15,6 +15,8 @@ This note defines the workspace identity contract used by Docsera shell surfaces
 ### Optional user-provided fields
 
 - shortDescription
+
+shortDescription is optional and should not be treated as required by validation or provisioning.
 
 ### Required/defaulted fields
 
