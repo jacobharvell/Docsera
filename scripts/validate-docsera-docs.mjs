@@ -43,4 +43,17 @@ mustContain(
 	'docs/process/Workspace Data Model and Group Provisioning.md'
 );
 
+const capabilityDoc = readText('docs/process/Workspace Capability Checks.md');
+mustContain(
+	capabilityDoc,
+	[
+		'Workspace Admin',
+		'Workspace Editor',
+		'hasRole(roleName)',
+		'isMemberOfGroup(groupSysId)',
+		'workspace capability contract'
+	],
+	'docs/process/Workspace Capability Checks.md'
+);
+
 console.log('Docsera doc validation passed.');

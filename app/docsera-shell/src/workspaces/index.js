@@ -8,3 +8,7 @@ export {
 	provisionWorkspace,
 	slugifyWorkspaceName
 } from './workspace-domain.js';
+export {
+	WORKSPACE_CAPABILITY_ROLE_NAMES,
+	createWorkspaceCapabilityService
+} from './workspace-capabilities.js';

@@ -4,11 +4,13 @@ import {resolve, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
 	deriveWorkspaceGroupKey,
+	WORKSPACE_CAPABILITY_ROLE_NAMES,
 	WORKSPACE_GROUP_ROLE_NAMES,
 	WORKSPACE_PERSISTENCE_MODEL,
 	allocateWorkspaceSlug,
 	buildWorkspaceGroupNames,
 	createWorkspaceDraft,
+	createWorkspaceCapabilityService,
 	provisionWorkspace,
 	slugifyWorkspaceName
 } from '../src/workspaces/index.js';
@@ -52,6 +54,7 @@ const requiredFiles = [
 	'src/docsera-shell/styles.scss',
 	'src/docsera-shell/tokens.scss',
 	'src/workspaces/index.js',
+	'src/workspaces/workspace-capabilities.js',
 	'src/workspaces/workspace-domain.js',
 	'tile-icon/docsera-shell-icon.svg'
 ];
@@ -107,6 +110,7 @@ assert.ok(!buildWorkspaceGroupNames('HR_Docs').admin.includes('-'));
 assert.ok(!buildWorkspaceGroupNames('HR_Docs').editor.includes('-'));
 
 assert.equal(WORKSPACE_PERSISTENCE_MODEL.tableName, 'x_82900_odoc2_workspace');
+assert.equal(WORKSPACE_CAPABILITY_ROLE_NAMES.docseraAdmin, 'x_82900_odoc2.docsera_admin');
 assert.equal(WORKSPACE_GROUP_ROLE_NAMES.admin, 'x_82900_odoc2.workspace_admin');
 assert.equal(WORKSPACE_GROUP_ROLE_NAMES.editor, 'x_82900_odoc2.workspace_editor');
 
@@ -211,5 +215,81 @@ assert.deepEqual(calls.addUserToGroup[0], {
 
 assert.equal(calls.createGroup[0].workspaceGroupKey, 'HR_Docs_2');
 assert.equal(calls.createGroup[0].workspaceSlug, 'hr-docs-2');
+
+const activeWorkspace = {
+	active: true,
+	adminGroupSysId: 'group-admin-001',
+	editorGroupSysId: 'group-editor-001'
+};
+
+const brokenWorkspace = {
+	active: true,
+	adminGroupSysId: ' ',
+	editorGroupSysId: null
+};
+
+const userState = {
+	roles: new Set(),
+	groups: new Set()
+};
+
+const capabilityService = createWorkspaceCapabilityService({
+	hasRole: roleName => userState.roles.has(roleName),
+	isMemberOfGroup: groupSysId => userState.groups.has(groupSysId)
+});
+
+assert.equal(capabilityService.roleNames.docseraAdmin, WORKSPACE_CAPABILITY_ROLE_NAMES.docseraAdmin);
+assert.equal(capabilityService.isDocseraAdmin(), false);
+assert.equal(capabilityService.canViewWorkspace(activeWorkspace), true);
+assert.equal(capabilityService.canViewWorkspace({active: false}), false);
+
+userState.roles.add(WORKSPACE_CAPABILITY_ROLE_NAMES.docseraAdmin);
+assert.equal(capabilityService.isDocseraAdmin(), true);
+assert.equal(capabilityService.isWorkspaceAdmin(activeWorkspace), true);
+assert.equal(capabilityService.isWorkspaceEditor(activeWorkspace), true);
+
+userState.roles.clear();
+userState.groups.clear();
+userState.roles.add(WORKSPACE_GROUP_ROLE_NAMES.admin);
+assert.equal(capabilityService.isDocseraAdmin(), false);
+assert.equal(capabilityService.isWorkspaceAdmin(activeWorkspace), false);
+assert.equal(capabilityService.isWorkspaceEditor(activeWorkspace), false);
+
+userState.groups.add(activeWorkspace.adminGroupSysId);
+assert.equal(capabilityService.isWorkspaceAdmin(activeWorkspace), true);
+assert.equal(capabilityService.isWorkspaceEditor(activeWorkspace), true);
+
+userState.roles.clear();
+assert.equal(capabilityService.isWorkspaceAdmin(activeWorkspace), false);
+assert.equal(capabilityService.isWorkspaceEditor(activeWorkspace), false);
+
+userState.roles.add(WORKSPACE_GROUP_ROLE_NAMES.admin);
+assert.equal(capabilityService.isWorkspaceAdmin(activeWorkspace), true);
+assert.equal(capabilityService.isWorkspaceEditor(activeWorkspace), true);
+
+userState.roles.clear();
+userState.groups.clear();
+userState.roles.add(WORKSPACE_GROUP_ROLE_NAMES.editor);
+assert.equal(capabilityService.isWorkspaceAdmin(activeWorkspace), false);
+assert.equal(capabilityService.isWorkspaceEditor(activeWorkspace), false);
+
+userState.groups.add(activeWorkspace.editorGroupSysId);
+assert.equal(capabilityService.isWorkspaceEditor(activeWorkspace), true);
+
+userState.roles.clear();
+assert.equal(capabilityService.isWorkspaceEditor(activeWorkspace), false);
+
+userState.roles.add(WORKSPACE_GROUP_ROLE_NAMES.editor);
+userState.groups.clear();
+assert.equal(capabilityService.isWorkspaceEditor(activeWorkspace), false);
+assert.equal(capabilityService.isWorkspaceAdmin(brokenWorkspace), false);
+assert.equal(capabilityService.isWorkspaceEditor(brokenWorkspace), false);
+
+const workspaceSurface = readText('src/workspaces/workspace-domain.js') + readText('src/workspaces/workspace-capabilities.js');
+for (const needle of ['workspaceMembership', 'membershipTable', 'workspace_membership']) {
+	if (workspaceSurface.includes(needle)) {
+		throw new Error(`Unexpected custom workspace membership table reference: ${needle}`);
+	}
+}
 
 console.log('Docsera shell validation passed.');

@@ -128,6 +128,8 @@ Expected result:
 - the creator is in the Admin group
 - capability checks can read group sys_ids from the workspace record
 
+See `docs/process/Workspace Capability Checks.md` for the reusable access-check contract that consumes these stored group references.
+
 ## Remaining Platform Setup
 
 The repository now has the domain contract, but the following PDI work may still be needed:

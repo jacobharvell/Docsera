@@ -32,9 +32,11 @@ Key rules:
 - the workspace creator is added to the Admin group
 - workspaces always carry an icon, using the Docsera default icon when none is supplied
 - Admin and Editor group sys_ids are stored on the workspace record
+- workspace capability checks are centralized in `src/workspaces/workspace-capabilities.js`
 - there is no custom workspace membership table
 
 The scoped role names used by the domain contract are documented in `docs/process/Workspace Data Model and Group Provisioning.md`.
+The capability-check rules and adapter boundaries are documented in `docs/process/Workspace Capability Checks.md`.
 
 ## Local validation
 
