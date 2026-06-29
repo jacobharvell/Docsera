@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": false,
   "description": "Docsera product app shell scaffold for ServiceNow",
+  "type": "module",
   "keywords": [
     "ServiceNow",
     "Next Experience UI Component",

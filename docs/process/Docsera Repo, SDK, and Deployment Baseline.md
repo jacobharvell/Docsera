@@ -41,7 +41,8 @@ The current naming is PoC-oriented and not yet aligned to a finalized product ap
 - `app/docsera-shell/src/index.js` imports the real product shell module.
 - `app/docsera-shell/src/docsera-shell/index.js` defines the forward-looking shell custom element via `createCustomElement`.
 - Rendering uses `@servicenow/ui-core` with `@servicenow/ui-renderer-snabbdom`.
-- The product shell is intentionally layout-first only. There is no workspace routing, data model, or editor mount yet.
+- The product shell is intentionally layout-first only. There is no workspace routing or editor mount yet.
+- The workspace domain foundation now lives in `app/docsera-shell/src/workspaces/`, but the PDI table and on-instance wiring still need to be completed.
 
 Current state is a PoC editor surface plus a separate product shell scaffold.
 
@@ -170,8 +171,7 @@ Expected result:
 
 ## Gaps and Risks Before Feature Implementation
 
-- No workspace data model exists yet.
-- No ServiceNow persistence layer exists yet.
+- The workspace domain contract exists in the app package, but the ServiceNow table and scripted persistence path still need to be created or connected in the PDI.
 - No permission/ownership model exists yet.
 - No shared repo-wide design-system token layer exists yet.
 - The new shell layout is intentionally minimal and may be replaced by a richer routing scaffold once workspace/page work starts.
@@ -189,6 +189,7 @@ Recommended focus for that task:
 - establish a repeatable repo-level validation command surface
 - keep persistence and permission scaffolding explicit but minimal
 - prepare for `Workspace Data Model and Group Provisioning`
+- `app/docsera-shell/src/workspaces/workspace-domain.js`
 
 ## Blockers / Uncertainties
 

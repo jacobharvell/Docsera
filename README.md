@@ -6,6 +6,7 @@ Docsera is a ServiceNow-scoped documentation platform focused on a polished read
 
 - `docs/decisions/` contains public architectural decisions and rationale.
 - `app/docsera-shell/` is the real Docsera product shell scaffold.
+- `docs/process/Workspace Data Model and Group Provisioning.md` records the workspace foundation contract.
 - `poc/tiptap-component/` is a closed historical PoC reference and should not be renamed into the product shell.
 
 ## Internal working material
@@ -20,6 +21,7 @@ The following paths are intentionally excluded from the public repo and are used
 
 - ServiceNow-native scoped app
 - UI Builder / Next Experience shell
+- Workspace data model and native group provisioning
 - Tiptap / ProseMirror-oriented editor foundation
 - Block-based authoring with Markdown/source support
 

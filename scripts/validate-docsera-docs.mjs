@@ -25,8 +25,20 @@ mustContain(readme, ['app/docsera-shell/', 'poc/'], 'README.md');
 const baseline = readText('docs/process/Docsera Repo, SDK, and Deployment Baseline.md');
 mustContain(
 	baseline,
-	['app/docsera-shell', 'npm run validate', 'poc/tiptap-component'],
+	['app/docsera-shell', 'npm run validate', 'poc/tiptap-component', 'src/workspaces/workspace-domain.js'],
 	'docs/process/Docsera Repo, SDK, and Deployment Baseline.md'
+);
+
+const workspaceDoc = readText('docs/process/Workspace Data Model and Group Provisioning.md');
+mustContain(
+	workspaceDoc,
+	[
+		'workspaceSlug',
+		'Docsera_<Workspace_Key>_Admins',
+		'hr-docs-2',
+		'npm run validate:shell'
+	],
+	'docs/process/Workspace Data Model and Group Provisioning.md'
 );
 
 console.log('Docsera doc validation passed.');
