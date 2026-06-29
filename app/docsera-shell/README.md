@@ -25,9 +25,12 @@ Key rules:
 
 - workspace names generate a unique slug / URL key
 - duplicate slugs silently suffix with `-2`, `-3`, and so on
+- workspace slugs are URL-facing and stay hyphenated
+- workspace group keys are separate from slugs and use underscore-based names
 - each workspace creates native Admin and Editor groups
 - group names use the `Docsera_<Workspace_Key>_<Role>` pattern
 - the workspace creator is added to the Admin group
+- workspaces always carry an icon, using the Docsera default icon when none is supplied
 - Admin and Editor group sys_ids are stored on the workspace record
 - there is no custom workspace membership table
 

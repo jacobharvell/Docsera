@@ -1,5 +1,10 @@
 const DEFAULT_WORKSPACE_TABLE = 'x_82900_odoc2_workspace';
 const DEFAULT_WORKSPACE_ROLE_PREFIX = 'x_82900_odoc2';
+const DEFAULT_WORKSPACE_ICON = Object.freeze({
+	key: 'docsera-workspace',
+	label: 'Docsera workspace icon',
+	type: 'builtin'
+});
 
 function cleanText(value) {
 	if (typeof value !== 'string') {
@@ -29,18 +34,23 @@ function resolveGroupSysId(group) {
 
 function normalizeWorkspaceIcon(icon) {
 	if (!icon) {
-		return null;
+		return DEFAULT_WORKSPACE_ICON;
 	}
 
 	if (typeof icon === 'string') {
-		return {type: 'symbol', value: cleanText(icon)};
+		return {
+			...DEFAULT_WORKSPACE_ICON,
+			value: cleanText(icon)
+		};
 	}
 
 	if (typeof icon !== 'object') {
-		return null;
+		return DEFAULT_WORKSPACE_ICON;
 	}
 
-	const normalized = {};
+	const normalized = {
+		...DEFAULT_WORKSPACE_ICON
+	};
 
 	for (const [key, value] of Object.entries(icon)) {
 		if (typeof value === 'string') {
@@ -56,7 +66,7 @@ function normalizeWorkspaceIcon(icon) {
 		}
 	}
 
-	return Object.keys(normalized).length > 0 ? normalized : null;
+	return normalized;
 }
 
 function normalizeRetainedWorkspaceKeys(retainedWorkspaces) {
@@ -92,7 +102,7 @@ export const WORKSPACE_PERSISTENCE_MODEL = Object.freeze({
 		{name: 'name', type: 'string', required: true},
 		{name: 'workspaceSlug', type: 'string', required: true, unique: true},
 		{name: 'shortDescription', type: 'string', required: false},
-		{name: 'icon', type: 'object', required: false},
+		{name: 'icon', type: 'object', required: true, defaultValue: DEFAULT_WORKSPACE_ICON},
 		{name: 'active', type: 'boolean', required: true, defaultValue: true},
 		{name: 'adminGroupSysId', type: 'reference', referenceTable: 'sys_user_group', required: false},
 		{name: 'editorGroupSysId', type: 'reference', referenceTable: 'sys_user_group', required: false},
@@ -109,6 +119,33 @@ export const WORKSPACE_GROUP_ROLE_NAMES = Object.freeze({
 export function slugifyWorkspaceName(name) {
 	const slug = toSlugFragment(name);
 	return slug || 'workspace';
+}
+
+function toWorkspaceTitleFragment(value) {
+	return cleanText(value)
+		.normalize('NFKD')
+		.replace(/[\u0300-\u036f]/g, '')
+		.replace(/[^a-zA-Z0-9]+/g, ' ')
+		.trim()
+		.split(/\s+/)
+		.filter(Boolean)
+		.map(part => {
+			if (part === part.toUpperCase()) {
+				return part;
+			}
+
+			return `${part.charAt(0).toUpperCase()}${part.slice(1).toLowerCase()}`;
+		})
+		.join('_');
+}
+
+export function deriveWorkspaceGroupKey(name, workspaceSlug) {
+	const titleKey = toWorkspaceTitleFragment(name);
+	const slugSuffixMatch = cleanText(workspaceSlug).match(/-(\d+)$/);
+	const suffix = slugSuffixMatch ? `_${slugSuffixMatch[1]}` : '';
+	const baseKey = titleKey || 'Workspace';
+
+	return `${baseKey}${suffix}`;
 }
 
 export function allocateWorkspaceSlug(name, retainedWorkspaces = []) {
@@ -147,12 +184,14 @@ export function createWorkspaceDraft(input, retainedWorkspaces = []) {
 	}
 
 	const workspaceSlug = allocateWorkspaceSlug(name, retainedWorkspaces);
-	const groupNames = buildWorkspaceGroupNames(workspaceSlug);
+	const workspaceGroupKey = deriveWorkspaceGroupKey(name, workspaceSlug);
+	const groupNames = buildWorkspaceGroupNames(workspaceGroupKey);
 
 	return {
 		tableName: WORKSPACE_PERSISTENCE_MODEL.tableName,
 		name,
 		workspaceSlug,
+		workspaceGroupKey,
 		shortDescription: cleanText(input.shortDescription) || null,
 		icon: normalizeWorkspaceIcon(input.icon),
 		active: input.active !== undefined ? Boolean(input.active) : true,
@@ -199,12 +238,14 @@ export async function provisionWorkspace(input, dependencies, retainedWorkspaces
 	const adminGroup = await dependencies.createGroup({
 		name: draft.adminGroupName,
 		description: `Workspace admin group for ${draft.name}`,
+		workspaceGroupKey: draft.workspaceGroupKey,
 		workspaceSlug: draft.workspaceSlug,
 		type: 'admin'
 	});
 	const editorGroup = await dependencies.createGroup({
 		name: draft.editorGroupName,
 		description: `Workspace editor group for ${draft.name}`,
+		workspaceGroupKey: draft.workspaceGroupKey,
 		workspaceSlug: draft.workspaceSlug,
 		type: 'editor'
 	});
@@ -229,6 +270,7 @@ export async function provisionWorkspace(input, dependencies, retainedWorkspaces
 	const workspaceWithGroups = {
 		...persistedWorkspace,
 		workspaceSlug: draft.workspaceSlug,
+		workspaceGroupKey: draft.workspaceGroupKey,
 		adminGroupSysId,
 		editorGroupSysId,
 		adminGroupName: draft.adminGroupName,

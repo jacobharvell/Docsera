@@ -1,4 +1,5 @@
 export {
+	deriveWorkspaceGroupKey,
 	WORKSPACE_GROUP_ROLE_NAMES,
 	WORKSPACE_PERSISTENCE_MODEL,
 	allocateWorkspaceSlug,

@@ -3,6 +3,7 @@ import {readFileSync, existsSync} from 'node:fs';
 import {resolve, dirname} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {
+	deriveWorkspaceGroupKey,
 	WORKSPACE_GROUP_ROLE_NAMES,
 	WORKSPACE_PERSISTENCE_MODEL,
 	allocateWorkspaceSlug,
@@ -95,11 +96,15 @@ assert.equal(slugifyWorkspaceName('  Platform / Docs  '), 'platform-docs');
 assert.equal(slugifyWorkspaceName('!!!'), 'workspace');
 assert.equal(allocateWorkspaceSlug('HR Docs', ['hr-docs']), 'hr-docs-2');
 assert.equal(allocateWorkspaceSlug('HR Docs', ['hr-docs', 'hr-docs-2']), 'hr-docs-3');
+assert.equal(deriveWorkspaceGroupKey('HR Docs', 'hr-docs'), 'HR_Docs');
+assert.equal(deriveWorkspaceGroupKey('HR Docs', 'hr-docs-2'), 'HR_Docs_2');
 
-assert.deepEqual(buildWorkspaceGroupNames('hr-docs'), {
-	admin: 'Docsera_hr-docs_Admins',
-	editor: 'Docsera_hr-docs_Editors'
+assert.deepEqual(buildWorkspaceGroupNames('HR_Docs'), {
+	admin: 'Docsera_HR_Docs_Admins',
+	editor: 'Docsera_HR_Docs_Editors'
 });
+assert.ok(!buildWorkspaceGroupNames('HR_Docs').admin.includes('-'));
+assert.ok(!buildWorkspaceGroupNames('HR_Docs').editor.includes('-'));
 
 assert.equal(WORKSPACE_PERSISTENCE_MODEL.tableName, 'x_82900_odoc2_workspace');
 assert.equal(WORKSPACE_GROUP_ROLE_NAMES.admin, 'x_82900_odoc2.workspace_admin');
@@ -108,15 +113,41 @@ assert.equal(WORKSPACE_GROUP_ROLE_NAMES.editor, 'x_82900_odoc2.workspace_editor'
 const draft = createWorkspaceDraft({
 	name: 'HR Docs',
 	shortDescription: 'People operations',
-	icon: {type: 'emoji', value: '📁'},
 	createdBy: 'user-123'
 }, ['hr-docs']);
 
 assert.equal(draft.workspaceSlug, 'hr-docs-2');
-assert.equal(draft.adminGroupName, 'Docsera_hr-docs-2_Admins');
-assert.equal(draft.editorGroupName, 'Docsera_hr-docs-2_Editors');
+assert.equal(draft.workspaceGroupKey, 'HR_Docs_2');
+assert.equal(draft.adminGroupName, 'Docsera_HR_Docs_2_Admins');
+assert.equal(draft.editorGroupName, 'Docsera_HR_Docs_2_Editors');
 assert.equal(draft.active, true);
 assert.equal(draft.createdBy, 'user-123');
+assert.deepEqual(draft.icon, {
+	key: 'docsera-workspace',
+	label: 'Docsera workspace icon',
+	type: 'builtin'
+});
+
+const suppliedIconDraft = createWorkspaceDraft({
+	name: 'HR Docs',
+	icon: {
+		key: 'custom-workspace',
+		label: ' Custom Workspace ',
+		theme: 'cool'
+	}
+});
+
+assert.deepEqual(suppliedIconDraft.icon, {
+	key: 'custom-workspace',
+	label: 'Custom Workspace',
+	type: 'builtin',
+	theme: 'cool'
+});
+assert.ok(!suppliedIconDraft.adminGroupName.includes('-'));
+assert.ok(!suppliedIconDraft.editorGroupName.includes('-'));
+assert.equal(suppliedIconDraft.workspaceGroupKey, 'HR_Docs');
+assert.equal(suppliedIconDraft.adminGroupName, 'Docsera_HR_Docs_Admins');
+assert.equal(suppliedIconDraft.editorGroupName, 'Docsera_HR_Docs_Editors');
 
 const calls = {
 	persistWorkspace: [],
@@ -130,7 +161,6 @@ const result = await provisionWorkspace(
 	{
 		name: 'HR Docs',
 		shortDescription: 'People operations',
-		icon: {type: 'emoji', value: '📁'},
 		createdBy: 'user-123'
 	},
 	{
@@ -166,11 +196,20 @@ assert.equal(calls.addUserToGroup.length, 1);
 assert.equal(calls.updateWorkspace.length, 1);
 assert.equal(result.workspace.saved, true);
 assert.equal(result.workspace.workspaceSlug, 'hr-docs-2');
-assert.equal(result.workspace.adminGroupSysId, 'Docsera_hr-docs-2_Admins-sys-id');
-assert.equal(result.workspace.editorGroupSysId, 'Docsera_hr-docs-2_Editors-sys-id');
+assert.equal(result.workspace.workspaceGroupKey, 'HR_Docs_2');
+assert.deepEqual(result.workspace.icon, {
+	key: 'docsera-workspace',
+	label: 'Docsera workspace icon',
+	type: 'builtin'
+});
+assert.equal(result.workspace.adminGroupSysId, 'Docsera_HR_Docs_2_Admins-sys-id');
+assert.equal(result.workspace.editorGroupSysId, 'Docsera_HR_Docs_2_Editors-sys-id');
 assert.deepEqual(calls.addUserToGroup[0], {
-	groupSysId: 'Docsera_hr-docs-2_Admins-sys-id',
+	groupSysId: 'Docsera_HR_Docs_2_Admins-sys-id',
 	userSysId: 'user-123'
 });
+
+assert.equal(calls.createGroup[0].workspaceGroupKey, 'HR_Docs_2');
+assert.equal(calls.createGroup[0].workspaceSlug, 'hr-docs-2');
 
 console.log('Docsera shell validation passed.');

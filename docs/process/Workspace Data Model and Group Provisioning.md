@@ -29,8 +29,10 @@ Required workspace identity fields:
 Model notes:
 
 - `workspaceSlug` is the canonical URL key and uniqueness field.
+- `workspaceSlug` stays hyphenated and the workspace group key is separate from it.
 - `adminGroupSysId` and `editorGroupSysId` are the stored references that future capability checks should use.
 - `createdBy` and `createdOn` can rely on ServiceNow platform metadata where that is more natural, but the domain contract keeps them explicit.
+- workspaces always have an icon, and the domain contract fills in a Docsera default icon when none is supplied.
 
 ## Slug Behavior
 
@@ -47,6 +49,11 @@ Examples:
 - `HR Docs` with `hr-docs` already retained -> `hr-docs-2`
 - `HR Docs` with `hr-docs` and `hr-docs-2` already retained -> `hr-docs-3`
 
+The group key is derived separately from the workspace name and slug so that ServiceNow group names stay underscore-based:
+
+- `HR Docs` -> `HR_Docs`
+- `HR Docs` with `hr-docs-2` -> `HR_Docs_2`
+
 ## Generated Group Behavior
 
 Each workspace generates two native ServiceNow groups:
@@ -60,6 +67,7 @@ Behavior:
 - group sys_ids are stored on the workspace record as the source of truth
 - capability checks should use the stored group references rather than group names
 - no custom workspace membership table is introduced
+- group names never rely on the URL slug directly
 
 Scoped role assignment:
 

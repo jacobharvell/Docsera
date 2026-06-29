@@ -35,7 +35,9 @@ mustContain(
 	[
 		'workspaceSlug',
 		'Docsera_<Workspace_Key>_Admins',
+		'workspace group key is separate',
 		'hr-docs-2',
+		'Docsera default icon',
 		'npm run validate:shell'
 	],
 	'docs/process/Workspace Data Model and Group Provisioning.md'
