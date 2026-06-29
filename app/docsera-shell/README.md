@@ -14,6 +14,7 @@ Docsera product app shell scaffold
 - `src/index.js` is the component entry point.
 - `src/docsera-shell/index.js` registers `x-82900-docsera-shell`.
 - `src/workspaces/workspace-domain.js` contains the workspace slug and provisioning contract.
+- `src/pages/page-domain.js` contains the page ownership, ordering, and slug contract.
 - `src/docsera-shell/styles.scss` defines the initial Docsera shell token layer and layout conventions.
 - `now-ui.json` exposes the component to UI Builder.
 
@@ -37,6 +38,7 @@ Key rules:
 
 The scoped role names used by the domain contract are documented in `docs/process/Workspace Data Model and Group Provisioning.md`.
 The capability-check rules and adapter boundaries are documented in `docs/process/Workspace Capability Checks.md`.
+The page persistence, hierarchy, slug, and draft/published rules are documented in `docs/process/Page Data Model and Slug Rules.md`.
 
 ## Local validation
 
@@ -86,5 +88,5 @@ Expected result:
 
 - Workspace UI and access checks
 - Page tree and routing
-- Persistence and publishing
+- Page persistence and publishing
 - Reader/editor feature work

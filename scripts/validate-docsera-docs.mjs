@@ -43,6 +43,20 @@ mustContain(
 	'docs/process/Workspace Data Model and Group Provisioning.md'
 );
 
+const pageDoc = readText('docs/process/Page Data Model and Slug Rules.md');
+mustContain(
+	pageDoc,
+	[
+		'workspaceSysId',
+		'parentPageSysId',
+		'siblingOrder',
+		'benefits-1',
+		'published_with_unpublished_changes',
+		'/docsera/:workspaceSlug/:pageSlug'
+	],
+	'docs/process/Page Data Model and Slug Rules.md'
+);
+
 const capabilityDoc = readText('docs/process/Workspace Capability Checks.md');
 mustContain(
 	capabilityDoc,

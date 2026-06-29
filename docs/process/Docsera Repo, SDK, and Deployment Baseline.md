@@ -43,6 +43,7 @@ The current naming is PoC-oriented and not yet aligned to a finalized product ap
 - Rendering uses `@servicenow/ui-core` with `@servicenow/ui-renderer-snabbdom`.
 - The product shell is intentionally layout-first only. There is no workspace routing or editor mount yet.
 - The workspace domain foundation now lives in `app/docsera-shell/src/workspaces/`, but the PDI table and on-instance wiring still need to be completed.
+- The page domain foundation now lives in `app/docsera-shell/src/pages/`, but the PDI table and on-instance wiring still need to be completed.
 
 Current state is a PoC editor surface plus a separate product shell scaffold.
 
@@ -175,6 +176,7 @@ Expected result:
 - No permission/ownership model exists yet.
 - No shared repo-wide design-system token layer exists yet.
 - The new shell layout is intentionally minimal and may be replaced by a richer routing scaffold once workspace/page work starts.
+- The page foundation keeps URLs flat at `/docsera/:workspaceSlug/:pageSlug` and leaves nested routing for later shell work.
 - The current package/artifact naming still reads as a PoC, not a product baseline.
 - Runtime validation still depends on the authenticated PDI and `snc` CLI being available locally.
 

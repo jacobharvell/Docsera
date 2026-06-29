@@ -14,6 +14,14 @@ import {
 	provisionWorkspace,
 	slugifyWorkspaceName
 } from '../src/workspaces/index.js';
+import {
+	allocatePageSiblingOrder,
+	allocatePageSlug,
+	PAGE_PERSISTENCE_MODEL,
+	PAGE_PUBLICATION_STATES,
+	createPageDraft,
+	slugifyPageTitle
+} from '../src/pages/index.js';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -53,6 +61,8 @@ const requiredFiles = [
 	'src/docsera-shell/index.js',
 	'src/docsera-shell/styles.scss',
 	'src/docsera-shell/tokens.scss',
+	'src/pages/index.js',
+	'src/pages/page-domain.js',
 	'src/workspaces/index.js',
 	'src/workspaces/workspace-capabilities.js',
 	'src/workspaces/workspace-domain.js',
@@ -69,6 +79,9 @@ if (!entryPoint.includes("import './docsera-shell';")) {
 }
 if (!entryPoint.includes("import './workspaces';")) {
 	throw new Error('Shell entry point does not import the workspace domain module.');
+}
+if (!entryPoint.includes("import './pages';")) {
+	throw new Error('Shell entry point does not import the page domain module.');
 }
 
 const shellSource = readText('src/docsera-shell/index.js');
@@ -113,6 +126,11 @@ assert.equal(WORKSPACE_PERSISTENCE_MODEL.tableName, 'x_82900_odoc2_workspace');
 assert.equal(WORKSPACE_CAPABILITY_ROLE_NAMES.docseraAdmin, 'x_82900_odoc2.docsera_admin');
 assert.equal(WORKSPACE_GROUP_ROLE_NAMES.admin, 'x_82900_odoc2.workspace_admin');
 assert.equal(WORKSPACE_GROUP_ROLE_NAMES.editor, 'x_82900_odoc2.workspace_editor');
+assert.equal(slugifyPageTitle('Page Title'), 'page-title');
+assert.equal(PAGE_PERSISTENCE_MODEL.tableName, 'x_82900_odoc2_page');
+assert.equal(PAGE_PUBLICATION_STATES.draft, 'draft');
+assert.equal(PAGE_PUBLICATION_STATES.published, 'published');
+assert.equal(PAGE_PUBLICATION_STATES.publishedWithUnpublishedChanges, 'published_with_unpublished_changes');
 
 const draft = createWorkspaceDraft({
 	name: 'HR Docs',
@@ -152,6 +170,165 @@ assert.ok(!suppliedIconDraft.editorGroupName.includes('-'));
 assert.equal(suppliedIconDraft.workspaceGroupKey, 'HR_Docs');
 assert.equal(suppliedIconDraft.adminGroupName, 'Docsera_HR_Docs_Admins');
 assert.equal(suppliedIconDraft.editorGroupName, 'Docsera_HR_Docs_Editors');
+
+const rootPage = createPageDraft({
+	workspaceSysId: 'workspace-001',
+	title: 'Benefits'
+});
+
+assert.equal(rootPage.workspaceSysId, 'workspace-001');
+assert.equal(rootPage.parentPageSysId, null);
+assert.equal(rootPage.siblingOrder, 1);
+assert.equal(rootPage.draftTitle, 'Benefits');
+assert.equal(rootPage.draftSlug, 'benefits');
+assert.equal(rootPage.draftSlugNormalized, 'benefits');
+assert.equal(rootPage.publicationState, PAGE_PUBLICATION_STATES.draft);
+assert.equal(rootPage.publishedTitle, null);
+assert.equal(rootPage.publishedSlug, null);
+assert.equal(rootPage.publishedContentJson, null);
+
+const sameWorkspaceParent = {
+	sysId: 'page-parent-001',
+	workspaceSysId: 'workspace-001',
+	siblingOrder: 1
+};
+
+const sameWorkspaceSibling = {
+	sysId: 'page-sibling-001',
+	workspaceSysId: 'workspace-001',
+	parentPageSysId: 'page-parent-001',
+	siblingOrder: 2
+};
+
+const otherWorkspaceParent = {
+	sysId: 'page-parent-002',
+	workspaceSysId: 'workspace-002'
+};
+
+const childPage = createPageDraft(
+	{
+		workspaceSysId: 'workspace-001',
+		title: 'Team Benefits',
+		parentPage: sameWorkspaceParent
+	},
+	[
+		sameWorkspaceParent,
+		sameWorkspaceSibling,
+		{
+			sysId: 'root-other-001',
+			workspaceSysId: 'workspace-001',
+			siblingOrder: 9
+		}
+	]
+);
+
+assert.equal(childPage.parentPageSysId, 'page-parent-001');
+assert.equal(childPage.siblingOrder, 3);
+assert.equal(childPage.draftSlug, 'team-benefits');
+
+assert.throws(() => createPageDraft({
+	workspaceSysId: 'workspace-001',
+	title: 'Invalid Parent',
+	parentPage: otherWorkspaceParent
+}), /same workspace/i);
+
+assert.equal(allocatePageSiblingOrder([
+	{
+		workspaceSysId: 'workspace-001',
+		parentPageSysId: 'page-parent-001',
+		siblingOrder: 1
+	},
+	{
+		workspaceSysId: 'workspace-001',
+		parentPageSysId: 'page-parent-001',
+		siblingOrder: 3
+	},
+	{
+		workspaceSysId: 'workspace-001',
+		parentPageSysId: 'other-parent',
+		siblingOrder: 99
+	},
+	{
+		workspaceSysId: 'workspace-002',
+		parentPageSysId: 'page-parent-001',
+		siblingOrder: 50
+	}
+], 'workspace-001', 'page-parent-001'), 4);
+
+assert.equal(allocatePageSiblingOrder([
+	{
+		workspaceSysId: 'workspace-001',
+		siblingOrder: 1
+	},
+	{
+		workspaceSysId: 'workspace-001',
+		siblingOrder: 2
+	},
+	{
+		workspaceSysId: 'workspace-001',
+		parentPageSysId: 'page-parent-001',
+		siblingOrder: 10
+	}
+], 'workspace-001', ''), 3);
+
+assert.equal(allocatePageSlug('Benefits', [], 'workspace-001'), 'benefits');
+assert.equal(allocatePageSlug('Benefits', [
+	{
+		workspaceSysId: 'workspace-001',
+		draftSlug: 'benefits'
+	}
+], 'workspace-001'), 'benefits-1');
+assert.equal(allocatePageSlug('Benefits', [
+	{
+		workspaceSysId: 'workspace-001',
+		draftSlug: 'BENEFITS'
+	},
+	{
+		workspaceSysId: 'workspace-001',
+		publishedSlug: 'benefits-1',
+		publicationState: 'published'
+	}
+], 'workspace-001'), 'benefits-2');
+assert.equal(allocatePageSlug('Benefits', [
+	{
+		workspaceSysId: 'workspace-002',
+		draftSlug: 'benefits'
+	}
+], 'workspace-001'), 'benefits');
+assert.equal(allocatePageSlug('Benefits', [
+	{
+		workspaceSysId: 'workspace-001',
+		draftSlug: 'benefits'
+	},
+	{
+		workspaceSysId: 'workspace-001',
+		publishedSlug: 'benefits-1',
+		publicationState: 'published'
+	},
+	{
+		workspaceSysId: 'workspace-001',
+		draftSlug: 'benefits-2',
+		publishedSlug: 'BENEFITS-2',
+		publicationState: 'published_with_unpublished_changes'
+	}
+], 'workspace-001'), 'benefits-3');
+
+assert.equal(slugifyPageTitle('Team Overview'), 'team-overview');
+assert.equal(slugifyPageTitle('!!!'), 'page');
+
+const duplicateTitleDraft = createPageDraft({
+	workspaceSysId: 'workspace-001',
+	title: 'Benefits'
+}, [
+	rootPage
+]);
+
+assert.equal(duplicateTitleDraft.draftSlug, 'benefits-1');
+assert.equal(duplicateTitleDraft.draftTitle, 'Benefits');
+assert.equal(duplicateTitleDraft.publishedTitle, null);
+assert.equal(duplicateTitleDraft.publishedSlug, null);
+assert.equal(duplicateTitleDraft.draftContentJson.type, 'doc');
+assert.deepEqual(duplicateTitleDraft.draftContentJson.content, []);
 
 const calls = {
 	persistWorkspace: [],
