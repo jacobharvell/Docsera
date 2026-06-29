@@ -10,9 +10,10 @@ It is a discovery snapshot, not a design decision record.
 ## Current Repo Structure
 
 - Root repo is mostly documentation, runbooks, and a ServiceNow PoC under `poc/`.
+- The forward-looking product shell now lives under `app/docsera-shell/`.
 - Public-facing docs live in `docs/`.
 - Working ServiceNow guidance and validation notes live in `internal/`.
-- The only executable app artifact currently present is `poc/tiptap-component/`.
+- The executable app artifacts currently present are `app/docsera-shell/` and `poc/tiptap-component/`.
 
 Key paths:
 - `README.md`
@@ -36,12 +37,13 @@ The current naming is PoC-oriented and not yet aligned to a finalized product ap
 
 ## App Entry Point Pattern
 
-- `src/index.js` only imports the component module.
-- `src/docsera-tiptap-poc/index.js` defines a single custom element via `createCustomElement`.
+- `poc/tiptap-component/src/index.js` only imports the PoC component module.
+- `app/docsera-shell/src/index.js` imports the real product shell module.
+- `app/docsera-shell/src/docsera-shell/index.js` defines the forward-looking shell custom element via `createCustomElement`.
 - Rendering uses `@servicenow/ui-core` with `@servicenow/ui-renderer-snabbdom`.
-- There is no app router, no multi-page shell, and no shell-level navigation scaffold yet.
+- The product shell is intentionally layout-first only. There is no workspace routing, data model, or editor mount yet.
 
-Current state is a single component surface with internal edit/preview and light/dark toggles.
+Current state is a PoC editor surface plus a separate product shell scaffold.
 
 ## Existing Client Component Structure
 
@@ -72,17 +74,23 @@ Access control is therefore still completely unscaffolded.
 
 ## Existing Design-System / Token Pattern
 
-- Styling is local SCSS from `src/docsera-tiptap-poc/styles.scss`.
-- The stylesheet imports `@servicenow/sass-kit/host`.
-- The rest of the styling is hard-coded CSS values.
-- No shared token set, design-system abstraction, or theme-variable layer is visible yet.
+- Styling for the PoC remains local SCSS from `poc/tiptap-component/src/docsera-tiptap-poc/styles.scss`.
+- The product shell introduces an initial token layer in `app/docsera-shell/src/docsera-shell/tokens.scss`.
+- The product shell stylesheet imports `@servicenow/sass-kit/host` and maps styles through Docsera-local CSS custom properties.
+- No shared repo-wide token package exists yet.
 
 ## Confirmed Local Commands
 
-There is no repository-root script surface yet.
+There is now a repository-root validation surface.
+
+Repo-level commands:
+- `npm run validate`
+- `npm run validate:shell`
+- `npm run validate:docs`
 
 Confirmed existing command references:
-- `npm run verify --if-present` is referenced in `pom.xml` as `node.verify_cmd`.
+- `npm --prefix app/docsera-shell run verify`
+- `npm run verify --if-present` is referenced in `app/docsera-shell/pom.xml` as `node.verify_cmd`.
 - `snc version`
 - `snc configure profile list --profile <profile>`
 - `snc ui-component deploy --profile <profile> --fetch-assets-from-instance`
@@ -90,10 +98,13 @@ Confirmed existing command references:
 
 Important note:
 - `poc/tiptap-component/package.json` currently has no `scripts` block, so the referenced `verify` command is effectively a no-op unless future scaffolding adds it.
+- The new product shell package implements a real `verify` script.
 
 ## Confirmed Deployment Process
 
-The current PDI deployment workflow is documented in `internal/runbooks/PDI_UI_COMPONENT_DEPLOYMENT.md`:
+The current PDI deployment workflow for the PoC is documented in `internal/runbooks/PDI_UI_COMPONENT_DEPLOYMENT.md`.
+
+The product shell follows the same ServiceNow CLI pattern from `app/docsera-shell/`.
 
 1. Work from `C:\Dev\Docsera\poc\tiptap-component`
 2. Verify CLI and profile:
@@ -107,6 +118,12 @@ The current PDI deployment workflow is documented in `internal/runbooks/PDI_UI_C
 
 The retrospective in `poc/tiptap-component/GATE2_RETROSPECTIVE.md` confirms that deploy success alone is not considered runtime success.
 
+For the product shell, runtime validation is only a shell smoke check at this stage:
+
+1. Deploy `app/docsera-shell`.
+2. Place `x-82900-docsera-shell` on a UI Builder runtime page.
+3. Confirm the shell header, rail, and panel render without errors.
+
 ## Validation Guidance
 
 Validation guidance already exists and should be reused:
@@ -119,6 +136,7 @@ Current validation model:
 - use the smallest practical build/lint/type/test check available
 - validate runtime mount behavior separately from deploy success
 - use manual browser/PDI probes when automation is not practical
+- use `npm run validate` as the repo-level baseline scaffold check
 
 ## Manual Verification Steps
 
@@ -138,13 +156,25 @@ Expected result:
 - `hasProseMirror=true`
 - `editorError=null`
 
+For the new shell scaffold, the manual expectation is simpler:
+
+1. Open `C:\Dev\Docsera\app\docsera-shell`.
+2. Deploy the component to the PDI.
+3. Place `x-82900-docsera-shell` on a runtime page.
+4. Confirm the shell layout renders and the navigation buttons update the visible placeholder section.
+
+Expected result:
+- `x-82900-docsera-shell` mounts successfully.
+- The shell header, rail, and content panel render.
+- No editor mount is expected yet.
+
 ## Gaps and Risks Before Feature Implementation
 
-- No app shell or routing scaffold exists yet.
+- No workspace data model exists yet.
 - No ServiceNow persistence layer exists yet.
 - No permission/ownership model exists yet.
-- No shared design-system token layer exists yet.
-- No repo-level standard build/lint/test commands exist yet.
+- No shared repo-wide design-system token layer exists yet.
+- The new shell layout is intentionally minimal and may be replaced by a richer routing scaffold once workspace/page work starts.
 - The current package/artifact naming still reads as a PoC, not a product baseline.
 - Runtime validation still depends on the authenticated PDI and `snc` CLI being available locally.
 
@@ -152,12 +182,13 @@ Expected result:
 
 Proceed with:
 
-`Scaffolding — Docsera App Shell and Validation Baseline`
+`Scaffolding - Docsera App Shell and Validation Baseline`
 
 Recommended focus for that task:
-- create the shell structure for the product app
+- keep the product shell separate from the closed PoC
 - establish a repeatable repo-level validation command surface
 - keep persistence and permission scaffolding explicit but minimal
+- prepare for `Workspace Data Model and Group Provisioning`
 
 ## Blockers / Uncertainties
 

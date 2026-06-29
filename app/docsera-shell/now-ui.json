@@ -1,0 +1,18 @@
+{
+  "components": {
+    "x-82900-docsera-shell": {
+      "innerComponents": [],
+      "uiBuilder": {
+        "associatedTypes": [
+          "global.core",
+          "global.landing-page"
+        ],
+        "label": "Docsera App Shell",
+        "tileIcon": "./tile-icon/docsera-shell-icon.svg",
+        "description": "Product shell scaffold for the Docsera scoped application",
+        "category": "primitives"
+      }
+    }
+  },
+  "scopeName": "x_82900_odoc2"
+}
