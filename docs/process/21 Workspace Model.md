@@ -6,13 +6,24 @@ Status: accepted requirement reference
 
 This note defines the workspace identity contract used by Docsera shell surfaces and provisioning flows.
 
-## Required Fields
+## Workspace Identity / Generated Fields
+
+### Required user-provided fields
 
 - name
-- workspaceSlug
+
+### Optional user-provided fields
+
 - shortDescription
+
+### Required/defaulted fields
+
 - icon
 - active
+
+### Generated/platform-managed fields
+
+- workspaceSlug
 - createdBy
 - createdOn
 - adminGroupSysId
@@ -32,4 +43,3 @@ This note defines the workspace identity contract used by Docsera shell surfaces
 - The workspace launcher uses workspaceSlug for route targeting.
 - The launcher may show the icon, name, description, capability label, and settings entry point.
 - Workspace creation should preserve the name, description, icon, slug, and generated group references from the provisioning foundation.
-
