@@ -8,10 +8,16 @@ import {
 	WORKSPACE_GROUP_ROLE_NAMES,
 	WORKSPACE_PERSISTENCE_MODEL,
 	allocateWorkspaceSlug,
+	buildMyWorkspacesViewModel,
 	buildWorkspaceGroupNames,
+	buildWorkspaceRoutePath,
+	createMyWorkspacesDemoWorkspaces,
+	createWorkspaceModalDefaults,
 	createWorkspaceDraft,
 	createWorkspaceCapabilityService,
+	prepareWorkspaceCreationInput,
 	provisionWorkspace,
+	resolveWorkspaceCapabilityLabel,
 	slugifyWorkspaceName
 } from '../src/workspaces/index.js';
 import {
@@ -65,6 +71,7 @@ const requiredFiles = [
 	'src/pages/page-domain.js',
 	'src/workspaces/index.js',
 	'src/workspaces/workspace-capabilities.js',
+	'src/workspaces/workspace-launcher.js',
 	'src/workspaces/workspace-domain.js',
 	'tile-icon/docsera-shell-icon.svg'
 ];
@@ -87,8 +94,9 @@ if (!entryPoint.includes("import './pages';")) {
 const shellSource = readText('src/docsera-shell/index.js');
 for (const needle of [
 	"createCustomElement('x-82900-docsera-shell'",
-	"section: 'overview'",
-	'Docsera app shell is mounted'
+	'My Workspaces',
+	'New Workspace',
+	'Search by workspace name or description'
 ]) {
 	if (!shellSource.includes(needle)) {
 		throw new Error(`Missing "${needle}" in shell source.`);
@@ -106,6 +114,102 @@ for (const needle of [
 		throw new Error(`Missing "${needle}" in shell README.`);
 	}
 }
+
+const demoWorkspaces = createMyWorkspacesDemoWorkspaces();
+const demoUserAccess = {
+	roles: [
+		WORKSPACE_CAPABILITY_ROLE_NAMES.workspaceAdmin,
+		WORKSPACE_CAPABILITY_ROLE_NAMES.workspaceEditor
+	],
+	groups: [
+		'group-product-admin',
+		'group-support-editor'
+	]
+};
+const demoCapabilityService = createWorkspaceCapabilityService({
+	hasRole: roleName => demoUserAccess.roles.includes(roleName),
+	isMemberOfGroup: groupSysId => demoUserAccess.groups.includes(groupSysId)
+});
+
+const launcherView = buildMyWorkspacesViewModel(demoWorkspaces, demoCapabilityService, '');
+assert.equal(launcherView.accessibleRows.length, 2);
+assert.equal(launcherView.filteredRows.length, 2);
+assert.equal(launcherView.isEmptyState, false);
+assert.equal(launcherView.isNoResultsState, false);
+assert.deepEqual(
+	launcherView.filteredRows.map(workspace => workspace.name),
+	['Product Docs', 'Support Runbooks']
+);
+assert.ok(!launcherView.filteredRows.some(workspace => workspace.name === 'Ops Archive'));
+assert.ok(!launcherView.filteredRows.some(workspace => workspace.name === 'Reference Library'));
+
+const productWorkspace = launcherView.filteredRows.find(workspace => workspace.workspaceSlug === 'product-docs');
+const supportWorkspace = launcherView.filteredRows.find(workspace => workspace.workspaceSlug === 'support-runbooks');
+
+assert.equal(resolveWorkspaceCapabilityLabel(productWorkspace, demoCapabilityService), 'Workspace Admin');
+assert.equal(resolveWorkspaceCapabilityLabel(supportWorkspace, demoCapabilityService), 'Workspace Editor');
+assert.equal(productWorkspace.canManageSettings, true);
+assert.equal(supportWorkspace.canManageSettings, false);
+assert.equal(buildWorkspaceRoutePath(productWorkspace), '/docsera/product-docs');
+
+const searchView = buildMyWorkspacesViewModel(demoWorkspaces, demoCapabilityService, 'operational');
+assert.equal(searchView.filteredRows.length, 1);
+assert.equal(searchView.filteredRows[0].name, 'Support Runbooks');
+assert.equal(searchView.isNoResultsState, false);
+
+const noResultsView = buildMyWorkspacesViewModel(demoWorkspaces, demoCapabilityService, 'nonexistent term');
+assert.equal(noResultsView.filteredRows.length, 0);
+assert.equal(noResultsView.isNoResultsState, true);
+assert.equal(noResultsView.isEmptyState, false);
+
+const emptyView = buildMyWorkspacesViewModel([
+	{
+		sysId: 'workspace-read-only',
+		name: 'Read Only',
+		workspaceSlug: 'read-only',
+		shortDescription: 'Visible to nobody in My Workspaces',
+		active: true,
+		adminGroupSysId: '',
+		editorGroupSysId: ''
+	}
+], demoCapabilityService, '');
+assert.equal(emptyView.isEmptyState, true);
+assert.equal(emptyView.filteredRows.length, 0);
+
+const docseraAdminCapabilityService = createWorkspaceCapabilityService({
+	hasRole: roleName => roleName === WORKSPACE_CAPABILITY_ROLE_NAMES.docseraAdmin,
+	isMemberOfGroup: () => false
+});
+assert.equal(resolveWorkspaceCapabilityLabel(productWorkspace, docseraAdminCapabilityService), 'Docsera Admin');
+assert.equal(buildMyWorkspacesViewModel(demoWorkspaces, docseraAdminCapabilityService, '').filteredRows.length, 3);
+
+const modalDefaults = createWorkspaceModalDefaults();
+assert.deepEqual(modalDefaults.icon, {
+	key: 'docsera-workspace',
+	label: 'Docsera workspace icon',
+	type: 'builtin'
+});
+
+assert.deepEqual(prepareWorkspaceCreationInput({
+	name: '  Launch Docs  ',
+	shortDescription: '  Product launch collateral  ',
+	icon: {
+		key: 'custom-workspace',
+		label: 'Custom workspace',
+		type: 'builtin'
+	}
+}, '  user-123  '), {
+	name: 'Launch Docs',
+	shortDescription: 'Product launch collateral',
+	icon: {
+		key: 'custom-workspace',
+		label: 'Custom workspace',
+		type: 'builtin'
+	},
+	createdBy: 'user-123'
+});
+
+assert.throws(() => prepareWorkspaceCreationInput({name: '   '}), /required/i);
 
 assert.equal(slugifyWorkspaceName('HR Docs'), 'hr-docs');
 assert.equal(slugifyWorkspaceName('  Platform / Docs  '), 'platform-docs');

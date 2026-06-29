@@ -120,7 +120,7 @@ This task does not add:
 - a custom workspace membership table
 - access request workflows
 - private or restricted workspace visibility
-- My Workspaces UI
+- My Workspaces launcher and settings gating
 - page or editor behavior
 - autosave
 - publishing

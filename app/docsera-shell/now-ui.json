@@ -7,9 +7,9 @@
           "global.core",
           "global.landing-page"
         ],
-        "label": "Docsera App Shell",
+        "label": "Docsera My Workspaces",
         "tileIcon": "./tile-icon/docsera-shell-icon.svg",
-        "description": "Product shell scaffold for the Docsera scoped application",
+        "description": "My Workspaces launcher and shell boundary for the Docsera scoped application",
         "category": "primitives"
       }
     }

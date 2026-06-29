@@ -27,13 +27,13 @@ Key paths:
 ## Confirmed ServiceNow Scope/App Information
 
 - `now-ui.json` sets `scopeName` to `x_82900_odoc2`.
-- `now-ui.json` registers one component: `x-82900-opendocs-tiptap-poc`.
-- The UI Builder metadata labels it `Docsera Tiptap PoC`.
-- The component is described as a feasibility spike for editable and preview Tiptap rendering.
-- `package.json` names the package `docsera-tiptap-poc`.
-- `pom.xml` uses artifact id `opendocs-tiptap-poc`.
+- `now-ui.json` registers one component: `x-82900-docsera-shell`.
+- The UI Builder metadata labels it `Docsera My Workspaces`.
+- The component is described as the Docsera My Workspaces launcher and shell boundary.
+- `package.json` names the package `docsera-app-shell`.
+- `pom.xml` uses artifact id `docsera-app-shell`.
 
-The current naming is PoC-oriented and not yet aligned to a finalized product app shell.
+The current naming is aligned to the product shell surface rather than the PoC artifact.
 
 ## App Entry Point Pattern
 
@@ -41,7 +41,7 @@ The current naming is PoC-oriented and not yet aligned to a finalized product ap
 - `app/docsera-shell/src/index.js` imports the real product shell module.
 - `app/docsera-shell/src/docsera-shell/index.js` defines the forward-looking shell custom element via `createCustomElement`.
 - Rendering uses `@servicenow/ui-core` with `@servicenow/ui-renderer-snabbdom`.
-- The product shell is intentionally layout-first only. There is no workspace routing or editor mount yet.
+- The product shell now includes a My Workspaces launcher surface and a shell-boundary placeholder for workspace routing.
 - The workspace domain foundation now lives in `app/docsera-shell/src/workspaces/`, but the PDI table and on-instance wiring still need to be completed.
 - The page domain foundation now lives in `app/docsera-shell/src/pages/`, but the PDI table and on-instance wiring still need to be completed.
 
@@ -175,7 +175,7 @@ Expected result:
 - The workspace domain contract exists in the app package, but the ServiceNow table and scripted persistence path still need to be created or connected in the PDI.
 - No permission/ownership model exists yet.
 - No shared repo-wide design-system token layer exists yet.
-- The new shell layout is intentionally minimal and may be replaced by a richer routing scaffold once workspace/page work starts.
+- The shell surface now focuses on My Workspaces; richer reader/editor routing will come with the next workspace/page tasks.
 - The page foundation keeps URLs flat at `/docsera/:workspaceSlug/:pageSlug` and leaves nested routing for later shell work.
 - The current package/artifact naming still reads as a PoC, not a product baseline.
 - Runtime validation still depends on the authenticated PDI and `snc` CLI being available locally.

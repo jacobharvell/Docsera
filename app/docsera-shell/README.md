@@ -6,7 +6,8 @@ Docsera product app shell scaffold
 
 - Real product-facing shell surface for Docsera.
 - Workspace domain foundation now exists in `src/workspaces/`.
-- No My Workspaces UI, routing, page tree, or editor behavior yet.
+- My Workspaces launcher and self-service workspace creation now live in the shell.
+- Workspace routing remains a shell boundary placeholder until the reader shell lands.
 - The closed PoC stays in `../../poc/tiptap-component/` as a reference artifact only.
 
 ## Shell structure
@@ -35,6 +36,8 @@ Key rules:
 - Admin and Editor group sys_ids are stored on the workspace record
 - workspace capability checks are centralized in `src/workspaces/workspace-capabilities.js`
 - there is no custom workspace membership table
+
+My Workspaces list, search, settings gating, and launcher-boundary helpers are defined in `src/workspaces/workspace-launcher.js`.
 
 The scoped role names used by the domain contract are documented in `docs/process/Workspace Data Model and Group Provisioning.md`.
 The capability-check rules and adapter boundaries are documented in `docs/process/Workspace Capability Checks.md`.
@@ -69,24 +72,23 @@ snc configure profile list --profile <profile>
 snc ui-component deploy --profile <profile> --fetch-assets-from-instance
 ```
 
-1. Create a workspace through the intended ServiceNow create flow.
-2. Confirm the workspace slug is generated from the workspace name.
-3. Create a second workspace with the same name and confirm the slug is suffixed silently.
-4. Confirm the generated Admin and Editor groups exist.
-5. Confirm the workspace record stores the Admin and Editor group sys_ids.
-6. Confirm the workspace creator is a member of the Admin group.
-7. Place `x-82900-docsera-shell` on a UI Builder runtime page if you want to confirm the shell still mounts.
+1. Open the shell and confirm the My Workspaces header, search bar, and list render.
+2. Confirm active workspaces with admin/editor capability appear and read-only or inactive workspaces do not.
+3. Open a workspace row and confirm the shell boundary path updates to `/docsera/:workspaceSlug`.
+4. Create a workspace from the modal with a name and optional description.
+5. Confirm the new workspace is added to the list and becomes the selected workspace.
+6. Confirm the creator is added to the generated Admin group when the PDI provisioning wiring is live.
+7. Confirm settings entry points are only visible when the current user has Admin capability for that workspace.
 
 Expected result:
 
-- The workspace model persists the expected identity fields.
-- Group provisioning follows the documented naming rules.
-- The creator lands in the Admin group.
+- The workspace list is filtered to active authoring/admin workspaces.
+- Search and the no-results state behave as expected.
+- Workspace creation preserves the name, description, default icon, and slug behavior.
 - The shell still mounts successfully if you run the optional runtime smoke check.
 
 ## Remaining gaps
 
-- Workspace UI and access checks
-- Page tree and routing
-- Page persistence and publishing
-- Reader/editor feature work
+- Live ServiceNow table persistence wiring
+- Full workspace shell routing and reader mode
+- Page tree and editor feature work

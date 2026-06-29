@@ -13,6 +13,18 @@ export {
 	createWorkspaceCapabilityService
 } from './workspace-capabilities.js';
 export {
+	WORKSPACE_LAUNCHER_ROLE_LABELS,
+	buildMyWorkspacesViewModel,
+	buildWorkspaceRoutePath,
+	canManageWorkspaceSettings,
+	createLocalWorkspaceProvisioningDependencies,
+	createMyWorkspacesDemoWorkspaces,
+	createWorkspaceModalDefaults,
+	prepareWorkspaceCreationInput,
+	resolveWorkspaceCapabilityLabel,
+	summarizeWorkspaceCreationResult
+} from './workspace-launcher.js';
+export {
 	allocatePageSiblingOrder,
 	allocatePageSlug,
 	PAGE_PERSISTENCE_MODEL,

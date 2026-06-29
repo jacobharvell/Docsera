@@ -145,7 +145,7 @@ This task does not add:
 
 - a custom workspace membership table
 - workspace archive/delete/restore behavior
-- My Workspaces UI
+- My Workspaces launcher and shell list surface
 - page persistence
 - page tree behavior
 - editor behavior
