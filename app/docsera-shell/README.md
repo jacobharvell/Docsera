@@ -18,6 +18,7 @@ Docsera product app shell scaffold
 - `src/workspaces/workspace-domain.js` contains the workspace slug and provisioning contract.
 - `src/pages/page-domain.js` contains the page ownership, ordering, and slug contract.
 - `src/docsera-shell/index.js` now includes the local page-creation modal, page-tree selection flow, and the thin body editor/autosave baseline.
+- The thin body editor/autosave baseline is ProseMirror-first by design; TipTap integration remains deferred as an explicit future boundary.
 - `src/docsera-shell/styles.scss` defines the Docsera shell token layer and launcher / reader layout conventions.
 - `now-ui.json` exposes the component to UI Builder.
 

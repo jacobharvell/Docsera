@@ -46,6 +46,7 @@ import {
 	resolvePageDepth,
 	resolvePageSubtreeDepth,
 	resolvePageBodyContentJson,
+	normalizePageBodyContentJson,
 	updatePageDraftSettings,
 	validatePageMoveTarget,
 	validatePageSettingsSlug,
@@ -951,6 +952,33 @@ assert.equal(getPageBodyEditorStatusLabel(PAGE_BODY_EDITOR_STATUSES.failed), 'Sa
 const bodyContentFromText = createPageBodyContentJsonFromText('First line\nSecond line');
 assert.equal(bodyContentFromText.type, 'doc');
 assert.equal(bodyContentFromText.content.length, 2);
+
+const malformedImportedBody = normalizePageBodyContentJson({
+	type: 'doc',
+	content: [
+		{
+			type: 'text',
+			text: 'Loose top-level text'
+		},
+		{
+			type: 'hard_break'
+		},
+		{
+			type: 'image',
+			attrs: {
+				src: 'https://example.invalid/image.png',
+				alt: 'Example image'
+			}
+		}
+	]
+});
+
+assert.equal(malformedImportedBody.type, 'doc');
+assert.equal(malformedImportedBody.content[0].type, 'paragraph');
+assert.equal(malformedImportedBody.content[0].content[0].type, 'text');
+assert.equal(malformedImportedBody.content[0].content[0].text, 'Loose top-level text');
+assert.equal(malformedImportedBody.content[0].content[1].type, 'hard_break');
+assert.equal(malformedImportedBody.content[0].content[2].type, 'image');
 
 const publishedSavePreview = buildPageBodySaveRecord(demoPages[0], bodyContentFromText);
 assert.equal(publishedSavePreview.publicationState, PAGE_PUBLICATION_STATES.publishedWithUnpublishedChanges);

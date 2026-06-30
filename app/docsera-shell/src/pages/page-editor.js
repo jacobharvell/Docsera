@@ -99,7 +99,7 @@ function normalizePageBodyInlineContent(content) {
 		.filter(Boolean);
 }
 
-function normalizePageBodyNode(node) {
+function normalizePageBodyBlockNode(node) {
 	if (!isPlainObject(node) || typeof node.type !== 'string') {
 		return null;
 	}
@@ -131,11 +131,24 @@ function normalizePageBodyNode(node) {
 		};
 	}
 
-	if (node.type === 'text' || node.type === 'hard_break' || node.type === 'image' || node.type === 'horizontal_rule') {
-		return normalizePageBodyInlineNode(node);
+	if (node.type === 'horizontal_rule') {
+		return {
+			type: 'horizontal_rule'
+		};
 	}
 
 	return null;
+}
+
+function flushPageBodyInlineBuffer(target, inlineBuffer) {
+	if (!inlineBuffer.length) {
+		return;
+	}
+
+	target.push({
+		type: 'paragraph',
+		content: inlineBuffer.splice(0, inlineBuffer.length)
+	});
 }
 
 export function normalizePageBodyContent(value) {
@@ -144,9 +157,28 @@ export function normalizePageBodyContent(value) {
 	}
 
 	const content = Array.isArray(value.content) ? value.content : [];
-	const normalizedContent = content
-		.map(normalizePageBodyNode)
-		.filter(Boolean);
+	const normalizedContent = [];
+	const inlineBuffer = [];
+
+	for (const node of content) {
+		if (node && typeof node === 'object' && !Array.isArray(node)) {
+			if (node.type === 'text' || node.type === 'hard_break' || node.type === 'image') {
+				const inlineNode = normalizePageBodyInlineNode(node);
+				if (inlineNode) {
+					inlineBuffer.push(inlineNode);
+				}
+				continue;
+			}
+		}
+
+		flushPageBodyInlineBuffer(normalizedContent, inlineBuffer);
+		const normalizedNode = normalizePageBodyBlockNode(node);
+		if (normalizedNode) {
+			normalizedContent.push(normalizedNode);
+		}
+	}
+
+	flushPageBodyInlineBuffer(normalizedContent, inlineBuffer);
 
 	return {
 		type: 'doc',
