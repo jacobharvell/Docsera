@@ -130,18 +130,17 @@ function renderBreadcrumbs(breadcrumbs, selectBreadcrumb) {
 			<ol className="docsera-shell__breadcrumb-list">
 				{breadcrumbs.map((crumb, index) => {
 					const isLast = index === breadcrumbs.length - 1;
-					const isWorkspaceCrumb = index === 0 && crumb.pageSlug === '';
 					const label = crumb.label || '';
 
 					return (
-						<li key={`${crumb.workspaceSlug || 'workspace'}-${crumb.pageSlug || 'root'}-${index}`} className="docsera-shell__breadcrumb-item">
+						<li key={`${crumb.pageSlug || 'root'}-${index}`} className="docsera-shell__breadcrumb-item">
 							{isLast ? (
 								<span className="docsera-shell__breadcrumb-current">{label}</span>
 							) : (
 								<button
 									type="button"
 									className="docsera-shell__breadcrumb-link"
-									on-click={() => selectBreadcrumb(crumb, isWorkspaceCrumb)}
+									on-click={() => selectBreadcrumb(crumb)}
 								>
 									{label}
 								</button>
@@ -220,17 +219,8 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 		});
 	};
 
-	const selectBreadcrumb = (crumb, isWorkspaceCrumb) => {
+	const selectBreadcrumb = crumb => {
 		if (!crumb || !shell.workspace) {
-			return;
-		}
-
-		if (isWorkspaceCrumb) {
-			updateState({
-				selectedWorkspaceSlug: shell.workspace.workspaceSlug,
-				selectedPageSlug: shell.firstVisiblePageSlug || '',
-				workspaceStatus: `Returned to ${shell.workspace.name}.`
-			});
 			return;
 		}
 
@@ -777,11 +767,8 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 					<div className="docsera-shell__workspace-identity-icon" aria-hidden="true">
 						{workspaceIcon}
 					</div>
-					<div>
+					<div className="docsera-shell__workspace-identity-copy">
 						<div className="docsera-shell__workspace-identity-name">{workspaceName}</div>
-						<div className="docsera-shell__workspace-identity-note">
-							{shell.workspaceSlug ? `/${shell.workspaceSlug}` : 'Workspace shell'}
-						</div>
 					</div>
 				</div>
 

@@ -525,7 +525,7 @@ assert.equal(shellView.pageTree.length, 2);
 assert.equal(shellView.pageTree[0].title, 'Overview');
 assert.equal(shellView.pageTree[1].title, 'Guides');
 assert.equal(shellView.pageTree[1].children.length, 2);
-assert.deepEqual(shellView.breadcrumbs.map(item => item.label), ['Product Docs', 'Overview']);
+assert.deepEqual(shellView.breadcrumbs.map(item => item.label), ['Overview']);
 assert.equal(shellView.tableOfContents.length, 2);
 assert.equal(shellView.canShowAuthoringControls, false);
 
@@ -540,7 +540,7 @@ const guidePageView = buildWorkspaceShellViewModel({
 assert.equal(guidePageView.status, 'ready');
 assert.equal(guidePageView.selectedPageSlug, 'installation');
 assert.equal(guidePageView.routeTargetPath, '/docsera/product-docs/installation');
-assert.deepEqual(guidePageView.breadcrumbs.map(item => item.label), ['Product Docs', 'Guides', 'Installation']);
+assert.deepEqual(guidePageView.breadcrumbs.map(item => item.label), ['Guides', 'Installation']);
 assert.equal(guidePageView.tableOfContents.length, 2);
 
 const missingPageView = buildWorkspaceShellViewModel({
@@ -665,6 +665,10 @@ for (const needle of [
 	if (!shellSurface.includes(needle)) {
 		throw new Error(`Missing "${needle}" in shell surface source.`);
 	}
+}
+
+if (shellSurface.includes('shell.workspaceSlug ? `/${shell.workspaceSlug}` : \'Workspace shell\'')) {
+	throw new Error('Reader header still renders the workspace slug inside the workspace identity block.');
 }
 
 console.log('Docsera shell validation passed.');

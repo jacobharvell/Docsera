@@ -146,15 +146,6 @@ function buildBreadcrumbs(selectedPage, pageBySysId, workspace) {
 	}
 
 	const breadcrumbs = [];
-	const workspaceSlug = resolveWorkspaceSlug(workspace);
-
-	if (workspace && workspace.name) {
-		breadcrumbs.push({
-			label: cleanText(workspace.name),
-			workspaceSlug,
-			pageSlug: ''
-		});
-	}
 
 	const ancestors = [];
 	const visited = new Set();
@@ -174,14 +165,12 @@ function buildBreadcrumbs(selectedPage, pageBySysId, workspace) {
 	for (const ancestor of ancestors.reverse()) {
 		breadcrumbs.push({
 			label: resolvePageTitle(ancestor),
-			workspaceSlug,
 			pageSlug: resolvePageSlug(ancestor)
 		});
 	}
 
 	breadcrumbs.push({
 		label: resolvePageTitle(selectedPage),
-		workspaceSlug,
 		pageSlug: resolvePageSlug(selectedPage)
 	});
 
@@ -511,13 +500,7 @@ export function buildWorkspaceShellViewModel({
 		selectedPage,
 		selectedPageSlug: selectedPageSlugValue,
 		pageTree: buildPageTree(visiblePages, '', selectedPage ? selectedPage.sysId : ''),
-		breadcrumbs: selectedPage ? buildBreadcrumbs(selectedPage, pageBySysId, workspace) : [
-			{
-				label: cleanText(workspace.name),
-				workspaceSlug: resolveWorkspaceSlug(workspace),
-				pageSlug: ''
-			}
-		],
+		breadcrumbs: selectedPage ? buildBreadcrumbs(selectedPage, pageBySysId, workspace) : [],
 		tableOfContents: selectedPage ? buildTableOfContents(selectedPage) : [],
 		visiblePages,
 		firstVisiblePageSlug: firstVisiblePage ? resolvePageSlug(firstVisiblePage) : '',
