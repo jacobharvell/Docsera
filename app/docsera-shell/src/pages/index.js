@@ -24,3 +24,17 @@ export {
 	flattenPageTree,
 	pickNextVisiblePageAfterDelete
 } from './page-reader.js';
+export {
+	PAGE_BODY_EDITOR_STATUSES,
+	buildPageBodySaveRecord,
+	clearPageBodyEditorSession,
+	createPageBodyContentJsonFromText,
+	createPageBodyEditorSession,
+	extractPageBodyTextFromContentJson,
+	getPageBodyEditorSession,
+	getPageBodyEditorSessionSnapshot,
+	getPageBodyEditorStatusLabel,
+	hasPendingPageBodyEditorChanges,
+	normalizePageBodyContentJson,
+	resolvePageBodyContentJson
+} from './page-editor.js';

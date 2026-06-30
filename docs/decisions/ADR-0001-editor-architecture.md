@@ -6,6 +6,8 @@
 ## Decision
 Use a ProseMirror-first editor implementation as the Gate 2 continuation baseline.
 
+For the thin editor/autosave slice, this is the accepted implementation boundary. TipTap integration remains intentionally deferred until the controlled compatibility matrix is approved.
+
 ## Context
 Gate 2 troubleshooting repeatedly hit runtime/build incompatibility signals on the Tiptap `@tiptap/pm` path, including runtime mount failures and externalized asset conflicts. The ProseMirror-first implementation produced a stable runtime mount and passed Gate 2 behavior checks.
 
@@ -17,6 +19,7 @@ Gate 2 troubleshooting repeatedly hit runtime/build incompatibility signals on t
 
 ### Tradeoff
 - Wrapper-level Tiptap ergonomics are postponed until compatibility is proven on a controlled matrix.
+- The current shell slice should be treated as ProseMirror-first baseline plumbing, not the final editor abstraction.
 
 ## Guardrails
 - Do not re-open Tiptap path or run broad dependency/version experiments until:
