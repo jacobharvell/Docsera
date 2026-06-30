@@ -1,0 +1,11 @@
+{
+  "name": "docsera-repo",
+  "private": true,
+  "description": "Repository-level validation surface for Docsera scaffolding",
+  "scripts": {
+    "validate": "npm run validate:shell && npm run validate:docs",
+    "validate:shell": "npm --prefix app/docsera-shell run verify",
+    "validate:docs": "node scripts/validate-docsera-docs.mjs",
+    "verify": "npm run validate"
+  }
+}

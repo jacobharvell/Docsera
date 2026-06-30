@@ -1,0 +1,29 @@
+{
+  "name": "docsera-app-shell",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Docsera product app shell scaffold for ServiceNow",
+  "type": "module",
+  "keywords": [
+    "ServiceNow",
+    "Next Experience UI Component",
+    "Docsera"
+  ],
+  "readme": "./README.md",
+  "engines": {
+    "node": ">=22"
+  },
+  "module": "src/index.js",
+  "scripts": {
+    "verify": "node scripts/validate.mjs",
+    "validate": "node scripts/validate.mjs"
+  },
+  "dependencies": {
+    "@servicenow/sass-kit": "latest",
+    "@servicenow/ui-core": "24.1.1",
+    "@servicenow/ui-renderer-snabbdom": "24.1.1"
+  },
+  "devDependencies": {
+    "sass": "1.53.0"
+  }
+}

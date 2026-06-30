@@ -1,6 +1,4 @@
 # Internal workspace guidance
-AGENTS.md
-
 # Internal docs and PoC workspace
 internal/
 poc/
@@ -30,6 +28,8 @@ Thumbs.db
 *.iml
 .idea/
 .vscode/
+Obsidian Vault/
+Docsera.code-workspace
 *.log
 *.local
 .env
