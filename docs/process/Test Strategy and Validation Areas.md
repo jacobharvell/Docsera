@@ -297,6 +297,34 @@ Fallback:
 
 * manual UI verification, especially for drag/drop interactions that may be brittle to automate early
 
+### VA-PAGE-SETTINGS — Page Settings Overlay Behavior
+
+Purpose:
+
+Validate the page settings overlay, field validation, and delete behavior for authorized users.
+
+Applies to:
+
+* page settings gear visibility
+* page settings overlay entry points
+* title field editing
+* slug field editing
+* inline validation errors
+* same-workspace slug conflict handling
+* delete confirmation and subtree deletion
+* post-delete selection behavior
+* viewer-only access hiding
+
+Preferred validation:
+
+* scripted checks for page-settings helpers where practical
+* component or UI tests for panel interactions where practical
+* ServiceNow ATF for durable workflow validation where practical
+
+Fallback:
+
+* manual UI verification for overlay and commit-on-close behavior
+
 ### VA-PUBLISHING — Publishing and Draft Behavior
 
 Purpose:

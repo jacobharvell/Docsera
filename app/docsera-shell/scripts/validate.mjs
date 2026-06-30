@@ -23,11 +23,18 @@ import {
 import {
 	allocatePageSiblingOrder,
 	allocatePageSlug,
+	collectPageSubtreeSysIds,
 	buildWorkspaceShellViewModel,
 	PAGE_PERSISTENCE_MODEL,
 	PAGE_PUBLICATION_STATES,
 	createPageDraft,
 	createDocseraShellDemoPages,
+	flattenPageTree,
+	pickNextVisiblePageAfterDelete,
+	removePageSubtree,
+	updatePageDraftSettings,
+	validatePageSettingsSlug,
+	validatePageSettingsTitle,
 	slugifyPageTitle
 } from '../src/pages/index.js';
 
@@ -100,10 +107,13 @@ for (const needle of [
 	'Workspace reader',
 	'Page tree',
 	'Table of contents',
+	'Page Settings',
 	'My Workspaces',
 	'New page',
 	'Create page',
-	'Draft content'
+	'Draft content',
+	'Delete page',
+	'docsera-shell__tree-action--settings'
 ]) {
 	if (!shellSource.includes(needle)) {
 		throw new Error(`Missing "${needle}" in shell source.`);
@@ -446,6 +456,128 @@ assert.equal(duplicateTitleDraft.publishedSlug, null);
 assert.equal(duplicateTitleDraft.draftContentJson.type, 'doc');
 assert.deepEqual(duplicateTitleDraft.draftContentJson.content, []);
 
+const pageSettingsValidationPages = [
+	{
+		sysId: 'page-settings-home',
+		workspaceSysId: 'workspace-001',
+		draftTitle: 'Home',
+		draftSlug: 'home',
+		publishedTitle: 'Home',
+		publishedSlug: 'home',
+		publicationState: PAGE_PUBLICATION_STATES.published,
+		active: true
+	},
+	{
+		sysId: 'page-settings-guides',
+		workspaceSysId: 'workspace-001',
+		draftTitle: 'Guides',
+		draftSlug: 'guides',
+		publishedTitle: 'Guides',
+		publishedSlug: 'guides',
+		publicationState: PAGE_PUBLICATION_STATES.published,
+		active: true
+	},
+	{
+		sysId: 'page-settings-home-copy',
+		workspaceSysId: 'workspace-002',
+		draftTitle: 'Home Copy',
+		draftSlug: 'home',
+		publishedTitle: 'Home Copy',
+		publishedSlug: 'home',
+		publicationState: PAGE_PUBLICATION_STATES.published,
+		active: true
+	}
+];
+
+assert.deepEqual(validatePageSettingsTitle('  Product Overview  '), {
+	valid: true,
+	value: 'Product Overview',
+	error: ''
+});
+assert.equal(validatePageSettingsTitle('   ').valid, false);
+assert.equal(validatePageSettingsTitle('   ').error, 'Page title is required.');
+
+assert.deepEqual(validatePageSettingsSlug('Overview', pageSettingsValidationPages, 'workspace-001', 'page-settings-home'), {
+	valid: true,
+	value: 'overview',
+	error: ''
+});
+assert.equal(validatePageSettingsSlug('   ', pageSettingsValidationPages, 'workspace-001', 'page-settings-home').error, 'Slug is required.');
+assert.equal(validatePageSettingsSlug('overview/intro', pageSettingsValidationPages, 'workspace-001', 'page-settings-home').error, 'Invalid slug. Slug must only include letters, numbers, dashes, periods, or underscores.');
+assert.equal(validatePageSettingsSlug('GUIDES', pageSettingsValidationPages, 'workspace-001', 'page-settings-home').error, 'Slug must be unique within this workspace.');
+assert.deepEqual(validatePageSettingsSlug('home', pageSettingsValidationPages, 'workspace-002', 'page-settings-home-copy'), {
+	valid: true,
+	value: 'home',
+	error: ''
+});
+assert.deepEqual(validatePageSettingsSlug('home', pageSettingsValidationPages, 'workspace-001', 'page-settings-home'), {
+	valid: true,
+	value: 'home',
+	error: ''
+});
+
+const updatedPageSettingsPage = updatePageDraftSettings(pageSettingsValidationPages[1], {
+	title: '  Guides Updated  ',
+	slug: 'Guides-Updated'
+});
+
+assert.equal(updatedPageSettingsPage.draftTitle, 'Guides Updated');
+assert.equal(updatedPageSettingsPage.draftSlug, 'guides-updated');
+assert.equal(updatedPageSettingsPage.draftSlugNormalized, 'guides-updated');
+
+const subtreeFixture = [
+	{sysId: 'page-root', parentPageSysId: null},
+	{sysId: 'page-child-a', parentPageSysId: 'page-root'},
+	{sysId: 'page-child-b', parentPageSysId: 'page-root'},
+	{sysId: 'page-grandchild', parentPageSysId: 'page-child-a'},
+	{sysId: 'page-sibling', parentPageSysId: null}
+];
+
+assert.deepEqual(collectPageSubtreeSysIds(subtreeFixture, 'page-root').sort(), [
+	'page-child-a',
+	'page-child-b',
+	'page-grandchild',
+	'page-root'
+]);
+assert.deepEqual(removePageSubtree(subtreeFixture, 'page-root').map(page => page.sysId), ['page-sibling']);
+
+const treeFixture = [
+	{
+		sysId: 'page-root-a',
+		pageSlug: 'root-a',
+		title: 'Root A',
+		children: [
+			{
+				sysId: 'page-child-a',
+				pageSlug: 'child-a',
+				title: 'Child A',
+				children: []
+			}
+		]
+	},
+	{
+		sysId: 'page-root-b',
+		pageSlug: 'root-b',
+		title: 'Root B',
+		children: []
+	},
+	{
+		sysId: 'page-root-c',
+		pageSlug: 'root-c',
+		title: 'Root C',
+		children: []
+	}
+];
+
+assert.deepEqual(flattenPageTree(treeFixture).map(node => node.sysId), [
+	'page-root-a',
+	'page-child-a',
+	'page-root-b',
+	'page-root-c'
+]);
+assert.equal(pickNextVisiblePageAfterDelete(treeFixture, 'page-root-a'), 'root-b');
+assert.equal(pickNextVisiblePageAfterDelete(treeFixture, 'page-root-c'), 'root-a');
+
 const calls = {
 	persistWorkspace: [],
 	createGroup: [],
@@ -521,6 +653,43 @@ const shellReaderCapabilityService = createWorkspaceCapabilityService({
 	hasRole: () => false,
 	isMemberOfGroup: () => false
 });
+
+const changedPages = demoPages.map(page => (
+	page.sysId === 'page-product-overview'
+		? {
+			...page,
+			draftTitle: 'Overview updated',
+			draftSlug: 'overview-updated',
+			publicationState: PAGE_PUBLICATION_STATES.publishedWithUnpublishedChanges
+		}
+		: page
+));
+
+const authoringChangedView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: changedPages,
+	capabilityService: shellAuthoringCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	selectedPageSlug: 'overview-updated'
+});
+
+assert.equal(authoringChangedView.selectedPage.title, 'Overview updated');
+assert.equal(authoringChangedView.selectedPageSlug, 'overview-updated');
+assert.equal(authoringChangedView.routeTargetPath, '/docsera/product-docs/overview-updated');
+assert.equal(authoringChangedView.pageTree[0].title, 'Overview updated');
+
+const readerChangedView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: changedPages,
+	capabilityService: shellReaderCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	selectedPageSlug: 'overview'
+});
+
+assert.equal(readerChangedView.selectedPage.title, 'Overview');
+assert.equal(readerChangedView.selectedPageSlug, 'overview');
+assert.equal(readerChangedView.routeTargetPath, '/docsera/product-docs/overview');
+assert.equal(readerChangedView.pageTree[0].title, 'Overview');
 
 const shellAuthoringView = buildWorkspaceShellViewModel({
 	workspaces: demoWorkspaces,

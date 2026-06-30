@@ -16,7 +16,13 @@ import {
 } from '../workspaces';
 import {
 	buildWorkspaceShellViewModel,
-	createDocseraShellDemoPages
+	collectPageSubtreeSysIds,
+	createDocseraShellDemoPages,
+	pickNextVisiblePageAfterDelete,
+	removePageSubtree,
+	updatePageDraftSettings,
+	validatePageSettingsSlug,
+	validatePageSettingsTitle
 } from '../pages';
 import {
 	PAGE_PUBLICATION_STATES,
@@ -63,6 +69,23 @@ function createInitialState() {
 		createPageModalOpen: false,
 		createPageModalError: '',
 		createPageModalBusy: false,
+		pageSettingsOpen: false,
+		pageSettingsPageSysId: '',
+		pageSettingsTitle: '',
+		pageSettingsSlug: '',
+		pageSettingsErrors: {
+			title: '',
+			slug: '',
+			general: ''
+		},
+		pageSettingsActiveField: '',
+		pageSettingsFieldSnapshot: {
+			title: '',
+			slug: ''
+		},
+		pageSettingsDeleteOpen: false,
+		pageSettingsDeletePageSysId: '',
+		pageSettingsDeleteError: '',
 		workspaceStatus: 'Workspace shell is ready.',
 		workspaces: createMyWorkspacesDemoWorkspaces(),
 		pages: createDocseraShellDemoPages(),
@@ -110,6 +133,32 @@ function createPageModalDefaults(parentPage = null) {
 	};
 }
 
+function createPageSettingsDefaults(page = null) {
+	return {
+		pageSysId: page ? page.sysId || '' : '',
+		title: page ? page.draftTitle || page.publishedTitle || page.title || '' : '',
+		slug: page ? page.draftSlug || page.publishedSlug || page.slug || page.pageSlug || '' : '',
+		errors: {
+			title: '',
+			slug: '',
+			general: ''
+		},
+		activeField: 'title',
+		fieldSnapshot: {
+			title: page ? page.draftTitle || page.publishedTitle || page.title || '' : '',
+			slug: page ? page.draftSlug || page.publishedSlug || page.slug || page.pageSlug || '' : ''
+		}
+	};
+}
+
+function createPageDeleteDefaults(page = null) {
+	return {
+		open: false,
+		pageSysId: page ? page.sysId || '' : '',
+		error: ''
+	};
+}
+
 function resetCreatePageForm(parentPage = null) {
 	return createPageModalDefaults(parentPage);
 }
@@ -147,9 +196,12 @@ function createLocalPageSysId(workspaceSlug, pageSlug) {
 
 function renderPageTreeNodes(nodes, {
 	selectPage,
+	openPageSettings,
 	createChildPage,
 	selectedPageSlug,
-	canCreatePages
+	pageSettingsPageSysId,
+	canCreatePages,
+	canManagePageSettings
 }) {
 	if (!Array.isArray(nodes) || nodes.length === 0) {
 		return null;
@@ -163,7 +215,10 @@ function renderPageTreeNodes(nodes, {
 						<button
 							type="button"
 							className={`docsera-shell__tree-button${node.pageSlug === selectedPageSlug ? ' docsera-shell__tree-button--selected' : ''}`}
-							on-click={() => selectPage(node)}
+							on-click={event => {
+								event.stopPropagation();
+								selectPage(node);
+							}}
 						>
 							<span className="docsera-shell__tree-button-title">{node.title}</span>
 							<span className="docsera-shell__tree-button-meta">
@@ -175,11 +230,27 @@ function renderPageTreeNodes(nodes, {
 								) : null}
 							</span>
 						</button>
+						{canManagePageSettings ? (
+							<button
+								type="button"
+								className={`docsera-shell__tree-action docsera-shell__tree-action--settings${node.sysId === pageSettingsPageSysId ? ' docsera-shell__tree-action--active' : ''}`}
+								aria-label={node.sysId === pageSettingsPageSysId ? `Collapse settings for ${node.title}` : `Open settings for ${node.title}`}
+								on-click={event => {
+									event.stopPropagation();
+									openPageSettings(node);
+								}}
+							>
+								<span aria-hidden="true">{node.sysId === pageSettingsPageSysId ? 'Close' : 'Settings'}</span>
+							</button>
+						) : null}
 						{canCreatePages ? (
 							<button
 								type="button"
 								className="docsera-shell__tree-action"
-								on-click={() => createChildPage(node)}
+								on-click={event => {
+									event.stopPropagation();
+									createChildPage(node);
+								}}
 							>
 								New child
 							</button>
@@ -187,9 +258,12 @@ function renderPageTreeNodes(nodes, {
 					</div>
 					{node.children.length ? renderPageTreeNodes(node.children, {
 						selectPage,
+						openPageSettings,
 						createChildPage,
 						selectedPageSlug,
-						canCreatePages
+						pageSettingsPageSysId,
+						canCreatePages,
+						canManagePageSettings
 					}) : null}
 				</li>
 			))}
@@ -347,6 +421,260 @@ function renderPageCreationModal({
 	);
 }
 
+function renderPageSettingsOverlay({
+	state,
+	page,
+	canManagePageSettings,
+	workspacePages,
+	workspaceName,
+	workspaceSlug,
+	closePageSettingsPanel,
+	startPageSettingsField,
+	finishPageSettingsField,
+	cancelPageSettingsField,
+	updatePageSettingsField,
+	openDeletePageConfirmation,
+	handlePageSettingsKeydown
+}) {
+	if (!state.pageSettingsOpen || !page || !canManagePageSettings) {
+		return null;
+	}
+
+	const pageTitle = page.draftTitle || page.publishedTitle || page.title || 'Untitled page';
+	const pageSlug = page.draftSlug || page.publishedSlug || page.slug || page.pageSlug || '';
+	const hasDescendants = collectPageSubtreeSysIds(workspacePages, page.sysId).length > 1;
+
+	return (
+		<aside
+			className="docsera-shell__page-settings"
+			role="complementary"
+			aria-labelledby="docsera-page-settings-title"
+			on-click={event => event.stopPropagation()}
+			on-keydown={handlePageSettingsKeydown}
+		>
+			<div className="docsera-shell__page-settings-head">
+				<div>
+					<p className="docsera-shell__rail-title">Page Settings</p>
+					<h2 id="docsera-page-settings-title">Page Settings</h2>
+				</div>
+				<button type="button" className="docsera-shell__icon-button" on-click={() => closePageSettingsPanel()}>
+					Close
+				</button>
+			</div>
+
+			<div className="docsera-shell__page-settings-context">
+				<div className="docsera-shell__page-settings-context-title">{pageTitle}</div>
+				<div className="docsera-shell__page-settings-context-meta">
+					{workspaceName}
+					<span aria-hidden="true">/</span>
+					<span>{workspaceSlug}</span>
+					<span aria-hidden="true">/</span>
+					<span>{pageSlug}</span>
+				</div>
+			</div>
+
+			{state.pageSettingsErrors.general ? (
+				<div className="docsera-shell__page-settings-error" role="alert">
+					{state.pageSettingsErrors.general}
+				</div>
+			) : null}
+
+			<div className="docsera-shell__page-settings-rows">
+				<div className="docsera-shell__page-settings-row">
+					<div className="docsera-shell__page-settings-row-label">
+						<span className="docsera-shell__page-settings-row-icon" aria-hidden="true">T</span>
+						<span>Title</span>
+					</div>
+					<div className="docsera-shell__page-settings-row-body">
+						{state.pageSettingsActiveField === 'title' ? (
+							<input
+								type="text"
+								className={`docsera-shell__page-settings-input${state.pageSettingsErrors.title ? ' docsera-shell__page-settings-input--invalid' : ''}`}
+								value={state.pageSettingsTitle}
+								aria-invalid={state.pageSettingsErrors.title ? 'true' : 'false'}
+								autoFocus={true}
+								on-input={event => updatePageSettingsField('title', event.target.value)}
+								on-blur={() => finishPageSettingsField('title')}
+								on-keydown={event => {
+									if (event.key === 'Enter') {
+										event.preventDefault();
+										event.stopPropagation();
+										finishPageSettingsField('title');
+									}
+
+									if (event.key === 'Escape') {
+										event.preventDefault();
+										event.stopPropagation();
+										cancelPageSettingsField('title');
+									}
+								}}
+							/>
+						) : (
+							<button
+								type="button"
+								className="docsera-shell__page-settings-value"
+								on-click={event => {
+									event.stopPropagation();
+									startPageSettingsField('title');
+								}}
+							>
+								{state.pageSettingsTitle || 'Untitled page'}
+							</button>
+						)}
+						{state.pageSettingsErrors.title ? (
+							<div className="docsera-shell__page-settings-field-error" role="alert">
+								{state.pageSettingsErrors.title}
+							</div>
+						) : null}
+					</div>
+				</div>
+
+				<div className="docsera-shell__page-settings-row">
+					<div className="docsera-shell__page-settings-row-label">
+						<span className="docsera-shell__page-settings-row-icon" aria-hidden="true">#</span>
+						<span>Slug</span>
+					</div>
+					<div className="docsera-shell__page-settings-row-body">
+						{state.pageSettingsActiveField === 'slug' ? (
+							<input
+								type="text"
+								className={`docsera-shell__page-settings-input${state.pageSettingsErrors.slug ? ' docsera-shell__page-settings-input--invalid' : ''}`}
+								value={state.pageSettingsSlug}
+								aria-invalid={state.pageSettingsErrors.slug ? 'true' : 'false'}
+								on-input={event => updatePageSettingsField('slug', event.target.value)}
+								on-blur={() => finishPageSettingsField('slug')}
+								on-keydown={event => {
+									if (event.key === 'Enter') {
+										event.preventDefault();
+										event.stopPropagation();
+										finishPageSettingsField('slug');
+									}
+
+									if (event.key === 'Escape') {
+										event.preventDefault();
+										event.stopPropagation();
+										cancelPageSettingsField('slug');
+									}
+								}}
+							/>
+						) : (
+							<button
+								type="button"
+								className="docsera-shell__page-settings-value"
+								on-click={event => {
+									event.stopPropagation();
+									startPageSettingsField('slug');
+								}}
+							>
+								{state.pageSettingsSlug || 'page-slug'}
+							</button>
+						)}
+						{state.pageSettingsErrors.slug ? (
+							<div className="docsera-shell__page-settings-field-error" role="alert">
+								{state.pageSettingsErrors.slug}
+							</div>
+						) : null}
+					</div>
+				</div>
+			</div>
+
+			<section className="docsera-shell__page-settings-danger">
+				<div>
+					<p className="docsera-shell__rail-title">Danger zone</p>
+					<p className="docsera-shell__page-settings-danger-copy">
+						Delete this page and its descendants from the authoring tree.
+					</p>
+					{hasDescendants ? (
+						<p className="docsera-shell__page-settings-danger-copy">
+							This page has child pages. Deleting it will also delete the nested child pages and their contents.
+						</p>
+					) : null}
+				</div>
+				<button
+					type="button"
+					className="docsera-shell__button docsera-shell__button--destructive"
+					on-click={() => openDeletePageConfirmation(page)}
+				>
+					Delete page
+				</button>
+			</section>
+		</aside>
+	);
+}
+
+function renderDeletePageConfirmationDialog({
+	state,
+	page,
+	canManagePageSettings,
+	workspacePages,
+	closeDeletePageConfirmation,
+	confirmDeletePage
+}) {
+	if (!state.pageSettingsDeleteOpen || !page || !canManagePageSettings) {
+		return null;
+	}
+
+	const subtreeIds = collectPageSubtreeSysIds(workspacePages, page.sysId);
+	const hasChildren = subtreeIds.length > 1;
+
+	return (
+		<div className="docsera-shell__modal-backdrop" role="presentation" on-click={closeDeletePageConfirmation}>
+			<div
+				className="docsera-shell__modal"
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="docsera-delete-page-title"
+				on-click={event => event.stopPropagation()}
+			>
+				<div className="docsera-shell__modal-form">
+					<div className="docsera-shell__modal-head">
+						<div>
+							<p className="docsera-shell__rail-title">Delete page</p>
+							<h2 id="docsera-delete-page-title">Delete {page.draftTitle || page.publishedTitle || page.title || 'page'}?</h2>
+						</div>
+						<button type="button" className="docsera-shell__icon-button" on-click={closeDeletePageConfirmation}>
+							Close
+						</button>
+					</div>
+
+					<p className="docsera-shell__modal-copy">
+						This will permanently delete this page.
+					</p>
+
+					{hasChildren ? (
+						<p className="docsera-shell__modal-copy docsera-shell__modal-copy--warning">
+							All child pages and content inside this page will also be deleted.
+						</p>
+					) : null}
+
+					{state.pageSettingsDeleteError ? (
+						<div className="docsera-shell__modal-error" role="alert">
+							{state.pageSettingsDeleteError}
+						</div>
+					) : null}
+
+					<div className="docsera-shell__modal-actions">
+						<button
+							type="button"
+							className="docsera-shell__button docsera-shell__button--secondary"
+							on-click={closeDeletePageConfirmation}
+						>
+							Cancel
+						</button>
+						<button
+							type="button"
+							className="docsera-shell__button docsera-shell__button--destructive"
+							on-click={confirmDeletePage}
+						>
+							Delete page
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	);
+}
+
 function renderWorkspaceReaderSurface(state, shell, updateState) {
 	const selectWorkspaceFromLauncher = workspace => {
 		if (!workspace) {
@@ -382,6 +710,25 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 			return;
 		}
 
+		const currentSettingsPage = getPageSettingsPage();
+		const isCurrentSettingsPage = Boolean(
+			state.pageSettingsOpen &&
+			currentSettingsPage &&
+			shell.selectedPage &&
+			currentSettingsPage.sysId === shell.selectedPage.sysId &&
+			currentSettingsPage.sysId === page.sysId
+		);
+
+		if (state.pageSettingsOpen) {
+			if (!closePageSettingsPanel({nextSelectedPageSlug: page.pageSlug})) {
+				return;
+			}
+
+			if (isCurrentSettingsPage) {
+				return;
+			}
+		}
+
 		updateState({
 			selectedWorkspaceSlug: shell.workspace.workspaceSlug,
 			selectedPageSlug: page.pageSlug,
@@ -392,6 +739,25 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 	const selectBreadcrumb = crumb => {
 		if (!crumb || !shell.workspace) {
 			return;
+		}
+
+		const currentSettingsPage = getPageSettingsPage();
+		const isCurrentSettingsPageBreadcrumb = Boolean(
+			state.pageSettingsOpen &&
+			currentSettingsPage &&
+			shell.selectedPage &&
+			currentSettingsPage.sysId === shell.selectedPage.sysId &&
+			crumb.pageSlug === shell.selectedPageSlug
+		);
+
+		if (state.pageSettingsOpen) {
+			if (!closePageSettingsPanel({nextSelectedPageSlug: crumb.pageSlug})) {
+				return;
+			}
+
+			if (isCurrentSettingsPageBreadcrumb) {
+				return;
+			}
 		}
 
 		updateState({
@@ -409,8 +775,362 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 		shellTheme: state.shellTheme === 'dark' ? 'light' : 'dark'
 	});
 
+	const canManagePageSettings = Boolean(shell.canShowAuthoringControls && shell.workspace);
+	const getPageSettingsPage = () => (
+		state.pageSettingsPageSysId
+			? findPageBySysId(shell.allPages, state.pageSettingsPageSysId)
+			: null
+	);
+	const clearPageSettingsErrors = () => ({
+		title: '',
+		slug: '',
+		general: ''
+	});
+	const resetPageSettingsFields = page => {
+		const defaults = createPageSettingsDefaults(page || null);
+		updateState({
+			pageSettingsOpen: Boolean(page),
+			pageSettingsPageSysId: defaults.pageSysId,
+			pageSettingsTitle: defaults.title,
+			pageSettingsSlug: defaults.slug,
+			pageSettingsErrors: clearPageSettingsErrors(),
+			pageSettingsActiveField: defaults.activeField,
+			pageSettingsFieldSnapshot: defaults.fieldSnapshot,
+			pageSettingsDeleteOpen: false,
+			pageSettingsDeletePageSysId: '',
+			pageSettingsDeleteError: ''
+		});
+	};
+	const closePageSettingsPanel = ({nextSelectedPageSlug = null} = {}) => {
+		if (!state.pageSettingsOpen) {
+			return true;
+		}
+
+		const currentPage = getPageSettingsPage();
+		if (!currentPage) {
+			updateState({
+				pageSettingsOpen: false,
+				pageSettingsPageSysId: '',
+				pageSettingsTitle: '',
+				pageSettingsSlug: '',
+				pageSettingsErrors: clearPageSettingsErrors(),
+				pageSettingsActiveField: '',
+				pageSettingsFieldSnapshot: {
+					title: '',
+					slug: ''
+				}
+			});
+			return true;
+		}
+
+		const titleValidation = validatePageSettingsTitle(state.pageSettingsTitle);
+		const slugValidation = validatePageSettingsSlug(
+			state.pageSettingsSlug,
+			state.pages,
+			shell.workspace ? shell.workspace.sysId : '',
+			currentPage.sysId
+		);
+
+		if (!titleValidation.valid || !slugValidation.valid) {
+			updateState({
+				pageSettingsErrors: {
+					title: titleValidation.valid ? '' : titleValidation.error,
+					slug: slugValidation.valid ? '' : slugValidation.error,
+					general: ''
+				},
+				pageSettingsActiveField: !titleValidation.valid ? 'title' : 'slug'
+			});
+			return false;
+		}
+
+		const savedPage = updatePageDraftSettings(currentPage, {
+			title: titleValidation.value,
+			slug: slugValidation.value
+		});
+		const nextPages = state.pages.map(page => (
+			page && page.sysId === currentPage.sysId ? savedPage : page
+		));
+		const selectedSlug = nextSelectedPageSlug !== null ? nextSelectedPageSlug : savedPage.draftSlug;
+
+		updateState({
+			pages: nextPages,
+			selectedWorkspaceSlug: shell.workspace ? shell.workspace.workspaceSlug : state.selectedWorkspaceSlug,
+			selectedPageSlug: selectedSlug,
+			pageSettingsOpen: false,
+			pageSettingsPageSysId: '',
+			pageSettingsTitle: '',
+			pageSettingsSlug: '',
+			pageSettingsErrors: clearPageSettingsErrors(),
+			pageSettingsActiveField: '',
+			pageSettingsFieldSnapshot: {
+				title: '',
+				slug: ''
+			},
+			pageSettingsDeleteOpen: false,
+			pageSettingsDeletePageSysId: '',
+			pageSettingsDeleteError: '',
+			workspaceStatus: `Saved page settings for ${savedPage.draftTitle}.`
+		});
+
+		return true;
+	};
+	const startPageSettingsField = field => {
+		if (!canManagePageSettings || !state.pageSettingsOpen) {
+			return;
+		}
+
+		if (state.pageSettingsActiveField && state.pageSettingsActiveField !== field) {
+			if (!finishPageSettingsField(state.pageSettingsActiveField)) {
+				return;
+			}
+		}
+
+		const currentValue = field === 'title' ? state.pageSettingsTitle : state.pageSettingsSlug;
+		updateState({
+			pageSettingsActiveField: field,
+			pageSettingsFieldSnapshot: {
+				...state.pageSettingsFieldSnapshot,
+				[field]: currentValue
+			},
+			pageSettingsErrors: {
+				...state.pageSettingsErrors,
+				[field]: ''
+			}
+		});
+	};
+	const finishPageSettingsField = field => {
+		if (!canManagePageSettings || !state.pageSettingsOpen) {
+			return true;
+		}
+
+		if (field === 'title') {
+			const validation = validatePageSettingsTitle(state.pageSettingsTitle);
+			if (!validation.valid) {
+				updateState({
+					pageSettingsErrors: {
+						...state.pageSettingsErrors,
+						title: validation.error
+					},
+					pageSettingsActiveField: 'title'
+				});
+				return false;
+			}
+
+			updateState({
+				pageSettingsTitle: validation.value,
+				pageSettingsErrors: {
+					...state.pageSettingsErrors,
+					title: ''
+				},
+				pageSettingsActiveField: ''
+			});
+			return true;
+		}
+
+		if (field === 'slug') {
+			const currentPage = getPageSettingsPage();
+			if (!currentPage) {
+				return false;
+			}
+
+			const validation = validatePageSettingsSlug(
+				state.pageSettingsSlug,
+				state.pages,
+				shell.workspace ? shell.workspace.sysId : '',
+				currentPage.sysId
+			);
+			if (!validation.valid) {
+				updateState({
+					pageSettingsErrors: {
+						...state.pageSettingsErrors,
+						slug: validation.error
+					},
+					pageSettingsActiveField: 'slug'
+				});
+				return false;
+			}
+
+			updateState({
+				pageSettingsSlug: validation.value,
+				pageSettingsErrors: {
+					...state.pageSettingsErrors,
+					slug: ''
+				},
+				pageSettingsActiveField: ''
+			});
+			return true;
+		}
+
+		return true;
+	};
+	const cancelPageSettingsField = field => {
+		if (!state.pageSettingsOpen) {
+			return;
+		}
+
+		const snapshot = state.pageSettingsFieldSnapshot && state.pageSettingsFieldSnapshot[field] !== undefined
+			? state.pageSettingsFieldSnapshot[field]
+			: '';
+
+		updateState({
+			pageSettingsTitle: field === 'title' ? snapshot : state.pageSettingsTitle,
+			pageSettingsSlug: field === 'slug' ? snapshot : state.pageSettingsSlug,
+			pageSettingsErrors: {
+				...state.pageSettingsErrors,
+				[field]: ''
+			},
+			pageSettingsActiveField: ''
+		});
+	};
+	const openPageSettings = page => {
+		if (!canManagePageSettings || !page) {
+			return;
+		}
+
+		const currentPage = getPageSettingsPage();
+		if (state.pageSettingsOpen && currentPage && currentPage.sysId === page.sysId) {
+			closePageSettingsPanel({nextSelectedPageSlug: page.pageSlug});
+			return;
+		}
+
+		if (state.pageSettingsOpen && currentPage && currentPage.sysId !== page.sysId) {
+			if (!closePageSettingsPanel({nextSelectedPageSlug: page.pageSlug})) {
+				return;
+			}
+		}
+
+		resetPageSettingsFields(page);
+		updateState({
+			selectedWorkspaceSlug: shell.workspace ? shell.workspace.workspaceSlug : state.selectedWorkspaceSlug,
+			selectedPageSlug: page.pageSlug,
+			workspaceStatus: `Opened Page Settings for ${page.title}.`
+		});
+	};
+	const openPageSettingsForSelectedPage = () => {
+		if (!shell.selectedPage) {
+			return;
+		}
+
+		openPageSettings(shell.selectedPage);
+	};
+	const openDeletePageConfirmation = page => {
+		if (!canManagePageSettings || !page) {
+			return;
+		}
+
+		updateState({
+			pageSettingsDeleteOpen: true,
+			pageSettingsDeletePageSysId: page.sysId,
+			pageSettingsDeleteError: ''
+		});
+	};
+	const closeDeletePageConfirmation = () => updateState({
+		pageSettingsDeleteOpen: false,
+		pageSettingsDeletePageSysId: '',
+		pageSettingsDeleteError: ''
+	});
+	const confirmDeletePage = () => {
+		if (!shell.workspace || !state.pageSettingsDeletePageSysId) {
+			return;
+		}
+
+		const page = findPageBySysId(state.pages, state.pageSettingsDeletePageSysId);
+		if (!page) {
+			updateState({
+				pageSettingsDeleteError: 'Something went wrong while deleting the page. The page was not deleted. Please try again.'
+			});
+			return;
+		}
+
+		try {
+			const subtreeIds = new Set(collectPageSubtreeSysIds(state.pages, page.sysId));
+			const selectedPageDeleted = Boolean(shell.selectedPage && subtreeIds.has(shell.selectedPage.sysId));
+			const nextSelectedPageSlug = selectedPageDeleted
+				? pickNextVisiblePageAfterDelete(shell.pageTree, page.sysId)
+				: state.selectedPageSlug;
+			const nextPages = removePageSubtree(state.pages, page.sysId);
+			const nextShell = buildWorkspaceShellViewModel({
+				workspaces: state.workspaces,
+				pages: nextPages,
+				capabilityService: createWorkspaceCapabilitiesForDemo(state.userAccess),
+				selectedWorkspaceSlug: shell.workspace.workspaceSlug,
+				selectedPageSlug: nextSelectedPageSlug
+			});
+
+			updateState({
+				pages: nextPages,
+				selectedWorkspaceSlug: shell.workspace.workspaceSlug,
+				selectedPageSlug: nextShell.selectedPageSlug || '',
+				pageSettingsDeleteOpen: false,
+				pageSettingsDeletePageSysId: '',
+				pageSettingsDeleteError: '',
+				pageSettingsOpen: state.pageSettingsPageSysId === page.sysId ? false : state.pageSettingsOpen,
+				pageSettingsPageSysId: state.pageSettingsPageSysId === page.sysId ? '' : state.pageSettingsPageSysId,
+				pageSettingsTitle: state.pageSettingsPageSysId === page.sysId ? '' : state.pageSettingsTitle,
+				pageSettingsSlug: state.pageSettingsPageSysId === page.sysId ? '' : state.pageSettingsSlug,
+				pageSettingsErrors: state.pageSettingsPageSysId === page.sysId ? clearPageSettingsErrors() : state.pageSettingsErrors,
+				pageSettingsActiveField: state.pageSettingsPageSysId === page.sysId ? '' : state.pageSettingsActiveField,
+				pageSettingsFieldSnapshot: state.pageSettingsPageSysId === page.sysId ? {
+					title: '',
+					slug: ''
+				} : state.pageSettingsFieldSnapshot,
+				workspaceStatus: `Deleted ${page.title}.`
+			});
+		} catch (error) {
+			updateState({
+				pageSettingsDeleteError: error && error.message ? error.message : 'Something went wrong while deleting the page. The page was not deleted. Please try again.'
+			});
+		}
+	};
+	const handlePageSettingsFrameClick = event => {
+		if (!state.pageSettingsOpen) {
+			return;
+		}
+
+		const panelElement = event && event.target && typeof event.target.closest === 'function'
+			? event.target.closest('.docsera-shell__page-settings')
+			: null;
+		if (panelElement) {
+			return;
+		}
+
+		closePageSettingsPanel();
+	};
+	const handlePageSettingsKeydown = event => {
+		if (!state.pageSettingsOpen || !event || event.key !== 'Escape') {
+			return;
+		}
+
+		if (state.pageSettingsActiveField) {
+			event.stopPropagation();
+			cancelPageSettingsField(state.pageSettingsActiveField);
+			return;
+		}
+
+		event.stopPropagation();
+		closePageSettingsPanel();
+	};
+	const updatePageSettingsField = (field, value) => {
+		if (!state.pageSettingsOpen) {
+			return;
+		}
+
+		const fieldStateKey = field === 'title' ? 'pageSettingsTitle' : 'pageSettingsSlug';
+		updateState({
+			[fieldStateKey]: value,
+			pageSettingsErrors: {
+				...state.pageSettingsErrors,
+				[field]: ''
+			}
+		});
+	};
+
 	const workspacePages = shell.workspace ? getWorkspacePagesForCreation(state.pages, shell.workspace.sysId) : [];
 	const canCreatePages = Boolean(shell.canCreatePages && shell.workspace);
+	const pageSettingsPage = getPageSettingsPage();
+	const deletePage = state.pageSettingsDeletePageSysId
+		? findPageBySysId(state.pages, state.pageSettingsDeletePageSysId)
+		: null;
 
 	const openCreatePageModal = parentPage => {
 		if (!canCreatePages) {
@@ -1048,7 +1768,7 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 				</div>
 			</header>
 
-			<div className="docsera-shell__reader-frame">
+			<div className="docsera-shell__reader-frame" on-click={handlePageSettingsFrameClick}>
 				<aside className={`docsera-shell__reader-nav${navCollapsed ? ' docsera-shell__reader-nav--collapsed' : ''}`} aria-label="Workspace pages">
 					<div className="docsera-shell__reader-nav-head">
 						<p className="docsera-shell__rail-title">Navigation</p>
@@ -1073,9 +1793,12 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 					<nav className="docsera-shell__tree" aria-label="Workspace page tree">
 						{shell.pageTree.length ? renderPageTreeNodes(shell.pageTree, {
 							selectPage,
+							openPageSettings,
 							createChildPage: openCreatePageModal,
 							selectedPageSlug: shell.selectedPageSlug,
-							canCreatePages
+							pageSettingsPageSysId: state.pageSettingsPageSysId,
+							canCreatePages,
+							canManagePageSettings
 						}) : (
 							<div className="docsera-shell__toc-empty">
 								{canCreatePages ? (
@@ -1210,6 +1933,29 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 					</div>
 				</aside>
 			</div>
+			{renderPageSettingsOverlay({
+				state,
+				page: pageSettingsPage,
+				canManagePageSettings,
+				workspacePages: state.pages,
+				workspaceName,
+				workspaceSlug: shell.workspace ? shell.workspace.workspaceSlug : '',
+				closePageSettingsPanel,
+				startPageSettingsField,
+				finishPageSettingsField,
+				cancelPageSettingsField,
+				updatePageSettingsField,
+				openDeletePageConfirmation,
+				handlePageSettingsKeydown
+			})}
+			{renderDeletePageConfirmationDialog({
+				state,
+				page: deletePage,
+				canManagePageSettings,
+				workspacePages: state.pages,
+				closeDeletePageConfirmation,
+				confirmDeletePage
+			})}
 			{renderPageCreationModal({
 				state,
 				canCreatePages,

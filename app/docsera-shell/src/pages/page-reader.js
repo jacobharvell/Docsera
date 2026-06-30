@@ -22,9 +22,18 @@ function resolveWorkspaceSlug(workspace) {
 	return cleanText(workspace.workspaceSlug || workspace.slug || workspace.key);
 }
 
-function resolvePageSlug(page) {
+function resolvePageSlug(page, preferDraft = false) {
 	if (!page || typeof page !== 'object') {
 		return '';
+	}
+
+	if (preferDraft) {
+		return cleanText(
+			page.draftSlug ||
+			page.publishedSlug ||
+			page.slug ||
+			page.pageSlug
+		);
 	}
 
 	return cleanText(
@@ -35,17 +44,25 @@ function resolvePageSlug(page) {
 	);
 }
 
-function resolvePageTitle(page) {
+function resolvePageTitle(page, preferDraft = false) {
 	if (!page || typeof page !== 'object') {
 		return '';
+	}
+
+	if (preferDraft) {
+		return cleanText(page.draftTitle || page.publishedTitle || page.title);
 	}
 
 	return cleanText(page.publishedTitle || page.draftTitle || page.title);
 }
 
-function resolvePageBodyText(page) {
+function resolvePageBodyText(page, preferDraft = false) {
 	if (!page || typeof page !== 'object') {
 		return '';
+	}
+
+	if (preferDraft) {
+		return cleanText(page.draftBodyText || page.publishedBodyText || page.bodyText);
 	}
 
 	return cleanText(page.publishedBodyText || page.draftBodyText || page.bodyText);
@@ -99,7 +116,7 @@ function isAuthoringVisiblePage(page) {
 	return Boolean(page && typeof page === 'object' && page.active !== false);
 }
 
-function sortShellPages(left, right) {
+function sortShellPages(left, right, preferDraftFields = false) {
 	const leftOrder = resolvePageSiblingOrder(left);
 	const rightOrder = resolvePageSiblingOrder(right);
 
@@ -107,27 +124,28 @@ function sortShellPages(left, right) {
 		return leftOrder - rightOrder;
 	}
 
-	const titleComparison = resolvePageTitle(left).localeCompare(resolvePageTitle(right), undefined, {sensitivity: 'base'});
+	const titleComparison = resolvePageTitle(left, preferDraftFields).localeCompare(resolvePageTitle(right, preferDraftFields), undefined, {sensitivity: 'base'});
 	if (titleComparison !== 0) {
 		return titleComparison;
 	}
 
-	return normalizeSlug(resolvePageSlug(left)).localeCompare(normalizeSlug(resolvePageSlug(right)), undefined, {sensitivity: 'base'});
+	return normalizeSlug(resolvePageSlug(left, preferDraftFields)).localeCompare(normalizeSlug(resolvePageSlug(right, preferDraftFields)), undefined, {sensitivity: 'base'});
 }
 
-function buildPageNode(page, visiblePagesByParent, selectedPageSysId) {
+function buildPageNode(page, visiblePagesByParent, selectedPageSysId, preferDraftFields = false) {
 	const children = buildPageTree(
 		visiblePagesByParent,
 		page.sysId,
-		selectedPageSysId
+		selectedPageSysId,
+		preferDraftFields
 	);
 
 	return {
 		sysId: page.sysId,
-		pageSlug: resolvePageSlug(page),
-		title: resolvePageTitle(page),
+		pageSlug: resolvePageSlug(page, preferDraftFields),
+		title: resolvePageTitle(page, preferDraftFields),
 		summary: resolvePageSummary(page),
-		bodyText: resolvePageBodyText(page),
+		bodyText: resolvePageBodyText(page, preferDraftFields),
 		parentPageSysId: resolvePageParentSysId(page),
 		siblingOrder: resolvePageSiblingOrder(page),
 		publicationState: page.publicationState,
@@ -138,15 +156,15 @@ function buildPageNode(page, visiblePagesByParent, selectedPageSysId) {
 	};
 }
 
-function buildPageTree(visiblePages, parentPageSysId = '', selectedPageSysId = '') {
+function buildPageTree(visiblePages, parentPageSysId = '', selectedPageSysId = '', preferDraftFields = false) {
 	const siblings = visiblePages
 		.filter(page => resolvePageParentSysId(page) === cleanText(parentPageSysId))
-		.sort(sortShellPages);
+		.sort((left, right) => sortShellPages(left, right, preferDraftFields));
 
-	return siblings.map(page => buildPageNode(page, visiblePages, selectedPageSysId));
+	return siblings.map(page => buildPageNode(page, visiblePages, selectedPageSysId, preferDraftFields));
 }
 
-function buildBreadcrumbs(selectedPage, pageBySysId, workspace) {
+function buildBreadcrumbs(selectedPage, pageBySysId, workspace, preferDraftFields = false) {
 	if (!selectedPage || typeof selectedPage !== 'object') {
 		return [];
 	}
@@ -170,14 +188,14 @@ function buildBreadcrumbs(selectedPage, pageBySysId, workspace) {
 
 	for (const ancestor of ancestors.reverse()) {
 		breadcrumbs.push({
-			label: resolvePageTitle(ancestor),
-			pageSlug: resolvePageSlug(ancestor)
+			label: resolvePageTitle(ancestor, preferDraftFields),
+			pageSlug: resolvePageSlug(ancestor, preferDraftFields)
 		});
 	}
 
 	breadcrumbs.push({
-		label: resolvePageTitle(selectedPage),
-		pageSlug: resolvePageSlug(selectedPage)
+		label: resolvePageTitle(selectedPage, preferDraftFields),
+		pageSlug: resolvePageSlug(selectedPage, preferDraftFields)
 	});
 
 	return breadcrumbs;
@@ -225,7 +243,7 @@ function buildWorkspacePageRoutePath(workspaceSlug, pageSlug) {
 	return normalizedPageSlug ? `/docsera/${normalizedWorkspaceSlug}/${normalizedPageSlug}` : `/docsera/${normalizedWorkspaceSlug}`;
 }
 
-function buildWorkspaceReaderPageLookup(visiblePages) {
+function buildWorkspaceReaderPageLookup(visiblePages, preferDraftFields = false) {
 	const pageBySysId = new Map();
 	const pageBySlug = new Map();
 
@@ -235,14 +253,19 @@ function buildWorkspaceReaderPageLookup(visiblePages) {
 		}
 
 		const sysId = cleanText(page.sysId || page.pageSysId || page.id);
-		const slug = normalizeSlug(resolvePageSlug(page));
+		const preferredSlug = normalizeSlug(resolvePageSlug(page, preferDraftFields));
+		const fallbackSlug = preferDraftFields ? normalizeSlug(resolvePageSlug(page, false)) : '';
 
 		if (sysId) {
 			pageBySysId.set(sysId, page);
 		}
 
-		if (slug) {
-			pageBySlug.set(slug, page);
+		if (preferredSlug) {
+			pageBySlug.set(preferredSlug, page);
+		}
+
+		if (fallbackSlug) {
+			pageBySlug.set(fallbackSlug, page);
 		}
 	}
 
@@ -256,20 +279,76 @@ function buildWorkspaceReaderPages(pages = [], workspaceSysId = '') {
 	return (Array.isArray(pages) ? pages : [])
 		.filter(page => resolvePageWorkspaceSysId(page) === cleanText(workspaceSysId) && isReadablePage(page))
 		.slice()
-		.sort(sortShellPages);
+		.sort((left, right) => sortShellPages(left, right, false));
 }
 
 function buildWorkspaceAuthoringPages(pages = [], workspaceSysId = '') {
 	return (Array.isArray(pages) ? pages : [])
 		.filter(page => resolvePageWorkspaceSysId(page) === cleanText(workspaceSysId) && isAuthoringVisiblePage(page))
 		.slice()
-		.sort(sortShellPages);
+		.sort((left, right) => sortShellPages(left, right, true));
 }
 
-function buildWorkspaceRootPages(visiblePages = []) {
+function buildWorkspaceRootPages(visiblePages = [], preferDraftFields = false) {
 	return (Array.isArray(visiblePages) ? visiblePages : [])
 		.filter(page => resolvePageParentSysId(page) === '')
-		.sort(sortShellPages);
+		.sort((left, right) => sortShellPages(left, right, preferDraftFields));
+}
+
+export function flattenPageTree(pageTree = []) {
+	const flattened = [];
+
+	const visit = nodes => {
+		for (const node of Array.isArray(nodes) ? nodes : []) {
+			if (!node || typeof node !== 'object') {
+				continue;
+			}
+
+			flattened.push(node);
+			if (Array.isArray(node.children) && node.children.length) {
+				visit(node.children);
+			}
+		}
+	};
+
+	visit(pageTree);
+	return flattened;
+}
+
+export function pickNextVisiblePageAfterDelete(pageTree = [], deletedPageSysId = '') {
+	const flattened = flattenPageTree(pageTree);
+	if (!flattened.length) {
+		return '';
+	}
+
+	const deletedRootIndex = flattened.findIndex(node => node && node.sysId === deletedPageSysId);
+	if (deletedRootIndex < 0) {
+		return flattened[0].pageSlug || '';
+	}
+
+	const deletedIds = new Set();
+	const queue = [flattened[deletedRootIndex]];
+	while (queue.length) {
+		const node = queue.shift();
+		if (!node || deletedIds.has(node.sysId)) {
+			continue;
+		}
+
+		deletedIds.add(node.sysId);
+		if (Array.isArray(node.children) && node.children.length) {
+			queue.push(...node.children);
+		}
+	}
+
+	for (let index = deletedRootIndex + 1; index < flattened.length; index += 1) {
+		const candidate = flattened[index];
+		if (candidate && !deletedIds.has(candidate.sysId)) {
+			return candidate.pageSlug || '';
+		}
+	}
+
+	const firstRemaining = flattened.find(node => node && !deletedIds.has(node.sysId));
+	return firstRemaining ? firstRemaining.pageSlug || '' : '';
 }
 
 export function createDocseraShellDemoPages() {
@@ -513,31 +592,37 @@ export function buildWorkspaceShellViewModel({
 	const visiblePages = canShowAuthoringControls
 		? allPages
 		: buildWorkspaceReaderPages(pages, workspace.sysId);
-	const {pageBySysId, pageBySlug} = buildWorkspaceReaderPageLookup(visiblePages);
+	const {pageBySysId, pageBySlug} = buildWorkspaceReaderPageLookup(visiblePages, canShowAuthoringControls);
 	const requestedPageSlug = normalizeSlug(selectedPageSlug);
-	const rootPages = buildWorkspaceRootPages(visiblePages);
+	const rootPages = buildWorkspaceRootPages(visiblePages, canShowAuthoringControls);
 	const firstVisiblePage = rootPages[0] || visiblePages[0] || null;
 	const selectedPage = requestedPageSlug ? pageBySlug.get(requestedPageSlug) || null : firstVisiblePage;
+	const selectedPageView = selectedPage ? {
+		...selectedPage,
+		title: resolvePageTitle(selectedPage, canShowAuthoringControls),
+		pageSlug: resolvePageSlug(selectedPage, canShowAuthoringControls),
+		bodyText: resolvePageBodyText(selectedPage, canShowAuthoringControls)
+	} : null;
 	const status = visiblePages.length === 0
 		? 'empty-workspace'
 		: requestedPageSlug && !selectedPage
 			? 'page-not-found'
 			: 'ready';
-	const selectedPageSlugValue = selectedPage ? resolvePageSlug(selectedPage) : requestedPageSlug;
+	const selectedPageSlugValue = selectedPage ? resolvePageSlug(selectedPage, canShowAuthoringControls) : requestedPageSlug;
 
 	return {
 		status,
 		workspace,
 		workspaceSlug: resolveWorkspaceSlug(workspace),
-		selectedPage,
+		selectedPage: selectedPageView,
 		selectedPageSlug: selectedPageSlugValue,
-		pageTree: buildPageTree(visiblePages, '', selectedPage ? selectedPage.sysId : ''),
-		breadcrumbs: selectedPage ? buildBreadcrumbs(selectedPage, pageBySysId, workspace) : [],
+		pageTree: buildPageTree(visiblePages, '', selectedPage ? selectedPage.sysId : '', canShowAuthoringControls),
+		breadcrumbs: selectedPage ? buildBreadcrumbs(selectedPage, pageBySysId, workspace, canShowAuthoringControls) : [],
 		tableOfContents: selectedPage ? buildTableOfContents(selectedPage) : [],
 		visiblePages,
 		allPages,
-		firstVisiblePageSlug: firstVisiblePage ? resolvePageSlug(firstVisiblePage) : '',
-		routeTargetPath: buildWorkspacePageRoutePath(resolveWorkspaceSlug(workspace), selectedPageSlugValue),
+		firstVisiblePageSlug: firstVisiblePage ? resolvePageSlug(firstVisiblePage, canShowAuthoringControls) : '',
+		routeTargetPath: buildWorkspacePageRoutePath(resolveWorkspaceSlug(workspace), selectedPage ? resolvePageSlug(selectedPage, canShowAuthoringControls) : selectedPageSlugValue),
 		canManageWorkspaceSettings: Boolean(capabilityService && typeof capabilityService.isWorkspaceAdmin === 'function' && capabilityService.isWorkspaceAdmin(workspace)),
 		canShowAuthoringControls,
 		canCreatePages: canShowAuthoringControls && workspace.active !== false,

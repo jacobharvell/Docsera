@@ -153,6 +153,7 @@ Implemented shell-side behaviors:
 - sibling-scoped order allocation for root and child pages
 - authoring-tree visibility for draft pages
 - flat route target updates using `/docsera/:workspaceSlug/:pageSlug`
+- Page Settings overlay edits draft title and slug values in the same workspace shell model
 
 ## Local Validation
 
@@ -179,6 +180,8 @@ Validation currently covers:
 - draft and published field separation
 - shell-side page tree visibility for authoring users
 - shell-side root and child page creation helpers
+- page settings title/slug validation helpers
+- authoring-vs-reader page slug resolution
 - repository-level docs validation
 
 ## Manual PDI Verification
@@ -219,7 +222,6 @@ The repository now has the page domain contract, but the following PDI work may 
 
 This task does not add:
 
-- page settings overlay
 - drag-and-drop
 - editor/autosave behavior
 - publishing action

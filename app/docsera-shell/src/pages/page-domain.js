@@ -162,12 +162,17 @@ function resolvePageSiblingOrder(page) {
 	return Number.isFinite(order) ? Math.floor(order) : null;
 }
 
-function collectReservedPageSlugs(retainedPages = [], workspaceSysId = '') {
+function isValidPageSlugFormat(value) {
+	return /^[A-Za-z0-9._-]+$/.test(value);
+}
+
+function collectReservedPageSlugs(retainedPages = [], workspaceSysId = '', excludePageSysId = '') {
 	if (!Array.isArray(retainedPages)) {
 		return [];
 	}
 
 	const workspaceFilter = cleanText(workspaceSysId);
+	const excludedPageSysId = cleanText(excludePageSysId);
 	const reserved = new Set();
 
 	for (const page of retainedPages) {
@@ -184,6 +189,10 @@ function collectReservedPageSlugs(retainedPages = [], workspaceSysId = '') {
 		}
 
 		if (workspaceFilter && resolvePageWorkspaceSysId(page) && resolvePageWorkspaceSysId(page) !== workspaceFilter) {
+			continue;
+		}
+
+		if (excludedPageSysId && resolvePageSysId(page) === excludedPageSysId) {
 			continue;
 		}
 
@@ -204,6 +213,141 @@ function collectReservedPageSlugs(retainedPages = [], workspaceSysId = '') {
 	}
 
 	return [...reserved];
+}
+
+export function validatePageSettingsTitle(title) {
+	const normalizedTitle = cleanText(title);
+
+	if (!normalizedTitle) {
+		return {
+			valid: false,
+			value: '',
+			error: 'Page title is required.'
+		};
+	}
+
+	return {
+		valid: true,
+		value: normalizedTitle,
+		error: ''
+	};
+}
+
+export function validatePageSettingsSlug(slug, retainedPages = [], workspaceSysId = '', currentPageSysId = '') {
+	const rawSlug = typeof slug === 'string' ? slug : '';
+	const normalizedSlug = rawSlug.trim();
+
+	if (!normalizedSlug) {
+		return {
+			valid: false,
+			value: '',
+			error: 'Slug is required.'
+		};
+	}
+
+	if (normalizedSlug !== rawSlug || !isValidPageSlugFormat(normalizedSlug)) {
+		return {
+			valid: false,
+			value: normalizedSlug,
+			error: 'Invalid slug. Slug must only include letters, numbers, dashes, periods, or underscores.'
+		};
+	}
+
+	const reservedSlugs = new Set(collectReservedPageSlugs(retainedPages, workspaceSysId, currentPageSysId));
+	const lowerCaseSlug = normalizedSlug.toLowerCase();
+
+	if (reservedSlugs.has(lowerCaseSlug)) {
+		return {
+			valid: false,
+			value: lowerCaseSlug,
+			error: 'Slug must be unique within this workspace.'
+		};
+	}
+
+	return {
+		valid: true,
+		value: lowerCaseSlug,
+		error: ''
+	};
+}
+
+export function updatePageDraftSettings(page, {title, slug} = {}) {
+	if (!page || typeof page !== 'object') {
+		throw new TypeError('A page record is required.');
+	}
+
+	const normalizedTitle = validatePageSettingsTitle(title).value || cleanText(page.draftTitle || page.publishedTitle || page.title);
+	const normalizedSlug = typeof slug === 'string'
+		? slug.trim().toLowerCase()
+		: cleanText(page.draftSlug || page.publishedSlug || page.slug || page.pageSlug).toLowerCase();
+
+	return {
+		...page,
+		draftTitle: normalizedTitle,
+		draftSlug: normalizedSlug,
+		draftSlugNormalized: normalizedSlug
+	};
+}
+
+export function collectPageSubtreeSysIds(pages = [], rootPageSysId = '') {
+	if (!Array.isArray(pages)) {
+		return [];
+	}
+
+	const normalizedRootPageSysId = cleanText(rootPageSysId);
+	if (!normalizedRootPageSysId) {
+		return [];
+	}
+
+	const pagesByParent = new Map();
+
+	for (const page of pages) {
+		if (!page || typeof page !== 'object') {
+			continue;
+		}
+
+		const parentSysId = resolvePageParentSysId(page);
+		if (!pagesByParent.has(parentSysId)) {
+			pagesByParent.set(parentSysId, []);
+		}
+
+		pagesByParent.get(parentSysId).push(page);
+	}
+
+	const subtreeIds = new Set();
+	const queue = [normalizedRootPageSysId];
+
+	while (queue.length) {
+		const currentSysId = queue.shift();
+		if (!currentSysId || subtreeIds.has(currentSysId)) {
+			continue;
+		}
+
+		subtreeIds.add(currentSysId);
+
+		const childPages = pagesByParent.get(currentSysId) || [];
+		for (const childPage of childPages) {
+			const childSysId = resolvePageSysId(childPage);
+			if (childSysId && !subtreeIds.has(childSysId)) {
+				queue.push(childSysId);
+			}
+		}
+	}
+
+	return [...subtreeIds];
+}
+
+export function removePageSubtree(pages = [], rootPageSysId = '') {
+	if (!Array.isArray(pages)) {
+		return [];
+	}
+
+	const subtreeIds = new Set(collectPageSubtreeSysIds(pages, rootPageSysId));
+	if (!subtreeIds.size) {
+		return pages.slice();
+	}
+
+	return pages.filter(page => !subtreeIds.has(resolvePageSysId(page)));
 }
 
 export const PAGE_PERSISTENCE_MODEL = Object.freeze({
