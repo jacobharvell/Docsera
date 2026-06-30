@@ -1681,52 +1681,6 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 		);
 	}
 
-	const openLauncher = () => updateState({
-		surfaceMode: 'launcher',
-		workspaceStatus: 'My Workspaces is the launcher entry point for Docsera.'
-	});
-
-	const toggleNav = () => updateState({
-		shellNavigationCollapsed: !state.shellNavigationCollapsed
-	});
-
-	const toggleTheme = () => updateState({
-		shellTheme: state.shellTheme === 'dark' ? 'light' : 'dark'
-	});
-
-	const selectPage = page => {
-		if (!page || !shell.workspace) {
-			return;
-		}
-
-		updateState({
-			selectedWorkspaceSlug: shell.workspace.workspaceSlug,
-			selectedPageSlug: page.pageSlug,
-			workspaceStatus: `Selected ${page.title} at /docsera/${shell.workspace.workspaceSlug}/${page.pageSlug}`
-		});
-	};
-
-	const selectBreadcrumb = (crumb, isWorkspaceCrumb) => {
-		if (!crumb || !shell.workspace) {
-			return;
-		}
-
-		if (isWorkspaceCrumb) {
-			updateState({
-				selectedWorkspaceSlug: shell.workspace.workspaceSlug,
-				selectedPageSlug: shell.firstVisiblePageSlug || '',
-				workspaceStatus: `Returned to ${shell.workspace.name}.`
-			});
-			return;
-		}
-
-		updateState({
-			selectedWorkspaceSlug: shell.workspace.workspaceSlug,
-			selectedPageSlug: crumb.pageSlug,
-			workspaceStatus: `Selected ${crumb.label} at /docsera/${shell.workspace.workspaceSlug}/${crumb.pageSlug}`
-		});
-	};
-
 	const shellClass = `docsera-shell ${themeClass} docsera-shell--reader${navCollapsed ? ' docsera-shell--nav-collapsed' : ''}`;
 
 	return (
@@ -1756,7 +1710,7 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 							New page
 						</button>
 					) : null}
-					<button type="button" className="docsera-shell__button docsera-shell__button--secondary" on-click={openLauncher}>
+					<button type="button" className="docsera-shell__button docsera-shell__button--secondary" on-click={openWorkspaceLauncher}>
 						My Workspaces
 					</button>
 					<button type="button" className="docsera-shell__button docsera-shell__button--secondary" on-click={toggleNav}>
