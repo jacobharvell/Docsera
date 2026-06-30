@@ -1,12 +1,12 @@
-# Page Data Model and Slug Rules
+# Implementation Notes - Page Data Model and Slug Rules
 
-Status: implementation foundation
+Status: implementation note
 
 ## Purpose
 
-This note defines the Docsera page foundation that now exists in the app shell package.
+This note records the Docsera page contract that now exists in the app shell package.
 
-It is the canonical reference for page ownership, hierarchy, ordering scope, slug behavior, the draft/published field contract, and the shell-side page creation foundation that future UI and persistence tasks should consume.
+It summarizes repo-side implementation behavior only. Accepted product requirements live in the Obsidian vault; see `docs/process/Requirements Source Map.md`.
 
 ## Page Model
 

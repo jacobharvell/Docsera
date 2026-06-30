@@ -41,9 +41,11 @@ Key rules:
 
 My Workspaces list, search, settings gating, and launcher-boundary helpers are defined in `src/workspaces/workspace-launcher.js`.
 
-The scoped role names used by the domain contract are documented in `docs/process/Workspace Data Model and Group Provisioning.md`.
-The capability-check rules and adapter boundaries are documented in `docs/process/Workspace Capability Checks.md`.
-The page persistence, hierarchy, slug, and draft/published rules are documented in `docs/process/Page Data Model and Slug Rules.md`.
+Accepted product requirements stay in the Obsidian vault; the repo source map is `docs/process/Requirements Source Map.md`.
+The scoped role names used by the domain contract are documented in `docs/process/Implementation Notes - Workspace Data Model and Group Provisioning.md`.
+The capability-check rules and adapter boundaries are documented in `docs/process/Implementation Notes - Workspace Capability Checks.md`.
+The My Workspaces launcher boundary is documented in `docs/process/Implementation Notes - My Workspaces Launcher.md`.
+The page persistence, hierarchy, slug, and draft/published rules are documented in `docs/process/Implementation Notes - Page Data Model and Slug Rules.md`.
 
 ## Local validation
 

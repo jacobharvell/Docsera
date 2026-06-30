@@ -1,10 +1,12 @@
-# My Workspaces
+# Implementation Notes - My Workspaces Launcher
 
-Status: accepted requirement reference
+Status: implementation note
 
 ## Purpose
 
 My Workspaces is the launcher surface for Docsera authors and admins.
+
+This note summarizes repo-side implementation behavior only. Accepted product requirements live in the Obsidian vault; see `docs/process/Requirements Source Map.md`.
 
 ## Page Behavior
 

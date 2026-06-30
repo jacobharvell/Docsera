@@ -6,8 +6,10 @@ Docsera is a ServiceNow-scoped documentation platform focused on a polished read
 
 - `docs/decisions/` contains public architectural decisions and rationale.
 - `app/docsera-shell/` is the real Docsera product shell scaffold.
-- `docs/process/Workspace Data Model and Group Provisioning.md` records the workspace foundation contract.
-- `docs/process/Page Data Model and Slug Rules.md` records the page foundation contract.
+- `docs/process/Requirements Source Map.md` records the Obsidian requirement source map.
+- `docs/process/Implementation Notes - Workspace Data Model and Group Provisioning.md` records the workspace foundation contract.
+- `docs/process/Implementation Notes - Workspace Capability Checks.md` records the workspace access contract.
+- `docs/process/Implementation Notes - Page Data Model and Slug Rules.md` records the page foundation contract.
 - `poc/tiptap-component/` is a closed historical PoC reference and should not be renamed into the product shell.
 
 ## Internal working material

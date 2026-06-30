@@ -18,6 +18,7 @@ It is a discovery snapshot, not a design decision record.
 Key paths:
 - `README.md`
 - `docs/decisions/ADR-0001-editor-architecture.md`
+- `docs/process/Requirements Source Map.md`
 - `docs/process/Test Strategy and Validation Areas.md`
 - `internal/runbooks/PDI_UI_COMPONENT_DEPLOYMENT.md`
 - `internal/runbooks/RUNTIME_EDITOR_DIAGNOSTICS.md`
@@ -129,6 +130,7 @@ For the product shell, runtime validation is only a shell smoke check at this st
 ## Validation Guidance
 
 Validation guidance already exists and should be reused:
+- `docs/process/Requirements Source Map.md`
 - `docs/process/Test Strategy and Validation Areas.md`
 - `internal/runbooks/PDI_UI_COMPONENT_DEPLOYMENT.md`
 - `internal/runbooks/RUNTIME_EDITOR_DIAGNOSTICS.md`
@@ -190,7 +192,7 @@ Recommended focus for that task:
 - keep the product shell separate from the closed PoC
 - establish a repeatable repo-level validation command surface
 - keep persistence and permission scaffolding explicit but minimal
-- prepare for `Workspace Data Model and Group Provisioning`
+- prepare for `Implementation Notes - Workspace Data Model and Group Provisioning`
 - `app/docsera-shell/src/workspaces/workspace-domain.js`
 
 ## Blockers / Uncertainties

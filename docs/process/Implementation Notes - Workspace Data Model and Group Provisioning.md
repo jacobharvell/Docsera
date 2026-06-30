@@ -1,12 +1,12 @@
-# Workspace Data Model and Group Provisioning
+# Implementation Notes - Workspace Data Model and Group Provisioning
 
-Status: implementation foundation
+Status: implementation note
 
 ## Purpose
 
-This note defines the Docsera workspace foundation that now exists in the app shell package.
+This note records the Docsera workspace contract that now exists in the app shell package.
 
-It is the canonical reference for the workspace identity model, generated group behavior, slug rules, and the platform setup that still has to be completed in the PDI.
+It summarizes repo-side implementation behavior only. Accepted product requirements live in the Obsidian vault; see `docs/process/Requirements Source Map.md`.
 
 ## Workspace Model
 
@@ -128,7 +128,7 @@ Expected result:
 - the creator is in the Admin group
 - capability checks can read group sys_ids from the workspace record
 
-See `docs/process/Workspace Capability Checks.md` for the reusable access-check contract that consumes these stored group references.
+See `docs/process/Implementation Notes - Workspace Capability Checks.md` for the reusable access-check contract that consumes these stored group references.
 
 ## Remaining Platform Setup
 

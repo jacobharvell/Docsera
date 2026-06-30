@@ -115,7 +115,12 @@ for (const needle of [
 	'The closed PoC stays in `../../poc/tiptap-component/`',
 	'npm run validate',
 	'Workspace foundation',
-	'Manual PDI validation'
+	'Manual PDI validation',
+	'Requirements Source Map.md',
+	'Implementation Notes - Workspace Data Model and Group Provisioning.md',
+	'Implementation Notes - Workspace Capability Checks.md',
+	'Implementation Notes - My Workspaces Launcher.md',
+	'Implementation Notes - Page Data Model and Slug Rules.md'
 ]) {
 	if (!shellReadme.includes(needle)) {
 		throw new Error(`Missing "${needle}" in shell README.`);

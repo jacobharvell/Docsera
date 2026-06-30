@@ -1,12 +1,12 @@
-# Workspace Capability Checks
+# Implementation Notes - Workspace Capability Checks
 
-Status: implementation foundation
+Status: implementation note
 
 ## Purpose
 
-This note defines the Docsera workspace capability contract that now exists in the app shell package.
+This note records the Docsera workspace capability contract that now exists in the app shell package.
 
-It records the intended access rules, the adapter boundary for ServiceNow integration, and the validation coverage for the current implementation.
+It summarizes repo-side implementation behavior only. Accepted product requirements live in the Obsidian vault; see `docs/process/Requirements Source Map.md`.
 
 ## Capability Model
 
