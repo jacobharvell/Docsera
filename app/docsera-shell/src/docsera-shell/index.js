@@ -1,7 +1,15 @@
 import {
 	createCustomElement
 } from '@servicenow/ui-core';
+import {actionTypes} from '@servicenow/ui-core';
 import snabbdom from '@servicenow/ui-renderer-snabbdom';
+import {EditorState} from 'prosemirror-state';
+import {EditorView} from 'prosemirror-view';
+import {Schema, Node as ProseMirrorNode} from 'prosemirror-model';
+import {schema as basicSchema} from 'prosemirror-schema-basic';
+import {history, undo, redo} from 'prosemirror-history';
+import {keymap} from 'prosemirror-keymap';
+import {toggleMark, chainCommands, exitCode, baseKeymap} from 'prosemirror-commands';
 import {
 	WORKSPACE_CAPABILITY_ROLE_NAMES,
 	buildMyWorkspacesViewModel,
@@ -17,8 +25,16 @@ import {
 import {
 	buildWorkspaceShellViewModel,
 	applyPageMove,
+	buildPageBodySaveRecord,
 	collectPageSubtreeSysIds,
 	createDocseraShellDemoPages,
+	createPageBodyEditorSession,
+	clearPageBodyEditorSession,
+	getPageBodyEditorSession,
+	getPageBodyEditorStatusLabel,
+	hasPendingPageBodyEditorChanges,
+	normalizePageBodyContentJson,
+	resolvePageBodyContentJson,
 	PAGE_TREE_MAX_DEPTH,
 	pickNextVisiblePageAfterDelete,
 	removePageSubtree,
@@ -35,6 +51,9 @@ import {
 	provisionWorkspace
 } from '../workspaces/workspace-domain.js';
 import styles from './styles.scss';
+
+const {COMPONENT_RENDERED, COMPONENT_DISCONNECTED} = actionTypes;
+const PAGE_EDITOR_AUTOSAVE_DELAY_MS = 900;
 
 const CURRENT_USER_SYS_ID = 'user-docsera-launcher';
 
@@ -90,6 +109,14 @@ function createInitialState() {
 		pageSettingsDeletePageSysId: '',
 		pageSettingsDeleteError: '',
 		pageTreeDrag: createPageTreeDragDefaults(),
+		pageEditorPageSysId: '',
+		pageEditorStatus: 'saved',
+		pageEditorStatusLabel: 'Saved',
+		pageEditorStatusDetail: '',
+		pageEditorHasUnsavedChanges: false,
+		pageEditorIsSaving: false,
+		pageEditorIsFailed: false,
+		pageEditorHasPendingSave: false,
 		workspaceStatus: 'Workspace shell is ready.',
 		workspaces: createMyWorkspacesDemoWorkspaces(),
 		pages: createDocseraShellDemoPages(),
@@ -173,6 +200,280 @@ function createPageTreeDragDefaults() {
 		targetValid: false,
 		invalidReason: ''
 	};
+}
+
+const pageEditorHostEntries = new WeakMap();
+const pageEditorFailedDemoPages = new Set();
+let pageEditorBeforeUnloadHandler = null;
+let latestDocseraShellState = null;
+
+const PAGE_EDITOR_SCHEMA = new Schema({
+	nodes: basicSchema.spec.nodes,
+	marks: basicSchema.spec.marks
+});
+
+function samePageEditorContent(left, right) {
+	return JSON.stringify(normalizePageBodyContentJson(left)) === JSON.stringify(normalizePageBodyContentJson(right));
+}
+
+function createPageEditorState(contentJson) {
+	const normalizedContentJson = normalizePageBodyContentJson(contentJson);
+	const doc = ProseMirrorNode.fromJSON(PAGE_EDITOR_SCHEMA, normalizedContentJson);
+
+	return EditorState.create({
+		schema: PAGE_EDITOR_SCHEMA,
+		doc,
+		plugins: [
+			history(),
+			keymap({
+				'Mod-z': undo,
+				'Mod-y': redo,
+				'Shift-Mod-z': redo,
+				Enter: chainCommands(exitCode, baseKeymap.Enter)
+			}),
+			keymap(baseKeymap)
+		]
+	});
+}
+
+function getPageEditorHostEntry(host) {
+	if (!pageEditorHostEntries.has(host)) {
+		pageEditorHostEntries.set(host, {
+			view: null,
+			editorElement: null,
+			pageSysId: ''
+		});
+	}
+
+	return pageEditorHostEntries.get(host);
+}
+
+function destroyPageEditorHostEntry(host) {
+	const entry = pageEditorHostEntries.get(host);
+	if (!entry) {
+		return;
+	}
+
+	if (entry.view) {
+		entry.view.destroy();
+	}
+
+	pageEditorHostEntries.delete(host);
+}
+
+function updatePageEditorUiState(updateState, snapshot, currentState = null) {
+	if (typeof updateState !== 'function' || !snapshot) {
+		return;
+	}
+
+	const current = currentState || latestDocseraShellState || {};
+	if (
+		current.pageEditorPageSysId === snapshot.pageSysId &&
+		current.pageEditorStatus === snapshot.status &&
+		current.pageEditorStatusLabel === snapshot.statusLabel &&
+		current.pageEditorStatusDetail === (snapshot.error || (snapshot.isSaving
+			? 'Autosaving body content...'
+			: snapshot.hasPendingSave
+				? 'Changes will autosave after a short idle delay.'
+				: '')) &&
+		current.pageEditorHasUnsavedChanges === snapshot.hasUnsavedChanges &&
+		current.pageEditorIsSaving === snapshot.isSaving &&
+		current.pageEditorIsFailed === snapshot.isFailed &&
+		current.pageEditorHasPendingSave === snapshot.hasPendingSave
+	) {
+		return;
+	}
+
+	updateState({
+		pageEditorPageSysId: snapshot.pageSysId,
+		pageEditorStatus: snapshot.status,
+		pageEditorStatusLabel: snapshot.statusLabel,
+		pageEditorStatusDetail: snapshot.error || (snapshot.isSaving
+			? 'Autosaving body content...'
+			: snapshot.hasPendingSave
+				? 'Changes will autosave after a short idle delay.'
+				: ''),
+		pageEditorHasUnsavedChanges: snapshot.hasUnsavedChanges,
+		pageEditorIsSaving: snapshot.isSaving,
+		pageEditorIsFailed: snapshot.isFailed,
+		pageEditorHasPendingSave: snapshot.hasPendingSave
+	});
+}
+
+function attachPageEditorBeforeUnloadGuard() {
+	if (pageEditorBeforeUnloadHandler || typeof window === 'undefined') {
+		return;
+	}
+
+	pageEditorBeforeUnloadHandler = event => {
+		if (!hasPendingPageBodyEditorChanges()) {
+			return;
+		}
+
+		event.preventDefault();
+		event.returnValue = '';
+		return '';
+	};
+
+	window.addEventListener('beforeunload', pageEditorBeforeUnloadHandler);
+}
+
+function createPageEditorSaveHandler(updateState, pageSysId) {
+	return async ({contentJson}) => {
+		const currentState = latestDocseraShellState || {};
+		const currentPages = Array.isArray(currentState.pages) ? currentState.pages : [];
+		const currentPage = findPageBySysId(currentPages, pageSysId);
+		if (!currentPage) {
+			throw new Error('The selected page could not be saved.');
+		}
+
+		if (currentPage.draftBodyAutosaveFailureMode === 'fail-once' && !pageEditorFailedDemoPages.has(pageSysId)) {
+			pageEditorFailedDemoPages.add(pageSysId);
+			throw new Error('Simulated demo save failure.');
+		}
+
+		const updatedPage = buildPageBodySaveRecord(currentPage, contentJson);
+		const nextPages = currentPages.map(page => (page && page.sysId === pageSysId ? {
+			...page,
+			...updatedPage,
+			sysId: page.sysId
+		} : page));
+
+		updateState({
+			pages: nextPages,
+			workspaceStatus: `Autosaved body content for ${updatedPage.draftTitle || updatedPage.publishedTitle || 'page'}.`
+		});
+
+		return updatedPage;
+	};
+}
+
+function ensurePageBodyEditorSession(page, updateState) {
+	if (!page || typeof updateState !== 'function') {
+		return null;
+	}
+
+	const session = getPageBodyEditorSession(page.sysId, {
+		initialContentJson: resolvePageBodyContentJson(page, true),
+		autosaveDelayMs: PAGE_EDITOR_AUTOSAVE_DELAY_MS,
+		savePageBodyContent: createPageEditorSaveHandler(updateState, page.sysId),
+		onChange: snapshot => updatePageEditorUiState(updateState, snapshot, latestDocseraShellState)
+	});
+
+	updatePageEditorUiState(updateState, session.getSnapshot(), latestDocseraShellState);
+	return session;
+}
+
+function renderPageBodyEditorSurface({shell, state}) {
+	if (!shell.selectedPage || !shell.canEditPageBody) {
+		return null;
+	}
+
+	const statusClass = `docsera-shell__editor-status-chip docsera-shell__editor-status-chip--${state.pageEditorStatus || 'saved'}`;
+
+	return (
+		<section className="docsera-shell__editor-shell" aria-labelledby="docsera-body-editor-title">
+			<div className="docsera-shell__reader-content-head docsera-shell__editor-head">
+				<div>
+					<p className="docsera-shell__rail-title">Body editor</p>
+					<div className="docsera-shell__reader-title-row">
+						<h1 id="docsera-body-editor-title" className="docsera-shell__reader-title">{shell.selectedPage.title}</h1>
+						{shell.selectedPage.publicationState === PAGE_PUBLICATION_STATES.draft ? (
+							<span className="docsera-shell__page-badge docsera-shell__page-badge--draft">Draft</span>
+						) : null}
+					</div>
+					<p className="docsera-shell__reader-lede">
+						Edit the body content here. Title and slug remain in Page Settings.
+					</p>
+				</div>
+				<div className="docsera-shell__reader-meta">
+					<span className="docsera-shell__toolbar-chip">{shell.routeTargetPath}</span>
+					<span className={statusClass} title={state.pageEditorStatusDetail || state.pageEditorStatusLabel} aria-live="polite" aria-atomic="true">
+						{state.pageEditorStatusLabel || getPageBodyEditorStatusLabel(state.pageEditorStatus)}
+					</span>
+				</div>
+			</div>
+
+			<div className="docsera-shell__editor-frame">
+				<div
+					className="docsera-shell__editor-surface"
+					data-docsera-page-editor="primary"
+					data-page-sys-id={shell.selectedPage.sysId}
+					aria-label={`Body editor for ${shell.selectedPage.title}`}
+				/>
+				<div className="docsera-shell__editor-help">
+					<div className="docsera-shell__editor-help-copy">Autosaves after a short idle delay. Leave the page with unsaved changes to trigger a warning.</div>
+					{state.pageEditorIsFailed ? (
+						<div className="docsera-shell__editor-error" role="alert">
+							{state.pageEditorStatusDetail || 'Save failed. Your local changes are still available.'}
+						</div>
+					) : state.pageEditorHasPendingSave ? (
+						<div className="docsera-shell__editor-note">Saving will complete automatically before you navigate away where practical.</div>
+					) : null}
+				</div>
+			</div>
+		</section>
+	);
+}
+
+function ensurePageBodyEditorHost(host, state, updateState, shell) {
+	if (!host || !shell || !shell.selectedPage || !shell.canEditPageBody) {
+		destroyPageEditorHostEntry(host);
+		return;
+	}
+
+	const editorElement = host.shadowRoot
+		? host.shadowRoot.querySelector('[data-docsera-page-editor="primary"]')
+		: null;
+	if (!editorElement) {
+		destroyPageEditorHostEntry(host);
+		return;
+	}
+
+	attachPageEditorBeforeUnloadGuard();
+	const session = ensurePageBodyEditorSession(shell.selectedPage, updateState);
+	if (!session) {
+		return;
+	}
+
+	const snapshot = session.getSnapshot();
+	const entry = getPageEditorHostEntry(host);
+	const needsNewView = !entry.view || entry.editorElement !== editorElement || entry.pageSysId !== shell.selectedPage.sysId;
+	if (needsNewView && entry.view) {
+		entry.view.destroy();
+		entry.view = null;
+	}
+
+	entry.editorElement = editorElement;
+	entry.pageSysId = shell.selectedPage.sysId;
+
+	if (!entry.view) {
+		entry.view = new EditorView(editorElement, {
+			state: createPageEditorState(snapshot.contentJson),
+			dispatchTransaction(transaction) {
+				const view = entry.view;
+				if (!view) {
+					return;
+				}
+
+				const nextEditorState = view.state.apply(transaction);
+				view.updateState(nextEditorState);
+
+				if (transaction.docChanged) {
+					session.recordContentChange(nextEditorState.doc.toJSON());
+				}
+			}
+		});
+	}
+
+	const currentContentJson = entry.view.state.doc.toJSON();
+	if (!samePageEditorContent(currentContentJson, snapshot.contentJson)) {
+		entry.view.updateState(createPageEditorState(snapshot.contentJson));
+	}
+
+	entry.view.setProps({
+		editable: () => true
+	});
 }
 
 function resetCreatePageForm(parentPage = null) {
@@ -405,7 +706,7 @@ function renderPageTreeNodes(nodes, {
 							className={`docsera-shell__tree-button${node.pageSlug === selectedPageSlug ? ' docsera-shell__tree-button--selected' : ''}`}
 							on-click={event => {
 								event.stopPropagation();
-								selectPage(node);
+								void selectPage(node);
 							}}
 						>
 							<span className="docsera-shell__tree-button-title">{node.title}</span>
@@ -425,7 +726,7 @@ function renderPageTreeNodes(nodes, {
 								aria-label={node.sysId === pageSettingsPageSysId ? `Collapse settings for ${node.title}` : `Open settings for ${node.title}`}
 								on-click={event => {
 									event.stopPropagation();
-									openPageSettings(node);
+									void openPageSettings(node);
 								}}
 							>
 								<span aria-hidden="true">{node.sysId === pageSettingsPageSysId ? 'Close' : 'Settings'}</span>
@@ -481,10 +782,10 @@ function renderBreadcrumbs(breadcrumbs, selectBreadcrumb) {
 								<span className="docsera-shell__breadcrumb-current">{label}</span>
 							) : (
 								<button
-									type="button"
-									className="docsera-shell__breadcrumb-link"
-									on-click={() => selectBreadcrumb(crumb)}
-								>
+								type="button"
+								className="docsera-shell__breadcrumb-link"
+								on-click={() => void selectBreadcrumb(crumb)}
+							>
 									{label}
 								</button>
 							)}
@@ -868,8 +1169,49 @@ function renderDeletePageConfirmationDialog({
 }
 
 function renderWorkspaceReaderSurface(state, shell, updateState) {
-	const selectWorkspaceFromLauncher = workspace => {
+	const currentEditorPage = shell.canEditPageBody && shell.selectedPage ? shell.selectedPage : null;
+	const currentEditorSession = currentEditorPage
+		? ensurePageBodyEditorSession(currentEditorPage, updateState)
+		: null;
+
+	const confirmSafePageEditorNavigation = async () => {
+		if (!currentEditorSession) {
+			return true;
+		}
+
+		const snapshotBeforeFlush = currentEditorSession.getSnapshot();
+		if (snapshotBeforeFlush.hasPendingSave || snapshotBeforeFlush.isSaving) {
+			try {
+				await currentEditorSession.flushAutosave('navigation');
+			} catch (error) {
+				// Fall through to the warning prompt below.
+			}
+		}
+
+		const snapshot = currentEditorSession.getSnapshot();
+		if (!snapshot.hasUnsavedChanges && !snapshot.isFailed && !snapshot.hasPendingSave && !snapshot.isSaving) {
+			return true;
+		}
+
+		const shouldLeave = window.confirm(
+			snapshot.isFailed
+				? 'Autosave failed. Leave this page and keep the local changes in this browser session?'
+				: 'You have unsaved changes. Leave this page and keep editing later?'
+		);
+
+		if (shouldLeave) {
+			currentEditorSession.suspendAutosave();
+		}
+
+		return shouldLeave;
+	};
+
+	const selectWorkspaceFromLauncher = async workspace => {
 		if (!workspace) {
+			return;
+		}
+
+		if (!(await confirmSafePageEditorNavigation())) {
 			return;
 		}
 
@@ -892,13 +1234,27 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 		});
 	};
 
-	const openWorkspaceLauncher = () => updateState({
-		surfaceMode: 'launcher',
-		workspaceStatus: 'My Workspaces is the launcher entry point for Docsera.'
-	});
+	const openWorkspaceLauncher = async () => {
+		if (!(await confirmSafePageEditorNavigation())) {
+			return;
+		}
 
-	const selectPage = page => {
+		updateState({
+			surfaceMode: 'launcher',
+			workspaceStatus: 'My Workspaces is the launcher entry point for Docsera.'
+		});
+	};
+
+	const selectPage = async page => {
 		if (!page || !shell.workspace) {
+			return;
+		}
+
+		if (shell.selectedPage && shell.selectedPage.sysId === page.sysId) {
+			return;
+		}
+
+		if (!(await confirmSafePageEditorNavigation())) {
 			return;
 		}
 
@@ -928,8 +1284,12 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 		});
 	};
 
-	const selectBreadcrumb = crumb => {
+	const selectBreadcrumb = async crumb => {
 		if (!crumb || !shell.workspace) {
+			return;
+		}
+
+		if (!(await confirmSafePageEditorNavigation())) {
 			return;
 		}
 
@@ -1174,8 +1534,12 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 			pageSettingsActiveField: ''
 		});
 	};
-	const openPageSettings = page => {
+	const openPageSettings = async page => {
 		if (!canManagePageSettings || !page) {
+			return;
+		}
+
+		if (shell.selectedPage && shell.selectedPage.sysId !== page.sysId && !(await confirmSafePageEditorNavigation())) {
 			return;
 		}
 
@@ -1198,12 +1562,12 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 			workspaceStatus: `Opened Page Settings for ${page.title}.`
 		});
 	};
-	const openPageSettingsForSelectedPage = () => {
+	const openPageSettingsForSelectedPage = async () => {
 		if (!shell.selectedPage) {
 			return;
 		}
 
-		openPageSettings(shell.selectedPage);
+		await openPageSettings(shell.selectedPage);
 	};
 	const openDeletePageConfirmation = page => {
 		if (!canManagePageSettings || !page) {
@@ -1241,6 +1605,9 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 				? pickNextVisiblePageAfterDelete(shell.pageTree, page.sysId)
 				: state.selectedPageSlug;
 			const nextPages = removePageSubtree(state.pages, page.sysId);
+			for (const deletedPageSysId of subtreeIds) {
+				clearPageBodyEditorSession(deletedPageSysId);
+			}
 			const nextShell = buildWorkspaceShellViewModel({
 				workspaces: state.workspaces,
 				pages: nextPages,
@@ -1594,7 +1961,7 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 						</div>
 					</div>
 					<div className="docsera-shell__header-meta">
-						<button type="button" className="docsera-shell__button docsera-shell__button--secondary" on-click={openWorkspaceLauncher}>
+						<button type="button" className="docsera-shell__button docsera-shell__button--secondary" on-click={() => void openWorkspaceLauncher()}>
 							My Workspaces
 						</button>
 					</div>
@@ -1607,7 +1974,7 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 							The selected workspace is unavailable or inactive. Return to My Workspaces to choose another workspace.
 						</p>
 						<div className="docsera-shell__state-actions">
-							<button type="button" className="docsera-shell__button" on-click={openWorkspaceLauncher}>
+							<button type="button" className="docsera-shell__button" on-click={() => void openWorkspaceLauncher()}>
 								My Workspaces
 							</button>
 						</div>
@@ -1627,8 +1994,12 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 		const selectedWorkspaceLabel = selectedWorkspace ? resolveWorkspaceCapabilityLabel(selectedWorkspace, capabilityService) : '';
 		const selectedWorkspaceRoute = selectedWorkspace ? buildWorkspaceRoutePath(selectedWorkspace) : '/docsera';
 
-		const openWorkspace = workspaceItem => {
+		const openWorkspace = async workspaceItem => {
 			if (!workspaceItem) {
+				return;
+			}
+
+			if (!(await confirmSafePageEditorNavigation())) {
 				return;
 			}
 
@@ -1878,7 +2249,7 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 													<button
 														type="button"
 														className="docsera-shell__workspace-name"
-														on-click={() => openWorkspace(workspaceItem)}
+														on-click={() => void openWorkspace(workspaceItem)}
 													>
 														{workspaceItem.name}
 													</button>
@@ -1906,7 +2277,7 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 												<button
 													type="button"
 													className="docsera-shell__button docsera-shell__button--secondary"
-													on-click={() => openWorkspace(workspaceItem)}
+													on-click={() => void openWorkspace(workspaceItem)}
 												>
 													Open
 												</button>
@@ -2069,7 +2440,7 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 							New page
 						</button>
 					) : null}
-					<button type="button" className="docsera-shell__button docsera-shell__button--secondary" on-click={openWorkspaceLauncher}>
+					<button type="button" className="docsera-shell__button docsera-shell__button--secondary" on-click={() => void openWorkspaceLauncher()}>
 						My Workspaces
 					</button>
 					<button type="button" className="docsera-shell__button docsera-shell__button--secondary" on-click={toggleNav}>
@@ -2179,6 +2550,11 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 								</button>
 							</div>
 						</section>
+					) : shell.canEditPageBody ? (
+						renderPageBodyEditorSurface({
+							shell,
+							state
+						})
 					) : (
 						<article className="docsera-shell__reader-content">
 							<div className="docsera-shell__reader-content-head">
@@ -2294,6 +2670,7 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 }
 
 const view = (state, {updateState}) => {
+	latestDocseraShellState = state;
 	const capabilityService = createWorkspaceCapabilitiesForDemo(state.userAccess);
 	const shell = buildWorkspaceShellViewModel({
 		workspaces: state.workspaces,
@@ -2312,6 +2689,23 @@ const view = (state, {updateState}) => {
 
 createCustomElement('x-82900-docsera-shell', {
 	renderer: {type: snabbdom},
+	actionHandlers: {
+		[COMPONENT_RENDERED]: ({host, state, updateState}) => {
+			const capabilityService = createWorkspaceCapabilitiesForDemo(state.userAccess);
+			const shell = buildWorkspaceShellViewModel({
+				workspaces: state.workspaces,
+				pages: state.pages,
+				capabilityService,
+				selectedWorkspaceSlug: state.selectedWorkspaceSlug,
+				selectedPageSlug: state.selectedPageSlug
+			});
+
+			ensurePageBodyEditorHost(host, state, updateState, shell);
+		},
+		[COMPONENT_DISCONNECTED]: ({host}) => {
+			destroyPageEditorHostEntry(host);
+		}
+	},
 	setInitialState: createInitialState,
 	view,
 	styles

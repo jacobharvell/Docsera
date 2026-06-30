@@ -594,6 +594,16 @@
   gap: var(--docsera-shell-space-4);
 }
 
+.docsera-shell__editor-shell {
+  display: grid;
+  gap: var(--docsera-shell-space-4);
+}
+
+.docsera-shell__editor-head {
+  padding-bottom: var(--docsera-shell-space-2);
+  border-bottom: 1px solid var(--docsera-shell-color-border);
+}
+
 .docsera-shell__reader-content-head {
   display: flex;
   align-items: flex-start;
@@ -634,11 +644,148 @@
   gap: var(--docsera-shell-space-4);
 }
 
+.docsera-shell__editor-frame {
+  display: grid;
+  gap: var(--docsera-shell-space-3);
+}
+
 .docsera-shell__reader-prose {
   padding: var(--docsera-shell-space-4);
   border-radius: var(--docsera-shell-radius-md);
   border: 1px solid var(--docsera-shell-color-border);
   background: linear-gradient(180deg, var(--docsera-shell-color-surface-soft), var(--docsera-shell-color-surface));
+}
+
+.docsera-shell__editor-surface {
+  min-height: 420px;
+  padding: var(--docsera-shell-space-4);
+  border: 1px solid var(--docsera-shell-color-border-strong);
+  border-radius: var(--docsera-shell-radius-lg);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 253, 0.98)),
+    var(--docsera-shell-color-surface);
+}
+
+.docsera-shell__editor-surface:focus-within {
+  outline: 2px solid rgba(29, 122, 252, 0.20);
+  outline-offset: 2px;
+}
+
+.docsera-shell--theme-dark .docsera-shell__editor-surface {
+  background:
+    linear-gradient(180deg, rgba(17, 26, 43, 0.94), rgba(17, 26, 43, 0.98)),
+    var(--docsera-shell-color-surface);
+}
+
+.docsera-shell__editor-surface .ProseMirror {
+  min-height: 100%;
+  outline: none;
+  color: var(--docsera-shell-color-text);
+  line-height: 1.72;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.docsera-shell__editor-surface .ProseMirror p {
+  margin: 0 0 1rem;
+}
+
+.docsera-shell__editor-surface .ProseMirror p:last-child {
+  margin-bottom: 0;
+}
+
+.docsera-shell__editor-surface .ProseMirror h1,
+.docsera-shell__editor-surface .ProseMirror h2,
+.docsera-shell__editor-surface .ProseMirror h3,
+.docsera-shell__editor-surface .ProseMirror h4,
+.docsera-shell__editor-surface .ProseMirror h5,
+.docsera-shell__editor-surface .ProseMirror h6 {
+  margin: 0 0 1rem;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+
+.docsera-shell__editor-surface .ProseMirror blockquote {
+  margin: 0 0 1rem;
+  padding-left: var(--docsera-shell-space-4);
+  border-left: 4px solid var(--docsera-shell-color-border-strong);
+  color: var(--docsera-shell-color-text-muted);
+}
+
+.docsera-shell__editor-surface .ProseMirror code {
+  padding: 0.16em 0.34em;
+  border-radius: 6px;
+  background: rgba(29, 122, 252, 0.08);
+  font-size: 0.94em;
+}
+
+.docsera-shell__editor-surface .ProseMirror pre {
+  margin: 0 0 1rem;
+  padding: var(--docsera-shell-space-3);
+  border-radius: var(--docsera-shell-radius-md);
+  background: rgba(9, 14, 28, 0.06);
+  overflow-x: auto;
+}
+
+.docsera-shell__editor-help {
+  display: grid;
+  gap: var(--docsera-shell-space-2);
+}
+
+.docsera-shell__editor-help-copy {
+  color: var(--docsera-shell-color-text-muted);
+  line-height: 1.55;
+}
+
+.docsera-shell__editor-status-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--docsera-shell-color-border);
+  background: var(--docsera-shell-color-surface-soft);
+  color: var(--docsera-shell-color-text);
+  font-size: 0.83rem;
+  font-weight: 700;
+}
+
+.docsera-shell__editor-status-chip--saved {
+  border-color: rgba(52, 140, 72, 0.24);
+  background: rgba(52, 140, 72, 0.10);
+  color: #2f7f45;
+}
+
+.docsera-shell__editor-status-chip--dirty {
+  border-color: rgba(29, 122, 252, 0.24);
+  background: rgba(29, 122, 252, 0.10);
+  color: var(--docsera-shell-color-accent-strong);
+}
+
+.docsera-shell__editor-status-chip--saving {
+  border-color: rgba(106, 86, 255, 0.24);
+  background: rgba(106, 86, 255, 0.10);
+  color: #5c57c8;
+}
+
+.docsera-shell__editor-status-chip--failed {
+  border-color: rgba(189, 34, 34, 0.22);
+  background: rgba(189, 34, 34, 0.10);
+  color: #8d1d1d;
+}
+
+.docsera-shell__editor-error {
+  padding: var(--docsera-shell-space-3);
+  border-radius: var(--docsera-shell-radius-md);
+  border: 1px solid rgba(189, 34, 34, 0.22);
+  background: rgba(189, 34, 34, 0.08);
+  color: #8d1d1d;
+  line-height: 1.55;
+}
+
+.docsera-shell__editor-note {
+  color: var(--docsera-shell-color-text-muted);
+  line-height: 1.55;
 }
 
 .docsera-shell__reader-text {

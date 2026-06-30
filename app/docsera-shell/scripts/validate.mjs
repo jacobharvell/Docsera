@@ -24,20 +24,28 @@ import {
 	allocatePageSiblingOrder,
 	allocatePageSlug,
 	applyPageMove,
+	buildPageBodySaveRecord,
 	collectPageAncestorSysIds,
 	collectPageSubtreeSysIds,
 	buildWorkspaceShellViewModel,
 	PAGE_PERSISTENCE_MODEL,
 	PAGE_PUBLICATION_STATES,
+	PAGE_BODY_EDITOR_STATUSES,
 	PAGE_TREE_MAX_DEPTH,
 	createPageDraft,
 	createDocseraShellDemoPages,
+	createPageBodyContentJsonFromText,
 	flattenPageTree,
+	clearPageBodyEditorSession,
+	getPageBodyEditorSession,
+	getPageBodyEditorStatusLabel,
 	isPageDescendantOf,
+	hasPendingPageBodyEditorChanges,
 	pickNextVisiblePageAfterDelete,
 	removePageSubtree,
 	resolvePageDepth,
 	resolvePageSubtreeDepth,
+	resolvePageBodyContentJson,
 	updatePageDraftSettings,
 	validatePageMoveTarget,
 	validatePageSettingsSlug,
@@ -84,6 +92,7 @@ const requiredFiles = [
 	'src/docsera-shell/styles.scss',
 	'src/docsera-shell/tokens.scss',
 	'src/pages/index.js',
+	'src/pages/page-editor.js',
 	'src/pages/page-reader.js',
 	'src/pages/page-domain.js',
 	'src/workspaces/index.js',
@@ -119,6 +128,13 @@ for (const needle of [
 	'New page',
 	'Create page',
 	'Draft content',
+	'Body editor',
+	'Autosaves after a short idle delay',
+	'pageEditorStatusLabel',
+	'confirmSafePageEditorNavigation',
+	'ensurePageBodyEditorHost',
+	'ensurePageBodyEditorSession',
+	'pageEditorIsFailed',
 	'Delete page',
 	'docsera-shell__tree-action--settings',
 	'docsera-shell__tree-row-surface--drop-',
@@ -923,6 +939,81 @@ const authoringAfterCreate = buildWorkspaceShellViewModel({
 assert.equal(authoringAfterCreate.selectedPageSlug, 'release-notes');
 assert.equal(authoringAfterCreate.routeTargetPath, '/docsera/product-docs/release-notes');
 assert.equal(authoringAfterCreate.pageTree.some(page => page.pageSlug === 'release-notes'), true);
+
+assert.equal(authoringAfterCreate.canEditPageBody, true);
+assert.equal(authoringAfterCreate.selectedPage.bodyContentJson.type, 'doc');
+
+assert.equal(getPageBodyEditorStatusLabel(PAGE_BODY_EDITOR_STATUSES.saved), 'Saved');
+assert.equal(getPageBodyEditorStatusLabel(PAGE_BODY_EDITOR_STATUSES.dirty), 'Unsaved changes');
+assert.equal(getPageBodyEditorStatusLabel(PAGE_BODY_EDITOR_STATUSES.saving), 'Saving');
+assert.equal(getPageBodyEditorStatusLabel(PAGE_BODY_EDITOR_STATUSES.failed), 'Save failed');
+
+const bodyContentFromText = createPageBodyContentJsonFromText('First line\nSecond line');
+assert.equal(bodyContentFromText.type, 'doc');
+assert.equal(bodyContentFromText.content.length, 2);
+
+const publishedSavePreview = buildPageBodySaveRecord(demoPages[0], bodyContentFromText);
+assert.equal(publishedSavePreview.publicationState, PAGE_PUBLICATION_STATES.publishedWithUnpublishedChanges);
+assert.equal(publishedSavePreview.draftBodyText, 'First line\n\nSecond line');
+
+const draftContentFromSelection = resolvePageBodyContentJson(demoPages[0], true);
+assert.equal(draftContentFromSelection.type, 'doc');
+
+const editorWait = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+clearPageBodyEditorSession('page-editor-debounce-test');
+const autosaveSnapshots = [];
+const autosavePayloads = [];
+const autosaveSession = getPageBodyEditorSession('page-editor-debounce-test', {
+	initialContentJson: createPageBodyContentJsonFromText('Initial body'),
+	autosaveDelayMs: 25,
+	savePageBodyContent: async ({contentJson}) => {
+		autosavePayloads.push(contentJson);
+	},
+	onChange: snapshot => autosaveSnapshots.push(snapshot.status)
+});
+
+assert.equal(autosaveSession.getSnapshot().status, PAGE_BODY_EDITOR_STATUSES.saved);
+autosaveSession.recordContentChange(createPageBodyContentJsonFromText('Edited once'));
+autosaveSession.recordContentChange(createPageBodyContentJsonFromText('Edited twice'));
+assert.equal(hasPendingPageBodyEditorChanges(), true);
+await editorWait(10);
+assert.equal(autosavePayloads.length, 0);
+await editorWait(40);
+assert.equal(autosavePayloads.length, 1);
+assert.equal(autosaveSession.getSnapshot().status, PAGE_BODY_EDITOR_STATUSES.saved);
+assert.equal(autosaveSession.getSnapshot().hasUnsavedChanges, false);
+assert.ok(autosaveSnapshots.includes(PAGE_BODY_EDITOR_STATUSES.dirty));
+assert.ok(autosaveSnapshots.includes(PAGE_BODY_EDITOR_STATUSES.saving));
+assert.ok(autosaveSnapshots.includes(PAGE_BODY_EDITOR_STATUSES.saved));
+clearPageBodyEditorSession('page-editor-debounce-test');
+
+clearPageBodyEditorSession('page-editor-failure-test');
+let failureAttemptCount = 0;
+const failureSession = getPageBodyEditorSession('page-editor-failure-test', {
+	initialContentJson: createPageBodyContentJsonFromText('Initial body'),
+	autosaveDelayMs: 15,
+	savePageBodyContent: async ({contentJson}) => {
+		failureAttemptCount += 1;
+		if (failureAttemptCount === 1) {
+			throw new Error('simulated save failure');
+		}
+		return contentJson;
+	}
+});
+
+failureSession.recordContentChange(createPageBodyContentJsonFromText('Will fail once'));
+await editorWait(30);
+assert.equal(failureSession.getSnapshot().status, PAGE_BODY_EDITOR_STATUSES.failed);
+assert.equal(failureSession.getSnapshot().hasUnsavedChanges, true);
+assert.equal(failureAttemptCount, 1);
+
+failureSession.recordContentChange(createPageBodyContentJsonFromText('Will retry after another edit'));
+await editorWait(30);
+assert.equal(failureSession.getSnapshot().status, PAGE_BODY_EDITOR_STATUSES.saved);
+assert.equal(failureAttemptCount, 2);
+clearPageBodyEditorSession('page-editor-failure-test');
+assert.equal(hasPendingPageBodyEditorChanges(), false);
 
 const createdChildDraft = createPageDraft({
 	workspaceSysId: 'workspace-product-001',

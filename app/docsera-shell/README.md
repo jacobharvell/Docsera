@@ -17,7 +17,7 @@ Docsera product app shell scaffold
 - `src/docsera-shell/index.js` registers `x-82900-docsera-shell`.
 - `src/workspaces/workspace-domain.js` contains the workspace slug and provisioning contract.
 - `src/pages/page-domain.js` contains the page ownership, ordering, and slug contract.
-- `src/docsera-shell/index.js` now includes the local page-creation modal and page-tree selection flow.
+- `src/docsera-shell/index.js` now includes the local page-creation modal, page-tree selection flow, and the thin body editor/autosave baseline.
 - `src/docsera-shell/styles.scss` defines the Docsera shell token layer and launcher / reader layout conventions.
 - `now-ui.json` exposes the component to UI Builder.
 
@@ -98,5 +98,5 @@ Expected result:
 
 ## Remaining gaps
 
-- Live ServiceNow table persistence wiring
-- Page editor, autosave, settings overlay, and publish workflow
+- Live ServiceNow table persistence wiring for page body saves
+- Publish workflow

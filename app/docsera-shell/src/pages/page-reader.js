@@ -1,6 +1,10 @@
 import {
 	PAGE_PUBLICATION_STATES
 } from './page-domain.js';
+import {
+	extractPageBodyTextFromContentJson,
+	resolvePageBodyContentJson
+} from './page-editor.js';
 
 function cleanText(value) {
 	if (typeof value !== 'string') {
@@ -61,11 +65,12 @@ function resolvePageBodyText(page, preferDraft = false) {
 		return '';
 	}
 
+	const contentJson = resolvePageBodyContentJson(page, preferDraft);
 	if (preferDraft) {
-		return cleanText(page.draftBodyText || page.publishedBodyText || page.bodyText);
+		return cleanText(page.draftBodyText || page.publishedBodyText || page.bodyText || extractPageBodyTextFromContentJson(contentJson));
 	}
 
-	return cleanText(page.publishedBodyText || page.draftBodyText || page.bodyText);
+	return cleanText(page.publishedBodyText || page.draftBodyText || page.bodyText || extractPageBodyTextFromContentJson(contentJson));
 }
 
 function resolvePageSummary(page) {
@@ -146,6 +151,7 @@ function buildPageNode(page, visiblePagesByParent, selectedPageSysId, preferDraf
 		title: resolvePageTitle(page, preferDraftFields),
 		summary: resolvePageSummary(page),
 		bodyText: resolvePageBodyText(page, preferDraftFields),
+		bodyContentJson: resolvePageBodyContentJson(page, preferDraftFields),
 		parentPageSysId: resolvePageParentSysId(page),
 		siblingOrder: resolvePageSiblingOrder(page),
 		publicationState: page.publicationState,
@@ -460,6 +466,7 @@ export function createDocseraShellDemoPages() {
 			draftTitle: 'Draft Playground',
 			draftSlug: 'draft-playground',
 			draftBodyText: 'This page intentionally stays draft-only for not-found validation.',
+			draftBodyAutosaveFailureMode: 'fail-once',
 			publicationState: PAGE_PUBLICATION_STATES.draft,
 			active: true,
 			sections: []
@@ -619,6 +626,7 @@ export function buildWorkspaceShellViewModel({
 			canManageWorkspaceSettings: false,
 			canShowAuthoringControls: false,
 			canCreatePages: false,
+			canEditPageBody: false,
 			pageMode: 'reader'
 		};
 	}
@@ -649,7 +657,8 @@ export function buildWorkspaceShellViewModel({
 		...selectedPage,
 		title: resolvePageTitle(selectedPage, canShowAuthoringControls),
 		pageSlug: resolvePageSlug(selectedPage, canShowAuthoringControls),
-		bodyText: resolvePageBodyText(selectedPage, canShowAuthoringControls)
+		bodyText: resolvePageBodyText(selectedPage, canShowAuthoringControls),
+		bodyContentJson: resolvePageBodyContentJson(selectedPage, canShowAuthoringControls)
 	} : null;
 	const status = visiblePages.length === 0
 		? 'empty-workspace'
@@ -674,6 +683,7 @@ export function buildWorkspaceShellViewModel({
 		canManageWorkspaceSettings: Boolean(capabilityService && typeof capabilityService.isWorkspaceAdmin === 'function' && capabilityService.isWorkspaceAdmin(workspace)),
 		canShowAuthoringControls,
 		canCreatePages: canShowAuthoringControls && workspace.active !== false,
+		canEditPageBody: Boolean(canShowAuthoringControls && selectedPage),
 		pageMode: canShowAuthoringControls ? 'authoring' : 'reader'
 	};
 }
