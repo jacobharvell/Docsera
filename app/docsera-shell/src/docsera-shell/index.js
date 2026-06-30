@@ -16,10 +16,13 @@ import {
 } from '../workspaces';
 import {
 	buildWorkspaceShellViewModel,
+	applyPageMove,
 	collectPageSubtreeSysIds,
 	createDocseraShellDemoPages,
+	PAGE_TREE_MAX_DEPTH,
 	pickNextVisiblePageAfterDelete,
 	removePageSubtree,
+	validatePageMoveTarget,
 	updatePageDraftSettings,
 	validatePageSettingsSlug,
 	validatePageSettingsTitle
@@ -86,6 +89,7 @@ function createInitialState() {
 		pageSettingsDeleteOpen: false,
 		pageSettingsDeletePageSysId: '',
 		pageSettingsDeleteError: '',
+		pageTreeDrag: createPageTreeDragDefaults(),
 		workspaceStatus: 'Workspace shell is ready.',
 		workspaces: createMyWorkspacesDemoWorkspaces(),
 		pages: createDocseraShellDemoPages(),
@@ -159,6 +163,18 @@ function createPageDeleteDefaults(page = null) {
 	};
 }
 
+function createPageTreeDragDefaults() {
+	return {
+		active: false,
+		sourcePageSysId: '',
+		sourcePageTitle: '',
+		targetPageSysId: '',
+		targetPlacement: '',
+		targetValid: false,
+		invalidReason: ''
+	};
+}
+
 function resetCreatePageForm(parentPage = null) {
 	return createPageModalDefaults(parentPage);
 }
@@ -194,6 +210,163 @@ function createLocalPageSysId(workspaceSlug, pageSlug) {
 	return `page-${safeWorkspaceSlug}-${safePageSlug}-${Date.now().toString(36)}`;
 }
 
+function buildPageTreeDragGhost(pageTitle) {
+	const ghost = document.createElement('div');
+	ghost.className = 'docsera-shell__tree-drag-ghost';
+
+	const title = document.createElement('div');
+	title.className = 'docsera-shell__tree-drag-ghost-title';
+	title.textContent = pageTitle || 'Page';
+	ghost.appendChild(title);
+
+	const meta = document.createElement('div');
+	meta.className = 'docsera-shell__tree-drag-ghost-meta';
+	meta.textContent = 'Move page';
+	ghost.appendChild(meta);
+
+	document.body.appendChild(ghost);
+	return ghost;
+}
+
+function resolvePageTreeRowPlacement(rowRect, clientY) {
+	if (!rowRect) {
+		return 'inside';
+	}
+
+	const relativeY = Math.max(0, clientY - rowRect.top);
+	const rowHeight = Math.max(1, rowRect.height || 1);
+
+	if (relativeY <= rowHeight * 0.25) {
+		return 'before';
+	}
+
+	if (relativeY >= rowHeight * 0.75) {
+		return 'after';
+	}
+
+	return 'inside';
+}
+
+function resolvePageTreeDropTarget(treeElement, {
+	clientX = 0,
+	clientY = 0,
+	sourcePageSysId = '',
+	pages = []
+} = {}) {
+	if (!treeElement || typeof treeElement.querySelectorAll !== 'function' || !Array.isArray(pages) || !pages.length) {
+		return {
+			targetPageSysId: '',
+			targetPlacement: '',
+			targetValid: false,
+			invalidReason: ''
+		};
+	}
+
+	const rowElements = Array.from(treeElement.querySelectorAll('[data-docsera-page-row="true"]'));
+	const rows = rowElements
+		.map(rowElement => ({
+			rowElement,
+			pageSysId: rowElement.dataset.pageSysId || '',
+			rect: rowElement.getBoundingClientRect()
+		}))
+		.filter(row => row.pageSysId);
+
+	if (!rows.length) {
+		return {
+			targetPageSysId: '',
+			targetPlacement: '',
+			targetValid: false,
+			invalidReason: ''
+		};
+	}
+
+	const elementHits = Array.from(document.elementsFromPoint(clientX, clientY));
+	const directRowElement = elementHits
+		.map(hit => (hit && typeof hit.closest === 'function' ? hit.closest('[data-docsera-page-row="true"]') : null))
+		.find(Boolean);
+	const directRow = directRowElement
+		? rows.find(row => row.rowElement === directRowElement) || null
+		: null;
+
+	const tryResolveTarget = row => {
+		if (!row) {
+			return null;
+		}
+
+		const targetPlacement = resolvePageTreeRowPlacement(row.rect, clientY);
+		const validation = validatePageMoveTarget(pages, sourcePageSysId, row.pageSysId, targetPlacement, PAGE_TREE_MAX_DEPTH);
+		return {
+			targetPageSysId: row.pageSysId,
+			targetPlacement,
+			targetValid: validation.valid,
+			invalidReason: validation.valid ? '' : validation.error
+		};
+	};
+
+	if (directRow) {
+		return tryResolveTarget(directRow);
+	}
+
+	const nearestRow = rows
+		.map(row => {
+			const distance = clientY < row.rect.top
+				? row.rect.top - clientY
+				: clientY > row.rect.bottom
+					? clientY - row.rect.bottom
+					: 0;
+
+			return {
+				...row,
+				distance
+			};
+		})
+		.sort((left, right) => left.distance - right.distance || left.rect.top - right.rect.top || left.rect.left - right.rect.left)[0];
+
+	if (!nearestRow) {
+		return {
+			targetPageSysId: '',
+			targetPlacement: '',
+			targetValid: false,
+			invalidReason: ''
+		};
+	}
+
+	for (const candidate of rows
+		.map(row => {
+			const distance = clientY < row.rect.top
+				? row.rect.top - clientY
+				: clientY > row.rect.bottom
+					? clientY - row.rect.bottom
+					: 0;
+
+			return {
+				...row,
+				distance
+			};
+		})
+		.sort((left, right) => left.distance - right.distance || left.rect.top - right.rect.top || left.rect.left - right.rect.left)) {
+		const targetPlacement = resolvePageTreeRowPlacement(candidate.rect, clientY);
+		const validation = validatePageMoveTarget(pages, sourcePageSysId, candidate.pageSysId, targetPlacement, PAGE_TREE_MAX_DEPTH);
+		if (validation.valid) {
+			return {
+				targetPageSysId: candidate.pageSysId,
+				targetPlacement,
+				targetValid: true,
+				invalidReason: ''
+			};
+		}
+	}
+
+	const fallbackPlacement = resolvePageTreeRowPlacement(nearestRow.rect, clientY);
+	const fallbackValidation = validatePageMoveTarget(pages, sourcePageSysId, nearestRow.pageSysId, fallbackPlacement, PAGE_TREE_MAX_DEPTH);
+	return {
+		targetPageSysId: nearestRow.pageSysId,
+		targetPlacement: fallbackPlacement,
+		targetValid: false,
+		invalidReason: fallbackValidation.error
+	};
+}
+
 function renderPageTreeNodes(nodes, {
 	selectPage,
 	openPageSettings,
@@ -201,7 +374,11 @@ function renderPageTreeNodes(nodes, {
 	selectedPageSlug,
 	pageSettingsPageSysId,
 	canCreatePages,
-	canManagePageSettings
+	canManagePageSettings,
+	canDragPages,
+	pageTreeDrag,
+	startPageTreeDrag,
+	handlePageTreeDragEnd
 }) {
 	if (!Array.isArray(nodes) || nodes.length === 0) {
 		return null;
@@ -211,7 +388,18 @@ function renderPageTreeNodes(nodes, {
 		<ul className="docsera-shell__tree-list" role="list">
 			{nodes.map(node => (
 				<li key={node.sysId} className="docsera-shell__tree-item">
-					<div className="docsera-shell__tree-row">
+					<div
+						className={`docsera-shell__tree-row-surface${canDragPages ? ' docsera-shell__tree-row-surface--draggable' : ''}${pageTreeDrag.active && pageTreeDrag.sourcePageSysId === node.sysId ? ' docsera-shell__tree-row-surface--dragging' : ''}${pageTreeDrag.active && pageTreeDrag.targetPageSysId === node.sysId && pageTreeDrag.targetValid ? ` docsera-shell__tree-row-surface--drop-${pageTreeDrag.targetPlacement}` : ''}${pageTreeDrag.active && pageTreeDrag.targetPageSysId === node.sysId && !pageTreeDrag.targetValid ? ' docsera-shell__tree-row-surface--drop-invalid' : ''}${node.pageSlug === selectedPageSlug ? ' docsera-shell__tree-row-surface--selected' : ''}`}
+						data-docsera-page-row="true"
+						data-page-sys-id={node.sysId}
+						draggable={canDragPages}
+						aria-grabbed={pageTreeDrag.active && pageTreeDrag.sourcePageSysId === node.sysId ? 'true' : 'false'}
+						on-dragstart={event => startPageTreeDrag(node, event)}
+						on-dragend={handlePageTreeDragEnd}
+					>
+						{canDragPages ? (
+							<span className="docsera-shell__tree-drag-handle" aria-hidden="true">⋮⋮</span>
+						) : null}
 						<button
 							type="button"
 							className={`docsera-shell__tree-button${node.pageSlug === selectedPageSlug ? ' docsera-shell__tree-button--selected' : ''}`}
@@ -251,7 +439,7 @@ function renderPageTreeNodes(nodes, {
 									event.stopPropagation();
 									createChildPage(node);
 								}}
-							>
+								>
 								New child
 							</button>
 						) : null}
@@ -263,7 +451,11 @@ function renderPageTreeNodes(nodes, {
 						selectedPageSlug,
 						pageSettingsPageSysId,
 						canCreatePages,
-						canManagePageSettings
+						canManagePageSettings,
+						canDragPages,
+						pageTreeDrag,
+						startPageTreeDrag,
+						handlePageTreeDragEnd
 					}) : null}
 				</li>
 			))}
@@ -1124,6 +1316,173 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 			}
 		});
 	};
+	const pageTreeDrag = state.pageTreeDrag || createPageTreeDragDefaults();
+	const canDragPages = Boolean(shell.canShowAuthoringControls && shell.workspace);
+	const clearPageTreeDragState = () => {
+		if (!pageTreeDrag.active && !pageTreeDrag.sourcePageSysId && !pageTreeDrag.targetPageSysId) {
+			return;
+		}
+
+		updateState({
+			pageTreeDrag: createPageTreeDragDefaults()
+		});
+	};
+	const updatePageTreeDragState = nextDragState => {
+		const normalizedNextState = {
+			...createPageTreeDragDefaults(),
+			...(nextDragState || {})
+		};
+		const currentState = pageTreeDrag || createPageTreeDragDefaults();
+		const stateKeys = [
+			'active',
+			'sourcePageSysId',
+			'sourcePageTitle',
+			'targetPageSysId',
+			'targetPlacement',
+			'targetValid',
+			'invalidReason'
+		];
+
+		if (stateKeys.every(key => currentState[key] === normalizedNextState[key])) {
+			return;
+		}
+
+		updateState({
+			pageTreeDrag: normalizedNextState
+		});
+	};
+	const startPageTreeDrag = (page, event) => {
+		if (!canDragPages || !page || !event || !event.dataTransfer) {
+			return;
+		}
+
+		event.stopPropagation();
+
+		const ghost = buildPageTreeDragGhost(page.title || 'Page');
+		event.dataTransfer.effectAllowed = 'move';
+		event.dataTransfer.setData('text/plain', page.title || 'Page');
+		event.dataTransfer.setDragImage(ghost, 24, 18);
+		window.setTimeout(() => {
+			if (ghost && ghost.parentNode) {
+				ghost.parentNode.removeChild(ghost);
+			}
+		}, 0);
+
+		updatePageTreeDragState({
+			active: true,
+			sourcePageSysId: page.sysId || '',
+			sourcePageTitle: page.title || page.draftTitle || page.publishedTitle || 'Page',
+			targetPageSysId: '',
+			targetPlacement: '',
+			targetValid: false,
+			invalidReason: ''
+		});
+	};
+	const handlePageTreeDragOver = event => {
+		if (!canDragPages || !pageTreeDrag.active || !shell.workspace || !event || !event.currentTarget) {
+			return;
+		}
+
+		event.preventDefault();
+		event.stopPropagation();
+
+		const nextTarget = resolvePageTreeDropTarget(event.currentTarget, {
+			clientX: event.clientX,
+			clientY: event.clientY,
+			sourcePageSysId: pageTreeDrag.sourcePageSysId,
+			pages: shell.allPages
+		});
+		if (event.dataTransfer) {
+			event.dataTransfer.dropEffect = nextTarget.targetValid ? 'move' : 'none';
+		}
+
+		updatePageTreeDragState({
+			...pageTreeDrag,
+			...nextTarget,
+			active: true
+		});
+	};
+	const handlePageTreeDragLeave = event => {
+		if (!canDragPages || !pageTreeDrag.active || !event) {
+			return;
+		}
+
+		const relatedTarget = event.relatedTarget;
+		if (relatedTarget && event.currentTarget && typeof event.currentTarget.contains === 'function' && event.currentTarget.contains(relatedTarget)) {
+			return;
+		}
+
+		updatePageTreeDragState({
+			...pageTreeDrag,
+			targetPageSysId: '',
+			targetPlacement: '',
+			targetValid: false,
+			invalidReason: '',
+			active: true
+		});
+	};
+	const handlePageTreeDragEnd = () => {
+		clearPageTreeDragState();
+	};
+	const handlePageTreeDrop = event => {
+		if (!canDragPages || !pageTreeDrag.active || !shell.workspace || !event || !event.currentTarget) {
+			return;
+		}
+
+		event.preventDefault();
+		event.stopPropagation();
+
+		const nextTarget = resolvePageTreeDropTarget(event.currentTarget, {
+			clientX: event.clientX,
+			clientY: event.clientY,
+			sourcePageSysId: pageTreeDrag.sourcePageSysId,
+			pages: shell.allPages
+		});
+
+		if (!nextTarget.targetValid) {
+			updateState({
+				workspaceStatus: nextTarget.invalidReason || 'That drop target is not valid.'
+			});
+			clearPageTreeDragState();
+			return;
+		}
+
+		try {
+			const nextPages = applyPageMove(
+				state.pages,
+				pageTreeDrag.sourcePageSysId,
+				nextTarget.targetPageSysId,
+				nextTarget.targetPlacement,
+				PAGE_TREE_MAX_DEPTH
+			);
+			const nextShell = buildWorkspaceShellViewModel({
+				workspaces: state.workspaces,
+				pages: nextPages,
+				capabilityService: createWorkspaceCapabilitiesForDemo(state.userAccess),
+				selectedWorkspaceSlug: shell.workspace.workspaceSlug,
+				selectedPageSlug: shell.selectedPageSlug
+			});
+			const movedPage = findPageBySysId(nextPages, pageTreeDrag.sourcePageSysId);
+			const targetPage = findPageBySysId(nextPages, nextTarget.targetPageSysId);
+			const targetLabel = targetPage ? targetPage.title || targetPage.draftTitle || targetPage.publishedTitle || 'page' : 'page';
+			const moveLabel = nextTarget.targetPlacement === 'inside' ? 'inside' : nextTarget.targetPlacement;
+
+			updateState({
+				pages: nextPages,
+				selectedWorkspaceSlug: shell.workspace.workspaceSlug,
+				selectedPageSlug: nextShell.selectedPageSlug || shell.selectedPageSlug,
+				pageTreeDrag: createPageTreeDragDefaults(),
+				workspaceStatus: movedPage
+					? `Moved ${movedPage.title || movedPage.draftTitle || movedPage.publishedTitle || 'page'} ${moveLabel} ${targetLabel}.`
+					: 'Page move saved.'
+			});
+		} catch (error) {
+			updateState({
+				workspaceStatus: error && error.message ? error.message : 'The page move could not be saved.'
+			});
+			clearPageTreeDragState();
+		}
+	};
 
 	const workspacePages = shell.workspace ? getWorkspacePagesForCreation(state.pages, shell.workspace.sysId) : [];
 	const canCreatePages = Boolean(shell.canCreatePages && shell.workspace);
@@ -1744,7 +2103,13 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 						<span className="docsera-shell__toolbar-chip">{shell.routeTargetPath}</span>
 					</div>
 
-					<nav className="docsera-shell__tree" aria-label="Workspace page tree">
+					<nav
+						className={`docsera-shell__tree${canDragPages ? ' docsera-shell__tree--droppable' : ''}`}
+						aria-label="Workspace page tree"
+						on-dragover={handlePageTreeDragOver}
+						on-drop={handlePageTreeDrop}
+						on-dragleave={handlePageTreeDragLeave}
+					>
 						{shell.pageTree.length ? renderPageTreeNodes(shell.pageTree, {
 							selectPage,
 							openPageSettings,
@@ -1752,7 +2117,11 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 							selectedPageSlug: shell.selectedPageSlug,
 							pageSettingsPageSysId: state.pageSettingsPageSysId,
 							canCreatePages,
-							canManagePageSettings
+							canManagePageSettings,
+							canDragPages,
+							pageTreeDrag,
+							startPageTreeDrag,
+							handlePageTreeDragEnd
 						}) : (
 							<div className="docsera-shell__toc-empty">
 								{canCreatePages ? (

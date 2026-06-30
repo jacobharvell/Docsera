@@ -3,6 +3,7 @@ const DEFAULT_PAGE_CONTENT_JSON = Object.freeze({
 	type: 'doc',
 	content: []
 });
+export const PAGE_TREE_MAX_DEPTH = 5;
 
 const PAGE_PUBLICATION_STATES = Object.freeze({
 	draft: 'draft',
@@ -160,6 +161,352 @@ function resolvePageSiblingOrder(page) {
 
 	const order = Number(page.siblingOrder ?? page.sortOrder ?? page.order);
 	return Number.isFinite(order) ? Math.floor(order) : null;
+}
+
+function buildPageBySysIdMap(pages = []) {
+	const pagesBySysId = new Map();
+
+	for (const page of Array.isArray(pages) ? pages : []) {
+		if (!page || typeof page !== 'object') {
+			continue;
+		}
+
+		const sysId = resolvePageSysId(page);
+		if (sysId) {
+			pagesBySysId.set(sysId, page);
+		}
+	}
+
+	return pagesBySysId;
+}
+
+function buildPagesByParentMap(pages = []) {
+	const pagesByParent = new Map();
+
+	for (const page of Array.isArray(pages) ? pages : []) {
+		if (!page || typeof page !== 'object') {
+			continue;
+		}
+
+		const parentSysId = resolvePageParentSysId(page);
+		if (!pagesByParent.has(parentSysId)) {
+			pagesByParent.set(parentSysId, []);
+		}
+
+		pagesByParent.get(parentSysId).push(page);
+	}
+
+	return pagesByParent;
+}
+
+function comparePageSiblingPlacement(left, right) {
+	const leftOrder = resolvePageSiblingOrder(left);
+	const rightOrder = resolvePageSiblingOrder(right);
+
+	if (leftOrder !== rightOrder) {
+		return (leftOrder ?? Number.POSITIVE_INFINITY) - (rightOrder ?? Number.POSITIVE_INFINITY);
+	}
+
+	const leftTitle = cleanText(left.draftTitle || left.publishedTitle || left.title);
+	const rightTitle = cleanText(right.draftTitle || right.publishedTitle || right.title);
+	const titleComparison = leftTitle.localeCompare(rightTitle, undefined, {sensitivity: 'base'});
+	if (titleComparison !== 0) {
+		return titleComparison;
+	}
+
+	const leftSlug = cleanText(left.draftSlug || left.publishedSlug || left.slug || left.pageSlug);
+	const rightSlug = cleanText(right.draftSlug || right.publishedSlug || right.slug || right.pageSlug);
+	const slugComparison = leftSlug.localeCompare(rightSlug, undefined, {sensitivity: 'base'});
+	if (slugComparison !== 0) {
+		return slugComparison;
+	}
+
+	return resolvePageSysId(left).localeCompare(resolvePageSysId(right), undefined, {sensitivity: 'base'});
+}
+
+export function collectPageAncestorSysIds(pages = [], pageSysId = '') {
+	const normalizedPageSysId = cleanText(pageSysId);
+	if (!normalizedPageSysId) {
+		return [];
+	}
+
+	const pagesBySysId = buildPageBySysIdMap(pages);
+	const ancestors = [];
+	const visited = new Set();
+	let currentPage = pagesBySysId.get(normalizedPageSysId) || null;
+
+	while (currentPage && !visited.has(resolvePageSysId(currentPage))) {
+		const currentParentSysId = resolvePageParentSysId(currentPage);
+		if (!currentParentSysId || visited.has(currentParentSysId)) {
+			break;
+		}
+
+		visited.add(resolvePageSysId(currentPage));
+		ancestors.push(currentParentSysId);
+		currentPage = pagesBySysId.get(currentParentSysId) || null;
+	}
+
+	return ancestors;
+}
+
+export function resolvePageDepth(pages = [], pageSysId = '') {
+	const normalizedPageSysId = cleanText(pageSysId);
+	if (!normalizedPageSysId) {
+		return 0;
+	}
+
+	const pagesBySysId = buildPageBySysIdMap(pages);
+	if (!pagesBySysId.has(normalizedPageSysId)) {
+		return 0;
+	}
+
+	return collectPageAncestorSysIds(pages, normalizedPageSysId).length + 1;
+}
+
+export function resolvePageSubtreeDepth(pages = [], rootPageSysId = '') {
+	const normalizedRootPageSysId = cleanText(rootPageSysId);
+	if (!normalizedRootPageSysId) {
+		return 0;
+	}
+
+	const pagesBySysId = buildPageBySysIdMap(pages);
+	if (!pagesBySysId.has(normalizedRootPageSysId)) {
+		return 0;
+	}
+
+	const pagesByParent = buildPagesByParentMap(pages);
+	const visited = new Set();
+	const queue = [{
+		sysId: normalizedRootPageSysId,
+		depth: 1
+	}];
+	let maxDepth = 0;
+
+	while (queue.length) {
+		const current = queue.shift();
+		if (!current || visited.has(current.sysId)) {
+			continue;
+		}
+
+		visited.add(current.sysId);
+		if (current.depth > maxDepth) {
+			maxDepth = current.depth;
+		}
+
+		const childPages = pagesByParent.get(current.sysId) || [];
+		for (const childPage of childPages) {
+			const childSysId = resolvePageSysId(childPage);
+			if (childSysId && !visited.has(childSysId)) {
+				queue.push({
+					sysId: childSysId,
+					depth: current.depth + 1
+				});
+			}
+		}
+	}
+
+	return maxDepth;
+}
+
+export function isPageDescendantOf(pages = [], pageSysId = '', ancestorPageSysId = '') {
+	const normalizedPageSysId = cleanText(pageSysId);
+	const normalizedAncestorPageSysId = cleanText(ancestorPageSysId);
+	if (!normalizedPageSysId || !normalizedAncestorPageSysId || normalizedPageSysId === normalizedAncestorPageSysId) {
+		return false;
+	}
+
+	return collectPageAncestorSysIds(pages, normalizedPageSysId).includes(normalizedAncestorPageSysId);
+}
+
+function normalizeSiblingGroupOrder(pages, workspaceSysId, parentPageSysId, nextPagesBySysId) {
+	const normalizedWorkspaceSysId = cleanText(workspaceSysId);
+	const normalizedParentPageSysId = cleanText(parentPageSysId);
+	const siblings = (Array.isArray(pages) ? pages : []).filter(page => {
+		if (!page || typeof page !== 'object') {
+			return false;
+		}
+
+		if (normalizedWorkspaceSysId && resolvePageWorkspaceSysId(page) !== normalizedWorkspaceSysId) {
+			return false;
+		}
+
+		return cleanText(resolvePageParentSysId(page)) === normalizedParentPageSysId;
+	});
+
+	siblings.forEach((page, index) => {
+		nextPagesBySysId.set(resolvePageSysId(page), {
+			...page,
+			siblingOrder: index + 1
+		});
+	});
+}
+
+function buildSiblingGroupKey(workspaceSysId, parentPageSysId) {
+	return `${cleanText(workspaceSysId)}::${cleanText(parentPageSysId)}`;
+}
+
+export function validatePageMoveTarget(pages = [], movingPageSysId = '', targetPageSysId = '', placement = 'inside', maxDepth = PAGE_TREE_MAX_DEPTH) {
+	const normalizedMovingPageSysId = cleanText(movingPageSysId);
+	const normalizedTargetPageSysId = cleanText(targetPageSysId);
+	const normalizedPlacement = cleanText(placement).toLowerCase();
+	const supportedPlacements = new Set(['before', 'after', 'inside']);
+	const depthLimit = Number(maxDepth);
+
+	if (!normalizedMovingPageSysId) {
+		return {
+			valid: false,
+			error: 'A moved page is required.'
+		};
+	}
+
+	if (!normalizedTargetPageSysId) {
+		return {
+			valid: false,
+			error: 'A drop target is required.'
+		};
+	}
+
+	if (!supportedPlacements.has(normalizedPlacement)) {
+		return {
+			valid: false,
+			error: 'A valid drop position is required.'
+		};
+	}
+
+	const pagesBySysId = buildPageBySysIdMap(pages);
+	const movingPage = pagesBySysId.get(normalizedMovingPageSysId) || null;
+	const targetPage = pagesBySysId.get(normalizedTargetPageSysId) || null;
+
+	if (!movingPage || !targetPage) {
+		return {
+			valid: false,
+			error: 'The page tree could not resolve the dragged page or drop target.'
+		};
+	}
+
+	const movingWorkspaceSysId = resolvePageWorkspaceSysId(movingPage);
+	const targetWorkspaceSysId = resolvePageWorkspaceSysId(targetPage);
+
+	if (!movingWorkspaceSysId || movingWorkspaceSysId !== targetWorkspaceSysId) {
+		return {
+			valid: false,
+			error: 'Pages must stay within the same workspace.'
+		};
+	}
+
+	if (normalizedMovingPageSysId === normalizedTargetPageSysId) {
+		return {
+			valid: false,
+			error: 'A page cannot be dropped into itself.'
+		};
+	}
+
+	if (isPageDescendantOf(pages, normalizedTargetPageSysId, normalizedMovingPageSysId)) {
+		return {
+			valid: false,
+			error: 'A page cannot be dropped into one of its descendants.'
+		};
+	}
+
+	const destinationParentPageSysId = normalizedPlacement === 'inside'
+		? normalizedTargetPageSysId
+		: resolvePageParentSysId(targetPage);
+	const destinationParentDepth = destinationParentPageSysId
+		? resolvePageDepth(pages, destinationParentPageSysId)
+		: 0;
+	const movingSubtreeDepth = resolvePageSubtreeDepth(pages, normalizedMovingPageSysId);
+	const movedPageDepth = normalizedPlacement === 'inside'
+		? destinationParentDepth + 1
+		: destinationParentDepth + 1;
+
+	if (!Number.isFinite(depthLimit) || depthLimit < 1) {
+		return {
+			valid: false,
+			error: 'The maximum nesting depth is not configured.'
+		};
+	}
+
+	if (movedPageDepth + movingSubtreeDepth - 1 > depthLimit) {
+		return {
+			valid: false,
+			error: `This move would exceed the maximum nesting depth of ${depthLimit} levels.`
+		};
+	}
+
+	return {
+		valid: true,
+		error: '',
+		movingPageSysId: normalizedMovingPageSysId,
+		targetPageSysId: normalizedTargetPageSysId,
+		placement: normalizedPlacement,
+		workspaceSysId: movingWorkspaceSysId,
+		destinationParentPageSysId,
+		destinationParentDepth,
+		movingSubtreeDepth,
+		movedPageDepth
+	};
+}
+
+export function applyPageMove(pages = [], movingPageSysId = '', targetPageSysId = '', placement = 'inside', maxDepth = PAGE_TREE_MAX_DEPTH) {
+	if (!Array.isArray(pages)) {
+		return [];
+	}
+
+	const validation = validatePageMoveTarget(pages, movingPageSysId, targetPageSysId, placement, maxDepth);
+	if (!validation.valid) {
+		throw new Error(validation.error);
+	}
+
+	const pagesBySysId = buildPageBySysIdMap(pages);
+	const movingPage = pagesBySysId.get(validation.movingPageSysId);
+	const sourceParentPageSysId = resolvePageParentSysId(movingPage);
+	const destinationParentPageSysId = validation.destinationParentPageSysId;
+	const workspaceSysId = validation.workspaceSysId;
+	const sameSiblingGroup = buildSiblingGroupKey(workspaceSysId, sourceParentPageSysId) === buildSiblingGroupKey(workspaceSysId, destinationParentPageSysId);
+	const sourceSiblingGroup = pages
+		.filter(page => page && typeof page === 'object' && resolvePageWorkspaceSysId(page) === workspaceSysId && cleanText(resolvePageParentSysId(page)) === cleanText(sourceParentPageSysId) && resolvePageSysId(page) !== validation.movingPageSysId)
+		.slice()
+		.sort(comparePageSiblingPlacement);
+	const destinationSiblingGroup = sameSiblingGroup
+		? sourceSiblingGroup.slice()
+		: pages
+			.filter(page => page && typeof page === 'object' && resolvePageWorkspaceSysId(page) === workspaceSysId && cleanText(resolvePageParentSysId(page)) === cleanText(destinationParentPageSysId) && resolvePageSysId(page) !== validation.movingPageSysId)
+			.slice()
+			.sort(comparePageSiblingPlacement);
+
+	const movedPage = {
+		...movingPage,
+		parentPageSysId: destinationParentPageSysId || null
+	};
+
+	const insertionIndex = (() => {
+		if (validation.placement === 'inside') {
+			return destinationSiblingGroup.length;
+		}
+
+		const targetIndex = destinationSiblingGroup.findIndex(page => resolvePageSysId(page) === validation.targetPageSysId);
+		if (targetIndex < 0) {
+			return destinationSiblingGroup.length;
+		}
+
+		return validation.placement === 'before' ? targetIndex : targetIndex + 1;
+	})();
+
+	destinationSiblingGroup.splice(insertionIndex, 0, movedPage);
+
+	const nextPagesBySysId = new Map(pages.map(page => [resolvePageSysId(page), page]));
+	nextPagesBySysId.set(validation.movingPageSysId, movedPage);
+	if (sameSiblingGroup) {
+		normalizeSiblingGroupOrder(destinationSiblingGroup, workspaceSysId, destinationParentPageSysId, nextPagesBySysId);
+	} else {
+		normalizeSiblingGroupOrder(sourceSiblingGroup, workspaceSysId, sourceParentPageSysId, nextPagesBySysId);
+		normalizeSiblingGroupOrder(destinationSiblingGroup, workspaceSysId, destinationParentPageSysId, nextPagesBySysId);
+	}
+
+	return pages.map(page => {
+		const sysId = resolvePageSysId(page);
+		return nextPagesBySysId.has(sysId) ? nextPagesBySysId.get(sysId) : page;
+	});
 }
 
 function isValidPageSlugFormat(value) {
@@ -455,6 +802,17 @@ export function createPageDraft(input, retainedPages = []) {
 
 	if (parentPage.sysId && parentPage.workspaceSysId !== workspaceSysId) {
 		throw new TypeError('A parent page must belong to the same workspace.');
+	}
+
+	if (parentPage.sysId) {
+		const parentDepth = resolvePageDepth(retainedPages, parentPage.sysId);
+		if (!parentDepth) {
+			throw new TypeError('A valid parent page is required.');
+		}
+
+		if (parentDepth >= PAGE_TREE_MAX_DEPTH) {
+			throw new TypeError(`A page cannot be nested deeper than ${PAGE_TREE_MAX_DEPTH} levels.`);
+		}
 	}
 
 	const draftSlug = allocatePageSlug(

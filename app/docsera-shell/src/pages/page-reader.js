@@ -465,6 +465,54 @@ export function createDocseraShellDemoPages() {
 			sections: []
 		},
 		{
+			sysId: 'page-product-draft-branch',
+			workspaceSysId: 'workspace-product-001',
+			parentPageSysId: 'page-product-draft-playground',
+			siblingOrder: 1,
+			draftTitle: 'Draft Branch',
+			draftSlug: 'draft-branch',
+			draftBodyText: 'Draft-only branch used to exercise deep nesting and drag/drop moves.',
+			publicationState: PAGE_PUBLICATION_STATES.draft,
+			active: true,
+			sections: []
+		},
+		{
+			sysId: 'page-product-draft-branch-child',
+			workspaceSysId: 'workspace-product-001',
+			parentPageSysId: 'page-product-draft-branch',
+			siblingOrder: 1,
+			draftTitle: 'Draft Branch Child',
+			draftSlug: 'draft-branch-child',
+			draftBodyText: 'Second level in the deep draft-only chain.',
+			publicationState: PAGE_PUBLICATION_STATES.draft,
+			active: true,
+			sections: []
+		},
+		{
+			sysId: 'page-product-draft-branch-grandchild',
+			workspaceSysId: 'workspace-product-001',
+			parentPageSysId: 'page-product-draft-branch-child',
+			siblingOrder: 1,
+			draftTitle: 'Draft Branch Grandchild',
+			draftSlug: 'draft-branch-grandchild',
+			draftBodyText: 'Third nested page in the deep draft-only chain.',
+			publicationState: PAGE_PUBLICATION_STATES.draft,
+			active: true,
+			sections: []
+		},
+		{
+			sysId: 'page-product-draft-branch-leaf',
+			workspaceSysId: 'workspace-product-001',
+			parentPageSysId: 'page-product-draft-branch-grandchild',
+			siblingOrder: 1,
+			draftTitle: 'Draft Branch Leaf',
+			draftSlug: 'draft-branch-leaf',
+			draftBodyText: 'Fifth level page in the deep nesting chain.',
+			publicationState: PAGE_PUBLICATION_STATES.draft,
+			active: true,
+			sections: []
+		},
+		{
 			sysId: 'page-support-home',
 			workspaceSysId: 'workspace-support-001',
 			parentPageSysId: null,

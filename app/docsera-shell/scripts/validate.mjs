@@ -23,16 +23,23 @@ import {
 import {
 	allocatePageSiblingOrder,
 	allocatePageSlug,
+	applyPageMove,
+	collectPageAncestorSysIds,
 	collectPageSubtreeSysIds,
 	buildWorkspaceShellViewModel,
 	PAGE_PERSISTENCE_MODEL,
 	PAGE_PUBLICATION_STATES,
+	PAGE_TREE_MAX_DEPTH,
 	createPageDraft,
 	createDocseraShellDemoPages,
 	flattenPageTree,
+	isPageDescendantOf,
 	pickNextVisiblePageAfterDelete,
 	removePageSubtree,
+	resolvePageDepth,
+	resolvePageSubtreeDepth,
 	updatePageDraftSettings,
+	validatePageMoveTarget,
 	validatePageSettingsSlug,
 	validatePageSettingsTitle,
 	slugifyPageTitle
@@ -113,7 +120,12 @@ for (const needle of [
 	'Create page',
 	'Draft content',
 	'Delete page',
-	'docsera-shell__tree-action--settings'
+	'docsera-shell__tree-action--settings',
+	'docsera-shell__tree-row-surface--drop-',
+	'docsera-shell__tree-drag-handle',
+	'docsera-shell__tree-drag-ghost',
+	'handlePageTreeDrop',
+	'startPageTreeDrag'
 ]) {
 	if (!shellSource.includes(needle)) {
 		throw new Error(`Missing "${needle}" in shell source.`);
@@ -257,6 +269,7 @@ assert.equal(PAGE_PERSISTENCE_MODEL.tableName, 'x_82900_odoc2_page');
 assert.equal(PAGE_PUBLICATION_STATES.draft, 'draft');
 assert.equal(PAGE_PUBLICATION_STATES.published, 'published');
 assert.equal(PAGE_PUBLICATION_STATES.publishedWithUnpublishedChanges, 'published_with_unpublished_changes');
+assert.equal(PAGE_TREE_MAX_DEPTH, 5);
 
 const draft = createWorkspaceDraft({
 	name: 'HR Docs',
@@ -643,6 +656,25 @@ assert.equal(calls.createGroup[0].workspaceSlug, 'hr-docs-2');
 
 const demoPages = createDocseraShellDemoPages();
 assert.ok(demoPages.length >= 5);
+assert.equal(resolvePageDepth(demoPages, 'page-product-draft-playground'), 1);
+assert.equal(resolvePageDepth(demoPages, 'page-product-draft-branch-leaf'), 5);
+assert.equal(resolvePageSubtreeDepth(demoPages, 'page-product-draft-branch'), 4);
+assert.deepEqual(collectPageAncestorSysIds(demoPages, 'page-product-draft-branch-leaf'), [
+	'page-product-draft-branch-grandchild',
+	'page-product-draft-branch-child',
+	'page-product-draft-branch',
+	'page-product-draft-playground'
+]);
+assert.equal(isPageDescendantOf(demoPages, 'page-product-draft-branch-leaf', 'page-product-draft-branch'), true);
+assert.equal(isPageDescendantOf(demoPages, 'page-product-draft-branch', 'page-product-draft-branch-leaf'), false);
+assert.throws(() => createPageDraft({
+	workspaceSysId: 'workspace-product-001',
+	title: 'Too Deep',
+	parentPage: {
+		sysId: 'page-product-draft-branch-leaf',
+		workspaceSysId: 'workspace-product-001'
+	}
+}, demoPages), /nested deeper than 5 levels/i);
 
 const shellAuthoringCapabilityService = createWorkspaceCapabilityService({
 	hasRole: roleName => demoUserAccess.roles.includes(roleName),
@@ -702,18 +734,112 @@ assert.equal(shellAuthoringView.status, 'ready');
 assert.equal(shellAuthoringView.workspace.workspaceSlug, 'product-docs');
 assert.equal(shellAuthoringView.selectedPageSlug, 'overview');
 assert.equal(shellAuthoringView.routeTargetPath, '/docsera/product-docs/overview');
-assert.equal(shellAuthoringView.visiblePages.length, 5);
+assert.equal(shellAuthoringView.visiblePages.length, 9);
 assert.equal(shellAuthoringView.pageTree.length, 3);
 assert.equal(shellAuthoringView.pageTree[0].title, 'Overview');
 assert.equal(shellAuthoringView.pageTree[1].title, 'Guides');
 assert.equal(shellAuthoringView.pageTree[1].children.length, 2);
 assert.equal(shellAuthoringView.pageTree[2].title, 'Draft Playground');
+assert.equal(shellAuthoringView.pageTree[2].children.length, 1);
 assert.equal(shellAuthoringView.pageTree[2].isDraft, true);
 assert.deepEqual(shellAuthoringView.breadcrumbs.map(item => item.label), ['Overview']);
 assert.equal(shellAuthoringView.tableOfContents.length, 2);
 assert.equal(shellAuthoringView.canShowAuthoringControls, true);
 assert.equal(shellAuthoringView.canCreatePages, true);
 assert.equal(shellAuthoringView.pageMode, 'authoring');
+
+const validInsideMove = validatePageMoveTarget(demoPages, 'page-product-overview', 'page-product-guides', 'inside', PAGE_TREE_MAX_DEPTH);
+assert.equal(validInsideMove.valid, true);
+assert.equal(validInsideMove.destinationParentPageSysId, 'page-product-guides');
+
+const validAfterMove = validatePageMoveTarget(demoPages, 'page-product-guides-runtime', 'page-product-draft-playground', 'before', PAGE_TREE_MAX_DEPTH);
+assert.equal(validAfterMove.valid, true);
+assert.equal(validAfterMove.destinationParentPageSysId, '');
+
+const invalidSelfMove = validatePageMoveTarget(demoPages, 'page-product-guides', 'page-product-guides', 'inside', PAGE_TREE_MAX_DEPTH);
+assert.equal(invalidSelfMove.valid, false);
+assert.match(invalidSelfMove.error, /itself/i);
+
+const invalidDescendantMove = validatePageMoveTarget(demoPages, 'page-product-guides', 'page-product-guides-installation', 'inside', PAGE_TREE_MAX_DEPTH);
+assert.equal(invalidDescendantMove.valid, false);
+assert.match(invalidDescendantMove.error, /descendants/i);
+
+const invalidDepthMove = validatePageMoveTarget(demoPages, 'page-product-draft-branch', 'page-product-guides-installation', 'inside', PAGE_TREE_MAX_DEPTH);
+assert.equal(invalidDepthMove.valid, false);
+assert.match(invalidDepthMove.error, /maximum nesting depth/i);
+
+const invalidCrossWorkspaceMove = validatePageMoveTarget(demoPages, 'page-product-overview', 'page-support-home', 'inside', PAGE_TREE_MAX_DEPTH);
+assert.equal(invalidCrossWorkspaceMove.valid, false);
+assert.match(invalidCrossWorkspaceMove.error, /same workspace/i);
+
+const movedOverviewPages = applyPageMove(demoPages, 'page-product-overview', 'page-product-guides', 'inside', PAGE_TREE_MAX_DEPTH);
+const movedOverviewView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: movedOverviewPages,
+	capabilityService: shellAuthoringCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	selectedPageSlug: 'overview'
+});
+
+assert.equal(movedOverviewView.selectedPageSlug, 'overview');
+assert.equal(movedOverviewView.routeTargetPath, '/docsera/product-docs/overview');
+assert.deepEqual(movedOverviewView.breadcrumbs.map(item => item.label), ['Guides', 'Overview']);
+assert.equal(movedOverviewView.pageTree[0].title, 'Guides');
+assert.equal(movedOverviewView.pageTree[0].children[2].title, 'Overview');
+
+const movedRuntimePages = applyPageMove(demoPages, 'page-product-guides-runtime', 'page-product-draft-playground', 'before', PAGE_TREE_MAX_DEPTH);
+const movedRuntimeView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: movedRuntimePages,
+	capabilityService: shellAuthoringCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	selectedPageSlug: 'runtime-behavior'
+});
+
+assert.equal(movedRuntimeView.selectedPageSlug, 'runtime-behavior');
+assert.equal(movedRuntimeView.selectedPage.title, 'Runtime behavior');
+assert.equal(movedRuntimeView.routeTargetPath, '/docsera/product-docs/runtime-behavior');
+assert.deepEqual(movedRuntimeView.breadcrumbs.map(item => item.label), ['Runtime behavior']);
+assert.equal(movedRuntimeView.pageTree[2].pageSlug, 'runtime-behavior');
+
+const movedLeafPages = applyPageMove(demoPages, 'page-product-draft-branch-leaf', 'page-product-guides', 'inside', PAGE_TREE_MAX_DEPTH);
+const movedLeafPage = movedLeafPages.find(page => page.sysId === 'page-product-draft-branch-leaf');
+assert.equal(movedLeafPage.parentPageSysId, 'page-product-guides');
+assert.equal(movedLeafPage.siblingOrder, 3);
+
+const movedLeafView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: movedLeafPages,
+	capabilityService: shellAuthoringCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	selectedPageSlug: 'draft-branch-leaf'
+});
+
+assert.equal(movedLeafView.selectedPageSlug, 'draft-branch-leaf');
+assert.equal(movedLeafView.routeTargetPath, '/docsera/product-docs/draft-branch-leaf');
+assert.deepEqual(movedLeafView.breadcrumbs.map(item => item.label), ['Guides', 'Draft Branch Leaf']);
+
+const movedBranchPages = applyPageMove(demoPages, 'page-product-draft-branch', 'page-product-draft-playground', 'before', PAGE_TREE_MAX_DEPTH);
+const movedBranchPage = movedBranchPages.find(page => page.sysId === 'page-product-draft-branch');
+const movedBranchLeafPage = movedBranchPages.find(page => page.sysId === 'page-product-draft-branch-leaf');
+assert.equal(movedBranchPage.parentPageSysId, null);
+assert.equal(movedBranchPage.siblingOrder, 3);
+assert.equal(movedBranchLeafPage.parentPageSysId, 'page-product-draft-branch-grandchild');
+
+const movedBranchView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: movedBranchPages,
+	capabilityService: shellAuthoringCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	selectedPageSlug: 'draft-branch-leaf'
+});
+
+assert.deepEqual(movedBranchView.breadcrumbs.map(item => item.label), [
+	'Draft Branch',
+	'Draft Branch Child',
+	'Draft Branch Grandchild',
+	'Draft Branch Leaf'
+]);
 
 const shellReaderView = buildWorkspaceShellViewModel({
 	workspaces: demoWorkspaces,

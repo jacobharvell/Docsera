@@ -56,6 +56,17 @@ Ordering rules:
 - child pages are ordered against siblings with the same parent
 - moving or re-parenting a page does not change its URL unless the page slug itself changes
 
+Page tree move helpers now live in the same domain module:
+
+- `collectPageAncestorSysIds`
+- `resolvePageDepth`
+- `resolvePageSubtreeDepth`
+- `isPageDescendantOf`
+- `validatePageMoveTarget`
+- `applyPageMove`
+
+These helpers enforce the same-workspace parent constraint, reject circular moves, and block drops that would exceed the five-level MVP nesting limit.
+
 ## Slug Behavior
 
 Page slug rules:
@@ -170,6 +181,11 @@ Validation currently covers:
 - root-level page construction
 - same-workspace parent assignment
 - rejection of cross-workspace parent assignment
+- page depth calculation
+- subtree depth calculation
+- descendant detection
+- page move target validation
+- page move application for before, after, and inside placements
 - sibling-scoped ordering behavior
 - duplicate title tolerance
 - slug generation from titles
@@ -222,7 +238,6 @@ The repository now has the page domain contract, but the following PDI work may 
 
 This task does not add:
 
-- drag-and-drop
 - editor/autosave behavior
 - publishing action
 - full route resolution
