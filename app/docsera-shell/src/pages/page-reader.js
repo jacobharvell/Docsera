@@ -95,6 +95,10 @@ function isReadablePage(page) {
 	return Boolean(page && typeof page === 'object' && page.active !== false && isVisiblePublishedState(page));
 }
 
+function isAuthoringVisiblePage(page) {
+	return Boolean(page && typeof page === 'object' && page.active !== false);
+}
+
 function sortShellPages(left, right) {
 	const leftOrder = resolvePageSiblingOrder(left);
 	const rightOrder = resolvePageSiblingOrder(right);
@@ -126,6 +130,8 @@ function buildPageNode(page, visiblePagesByParent, selectedPageSysId) {
 		bodyText: resolvePageBodyText(page),
 		parentPageSysId: resolvePageParentSysId(page),
 		siblingOrder: resolvePageSiblingOrder(page),
+		publicationState: page.publicationState,
+		isDraft: page.publicationState === PAGE_PUBLICATION_STATES.draft,
 		isSelected: page.sysId === selectedPageSysId,
 		hasChildren: children.length > 0,
 		children
@@ -249,6 +255,13 @@ function buildWorkspaceReaderPageLookup(visiblePages) {
 function buildWorkspaceReaderPages(pages = [], workspaceSysId = '') {
 	return (Array.isArray(pages) ? pages : [])
 		.filter(page => resolvePageWorkspaceSysId(page) === cleanText(workspaceSysId) && isReadablePage(page))
+		.slice()
+		.sort(sortShellPages);
+}
+
+function buildWorkspaceAuthoringPages(pages = [], workspaceSysId = '') {
+	return (Array.isArray(pages) ? pages : [])
+		.filter(page => resolvePageWorkspaceSysId(page) === cleanText(workspaceSysId) && isAuthoringVisiblePage(page))
 		.slice()
 		.sort(sortShellPages);
 }
@@ -473,14 +486,33 @@ export function buildWorkspaceShellViewModel({
 			breadcrumbs: [],
 			tableOfContents: [],
 			visiblePages: [],
+			allPages: [],
 			firstVisiblePageSlug: '',
 			routeTargetPath: '/docsera',
 			canManageWorkspaceSettings: false,
-			canShowAuthoringControls: false
+			canShowAuthoringControls: false,
+			canCreatePages: false,
+			pageMode: 'reader'
 		};
 	}
 
-	const visiblePages = buildWorkspaceReaderPages(pages, workspace.sysId);
+	const canShowAuthoringControls = Boolean(
+		capabilityService &&
+		typeof capabilityService.isDocseraAdmin === 'function' &&
+		capabilityService.isDocseraAdmin()
+	) || Boolean(
+		capabilityService &&
+		typeof capabilityService.isWorkspaceAdmin === 'function' &&
+		capabilityService.isWorkspaceAdmin(workspace)
+	) || Boolean(
+		capabilityService &&
+		typeof capabilityService.isWorkspaceEditor === 'function' &&
+		capabilityService.isWorkspaceEditor(workspace)
+	);
+	const allPages = buildWorkspaceAuthoringPages(pages, workspace.sysId);
+	const visiblePages = canShowAuthoringControls
+		? allPages
+		: buildWorkspaceReaderPages(pages, workspace.sysId);
 	const {pageBySysId, pageBySlug} = buildWorkspaceReaderPageLookup(visiblePages);
 	const requestedPageSlug = normalizeSlug(selectedPageSlug);
 	const rootPages = buildWorkspaceRootPages(visiblePages);
@@ -503,21 +535,12 @@ export function buildWorkspaceShellViewModel({
 		breadcrumbs: selectedPage ? buildBreadcrumbs(selectedPage, pageBySysId, workspace) : [],
 		tableOfContents: selectedPage ? buildTableOfContents(selectedPage) : [],
 		visiblePages,
+		allPages,
 		firstVisiblePageSlug: firstVisiblePage ? resolvePageSlug(firstVisiblePage) : '',
 		routeTargetPath: buildWorkspacePageRoutePath(resolveWorkspaceSlug(workspace), selectedPageSlugValue),
 		canManageWorkspaceSettings: Boolean(capabilityService && typeof capabilityService.isWorkspaceAdmin === 'function' && capabilityService.isWorkspaceAdmin(workspace)),
-		canShowAuthoringControls: Boolean(
-			capabilityService &&
-			typeof capabilityService.isDocseraAdmin === 'function' &&
-			capabilityService.isDocseraAdmin()
-		) || Boolean(
-			capabilityService &&
-			typeof capabilityService.isWorkspaceAdmin === 'function' &&
-			capabilityService.isWorkspaceAdmin(workspace)
-		) || Boolean(
-			capabilityService &&
-			typeof capabilityService.isWorkspaceEditor === 'function' &&
-			capabilityService.isWorkspaceEditor(workspace)
-		)
+		canShowAuthoringControls,
+		canCreatePages: canShowAuthoringControls && workspace.active !== false,
+		pageMode: canShowAuthoringControls ? 'authoring' : 'reader'
 	};
 }

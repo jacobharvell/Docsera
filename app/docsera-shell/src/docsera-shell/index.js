@@ -19,6 +19,10 @@ import {
 	createDocseraShellDemoPages
 } from '../pages';
 import {
+	PAGE_PUBLICATION_STATES,
+	createPageDraft
+} from '../pages/page-domain.js';
+import {
 	provisionWorkspace
 } from '../workspaces/workspace-domain.js';
 import styles from './styles.scss';
@@ -56,11 +60,15 @@ function createInitialState() {
 		createModalOpen: false,
 		createModalError: '',
 		createModalBusy: false,
+		createPageModalOpen: false,
+		createPageModalError: '',
+		createPageModalBusy: false,
 		workspaceStatus: 'Workspace shell is ready.',
 		workspaces: createMyWorkspacesDemoWorkspaces(),
 		pages: createDocseraShellDemoPages(),
 		userAccess: createDemoAccessState(),
-		newWorkspace: createWorkspaceModalDefaults()
+		newWorkspace: createWorkspaceModalDefaults(),
+		newPage: createPageModalDefaults()
 	};
 }
 
@@ -94,7 +102,55 @@ function resetNewWorkspaceForm() {
 	return createWorkspaceModalDefaults();
 }
 
-function renderPageTreeNodes(nodes, selectPage, selectedPageSlug) {
+function createPageModalDefaults(parentPage = null) {
+	return {
+		title: '',
+		parentPageSysId: parentPage ? parentPage.sysId || '' : '',
+		parentPageTitle: parentPage ? parentPage.title || '' : ''
+	};
+}
+
+function resetCreatePageForm(parentPage = null) {
+	return createPageModalDefaults(parentPage);
+}
+
+function getWorkspacePagesForCreation(pages, workspaceSysId) {
+	return (Array.isArray(pages) ? pages : []).filter(page => page && page.workspaceSysId === workspaceSysId);
+}
+
+function findPageBySysId(pages, sysId) {
+	if (!sysId) {
+		return null;
+	}
+
+	return (Array.isArray(pages) ? pages : []).find(page => page && page.sysId === sysId) || null;
+}
+
+function createLocalPageSysId(workspaceSlug, pageSlug) {
+	const toKey = value => {
+		if (typeof value !== 'string') {
+			return 'page';
+		}
+
+		return value
+			.trim()
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, '-')
+			.replace(/^-+|-+$/g, '')
+			.replace(/-{2,}/g, '-') || 'page';
+	};
+
+	const safeWorkspaceSlug = toKey(workspaceSlug || 'workspace');
+	const safePageSlug = toKey(pageSlug || 'page');
+	return `page-${safeWorkspaceSlug}-${safePageSlug}-${Date.now().toString(36)}`;
+}
+
+function renderPageTreeNodes(nodes, {
+	selectPage,
+	createChildPage,
+	selectedPageSlug,
+	canCreatePages
+}) {
 	if (!Array.isArray(nodes) || nodes.length === 0) {
 		return null;
 	}
@@ -103,17 +159,38 @@ function renderPageTreeNodes(nodes, selectPage, selectedPageSlug) {
 		<ul className="docsera-shell__tree-list" role="list">
 			{nodes.map(node => (
 				<li key={node.sysId} className="docsera-shell__tree-item">
-					<button
-						type="button"
-						className={`docsera-shell__tree-button${node.pageSlug === selectedPageSlug ? ' docsera-shell__tree-button--selected' : ''}`}
-						on-click={() => selectPage(node)}
-					>
-						<span className="docsera-shell__tree-button-title">{node.title}</span>
-						{node.hasChildren ? (
-							<span className="docsera-shell__tree-button-count">{node.children.length}</span>
+					<div className="docsera-shell__tree-row">
+						<button
+							type="button"
+							className={`docsera-shell__tree-button${node.pageSlug === selectedPageSlug ? ' docsera-shell__tree-button--selected' : ''}`}
+							on-click={() => selectPage(node)}
+						>
+							<span className="docsera-shell__tree-button-title">{node.title}</span>
+							<span className="docsera-shell__tree-button-meta">
+								{node.isDraft ? (
+									<span className="docsera-shell__page-badge docsera-shell__page-badge--draft">Draft</span>
+								) : null}
+								{node.hasChildren ? (
+									<span className="docsera-shell__tree-button-count">{node.children.length}</span>
+								) : null}
+							</span>
+						</button>
+						{canCreatePages ? (
+							<button
+								type="button"
+								className="docsera-shell__tree-action"
+								on-click={() => createChildPage(node)}
+							>
+								New child
+							</button>
 						) : null}
-					</button>
-					{node.children.length ? renderPageTreeNodes(node.children, selectPage, selectedPageSlug) : null}
+					</div>
+					{node.children.length ? renderPageTreeNodes(node.children, {
+						selectPage,
+						createChildPage,
+						selectedPageSlug,
+						canCreatePages
+					}) : null}
 				</li>
 			))}
 		</ul>
@@ -173,6 +250,99 @@ function renderTableOfContents(items, selectedPage) {
 					{selectedPage ? 'This page does not expose headings yet.' : 'Select a page to see headings here.'}
 				</div>
 			)}
+		</div>
+	);
+}
+
+function renderPageCreationModal({
+	state,
+	canCreatePages,
+	workspaceName,
+	workspaceSlug,
+	workspacePages,
+	createPage,
+	closeCreatePageModal,
+	updateCreateField
+}) {
+	if (!state.createPageModalOpen || !canCreatePages) {
+		return null;
+	}
+
+	const selectedParent = state.newPage.parentPageSysId
+		? findPageBySysId(workspacePages, state.newPage.parentPageSysId)
+		: null;
+	const parentLabel = selectedParent ? selectedParent.draftTitle || selectedParent.publishedTitle || 'Parent page' : 'Root page';
+
+	return (
+		<div className="docsera-shell__modal-backdrop" role="presentation" on-click={closeCreatePageModal}>
+			<div
+				className="docsera-shell__modal"
+				role="dialog"
+				aria-modal="true"
+				aria-labelledby="docsera-create-page-title"
+				on-click={event => event.stopPropagation()}
+			>
+				<form className="docsera-shell__modal-form" on-submit={createPage}>
+					<div className="docsera-shell__modal-head">
+						<div>
+							<p className="docsera-shell__rail-title">New page</p>
+							<h2 id="docsera-create-page-title">Create page in {workspaceName}</h2>
+						</div>
+						<button type="button" className="docsera-shell__icon-button" on-click={closeCreatePageModal}>
+							Close
+						</button>
+					</div>
+
+					<p className="docsera-shell__modal-copy">
+						Pages start as drafts. Root pages are created at the workspace root and child pages attach to the selected parent.
+					</p>
+
+					<label className="docsera-shell__field">
+						<span className="docsera-shell__field-label">Page title</span>
+						<input
+							type="text"
+							value={state.newPage.title}
+							placeholder="e.g. Release checklist"
+							aria-required="true"
+							on-input={event => updateCreateField('title', event.target.value)}
+						/>
+					</label>
+
+					<div className="docsera-shell__field">
+						<span className="docsera-shell__field-label">Parent page</span>
+						<div className="docsera-shell__page-parent">
+							<div className="docsera-shell__page-parent-label">{parentLabel}</div>
+							<div className="docsera-shell__page-parent-copy">
+								{selectedParent ? `/docsera/${workspaceSlug}/${selectedParent.draftSlug || selectedParent.publishedSlug || selectedParent.pageSlug}` : 'This page will be created at the workspace root.'}
+							</div>
+						</div>
+					</div>
+
+					{state.createPageModalError ? (
+						<div className="docsera-shell__modal-error" role="alert">
+							{state.createPageModalError}
+						</div>
+					) : null}
+
+					<div className="docsera-shell__modal-actions">
+						<button
+							type="button"
+							className="docsera-shell__button docsera-shell__button--secondary"
+							on-click={closeCreatePageModal}
+							disabled={state.createPageModalBusy}
+						>
+							Cancel
+						</button>
+						<button
+							type="submit"
+							className="docsera-shell__button"
+							disabled={state.createPageModalBusy}
+						>
+							{state.createPageModalBusy ? 'Creating...' : 'Create page'}
+						</button>
+					</div>
+				</form>
+			</div>
 		</div>
 	);
 }
@@ -238,6 +408,93 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 	const toggleTheme = () => updateState({
 		shellTheme: state.shellTheme === 'dark' ? 'light' : 'dark'
 	});
+
+	const workspacePages = shell.workspace ? getWorkspacePagesForCreation(state.pages, shell.workspace.sysId) : [];
+	const canCreatePages = Boolean(shell.canCreatePages && shell.workspace);
+
+	const openCreatePageModal = parentPage => {
+		if (!canCreatePages) {
+			return;
+		}
+
+		updateState({
+			createPageModalOpen: true,
+			createPageModalError: '',
+			createPageModalBusy: false,
+			newPage: resetCreatePageForm(parentPage || null)
+		});
+	};
+
+	const closeCreatePageModal = () => updateState({
+		createPageModalOpen: false,
+		createPageModalError: '',
+		createPageModalBusy: false,
+		newPage: resetCreatePageForm()
+	});
+
+	const updateCreatePageField = (field, value) => {
+		updateState({
+			newPage: {
+				...state.newPage,
+				[field]: value
+			}
+		});
+	};
+
+	const createPage = async event => {
+		event.preventDefault();
+
+		if (!shell.workspace) {
+			return;
+		}
+
+		const title = typeof state.newPage.title === 'string' ? state.newPage.title.trim() : '';
+		if (!title) {
+			updateState({
+				createPageModalError: 'Page title is required.'
+			});
+			return;
+		}
+
+		try {
+			updateState({
+				createPageModalBusy: true,
+				createPageModalError: ''
+			});
+
+			const parentPage = state.newPage.parentPageSysId
+				? findPageBySysId(workspacePages, state.newPage.parentPageSysId)
+				: null;
+			const draft = createPageDraft({
+				workspaceSysId: shell.workspace.sysId,
+				title,
+				parentPage
+			}, workspacePages);
+			const createdPage = {
+				...draft,
+				sysId: createLocalPageSysId(shell.workspace.workspaceSlug, draft.draftSlug)
+			};
+			const nextPages = [...state.pages, createdPage];
+
+			updateState({
+				pages: nextPages,
+				selectedWorkspaceSlug: shell.workspace.workspaceSlug,
+				selectedPageSlug: createdPage.draftSlug,
+				createPageModalOpen: false,
+				createPageModalBusy: false,
+				createPageModalError: '',
+				newPage: resetCreatePageForm(),
+				workspaceStatus: parentPage
+					? `Created child page ${createdPage.draftTitle} under ${parentPage.draftTitle || parentPage.publishedTitle || 'the selected parent'} at /docsera/${shell.workspace.workspaceSlug}/${createdPage.draftSlug}`
+					: `Created root page ${createdPage.draftTitle} at /docsera/${shell.workspace.workspaceSlug}/${createdPage.draftSlug}`
+			});
+		} catch (error) {
+			updateState({
+				createPageModalBusy: false,
+				createPageModalError: error && error.message ? error.message : 'Page creation failed.'
+			});
+		}
+	};
 
 	const workspace = shell.workspace;
 	const workspaceName = workspace ? workspace.name : 'Workspace not found';
@@ -746,7 +1003,7 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 		updateState({
 			selectedWorkspaceSlug: shell.workspace.workspaceSlug,
 			selectedPageSlug: crumb.pageSlug,
-			workspaceStatus: `Selected ${crumb.label} from breadcrumbs.`
+			workspaceStatus: `Selected ${crumb.label} at /docsera/${shell.workspace.workspaceSlug}/${crumb.pageSlug}`
 		});
 	};
 
@@ -774,6 +1031,11 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 
 				<div className="docsera-shell__header-meta docsera-shell__header-meta--reader">
 					<span className="docsera-shell__badge">Reader mode</span>
+					{canCreatePages ? (
+						<button type="button" className="docsera-shell__button docsera-shell__button--secondary" on-click={() => openCreatePageModal(null)}>
+							New page
+						</button>
+					) : null}
 					<button type="button" className="docsera-shell__button docsera-shell__button--secondary" on-click={openLauncher}>
 						My Workspaces
 					</button>
@@ -790,9 +1052,16 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 				<aside className={`docsera-shell__reader-nav${navCollapsed ? ' docsera-shell__reader-nav--collapsed' : ''}`} aria-label="Workspace pages">
 					<div className="docsera-shell__reader-nav-head">
 						<p className="docsera-shell__rail-title">Navigation</p>
-						<h2 className="docsera-shell__reader-nav-title">Page tree</h2>
+						<div className="docsera-shell__reader-nav-title-row">
+							<h2 className="docsera-shell__reader-nav-title">Page tree</h2>
+							{canCreatePages ? (
+								<button type="button" className="docsera-shell__tree-action docsera-shell__tree-action--inline" on-click={() => openCreatePageModal(null)}>
+									New page
+								</button>
+							) : null}
+						</div>
 						<p className="docsera-shell__reader-nav-copy">
-							Read-only hierarchy. Viewer mode hides authoring controls.
+							{canCreatePages ? 'Authoring hierarchy. Draft pages remain visible to editors and admins.' : 'Read-only hierarchy. Viewer mode hides authoring controls.'}
 						</p>
 					</div>
 
@@ -802,9 +1071,24 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 					</div>
 
 					<nav className="docsera-shell__tree" aria-label="Workspace page tree">
-						{shell.pageTree.length ? renderPageTreeNodes(shell.pageTree, selectPage, shell.selectedPageSlug) : (
+						{shell.pageTree.length ? renderPageTreeNodes(shell.pageTree, {
+							selectPage,
+							createChildPage: openCreatePageModal,
+							selectedPageSlug: shell.selectedPageSlug,
+							canCreatePages
+						}) : (
 							<div className="docsera-shell__toc-empty">
-								No visible pages in this workspace yet.
+								{canCreatePages ? (
+									<div className="docsera-shell__state docsera-shell__state--compact">
+										<div>No pages in this workspace yet.</div>
+										<div>Authorized users can create the first root page.</div>
+										<button type="button" className="docsera-shell__button" on-click={() => openCreatePageModal(null)}>
+											Create root page
+										</button>
+									</div>
+								) : (
+									'No visible pages in this workspace yet.'
+								)}
 							</div>
 						)}
 					</nav>
@@ -817,8 +1101,21 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 						<section className="docsera-shell__reader-empty-state">
 							<h1>{workspaceName}</h1>
 							<p>
-								This workspace has no visible pages yet. Published pages will appear here when they are available.
+								{canCreatePages
+									? 'This workspace has no pages yet. Create the first root page to start the tree.'
+									: 'This workspace has no visible pages yet. Published pages will appear here when they are available.'}
 							</p>
+							{canCreatePages ? (
+								<div className="docsera-shell__state-actions">
+									<button
+										type="button"
+										className="docsera-shell__button"
+										on-click={() => openCreatePageModal(null)}
+									>
+										Create root page
+									</button>
+								</div>
+							) : null}
 						</section>
 					) : shell.status === 'page-not-found' ? (
 						<section className="docsera-shell__reader-empty-state">
@@ -840,8 +1137,13 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 						<article className="docsera-shell__reader-content">
 							<div className="docsera-shell__reader-content-head">
 								<div>
-									<p className="docsera-shell__rail-title">Published content</p>
-									<h1 className="docsera-shell__reader-title">{shell.selectedPage ? shell.selectedPage.title : workspaceName}</h1>
+									<p className="docsera-shell__rail-title">{shell.selectedPage && shell.selectedPage.publicationState === PAGE_PUBLICATION_STATES.draft ? 'Draft content' : 'Published content'}</p>
+									<div className="docsera-shell__reader-title-row">
+										<h1 className="docsera-shell__reader-title">{shell.selectedPage ? shell.selectedPage.title : workspaceName}</h1>
+										{shell.selectedPage && shell.selectedPage.publicationState === PAGE_PUBLICATION_STATES.draft ? (
+											<span className="docsera-shell__page-badge docsera-shell__page-badge--draft">Draft</span>
+										) : null}
+									</div>
 									<p className="docsera-shell__reader-lede">
 										{shell.selectedPage ? shell.selectedPage.summary || shell.selectedPage.bodyText : workspaceDescription || 'Select a page to read the workspace content.'}
 									</p>
@@ -908,6 +1210,16 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 					</div>
 				</aside>
 			</div>
+			{renderPageCreationModal({
+				state,
+				canCreatePages,
+				workspaceName,
+				workspaceSlug: shell.workspace ? shell.workspace.workspaceSlug : '',
+				workspacePages,
+				createPage,
+				closeCreatePageModal,
+				updateCreateField: updateCreatePageField
+			})}
 		</div>
 	);
 }

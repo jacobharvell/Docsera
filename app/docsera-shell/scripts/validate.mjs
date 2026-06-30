@@ -100,7 +100,10 @@ for (const needle of [
 	'Workspace reader',
 	'Page tree',
 	'Table of contents',
-	'My Workspaces'
+	'My Workspaces',
+	'New page',
+	'Create page',
+	'Draft content'
 ]) {
 	if (!shellSource.includes(needle)) {
 		throw new Error(`Missing "${needle}" in shell source.`);
@@ -504,30 +507,52 @@ assert.equal(calls.createGroup[0].workspaceSlug, 'hr-docs-2');
 const demoPages = createDocseraShellDemoPages();
 assert.ok(demoPages.length >= 5);
 
+const shellAuthoringCapabilityService = createWorkspaceCapabilityService({
+	hasRole: roleName => demoUserAccess.roles.includes(roleName),
+	isMemberOfGroup: groupSysId => demoUserAccess.groups.includes(groupSysId)
+});
+
 const shellReaderCapabilityService = createWorkspaceCapabilityService({
 	hasRole: () => false,
 	isMemberOfGroup: () => false
 });
 
-const shellView = buildWorkspaceShellViewModel({
+const shellAuthoringView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: demoPages,
+	capabilityService: shellAuthoringCapabilityService,
+	selectedWorkspaceSlug: 'product-docs'
+});
+
+assert.equal(shellAuthoringView.status, 'ready');
+assert.equal(shellAuthoringView.workspace.workspaceSlug, 'product-docs');
+assert.equal(shellAuthoringView.selectedPageSlug, 'overview');
+assert.equal(shellAuthoringView.routeTargetPath, '/docsera/product-docs/overview');
+assert.equal(shellAuthoringView.visiblePages.length, 5);
+assert.equal(shellAuthoringView.pageTree.length, 3);
+assert.equal(shellAuthoringView.pageTree[0].title, 'Overview');
+assert.equal(shellAuthoringView.pageTree[1].title, 'Guides');
+assert.equal(shellAuthoringView.pageTree[1].children.length, 2);
+assert.equal(shellAuthoringView.pageTree[2].title, 'Draft Playground');
+assert.equal(shellAuthoringView.pageTree[2].isDraft, true);
+assert.deepEqual(shellAuthoringView.breadcrumbs.map(item => item.label), ['Overview']);
+assert.equal(shellAuthoringView.tableOfContents.length, 2);
+assert.equal(shellAuthoringView.canShowAuthoringControls, true);
+assert.equal(shellAuthoringView.canCreatePages, true);
+assert.equal(shellAuthoringView.pageMode, 'authoring');
+
+const shellReaderView = buildWorkspaceShellViewModel({
 	workspaces: demoWorkspaces,
 	pages: demoPages,
 	capabilityService: shellReaderCapabilityService,
 	selectedWorkspaceSlug: 'product-docs'
 });
 
-assert.equal(shellView.status, 'ready');
-assert.equal(shellView.workspace.workspaceSlug, 'product-docs');
-assert.equal(shellView.selectedPageSlug, 'overview');
-assert.equal(shellView.routeTargetPath, '/docsera/product-docs/overview');
-assert.equal(shellView.visiblePages.length, 4);
-assert.equal(shellView.pageTree.length, 2);
-assert.equal(shellView.pageTree[0].title, 'Overview');
-assert.equal(shellView.pageTree[1].title, 'Guides');
-assert.equal(shellView.pageTree[1].children.length, 2);
-assert.deepEqual(shellView.breadcrumbs.map(item => item.label), ['Overview']);
-assert.equal(shellView.tableOfContents.length, 2);
-assert.equal(shellView.canShowAuthoringControls, false);
+assert.equal(shellReaderView.status, 'ready');
+assert.equal(shellReaderView.visiblePages.length, 4);
+assert.equal(shellReaderView.pageTree.length, 2);
+assert.equal(shellReaderView.canCreatePages, false);
+assert.ok(!shellReaderView.pageTree.some(page => page.title === 'Draft Playground'));
 
 const guidePageView = buildWorkspaceShellViewModel({
 	workspaces: demoWorkspaces,
@@ -574,6 +599,43 @@ const unknownWorkspaceView = buildWorkspaceShellViewModel({
 
 assert.equal(unknownWorkspaceView.status, 'workspace-not-found');
 assert.equal(unknownWorkspaceView.routeTargetPath, '/docsera');
+
+const createdRootDraft = createPageDraft({
+	workspaceSysId: 'workspace-product-001',
+	title: 'Release Notes'
+}, demoPages);
+assert.equal(createdRootDraft.siblingOrder, 4);
+assert.equal(createdRootDraft.publicationState, PAGE_PUBLICATION_STATES.draft);
+
+const createdRootPage = {
+	...createdRootDraft,
+	sysId: 'page-product-docs-release-notes'
+};
+
+const authoringAfterCreate = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: [...demoPages, createdRootPage],
+	capabilityService: shellAuthoringCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	selectedPageSlug: createdRootPage.draftSlug
+});
+
+assert.equal(authoringAfterCreate.selectedPageSlug, 'release-notes');
+assert.equal(authoringAfterCreate.routeTargetPath, '/docsera/product-docs/release-notes');
+assert.equal(authoringAfterCreate.pageTree.some(page => page.pageSlug === 'release-notes'), true);
+
+const createdChildDraft = createPageDraft({
+	workspaceSysId: 'workspace-product-001',
+	title: 'Troubleshooting',
+	parentPage: {
+		sysId: 'page-product-guides',
+		workspaceSysId: 'workspace-product-001'
+	}
+}, demoPages);
+
+assert.equal(createdChildDraft.parentPageSysId, 'page-product-guides');
+assert.equal(createdChildDraft.siblingOrder, 3);
+assert.equal(createdChildDraft.draftSlug, 'troubleshooting');
 
 const activeWorkspace = {
 	active: true,

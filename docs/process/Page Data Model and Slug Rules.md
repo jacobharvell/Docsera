@@ -6,7 +6,7 @@ Status: implementation foundation
 
 This note defines the Docsera page foundation that now exists in the app shell package.
 
-It is the canonical reference for page ownership, hierarchy, ordering scope, slug behavior, and the draft/published field contract that future UI and persistence tasks should consume.
+It is the canonical reference for page ownership, hierarchy, ordering scope, slug behavior, the draft/published field contract, and the shell-side page creation foundation that future UI and persistence tasks should consume.
 
 ## Page Model
 
@@ -140,6 +140,20 @@ Routing notes:
 - the reader shell now uses the flat route model for workspace/page selection and content lookup
 - future shell tasks can extend routing, editor access, and authoring behavior without changing the flat URL shape
 
+## Shell Creation Foundation
+
+The workspace shell now consumes this contract to support MVP page creation in the authoring surface.
+
+Implemented shell-side behaviors:
+
+- root page creation inside the active workspace
+- child page creation under an existing same-workspace parent
+- required title validation before page construction
+- generated draft slug allocation with silent duplicate suffixing
+- sibling-scoped order allocation for root and child pages
+- authoring-tree visibility for draft pages
+- flat route target updates using `/docsera/:workspaceSlug/:pageSlug`
+
 ## Local Validation
 
 From `C:\Dev\Docsera`:
@@ -163,6 +177,8 @@ Validation currently covers:
 - workspace-scoped slug reservation
 - reserved slug coverage across draft and published states
 - draft and published field separation
+- shell-side page tree visibility for authoring users
+- shell-side root and child page creation helpers
 - repository-level docs validation
 
 ## Manual PDI Verification
@@ -203,8 +219,6 @@ The repository now has the page domain contract, but the following PDI work may 
 
 This task does not add:
 
-- page creation UI
-- page tree UI
 - page settings overlay
 - drag-and-drop
 - editor/autosave behavior
