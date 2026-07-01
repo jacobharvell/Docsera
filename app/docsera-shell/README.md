@@ -50,6 +50,12 @@ The page persistence, hierarchy, slug, and draft/published rules are documented 
 
 ## Local validation
 
+From a clean checkout, install the shell dependencies first:
+
+```powershell
+npm --prefix app/docsera-shell install
+```
+
 From `C:\Dev\Docsera`:
 
 ```powershell
@@ -72,6 +78,7 @@ npm run validate:docs
 
 ```powershell
 cd C:\Dev\Docsera\app\docsera-shell
+npm install
 snc version
 snc configure profile list --profile <profile>
 snc ui-component deploy --profile <profile> --fetch-assets-from-instance
@@ -90,6 +97,7 @@ snc ui-component deploy --profile <profile> --fetch-assets-from-instance
 
 Expected result:
 
+- local validation fails early if the shell dependency tree or `@servicenow/sass-kit/_host.scss` is missing
 - The launcher list is filtered to active authoring/admin workspaces.
 - Reader mode shows the active workspace identity, page tree, breadcrumbs, and ToC.
 - Authoring roles can create root and child pages without a full refresh.

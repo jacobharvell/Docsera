@@ -19,7 +19,7 @@
     "validate": "node scripts/validate.mjs"
   },
   "dependencies": {
-    "@servicenow/sass-kit": "latest",
+    "@servicenow/sass-kit": "19.8.2-ecd",
     "@servicenow/ui-core": "24.1.1",
     "@servicenow/ui-renderer-snabbdom": "24.1.1",
     "prosemirror-commands": "1.7.1",

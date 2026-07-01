@@ -70,6 +70,33 @@ function parseJson(relativePath) {
 	return JSON.parse(readText(relativePath));
 }
 
+function readInstalledPackageJson(packageName) {
+	const pathSegments = packageName.split('/');
+	return parseJson(resolve('node_modules', ...pathSegments, 'package.json'));
+}
+
+function assertInstalledDependencyTree(packageManifest) {
+	if (!existsSync(resolve(packageRoot, 'package-lock.json'))) {
+		throw new Error('Missing package-lock.json. Run "npm --prefix app/docsera-shell install" from the repo root before deploy validation.');
+	}
+
+	for (const [packageName, expectedVersion] of Object.entries(packageManifest.dependencies || {})) {
+		const installedPackage = readInstalledPackageJson(packageName);
+		if (installedPackage.version !== expectedVersion) {
+			throw new Error(`Installed dependency mismatch for ${packageName}. Expected ${expectedVersion}, found ${installedPackage.version}.`);
+		}
+	}
+
+	for (const [packageName, expectedVersion] of Object.entries(packageManifest.devDependencies || {})) {
+		const installedPackage = readInstalledPackageJson(packageName);
+		if (installedPackage.version !== expectedVersion) {
+			throw new Error(`Installed devDependency mismatch for ${packageName}. Expected ${expectedVersion}, found ${installedPackage.version}.`);
+		}
+	}
+
+	readText('node_modules/@servicenow/sass-kit/_host.scss');
+}
+
 const packageJson = parseJson('package.json');
 if (packageJson.name !== 'docsera-app-shell') {
 	throw new Error(`Unexpected package name: ${packageJson.name}`);
@@ -77,6 +104,8 @@ if (packageJson.name !== 'docsera-app-shell') {
 if (!packageJson.scripts || packageJson.scripts.verify !== 'node scripts/validate.mjs') {
 	throw new Error('Package verify script does not point to the local validation entry point.');
 }
+
+assertInstalledDependencyTree(packageJson);
 
 const nowUi = parseJson('now-ui.json');
 const component = nowUi.components && nowUi.components['x-82900-docsera-shell'];
@@ -160,6 +189,7 @@ for (const needle of [
 const shellReadme = readText('README.md');
 for (const needle of [
 	'The closed PoC stays in `../../poc/tiptap-component/`',
+	'npm --prefix app/docsera-shell install',
 	'npm run validate',
 	'Workspace foundation',
 	'Manual PDI validation',
