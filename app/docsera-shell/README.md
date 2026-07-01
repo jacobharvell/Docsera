@@ -84,16 +84,17 @@ snc configure profile list --profile <profile>
 snc ui-component deploy --profile <profile> --fetch-assets-from-instance
 ```
 
-1. Open the shell and confirm the workspace reader header, page tree, breadcrumbs, and ToC render.
-2. Confirm the active workspace icon and name render in the header and the workspace short description does not.
-3. Confirm the My Workspaces switcher entry point returns to the launcher surface.
-4. Select a page in the tree and confirm the visible content, breadcrumbs, ToC, and route target update.
-5. Toggle the navigation collapse and theme controls to confirm browser-side shell state updates.
-6. If your role grants authoring access, create a root page from the shell and confirm the tree updates, the page is selected, and the route target changes to `/docsera/:workspaceSlug/:pageSlug`.
-7. If your role grants authoring access, create a child page from an existing row and confirm it inherits the selected workspace and parent page.
-8. Use the My Workspaces surface to create a workspace from the modal with a name and optional description.
-9. Confirm the new workspace is added to the list and becomes the selected workspace.
-10. Confirm the creator is added to the generated Admin group when the PDI provisioning wiring is live.
+1. In UI Builder, place `x-82900-docsera-shell` on a landing/core runtime page for the target PDI profile.
+2. Open the page and confirm the shell mounts, then verify the workspace reader header, page tree, breadcrumbs, and ToC render.
+3. Confirm the active workspace icon and name render in the header and the workspace short description does not.
+4. Confirm the My Workspaces switcher entry point returns to the launcher surface.
+5. Select a page in the tree and confirm the visible content, breadcrumbs, ToC, and route target update.
+6. Toggle the navigation collapse and theme controls to confirm browser-side shell state updates.
+7. If your role grants authoring access, create a root page from the shell and confirm the tree updates, the page is selected, and the route target changes to `/docsera/:workspaceSlug/:pageSlug`.
+8. If your role grants authoring access, create a child page from an existing row and confirm it inherits the selected workspace and parent page.
+9. Use the My Workspaces surface to create a workspace from the modal with a name and optional description.
+10. Confirm the new workspace is added to the list and becomes the selected workspace.
+11. Confirm the creator is added to the generated Admin group when the PDI provisioning wiring is live.
 
 Expected result:
 

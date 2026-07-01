@@ -51,7 +51,18 @@ Observed result:
 - `x-82900-docsera-shell` is now available for UI Builder placement because the deploy completed successfully.
 - The repo still does not expose a live Docsera route/module/page record. The current shell remains a UI Builder component that must be placed on a runtime page manually.
 
+## Runtime Placement Finding
+
+- The deploy created the component and toolbox records, plus the `sys_ux_macroponent` wrapper for `Docsera My Workspaces`.
+- No repo-visible Docsera `sys_ux_page_registry` or `sys_ux_app_route` record exists yet.
+- The minimal runtime placement remains instance-side UI Builder placement:
+  - create or reuse a UI Builder landing/core page
+  - add `x-82900-docsera-shell` to the page canvas
+  - save and open that page in the PDI runtime
+- The instance already exposes UI Builder routes such as `build/ui` and `builder/ui`, but those are the builder entry points, not a repo-managed Docsera runtime route.
+- In this environment, browser-style probing of the UI Builder route still fell back to `session_timeout.do`, so a live mount could not be confirmed here.
+
 ## Current Manual Next Step
 
-1. Place `x-82900-docsera-shell` on the target UI Builder runtime page and verify the shell mount.
+1. Place `x-82900-docsera-shell` on a UI Builder landing/core page in `dev295482` and verify the shell mount.
 2. If runtime still fails after placement, use `internal/runbooks/RUNTIME_EDITOR_DIAGNOSTICS.md` as the closest existing runtime triage sequence, adapting only the tag lookup to `x-82900-docsera-shell`.
