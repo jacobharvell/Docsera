@@ -300,6 +300,60 @@ function buildWorkspaceRootPages(visiblePages = [], preferDraftFields = false) {
 		.sort((left, right) => sortShellPages(left, right, preferDraftFields));
 }
 
+function normalizeSearchQuery(value) {
+	return cleanText(value).toLowerCase();
+}
+
+function buildPageSearchIndex(page) {
+	if (!page || typeof page !== 'object') {
+		return '';
+	}
+
+	return [
+		page.title,
+		page.pageSlug,
+		page.summary,
+		page.bodyText
+	]
+		.map(part => cleanText(part).toLowerCase())
+		.filter(Boolean)
+		.join(' ');
+}
+
+function filterPageTreeBySearchQuery(pageTree = [], searchQuery = '') {
+	const normalizedQuery = normalizeSearchQuery(searchQuery);
+	if (!normalizedQuery) {
+		return Array.isArray(pageTree) ? pageTree : [];
+	}
+
+	const filterNodes = nodes => {
+		const filteredNodes = [];
+
+		for (const node of Array.isArray(nodes) ? nodes : []) {
+			if (!node || typeof node !== 'object') {
+				continue;
+			}
+
+			const filteredChildren = filterNodes(node.children);
+			const matchesQuery = buildPageSearchIndex(node).includes(normalizedQuery);
+
+			if (!matchesQuery && !filteredChildren.length) {
+				continue;
+			}
+
+			filteredNodes.push({
+				...node,
+				children: filteredChildren,
+				hasChildren: filteredChildren.length > 0
+			});
+		}
+
+		return filteredNodes;
+	};
+
+	return filterNodes(pageTree);
+}
+
 export function flattenPageTree(pageTree = []) {
 	const flattened = [];
 
@@ -597,7 +651,8 @@ export function buildWorkspaceShellViewModel({
 	pages = [],
 	capabilityService,
 	selectedWorkspaceSlug = '',
-	selectedPageSlug = ''
+	selectedPageSlug = '',
+	pageTreeSearchQuery = ''
 } = {}) {
 	const workspaceSlug = normalizeSlug(selectedWorkspaceSlug);
 	const workspace = (Array.isArray(workspaces) ? workspaces : []).find(item => {
@@ -619,8 +674,12 @@ export function buildWorkspaceShellViewModel({
 			breadcrumbs: [],
 			tableOfContents: [],
 			visiblePages: [],
+			filteredPageTree: [],
 			allPages: [],
 			firstVisiblePageSlug: '',
+			pageTreeSearchQuery: normalizeSearchQuery(pageTreeSearchQuery),
+			isPageTreeSearchActive: false,
+			isPageTreeNoResultsState: false,
 			routeTargetPath: '/docsera',
 			canManageWorkspaceSettings: false,
 			canShowAuthoringControls: false,
@@ -683,6 +742,9 @@ export function buildWorkspaceShellViewModel({
 	const selectedPageSlugValue = selectedPage
 		? resolvePageSlug(selectedPage, canShowAuthoringControls)
 		: (canShowAuthoringControls ? requestedPageSlug : '');
+	const normalizedPageTreeSearchQuery = normalizeSearchQuery(pageTreeSearchQuery);
+	const pageTree = buildPageTree(visiblePages, '', selectedPage ? selectedPage.sysId : '', canShowAuthoringControls);
+	const filteredPageTree = filterPageTreeBySearchQuery(pageTree, normalizedPageTreeSearchQuery);
 
 	return {
 		status,
@@ -690,12 +752,16 @@ export function buildWorkspaceShellViewModel({
 		workspaceSlug: resolveWorkspaceSlug(workspace),
 		selectedPage: selectedPageView,
 		selectedPageSlug: selectedPageSlugValue,
-		pageTree: buildPageTree(visiblePages, '', selectedPage ? selectedPage.sysId : '', canShowAuthoringControls),
+		pageTree,
+		filteredPageTree,
 		breadcrumbs: selectedPage ? buildBreadcrumbs(selectedPage, pageBySysId, workspace, canShowAuthoringControls) : [],
 		tableOfContents: selectedPage ? buildTableOfContents(selectedPage) : [],
 		visiblePages,
 		allPages,
 		firstVisiblePageSlug: firstVisiblePage ? resolvePageSlug(firstVisiblePage, canShowAuthoringControls) : '',
+		pageTreeSearchQuery: normalizedPageTreeSearchQuery,
+		isPageTreeSearchActive: Boolean(normalizedPageTreeSearchQuery),
+		isPageTreeNoResultsState: Boolean(normalizedPageTreeSearchQuery && filteredPageTree.length === 0 && visiblePages.length > 0),
 		routeTargetPath: buildWorkspacePageRoutePath(resolveWorkspaceSlug(workspace), selectedPage ? resolvePageSlug(selectedPage, canShowAuthoringControls) : selectedPageSlugValue),
 		canManageWorkspaceSettings: Boolean(capabilityService && typeof capabilityService.isWorkspaceAdmin === 'function' && capabilityService.isWorkspaceAdmin(workspace)),
 		canShowAuthoringControls,

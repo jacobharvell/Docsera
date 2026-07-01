@@ -920,6 +920,93 @@ assert.equal(shellAuthoringView.canShowAuthoringControls, true);
 assert.equal(shellAuthoringView.canCreatePages, true);
 assert.equal(shellAuthoringView.pageMode, 'authoring');
 
+const authoringSearchByChainView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: demoPages,
+	capabilityService: shellAuthoringCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	pageTreeSearchQuery: 'draft-branch-leaf'
+});
+
+assert.equal(authoringSearchByChainView.isPageTreeSearchActive, true);
+assert.equal(authoringSearchByChainView.isPageTreeNoResultsState, false);
+assert.equal(authoringSearchByChainView.pageTree.length, shellAuthoringView.pageTree.length);
+assert.equal(authoringSearchByChainView.filteredPageTree.length, 1);
+assert.deepEqual(flattenPageTree(authoringSearchByChainView.filteredPageTree).map(page => page.title), [
+	'Draft Playground',
+	'Draft Branch',
+	'Draft Branch Child',
+	'Draft Branch Grandchild',
+	'Draft Branch Leaf'
+]);
+
+const authoringSearchByBodyView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: demoPages,
+	capabilityService: shellAuthoringCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	pageTreeSearchQuery: 'not-found validation'
+});
+
+assert.equal(authoringSearchByBodyView.isPageTreeSearchActive, true);
+assert.equal(authoringSearchByBodyView.isPageTreeNoResultsState, false);
+assert.equal(authoringSearchByBodyView.filteredPageTree.length, 1);
+assert.equal(authoringSearchByBodyView.filteredPageTree[0].title, 'Draft Playground');
+
+const readerSearchByBodyView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: demoPages,
+	capabilityService: shellReaderCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	pageTreeSearchQuery: 'guidance'
+});
+
+assert.equal(readerSearchByBodyView.isPageTreeSearchActive, true);
+assert.equal(readerSearchByBodyView.isPageTreeNoResultsState, false);
+assert.equal(readerSearchByBodyView.filteredPageTree.length, 1);
+assert.equal(readerSearchByBodyView.filteredPageTree[0].title, 'Overview');
+
+const viewerDraftSearchView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: demoPages,
+	capabilityService: shellReaderCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	selectedPageSlug: 'draft-playground',
+	pageTreeSearchQuery: 'draft-branch-leaf'
+});
+
+assert.equal(viewerDraftSearchView.status, 'page-not-found');
+assert.equal(viewerDraftSearchView.isPageTreeSearchActive, true);
+assert.equal(viewerDraftSearchView.isPageTreeNoResultsState, true);
+assert.equal(viewerDraftSearchView.filteredPageTree.length, 0);
+assert.ok(!viewerDraftSearchView.visiblePages.some(page => page.pageSlug === 'draft-playground'));
+
+const blankSearchView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: demoPages,
+	capabilityService: shellAuthoringCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	pageTreeSearchQuery: '   '
+});
+
+assert.equal(blankSearchView.isPageTreeSearchActive, false);
+assert.equal(blankSearchView.isPageTreeNoResultsState, false);
+assert.equal(blankSearchView.filteredPageTree.length, shellAuthoringView.pageTree.length);
+assert.equal(blankSearchView.pageTreeSearchQuery, '');
+
+const emptyWorkspaceSearchView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: demoPages,
+	capabilityService: shellReaderCapabilityService,
+	selectedWorkspaceSlug: 'reference-library',
+	pageTreeSearchQuery: 'anything'
+});
+
+assert.equal(emptyWorkspaceSearchView.status, 'empty-workspace');
+assert.equal(emptyWorkspaceSearchView.isPageTreeSearchActive, true);
+assert.equal(emptyWorkspaceSearchView.isPageTreeNoResultsState, false);
+assert.equal(emptyWorkspaceSearchView.filteredPageTree.length, 0);
+
 const validInsideMove = validatePageMoveTarget(demoPages, 'page-product-overview', 'page-product-guides', 'inside', PAGE_TREE_MAX_DEPTH);
 assert.equal(validInsideMove.valid, true);
 assert.equal(validInsideMove.destinationParentPageSysId, 'page-product-guides');

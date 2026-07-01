@@ -85,6 +85,7 @@ function createInitialState() {
 	return {
 		surfaceMode: 'shell',
 		workspaceSearch: '',
+		pageTreeSearch: '',
 		selectedWorkspaceSlug: 'product-docs',
 		selectedPageSlug: '',
 		shellNavigationCollapsed: false,
@@ -1285,13 +1286,14 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 			selectedPageSlug: ''
 		});
 
-		updateState({
-			surfaceMode: 'shell',
-			selectedWorkspaceSlug: workspace.workspaceSlug,
-			selectedPageSlug: nextShell.firstVisiblePageSlug || '',
-			shellNavigationCollapsed: false,
-			workspaceStatus: nextShell.status === 'empty-workspace'
-				? `${workspace.name} opened with no visible pages.`
+			updateState({
+				surfaceMode: 'shell',
+				selectedWorkspaceSlug: workspace.workspaceSlug,
+				selectedPageSlug: nextShell.firstVisiblePageSlug || '',
+				pageTreeSearch: '',
+				shellNavigationCollapsed: false,
+				workspaceStatus: nextShell.status === 'empty-workspace'
+					? `${workspace.name} opened with no visible pages.`
 				: `Opened ${workspace.name} at ${nextShell.routeTargetPath}`
 		});
 	};
@@ -2645,19 +2647,59 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 						</p>
 					</div>
 
+					<div className="docsera-shell__reader-nav-search">
+						<label className="docsera-shell__search" htmlFor="docsera-page-tree-search">
+							<span className="docsera-shell__search-label">Search pages</span>
+						</label>
+						<div className="docsera-shell__search-row">
+							<input
+								id="docsera-page-tree-search"
+								type="search"
+								value={state.pageTreeSearch}
+								placeholder="Filter by title, slug, summary, or body text"
+								aria-controls="docsera-page-tree"
+								on-input={event => updateState({pageTreeSearch: event.target.value})}
+							/>
+							{state.pageTreeSearch ? (
+								<button
+									type="button"
+									className="docsera-shell__button docsera-shell__button--secondary docsera-shell__search-clear"
+									on-click={() => updateState({pageTreeSearch: ''})}
+								>
+									Clear search
+								</button>
+							) : null}
+						</div>
+					</div>
+
 					<div className="docsera-shell__reader-nav-summary">
 						<span className="docsera-shell__toolbar-chip">{shell.visiblePages.length} visible pages</span>
 						<span className="docsera-shell__toolbar-chip">{shell.routeTargetPath}</span>
 					</div>
 
 					<nav
+						id="docsera-page-tree"
 						className={`docsera-shell__tree${canDragPages ? ' docsera-shell__tree--droppable' : ''}`}
 						aria-label="Workspace page tree"
 						on-dragover={handlePageTreeDragOver}
 						on-drop={handlePageTreeDrop}
 						on-dragleave={handlePageTreeDragLeave}
 					>
-						{shell.pageTree.length ? renderPageTreeNodes(shell.pageTree, {
+						{shell.isPageTreeNoResultsState ? (
+							<div className="docsera-shell__toc-empty" role="status" aria-live="polite">
+								<div className="docsera-shell__state docsera-shell__state--compact">
+									<div>No matching pages.</div>
+									<div>Try another search term or clear the filter to restore the full tree.</div>
+									<button
+										type="button"
+										className="docsera-shell__button docsera-shell__button--secondary"
+										on-click={() => updateState({pageTreeSearch: ''})}
+									>
+										Clear search
+									</button>
+								</div>
+							</div>
+						) : shell.pageTree.length ? renderPageTreeNodes(shell.filteredPageTree, {
 							selectPage,
 							openPageSettings,
 							createChildPage: openCreatePageModal,
@@ -2854,7 +2896,8 @@ const view = (state, {updateState}) => {
 		pages: state.pages,
 		capabilityService,
 		selectedWorkspaceSlug: state.selectedWorkspaceSlug,
-		selectedPageSlug: state.selectedPageSlug
+		selectedPageSlug: state.selectedPageSlug,
+		pageTreeSearchQuery: state.pageTreeSearch
 	});
 
 	return renderWorkspaceReaderSurface(

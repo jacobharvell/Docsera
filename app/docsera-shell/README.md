@@ -96,6 +96,7 @@ Expected result:
 - Page selection updates the reader content without a full refresh.
 - Workspace creation preserves the name, description, default icon, and slug behavior.
 - The shell still mounts successfully if you run the optional runtime smoke check.
+- The page-tree search, no-results state, and shell-state distinctions are documented in `docs/process/Implementation Notes - Workspace Shell Search and State Polish.md`.
 
 ## Remaining gaps
 
