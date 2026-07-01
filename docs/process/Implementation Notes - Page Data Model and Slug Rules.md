@@ -165,6 +165,8 @@ Implemented shell-side behaviors:
 - authoring-tree visibility for draft pages
 - flat route target updates using `/docsera/:workspaceSlug/:pageSlug`
 - Page Settings overlay edits draft title and slug values in the same workspace shell model
+- editor/autosave behavior is documented separately in `Implementation Notes - Editor Shell and Autosave.md`
+- publishing workflow behavior is documented separately in `Implementation Notes - Publishing Workflow.md`
 
 ## Local Validation
 
@@ -238,8 +240,6 @@ The repository now has the page domain contract, but the following PDI work may 
 
 This task does not add:
 
-- editor/autosave behavior
-- publishing action
 - full route resolution
 - page search
 - image upload or media insertion

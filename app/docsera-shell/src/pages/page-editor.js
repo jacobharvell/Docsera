@@ -1,4 +1,4 @@
-import {PAGE_PUBLICATION_STATES} from './page-domain.js';
+import {PAGE_PUBLICATION_STATES, resolvePagePublishingState} from './page-domain.js';
 
 const DEFAULT_PAGE_BODY_CONTENT_JSON = Object.freeze({
 	type: 'doc',
@@ -255,10 +255,10 @@ export function resolvePageBodyContentJson(page, preferDraft = false) {
 
 	const bodyJson = preferDraft
 		? page.draftContentJson || page.publishedContentJson
-		: page.publishedContentJson || page.draftContentJson;
+		: page.publishedContentJson;
 	const bodyText = preferDraft
 		? page.draftBodyText || page.publishedBodyText
-		: page.publishedBodyText || page.draftBodyText;
+		: page.publishedBodyText;
 
 	if (bodyJson) {
 		return normalizePageBodyContentJson(bodyJson);
@@ -278,14 +278,19 @@ export function buildPageBodySaveRecord(page, contentJson) {
 
 	const nextContentJson = normalizePageBodyContentJson(contentJson);
 	const nextBodyText = extractPageBodyTextFromContentJson(nextContentJson);
-	const nextPublicationState = page.publicationState === PAGE_PUBLICATION_STATES.published
-		? PAGE_PUBLICATION_STATES.publishedWithUnpublishedChanges
-		: page.publicationState;
-
-	return {
+	const nextPage = {
 		...page,
 		draftContentJson: nextContentJson,
-		draftBodyText: nextBodyText,
+		draftBodyText: nextBodyText
+	};
+	const nextPublicationState = page.publicationState === PAGE_PUBLICATION_STATES.draft
+		? PAGE_PUBLICATION_STATES.draft
+		: resolvePagePublishingState(nextPage).hasUnpublishedChanges
+			? PAGE_PUBLICATION_STATES.publishedWithUnpublishedChanges
+			: PAGE_PUBLICATION_STATES.published;
+
+	return {
+		...nextPage,
 		publicationState: nextPublicationState
 	};
 }
@@ -600,4 +605,18 @@ export function getPageBodyEditorSessionSnapshot(pageSysId) {
 
 	const session = pageBodyEditorSessions.get(normalizedPageSysId);
 	return session ? session.getSnapshot() : null;
+}
+
+export async function flushPageBodyEditorSession(pageSysId, reason = 'manual') {
+	const normalizedPageSysId = cleanText(pageSysId);
+	if (!normalizedPageSysId) {
+		return null;
+	}
+
+	const session = pageBodyEditorSessions.get(normalizedPageSysId);
+	if (!session) {
+		return null;
+	}
+
+	return session.flushAutosave(reason);
 }

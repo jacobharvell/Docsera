@@ -40,12 +40,7 @@ function resolvePageSlug(page, preferDraft = false) {
 		);
 	}
 
-	return cleanText(
-		page.publishedSlug ||
-		page.draftSlug ||
-		page.slug ||
-		page.pageSlug
-	);
+	return cleanText(page.publishedSlug);
 }
 
 function resolvePageTitle(page, preferDraft = false) {
@@ -57,7 +52,7 @@ function resolvePageTitle(page, preferDraft = false) {
 		return cleanText(page.draftTitle || page.publishedTitle || page.title);
 	}
 
-	return cleanText(page.publishedTitle || page.draftTitle || page.title);
+	return cleanText(page.publishedTitle);
 }
 
 function resolvePageBodyText(page, preferDraft = false) {
@@ -70,15 +65,19 @@ function resolvePageBodyText(page, preferDraft = false) {
 		return cleanText(page.draftBodyText || page.publishedBodyText || page.bodyText || extractPageBodyTextFromContentJson(contentJson));
 	}
 
-	return cleanText(page.publishedBodyText || page.draftBodyText || page.bodyText || extractPageBodyTextFromContentJson(contentJson));
+	return cleanText(page.publishedBodyText || extractPageBodyTextFromContentJson(contentJson));
 }
 
-function resolvePageSummary(page) {
+function resolvePageSummary(page, preferDraft = false) {
 	if (!page || typeof page !== 'object') {
 		return '';
 	}
 
-	return cleanText(page.summary || page.description || page.publishedBodyText || page.draftBodyText);
+	if (preferDraft) {
+		return cleanText(page.summary || page.description || page.draftBodyText || page.publishedBodyText);
+	}
+
+	return cleanText(page.summary || page.description || page.publishedBodyText);
 }
 
 function resolvePageWorkspaceSysId(page) {
@@ -149,7 +148,7 @@ function buildPageNode(page, visiblePagesByParent, selectedPageSysId, preferDraf
 		sysId: page.sysId,
 		pageSlug: resolvePageSlug(page, preferDraftFields),
 		title: resolvePageTitle(page, preferDraftFields),
-		summary: resolvePageSummary(page),
+		summary: resolvePageSummary(page, preferDraftFields),
 		bodyText: resolvePageBodyText(page, preferDraftFields),
 		bodyContentJson: resolvePageBodyContentJson(page, preferDraftFields),
 		parentPageSysId: resolvePageParentSysId(page),
@@ -653,19 +652,37 @@ export function buildWorkspaceShellViewModel({
 	const rootPages = buildWorkspaceRootPages(visiblePages, canShowAuthoringControls);
 	const firstVisiblePage = rootPages[0] || visiblePages[0] || null;
 	const selectedPage = requestedPageSlug ? pageBySlug.get(requestedPageSlug) || null : firstVisiblePage;
-	const selectedPageView = selectedPage ? {
-		...selectedPage,
-		title: resolvePageTitle(selectedPage, canShowAuthoringControls),
-		pageSlug: resolvePageSlug(selectedPage, canShowAuthoringControls),
-		bodyText: resolvePageBodyText(selectedPage, canShowAuthoringControls),
-		bodyContentJson: resolvePageBodyContentJson(selectedPage, canShowAuthoringControls)
-	} : null;
+	const selectedPageView = selectedPage ? (
+		canShowAuthoringControls
+			? {
+				...selectedPage,
+				title: resolvePageTitle(selectedPage, true),
+				pageSlug: resolvePageSlug(selectedPage, true),
+				bodyText: resolvePageBodyText(selectedPage, true),
+				bodyContentJson: resolvePageBodyContentJson(selectedPage, true)
+			}
+			: {
+				sysId: selectedPage.sysId,
+				pageSlug: resolvePageSlug(selectedPage, false),
+				title: resolvePageTitle(selectedPage, false),
+				summary: resolvePageSummary(selectedPage, false),
+				bodyText: resolvePageBodyText(selectedPage, false),
+				bodyContentJson: resolvePageBodyContentJson(selectedPage, false),
+				parentPageSysId: resolvePageParentSysId(selectedPage),
+				siblingOrder: resolvePageSiblingOrder(selectedPage),
+				publicationState: selectedPage.publicationState,
+				isDraft: selectedPage.publicationState === PAGE_PUBLICATION_STATES.draft,
+				isSelected: true
+			}
+	) : null;
 	const status = visiblePages.length === 0
 		? 'empty-workspace'
 		: requestedPageSlug && !selectedPage
 			? 'page-not-found'
 			: 'ready';
-	const selectedPageSlugValue = selectedPage ? resolvePageSlug(selectedPage, canShowAuthoringControls) : requestedPageSlug;
+	const selectedPageSlugValue = selectedPage
+		? resolvePageSlug(selectedPage, canShowAuthoringControls)
+		: (canShowAuthoringControls ? requestedPageSlug : '');
 
 	return {
 		status,

@@ -164,6 +164,13 @@ Do not re-run broad dependency/version experiments until the relevant runbook di
 - Keep status reports concise. Do not repeat unchanged project context, full command inventories, or prior tool findings unless they affect the current decision, blocker, or validation result.
 - Every implementation task should end with a concise structured summary covering files created, files modified, behavior implemented, tests/checks run, validation notes, manual verification needed, requirement deviations or platform constraints, and known risks/follow-ups.
 
+## Repo Documentation
+
+- When a task introduces or changes durable implementation behavior, domain contracts, adapter boundaries, persistence assumptions, platform wiring gaps, or workflow state transitions, update or create a compact implementation note under `docs/process`.
+- Implementation notes summarize repo-side behavior only.
+- Accepted product requirements remain in the Obsidian requirements notes and must not be replaced or contradicted by repo documentation.
+- Do not create implementation notes for trivial changes that do not alter durable behavior.
+
 ## Docsera Local References
 
 When a task references Obsidian requirements, design system notes, prototypes, screenshots, or visual attachments, use these local paths:

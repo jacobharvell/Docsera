@@ -25,6 +25,7 @@ import {
 	allocatePageSlug,
 	applyPageMove,
 	buildPageBodySaveRecord,
+	buildPagePublishRecord,
 	collectPageAncestorSysIds,
 	collectPageSubtreeSysIds,
 	buildWorkspaceShellViewModel,
@@ -45,6 +46,7 @@ import {
 	removePageSubtree,
 	resolvePageDepth,
 	resolvePageSubtreeDepth,
+	resolvePagePublishingState,
 	resolvePageBodyContentJson,
 	normalizePageBodyContentJson,
 	updatePageDraftSettings,
@@ -131,16 +133,22 @@ for (const needle of [
 	'Draft content',
 	'Body editor',
 	'Autosaves after a short idle delay',
+	'Publish draft',
+	'Publish changes',
+	'No changes to publish',
 	'pageEditorStatusLabel',
 	'confirmSafePageEditorNavigation',
 	'ensurePageBodyEditorHost',
 	'ensurePageBodyEditorSession',
+	'pagePublishBusy',
 	'pageEditorIsFailed',
 	'Delete page',
+	'docsera-shell__editor-actions',
 	'docsera-shell__tree-action--settings',
 	'docsera-shell__tree-row-surface--drop-',
 	'docsera-shell__tree-drag-handle',
 	'docsera-shell__tree-drag-ghost',
+	'docsera-shell__page-badge--changes',
 	'handlePageTreeDrop',
 	'startPageTreeDrag'
 ]) {
@@ -554,6 +562,80 @@ const updatedPageSettingsPage = updatePageDraftSettings(pageSettingsValidationPa
 assert.equal(updatedPageSettingsPage.draftTitle, 'Guides Updated');
 assert.equal(updatedPageSettingsPage.draftSlug, 'guides-updated');
 assert.equal(updatedPageSettingsPage.draftSlugNormalized, 'guides-updated');
+assert.equal(updatedPageSettingsPage.publicationState, PAGE_PUBLICATION_STATES.publishedWithUnpublishedChanges);
+
+const publishedPageWithChanges = {
+	sysId: 'page-publishing-baseline',
+	workspaceSysId: 'workspace-001',
+	parentPageSysId: 'page-settings-home',
+	siblingOrder: 3,
+	draftTitle: 'Guides Updated',
+	draftSlug: 'guides-updated',
+	draftSlugNormalized: 'guides-updated',
+	draftContentJson: createPageBodyContentJsonFromText('Updated draft body'),
+	draftBodyText: 'Updated draft body',
+	publishedTitle: 'Guides',
+	publishedSlug: 'guides',
+	publishedSlugNormalized: 'guides',
+	publishedContentJson: createPageBodyContentJsonFromText('Published body'),
+	publishedBodyText: 'Published body',
+	publicationState: PAGE_PUBLICATION_STATES.published
+};
+
+const publishableDraftState = resolvePagePublishingState(rootPage);
+assert.equal(publishableDraftState.publicationStatusLabel, 'Draft');
+assert.equal(publishableDraftState.publishActionLabel, 'Publish draft');
+assert.equal(publishableDraftState.canPublish, true);
+assert.equal(publishableDraftState.hasUnpublishedChanges, false);
+
+const publishableChangedState = resolvePagePublishingState(publishedPageWithChanges);
+assert.equal(publishableChangedState.publicationStatusLabel, 'Unpublished changes');
+assert.equal(publishableChangedState.publishActionLabel, 'Publish changes');
+assert.equal(publishableChangedState.canPublish, true);
+assert.equal(publishableChangedState.hasUnpublishedChanges, true);
+
+const publishBlockedState = resolvePagePublishingState({
+	...publishedPageWithChanges,
+	draftTitle: 'Guides',
+	draftSlug: 'guides',
+	draftContentJson: createPageBodyContentJsonFromText('Published body'),
+	draftBodyText: 'Published body'
+});
+assert.equal(publishBlockedState.publicationStatusLabel, 'Published');
+assert.equal(publishBlockedState.publishActionLabel, 'No changes to publish');
+assert.equal(publishBlockedState.canPublish, false);
+assert.equal(publishBlockedState.hasUnpublishedChanges, false);
+
+const updatedPageSettingsCleared = updatePageDraftSettings({
+	...publishedPageWithChanges,
+	publicationState: PAGE_PUBLICATION_STATES.publishedWithUnpublishedChanges,
+	draftTitle: 'Guides',
+	draftSlug: 'guides',
+	draftContentJson: createPageBodyContentJsonFromText('Published body'),
+	draftBodyText: 'Published body'
+}, {
+	title: 'Guides',
+	slug: 'guides'
+});
+assert.equal(updatedPageSettingsCleared.publicationState, PAGE_PUBLICATION_STATES.published);
+
+const publishedPreview = buildPagePublishRecord(publishedPageWithChanges);
+assert.equal(publishedPreview.publicationState, PAGE_PUBLICATION_STATES.published);
+assert.equal(publishedPreview.draftTitle, 'Guides Updated');
+assert.equal(publishedPreview.publishedTitle, 'Guides Updated');
+assert.equal(publishedPreview.draftSlug, 'guides-updated');
+assert.equal(publishedPreview.publishedSlug, 'guides-updated');
+assert.equal(publishedPreview.publishedSlugNormalized, 'guides-updated');
+assert.equal(publishedPreview.publishedBodyText, 'Updated draft body');
+assert.equal(publishedPreview.parentPageSysId, 'page-settings-home');
+assert.equal(publishedPreview.siblingOrder, 3);
+assert.equal(publishedPreview.workspaceSysId, 'workspace-001');
+
+const draftPublishPreview = buildPagePublishRecord(rootPage);
+assert.equal(draftPublishPreview.publicationState, PAGE_PUBLICATION_STATES.published);
+assert.equal(draftPublishPreview.publishedTitle, rootPage.draftTitle);
+assert.equal(draftPublishPreview.publishedSlug, rootPage.draftSlug);
+assert.equal(draftPublishPreview.publishedSlugNormalized, rootPage.draftSlugNormalized);
 
 const subtreeFixture = [
 	{sysId: 'page-root', parentPageSysId: null},
@@ -739,6 +821,79 @@ assert.equal(readerChangedView.selectedPage.title, 'Overview');
 assert.equal(readerChangedView.selectedPageSlug, 'overview');
 assert.equal(readerChangedView.routeTargetPath, '/docsera/product-docs/overview');
 assert.equal(readerChangedView.pageTree[0].title, 'Overview');
+assert.equal(readerChangedView.pageTree[0].bodyText, 'Product Docs is the primary reader surface for launches, decisions, and guidance.');
+assert.equal(readerChangedView.breadcrumbs[0].label, 'Overview');
+assert.equal(readerChangedView.selectedPage.bodyText, 'Product Docs is the primary reader surface for launches, decisions, and guidance.');
+assert.equal(readerChangedView.selectedPage.pageSlug, 'overview');
+assert.equal('draftTitle' in readerChangedView.selectedPage, false);
+assert.equal('draftSlug' in readerChangedView.selectedPage, false);
+assert.equal('draftBodyText' in readerChangedView.selectedPage, false);
+assert.equal('draftContentJson' in readerChangedView.selectedPage, false);
+
+const viewerOnlyPublishedPage = {
+	sysId: 'page-viewer-only-published-change',
+	workspaceSysId: 'workspace-product-001',
+	parentPageSysId: null,
+	siblingOrder: 4,
+	draftTitle: 'Guides Draft',
+	draftSlug: 'guides-draft',
+	draftContentJson: createPageBodyContentJsonFromText('Draft body that must stay hidden.'),
+	draftBodyText: 'Draft body that must stay hidden.',
+	publishedTitle: 'Guides',
+	publishedSlug: 'guides',
+	publishedSlugNormalized: 'guides',
+	publishedContentJson: createPageBodyContentJsonFromText('Published body that readers should see.'),
+	publishedBodyText: 'Published body that readers should see.',
+	publicationState: PAGE_PUBLICATION_STATES.publishedWithUnpublishedChanges,
+	active: true,
+	sections: [
+		{
+			id: 'published-reader-section',
+			title: 'Published reader section',
+			level: 2
+		}
+	]
+};
+
+const viewerOnlyPublishedView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: [viewerOnlyPublishedPage],
+	capabilityService: shellReaderCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	selectedPageSlug: 'guides-draft'
+});
+
+assert.equal(viewerOnlyPublishedView.status, 'page-not-found');
+assert.equal(viewerOnlyPublishedView.selectedPageSlug, '');
+assert.equal(viewerOnlyPublishedView.routeTargetPath, '/docsera/product-docs');
+assert.equal(viewerOnlyPublishedView.pageTree[0].title, 'Guides');
+assert.equal(viewerOnlyPublishedView.pageTree[0].pageSlug, 'guides');
+assert.equal(viewerOnlyPublishedView.pageTree[0].bodyText, 'Published body that readers should see.');
+assert.equal(viewerOnlyPublishedView.pageTree[0].summary, 'Published body that readers should see.');
+assert.equal(viewerOnlyPublishedView.pageTree[0].bodyContentJson.content.length > 0, true);
+assert.equal(viewerOnlyPublishedView.selectedPage, null);
+
+const viewerOnlyPublishedSlugView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: [viewerOnlyPublishedPage],
+	capabilityService: shellReaderCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	selectedPageSlug: 'guides'
+});
+
+assert.equal(viewerOnlyPublishedSlugView.status, 'ready');
+assert.equal(viewerOnlyPublishedSlugView.selectedPage.title, 'Guides');
+assert.equal(viewerOnlyPublishedSlugView.selectedPage.pageSlug, 'guides');
+assert.equal(viewerOnlyPublishedSlugView.selectedPage.bodyText, 'Published body that readers should see.');
+assert.equal(viewerOnlyPublishedSlugView.routeTargetPath, '/docsera/product-docs/guides');
+assert.equal('draftTitle' in viewerOnlyPublishedSlugView.selectedPage, false);
+assert.equal('draftSlug' in viewerOnlyPublishedSlugView.selectedPage, false);
+assert.equal('draftBodyText' in viewerOnlyPublishedSlugView.selectedPage, false);
+assert.equal('draftContentJson' in viewerOnlyPublishedSlugView.selectedPage, false);
+assert.equal(viewerOnlyPublishedSlugView.pageTree[0].title, 'Guides');
+assert.equal(viewerOnlyPublishedSlugView.pageTree[0].pageSlug, 'guides');
+assert.equal(viewerOnlyPublishedSlugView.pageTree[0].bodyText, 'Published body that readers should see.');
+assert.equal(viewerOnlyPublishedSlugView.breadcrumbs[0].label, 'Guides');
 
 const shellAuthoringView = buildWorkspaceShellViewModel({
 	workspaces: demoWorkspaces,
@@ -894,7 +1049,7 @@ const missingPageView = buildWorkspaceShellViewModel({
 });
 
 assert.equal(missingPageView.status, 'page-not-found');
-assert.equal(missingPageView.routeTargetPath, '/docsera/product-docs/draft-playground');
+assert.equal(missingPageView.routeTargetPath, '/docsera/product-docs');
 
 const emptyWorkspaceView = buildWorkspaceShellViewModel({
 	workspaces: demoWorkspaces,
@@ -983,6 +1138,37 @@ assert.equal(malformedImportedBody.content[0].content[2].type, 'image');
 const publishedSavePreview = buildPageBodySaveRecord(demoPages[0], bodyContentFromText);
 assert.equal(publishedSavePreview.publicationState, PAGE_PUBLICATION_STATES.publishedWithUnpublishedChanges);
 assert.equal(publishedSavePreview.draftBodyText, 'First line\n\nSecond line');
+
+const publishedBodyStatePage = {
+	sysId: 'page-published-body',
+	workspaceSysId: 'workspace-001',
+	draftTitle: 'Body Page',
+	draftSlug: 'body-page',
+	draftSlugNormalized: 'body-page',
+	draftContentJson: createPageBodyContentJsonFromText('Published body'),
+	draftBodyText: 'Published body',
+	publishedTitle: 'Body Page',
+	publishedSlug: 'body-page',
+	publishedSlugNormalized: 'body-page',
+	publishedContentJson: createPageBodyContentJsonFromText('Published body'),
+	publishedBodyText: 'Published body',
+	publicationState: PAGE_PUBLICATION_STATES.publishedWithUnpublishedChanges
+};
+const publishedSaveNoChangePreview = buildPageBodySaveRecord(publishedBodyStatePage, createPageBodyContentJsonFromText('Published body'));
+assert.equal(publishedSaveNoChangePreview.publicationState, PAGE_PUBLICATION_STATES.published);
+
+const emptyDraftBodyPublishSource = {
+	...publishedBodyStatePage,
+	draftContentJson: createPageBodyContentJsonFromText(''),
+	draftBodyText: '',
+	publishedContentJson: createPageBodyContentJsonFromText('Stale published body'),
+	publishedBodyText: 'Stale published body',
+	publicationState: PAGE_PUBLICATION_STATES.publishedWithUnpublishedChanges
+};
+const emptyDraftBodyPublishPreview = buildPagePublishRecord(emptyDraftBodyPublishSource);
+assert.equal(emptyDraftBodyPublishPreview.publishedBodyText, '');
+assert.equal(emptyDraftBodyPublishPreview.publishedContentJson.type, 'doc');
+assert.equal(emptyDraftBodyPublishPreview.publicationState, PAGE_PUBLICATION_STATES.published);
 
 const draftContentFromSelection = resolvePageBodyContentJson(demoPages[0], true);
 assert.equal(draftContentFromSelection.type, 'doc');

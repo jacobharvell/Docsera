@@ -611,6 +611,14 @@
   gap: var(--docsera-shell-space-4);
 }
 
+.docsera-shell__editor-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: var(--docsera-shell-space-2);
+  flex-wrap: wrap;
+}
+
 .docsera-shell__reader-title-row,
 .docsera-shell__reader-nav-title-row {
   display: flex;
@@ -1004,6 +1012,18 @@
   border-color: rgba(29, 122, 252, 0.24);
   background: rgba(29, 122, 252, 0.10);
   color: var(--docsera-shell-color-accent-strong);
+}
+
+.docsera-shell__page-badge--changes {
+  border-color: rgba(203, 110, 26, 0.24);
+  background: rgba(203, 110, 26, 0.10);
+  color: #a95a12;
+}
+
+.docsera-shell__page-badge--published {
+  border-color: rgba(52, 140, 72, 0.24);
+  background: rgba(52, 140, 72, 0.10);
+  color: #2f7f45;
 }
 
 .docsera-shell__workspace-list {

@@ -129,6 +129,40 @@ function normalizePagePublicationState(value) {
 		: PAGE_PUBLICATION_STATES.draft;
 }
 
+function samePageContentJson(left, right) {
+	return JSON.stringify(normalizePageContentJson(left)) === JSON.stringify(normalizePageContentJson(right));
+}
+
+function hasPublishedPageSnapshot(page) {
+	if (!page || typeof page !== 'object') {
+		return false;
+	}
+
+	return Boolean(
+		cleanText(page.publishedTitle) ||
+		cleanText(page.publishedSlug) ||
+		page.publishedContentJson ||
+		cleanText(page.publishedBodyText)
+	);
+}
+
+function hasPageDraftDifferencesFromPublished(page) {
+	if (!hasPublishedPageSnapshot(page)) {
+		return false;
+	}
+
+	const draftTitle = cleanText(page.draftTitle || page.publishedTitle || page.title);
+	const draftSlug = cleanText(page.draftSlug || page.publishedSlug || page.slug || page.pageSlug).toLowerCase();
+	const draftContentJson = normalizePageContentJson(page.draftContentJson || page.publishedContentJson);
+	const publishedTitle = cleanText(page.publishedTitle);
+	const publishedSlug = cleanText(page.publishedSlug || page.publishedSlugNormalized).toLowerCase();
+	const publishedContentJson = page.publishedContentJson ? normalizePageContentJson(page.publishedContentJson) : null;
+
+	return draftTitle !== publishedTitle ||
+		draftSlug !== publishedSlug ||
+		!samePageContentJson(draftContentJson, publishedContentJson);
+}
+
 function normalizeSiblingOrder(value, fallback = 1) {
 	const order = Number(value);
 	if (!Number.isFinite(order) || order < 1) {
@@ -627,12 +661,73 @@ export function updatePageDraftSettings(page, {title, slug} = {}) {
 	const normalizedSlug = typeof slug === 'string'
 		? slug.trim().toLowerCase()
 		: cleanText(page.draftSlug || page.publishedSlug || page.slug || page.pageSlug).toLowerCase();
-
-	return {
+	const nextPage = {
 		...page,
 		draftTitle: normalizedTitle,
 		draftSlug: normalizedSlug,
 		draftSlugNormalized: normalizedSlug
+	};
+	const nextPublicationState = page.publicationState === PAGE_PUBLICATION_STATES.published || page.publicationState === PAGE_PUBLICATION_STATES.publishedWithUnpublishedChanges
+		? (hasPageDraftDifferencesFromPublished(nextPage)
+			? PAGE_PUBLICATION_STATES.publishedWithUnpublishedChanges
+			: PAGE_PUBLICATION_STATES.published)
+		: normalizePagePublicationState(page.publicationState);
+
+	return {
+		...nextPage,
+		publicationState: nextPublicationState
+	};
+}
+
+export function resolvePagePublishingState(page) {
+	const publicationState = normalizePagePublicationState(page && typeof page === 'object' ? page.publicationState : '');
+	const hasPublishedVersion = hasPublishedPageSnapshot(page);
+	const hasUnpublishedChanges = hasPageDraftDifferencesFromPublished(page);
+	const canPublish = publicationState === PAGE_PUBLICATION_STATES.draft || hasUnpublishedChanges;
+
+	return {
+		publicationState,
+		hasPublishedVersion,
+		hasUnpublishedChanges,
+		canPublish,
+		publicationStatusLabel: publicationState === PAGE_PUBLICATION_STATES.draft
+			? 'Draft'
+			: hasUnpublishedChanges
+				? 'Unpublished changes'
+				: 'Published',
+		publishActionLabel: publicationState === PAGE_PUBLICATION_STATES.draft
+			? 'Publish draft'
+			: hasUnpublishedChanges
+				? 'Publish changes'
+				: 'No changes to publish'
+	};
+}
+
+export function buildPagePublishRecord(page) {
+	if (!page || typeof page !== 'object') {
+		throw new TypeError('A page record is required.');
+	}
+
+	const draftTitle = cleanText(page.draftTitle || page.publishedTitle || page.title);
+	const draftSlug = cleanText(page.draftSlug || page.publishedSlug || page.slug || page.pageSlug).toLowerCase();
+	const draftContentJson = normalizePageContentJson(page.draftContentJson || page.publishedContentJson);
+	const draftBodyText = typeof page.draftBodyText === 'string'
+		? cleanText(page.draftBodyText)
+		: cleanText(page.bodyText || page.publishedBodyText);
+
+	return {
+		...page,
+		draftTitle,
+		draftSlug,
+		draftSlugNormalized: draftSlug,
+		draftContentJson,
+		draftBodyText,
+		publishedTitle: draftTitle,
+		publishedSlug: draftSlug,
+		publishedSlugNormalized: draftSlug,
+		publishedContentJson: normalizePageContentJson(draftContentJson),
+		publishedBodyText: draftBodyText,
+		publicationState: PAGE_PUBLICATION_STATES.published
 	};
 }
 

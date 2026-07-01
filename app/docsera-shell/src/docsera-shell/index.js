@@ -26,14 +26,18 @@ import {
 	buildWorkspaceShellViewModel,
 	applyPageMove,
 	buildPageBodySaveRecord,
+	buildPagePublishRecord,
 	collectPageSubtreeSysIds,
 	createDocseraShellDemoPages,
 	createPageBodyEditorSession,
 	clearPageBodyEditorSession,
+	flushPageBodyEditorSession,
 	getPageBodyEditorSession,
+	getPageBodyEditorSessionSnapshot,
 	getPageBodyEditorStatusLabel,
 	hasPendingPageBodyEditorChanges,
 	normalizePageBodyContentJson,
+	resolvePagePublishingState,
 	resolvePageBodyContentJson,
 	PAGE_TREE_MAX_DEPTH,
 	pickNextVisiblePageAfterDelete,
@@ -117,6 +121,9 @@ function createInitialState() {
 		pageEditorIsSaving: false,
 		pageEditorIsFailed: false,
 		pageEditorHasPendingSave: false,
+		pagePublishPageSysId: '',
+		pagePublishBusy: false,
+		pagePublishError: '',
 		workspaceStatus: 'Workspace shell is ready.',
 		workspaces: createMyWorkspacesDemoWorkspaces(),
 		pages: createDocseraShellDemoPages(),
@@ -364,12 +371,51 @@ function ensurePageBodyEditorSession(page, updateState) {
 	return session;
 }
 
-function renderPageBodyEditorSurface({shell, state}) {
+function renderPageBodyEditorSurface({shell, state, onPublish}) {
 	if (!shell.selectedPage || !shell.canEditPageBody) {
 		return null;
 	}
 
+	const publicationState = resolvePagePublishingState(shell.selectedPage);
+	const bodySessionSnapshot = getPageBodyEditorSessionSnapshot(shell.selectedPage.sysId);
+	const hasLocalBodyChanges = Boolean(
+		bodySessionSnapshot &&
+		(
+			bodySessionSnapshot.hasUnsavedChanges ||
+			bodySessionSnapshot.isSaving ||
+			bodySessionSnapshot.hasPendingSave ||
+			bodySessionSnapshot.isFailed
+		)
+	);
+	const hasLocalPageSettingsChanges = Boolean(
+		state.pageSettingsOpen &&
+		state.pageSettingsPageSysId === shell.selectedPage.sysId &&
+		(
+			state.pageSettingsTitle !== (shell.selectedPage.draftTitle || shell.selectedPage.publishedTitle || shell.selectedPage.title || '') ||
+			state.pageSettingsSlug !== (shell.selectedPage.draftSlug || shell.selectedPage.publishedSlug || shell.selectedPage.slug || shell.selectedPage.pageSlug || '')
+		)
+	);
+	const hasLocalPublishChanges = hasLocalBodyChanges || hasLocalPageSettingsChanges;
+	const isPublishingSelectedPage = state.pagePublishBusy && state.pagePublishPageSysId === shell.selectedPage.sysId;
 	const statusClass = `docsera-shell__editor-status-chip docsera-shell__editor-status-chip--${state.pageEditorStatus || 'saved'}`;
+	const publicationBadgeLabel = shell.selectedPage.publicationState === PAGE_PUBLICATION_STATES.draft
+		? 'Draft'
+		: (publicationState.hasUnpublishedChanges || hasLocalPublishChanges)
+			? 'Unpublished changes'
+			: 'Published';
+	const publicationBadgeClass = shell.selectedPage.publicationState === PAGE_PUBLICATION_STATES.draft
+		? 'docsera-shell__page-badge docsera-shell__page-badge--draft'
+		: publicationBadgeLabel === 'Unpublished changes'
+			? 'docsera-shell__page-badge docsera-shell__page-badge--changes'
+			: 'docsera-shell__page-badge docsera-shell__page-badge--published';
+	const publishButtonLabel = isPublishingSelectedPage
+		? 'Publishing...'
+		: (publicationState.canPublish || hasLocalPublishChanges)
+			? publicationState.publicationState === PAGE_PUBLICATION_STATES.draft
+				? 'Publish draft'
+				: 'Publish changes'
+			: 'No changes to publish';
+	const publishButtonDisabled = state.pagePublishBusy || (!publicationState.canPublish && !hasLocalPublishChanges);
 
 	return (
 		<section className="docsera-shell__editor-shell" aria-labelledby="docsera-body-editor-title">
@@ -378,16 +424,27 @@ function renderPageBodyEditorSurface({shell, state}) {
 					<p className="docsera-shell__rail-title">Body editor</p>
 					<div className="docsera-shell__reader-title-row">
 						<h1 id="docsera-body-editor-title" className="docsera-shell__reader-title">{shell.selectedPage.title}</h1>
-						{shell.selectedPage.publicationState === PAGE_PUBLICATION_STATES.draft ? (
-							<span className="docsera-shell__page-badge docsera-shell__page-badge--draft">Draft</span>
-						) : null}
+						<span className={publicationBadgeClass}>{publicationState.publicationStatusLabel}</span>
 					</div>
 					<p className="docsera-shell__reader-lede">
-						Edit the body content here. Title and slug remain in Page Settings.
+						Edit the body content here. Title and slug remain in Page Settings until you publish.
 					</p>
 				</div>
-				<div className="docsera-shell__reader-meta">
+				<div className="docsera-shell__editor-actions">
 					<span className="docsera-shell__toolbar-chip">{shell.routeTargetPath}</span>
+					<button
+						type="button"
+						className="docsera-shell__button"
+						on-click={state.pagePublishBusy ? undefined : event => {
+							event.preventDefault();
+							if (typeof onPublish === 'function') {
+								onPublish();
+							}
+						}}
+						disabled={publishButtonDisabled}
+					>
+						{publishButtonLabel}
+					</button>
 					<span className={statusClass} title={state.pageEditorStatusDetail || state.pageEditorStatusLabel} aria-live="polite" aria-atomic="true">
 						{state.pageEditorStatusLabel || getPageBodyEditorStatusLabel(state.pageEditorStatus)}
 					</span>
@@ -409,6 +466,11 @@ function renderPageBodyEditorSurface({shell, state}) {
 						</div>
 					) : state.pageEditorHasPendingSave ? (
 						<div className="docsera-shell__editor-note">Saving will complete automatically before you navigate away where practical.</div>
+					) : null}
+					{state.pagePublishError && state.pagePublishPageSysId === shell.selectedPage.sysId ? (
+						<div className="docsera-shell__editor-error" role="alert">
+							{state.pagePublishError}
+						</div>
 					) : null}
 				</div>
 			</div>
@@ -1338,6 +1400,21 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 		slug: '',
 		general: ''
 	});
+	const clearPageSettingsState = () => ({
+		pageSettingsOpen: false,
+		pageSettingsPageSysId: '',
+		pageSettingsTitle: '',
+		pageSettingsSlug: '',
+		pageSettingsErrors: clearPageSettingsErrors(),
+		pageSettingsActiveField: '',
+		pageSettingsFieldSnapshot: {
+			title: '',
+			slug: ''
+		},
+		pageSettingsDeleteOpen: false,
+		pageSettingsDeletePageSysId: '',
+		pageSettingsDeleteError: ''
+	});
 	const resetPageSettingsFields = page => {
 		const defaults = createPageSettingsDefaults(page || null);
 		updateState({
@@ -1360,18 +1437,7 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 
 		const currentPage = getPageSettingsPage();
 		if (!currentPage) {
-			updateState({
-				pageSettingsOpen: false,
-				pageSettingsPageSysId: '',
-				pageSettingsTitle: '',
-				pageSettingsSlug: '',
-				pageSettingsErrors: clearPageSettingsErrors(),
-				pageSettingsActiveField: '',
-				pageSettingsFieldSnapshot: {
-					title: '',
-					slug: ''
-				}
-			});
+			updateState(clearPageSettingsState());
 			return true;
 		}
 
@@ -1408,16 +1474,7 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 			pages: nextPages,
 			selectedWorkspaceSlug: shell.workspace ? shell.workspace.workspaceSlug : state.selectedWorkspaceSlug,
 			selectedPageSlug: selectedSlug,
-			pageSettingsOpen: false,
-			pageSettingsPageSysId: '',
-			pageSettingsTitle: '',
-			pageSettingsSlug: '',
-			pageSettingsErrors: clearPageSettingsErrors(),
-			pageSettingsActiveField: '',
-			pageSettingsFieldSnapshot: {
-				title: '',
-				slug: ''
-			},
+			...clearPageSettingsState(),
 			pageSettingsDeleteOpen: false,
 			pageSettingsDeletePageSysId: '',
 			pageSettingsDeleteError: '',
@@ -1568,6 +1625,125 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 		}
 
 		await openPageSettings(shell.selectedPage);
+	};
+	const publishSelectedPage = async () => {
+		if (!canManagePageSettings || !shell.workspace || !shell.selectedPage) {
+			return;
+		}
+
+		const selectedPageSysId = shell.selectedPage.sysId || '';
+		if (!selectedPageSysId || state.pagePublishBusy) {
+			return;
+		}
+
+		const workspacePages = Array.isArray((latestDocseraShellState || state).pages)
+			? (latestDocseraShellState || state).pages
+			: state.pages;
+		const currentPage = findPageBySysId(workspacePages, selectedPageSysId);
+		if (!currentPage) {
+			updateState({
+				pagePublishPageSysId: selectedPageSysId,
+				pagePublishBusy: false,
+				pagePublishError: 'The selected page could not be published.',
+				workspaceStatus: 'Publish failed because the selected page could not be found.'
+			});
+			return;
+		}
+
+		const currentPageSettingsSnapshot = state.pageSettingsOpen && state.pageSettingsPageSysId === selectedPageSysId
+			? {
+				title: state.pageSettingsTitle,
+				slug: state.pageSettingsSlug
+			}
+			: null;
+		const titleValidation = currentPageSettingsSnapshot
+			? validatePageSettingsTitle(currentPageSettingsSnapshot.title)
+			: {valid: true, value: currentPage.draftTitle || currentPage.publishedTitle || currentPage.title || '', error: ''};
+		const slugValidation = currentPageSettingsSnapshot
+			? validatePageSettingsSlug(
+				currentPageSettingsSnapshot.slug,
+				workspacePages,
+				shell.workspace.sysId,
+				currentPage.sysId
+			)
+			: {valid: true, value: currentPage.draftSlug || currentPage.publishedSlug || currentPage.slug || currentPage.pageSlug || '', error: ''};
+
+		if (!titleValidation.valid || !slugValidation.valid) {
+			updateState({
+				pagePublishPageSysId: selectedPageSysId,
+				pagePublishBusy: false,
+				pagePublishError: 'Resolve Page Settings before publishing.',
+				pageSettingsErrors: {
+					title: titleValidation.valid ? '' : titleValidation.error,
+					slug: slugValidation.valid ? '' : slugValidation.error,
+					general: ''
+				},
+				pageSettingsActiveField: !titleValidation.valid ? 'title' : !slugValidation.valid ? 'slug' : state.pageSettingsActiveField,
+				workspaceStatus: `Publish blocked for ${currentPage.draftTitle || currentPage.publishedTitle || 'page'} until Page Settings are valid.`
+			});
+			return;
+		}
+
+		updateState({
+			pagePublishPageSysId: selectedPageSysId,
+			pagePublishBusy: true,
+			pagePublishError: '',
+			...(currentPageSettingsSnapshot ? {
+				pageSettingsErrors: clearPageSettingsErrors(),
+				pageSettingsActiveField: ''
+			} : {}),
+			workspaceStatus: `Publishing ${currentPage.draftTitle || currentPage.publishedTitle || 'page'}...`
+		});
+
+		const bodySnapshot = getPageBodyEditorSessionSnapshot(selectedPageSysId);
+		if (bodySnapshot && (bodySnapshot.hasUnsavedChanges || bodySnapshot.isSaving || bodySnapshot.hasPendingSave || bodySnapshot.isFailed)) {
+			try {
+				await flushPageBodyEditorSession(selectedPageSysId, 'publish');
+			} catch (error) {
+				updateState({
+					pagePublishBusy: false,
+					pagePublishError: error && error.message ? error.message : 'The body content could not be saved before publishing.',
+					workspaceStatus: `Publish failed for ${currentPage.draftTitle || currentPage.publishedTitle || 'page'}.`
+				});
+				return;
+			}
+		}
+
+		await Promise.resolve();
+
+		const latestPages = Array.isArray((latestDocseraShellState || state).pages)
+			? (latestDocseraShellState || state).pages
+			: state.pages;
+		const refreshedPage = findPageBySysId(latestPages, selectedPageSysId);
+		if (!refreshedPage) {
+			updateState({
+				pagePublishBusy: false,
+				pagePublishError: 'The selected page could not be published.',
+				workspaceStatus: `Publish failed for ${currentPage.draftTitle || currentPage.publishedTitle || 'page'}.`
+			});
+			return;
+		}
+
+		const nextDraftPage = currentPageSettingsSnapshot
+			? updatePageDraftSettings(refreshedPage, {
+				title: titleValidation.value,
+				slug: slugValidation.value
+			})
+			: refreshedPage;
+		const publishedPage = buildPagePublishRecord(nextDraftPage);
+		const nextPages = latestPages.map(page => (
+			page && page.sysId === selectedPageSysId ? publishedPage : page
+		));
+
+		updateState({
+			pages: nextPages,
+			selectedWorkspaceSlug: shell.workspace.workspaceSlug,
+			selectedPageSlug: publishedPage.draftSlug,
+			pagePublishBusy: false,
+			pagePublishError: '',
+			...(currentPageSettingsSnapshot ? clearPageSettingsState() : {}),
+			workspaceStatus: `Published ${publishedPage.draftTitle || publishedPage.publishedTitle || 'page'}.`
+		});
 	};
 	const openDeletePageConfirmation = page => {
 		if (!canManagePageSettings || !page) {
@@ -2553,7 +2729,8 @@ function renderWorkspaceReaderSurface(state, shell, updateState) {
 					) : shell.canEditPageBody ? (
 						renderPageBodyEditorSurface({
 							shell,
-							state
+							state,
+							onPublish: publishSelectedPage
 						})
 					) : (
 						<article className="docsera-shell__reader-content">
