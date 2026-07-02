@@ -6,6 +6,7 @@ Docsera product app shell scaffold
 
 - Real product-facing shell surface for Docsera.
 - Preferred runtime host is the standalone scoped Direct UI Page, not UI Builder placement.
+- Preferred frontend source stack is React + TypeScript + Vite, with the Direct UI Page loading built static assets.
 - Workspace domain foundation now exists in `src/workspaces/`.
 - My Workspaces launcher and self-service workspace creation now live in the shell.
 - Workspace reader mode now lives in the shell, with My Workspaces as the launcher entry point.
@@ -21,6 +22,7 @@ Docsera product app shell scaffold
 - `src/docsera-shell/index.js` now includes the local page-creation modal, page-tree selection flow, and the live/edit page-mode boundary.
 - `src/pages/page-editor-host.js` owns the dedicated child editor host for ProseMirror runtime lifecycle.
 - The thin body editor/autosave baseline is ProseMirror-first by design; TipTap integration remains deferred as an explicit future boundary.
+- Repo-managed React + TypeScript source is the intended application authoring model; UI Script remains a possible bootstrap or compiled-asset target, not the main source model.
 - `src/docsera-shell/styles.scss` defines the Docsera shell token layer and launcher / reader layout conventions.
 - `now-ui.json` still carries the historical UI Builder component registration, but it is no longer the preferred runtime entry point.
 
@@ -79,6 +81,7 @@ npm run validate:docs
 ## Manual PDI validation
 
 The preferred runtime host validation now follows the Direct UI Page spike notes in `docs/process/Implementation Notes - Standalone Scoped UI Page Host Spike.md` and `docs/process/Implementation Notes - Direct UI Page Assets and Backend Ping Spike.md`.
+The preferred frontend source-stack decision is documented in `docs/decisions/ADR-0003-frontend-stack.md`.
 
 Use the PDI page URL documented there, then confirm:
 

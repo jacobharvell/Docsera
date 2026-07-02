@@ -37,6 +37,7 @@ Key paths:
 The current naming is aligned to the product shell surface rather than the PoC artifact.
 
 The preferred runtime host decision is documented in `docs/decisions/ADR-0002-direct-ui-page-host.md`.
+The preferred frontend source/build stack decision is documented in `docs/decisions/ADR-0003-frontend-stack.md`.
 
 ## App Entry Point Pattern
 
@@ -48,6 +49,7 @@ The preferred runtime host decision is documented in `docs/decisions/ADR-0002-di
 - The workspace domain foundation now lives in `app/docsera-shell/src/workspaces/`, but the PDI table and on-instance wiring still need to be completed.
 - The page domain foundation now lives in `app/docsera-shell/src/pages/`, but the PDI table and on-instance wiring still need to be completed.
 - The runtime host direction is now the standalone scoped Direct UI Page, so the UI Builder component should be treated as historical scaffolding unless a cleanup task explicitly repurposes it.
+- The preferred frontend source stack is React + TypeScript + Vite, with built assets delivered through the Direct UI Page host.
 
 Current state is a PoC editor surface plus a separate product shell scaffold.
 

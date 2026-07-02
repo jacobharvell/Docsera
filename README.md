@@ -13,6 +13,7 @@ Docsera is a ServiceNow-scoped documentation platform focused on a polished read
 - `docs/process/Implementation Notes - Editor Host Contract.md` records the durable editor-host boundary for future ProseMirror/TipTap integration.
 - `docs/process/Implementation Notes - Live Edit Editor Host Boundary.md` records the productized page-level Live/Edit shell boundary and child editor host scaffold.
 - `docs/decisions/ADR-0002-direct-ui-page-host.md` records the preferred runtime host decision.
+- `docs/decisions/ADR-0003-frontend-stack.md` records the preferred frontend source/build stack decision.
 - `poc/tiptap-component/` is a closed historical PoC reference and should not be renamed into the product shell.
 
 ## Internal working material
@@ -27,6 +28,7 @@ The following paths are intentionally excluded from the public repo and are used
 
 - ServiceNow-native scoped app
 - Standalone scoped Direct UI Page host
+- React + TypeScript + Vite frontend source stack
 - Scoped ServiceNow-hosted assets and same-origin backend calls
 - Workspace data model and native group provisioning
 - Page data model, hierarchy, and slug rules

@@ -16,6 +16,7 @@ This note summarizes repository behavior only. Accepted product requirements rem
 - Scope prefix: `x_82900_docsera`
 - Proven host URL: `https://dev295482.service-now.com/x_82900_docsera_docsera_standalone_host_spike.do`
 - Historical UI Builder component host: paused, retain only as comparison/fallback until the cleanup task lands
+- Preferred frontend source stack: React + TypeScript + Vite, documented in `docs/decisions/ADR-0003-frontend-stack.md`
 
 ## Durable Packaging Direction
 
@@ -23,8 +24,10 @@ The Direct UI Page host should be treated as the runtime baseline.
 
 Preferred packaging shape:
 
-- JavaScript in scoped UI Script(s)
-- CSS in attachment-backed or equivalent same-origin assets
+- built JS and CSS assets from repo-managed React + TypeScript + Vite source
+- packaging target still to be finalized for ServiceNow delivery
+- scoped UI Script(s) remain a possible bootstrap or compiled-asset target
+- CSS in attachment-backed or equivalent same-origin assets remains acceptable until a better durable packaging record is proven
 - backend access through scoped Scripted REST APIs
 
 This keeps the host inside the instance while avoiding a return to the UI Builder/native frame as the preferred runtime surface.
@@ -32,5 +35,6 @@ This keeps the host inside the instance while avoiding a return to the UI Builde
 ## Repo Implications
 
 - planning docs should treat the Direct UI Page as the host baseline
+- planning docs should treat React + TypeScript + Vite as the preferred frontend source stack
 - UI Builder references are historical context unless explicitly marked otherwise
 - cleanup or removal of the legacy component host belongs in a later task after the Direct UI Page path is established
