@@ -620,17 +620,21 @@ Adopt standalone scoped Direct UI Page hosting as the preferred frontend host di
 
 Keep the UI Builder path paused.
 
-Next task should prove bundled asset loading and minimal authenticated backend/API access from the Direct UI Page.
+Task 26 now captures the completed asset-loading and backend ping proof. The next task should focus on the durable packaging shape for the Direct UI Page host.
 
 ## Next Task
 
-Recommended next task after Jacob runs the manual proof:
+Recommended next task after the completed manual proof:
 
 `Task 26 - Direct UI Page Standalone Host Proof Result and Bundled Asset Follow-Up`
+
+Task 26 proof results and the asset/backend follow-up live in:
+
+- `docs/process/Implementation Notes - Direct UI Page Assets and Backend Ping Spike.md`
 
 Suggested scope:
 
 - capture the actual PDI result as pass, partial, or fail
-- if pass, extract the inline script into a scoped asset-loading approach
-- if pass, add the minimal authenticated Scripted REST ping
+- if pass, decide whether the durable asset path should stay split across UI Script plus attachment-backed CSS or move into a bundled asset strategy
+- if pass, preserve the minimal authenticated Scripted REST ping as the backend proof reference
 - if fail, capture the exact failure signature and evaluate the next standalone ServiceNow-hosted surface
