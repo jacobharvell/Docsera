@@ -8,6 +8,8 @@ This note records the repo-side deployability baseline for `app/docsera-shell`.
 
 It does not change accepted product behavior. The shell remains demo-backed client state until later wiring tasks land.
 
+This note is retained as historical UI Builder component baseline context. The preferred runtime host later moved to the standalone Direct UI Page and is documented in `docs/decisions/ADR-0002-direct-ui-page-host.md`.
+
 ## Durable Repo Baseline
 
 - `app/docsera-shell/package.json` now pins `@servicenow/sass-kit` to `19.8.2-ecd` instead of floating on `latest`.
@@ -48,21 +50,18 @@ Observed result:
 ## Runtime Mount Status
 
 - Runtime mount was not verified in this task run.
-- `x-82900-docsera-shell` is now available for UI Builder placement because the deploy completed successfully.
-- The repo still does not expose a live Docsera route/module/page record. The current shell remains a UI Builder component that must be placed on a runtime page manually.
+- `x-82900-docsera-shell` is now available as historical component scaffolding because the deploy completed successfully.
+- The repo still does not expose a live Docsera route/module/page record. The preferred runtime host is now the Direct UI Page proof path, not a UI Builder placement.
 
 ## Runtime Placement Finding
 
 - The deploy created the component and toolbox records, plus the `sys_ux_macroponent` wrapper for `Docsera My Workspaces`.
 - No repo-visible Docsera `sys_ux_page_registry` or `sys_ux_app_route` record exists yet.
-- The minimal runtime placement remains instance-side UI Builder placement:
-  - create or reuse a UI Builder landing/core page
-  - add `x-82900-docsera-shell` to the page canvas
-  - save and open that page in the PDI runtime
-- The instance already exposes UI Builder routes such as `build/ui` and `builder/ui`, but those are the builder entry points, not a repo-managed Docsera runtime route.
-- In this environment, browser-style probing of the UI Builder route still fell back to `session_timeout.do`, so a live mount could not be confirmed here.
+- The minimal runtime placement for the preferred architecture is the standalone Direct UI Page proof path documented in the spike notes.
+- The instance already exposes UI Builder routes such as `build/ui` and `builder/ui`, but those are the builder entry points, not the preferred Docsera runtime route.
+- In this environment, browser-style probing of the UI Builder route still fell back to `session_timeout.do`, so the older host path could not be confirmed here.
 
 ## Current Manual Next Step
 
-1. Place `x-82900-docsera-shell` on a UI Builder landing/core page in `dev295482` and verify the shell mount.
-2. If runtime still fails after placement, use `internal/runbooks/RUNTIME_EDITOR_DIAGNOSTICS.md` as the closest existing runtime triage sequence, adapting only the tag lookup to `x-82900-docsera-shell`.
+1. Use the Direct UI Page host proof notes to validate the preferred runtime host.
+2. Treat the UI Builder deployment path as historical context unless a later cleanup or repurposing task explicitly reopens it.

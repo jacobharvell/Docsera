@@ -5,6 +5,7 @@ Docsera product app shell scaffold
 ## Scope
 
 - Real product-facing shell surface for Docsera.
+- Preferred runtime host is the standalone scoped Direct UI Page, not UI Builder placement.
 - Workspace domain foundation now exists in `src/workspaces/`.
 - My Workspaces launcher and self-service workspace creation now live in the shell.
 - Workspace reader mode now lives in the shell, with My Workspaces as the launcher entry point.
@@ -21,7 +22,7 @@ Docsera product app shell scaffold
 - `src/pages/page-editor-host.js` owns the dedicated child editor host for ProseMirror runtime lifecycle.
 - The thin body editor/autosave baseline is ProseMirror-first by design; TipTap integration remains deferred as an explicit future boundary.
 - `src/docsera-shell/styles.scss` defines the Docsera shell token layer and launcher / reader layout conventions.
-- `now-ui.json` exposes the component to UI Builder.
+- `now-ui.json` still carries the historical UI Builder component registration, but it is no longer the preferred runtime entry point.
 
 ## Workspace foundation
 
@@ -77,41 +78,23 @@ npm run validate:docs
 
 ## Manual PDI validation
 
-```powershell
-cd C:\Dev\Docsera\app\docsera-shell
-npm install
-snc version
-snc configure profile list --profile <profile>
-snc ui-component deploy --profile <profile> --fetch-assets-from-instance
-```
+The preferred runtime host validation now follows the Direct UI Page spike notes in `docs/process/Implementation Notes - Standalone Scoped UI Page Host Spike.md` and `docs/process/Implementation Notes - Direct UI Page Assets and Backend Ping Spike.md`.
 
-1. In UI Builder, place `x-82900-docsera-shell` on a landing/core runtime page for the target PDI profile.
-2. Open the page and confirm the shell mounts, then verify the workspace reader header, page tree, breadcrumbs, and ToC render.
-3. Confirm the active workspace icon and name render in the header and the workspace short description does not.
-4. Confirm the My Workspaces switcher entry point returns to the launcher surface.
-5. Select a page in the tree and confirm the visible content, breadcrumbs, ToC, and route target update.
-6. Confirm Live mode is the default page experience.
-7. If your role grants authoring access, use the Live/Edit switch to enter Edit mode and confirm the dedicated child editor host renders in the content well while the surrounding shell stays stable.
-8. If your role grants authoring access, return to Live mode and confirm the reader surface renders without losing the selected workspace or page.
-9. Toggle the navigation collapse and theme controls to confirm browser-side shell state updates.
-10. If your role grants authoring access, create a root page from the shell and confirm the tree updates, the page is selected, and the route target changes to `/docsera/:workspaceSlug/:pageSlug`.
-11. If your role grants authoring access, create a child page from an existing row and confirm it inherits the selected workspace and parent page.
-12. Use the My Workspaces surface to create a workspace from the modal with a name and optional description.
-13. Confirm the new workspace is added to the list and becomes the selected workspace.
-14. Confirm the creator is added to the generated Admin group when the PDI provisioning wiring is live.
+Use the PDI page URL documented there, then confirm:
+
+1. The page renders as a full-viewport Docsera-owned shell.
+2. No `macroponent-root`, `sn-polaris-layout`, or `now-appshell` markers are present.
+3. Scoped JavaScript and CSS load from instance-hosted assets.
+4. Same-origin backend access works when the backend ping is configured.
+5. The shell state and workspace/page behaviors still render correctly once the host is wired to this package.
 
 Expected result:
 
-- local validation fails early if the shell dependency tree or `@servicenow/sass-kit/_host.scss` is missing
-- The launcher list is filtered to active authoring/admin workspaces.
-- Reader mode shows the active workspace identity, page tree, breadcrumbs, and ToC.
-- Live mode is the default page experience and does not require the child editor host to mount.
-- Authorized users can switch into Edit mode without losing workspace/page context.
-- Authoring roles can create root and child pages without a full refresh.
-- Page selection updates the reader content without a full refresh.
-- Workspace creation preserves the name, description, default icon, and slug behavior.
-- The shell still mounts successfully if you run the optional runtime smoke check.
-- The page-tree search, no-results state, and shell-state distinctions are documented in `docs/process/Implementation Notes - Workspace Shell Search and State Polish.md`.
+- local validation still fails early if the shell dependency tree or `@servicenow/sass-kit/_host.scss` is missing
+- the Direct UI Page host renders without UI Builder/native-frame markers
+- instance-hosted JS and CSS load successfully
+- same-origin backend access is available when configured
+- the page and shell behaviors remain stable while the host runs outside UI Builder
 
 ## Remaining gaps
 

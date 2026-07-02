@@ -5,13 +5,14 @@ Docsera is a ServiceNow-scoped documentation platform focused on a polished read
 ## Repo surface
 
 - `docs/decisions/` contains public architectural decisions and rationale.
-- `app/docsera-shell/` is the real Docsera product shell scaffold.
+- `app/docsera-shell/` is the reusable Docsera shell scaffold and asset layer.
 - `docs/process/Requirements Source Map.md` records the Obsidian requirement source map.
 - `docs/process/Implementation Notes - Workspace Data Model and Group Provisioning.md` records the workspace foundation contract.
 - `docs/process/Implementation Notes - Workspace Capability Checks.md` records the workspace access contract.
 - `docs/process/Implementation Notes - Page Data Model and Slug Rules.md` records the page foundation contract.
 - `docs/process/Implementation Notes - Editor Host Contract.md` records the durable editor-host boundary for future ProseMirror/TipTap integration.
 - `docs/process/Implementation Notes - Live Edit Editor Host Boundary.md` records the productized page-level Live/Edit shell boundary and child editor host scaffold.
+- `docs/decisions/ADR-0002-direct-ui-page-host.md` records the preferred runtime host decision.
 - `poc/tiptap-component/` is a closed historical PoC reference and should not be renamed into the product shell.
 
 ## Internal working material
@@ -25,7 +26,8 @@ The following paths are intentionally excluded from the public repo and are used
 ## Current direction
 
 - ServiceNow-native scoped app
-- UI Builder / Next Experience shell
+- Standalone scoped Direct UI Page host
+- Scoped ServiceNow-hosted assets and same-origin backend calls
 - Workspace data model and native group provisioning
 - Page data model, hierarchy, and slug rules
 - Tiptap / ProseMirror-oriented editor foundation

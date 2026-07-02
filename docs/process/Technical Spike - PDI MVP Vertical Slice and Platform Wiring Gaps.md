@@ -20,7 +20,7 @@ This note summarizes repo-side and platform findings only. Accepted product beha
 - Baseline branch inspected: `main`
 - Baseline commit inspected: `9861c06ee0a3c30d7fff870e56e8dd31c60a154d` (`Task 13: Search and MVP shell polish`)
 - Product shell package: `app/docsera-shell`
-- Registered UI Builder component: `x-82900-docsera-shell`
+- Registered UI Builder component: `x-82900-docsera-shell` (historical component host)
 - Scope name: `x_82900_odoc2`
 - Current repo-side shell surface is entirely client-side. Under `app/docsera-shell`, there are no server-side ServiceNow artifacts, table definitions, ACL records, Script Includes, or app-route/module records.
 - The shell currently seeds itself from demo data and demo access state in [app/docsera-shell/src/docsera-shell/index.js](/C:/Dev/Docsera/app/docsera-shell/src/docsera-shell/index.js:64), [app/docsera-shell/src/workspaces/workspace-launcher.js](/C:/Dev/Docsera/app/docsera-shell/src/workspaces/workspace-launcher.js:186), and [app/docsera-shell/src/pages/page-reader.js](/C:/Dev/Docsera/app/docsera-shell/src/pages/page-reader.js:413).
@@ -94,7 +94,7 @@ SassError: Can't find stylesheet to import.
 
 ## PDI / Runtime Findings
 
-- A deploy workflow exists in principle: the shell is a registered UI Builder component exposed through `now-ui.json`.
+- A deploy workflow exists in principle for the historical UI Builder component, but the preferred runtime host is now the standalone Direct UI Page documented in ADR-0002.
 - The current checkout is not PDI-build-ready because required package dependencies are not installed locally.
 - Because build fails before upload, the current PDI/runtime questions remain blocked:
   - whether the current shell mounts successfully in runtime
@@ -141,7 +141,7 @@ Key conclusion:
 
 | Surface | Current state | Gap |
 |---|---|---|
-| Live shell entry point | Only the UI Builder component `x-82900-docsera-shell` is registered | No repo-visible Docsera app route/module/page record was found |
+| Live shell entry point | The preferred runtime host is the standalone Direct UI Page; the historical UI Builder component `x-82900-docsera-shell` is still present | No repo-visible Docsera app route/module/page record was found |
 | My Workspaces | Implemented as `surfaceMode: 'launcher'` inside the component | Not bound to a durable ServiceNow route or navigator module in this repo |
 | Workspace shell | Implemented as component state using `selectedWorkspaceSlug` | No live route resolution verified |
 | Workspace slug routes | Logical only via `routeTargetPath` strings such as `/docsera/:workspaceSlug` | Not connected to browser history or ServiceNow router |
@@ -191,28 +191,29 @@ Use this checklist after the shell is buildable and deployable in the PDI.
 
 ## Recommended Next Implementation Sequence
 
-### 1. Task: Shell Deployability and PDI Runtime Baseline
+### 1. Task: Stand up the standalone Direct UI Page host as the runtime entry point
 
 Why next:
 
-- The current live validation is blocked before runtime.
-- No vertical-slice wiring work is trustworthy until `snc ui-component deploy` succeeds from a normal checkout.
+- The host decision is now settled, but the durable packaging and on-instance wiring still need to be made explicit.
+- The runtime path should be documented and repeatable before any cleanup of the legacy UI Builder baggage starts.
 
 Scope boundary:
 
-- Make `app/docsera-shell` buildable and deployable through the documented CLI flow.
-- Add the smallest repeatable install/build preflight needed for local + PDI validation.
-- Validate mount in one target PDI runtime page.
+- Keep the Direct UI Page as the runtime host.
+- Load JS from scoped UI Script(s) and CSS from same-origin instance-hosted assets.
+- Verify same-origin backend access from the page.
+- Keep the UI Builder component path paused as historical scaffolding.
 
 Main risks:
 
-- ServiceNow package/version compatibility
-- hidden dependency/install assumptions in local environment
-- runtime issues that local validation does not cover
+- on-instance asset packaging choices
+- Direct UI Page record setup and permissions
+- backend auth / ACL wiring
 
 Suggested model / effort:
 
-- GPT-5 Codex, medium effort
+- GPT-5 Codex, medium-high effort
 
 ### 2. Task: Live Workspace Persistence and Capability Wiring
 
@@ -285,8 +286,8 @@ Suggested model / effort:
 
 ## Risks and Blockers
 
-- Immediate blocker: current `snc ui-component deploy` path fails because required shell dependencies are not installed in the checkout.
-- PDI runtime validation is blocked until the shell bundle builds successfully.
+- Immediate blocker: the legacy UI Builder host should no longer be treated as the preferred runtime target.
+- PDI runtime validation for the preferred host now depends on on-instance Direct UI Page wiring and asset packaging.
 - No live ServiceNow route/module/page definition was found in this repo, so a durable Docsera entry route is still unverified.
 - No server-side artifacts exist yet for workspace/page persistence, ACL enforcement, or publish enforcement.
 - The current local validation suite can pass while the actual PDI deploy still fails, so it is not a sufficient live-readiness signal by itself.

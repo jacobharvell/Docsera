@@ -10,7 +10,7 @@ It is a discovery snapshot, not a design decision record.
 ## Current Repo Structure
 
 - Root repo is mostly documentation, runbooks, and a ServiceNow PoC under `poc/`.
-- The forward-looking product shell now lives under `app/docsera-shell/`.
+- The forward-looking product shell now lives under `app/docsera-shell/` as the reusable shell scaffold and asset layer.
 - Public-facing docs live in `docs/`.
 - Working ServiceNow guidance and validation notes live in `internal/`.
 - The executable app artifacts currently present are `app/docsera-shell/` and `poc/tiptap-component/`.
@@ -28,13 +28,15 @@ Key paths:
 ## Confirmed ServiceNow Scope/App Information
 
 - `now-ui.json` sets `scopeName` to `x_82900_odoc2`.
-- `now-ui.json` registers one component: `x-82900-docsera-shell`.
+- `now-ui.json` still registers the historical `x-82900-docsera-shell` UI Builder component.
 - The UI Builder metadata labels it `Docsera My Workspaces`.
 - The component is described as the Docsera My Workspaces launcher and shell boundary.
 - `package.json` names the package `docsera-app-shell`.
 - `pom.xml` uses artifact id `docsera-app-shell`.
 
 The current naming is aligned to the product shell surface rather than the PoC artifact.
+
+The preferred runtime host decision is documented in `docs/decisions/ADR-0002-direct-ui-page-host.md`.
 
 ## App Entry Point Pattern
 
@@ -45,6 +47,7 @@ The current naming is aligned to the product shell surface rather than the PoC a
 - The product shell now includes a My Workspaces launcher surface and a reader-mode workspace shell boundary for workspace routing.
 - The workspace domain foundation now lives in `app/docsera-shell/src/workspaces/`, but the PDI table and on-instance wiring still need to be completed.
 - The page domain foundation now lives in `app/docsera-shell/src/pages/`, but the PDI table and on-instance wiring still need to be completed.
+- The runtime host direction is now the standalone scoped Direct UI Page, so the UI Builder component should be treated as historical scaffolding unless a cleanup task explicitly repurposes it.
 
 Current state is a PoC editor surface plus a separate product shell scaffold.
 
@@ -124,8 +127,8 @@ The retrospective in `poc/tiptap-component/GATE2_RETROSPECTIVE.md` confirms that
 For the product shell, runtime validation is only a shell smoke check at this stage:
 
 1. Deploy `app/docsera-shell`.
-2. Place `x-82900-docsera-shell` on a UI Builder runtime page.
-3. Confirm the shell header, rail, and panel render without errors.
+2. Treat the UI Builder placement flow as historical context only.
+3. Use the Direct UI Page host proof notes in `docs/process/Implementation Notes - Standalone Scoped UI Page Host Spike.md` and `docs/process/Implementation Notes - Direct UI Page Assets and Backend Ping Spike.md` for the preferred runtime validation path.
 
 ## Validation Guidance
 
@@ -164,13 +167,13 @@ For the new shell scaffold, the manual expectation is simpler:
 
 1. Open `C:\Dev\Docsera\app\docsera-shell`.
 2. Deploy the component to the PDI.
-3. Place `x-82900-docsera-shell` on a runtime page.
-4. Confirm the shell layout renders and the navigation buttons update the visible placeholder section.
+3. Validate the standalone Direct UI Page host using the spike notes.
+4. Confirm the shell layout renders and the navigation buttons update the visible placeholder section once the host is wired to the package.
 
 Expected result:
-- `x-82900-docsera-shell` mounts successfully.
-- The shell header, rail, and content panel render.
-- No editor mount is expected yet.
+- the Direct UI Page host mounts successfully.
+- the page renders without the UI Builder/native-frame markers.
+- no editor mount is expected yet.
 
 ## Gaps and Risks Before Feature Implementation
 
