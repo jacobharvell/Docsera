@@ -125,6 +125,8 @@ const requiredFiles = [
 	'src/docsera-shell/tokens.scss',
 	'src/pages/index.js',
 	'src/pages/page-editor.js',
+	'src/pages/page-editor-host.js',
+	'src/pages/page-editor-host.scss',
 	'src/pages/page-reader.js',
 	'src/pages/page-domain.js',
 	'src/workspaces/index.js',
@@ -148,6 +150,9 @@ if (!entryPoint.includes("import './workspaces';")) {
 if (!entryPoint.includes("import './pages';")) {
 	throw new Error('Shell entry point does not import the page domain module.');
 }
+if (!entryPoint.includes("import './pages/page-editor-host.js';")) {
+	throw new Error('Shell entry point does not import the child page editor host module.');
+}
 
 const shellSource = readText('src/docsera-shell/index.js');
 for (const needle of [
@@ -159,16 +164,20 @@ for (const needle of [
 	'My Workspaces',
 	'New page',
 	'Create page',
-	'Draft content',
-	'Body editor',
+	'Live mode',
+	'Edit mode',
+	'Visual editor',
+	'Markdown/source deferred',
 	'Autosaves after a short idle delay',
 	'Publish draft',
 	'Publish changes',
 	'No changes to publish',
 	'pageEditorStatusLabel',
 	'confirmSafePageEditorNavigation',
-	'ensurePageBodyEditorHost',
 	'ensurePageBodyEditorSession',
+	'x-82900-docsera-page-editor-host',
+	'resolveEffectivePageViewMode',
+	'pageViewMode',
 	'pagePublishBusy',
 	'pageEditorIsFailed',
 	'Delete page',
@@ -183,6 +192,18 @@ for (const needle of [
 ]) {
 	if (!shellSource.includes(needle)) {
 		throw new Error(`Missing "${needle}" in shell source.`);
+	}
+}
+
+const pageEditorHostSource = readText('src/pages/page-editor-host.js');
+for (const needle of [
+	"const root = host.shadowRoot;",
+	'new EditorView(editorElement, {',
+	'root,',
+	'dispatchTransaction(transaction)'
+]) {
+	if (!pageEditorHostSource.includes(needle)) {
+		throw new Error(`Missing "${needle}" in page editor host source.`);
 	}
 }
 
@@ -831,13 +852,30 @@ const authoringChangedView = buildWorkspaceShellViewModel({
 	pages: changedPages,
 	capabilityService: shellAuthoringCapabilityService,
 	selectedWorkspaceSlug: 'product-docs',
-	selectedPageSlug: 'overview-updated'
+	selectedPageSlug: 'overview-updated',
+	pageViewMode: 'edit'
 });
 
 assert.equal(authoringChangedView.selectedPage.title, 'Overview updated');
 assert.equal(authoringChangedView.selectedPageSlug, 'overview-updated');
 assert.equal(authoringChangedView.routeTargetPath, '/docsera/product-docs/overview-updated');
 assert.equal(authoringChangedView.pageTree[0].title, 'Overview updated');
+assert.equal(authoringChangedView.pageViewMode, 'edit');
+
+const authoringLiveChangedView = buildWorkspaceShellViewModel({
+	workspaces: demoWorkspaces,
+	pages: changedPages,
+	capabilityService: shellAuthoringCapabilityService,
+	selectedWorkspaceSlug: 'product-docs',
+	selectedPageSlug: 'overview',
+	pageViewMode: 'live'
+});
+
+assert.equal(authoringLiveChangedView.selectedPage.title, 'Overview');
+assert.equal(authoringLiveChangedView.selectedPage.pageSlug, 'overview');
+assert.equal(authoringLiveChangedView.selectedPage.bodyText, 'Product Docs is the primary reader surface for launches, decisions, and guidance.');
+assert.equal(authoringLiveChangedView.pageTree[0].title, 'Overview updated');
+assert.equal(authoringLiveChangedView.pageViewMode, 'live');
 
 const readerChangedView = buildWorkspaceShellViewModel({
 	workspaces: demoWorkspaces,
@@ -929,7 +967,8 @@ const shellAuthoringView = buildWorkspaceShellViewModel({
 	workspaces: demoWorkspaces,
 	pages: demoPages,
 	capabilityService: shellAuthoringCapabilityService,
-	selectedWorkspaceSlug: 'product-docs'
+	selectedWorkspaceSlug: 'product-docs',
+	pageViewMode: 'live'
 });
 
 assert.equal(shellAuthoringView.status, 'ready');
@@ -949,6 +988,8 @@ assert.equal(shellAuthoringView.tableOfContents.length, 2);
 assert.equal(shellAuthoringView.canShowAuthoringControls, true);
 assert.equal(shellAuthoringView.canCreatePages, true);
 assert.equal(shellAuthoringView.pageMode, 'authoring');
+assert.equal(shellAuthoringView.pageViewMode, 'live');
+assert.equal(shellAuthoringView.canAccessEditMode, true);
 
 const authoringSearchByChainView = buildWorkspaceShellViewModel({
 	workspaces: demoWorkspaces,

@@ -17,7 +17,8 @@ Docsera product app shell scaffold
 - `src/docsera-shell/index.js` registers `x-82900-docsera-shell`.
 - `src/workspaces/workspace-domain.js` contains the workspace slug and provisioning contract.
 - `src/pages/page-domain.js` contains the page ownership, ordering, and slug contract.
-- `src/docsera-shell/index.js` now includes the local page-creation modal, page-tree selection flow, and the thin body editor/autosave baseline.
+- `src/docsera-shell/index.js` now includes the local page-creation modal, page-tree selection flow, and the live/edit page-mode boundary.
+- `src/pages/page-editor-host.js` owns the dedicated child editor host for ProseMirror runtime lifecycle.
 - The thin body editor/autosave baseline is ProseMirror-first by design; TipTap integration remains deferred as an explicit future boundary.
 - `src/docsera-shell/styles.scss` defines the Docsera shell token layer and launcher / reader layout conventions.
 - `now-ui.json` exposes the component to UI Builder.
@@ -89,18 +90,23 @@ snc ui-component deploy --profile <profile> --fetch-assets-from-instance
 3. Confirm the active workspace icon and name render in the header and the workspace short description does not.
 4. Confirm the My Workspaces switcher entry point returns to the launcher surface.
 5. Select a page in the tree and confirm the visible content, breadcrumbs, ToC, and route target update.
-6. Toggle the navigation collapse and theme controls to confirm browser-side shell state updates.
-7. If your role grants authoring access, create a root page from the shell and confirm the tree updates, the page is selected, and the route target changes to `/docsera/:workspaceSlug/:pageSlug`.
-8. If your role grants authoring access, create a child page from an existing row and confirm it inherits the selected workspace and parent page.
-9. Use the My Workspaces surface to create a workspace from the modal with a name and optional description.
-10. Confirm the new workspace is added to the list and becomes the selected workspace.
-11. Confirm the creator is added to the generated Admin group when the PDI provisioning wiring is live.
+6. Confirm Live mode is the default page experience.
+7. If your role grants authoring access, use the Live/Edit switch to enter Edit mode and confirm the dedicated child editor host renders in the content well while the surrounding shell stays stable.
+8. If your role grants authoring access, return to Live mode and confirm the reader surface renders without losing the selected workspace or page.
+9. Toggle the navigation collapse and theme controls to confirm browser-side shell state updates.
+10. If your role grants authoring access, create a root page from the shell and confirm the tree updates, the page is selected, and the route target changes to `/docsera/:workspaceSlug/:pageSlug`.
+11. If your role grants authoring access, create a child page from an existing row and confirm it inherits the selected workspace and parent page.
+12. Use the My Workspaces surface to create a workspace from the modal with a name and optional description.
+13. Confirm the new workspace is added to the list and becomes the selected workspace.
+14. Confirm the creator is added to the generated Admin group when the PDI provisioning wiring is live.
 
 Expected result:
 
 - local validation fails early if the shell dependency tree or `@servicenow/sass-kit/_host.scss` is missing
 - The launcher list is filtered to active authoring/admin workspaces.
 - Reader mode shows the active workspace identity, page tree, breadcrumbs, and ToC.
+- Live mode is the default page experience and does not require the child editor host to mount.
+- Authorized users can switch into Edit mode without losing workspace/page context.
 - Authoring roles can create root and child pages without a full refresh.
 - Page selection updates the reader content without a full refresh.
 - Workspace creation preserves the name, description, default icon, and slug behavior.

@@ -11,6 +11,7 @@ Docsera is a ServiceNow-scoped documentation platform focused on a polished read
 - `docs/process/Implementation Notes - Workspace Capability Checks.md` records the workspace access contract.
 - `docs/process/Implementation Notes - Page Data Model and Slug Rules.md` records the page foundation contract.
 - `docs/process/Implementation Notes - Editor Host Contract.md` records the durable editor-host boundary for future ProseMirror/TipTap integration.
+- `docs/process/Implementation Notes - Live Edit Editor Host Boundary.md` records the productized page-level Live/Edit shell boundary and child editor host scaffold.
 - `poc/tiptap-component/` is a closed historical PoC reference and should not be renamed into the product shell.
 
 ## Internal working material

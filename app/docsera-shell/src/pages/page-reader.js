@@ -287,6 +287,10 @@ function buildWorkspaceReaderPages(pages = [], workspaceSysId = '') {
 		.sort((left, right) => sortShellPages(left, right, false));
 }
 
+function normalizePageViewMode(value) {
+	return cleanText(value).toLowerCase() === 'edit' ? 'edit' : 'live';
+}
+
 function buildWorkspaceAuthoringPages(pages = [], workspaceSysId = '') {
 	return (Array.isArray(pages) ? pages : [])
 		.filter(page => resolvePageWorkspaceSysId(page) === cleanText(workspaceSysId) && isAuthoringVisiblePage(page))
@@ -652,7 +656,8 @@ export function buildWorkspaceShellViewModel({
 	capabilityService,
 	selectedWorkspaceSlug = '',
 	selectedPageSlug = '',
-	pageTreeSearchQuery = ''
+	pageTreeSearchQuery = '',
+	pageViewMode = 'live'
 } = {}) {
 	const workspaceSlug = normalizeSlug(selectedWorkspaceSlug);
 	const workspace = (Array.isArray(workspaces) ? workspaces : []).find(item => {
@@ -685,7 +690,9 @@ export function buildWorkspaceShellViewModel({
 			canShowAuthoringControls: false,
 			canCreatePages: false,
 			canEditPageBody: false,
-			pageMode: 'reader'
+			pageMode: 'reader',
+			pageViewMode: 'live',
+			canAccessEditMode: false
 		};
 	}
 
@@ -706,13 +713,25 @@ export function buildWorkspaceShellViewModel({
 	const visiblePages = canShowAuthoringControls
 		? allPages
 		: buildWorkspaceReaderPages(pages, workspace.sysId);
+	const canAccessEditMode = Boolean(canShowAuthoringControls);
+	const resolvedPageViewMode = canAccessEditMode
+		? normalizePageViewMode(pageViewMode)
+		: 'live';
 	const {pageBySysId, pageBySlug} = buildWorkspaceReaderPageLookup(visiblePages, canShowAuthoringControls);
 	const requestedPageSlug = normalizeSlug(selectedPageSlug);
 	const rootPages = buildWorkspaceRootPages(visiblePages, canShowAuthoringControls);
 	const firstVisiblePage = rootPages[0] || visiblePages[0] || null;
 	const selectedPage = requestedPageSlug ? pageBySlug.get(requestedPageSlug) || null : firstVisiblePage;
+	const shouldPreferDraftSelectedPage = Boolean(
+		selectedPage &&
+		canShowAuthoringControls &&
+		(
+			resolvedPageViewMode === 'edit' ||
+			selectedPage.publicationState === PAGE_PUBLICATION_STATES.draft
+		)
+	);
 	const selectedPageView = selectedPage ? (
-		canShowAuthoringControls
+		shouldPreferDraftSelectedPage
 			? {
 				...selectedPage,
 				title: resolvePageTitle(selectedPage, true),
@@ -740,7 +759,7 @@ export function buildWorkspaceShellViewModel({
 			? 'page-not-found'
 			: 'ready';
 	const selectedPageSlugValue = selectedPage
-		? resolvePageSlug(selectedPage, canShowAuthoringControls)
+		? resolvePageSlug(selectedPage, shouldPreferDraftSelectedPage)
 		: (canShowAuthoringControls ? requestedPageSlug : '');
 	const normalizedPageTreeSearchQuery = normalizeSearchQuery(pageTreeSearchQuery);
 	const pageTree = buildPageTree(visiblePages, '', selectedPage ? selectedPage.sysId : '', canShowAuthoringControls);
@@ -762,11 +781,13 @@ export function buildWorkspaceShellViewModel({
 		pageTreeSearchQuery: normalizedPageTreeSearchQuery,
 		isPageTreeSearchActive: Boolean(normalizedPageTreeSearchQuery),
 		isPageTreeNoResultsState: Boolean(normalizedPageTreeSearchQuery && filteredPageTree.length === 0 && visiblePages.length > 0),
-		routeTargetPath: buildWorkspacePageRoutePath(resolveWorkspaceSlug(workspace), selectedPage ? resolvePageSlug(selectedPage, canShowAuthoringControls) : selectedPageSlugValue),
+		routeTargetPath: buildWorkspacePageRoutePath(resolveWorkspaceSlug(workspace), selectedPage ? resolvePageSlug(selectedPage, shouldPreferDraftSelectedPage) : selectedPageSlugValue),
 		canManageWorkspaceSettings: Boolean(capabilityService && typeof capabilityService.isWorkspaceAdmin === 'function' && capabilityService.isWorkspaceAdmin(workspace)),
 		canShowAuthoringControls,
 		canCreatePages: canShowAuthoringControls && workspace.active !== false,
 		canEditPageBody: Boolean(canShowAuthoringControls && selectedPage),
-		pageMode: canShowAuthoringControls ? 'authoring' : 'reader'
+		pageMode: canShowAuthoringControls ? 'authoring' : 'reader',
+		pageViewMode: resolvedPageViewMode,
+		canAccessEditMode
 	};
 }

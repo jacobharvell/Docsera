@@ -113,6 +113,12 @@
   justify-content: flex-end;
 }
 
+.docsera-shell__mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--docsera-shell-space-2);
+}
+
 .docsera-shell__badge {
   display: inline-flex;
   align-items: center;
@@ -1196,6 +1202,16 @@
   background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%);
   color: var(--docsera-shell-color-text);
   box-shadow: none;
+}
+
+.docsera-shell__button--active {
+  border-color: var(--docsera-shell-color-accent);
+  background: linear-gradient(180deg, rgba(29, 122, 252, 0.12) 0%, rgba(29, 122, 252, 0.18) 100%);
+  color: var(--docsera-shell-color-accent-strong);
+}
+
+.docsera-shell--theme-dark .docsera-shell__button--secondary {
+  background: linear-gradient(180deg, rgba(17, 26, 43, 0.98) 0%, rgba(22, 33, 51, 0.98) 100%);
 }
 
 .docsera-shell__button:disabled {
