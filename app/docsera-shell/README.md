@@ -1,12 +1,13 @@
 docsera-app-shell
 ===============================================
-Docsera product app shell scaffold
+Historical Docsera shell scaffold and reusable product logic
 
 ## Scope
 
 - Real product-facing shell surface for Docsera.
 - Preferred runtime host is the standalone scoped Direct UI Page, not UI Builder placement.
 - Preferred frontend source stack is React + TypeScript + Vite, with the Direct UI Page loading built static assets.
+- This package is retained as historical shell scaffolding and migration source material, not as the preferred runtime entry point.
 - Workspace domain foundation now exists in `src/workspaces/`.
 - My Workspaces launcher and self-service workspace creation now live in the shell.
 - Workspace reader mode now lives in the shell, with My Workspaces as the launcher entry point.
@@ -22,9 +23,17 @@ Docsera product app shell scaffold
 - `src/docsera-shell/index.js` now includes the local page-creation modal, page-tree selection flow, and the live/edit page-mode boundary.
 - `src/pages/page-editor-host.js` owns the dedicated child editor host for ProseMirror runtime lifecycle.
 - The thin body editor/autosave baseline is ProseMirror-first by design; TipTap integration remains deferred as an explicit future boundary.
-- Repo-managed React + TypeScript source is the intended application authoring model; UI Script remains a possible bootstrap or compiled-asset target, not the main source model.
+- Repo-managed React + TypeScript source is the intended application authoring model; this package remains a JavaScript-based historical scaffold to mine during that migration.
 - `src/docsera-shell/styles.scss` defines the Docsera shell token layer and launcher / reader layout conventions.
-- `now-ui.json` still carries the historical UI Builder component registration, but it is no longer the preferred runtime entry point.
+- `historical/ui-builder/now-ui.json` retains the paused UI Builder registration metadata as historical evidence only.
+
+## Historical UI Builder scaffolding
+
+- `src/docsera-shell/index.js` still registers `x-82900-docsera-shell`.
+- `src/pages/page-editor-host.js` still registers `x-82900-docsera-page-editor-host`.
+- `historical/ui-builder/now-ui.json` preserves the old UI Builder metadata that used to register the shell in the platform.
+- These artifacts are retained so future React + TypeScript + Vite work can mine reusable domain behavior, shell flows, and editor boundary logic without treating UI Builder as the runtime target.
+- Future runtime work should target the standalone scoped Direct UI Page plus built static assets, not UI Builder placement or macroponent hosting.
 
 ## Workspace foundation
 
@@ -71,6 +80,8 @@ To validate only the shell package:
 ```powershell
 npm run validate:shell
 ```
+
+That validation preserves reusable shell logic and the archived UI Builder metadata. It does not imply that UI Builder remains an accepted runtime direction.
 
 To validate only the repo documentation references:
 

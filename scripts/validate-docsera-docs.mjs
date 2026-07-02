@@ -48,6 +48,19 @@ mustContain(
 	'docs/process/Docsera Repo, SDK, and Deployment Baseline.md'
 );
 
+const runtimeCleanupNote = readText('docs/process/Implementation Notes - UI Builder Runtime Baggage Cleanup.md');
+mustContain(
+	runtimeCleanupNote,
+	[
+		'ADR-0002-direct-ui-page-host.md',
+		'ADR-0003-frontend-stack.md',
+		'app/docsera-shell/historical/ui-builder/now-ui.json',
+		'React + TypeScript + Vite',
+		'Validation results'
+	],
+	'docs/process/Implementation Notes - UI Builder Runtime Baggage Cleanup.md'
+);
+
 const requirementsSourceMap = readText('docs/process/Requirements Source Map.md');
 mustContain(
 	requirementsSourceMap,

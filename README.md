@@ -5,7 +5,7 @@ Docsera is a ServiceNow-scoped documentation platform focused on a polished read
 ## Repo surface
 
 - `docs/decisions/` contains public architectural decisions and rationale.
-- `app/docsera-shell/` is the reusable Docsera shell scaffold and asset layer.
+- `app/docsera-shell/` is the historical shell scaffold and reusable product/domain logic retained for migration into the accepted runtime direction.
 - `docs/process/Requirements Source Map.md` records the Obsidian requirement source map.
 - `docs/process/Implementation Notes - Workspace Data Model and Group Provisioning.md` records the workspace foundation contract.
 - `docs/process/Implementation Notes - Workspace Capability Checks.md` records the workspace access contract.
@@ -29,6 +29,7 @@ The following paths are intentionally excluded from the public repo and are used
 - ServiceNow-native scoped app
 - Standalone scoped Direct UI Page host
 - React + TypeScript + Vite frontend source stack
+- Historical UI Builder / Next Experience scaffolding retained only as reference evidence
 - Scoped ServiceNow-hosted assets and same-origin backend calls
 - Workspace data model and native group provisioning
 - Page data model, hierarchy, and slug rules

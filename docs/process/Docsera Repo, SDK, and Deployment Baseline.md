@@ -7,10 +7,12 @@ This note records the current implementation baseline for the Docsera repository
 
 It is a discovery snapshot, not a design decision record.
 
+It is retained as historical discovery context. The accepted runtime host and frontend stack now live in `docs/decisions/ADR-0002-direct-ui-page-host.md` and `docs/decisions/ADR-0003-frontend-stack.md`.
+
 ## Current Repo Structure
 
 - Root repo is mostly documentation, runbooks, and a ServiceNow PoC under `poc/`.
-- The forward-looking product shell now lives under `app/docsera-shell/` as the reusable shell scaffold and asset layer.
+- The forward-looking product shell now lives under `app/docsera-shell/` as historical shell scaffolding plus reusable product/domain logic.
 - Public-facing docs live in `docs/`.
 - Working ServiceNow guidance and validation notes live in `internal/`.
 - The executable app artifacts currently present are `app/docsera-shell/` and `poc/tiptap-component/`.
@@ -27,8 +29,8 @@ Key paths:
 
 ## Confirmed ServiceNow Scope/App Information
 
-- `now-ui.json` sets `scopeName` to `x_82900_odoc2`.
-- `now-ui.json` still registers the historical `x-82900-docsera-shell` UI Builder component.
+- `app/docsera-shell/historical/ui-builder/now-ui.json` records the old `x-82900-docsera-shell` UI Builder registration metadata.
+- That archived metadata sets `scopeName` to `x_82900_odoc2`.
 - The UI Builder metadata labels it `Docsera My Workspaces`.
 - The component is described as the Docsera My Workspaces launcher and shell boundary.
 - `package.json` names the package `docsera-app-shell`.
@@ -47,6 +49,7 @@ The preferred frontend source/build stack decision is documented in `docs/decisi
 - Rendering uses `@servicenow/ui-core` with `@servicenow/ui-renderer-snabbdom`.
 - The product shell now includes a My Workspaces launcher surface and a reader-mode workspace shell boundary for workspace routing.
 - The workspace domain foundation now lives in `app/docsera-shell/src/workspaces/`, but the PDI table and on-instance wiring still need to be completed.
+- The core workspace contract entry point is `app/docsera-shell/src/workspaces/workspace-domain.js`.
 - The page domain foundation now lives in `app/docsera-shell/src/pages/`, but the PDI table and on-instance wiring still need to be completed.
 - The runtime host direction is now the standalone scoped Direct UI Page, so the UI Builder component should be treated as historical scaffolding unless a cleanup task explicitly repurposes it.
 - The preferred frontend source stack is React + TypeScript + Vite, with built assets delivered through the Direct UI Page host.
@@ -112,7 +115,7 @@ Important note:
 
 The current PDI deployment workflow for the PoC is documented in `internal/runbooks/PDI_UI_COMPONENT_DEPLOYMENT.md`.
 
-The product shell follows the same ServiceNow CLI pattern from `app/docsera-shell/`.
+The product shell previously followed the same ServiceNow CLI pattern from `app/docsera-shell/`, but that path is now historical scaffolding rather than the preferred runtime direction.
 
 1. Work from `C:\Dev\Docsera\poc\tiptap-component`
 2. Verify CLI and profile:
@@ -126,7 +129,7 @@ The product shell follows the same ServiceNow CLI pattern from `app/docsera-shel
 
 The retrospective in `poc/tiptap-component/GATE2_RETROSPECTIVE.md` confirms that deploy success alone is not considered runtime success.
 
-For the product shell, runtime validation is only a shell smoke check at this stage:
+For the product shell, treat the old deploy flow as historical shell evidence only:
 
 1. Deploy `app/docsera-shell`.
 2. Treat the UI Builder placement flow as historical context only.
@@ -168,7 +171,7 @@ Expected result:
 For the new shell scaffold, the manual expectation is simpler:
 
 1. Open `C:\Dev\Docsera\app\docsera-shell`.
-2. Deploy the component to the PDI.
+2. Deploy the component to the PDI only if historical shell behavior needs comparison against the retained scaffold.
 3. Validate the standalone Direct UI Page host using the spike notes.
 4. Confirm the shell layout renders and the navigation buttons update the visible placeholder section once the host is wired to the package.
 
@@ -187,21 +190,7 @@ Expected result:
 - The current package/artifact naming still reads as a PoC, not a product baseline.
 - Runtime validation still depends on the authenticated PDI and `snc` CLI being available locally.
 
-## Recommended Next Implementation Task
+## Historical note status
 
-Proceed with:
-
-`Scaffolding - Docsera App Shell and Validation Baseline`
-
-Recommended focus for that task:
-- keep the product shell separate from the closed PoC
-- establish a repeatable repo-level validation command surface
-- keep persistence and permission scaffolding explicit but minimal
-- prepare for `Implementation Notes - Workspace Data Model and Group Provisioning`
-- `app/docsera-shell/src/workspaces/workspace-domain.js`
-
-## Blockers / Uncertainties
-
-- No blocker prevents starting shell scaffolding now.
-- The main uncertainty is how much of the current PoC should be retained versus renamed when the product shell is introduced.
-- The repo still needs a deliberate decision on whether to standardize local validation commands before or during shell scaffolding.
+- The next-task recommendations in the original discovery snapshot are now superseded.
+- Use ADR-0002, ADR-0003, and `docs/process/Implementation Notes - UI Builder Runtime Baggage Cleanup.md` for the current repo direction.

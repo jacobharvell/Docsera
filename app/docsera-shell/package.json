@@ -2,11 +2,10 @@
   "name": "docsera-app-shell",
   "version": "0.1.0",
   "private": false,
-  "description": "Docsera product app shell scaffold for ServiceNow",
+  "description": "Historical Docsera shell scaffold and reusable product logic for ServiceNow",
   "type": "module",
   "keywords": [
     "ServiceNow",
-    "Next Experience UI Component",
     "Docsera"
   ],
   "readme": "./README.md",

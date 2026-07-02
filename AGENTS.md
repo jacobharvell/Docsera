@@ -8,7 +8,7 @@ This repository contains a ServiceNow scoped application for a standalone, open-
 
 The intended product direction is:
 - Standalone ServiceNow scoped app.
-- UI Builder / Next Experience app shell.
+- Standalone scoped Direct UI Page app shell.
 - Custom component-based editor.
 - Tiptap/ProseMirror editor foundation.
 - Block-based authoring with Markdown/source support.
@@ -26,7 +26,7 @@ This project is not intended to become:
 - Primary working environment: VS Code.
 - AI coding workflow: Codex inside VS Code.
 - ServiceNow environment: PDI unless otherwise stated.
-- ServiceNow development path: scoped app + UI Builder / Next Experience + custom components.
+- ServiceNow development path: scoped app + standalone Direct UI Page host + React + TypeScript + Vite frontend source.
 - Editor foundation: Tiptap/ProseMirror unless explicitly changed.
 - Initial persistence target: ServiceNow scoped app records.
 - External Git sync, AI features, OpenAPI rendering, real-time collaboration, comments, and reactions are deferred unless explicitly approved.

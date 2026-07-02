@@ -107,10 +107,10 @@ if (!packageJson.scripts || packageJson.scripts.verify !== 'node scripts/validat
 
 assertInstalledDependencyTree(packageJson);
 
-const nowUi = parseJson('now-ui.json');
+const nowUi = parseJson('historical/ui-builder/now-ui.json');
 const component = nowUi.components && nowUi.components['x-82900-docsera-shell'];
 if (!component) {
-	throw new Error('Missing x-82900-docsera-shell component registration.');
+	throw new Error('Missing archived x-82900-docsera-shell component registration.');
 }
 if (nowUi.scopeName !== 'x_82900_odoc2') {
 	throw new Error(`Unexpected scope name: ${nowUi.scopeName}`);
@@ -118,6 +118,8 @@ if (nowUi.scopeName !== 'x_82900_odoc2') {
 
 const requiredFiles = [
 	'README.md',
+	'historical/ui-builder/README.md',
+	'historical/ui-builder/now-ui.json',
 	'pom.xml',
 	'src/index.js',
 	'src/docsera-shell/index.js',
@@ -213,6 +215,7 @@ for (const needle of [
 	'npm --prefix app/docsera-shell install',
 	'npm run validate',
 	'Workspace foundation',
+	'Historical UI Builder scaffolding',
 	'Manual PDI validation',
 	'Requirements Source Map.md',
 	'Implementation Notes - Workspace Data Model and Group Provisioning.md',
@@ -222,6 +225,18 @@ for (const needle of [
 ]) {
 	if (!shellReadme.includes(needle)) {
 		throw new Error(`Missing "${needle}" in shell README.`);
+	}
+}
+
+const historicalUiBuilderReadme = readText('historical/ui-builder/README.md');
+for (const needle of [
+	'historical evidence',
+	'not the preferred runtime host',
+	'Direct UI Page',
+	'React + TypeScript + Vite'
+]) {
+	if (!historicalUiBuilderReadme.includes(needle)) {
+		throw new Error(`Missing "${needle}" in historical UI Builder README.`);
 	}
 }
 
