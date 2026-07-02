@@ -27,6 +27,8 @@ This project is not intended to become:
 - AI coding workflow: Codex inside VS Code.
 - ServiceNow environment: PDI unless otherwise stated.
 - ServiceNow development path: scoped app + standalone Direct UI Page host + React + TypeScript + Vite frontend source.
+- Active frontend runtime source tree: `app/docsera-ui`.
+- `app/docsera-shell` is historical migration source material, not the active runtime entry point.
 - Editor foundation: Tiptap/ProseMirror unless explicitly changed.
 - Initial persistence target: ServiceNow scoped app records.
 - External Git sync, AI features, OpenAPI rendering, real-time collaboration, comments, and reactions are deferred unless explicitly approved.
@@ -62,6 +64,7 @@ Prototypes are visual and interaction references, especially for layout, spacing
 - Do not add paid ServiceNow plugin dependencies without explicit approval.
 - Prefer local/custom-component development for the editor rather than attempting to force the platform rich text editor into a block-editor role.
 - Keep the app PDI-friendly and open-source-friendly.
+- For visible UI work, include Jacob-facing manual verification steps when subjective layout, interaction feel, prototype fidelity, drag/drop behavior, editor behavior, or visual polish is affected.
 
 ## Technical Implementation Authority
 

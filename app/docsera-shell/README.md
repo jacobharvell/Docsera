@@ -4,6 +4,7 @@ Historical Docsera shell scaffold and reusable product logic
 
 ## Scope
 
+- `app/docsera-ui/` is now the active React + TypeScript + Vite runtime baseline for the standalone Direct UI Page host.
 - Real product-facing shell surface for Docsera.
 - Preferred runtime host is the standalone scoped Direct UI Page, not UI Builder placement.
 - Preferred frontend source stack is React + TypeScript + Vite, with the Direct UI Page loading built static assets.

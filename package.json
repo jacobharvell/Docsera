@@ -1,11 +1,13 @@
 {
   "name": "docsera-repo",
   "private": true,
-  "description": "Repository-level validation surface for Docsera scaffolding",
+  "description": "Repository-level validation surface for Docsera frontend and scaffolding",
   "scripts": {
-    "validate": "npm run validate:shell && npm run validate:docs",
+    "validate": "npm run validate:frontend && npm run validate:shell && npm run validate:docs",
+    "validate:frontend": "npm --prefix app/docsera-ui run validate",
     "validate:shell": "npm --prefix app/docsera-shell run verify",
     "validate:docs": "node scripts/validate-docsera-docs.mjs",
+    "package:direct-ui-page": "node scripts/package-direct-ui-page-assets.mjs",
     "verify": "npm run validate"
   }
 }

@@ -9,6 +9,7 @@ node_modules/
 dist/
 lib/
 target/
+output/direct-ui-page-baseline/
 coverage/
 **/coverage/
 .cache/

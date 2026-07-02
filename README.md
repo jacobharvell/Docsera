@@ -5,8 +5,10 @@ Docsera is a ServiceNow-scoped documentation platform focused on a polished read
 ## Repo surface
 
 - `docs/decisions/` contains public architectural decisions and rationale.
+- `app/docsera-ui/` is the active React + TypeScript + Vite source tree for the standalone Direct UI Page runtime.
 - `app/docsera-shell/` is the historical shell scaffold and reusable product/domain logic retained for migration into the accepted runtime direction.
 - `docs/process/Requirements Source Map.md` records the Obsidian requirement source map.
+- `docs/process/Implementation Notes - React Vite Direct UI Page Packaging Baseline.md` records the repo-side build and packaging baseline for the active runtime.
 - `docs/process/Implementation Notes - Workspace Data Model and Group Provisioning.md` records the workspace foundation contract.
 - `docs/process/Implementation Notes - Workspace Capability Checks.md` records the workspace access contract.
 - `docs/process/Implementation Notes - Page Data Model and Slug Rules.md` records the page foundation contract.
@@ -46,7 +48,10 @@ npm run validate
 
 Additional commands:
 
+- `npm run validate:frontend`
 - `npm run validate:shell`
 - `npm run validate:docs`
+- `npm run package:direct-ui-page`
 
-The shell package README at `app/docsera-shell/README.md` documents the local and PDI validation flow for the current scaffold.
+The active runtime package README lives at `app/docsera-ui/README.md`.
+The historical shell package README at `app/docsera-shell/README.md` documents the retained migration scaffold.
