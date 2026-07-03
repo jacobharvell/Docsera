@@ -19,6 +19,12 @@ export type PingResult = {
   userSysId: string;
 };
 
+export type RuntimeProbeState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "success"; payload: PingResult }
+  | { status: "error"; message: string };
+
 export type RawPingPayload = {
   authenticated?: boolean;
   scope?: string;
@@ -36,15 +42,29 @@ export type ServiceNowClient = {
   ping: () => Promise<PingResult>;
 };
 
+export type DemoPageSection = {
+  id: string;
+  title: string;
+  body?: string;
+};
+
 export type DemoPage = {
   id: string;
   title: string;
   slug: string;
+  summary: string;
+  body: string;
+  sections: DemoPageSection[];
+  children?: DemoPage[];
 };
 
 export type DemoWorkspace = {
   id: string;
   title: string;
+  subtitle: string;
   summary: string;
+  status: string;
+  routeLabel: string;
+  defaultPageId: string;
   pages: DemoPage[];
 };

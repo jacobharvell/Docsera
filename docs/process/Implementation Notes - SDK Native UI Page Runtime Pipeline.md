@@ -22,6 +22,28 @@ The active runtime package remains `app/docsera-ui/`, but it now follows the SDK
 
 This keeps `app/docsera-ui` as the active source tree while aligning it to the supported ServiceNow SDK layout instead of introducing a second runtime package.
 
+## Workspace Shell Baseline
+
+The SDK-native UI Page now renders the first real Docsera workspace shell baseline instead of the earlier proof-only hero.
+
+The shell is intentionally demo-backed and reads from explicit seed data in `src/client/features/workspaces/`:
+
+- top application header
+- workspace identity block
+- left page tree / navigation
+- selected page content surface
+- right-side table of contents and runtime probe
+
+This keeps the runtime visually useful while preserving the future boundaries:
+
+- no live persistence
+- no page or workspace CRUD
+- no editor integration
+- no publishing workflow
+- no permissions enforcement beyond the existing runtime probe
+
+The REST ping remains a secondary host/platform probe. It verifies same-origin access and authenticated instance wiring, but it is not the product data model.
+
 ## Runtime Artifacts Proven By Local Build
 
 `npm --prefix app/docsera-ui run build` now runs `now-sdk build`.
@@ -89,7 +111,7 @@ This command proves install integrity, endpoint accessibility, HTML markers, ass
 
 This command does not execute the React app in a browser. It does not prove client-side rendering, CSS layout, runtime console cleanliness, or React bootstrap error handling.
 
-Use a browser smoke test separately when visual rendering or client-side runtime behavior becomes the thing that needs to be proven.
+Use a browser smoke test separately when visual rendering or client-side runtime behavior becomes the thing that needs to be proven. For this workspace-shell migration, the unit tests in `app/docsera-ui/test/App.test.tsx` cover the shell baseline and the ping failure tolerance.
 
 ## Install Guardrails And Current Workflow
 

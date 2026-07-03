@@ -5,13 +5,27 @@ This package is the active SDK-native runtime baseline for Docsera's preferred h
 - runtime host: standalone scoped Direct UI Page
 - source stack: React + TypeScript
 - delivery target: ServiceNow SDK-managed static assets and Fluent metadata
+- visible runtime: Docsera workspace shell baseline with demo-backed navigation and content
 
 ## Scope
 
 - Keep `src/client/main.tsx` thin. It mounts the app and imports global styles.
 - Keep ServiceNow-specific URL and session assumptions in `src/client/platform/servicenow/`.
 - Keep seed/demo data explicit and separate from future live persistence.
+- Keep the REST ping as a secondary platform probe, not the product data model.
 - Treat `app/docsera-shell/` as historical migration source material, not the active runtime entry point.
+
+## Workspace Shell Baseline
+
+The current SDK-native runtime renders a real Docsera workspace shell instead of a minimal proof page:
+
+- top app/workspace header
+- workspace identity block
+- left page tree and navigation
+- central selected-page content surface
+- right-side table of contents and runtime probe
+
+The shell is intentionally demo-backed. It uses explicit workspace/page seed data so the layout can be validated now while live persistence, CRUD, editor integration, and publishing remain future tasks.
 
 ## Local commands
 
@@ -59,6 +73,13 @@ The preferred runtime pipeline is:
 - `src/server/` for server-side handler modules used by Fluent metadata
 - `now-sdk build` for frontend bundling plus metadata compilation
 - `now-sdk install` for instance deployment when SDK auth is configured
+
+The active client runtime now follows this structure:
+
+- `src/client/app/` for the shell root component
+- `src/client/features/workspaces/` for demo workspace data and shell subcomponents
+- `src/client/platform/servicenow/` for same-origin ServiceNow access
+- `src/client/styles/global.css` for the SDK-managed visual system
 
 ## Historical fallback
 
