@@ -105,6 +105,11 @@ function normalizePingPayload(payload) {
   };
 }
 
+function extractCssAssetPaths(bundleText) {
+  const matches = bundleText.match(/\/uxta\/[^"'`\s)]+\.assetx\?path=[^"'`\s)]+\.css(?:&[^"'`\s)]*)?/g);
+  return matches ? [...new Set(matches)] : [];
+}
+
 function printUsage() {
   console.log(`Docsera SDK runtime verification
 
@@ -443,11 +448,53 @@ async function main() {
     });
 
     checks.push({
-      ok: assetText.includes("#docsera-root"),
-      label: "SDK-managed main.jsdbx asset contains #docsera-root",
+      ok: assetText.includes("docsera-root"),
+      label: 'SDK-managed main.jsdbx asset contains "docsera-root"',
       diagnostic:
-        "The bundled SDK-managed JS/CSS asset does not contain the Docsera root selector. Re-run the build/install and confirm the active bundle matches the source tree."
+        'The bundled SDK-managed asset does not contain the expected "docsera-root" mount marker. Re-run the build/install and confirm the active bundle matches the source tree.'
     });
+
+    const cssAssetPaths = extractCssAssetPaths(assetText);
+    checks.push({
+      ok: cssAssetPaths.length > 0,
+      label: "SDK-managed main.jsdbx asset contains CSS asset reference",
+      diagnostic:
+        "The bundled SDK-managed asset did not expose a scoped CSS asset URL. Confirm the client stylesheet is still imported and emitted by the SDK build."
+    });
+
+    if (cssAssetPaths.length > 0) {
+      const cssAssetUrl = new URL(cssAssetPaths[0], instanceUrl);
+      const cssAssetResponse = await fetch(cssAssetUrl, {
+        headers: {
+          ...authHeaders,
+          Accept: "text/css,*/*;q=0.1"
+        }
+      });
+      const cssAssetText = await cssAssetResponse.text();
+
+      checks.push({
+        ok: cssAssetResponse.status === 200,
+        label: "SDK-managed runtime CSS asset returned 200",
+        diagnostic:
+          cssAssetResponse.status === 200
+            ? undefined
+            : `The SDK-managed CSS asset returned HTTP ${cssAssetResponse.status}. Re-run the SDK build/install and confirm the theme asset record referenced by the bundle exists on the instance.`
+      });
+
+      checks.push({
+        ok: !hasSessionTimeout(cssAssetText, cssAssetResponse.url),
+        label: "SDK-managed runtime CSS asset did not redirect to session_timeout.do",
+        diagnostic:
+          "The SDK-managed CSS asset landed on session_timeout.do, which means the authenticated session is not being reused correctly for the CSS request."
+      });
+
+      checks.push({
+        ok: cssAssetText.includes(".docsera-shell") || cssAssetText.includes(":root"),
+        label: "SDK-managed runtime CSS asset contains Docsera styles",
+        diagnostic:
+          "The runtime CSS asset resolved, but it did not contain the expected Docsera style markers. Confirm the emitted stylesheet matches the active client source."
+      });
+    }
   }
 
   const pingUrl = new URL(pingPath, instanceUrl);

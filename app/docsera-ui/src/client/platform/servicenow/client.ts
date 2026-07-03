@@ -6,11 +6,41 @@ import type {
   ServiceNowClient
 } from "../../shared/types/docsera";
 
+type TokenBearingWindow = Window & {
+  NOW?: {
+    user?: {
+      token?: string;
+    };
+  };
+  g_ck?: string;
+};
+
+function readWindowUserToken(candidate: Window | null | undefined): string | undefined {
+  const tokenWindow = candidate as TokenBearingWindow | null | undefined;
+  const token = tokenWindow?.g_ck ?? tokenWindow?.NOW?.user?.token;
+  return typeof token === "string" && token.trim() ? token.trim() : undefined;
+}
+
+function resolveUserToken(): string | undefined {
+  const localToken = readWindowUserToken(window);
+  if (localToken) {
+    return localToken;
+  }
+
+  try {
+    return readWindowUserToken(window.top);
+  } catch {
+    return undefined;
+  }
+}
+
 async function requestJson<T>(path: string): Promise<T> {
+  const userToken = resolveUserToken();
   const response = await fetch(path, {
     credentials: "same-origin",
     headers: {
-      Accept: "application/json"
+      Accept: "application/json",
+      ...(userToken ? { "X-UserToken": userToken } : {})
     }
   });
 

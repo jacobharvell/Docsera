@@ -6,47 +6,112 @@ type WorkspaceSidebarProps = {
   workspace: DemoWorkspace;
   selectedPageId: string;
   onSelectPage: (pageId: string) => void;
+  treeFilter: string;
+  onTreeFilterChange: (value: string) => void;
 };
 
-export function WorkspaceSidebar({ workspace, selectedPageId, onSelectPage }: WorkspaceSidebarProps) {
-  const flattenedPages = flattenDemoPages(workspace.pages);
-
+function SearchIcon() {
   return (
-    <aside className="docsera-shell__sidebar" aria-label="Workspace navigation">
-      <section className="docsera-shell__panel docsera-shell__panel--sidebar">
-        <div className="docsera-shell__workspace-identity">
-          <div className="docsera-shell__workspace-icon" aria-hidden="true">
-            {workspace.title.charAt(0)}
-          </div>
-          <div className="docsera-shell__workspace-identity-copy">
-            <p className="docsera-shell__eyebrow">Workspace identity</p>
-            <h2 className="docsera-shell__sidebar-title">{workspace.title}</h2>
-            <p className="docsera-shell__sidebar-copy">{workspace.summary}</p>
-          </div>
-        </div>
-
-        <div className="docsera-shell__sidebar-meta">
-          <span className="docsera-shell__chip">{flattenedPages.length} demo pages</span>
-          <span className="docsera-shell__chip">Demo/adaptor-backed</span>
-        </div>
-      </section>
-
-      <section className="docsera-shell__panel docsera-shell__panel--sidebar">
-        <div className="docsera-shell__section-head">
-          <div>
-            <p className="docsera-shell__eyebrow">Navigation</p>
-            <h2 className="docsera-shell__section-title">Page tree</h2>
-          </div>
-          <p className="docsera-shell__section-copy">
-            Select a page to update the central reading surface.
-          </p>
-        </div>
-
-        <nav aria-label="Demo page tree" className="docsera-shell__tree">
-          <PageTree pages={workspace.pages} selectedPageId={selectedPageId} onSelectPage={onSelectPage} />
-        </nav>
-      </section>
-    </aside>
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+    </svg>
   );
 }
 
+function PlusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M12 4.5v15m7.5-7.5h-15"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2.2"
+      />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M19.5 8.25l-7.5 7.5-7.5-7.5"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2.2"
+      />
+    </svg>
+  );
+}
+
+export function WorkspaceSidebar({
+  workspace,
+  selectedPageId,
+  onSelectPage,
+  treeFilter,
+  onTreeFilterChange
+}: WorkspaceSidebarProps) {
+  const totalPages = flattenDemoPages(workspace.pages).length;
+
+  return (
+    <aside className="docsera-sidebar" aria-label="Workspace navigation">
+      <div className="docsera-sidebar__top">
+        <div className="docsera-sidebar__search-row">
+          <label className="docsera-sidebar__search" htmlFor="docsera-page-filter">
+            <span className="docsera-sidebar__search-icon">
+              <SearchIcon />
+            </span>
+            <input
+              id="docsera-page-filter"
+              className="docsera-sidebar__search-input"
+              type="search"
+              placeholder="Search"
+              value={treeFilter}
+              onChange={(event) => onTreeFilterChange(event.target.value)}
+            />
+          </label>
+          <button type="button" className="docsera-sidebar__icon-button" aria-label="New page" disabled>
+            <PlusIcon />
+          </button>
+        </div>
+
+        <div className="docsera-sidebar__tree-head">
+          <div className="docsera-sidebar__tree-label">
+            <span className="docsera-sidebar__tree-chevron">
+              <ChevronDownIcon />
+            </span>
+            <span>{workspace.homeLabel}</span>
+          </div>
+        </div>
+      </div>
+
+      <nav className="docsera-sidebar__tree" aria-label="Page tree">
+        <p className="docsera-sidebar__meta">
+          {totalPages} local demo pages / {workspace.roleLabel}
+        </p>
+        <PageTree
+          pages={workspace.pages}
+          selectedPageId={selectedPageId}
+          onSelectPage={onSelectPage}
+          filterText={treeFilter}
+        />
+      </nav>
+
+      <button type="button" className="docsera-sidebar__new-page" disabled>
+        <PlusIcon />
+        <span>New page</span>
+      </button>
+    </aside>
+  );
+}

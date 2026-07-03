@@ -1,9 +1,11 @@
-import type { DemoWorkspace, DocseraRuntimeContext, RuntimeProbeState } from "../../shared/types/docsera";
-import { getFirstDemoPage, findDemoPage } from "./demoWorkspace";
-import { WorkspaceContent } from "./WorkspaceContent";
+import { useMemo, useState } from "react";
+import type { DemoPage, DemoWorkspace, DocseraRuntimeContext, RuntimeProbeState } from "../../shared/types/docsera";
+import { findDemoPagePath, getFirstDemoPage, findDemoPage } from "./demoWorkspace";
+import { WorkspaceDevStatus } from "./WorkspaceDevStatus";
 import { WorkspaceHeader } from "./WorkspaceHeader";
+import { WorkspaceMainPane } from "./WorkspaceMainPane";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
-import { WorkspaceStatusRail } from "./WorkspaceStatusRail";
+import { WorkspaceToc } from "./WorkspaceToc";
 
 type WorkspaceShellProps = {
   runtime: DocseraRuntimeContext;
@@ -13,19 +15,34 @@ type WorkspaceShellProps = {
   pingState: RuntimeProbeState;
 };
 
+function getSelectedPage(workspace: DemoWorkspace, selectedPageId: string): DemoPage | null {
+  return findDemoPage(workspace.pages, selectedPageId) ?? getFirstDemoPage(workspace.pages);
+}
+
 export function WorkspaceShell({ runtime, workspace, selectedPageId, onSelectPage, pingState }: WorkspaceShellProps) {
-  const fallbackPage = getFirstDemoPage(workspace.pages);
-  const selectedPage = findDemoPage(workspace.pages, selectedPageId) ?? fallbackPage;
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [treeFilter, setTreeFilter] = useState("");
+  const selectedPage = getSelectedPage(workspace, selectedPageId);
+  const pagePath = useMemo(
+    () => (selectedPage ? findDemoPagePath(workspace.pages, selectedPage.id) : []),
+    [selectedPage, workspace.pages]
+  );
 
   if (!selectedPage) {
     return (
       <div className="docsera-shell">
-        <WorkspaceHeader workspace={workspace} selectedPageTitle="No demo pages" pingState={pingState} />
-        <section className="docsera-shell__panel docsera-shell__panel--empty" role="status">
+        <WorkspaceHeader
+          workspace={workspace}
+          pagePath={[]}
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
+          onSelectPage={onSelectPage}
+        />
+        <section className="docsera-shell__empty-state" role="status">
           <p className="docsera-shell__eyebrow">Workspace shell</p>
-          <h2 className="docsera-shell__section-title">No demo pages are available.</h2>
-          <p className="docsera-shell__section-copy">
-            The shell rendered, but the seeded workspace tree was empty. That should not happen in the checked-in demo data.
+          <h2 className="docsera-shell__empty-title">No pages are available.</h2>
+          <p className="docsera-shell__empty-copy">
+            The demo shell rendered, but the seeded page tree is empty. Restore the demo data before continuing.
           </p>
         </section>
       </div>
@@ -34,18 +51,32 @@ export function WorkspaceShell({ runtime, workspace, selectedPageId, onSelectPag
 
   return (
     <div className="docsera-shell">
-      <WorkspaceHeader workspace={workspace} selectedPageTitle={selectedPage.title} pingState={pingState} />
+      <WorkspaceHeader
+        workspace={workspace}
+        pagePath={pagePath}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
+        onSelectPage={onSelectPage}
+      />
 
-      <div className="docsera-shell__frame">
-        <WorkspaceSidebar
-          workspace={workspace}
-          selectedPageId={selectedPage.id}
-          onSelectPage={onSelectPage}
-        />
-        <WorkspaceContent workspace={workspace} page={selectedPage} />
-        <WorkspaceStatusRail workspace={workspace} page={selectedPage} runtime={runtime} pingState={pingState} />
+      <div className={`docsera-workspace${sidebarCollapsed ? " docsera-workspace--sidebar-collapsed" : ""}`}>
+        {!sidebarCollapsed ? (
+          <WorkspaceSidebar
+            workspace={workspace}
+            selectedPageId={selectedPage.id}
+            onSelectPage={onSelectPage}
+            treeFilter={treeFilter}
+            onTreeFilterChange={setTreeFilter}
+          />
+        ) : null}
+
+        <WorkspaceMainPane page={selectedPage} pagePath={pagePath} />
+
+        <div className="docsera-workspace__aside">
+          <WorkspaceToc page={selectedPage} />
+          <WorkspaceDevStatus runtime={runtime} pingState={pingState} />
+        </div>
       </div>
     </div>
   );
 }
-

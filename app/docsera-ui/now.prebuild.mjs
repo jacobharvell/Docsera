@@ -1,6 +1,42 @@
 import { servicenowFrontEndPlugins, rollup, glob } from "@servicenow/isomorphic-rollup";
 
 export default async ({ rootDir, config, fs, path, logger, registerExplicitId }) => {
+  const registerNormalizedExplicitId = (table, key, guidOverride) => {
+    const normalizedKey = typeof key === "string" ? key.replace(/\\/g, "/") : key;
+    return registerExplicitId(table, normalizedKey, guidOverride);
+  };
+  const normalizeAssetQueryPaths = (rollupOutput, staticContentDir) => {
+    const collapsedAssetPaths = rollupOutput.output
+      .filter((file) => file.type === "asset" && file.fileName.includes("\\"))
+      .map((file) => ({
+        collapsed: file.fileName.replace(/\\/g, ""),
+        normalized: file.fileName.replace(/\\/g, "/")
+      }))
+      .filter(({ collapsed, normalized }) => collapsed !== normalized);
+
+    if (!collapsedAssetPaths.length) {
+      return;
+    }
+
+    rollupOutput.output
+      .filter((file) => file.type === "chunk")
+      .forEach((file) => {
+        const chunkPath = path.join(staticContentDir, file.fileName);
+        const chunkSource = fs.readFileSync(chunkPath, "utf8");
+        let normalizedChunkSource = chunkSource;
+
+        for (const { collapsed, normalized } of collapsedAssetPaths) {
+          normalizedChunkSource = normalizedChunkSource.replaceAll(
+            `path=${collapsed}`,
+            `path=${normalized}`
+          );
+        }
+
+        if (normalizedChunkSource !== chunkSource) {
+          fs.writeFileSync(chunkPath, normalizedChunkSource, "utf8");
+        }
+      });
+  };
   const clientDir = path.join(rootDir, config.clientDir);
   const htmlFiles = await glob(path.join("**", "*.html"), { cwd: clientDir, fs });
 
@@ -18,7 +54,7 @@ export default async ({ rootDir, config, fs, path, logger, registerExplicitId })
     plugins: servicenowFrontEndPlugins({
       scope: config.scope,
       rootDir: clientDir,
-      registerExplicitId
+      registerExplicitId: registerNormalizedExplicitId
     })
   });
 
@@ -26,6 +62,8 @@ export default async ({ rootDir, config, fs, path, logger, registerExplicitId })
     dir: staticContentDir,
     sourcemap: true
   });
+
+  normalizeAssetQueryPaths(rollupOutput, staticContentDir);
 
   rollupOutput.output.forEach((file) => {
     if (file.type === "asset") {

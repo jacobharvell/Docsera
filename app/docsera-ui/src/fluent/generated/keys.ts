@@ -25,6 +25,15 @@ declare global {
                         table: 'sys_module'
                         id: '0cae8437f1b24d1b8e2e27367ffef695'
                     }
+                    'styles/global.css': {
+                        table: 'sys_ux_theme_asset'
+                        id: '6ac9ba7a29374177868bee0c33d414ea'
+                    }
+                    'styles\\global.css': {
+                        table: 'sys_ux_theme_asset'
+                        id: '7b5fd84f4e72418183171b7e16c36c88'
+                        deleted: true
+                    }
                 }
                 composite: [
                     {

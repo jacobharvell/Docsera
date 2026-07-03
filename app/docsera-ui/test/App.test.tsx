@@ -1,10 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { App } from "../src/client/app/App";
-import type {
-  DocseraRuntimeContext,
-  PingResult,
-  ServiceNowClient
-} from "../src/client/shared/types/docsera";
+import type { DocseraRuntimeContext, PingResult, ServiceNowClient } from "../src/client/shared/types/docsera";
 
 function createRuntime(overrides: Partial<DocseraRuntimeContext["config"]> = {}): DocseraRuntimeContext {
   const mountNode = document.createElement("div");
@@ -27,7 +23,7 @@ function createClient(pingImpl: () => Promise<PingResult>): ServiceNowClient {
   };
 }
 
-test("renders the workspace shell baseline", () => {
+test("renders the prototype-aligned shell with header identity, navigation, main content, and toc", () => {
   render(
     <App
       runtime={createRuntime()}
@@ -37,13 +33,16 @@ test("renders the workspace shell baseline", () => {
     />
   );
 
-  expect(screen.getByRole("heading", { name: "API Guides", level: 1 })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Page tree", level: 2 })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Workspace overview", level: 2 })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Page outline", level: 2 })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Workspace switcher: OpenDocs Main" })).toBeInTheDocument();
+  expect(screen.getByRole("navigation", { name: "Page breadcrumbs" })).toBeInTheDocument();
+  expect(screen.getByRole("navigation", { name: "Page tree" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Overview", level: 1 })).toBeInTheDocument();
+  expect(screen.getByRole("complementary", { name: "Page outline" })).toBeInTheDocument();
+  expect(screen.getByRole("navigation", { name: "Page breadcrumbs" })).not.toHaveTextContent("OpenDocs Main");
+  expect(screen.queryByText(/Install the app, open the workspace/i)).not.toBeInTheDocument();
 });
 
-test("switches the selected demo page when a page tree item is chosen", () => {
+test("selecting a page updates the main pane and breadcrumb path", () => {
   render(
     <App
       runtime={createRuntime()}
@@ -53,10 +52,14 @@ test("switches the selected demo page when a page tree item is chosen", () => {
     />
   );
 
-  fireEvent.click(screen.getByRole("button", { name: /Runtime probe/i }));
+  fireEvent.click(screen.getByRole("button", { name: /Certification Delivery Model/i }));
 
-  expect(screen.getByRole("heading", { name: "Runtime probe", level: 2 })).toBeInTheDocument();
-  expect(screen.getByText(/The REST ping is a runtime and platform probe/i)).toBeInTheDocument();
+  const breadcrumbs = screen.getByRole("navigation", { name: "Page breadcrumbs" });
+
+  expect(screen.getByRole("heading", { name: "Certification Delivery Model", level: 1 })).toBeInTheDocument();
+  expect(breadcrumbs).toHaveTextContent("AI Fundamentals eCourse & Certification");
+  expect(breadcrumbs).toHaveTextContent("Certification Delivery Model");
+  expect(screen.getByRole("link", { name: "Curriculum map" })).toBeInTheDocument();
 });
 
 test("keeps the workspace shell visible when the backend ping fails", async () => {
@@ -68,9 +71,11 @@ test("keeps the workspace shell visible when the backend ping fails", async () =
   );
 
   await waitFor(() => {
-    expect(screen.getByText(/Backend ping failed: HTTP 503/i)).toBeInTheDocument();
+    expect(screen.getByText(/Runtime probe unavailable: HTTP 503/i)).toBeInTheDocument();
   });
 
-  expect(screen.getByRole("heading", { name: "API Guides", level: 1 })).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Workspace overview", level: 2 })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Workspace switcher: OpenDocs Main" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Overview", level: 1 })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /AI Fundamentals eCourse & Certification/i })).toBeInTheDocument();
+  expect(screen.getByText("Developer status").closest("details")).not.toHaveAttribute("open");
 });

@@ -1,164 +1,192 @@
 import type { DemoPage, DemoWorkspace } from "../../shared/types/docsera";
 
 export const demoWorkspace: DemoWorkspace = {
-  id: "workspace-api-guides",
-  title: "API Guides",
-  subtitle: "Docsera workspace shell baseline",
-  summary:
-    "Demo workspace content keeps the SDK-native runtime visible while future ServiceNow adapters remain behind a narrow boundary.",
-  status: "Demo-backed and adapter-ready",
-  routeLabel: "SDK-native Direct UI Page",
-  defaultPageId: "workspace-overview",
+  id: "workspace-platform-docs",
+  title: "OpenDocs Main",
+  iconLabel: "△",
+  homeLabel: "Project Portfolio",
+  roleLabel: "Editor",
+  defaultPageId: "overview",
   pages: [
     {
-      id: "workspace-overview",
-      title: "Workspace overview",
+      id: "overview",
+      title: "Overview",
       slug: "overview",
-      summary: "What the first screen shows and why the shell exists.",
       body:
-        "Docsera now opens into a real workspace shell: branded header, left navigation, selected page content, and a secondary runtime probe. The page is backed by explicit demo data so the visual structure is stable before live persistence lands.",
+        "Hello there, I'm Jacob and welcome to my central documentation hub. This workspace is seeded locally so the SDK-native shell can prove layout, navigation, and reading rhythm before live ServiceNow wiring is introduced.",
       sections: [
         {
-          id: "workspace-identity",
-          title: "Workspace identity",
+          id: "workspace-shell",
+          title: "Workspace shell",
           body:
-            "The header and sidebar identify the current workspace before any page content becomes the focus."
+            "The baseline shell keeps the left tree, content well, and right-side context visible without letting runtime diagnostics dominate the product surface."
         },
         {
-          id: "workspace-navigation",
-          title: "Navigation",
+          id: "reading-rhythm",
+          title: "Reading rhythm",
           body:
-            "The page tree stays readable and selectable without introducing CRUD or drag-and-drop behavior."
+            "Content stays centered inside a readable column so longer page bodies still feel like documentation instead of a dashboard."
         },
         {
-          id: "workspace-content",
-          title: "Main content",
+          id: "next-steps",
+          title: "Next steps",
           body:
-            "The central column renders the selected page title, summary, and supporting body content."
+            "Future tasks can swap in live workspace and page records without changing the shell structure established here."
         }
       ]
     },
     {
-      id: "reader-shell",
-      title: "Reader shell",
-      slug: "reader-shell",
-      summary: "The stable three-column workspace layout and its responsibilities.",
+      id: "ai-fundamentals",
+      title: "AI Fundamentals eCourse & Certification",
+      slug: "ai-fundamentals-ecourse-certification",
       body:
-        "The left rail owns navigation, the center column owns the selected page, and the right rail holds table-of-contents and runtime probe details. That keeps the product surface clear while the runtime stays demo-backed.",
+        "This parent page demonstrates how longer portfolio-style entries still fit the tighter tree row treatment without turning into stacked cards or multi-line metadata blocks.",
       sections: [
         {
-          id: "left-rail",
-          title: "Left rail",
+          id: "project-scope",
+          title: "Project scope",
           body:
-            "The sidebar is the entry point for page selection and workspace orientation."
+            "The visual shell keeps hierarchy obvious while letting individual pages own the heavier descriptive content."
         },
         {
-          id: "center-column",
-          title: "Center column",
+          id: "delivery-assets",
+          title: "Delivery assets",
           body:
-            "The primary reading area shows the selected page without requiring any persistence or editor state."
-        },
-        {
-          id: "right-rail",
-          title: "Right rail",
-          body:
-            "The contextual panel keeps the table of contents and platform probe visible, but secondary."
+            "Use nested pages for curriculum detail, rollout planning, and supporting technical documentation."
         }
       ],
       children: [
         {
-          id: "reader-shell-sidebar",
-          title: "Sidebar",
-          slug: "sidebar",
-          summary: "Workspace identity and the demo page tree.",
+          id: "certification-delivery-model",
+          title: "Certification Delivery Model",
+          slug: "certification-delivery-model",
           body:
-            "The sidebar frames the workspace and lets the user switch between demo pages without navigation churn.",
+            "This nested page exists to validate breadcrumbs, indentation, and selected-state treatment against the tighter prototype-inspired navigation.",
           sections: [
             {
-              id: "tree-structure",
-              title: "Tree structure",
+              id: "curriculum-map",
+              title: "Curriculum map",
               body:
-                "The page tree is explicit demo data and can later be swapped for a live adapter."
+                "Break the program into short modules so learners can see progression without a heavy course shell."
             },
             {
-              id: "current-selection",
-              title: "Current selection",
+              id: "assessment-flow",
+              title: "Assessment flow",
               body:
-                "The selected page is highlighted so the relationship between tree and content stays obvious."
+                "Assessment checkpoints should feel integrated into the learning path rather than bolted on at the end."
+            },
+            {
+              id: "launch-sequence",
+              title: "Launch sequence",
+              body:
+                "The launch sequence notes what has to be true before the program moves from draft material to active delivery."
             }
           ]
         },
         {
-          id: "reader-shell-content",
-          title: "Content area",
-          slug: "content-area",
-          summary: "The selected page reading surface.",
+          id: "enterprise-rollout-plan",
+          title: "Enterprise Rollout Plan",
+          slug: "enterprise-rollout-plan",
           body:
-            "The content pane is deliberately calm. It presents the title, summary, prose, and section anchors needed for a usable baseline.",
+            "A second nested page keeps the tree deep enough to validate hover affordances and breadcrumb navigation against real hierarchy.",
           sections: [
             {
-              id: "reader-title",
-              title: "Title and summary",
+              id: "pilot-scope",
+              title: "Pilot scope",
               body:
-                "The selected page headline should be the strongest element in the content column."
+                "Start with a narrow pilot so the documentation can stabilize before wider enablement begins."
             },
             {
-              id: "reader-prose",
-              title: "Supporting prose",
+              id: "adoption-metrics",
+              title: "Adoption metrics",
               body:
-                "Body copy remains concise so the shell reads like a product surface, not a marketing page."
+                "Measure comprehension, completion, and operational readiness instead of only seat count."
             }
           ]
         }
       ]
     },
     {
-      id: "runtime-probe",
-      title: "Runtime probe",
-      slug: "runtime-probe",
-      summary: "ServiceNow connectivity is visible, but it does not define the shell.",
+      id: "specialty-coffee-brand",
+      title: "Specialty Coffee Brand & Online Store",
+      slug: "specialty-coffee-brand-online-store",
       body:
-        "The REST ping is a runtime and platform probe. It proves the same-origin path when available and can fail without taking the workspace shell down.",
+        "Long page titles are intentional here. They force the page tree to behave like the prototype, with compact truncation and without any invented secondary description rows.",
       sections: [
         {
-          id: "sdk-assets",
-          title: "SDK assets",
+          id: "brand-system",
+          title: "Brand system",
           body:
-            "The UI continues to load through SDK-managed assets rather than manual attachment publishing."
+            "The content well supports broader narrative copy without changing the surrounding shell density."
         },
         {
-          id: "same-origin-ping",
-          title: "Same-origin ping",
+          id: "storefront-direction",
+          title: "Storefront direction",
           body:
-            "The backend probe confirms the host wiring and authentication context, but not the product data model."
-        },
-        {
-          id: "failure-tolerance",
-          title: "Failure tolerance",
-          body:
-            "If the ping fails, the workspace remains visible and the error stays in the secondary rail."
+            "This page is useful for checking readable line length and section spacing in the main pane."
         }
       ]
     },
     {
-      id: "future-boundaries",
-      title: "Future boundaries",
-      slug: "future-boundaries",
-      summary: "What this task intentionally leaves out.",
+      id: "figma-portal-mockup",
+      title: "Figma: IT Service Portal Mockup",
+      slug: "figma-it-service-portal-mockup",
       body:
-        "Live persistence, page CRUD, editor integration, publishing, and permission enforcement remain future tasks. This baseline only proves the shell shape and the demo/adaptor boundary.",
+        "Prototype-aligned typography and spacing should keep shorter pages feeling intentional instead of sparse.",
       sections: [
         {
-          id: "future-persistence",
-          title: "Persistence",
+          id: "screen-map",
+          title: "Screen map",
           body:
-            "The demo data stays isolated so later ServiceNow adapters can replace it cleanly."
+            "The screen map section verifies the right rail against a smaller outline."
         },
         {
-          id: "future-editor",
-          title: "Editor boundary",
+          id: "handoff-notes",
+          title: "Handoff notes",
           body:
-            "The shell does not introduce TipTap or source/Markdown round-tripping in this task."
+            "Handoff notes confirm section spacing still reads cleanly when the page is brief."
+        }
+      ]
+    },
+    {
+      id: "internal-runbook",
+      title: "Internal Runbook",
+      slug: "internal-runbook",
+      body:
+        "Runbooks should focus on repeatable checks, known failure modes, and the smallest actions needed to distinguish product bugs from host-environment issues.",
+      sections: [
+        {
+          id: "triage",
+          title: "Triage",
+          body:
+            "Start with install integrity, asset loading, and runtime console errors before touching product behavior."
+        },
+        {
+          id: "rollback",
+          title: "Rollback",
+          body:
+            "Keep rollback guidance short and concrete so maintainers can recover the shell quickly when an install regresses."
+        }
+      ]
+    },
+    {
+      id: "release-notes",
+      title: "Release Notes",
+      slug: "release-notes",
+      body:
+        "Release notes validate a flatter page type where the layout still needs to feel like a product documentation surface rather than an app dashboard.",
+      sections: [
+        {
+          id: "highlights",
+          title: "Highlights",
+          body:
+            "Lead with user-visible behavior changes and keep implementation detail secondary."
+        },
+        {
+          id: "follow-ups",
+          title: "Follow-ups",
+          body:
+            "Use the closing section to point readers toward deeper guides or known gaps."
         }
       ]
     }
@@ -167,10 +195,6 @@ export const demoWorkspace: DemoWorkspace = {
 
 export function findDemoPage(pages: DemoPage[], pageId: string): DemoPage | null {
   for (const page of pages) {
-    if (!page) {
-      continue;
-    }
-
     if (page.id === pageId) {
       return page;
     }
@@ -185,31 +209,26 @@ export function findDemoPage(pages: DemoPage[], pageId: string): DemoPage | null
 }
 
 export function getFirstDemoPage(pages: DemoPage[]): DemoPage | null {
-  for (const page of pages) {
-    if (!page) {
-      continue;
-    }
-
-    return page;
-  }
-
-  return null;
+  return pages[0] ?? null;
 }
 
 export function flattenDemoPages(pages: DemoPage[]): DemoPage[] {
-  const flattened: DemoPage[] = [];
+  return pages.flatMap((page) => [page, ...(page.children ? flattenDemoPages(page.children) : [])]);
+}
 
+export function findDemoPagePath(pages: DemoPage[], pageId: string): DemoPage[] {
   for (const page of pages) {
-    if (!page) {
-      continue;
+    if (page.id === pageId) {
+      return [page];
     }
 
-    flattened.push(page);
-    if (Array.isArray(page.children) && page.children.length > 0) {
-      flattened.push(...flattenDemoPages(page.children));
+    if (page.children) {
+      const childPath = findDemoPagePath(page.children, pageId);
+      if (childPath.length > 0) {
+        return [page, ...childPath];
+      }
     }
   }
 
-  return flattened;
+  return [];
 }
-

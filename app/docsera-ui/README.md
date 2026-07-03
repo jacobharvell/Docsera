@@ -17,15 +17,18 @@ This package is the active SDK-native runtime baseline for Docsera's preferred h
 
 ## Workspace Shell Baseline
 
-The current SDK-native runtime renders a real Docsera workspace shell instead of a minimal proof page:
+The current SDK-native runtime renders a prototype-aligned Docsera workspace skeleton rather than a runtime verification page:
 
-- top app/workspace header
-- workspace identity block
-- left page tree and navigation
+- top application/workspace header with workspace icon and name
+- workspace/page breadcrumbs in the header
+- left page tree and navigation pane
 - central selected-page content surface
-- right-side table of contents and runtime probe
+- right-side table of contents/context column
+- compact developer-status disclosure for runtime diagnostics
 
-The shell is intentionally demo-backed. It uses explicit workspace/page seed data so the layout can be validated now while live persistence, CRUD, editor integration, and publishing remain future tasks.
+The shell is intentionally demo-backed. Explicit workspace/page seed data keeps the product frame stable while live persistence, CRUD, editor integration, publishing, drag/drop, and permissions enforcement remain future tasks.
+
+Runtime diagnostics still exist, but they are secondary. The REST ping remains useful for SDK/PDI verification without defining the primary product hierarchy.
 
 ## Local commands
 
@@ -58,7 +61,7 @@ npm run verify:sdk-ui-page
 
 The verifier checks the installed Direct UI Page over HTTP using the locally stored SDK auth alias. It confirms the alias exists, the page returns `200`, the runtime HTML contains the Docsera mount node and config markers, the SDK-managed `main.jsdbx` asset resolves, and the REST ping returns the authenticated `x_82900_docsera` payload.
 
-It does not execute client-side React in a browser, so it does not prove visual rendering, CSS layout, console cleanliness, or runtime bootstrap errors.
+It does not execute client-side React in a browser, so it does not prove the workspace shell layout, console cleanliness, or runtime bootstrap behavior. Run a browser check after install to confirm the page looks like a Docsera workspace skeleton rather than a runtime smoke surface.
 
 The real `scopeId` for `x_82900_docsera` should be synchronized from the target instance with `transform` and committed once confirmed. It is application identity metadata, not a credential, and the SDK build output bakes it into emitted `sys_app` and update records.
 

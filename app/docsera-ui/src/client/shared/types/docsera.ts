@@ -52,7 +52,6 @@ export type DemoPage = {
   id: string;
   title: string;
   slug: string;
-  summary: string;
   body: string;
   sections: DemoPageSection[];
   children?: DemoPage[];
@@ -61,10 +60,9 @@ export type DemoPage = {
 export type DemoWorkspace = {
   id: string;
   title: string;
-  subtitle: string;
-  summary: string;
-  status: string;
-  routeLabel: string;
+  iconLabel: string;
+  homeLabel: string;
+  roleLabel: string;
   defaultPageId: string;
   pages: DemoPage[];
 };

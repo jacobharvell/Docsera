@@ -24,15 +24,16 @@ This keeps `app/docsera-ui` as the active source tree while aligning it to the s
 
 ## Workspace Shell Baseline
 
-The SDK-native UI Page now renders the first real Docsera workspace shell baseline instead of the earlier proof-only hero.
+The SDK-native UI Page now renders a prototype-aligned Docsera workspace skeleton instead of a proof-oriented runtime page.
 
 The shell is intentionally demo-backed and reads from explicit seed data in `src/client/features/workspaces/`:
 
-- top application header
-- workspace identity block
-- left page tree / navigation
+- top application/workspace header
+- workspace icon and name in the header
+- page-tree sidebar/navigation
 - selected page content surface
-- right-side table of contents and runtime probe
+- right-side table of contents/context column
+- compact developer-status disclosure for runtime diagnostics
 
 This keeps the runtime visually useful while preserving the future boundaries:
 
@@ -42,7 +43,7 @@ This keeps the runtime visually useful while preserving the future boundaries:
 - no publishing workflow
 - no permissions enforcement beyond the existing runtime probe
 
-The REST ping remains a secondary host/platform probe. It verifies same-origin access and authenticated instance wiring, but it is not the product data model.
+The REST ping remains a secondary host/platform probe. It verifies same-origin access and authenticated instance wiring, but it is not the product data model and should not dominate the visible shell.
 
 ## Runtime Artifacts Proven By Local Build
 
@@ -72,6 +73,10 @@ The baseline Fluent runtime definitions are:
 - Scripted REST probe route: `/api/x_82900_docsera/docsera_runtime/ping`
 
 The current React client imports CSS in code and is bundled by the SDK-managed Rollup path. The intended architecture is no longer raw `sys_attachment` CSS links or pasted `sys_ui_script` JavaScript.
+
+The repo-side prebuild wrapper normalizes SDK explicit asset keys to forward-slash paths before registration. This avoids a Windows-only failure mode where `styles\global.css` can be emitted into the JavaScript bundle, producing a `sys_ux_theme_asset` lookup that does not match the installed `styles/global.css` record and results in a CSS `404`.
+
+Browser-side REST probes from the classic ServiceNow shell must also send the current ServiceNow user token. The runtime client now reads `g_ck` or `NOW.user.token` from the current window and same-origin parent window, then forwards that value as `X-UserToken` on the ping request so the authenticated browser shell does not produce a false `401`.
 
 ## Preferred Commands
 
@@ -105,13 +110,14 @@ The command reads the stored SDK auth alias from the local `ServiceNow` / `now-s
 - the Direct UI Page returns `200` and does not redirect to `session_timeout.do`
 - the page HTML contains the `docsera-root` mount node, the runtime title/config marker, and the SDK-managed `main.jsdbx` reference
 - the SDK-managed `main.jsdbx` asset resolves with `200` and includes the `#docsera-root` selector
+- the SDK-managed runtime CSS asset referenced by `main.jsdbx` resolves with `200` and contains Docsera style markers
 - the scripted REST ping returns authenticated JSON with `scope: x_82900_docsera` and `status: ok`
 
 This command proves install integrity, endpoint accessibility, HTML markers, asset reachability, and REST ping behavior.
 
 This command does not execute the React app in a browser. It does not prove client-side rendering, CSS layout, runtime console cleanliness, or React bootstrap error handling.
 
-Use a browser smoke test separately when visual rendering or client-side runtime behavior becomes the thing that needs to be proven. For this workspace-shell migration, the unit tests in `app/docsera-ui/test/App.test.tsx` cover the shell baseline and the ping failure tolerance.
+Use a browser smoke test separately when visual rendering or client-side runtime behavior becomes the thing that needs to be proven. For this shell-alignment baseline, the unit tests in `app/docsera-ui/test/App.test.tsx` cover the workspace skeleton, page selection, ToC presence, and ping failure tolerance.
 
 ## Install Guardrails And Current Workflow
 
@@ -167,10 +173,11 @@ Jacob should open:
 
 Expected visible result:
 
-- the page title and hero copy reference the SDK runtime baseline
-- the Direct UI Page shell renders with Docsera styling applied
-- the runtime probe shows SDK-managed asset labels rather than manual UI Script or attachment placeholders
-- the backend status card reports success for the ping endpoint when the install and session are valid
+- the Direct UI Page renders a Docsera workspace skeleton rather than a runtime smoke page
+- the header shows the workspace icon/name without long description copy
+- the left page tree, main content well, and right table of contents are visible
+- runtime diagnostics are compact and secondary
+- the backend probe can fail without making the workspace shell appear broken
 
 Console checks:
 
