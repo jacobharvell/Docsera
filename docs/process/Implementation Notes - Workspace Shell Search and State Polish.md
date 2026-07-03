@@ -15,7 +15,7 @@ The workspace shell now exposes a local page-tree search surface for the current
 Implemented behavior:
 
 - search state is local UI state in the shell component
-- the page tree can be filtered by title, slug, summary, and body text from the current visibility layer
+- the page tree can be filtered by title, slug, and body text from the current visibility layer
 - viewer-only users search published-visible pages only
 - authoring users search authoring-visible pages, including draft pages that the current shell already exposes
 - filtered tree results preserve ancestor pages so nested matches remain navigable
@@ -32,6 +32,7 @@ Current repo-side behavior:
 
 - the filter does not mutate page records
 - the filter does not change page selection, autosave, publish, or settings state
+- the filter does not imply a page summary or short-description field in the accepted MVP page model
 - search results do not reveal draft-only pages or draft fields to reader-only users
 - search and clear controls are keyboard accessible and use the existing shell button/input patterns
 - the current workspace launcher and shell state remain separate concerns
