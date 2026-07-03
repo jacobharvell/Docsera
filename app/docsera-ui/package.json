@@ -19,6 +19,7 @@
     "install:sdk": "node ./scripts/verify-sdk-install-prereqs.mjs && now-sdk install",
     "transform:sdk": "now-sdk transform",
     "types:sdk": "now-sdk dependencies",
+    "verify:sdk-runtime": "node ./scripts/verify-sdk-runtime.mjs",
     "test": "vitest run",
     "validate": "npm run test && npm run build"
   },

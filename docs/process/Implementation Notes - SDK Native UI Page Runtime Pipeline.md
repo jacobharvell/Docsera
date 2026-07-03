@@ -58,12 +58,14 @@ From the repository root:
 - `npm run types:sdk-ui-page`
 - `npm run build:sdk-ui-page`
 - `npm run install:sdk-ui-page`
+- `npm run verify:sdk-ui-page`
 
 From `app/docsera-ui/` directly:
 
 - `npm run types:sdk`
 - `npm run build`
 - `npm run install:sdk`
+- `npm run verify:sdk-runtime`
 - `npm run transform:sdk -- --auth <alias>`
 
 For explicit alias-based install and transform, prefer direct SDK commands from `app/docsera-ui/`:
@@ -71,35 +73,53 @@ For explicit alias-based install and transform, prefer direct SDK commands from 
 - `npx @servicenow/sdk transform --auth <alias>`
 - `npx @servicenow/sdk install --auth <alias>`
 
-## Install Guardrails And Current Blocker
+## Reusable Runtime Verification
 
-The repository intentionally blocks unsafe SDK installs today.
+`npm run verify:sdk-runtime` in `app/docsera-ui/` and the repo-level wrapper `npm run verify:sdk-ui-page` provide a repeatable HTTP-only verification command for the installed SDK-native runtime.
 
-`app/docsera-ui/scripts/verify-sdk-install-prereqs.mjs` fails `npm run install:sdk` while `now.config.json` still carries the placeholder scope ID:
+The command reads the stored SDK auth alias from the local `ServiceNow` / `now-sdk` keyring entry, opens a local authenticated session with the same login flow used by the SDK CLI, and verifies:
+
+- the auth alias exists
+- the Direct UI Page returns `200` and does not redirect to `session_timeout.do`
+- the page HTML contains the `docsera-root` mount node, the runtime title/config marker, and the SDK-managed `main.jsdbx` reference
+- the SDK-managed `main.jsdbx` asset resolves with `200` and includes the `#docsera-root` selector
+- the scripted REST ping returns authenticated JSON with `scope: x_82900_docsera` and `status: ok`
+
+This command proves install integrity, endpoint accessibility, HTML markers, asset reachability, and REST ping behavior.
+
+This command does not execute the React app in a browser. It does not prove client-side rendering, CSS layout, runtime console cleanliness, or React bootstrap error handling.
+
+Use a browser smoke test separately when visual rendering or client-side runtime behavior becomes the thing that needs to be proven.
+
+## Install Guardrails And Current Workflow
+
+`app/docsera-ui/scripts/verify-sdk-install-prereqs.mjs` still guards `npm run install:sdk` against an incorrect or fresh setup by refusing to install if `now.config.json` contains the placeholder scope ID:
 
 - `00000000000000000000000000000000`
 
-This is intentional because the current environment does not have SDK auth configured and the repo has not yet synchronized the real Docsera application identity from the target instance.
+The current repo baseline commits the real `scopeId` for `x_82900_docsera`, so the guard now serves as a safety check rather than an active blocker in the checked-in state.
 
-Required follow-up before a real install:
+Local reusable SDK auth alias `docsera-pdi` is configured on Jacob's workstation through the OS keychain-backed SDK auth store used by `@servicenow/sdk`.
 
-1. Configure SDK auth for the target instance.
-2. Synchronize the actual Docsera application metadata and scope identity with `now-sdk transform --auth <alias>`.
-3. Re-run `now-sdk install --auth <alias>`.
+Fresh machines still need to establish SDK auth before transform/install/verify. The secure local helper remains:
 
-The repository now includes `app/docsera-ui/scripts/initialize-sdk-auth.ps1` as a secure local helper for step 1. It prompts for the password at the terminal, pipes it to `now-sdk auth --add ... --password-stdin`, and never writes credentials into repo files.
+- `app/docsera-ui/scripts/initialize-sdk-auth.ps1`
+
+It prompts for the password at the terminal, pipes it to `now-sdk auth --add ... --password-stdin`, and never writes credentials into repo files.
 
 The SDK 4.8.1 CLI stores auth records in the local OS keychain through `@napi-rs/keyring` using the `ServiceNow` service and `now-sdk` account. That storage is machine-local and reusable across sessions on the same workstation. The repo should still ignore any local `.now-sdk/` cache directory if one is materialized by the CLI on a given platform.
 
-Verified local workflow on this branch:
+Normal current workflow:
 
-1. Run `app/docsera-ui/scripts/initialize-sdk-auth.ps1` with the PDI instance URL, `docsera-pdi` alias, and `admin` username.
-2. Confirm `npx @servicenow/sdk auth --list` shows `[docsera-pdi]`.
-3. Synchronize app identity with `npx @servicenow/sdk transform --auth docsera-pdi`.
-4. Update `app/docsera-ui/now.config.json` with the real `scopeId` from `sys_scope`.
-5. Run `npm run build`.
-6. Run `npx @servicenow/sdk install --auth docsera-pdi`.
-7. Verify the installed UI page and REST ping using a locally created ServiceNow login session.
+1. `npm run build:sdk-ui-page`
+2. `npm run install:sdk-ui-page`
+3. `npm run verify:sdk-ui-page`
+
+Explicit alias workflow remains available when the machine does not have a default SDK auth alias selected:
+
+- `npx @servicenow/sdk transform --auth <alias>`
+- `npx @servicenow/sdk install --auth <alias>`
+- `npm run verify:sdk-runtime -- --auth-alias <alias>`
 
 The REST ping handler must use `new GlideDateTime().getDisplayValue()` in scoped code. `gs.nowDateTime()` is rejected by the instance during runtime verification.
 
@@ -107,7 +127,7 @@ For the UI page, raw basic-auth fetches may still land on `session_timeout.do`; 
 
 ## Scope Identity Source Control
 
-The real `scopeId` for `x_82900_docsera` should live in source control once synchronized from the target instance.
+The real `scopeId` for `x_82900_docsera` lives in source control and is part of the checked-in runtime baseline.
 
 Reasoning:
 
@@ -115,7 +135,7 @@ Reasoning:
 - Leaving a placeholder or requiring per-machine local edits would make a fresh clone produce an invalid installation package by default.
 - `scopeId` identifies the scoped app record, but it is not a secret.
 
-Until the real value is synchronized, the placeholder `scopeId` remains an intentional blocker for `npm run install:sdk`.
+The placeholder `scopeId` remains only a guard condition for incorrect or fresh setup, not the current repo baseline.
 
 ## Manual Browser Verification After Install
 

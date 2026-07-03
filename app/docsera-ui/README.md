@@ -20,6 +20,7 @@ npm --prefix app/docsera-ui install
 npm --prefix app/docsera-ui run types:sdk
 npm --prefix app/docsera-ui run validate
 npm --prefix app/docsera-ui run build
+npm --prefix app/docsera-ui run verify:sdk-runtime
 ```
 
 Preferred install commands after SDK auth and scope metadata are configured:
@@ -32,6 +33,18 @@ npx @servicenow/sdk install --auth <alias>
 ```
 
 `npm --prefix app/docsera-ui run install:sdk` remains useful only after a default SDK auth alias has already been selected on the machine.
+
+Runtime verification after install:
+
+```powershell
+npm --prefix app/docsera-ui run verify:sdk-runtime
+npm --prefix app/docsera-ui run verify:sdk-runtime -- --instance-url https://<instance>.service-now.com --auth-alias <alias>
+npm run verify:sdk-ui-page
+```
+
+The verifier checks the installed Direct UI Page over HTTP using the locally stored SDK auth alias. It confirms the alias exists, the page returns `200`, the runtime HTML contains the Docsera mount node and config markers, the SDK-managed `main.jsdbx` asset resolves, and the REST ping returns the authenticated `x_82900_docsera` payload.
+
+It does not execute client-side React in a browser, so it does not prove visual rendering, CSS layout, console cleanliness, or runtime bootstrap errors.
 
 The real `scopeId` for `x_82900_docsera` should be synchronized from the target instance with `transform` and committed once confirmed. It is application identity metadata, not a credential, and the SDK build output bakes it into emitted `sys_app` and update records.
 
