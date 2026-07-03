@@ -9,7 +9,7 @@ export default defineConfig({
     cssCodeSplit: false,
     sourcemap: true,
     lib: {
-      entry: "src/main.tsx",
+      entry: "src/client/main.tsx",
       name: "DocseraDirectUiPageRuntime",
       formats: ["iife"],
       fileName: () => "docsera-runtime.js"

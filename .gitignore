@@ -14,12 +14,15 @@ coverage/
 **/coverage/
 .cache/
 **/.cache/
+.now/
+**/.now/
 node_tmp/
 **/node_tmp/
 .tectonic/
 **/.tectonic/
 .tectonic-output
 **/.tectonic-output
+**/.now-sdk/
 
 # Tooling and editor noise
 .DS_Store

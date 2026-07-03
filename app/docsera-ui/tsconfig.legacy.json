@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.app.json",
+  "include": [
+    "src/client",
+    "test"
+  ],
+  "exclude": [
+    "src/fluent",
+    "src/server"
+  ]
+}

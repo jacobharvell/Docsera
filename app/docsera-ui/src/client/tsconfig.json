@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.app.json",
+  "compilerOptions": {
+    "types": [
+      "react",
+      "react-dom"
+    ]
+  },
+  "include": [
+    "./**/*.ts",
+    "./**/*.tsx",
+    "./global.d.ts"
+  ],
+  "exclude": [
+    "./**/*.test.ts",
+    "./**/*.test.tsx"
+  ]
+}

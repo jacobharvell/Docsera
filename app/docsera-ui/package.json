@@ -2,15 +2,23 @@
   "name": "docsera-direct-ui-page-runtime",
   "version": "0.1.0",
   "private": true,
-  "description": "React + TypeScript + Vite baseline for the Docsera standalone Direct UI Page runtime",
+  "description": "SDK-native React + TypeScript baseline for the Docsera standalone Direct UI Page runtime",
   "type": "module",
+  "imports": {
+    "#now:*": "./@types/servicenow/fluent/*/index.js"
+  },
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit -p tsconfig.app.json && vite build",
+    "dev": "now-sdk run dev",
+    "dev:legacy": "vite",
+    "build": "now-sdk build",
+    "build:legacy": "tsc --noEmit -p tsconfig.legacy.json && vite build",
     "preview": "vite preview",
+    "install:sdk": "node ./scripts/verify-sdk-install-prereqs.mjs && now-sdk install",
+    "transform:sdk": "now-sdk transform",
+    "types:sdk": "now-sdk dependencies",
     "test": "vitest run",
     "validate": "npm run test && npm run build"
   },
@@ -19,6 +27,9 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@servicenow/glide": "27.0.5",
+    "@servicenow/isomorphic-rollup": "^1.3.6",
+    "@servicenow/sdk": "4.8.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.0.1",
     "@types/react": "^18.3.12",

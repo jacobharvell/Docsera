@@ -17,7 +17,11 @@ const runtimeCssName = "docsera-runtime.css";
 const uiScriptApiName = "x_82900_docsera.docsera_runtime_bootstrap";
 
 async function buildFrontend() {
-  await execAsync("npm --prefix app/docsera-ui run build", {
+  console.warn(
+    "Deprecated path: package:direct-ui-page builds the historical manual handoff bundle. Prefer the SDK-native workflow under app/docsera-ui."
+  );
+
+  await execAsync("npm --prefix app/docsera-ui run build:legacy", {
     cwd: repoRoot,
     windowsHide: true
   });

@@ -3,6 +3,10 @@
   "private": true,
   "description": "Repository-level validation surface for Docsera frontend and scaffolding",
   "scripts": {
+    "build:sdk-ui-page": "npm --prefix app/docsera-ui run build",
+    "install:sdk-ui-page": "npm --prefix app/docsera-ui run install:sdk --",
+    "transform:sdk-ui-page": "npm --prefix app/docsera-ui run transform:sdk --",
+    "types:sdk-ui-page": "npm --prefix app/docsera-ui run types:sdk",
     "validate": "npm run validate:frontend && npm run validate:shell && npm run validate:docs",
     "validate:frontend": "npm --prefix app/docsera-ui run validate",
     "validate:shell": "npm --prefix app/docsera-shell run verify",

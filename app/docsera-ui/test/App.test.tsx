@@ -1,6 +1,10 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { App } from "./App";
-import type { DocseraRuntimeContext, PingResult, ServiceNowClient } from "../shared/types/docsera";
+import { App } from "../src/client/app/App";
+import type {
+  DocseraRuntimeContext,
+  PingResult,
+  ServiceNowClient
+} from "../src/client/shared/types/docsera";
 
 function createRuntime(overrides: Partial<DocseraRuntimeContext["config"]> = {}): DocseraRuntimeContext {
   const mountNode = document.createElement("div");
@@ -26,14 +30,14 @@ function createClient(pingImpl: () => Promise<PingResult>): ServiceNowClient {
 test("renders the runtime baseline heading", () => {
   render(<App runtime={createRuntime()} serviceNowClient={createClient(async () => Promise.reject())} />);
 
-  expect(screen.getByText(/Docsera Runtime Baseline/i)).toBeInTheDocument();
-  expect(screen.getByText(/Direct UI Page host, React and Vite source/i)).toBeInTheDocument();
+  expect(screen.getByText(/Docsera SDK Runtime Baseline/i)).toBeInTheDocument();
+  expect(screen.getByText(/Direct UI Page host, React source, SDK-managed runtime pipeline/i)).toBeInTheDocument();
 });
 
 test("shows successful backend ping payloads when configured", async () => {
   render(
     <App
-      runtime={createRuntime({ backendPingPath: "/api/x_82900_docsera/docsera_host_spike/ping" })}
+      runtime={createRuntime({ backendPingPath: "/api/x_82900_docsera/docsera_runtime/ping" })}
       serviceNowClient={createClient(async () => ({
         authenticated: true,
         scope: "x_82900_docsera",

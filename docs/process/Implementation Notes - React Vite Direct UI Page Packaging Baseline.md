@@ -2,7 +2,13 @@
 
 Date: 2026-07-02
 
-Status: implementation note
+Status: historical fallback after Task 30.5
+
+## Superseded Status
+
+This note now describes the older manual packaging fallback only.
+
+The preferred runtime path is documented in `docs/process/Implementation Notes - SDK Native UI Page Runtime Pipeline.md`.
 
 ## Purpose
 
@@ -14,7 +20,7 @@ This note summarizes repository behavior only. Accepted product requirements rem
 
 - Active frontend source tree: `app/docsera-ui/`
 - Preferred runtime host: standalone scoped Direct UI Page
-- Preferred source stack: React + TypeScript + Vite
+- Preferred source stack at the time of this note: React + TypeScript + Vite
 - Historical migration source: `app/docsera-shell/`
 - Historical UI Builder / Next Experience runtime artifacts: paused and retained only as historical context
 
@@ -121,6 +127,15 @@ Use these steps when validating the Direct UI Page host in the PDI:
 4. Update the Direct UI Page HTML with `output/direct-ui-page-baseline/direct-ui-page-host.example.html`.
 5. Open the scoped Direct UI Page as an authenticated admin or other authorized user.
 
+Practical deployment clarifications from Task 30:
+
+- the generated host template is safe for React mounting because `#docsera-root` appears before the runtime script tag
+- the generated host intentionally sets `window.DOCSERA_RUNTIME_CONFIG` before the runtime asset loads
+- the current repo still does not automate updates to `sys_ui_page`, `sys_ui_script`, or `sys_attachment`
+- the current local `snc` workflow in this repo exposes `ui-component` deployment only, so Direct UI Page runtime record updates remain a manual PDI step for now
+- if the UI Page HTML field rejects `<!doctype html>`, remove only that first line before saving the host HTML
+- replace `<DOCSERA_RUNTIME_CSS_ATTACHMENT_SYS_ID>` with the real attachment `sys_id` before saving the page
+
 Expected result:
 
 - the page renders a full-page Docsera-owned React shell
@@ -136,3 +151,6 @@ For subjective UI changes, add a Jacob-facing manual review step that checks lay
 - The repo now has a repeatable build and packaging path, but not on-instance publish automation.
 - The backend ping path still references the earlier spike endpoint until a real API surface replaces it.
 - The bundle remains demo-data-backed until live ServiceNow adapters are implemented.
+- Browser-visible PDI verification still depends on Jacob opening the page and checking console, network, and rendered output.
+
+These gaps are the reason this path is now a fallback instead of the preferred deployment workflow.

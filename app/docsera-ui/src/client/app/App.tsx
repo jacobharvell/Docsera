@@ -61,18 +61,19 @@ export function App({ runtime, serviceNowClient }: AppProps) {
     <main className="app-shell">
       <section className="hero-panel">
         <div className="hero-copy">
-          <p className="eyebrow">Docsera Runtime Baseline</p>
-          <h1>Direct UI Page host, React and Vite source, explicit packaging boundary.</h1>
+          <p className="eyebrow">Docsera SDK Runtime Baseline</p>
+          <h1>Direct UI Page host, React source, SDK-managed runtime pipeline.</h1>
           <p className="lede">
-            This is the first repo-managed runtime baseline for the standalone scoped Direct UI Page.
-            It keeps the React entry thin, leaves `app/docsera-shell` historical, and isolates
-            ServiceNow assumptions behind a small adaptor layer.
+            This baseline is built through ServiceNow SDK and Fluent. The UI Page host, static
+            frontend assets, and same-origin REST proof all live in source control while
+            `app/docsera-shell` stays historical and ServiceNow assumptions remain behind a small
+            adaptor layer.
           </p>
         </div>
         <div className="hero-callout">
           <p className="callout-label">Preferred runtime</p>
-          <p className="callout-value">Standalone scoped Direct UI Page</p>
-          <p className="callout-meta">No UI Builder, macroponent, or Polaris shell dependency.</p>
+          <p className="callout-value">SDK-native scoped Direct UI Page</p>
+          <p className="callout-meta">No UI Builder, macroponent, or manual record copy/paste.</p>
         </div>
       </section>
 
@@ -86,11 +87,11 @@ export function App({ runtime, serviceNowClient }: AppProps) {
             </div>
             <div>
               <dt>Script asset</dt>
-              <dd>{runtime.config.scriptPath ?? "Defined by the UI Script URL"}</dd>
+              <dd>{runtime.config.scriptPath ?? "SDK-managed static JavaScript asset"}</dd>
             </div>
             <div>
               <dt>CSS asset</dt>
-              <dd>{runtime.config.cssPath ?? "Attachment-backed CSS placeholder"}</dd>
+              <dd>{runtime.config.cssPath ?? "SDK-managed static stylesheet asset"}</dd>
             </div>
             <div>
               <dt>Backend ping</dt>
@@ -100,12 +101,12 @@ export function App({ runtime, serviceNowClient }: AppProps) {
         </article>
 
         <article className="panel">
-          <h2>Packaging intent</h2>
+          <h2>Runtime pipeline</h2>
           <ul className="bullet-list">
-            <li>Bundle the Vite build into one UI Script-ready JavaScript asset.</li>
-            <li>Ship the extracted stylesheet as a same-origin ServiceNow attachment.</li>
-            <li>Keep Direct UI Page HTML small and declarative.</li>
-            <li>Keep final API auth and ACL enforcement outside this baseline.</li>
+            <li>Define the Direct UI Page host with Fluent `UiPage` metadata.</li>
+            <li>Bundle React, CSS, and static assets through `now-sdk build`.</li>
+            <li>Probe same-origin ServiceNow access through a Fluent `RestApi` ping.</li>
+            <li>Keep the legacy manual packaging path repo-local and non-preferred.</li>
           </ul>
         </article>
       </section>
