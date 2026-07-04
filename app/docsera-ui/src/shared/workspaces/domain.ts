@@ -77,12 +77,15 @@ export type WorkspaceGroup = {
   description?: string;
 };
 
+export type WorkspaceSlugReservation = string | { slug?: string; workspaceSlug?: string };
+
 export type WorkspaceProvisioningDependencies = {
   createGroup: (input: { name: string; description: string; type: "admin" | "editor" }) => Promise<WorkspaceGroup>;
   assignRoleToGroup: (groupSysId: string, roleName: string) => Promise<void>;
   addUserToGroup: (input: { groupSysId: string; userSysId: string }) => Promise<void>;
   saveWorkspace: (workspace: WorkspaceRecord) => Promise<WorkspaceRecord>;
   deleteGroup?: (groupSysId: string) => Promise<void>;
+  listReservedWorkspaceSlugs?: () => Promise<WorkspaceSlugReservation[]> | WorkspaceSlugReservation[];
 };
 
 export type WorkspaceProvisioningResult = {
@@ -90,6 +93,26 @@ export type WorkspaceProvisioningResult = {
   workspace: WorkspaceRecord;
   adminGroup: WorkspaceGroup;
   editorGroup: WorkspaceGroup;
+};
+
+export type WorkspaceCapabilityResult = {
+  canViewWorkspace: boolean;
+  canEditWorkspace: boolean;
+  canAdminWorkspace: boolean;
+  canManageWorkspaceMembers: boolean;
+};
+
+export type WorkspaceCapabilityRoleNames = {
+  docseraAdmin: string;
+  workspaceAdmin: string;
+  editor: string;
+};
+
+export type WorkspaceCapabilityDependencies = {
+  isAuthenticated: boolean;
+  hasRole: (roleName: string) => boolean;
+  isMemberOfGroup: (groupSysId: string) => boolean;
+  roleNames?: Partial<WorkspaceCapabilityRoleNames>;
 };
 
 function cleanText(value: unknown): string {
@@ -118,7 +141,7 @@ function toWorkspaceTitleFragment(value: string): string {
     .join("_");
 }
 
-function normalizeRetainedWorkspaceSlugs(retainedWorkspaces: Array<string | { slug?: string; workspaceSlug?: string }> = []): string[] {
+function normalizeRetainedWorkspaceSlugs(retainedWorkspaces: WorkspaceSlugReservation[] = []): string[] {
   return retainedWorkspaces
     .map((entry) => {
       if (typeof entry === "string") {
@@ -140,7 +163,7 @@ export function slugifyWorkspaceName(name: string): string {
 
 export function allocateWorkspaceSlug(
   name: string,
-  retainedWorkspaces: Array<string | { slug?: string; workspaceSlug?: string }> = []
+  retainedWorkspaces: WorkspaceSlugReservation[] = []
 ): string {
   const baseSlug = slugifyWorkspaceName(name);
   const reservedSlugs = new Set(normalizeRetainedWorkspaceSlugs(retainedWorkspaces).map((slug) => slug.toLowerCase()));
@@ -209,7 +232,7 @@ export function normalizeWorkspaceLayout(layout?: Partial<WorkspaceLayoutDefault
 
 export function createWorkspaceDraft(
   input: WorkspaceDraftInput,
-  retainedWorkspaces: Array<string | { slug?: string; workspaceSlug?: string }> = []
+  retainedWorkspaces: WorkspaceSlugReservation[] = []
 ): WorkspaceDraft {
   if (!input || typeof input !== "object") {
     throw new TypeError("Workspace input must be an object.");
@@ -240,6 +263,86 @@ export function createWorkspaceDraft(
   };
 }
 
+export function reconcileWorkspaceDraftSlug(
+  draft: WorkspaceDraft,
+  retainedWorkspaces: WorkspaceSlugReservation[] = []
+): WorkspaceDraft {
+  const nextSlug = allocateWorkspaceSlug(draft.name, retainedWorkspaces);
+  if (nextSlug === draft.slug) {
+    return draft;
+  }
+
+  const workspaceGroupKey = deriveWorkspaceGroupKey(draft.name, nextSlug);
+  const groupNames = buildWorkspaceGroupNames(workspaceGroupKey);
+
+  return {
+    ...draft,
+    slug: nextSlug,
+    workspaceGroupKey,
+    adminGroupName: groupNames.admin,
+    editorGroupName: groupNames.editor
+  };
+}
+
+function resolveWorkspaceCapabilityRoleNames(
+  roleNames?: Partial<WorkspaceCapabilityRoleNames>
+): WorkspaceCapabilityRoleNames {
+  return {
+    docseraAdmin: cleanText(roleNames?.docseraAdmin) || WORKSPACE_ROLE_NAMES.docseraAdmin,
+    workspaceAdmin: cleanText(roleNames?.workspaceAdmin) || WORKSPACE_ROLE_NAMES.workspaceAdmin,
+    editor: cleanText(roleNames?.editor) || WORKSPACE_ROLE_NAMES.editor
+  };
+}
+
+function hasWorkspaceAccessWithMembership(
+  roleName: string,
+  groupSysId: string,
+  dependencies: WorkspaceCapabilityDependencies
+): boolean {
+  return Boolean(roleName) && Boolean(groupSysId) && dependencies.hasRole(roleName) && dependencies.isMemberOfGroup(groupSysId);
+}
+
+export function evaluateWorkspaceCapabilities(
+  workspace: WorkspaceRecord,
+  dependencies: WorkspaceCapabilityDependencies
+): WorkspaceCapabilityResult {
+  if (!workspace || typeof workspace !== "object") {
+    throw new TypeError("A workspace record is required for capability evaluation.");
+  }
+
+  if (!dependencies || typeof dependencies !== "object") {
+    throw new TypeError("Workspace capability dependencies are required.");
+  }
+
+  if (typeof dependencies.hasRole !== "function") {
+    throw new TypeError("A hasRole dependency is required.");
+  }
+
+  if (typeof dependencies.isMemberOfGroup !== "function") {
+    throw new TypeError("An isMemberOfGroup dependency is required.");
+  }
+
+  const roleNames = resolveWorkspaceCapabilityRoleNames(dependencies.roleNames);
+  const adminGroupSysId = cleanText(workspace.adminGroupSysId);
+  const editorGroupSysId = cleanText(workspace.editorGroupSysId);
+
+  const canAdminWorkspace =
+    dependencies.hasRole(roleNames.docseraAdmin) ||
+    hasWorkspaceAccessWithMembership(roleNames.workspaceAdmin, adminGroupSysId, dependencies);
+  const canManageWorkspaceMembers = canAdminWorkspace;
+  const canEditWorkspace =
+    canAdminWorkspace || hasWorkspaceAccessWithMembership(roleNames.editor, editorGroupSysId, dependencies);
+  const canViewWorkspace =
+    canEditWorkspace || canAdminWorkspace || (dependencies.isAuthenticated && workspace.status === "active");
+
+  return {
+    canViewWorkspace,
+    canEditWorkspace,
+    canAdminWorkspace,
+    canManageWorkspaceMembers
+  };
+}
+
 async function cleanupProvisionedGroups(
   dependencies: WorkspaceProvisioningDependencies,
   groupSysIds: string[]
@@ -258,7 +361,7 @@ async function cleanupProvisionedGroups(
 export async function provisionWorkspace(
   input: WorkspaceDraftInput,
   dependencies: WorkspaceProvisioningDependencies,
-  retainedWorkspaces: Array<string | { slug?: string; workspaceSlug?: string }> = []
+  retainedWorkspaces: WorkspaceSlugReservation[] = []
 ): Promise<WorkspaceProvisioningResult> {
   if (!dependencies || typeof dependencies !== "object") {
     throw new TypeError("Workspace provisioning dependencies are required.");
@@ -280,7 +383,10 @@ export async function provisionWorkspace(
     throw new TypeError("A saveWorkspace dependency is required.");
   }
 
-  const draft = createWorkspaceDraft(input, retainedWorkspaces);
+  let draft = createWorkspaceDraft(input, retainedWorkspaces);
+  if (typeof dependencies.listReservedWorkspaceSlugs === "function") {
+    draft = reconcileWorkspaceDraftSlug(draft, await dependencies.listReservedWorkspaceSlugs());
+  }
   const createdGroupSysIds: string[] = [];
 
   try {

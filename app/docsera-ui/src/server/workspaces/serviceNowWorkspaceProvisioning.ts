@@ -198,7 +198,8 @@ export function createServiceNowWorkspaceProvisioningService() {
           assignRoleToGroup: async (groupSysId, roleName) => assignRoleToGroup(groupSysId, roleName),
           addUserToGroup: async ({ groupSysId, userSysId }) => addUserToGroup(groupSysId, userSysId),
           saveWorkspace: async (workspace) => saveWorkspace(workspace),
-          deleteGroup: async (groupSysId) => deleteGroup(groupSysId)
+          deleteGroup: async (groupSysId) => deleteGroup(groupSysId),
+          listReservedWorkspaceSlugs: async () => listReservedWorkspaceSlugs()
         },
         listReservedWorkspaceSlugs()
       );

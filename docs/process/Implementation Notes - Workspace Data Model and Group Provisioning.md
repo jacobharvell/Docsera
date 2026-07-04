@@ -16,6 +16,7 @@ The repo-side workspace record shape includes:
 
 - required `name`
 - required unique `slug`
+- historical shell contract reference: `workspaceSlug`
 - optional `shortDescription`
 - required `icon` metadata object
 - required `status`
@@ -29,6 +30,7 @@ The repo-side workspace record shape includes:
 
 The current default icon is a built-in Docsera icon key:
 
+- Docsera default icon
 - `type: builtin`
 - `key: docsera-workspace`
 - `label: Docsera workspace icon`
@@ -44,8 +46,14 @@ The current layout defaults are:
 - Workspace slugs are the durable routing and lookup identifier.
 - Slugs are generated from the workspace name with URL-safe lowercase hyphenation.
 - Duplicate generated slugs are silently suffixed with `-2`, `-3`, and so on.
+- Example: `hr-docs-2`
 - Retained workspace records continue to reserve their slugs.
+- The workspace table declares `workspace_slug` as a unique field through Fluent metadata.
+- The provisioning flow also rechecks the live reserved slug set immediately before group creation and record insert preparation.
+- The repo therefore uses both SDK/table-level unique enforcement and a final server-side reservation recheck.
 - Unusable names fall back to the base slug `workspace`.
+
+The final recheck reduces stale-allocation collisions before provisioning continues, but it is still not a full transaction-level retry loop by itself. The unique field on `workspace_slug` is the durable on-instance enforcement boundary.
 
 ## Group Provisioning Behavior
 
@@ -55,6 +63,8 @@ Generated group names follow the accepted underscore-based pattern:
 
 - `Docsera_<Workspace_Key>_Admins`
 - `Docsera_<Workspace_Key>_Editors`
+
+The workspace group key is separate from the stored workspace slug and is recalculated if the live slug recheck changes the final suffix before provisioning continues.
 
 The provisioning flow currently does this in order:
 
@@ -82,6 +92,7 @@ The live ServiceNow adapter currently uses:
 - `sys_group_has_role` for group-role assignment
 - `sys_user_grmember` for creator membership
 - `sys_user_role` lookup by role name
+- a server-side current-user capability helper in `app/docsera-ui/src/server/workspaces/serviceNowWorkspaceCapabilities.ts`
 
 The active React shell remains explicitly demo-backed through `app/docsera-ui/src/client/features/workspaces/demoWorkspace.ts`. That demo seed is still the current UI fallback while My Workspaces, live workspace loading, and routing are implemented in later tasks.
 
@@ -101,6 +112,7 @@ Automated validation currently covers:
 
 - workspace slug generation
 - duplicate slug suffixing
+- live slug recheck before provisioning
 - group naming
 - default icon and layout behavior
 - workspace provisioning group reference handling
@@ -108,6 +120,10 @@ Automated validation currently covers:
 - rollback cleanup when persistence fails in a test adapter
 
 Validation is local/unit-level for this task because live PDI install and runtime verification still depend on SDK auth plus on-instance metadata installation.
+
+Repository-level follow-up validation reference:
+
+- `npm run validate:shell`
 
 ## Manual Verification
 
@@ -150,6 +166,6 @@ Expected result:
 ## Remaining Platform Gaps
 
 - No My Workspaces UI reads from the live workspace table yet.
-- No server-side ACL/capability enforcement is claimed complete by this task.
+- A server-side capability helper now exists, but broad ACL and route consumption is still future work.
 - No workspace settings, archive/delete lifecycle UI, or slug-edit UI is added here.
 - Group creation and membership are live-adapter code paths, but they still require SDK install and PDI verification before they should be treated as proven on-instance.

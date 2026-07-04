@@ -4,7 +4,9 @@ import {
   buildWorkspaceGroupNames,
   createWorkspaceDraft,
   deriveWorkspaceGroupKey,
+  evaluateWorkspaceCapabilities,
   provisionWorkspace,
+  reconcileWorkspaceDraftSlug,
   slugifyWorkspaceName,
   WORKSPACE_ROLE_NAMES
 } from "../src/shared/workspaces/domain";
@@ -46,6 +48,173 @@ test("createWorkspaceDraft applies default icon, active status, and layout defau
   expect(draft.layout).toEqual({
     tocVisibleByDefault: true,
     pageWidth: "readable"
+  });
+});
+
+test("reconcileWorkspaceDraftSlug refreshes the slug and group names against a live reservation set", () => {
+  const originalDraft = createWorkspaceDraft({
+    name: "HR Docs",
+    creatorUserSysId: "user-123"
+  });
+
+  const reconciledDraft = reconcileWorkspaceDraftSlug(originalDraft, ["hr-docs"]);
+
+  expect(reconciledDraft.slug).toBe("hr-docs-2");
+  expect(reconciledDraft.workspaceGroupKey).toBe("HR_Docs_2");
+  expect(reconciledDraft.adminGroupName).toBe("Docsera_HR_Docs_2_Admins");
+  expect(reconciledDraft.editorGroupName).toBe("Docsera_HR_Docs_2_Editors");
+});
+
+test("evaluateWorkspaceCapabilities allows authenticated users to view active workspaces by default", () => {
+  const capabilities = evaluateWorkspaceCapabilities(
+    {
+      ...createWorkspaceDraft({
+        name: "Platform Docs",
+        creatorUserSysId: "user-123"
+      }),
+      adminGroupSysId: "group-admin",
+      editorGroupSysId: "group-editor"
+    },
+    {
+      isAuthenticated: true,
+      hasRole: () => false,
+      isMemberOfGroup: () => false
+    }
+  );
+
+  expect(capabilities).toEqual({
+    canViewWorkspace: true,
+    canEditWorkspace: false,
+    canAdminWorkspace: false,
+    canManageWorkspaceMembers: false
+  });
+});
+
+test("evaluateWorkspaceCapabilities restricts inactive workspaces for unrelated authenticated users", () => {
+  const capabilities = evaluateWorkspaceCapabilities(
+    {
+      ...createWorkspaceDraft({
+        name: "Archive Docs",
+        status: "inactive",
+        creatorUserSysId: "user-123"
+      }),
+      adminGroupSysId: "group-admin",
+      editorGroupSysId: "group-editor"
+    },
+    {
+      isAuthenticated: true,
+      hasRole: () => false,
+      isMemberOfGroup: () => false
+    }
+  );
+
+  expect(capabilities).toEqual({
+    canViewWorkspace: false,
+    canEditWorkspace: false,
+    canAdminWorkspace: false,
+    canManageWorkspaceMembers: false
+  });
+});
+
+test("evaluateWorkspaceCapabilities gives Docsera Admin full workspace capability override", () => {
+  const capabilities = evaluateWorkspaceCapabilities(
+    {
+      ...createWorkspaceDraft({
+        name: "Admin Docs",
+        status: "inactive",
+        creatorUserSysId: "user-123"
+      }),
+      adminGroupSysId: "",
+      editorGroupSysId: ""
+    },
+    {
+      isAuthenticated: true,
+      hasRole: (roleName) => roleName === WORKSPACE_ROLE_NAMES.docseraAdmin,
+      isMemberOfGroup: () => false
+    }
+  );
+
+  expect(capabilities).toEqual({
+    canViewWorkspace: true,
+    canEditWorkspace: true,
+    canAdminWorkspace: true,
+    canManageWorkspaceMembers: true
+  });
+});
+
+test("evaluateWorkspaceCapabilities gives workspace admin group members admin, edit, and member-management access", () => {
+  const capabilities = evaluateWorkspaceCapabilities(
+    {
+      ...createWorkspaceDraft({
+        name: "Workspace Admin Docs",
+        creatorUserSysId: "user-123"
+      }),
+      adminGroupSysId: "group-admin",
+      editorGroupSysId: "group-editor"
+    },
+    {
+      isAuthenticated: true,
+      hasRole: (roleName) => roleName === WORKSPACE_ROLE_NAMES.workspaceAdmin,
+      isMemberOfGroup: (groupSysId) => groupSysId === "group-admin"
+    }
+  );
+
+  expect(capabilities).toEqual({
+    canViewWorkspace: true,
+    canEditWorkspace: true,
+    canAdminWorkspace: true,
+    canManageWorkspaceMembers: true
+  });
+});
+
+test("evaluateWorkspaceCapabilities gives workspace editor group members edit access without admin powers", () => {
+  const capabilities = evaluateWorkspaceCapabilities(
+    {
+      ...createWorkspaceDraft({
+        name: "Workspace Editor Docs",
+        status: "inactive",
+        creatorUserSysId: "user-123"
+      }),
+      adminGroupSysId: "group-admin",
+      editorGroupSysId: "group-editor"
+    },
+    {
+      isAuthenticated: true,
+      hasRole: (roleName) => roleName === WORKSPACE_ROLE_NAMES.editor,
+      isMemberOfGroup: (groupSysId) => groupSysId === "group-editor"
+    }
+  );
+
+  expect(capabilities).toEqual({
+    canViewWorkspace: true,
+    canEditWorkspace: true,
+    canAdminWorkspace: false,
+    canManageWorkspaceMembers: false
+  });
+});
+
+test("evaluateWorkspaceCapabilities fails safely when workspace group references are missing", () => {
+  const capabilities = evaluateWorkspaceCapabilities(
+    {
+      ...createWorkspaceDraft({
+        name: "Broken Groups",
+        creatorUserSysId: "user-123"
+      }),
+      adminGroupSysId: "",
+      editorGroupSysId: ""
+    },
+    {
+      isAuthenticated: true,
+      hasRole: (roleName) => roleName !== WORKSPACE_ROLE_NAMES.docseraAdmin,
+      isMemberOfGroup: () => true
+    }
+  );
+
+  expect(capabilities).toEqual({
+    canViewWorkspace: true,
+    canEditWorkspace: false,
+    canAdminWorkspace: false,
+    canManageWorkspaceMembers: false
   });
 });
 
@@ -94,6 +263,29 @@ test("provisionWorkspace stores group references, assigns scoped roles, and adds
       userSysId: "user-123"
     }
   ]);
+});
+
+test("provisionWorkspace rechecks reserved slugs before group creation when the adapter exposes live reservations", async () => {
+  const result = await provisionWorkspace(
+    {
+      name: "HR Docs",
+      creatorUserSysId: "user-123"
+    },
+    {
+      listReservedWorkspaceSlugs: async () => ["hr-docs"],
+      createGroup: async ({ name }) => ({ sysId: `${name}-sys-id`, name }),
+      assignRoleToGroup: async () => undefined,
+      addUserToGroup: async () => undefined,
+      saveWorkspace: async (workspace) => ({
+        ...workspace,
+        sysId: "workspace-001"
+      })
+    }
+  );
+
+  expect(result.draft.slug).toBe("hr-docs-2");
+  expect(result.adminGroup.name).toBe("Docsera_HR_Docs_2_Admins");
+  expect(result.editorGroup.name).toBe("Docsera_HR_Docs_2_Editors");
 });
 
 test("provisionWorkspace rolls back created groups when persistence fails and deleteGroup is available", async () => {

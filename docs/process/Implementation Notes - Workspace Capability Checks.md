@@ -4,9 +4,9 @@ Status: implementation note
 
 ## Purpose
 
-This note records the Docsera workspace capability contract that now exists in the app shell package.
+This note records the current repo-side workspace capability contract used by the SDK-native Docsera runtime.
 
-It summarizes repo-side implementation behavior only. Accepted product requirements live in the Obsidian vault; see `docs/process/Requirements Source Map.md`.
+It summarizes implementation behavior only. Accepted product requirements remain in the Obsidian requirements notes and the current implementation brief.
 
 ## Capability Model
 
@@ -16,111 +16,74 @@ Docsera workspace access is split into three capability tiers:
 - Workspace Admin
 - Workspace Editor
 
-Visibility is separate from authoring capability:
+The current evaluator returns:
 
-- active workspaces remain visible to authenticated users by default
-- absence from workspace Admin or Editor groups does not block read-only visibility
-- inactive workspaces may be hidden by the caller’s view logic
+- `canViewWorkspace`
+- `canEditWorkspace`
+- `canAdminWorkspace`
+- `canManageWorkspaceMembers`
 
-## Capability Rules
+## Visibility and Access Rules
 
-### Docsera Admin
+- active workspaces are viewable by authenticated users by default
+- unrelated authenticated users do not get edit or admin capability
+- inactive workspaces are not viewable by unrelated authenticated users by default
+- users with effective workspace edit or admin capability can still access inactive workspaces
 
-A user has Docsera Admin capability when they hold the effective Docsera admin role.
+## Role and Group Rules
 
-Docsera Admin capability short-circuits the workspace checks:
+Default scoped role names:
 
-- Docsera Admin implies Workspace Admin
-- Docsera Admin implies Workspace Editor
+- `x_82900_docsera.admin`
+- `x_82900_docsera.workspace_admin`
+- `x_82900_docsera.editor`
 
-### Workspace Admin
-
-A user has Workspace Admin capability when both of the following are true:
-
-- they hold the effective workspace admin role
-- they are a member of the workspace Admin group stored on the workspace record
-
-Docsera Admin also counts as Workspace Admin.
-
-### Workspace Editor
-
-A user has Workspace Editor capability when any of the following are true:
-
-- they have Docsera Admin capability
-- they have Workspace Admin capability for the workspace
-- they hold the effective workspace editor role and are a member of the workspace Editor group stored on the workspace record
-
-## Source of Truth
-
-Capability checks use the stored workspace group sys_id references as the primary access boundary.
-
-Required workspace fields:
+Workspace capability is evaluated against the stored workspace group sys_id references:
 
 - `adminGroupSysId`
 - `editorGroupSysId`
 
-Notes:
+Rules:
 
-- group names are useful for diagnostics but are not the access reference
-- capability logic should not fall back to name matching when sys_id references are present or expected
-- missing or broken sys_id references fail safely
+- Docsera Admin short-circuits the workspace-specific checks and grants all four capabilities
+- Workspace Admin requires both the scoped workspace-admin role and membership in the stored workspace Admin group
+- Workspace Editor requires either admin capability or both the scoped editor role and membership in the stored workspace Editor group
+- Workspace Editors are not treated as workspace admins
+- missing or broken group references fail safely and do not grant elevated access
 
 ## Adapter Boundary
 
-The repository implementation uses an injected service contract in `app/docsera-shell/src/workspaces/workspace-capabilities.js`.
+The implementation is split across:
 
-The current contract expects two current-user-scoped adapters:
+- platform-neutral evaluator: `app/docsera-ui/src/shared/workspaces/domain.ts`
+- ServiceNow current-user adapter: `app/docsera-ui/src/server/workspaces/serviceNowWorkspaceCapabilities.ts`
+
+The pure evaluator depends on injected current-user adapters:
 
 - `hasRole(roleName)`
 - `isMemberOfGroup(groupSysId)`
+- `isAuthenticated`
 
-Assumptions:
+The live ServiceNow adapter currently binds those checks to:
 
-- the adapters resolve the current user in the surrounding ServiceNow runtime
-- the service layer does not reach directly into ServiceNow APIs in local validation
-- PDI wiring can later bind these adapters to `gs.hasRole`, group membership utilities, Script Include helpers, or a similar platform-specific implementation
-
-Role-name assumptions are also injectable:
-
-- `docseraAdminRoleName`
-- `workspaceAdminRoleName`
-- `workspaceEditorRoleName`
-
-The local service ships with default scoped role-name constants so fake adapters can be exercised without platform wiring.
+- `gs.getUserID()`
+- `gs.hasRole(...)`
+- `sys_user_grmember`
 
 ## Validation Coverage
 
 Local validation currently covers:
 
-- Docsera Admin returns true for all workspace admin/editor checks
-- Workspace Admin requires the admin role and Admin group membership
-- Workspace Editor requires the editor role and Editor group membership
-- Workspace Admin implies Workspace Editor
-- role-only access does not grant workspace-specific capability
-- group membership alone does not grant workspace-specific capability
-- broken or missing group sys_id references fail safely
-- active workspace visibility is not blocked by lack of membership
-- no custom workspace membership table appears in the workspace domain surface
+- default active-workspace viewer access for authenticated users
+- inactive workspace restriction for unrelated authenticated users
+- Docsera Admin override
+- workspace Admin role plus group membership
+- workspace Editor role plus group membership
+- view-only access for unrelated authenticated users on active workspaces
+- safe failure when stored group sys_ids are missing
 
-The validation harness also continues to cover the existing workspace slug and provisioning behavior.
+## Remaining Gaps
 
-## Remaining PDI Wiring
-
-The repository now has the capability contract, but the following on-instance work may still be needed:
-
-- confirm the final Docsera admin role name in the PDI if it differs from the current default constant
-- bind the capability service to live ServiceNow role and group membership APIs
-- decide where the service is consumed first, likely workspace settings, page creation, editor access, and publishing guardrails
-- preserve the current read-only visibility rule for active workspaces in UI and server-side callers
-
-## Non-Goals
-
-This task does not add:
-
-- a custom workspace membership table
-- access request workflows
-- private or restricted workspace visibility
-- My Workspaces launcher and settings gating
-- page or editor behavior
-- autosave
-- publishing
+- the helper exists server-side, but broad route and ACL consumption is still future work
+- no custom workspace membership table is introduced
+- no access-request workflow or private workspace model is added in this task

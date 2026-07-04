@@ -33,6 +33,10 @@ declare global {
                         table: 'sys_module'
                         id: '0cae8437f1b24d1b8e2e27367ffef695'
                     }
+                    src_server_workspaces_serviceNowWorkspaceCapabilities_ts: {
+                        table: 'sys_module'
+                        id: 'e95a4d192e1e4d7e9426e30597dd9910'
+                    }
                     src_server_workspaces_serviceNowWorkspaceProvisioning_ts: {
                         table: 'sys_module'
                         id: 'af3b3203ec254b04a09ca602a42829e7'

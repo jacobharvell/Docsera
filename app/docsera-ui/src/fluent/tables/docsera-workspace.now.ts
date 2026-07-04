@@ -22,7 +22,8 @@ export const x_82900_docsera_workspace = Table({
     workspace_slug: StringColumn({
       label: "Workspace slug",
       mandatory: true,
-      maxLength: 160
+      maxLength: 160,
+      unique: true
     }),
     short_description: StringColumn({
       label: "Short description",
