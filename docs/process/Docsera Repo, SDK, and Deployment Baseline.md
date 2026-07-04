@@ -8,6 +8,7 @@ This note records the current implementation baseline for the Docsera repository
 It is a discovery snapshot, not a design decision record.
 
 It is retained as historical discovery context. The accepted runtime host and frontend stack now live in `docs/decisions/ADR-0002-direct-ui-page-host.md` and `docs/decisions/ADR-0003-frontend-stack.md`.
+The active SDK workflow is summarized in `docs/process/Docsera Agent and Tooling Map.md`.
 
 ## Current Repo Structure
 
@@ -102,6 +103,8 @@ Repo-level commands:
 Confirmed existing command references:
 - `npm --prefix app/docsera-shell run verify`
 - `npm run verify --if-present` is referenced in `app/docsera-shell/pom.xml` as `node.verify_cmd`.
+- `npx @servicenow/sdk --help`
+- `npx @servicenow/sdk explain <topic> --peek --format=raw`
 - `snc version`
 - `snc configure profile list --profile <profile>`
 - `snc ui-component deploy --profile <profile> --fetch-assets-from-instance`
@@ -114,6 +117,7 @@ Important note:
 ## Confirmed Deployment Process
 
 The current PDI deployment workflow for the PoC is documented in `internal/runbooks/PDI_UI_COMPONENT_DEPLOYMENT.md`.
+Treat that runbook as historical `snc`-based evidence, not the preferred SDK-native workflow.
 
 The product shell previously followed the same ServiceNow CLI pattern from `app/docsera-shell/`, but that path is now historical scaffolding rather than the preferred runtime direction.
 
@@ -194,3 +198,4 @@ Expected result:
 
 - The next-task recommendations in the original discovery snapshot are now superseded.
 - Use ADR-0002, ADR-0003, and `docs/process/Implementation Notes - UI Builder Runtime Baggage Cleanup.md` for the current repo direction.
+- Use `docs/process/Docsera Agent and Tooling Map.md` for the active SDK workflow.

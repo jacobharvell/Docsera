@@ -47,7 +47,7 @@ The REST ping remains a secondary host/platform probe. It verifies same-origin a
 
 ## Runtime Artifacts Proven By Local Build
 
-`npm --prefix app/docsera-ui run build` now runs `now-sdk build`.
+`npm --prefix app/docsera-ui run build` now runs the SDK build pipeline through the local `now-sdk` wrapper.
 
 The local build emits:
 
@@ -133,7 +133,7 @@ Fresh machines still need to establish SDK auth before transform/install/verify.
 
 - `app/docsera-ui/scripts/initialize-sdk-auth.ps1`
 
-It prompts for the password at the terminal, pipes it to `now-sdk auth --add ... --password-stdin`, and never writes credentials into repo files.
+It prompts for the password at the terminal, pipes it to `npx @servicenow/sdk auth --add ... --password-stdin`, and never writes credentials into repo files.
 
 The SDK 4.8.1 CLI stores auth records in the local OS keychain through `@napi-rs/keyring` using the `ServiceNow` service and `now-sdk` account. That storage is machine-local and reusable across sessions on the same workstation. The repo should still ignore any local `.now-sdk/` cache directory if one is materialized by the CLI on a given platform.
 
@@ -159,7 +159,7 @@ The real `scopeId` for `x_82900_docsera` lives in source control and is part of 
 
 Reasoning:
 
-- `now-sdk build` emits `dist/app/scope/sys_app_<scopeId>.xml` and references the same ID throughout update records.
+- The SDK build pipeline emits `dist/app/scope/sys_app_<scopeId>.xml` and references the same ID throughout update records.
 - Leaving a placeholder or requiring per-machine local edits would make a fresh clone produce an invalid installation package by default.
 - `scopeId` identifies the scoped app record, but it is not a secret.
 

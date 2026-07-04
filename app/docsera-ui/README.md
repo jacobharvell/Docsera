@@ -7,6 +7,13 @@ This package is the active SDK-native runtime baseline for Docsera's preferred h
 - delivery target: ServiceNow SDK-managed static assets and Fluent metadata
 - visible runtime: Docsera workspace shell baseline with demo-backed navigation and content
 
+Canonical SDK workflow:
+
+- use `npx @servicenow/sdk --help` to inspect command availability
+- use `npx @servicenow/sdk explain <topic> --peek --format=raw` before reading SDK docs in full
+- use `npx @servicenow/sdk transform --auth <alias>` and `npx @servicenow/sdk install --auth <alias>` for direct instance workflows
+- use the local `now-sdk` package scripts when you want the repo-managed wrapper around the same SDK path
+
 ## Scope
 
 - Keep `src/client/main.tsx` thin. It mounts the app and imports global styles.
@@ -74,8 +81,8 @@ The preferred runtime pipeline is:
 - `src/client/` for the React client entry and styles
 - `src/fluent/` for ServiceNow Fluent metadata such as `UiPage` and `RestApi`
 - `src/server/` for server-side handler modules used by Fluent metadata
-- `now-sdk build` for frontend bundling plus metadata compilation
-- `now-sdk install` for instance deployment when SDK auth is configured
+- `npx @servicenow/sdk build` for frontend bundling plus metadata compilation
+- `npx @servicenow/sdk install` for instance deployment when SDK auth is configured
 
 The active client runtime now follows this structure:
 

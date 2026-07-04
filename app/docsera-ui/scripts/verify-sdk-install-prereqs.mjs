@@ -15,7 +15,7 @@ if (config.scopeId === placeholderScopeId) {
     [
       "Refusing SDK install because app/docsera-ui/now.config.json still uses the placeholder scopeId.",
       "Sync the real Docsera application identity from the target instance before installing.",
-      "Expected follow-up once SDK auth exists: now-sdk transform --auth <alias>."
+      "Expected follow-up once SDK auth exists: npx @servicenow/sdk transform --auth <alias>."
     ].join(" ")
   );
 }
