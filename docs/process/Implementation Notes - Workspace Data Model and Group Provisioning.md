@@ -4,150 +4,152 @@ Status: implementation note
 
 ## Purpose
 
-This note records the Docsera workspace contract that now exists in the app shell package.
+This note records the repo-side workspace persistence and native-group provisioning foundation added for the SDK-native Docsera runtime.
 
-It summarizes repo-side implementation behavior only. Accepted product requirements live in the Obsidian vault; see `docs/process/Requirements Source Map.md`.
+It summarizes repository behavior only. Accepted product behavior remains defined by the Obsidian requirements and current implementation brief.
 
-## Workspace Model
+## Workspace Domain Shape
 
-Docsera workspaces are the root container for documentation content and workspace-level settings.
+The shared workspace domain now lives in `app/docsera-ui/src/shared/workspaces/domain.ts`.
 
-The current canonical workspace model is represented in `app/docsera-shell/src/workspaces/workspace-domain.js`.
+The repo-side workspace record shape includes:
 
-Required workspace identity fields:
+- required `name`
+- required unique `slug`
+- optional `shortDescription`
+- required `icon` metadata object
+- required `status`
+- required `adminGroupSysId`
+- required `editorGroupSysId`
+- required `creatorUserSysId`
+- created/updated metadata where the backing adapter can provide it
+- required layout defaults:
+  - `tocVisibleByDefault`
+  - `pageWidth`
 
-- `name`
-- `workspaceSlug`
-- `shortDescription`
-- `icon`
-- `active`
-- `createdBy`
-- `createdOn`
-- `adminGroupSysId`
-- `editorGroupSysId`
+The current default icon is a built-in Docsera icon key:
 
-Model notes:
+- `type: builtin`
+- `key: docsera-workspace`
+- `label: Docsera workspace icon`
 
-- `workspaceSlug` is the canonical URL key and uniqueness field.
-- `workspaceSlug` stays hyphenated and the workspace group key is separate from it.
-- `adminGroupSysId` and `editorGroupSysId` are the stored references that future capability checks should use.
-- `createdBy` and `createdOn` can rely on ServiceNow platform metadata where that is more natural, but the domain contract keeps them explicit.
-- workspaces always have an icon, and the domain contract fills in a Docsera default icon when none is supplied.
+The current layout defaults are:
 
-## Slug Behavior
+- table of contents visible by default
+- readable page width
 
-Slug generation rules:
+## Slug Rules
 
-- workspace names are normalized to lowercase slug fragments
-- non-alphanumeric separators collapse to `-`
-- empty or punctuation-only names fall back to `workspace`
-- duplicate slugs are silently suffixed with `-2`, `-3`, and so on
+- Workspace display names are not unique identifiers.
+- Workspace slugs are the durable routing and lookup identifier.
+- Slugs are generated from the workspace name with URL-safe lowercase hyphenation.
+- Duplicate generated slugs are silently suffixed with `-2`, `-3`, and so on.
+- Retained workspace records continue to reserve their slugs.
+- Unusable names fall back to the base slug `workspace`.
 
-Examples:
+## Group Provisioning Behavior
 
-- `HR Docs` -> `hr-docs`
-- `HR Docs` with `hr-docs` already retained -> `hr-docs-2`
-- `HR Docs` with `hr-docs` and `hr-docs-2` already retained -> `hr-docs-3`
+Workspace provisioning uses native ServiceNow groups and scoped Docsera roles.
 
-The group key is derived separately from the workspace name and slug so that ServiceNow group names stay underscore-based:
-
-- `HR Docs` -> `HR_Docs`
-- `HR Docs` with `hr-docs-2` -> `HR_Docs_2`
-
-## Generated Group Behavior
-
-Each workspace generates two native ServiceNow groups:
+Generated group names follow the accepted underscore-based pattern:
 
 - `Docsera_<Workspace_Key>_Admins`
 - `Docsera_<Workspace_Key>_Editors`
 
-Behavior:
+The provisioning flow currently does this in order:
 
-- the workspace creator is added to the generated Admin group
-- group sys_ids are stored on the workspace record as the source of truth
-- capability checks should use the stored group references rather than group names
-- no custom workspace membership table is introduced
-- group names never rely on the URL slug directly
+1. Create the admin group.
+2. Create the editor group.
+3. Assign `x_82900_docsera.workspace_admin` to the admin group.
+4. Assign `x_82900_docsera.editor` to the editor group.
+5. Add the creator to the admin group when a current user is available.
+6. Persist the workspace record with group sys_id references.
 
-Scoped role assignment:
+The shared provisioning helper attempts group cleanup if workspace persistence fails and the adapter exposes `deleteGroup`.
 
-- the domain layer includes role names for the generated Admin and Editor groups
-- if the app roles exist in the PDI, the provisioning flow should assign them during workspace creation
-- if the roles are not yet configured, the rest of the provisioning flow can still run and the manual setup note below should be followed
+## Adapter Boundary
 
-## Persistence Model
+The shared domain/provisioning logic is platform-agnostic.
 
-The current code establishes the domain contract in `app/docsera-shell/src/workspaces/workspace-domain.js`.
+- Shared domain and provisioning helpers: `app/docsera-ui/src/shared/workspaces/domain.ts`
+- Live ServiceNow adapter: `app/docsera-ui/src/server/workspaces/serviceNowWorkspaceProvisioning.ts`
+- Create endpoint: `POST /api/x_82900_docsera/docsera_runtime/workspaces`
 
-The module currently treats workspace persistence as a platform-backed record with:
+The live ServiceNow adapter currently uses:
 
-- a unique workspace slug
-- optional description and icon metadata
-- active lifecycle state
-- stored Admin and Editor group references
-- creator metadata
+- `x_82900_docsera_workspace` for workspace records
+- `sys_user_group` for workspace groups
+- `sys_group_has_role` for group-role assignment
+- `sys_user_grmember` for creator membership
+- `sys_user_role` lookup by role name
 
-The exact ServiceNow table and field implementation still needs to be wired in the PDI if it is not already present.
+The active React shell remains explicitly demo-backed through `app/docsera-ui/src/client/features/workspaces/demoWorkspace.ts`. That demo seed is still the current UI fallback while My Workspaces, live workspace loading, and routing are implemented in later tasks.
 
-## Local Validation
+## Fluent Metadata Added
 
-From `C:\Dev\Docsera`:
+The SDK runtime now defines:
 
-```powershell
-npm run validate:shell
-npm run validate
-```
+- scoped Docsera roles in `app/docsera-ui/src/fluent/security/docsera-roles.now.ts`
+- the workspace table in `app/docsera-ui/src/fluent/tables/docsera-workspace.now.ts`
+- a workspace create route in `app/docsera-ui/src/fluent/rest-api/docsera-runtime.now.ts`
 
-Validation currently covers:
+The workspace table stores the core MVP fields needed for later routing, workspace settings, and capability evaluation. It does not introduce page summary/description fields.
+
+## Validation Strategy
+
+Automated validation currently covers:
 
 - workspace slug generation
 - duplicate slug suffixing
-- generated group naming
-- draft workspace construction
-- provisioning call sequence using fake adapters
-- repository-level docs validation
+- group naming
+- default icon and layout behavior
+- workspace provisioning group reference handling
+- creator-as-admin membership behavior
+- rollback cleanup when persistence fails in a test adapter
 
-## Manual PDI Verification
+Validation is local/unit-level for this task because live PDI install and runtime verification still depend on SDK auth plus on-instance metadata installation.
 
-Use these steps after the workspace table and on-instance script wiring are in place:
+## Manual Verification
 
-1. Create a workspace record through the intended ServiceNow creation path.
-2. Enter the workspace name `HR Docs`.
-3. Save the record.
-4. Create a second workspace with the same name.
-5. Confirm the second record receives the next available slug.
-6. Confirm the Admin and Editor groups are created with the expected names.
-7. Confirm the workspace creator is a member of the Admin group.
-8. Confirm the workspace record stores the Admin and Editor group sys_ids.
+When the SDK runtime is installed to a PDI, verify the live provisioning path with:
+
+1. Install the app metadata with the normal SDK flow.
+2. Send a same-origin `POST` request to `/api/x_82900_docsera/docsera_runtime/workspaces` as an authenticated user with a JSON body such as:
+
+```json
+{
+  "name": "HR Docs",
+  "shortDescription": "Policies and procedures",
+  "icon": {
+    "type": "builtin",
+    "key": "docsera-workspace",
+    "label": "Docsera workspace icon"
+  },
+  "layout": {
+    "tocVisibleByDefault": true,
+    "pageWidth": "readable"
+  }
+}
+```
+
+3. Inspect `x_82900_docsera_workspace` for the new record.
+4. Confirm `workspace_slug` is unique and `status` is `active`.
+5. Confirm `admin_group` and `editor_group` reference native `sys_user_group` records.
+6. Confirm the admin group has `x_82900_docsera.workspace_admin`.
+7. Confirm the editor group has `x_82900_docsera.editor`.
+8. Confirm the authenticated creator is a member of the generated admin group.
 
 Expected result:
 
-- the first workspace gets `hr-docs`
-- the second workspace gets `hr-docs-2`
-- the generated groups follow the `Docsera_<Workspace_Key>_<Role>` pattern
-- the creator is in the Admin group
-- capability checks can read group sys_ids from the workspace record
+- one workspace record
+- one admin group
+- one editor group
+- creator present in the admin group
+- stored group sys_ids on the workspace record
 
-See `docs/process/Implementation Notes - Workspace Capability Checks.md` for the reusable access-check contract that consumes these stored group references.
+## Remaining Platform Gaps
 
-## Remaining Platform Setup
-
-The repository now has the domain contract, but the following PDI work may still be needed:
-
-- create or map the actual workspace table
-- wire the workspace create flow to the domain contract
-- create the scoped roles referenced by the provisioning module if they do not already exist
-- connect group creation, group-role assignment, and creator membership to the on-instance implementation
-
-## Non-Goals
-
-This task does not add:
-
-- a custom workspace membership table
-- workspace archive/delete/restore behavior
-- My Workspaces launcher and shell list surface
-- page persistence
-- page tree behavior
-- editor behavior
-- autosave
-- publishing
+- No My Workspaces UI reads from the live workspace table yet.
+- No server-side ACL/capability enforcement is claimed complete by this task.
+- No workspace settings, archive/delete lifecycle UI, or slug-edit UI is added here.
+- Group creation and membership are live-adapter code paths, but they still require SDK install and PDI verification before they should be treated as proven on-instance.
