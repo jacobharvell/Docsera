@@ -8,6 +8,7 @@
     "transform:sdk-ui-page": "npm --prefix app/docsera-ui run transform:sdk --",
     "types:sdk-ui-page": "npm --prefix app/docsera-ui run types:sdk",
     "verify:sdk-ui-page": "npm --prefix app/docsera-ui run verify:sdk-runtime --",
+    "verify:workspace-foundation": "npm --prefix app/docsera-ui run verify:workspace-foundation --",
     "validate": "npm run validate:frontend && npm run validate:shell && npm run validate:docs",
     "validate:frontend": "npm --prefix app/docsera-ui run validate",
     "validate:shell": "npm --prefix app/docsera-shell run verify",

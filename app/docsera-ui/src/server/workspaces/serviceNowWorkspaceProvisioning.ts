@@ -6,10 +6,25 @@ import {
   type WorkspaceRecord,
   WORKSPACE_ROLE_NAMES,
   provisionWorkspace
-} from "../../shared/workspaces/domain";
+} from "./serverWorkspaceDomain.ts";
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function describeInsertFailure(
+  record: GlideRecord,
+  fallbackMessage: string
+): string {
+  const errorMessage = cleanText(
+    (
+      record as GlideRecord & {
+        getLastErrorMessage?: () => string;
+      }
+    ).getLastErrorMessage?.()
+  );
+
+  return errorMessage ? `${fallbackMessage} ${errorMessage}` : fallbackMessage;
 }
 
 function normalizeBoolean(value: unknown): boolean {
@@ -46,7 +61,9 @@ function createGroup(input: { name: string; description: string }): WorkspaceGro
   const sysId = cleanText(group.insert());
 
   if (!sysId) {
-    throw new Error(`Failed to create ServiceNow group ${input.name}.`);
+    throw new Error(
+      describeInsertFailure(group, `Failed to create ServiceNow group ${input.name}.`)
+    );
   }
 
   return {
@@ -74,7 +91,12 @@ function assignRoleToGroup(groupSysId: string, roleName: string): void {
   const sysId = cleanText(membership.insert());
 
   if (!sysId) {
-    throw new Error(`Failed to assign role ${roleName} to group ${groupSysId}.`);
+    throw new Error(
+      describeInsertFailure(
+        membership,
+        `Failed to assign role ${roleName} to group ${groupSysId}.`
+      )
+    );
   }
 }
 
@@ -95,7 +117,12 @@ function addUserToGroup(groupSysId: string, userSysId: string): void {
   const sysId = cleanText(membership.insert());
 
   if (!sysId) {
-    throw new Error(`Failed to add user ${userSysId} to group ${groupSysId}.`);
+    throw new Error(
+      describeInsertFailure(
+        membership,
+        `Failed to add user ${userSysId} to group ${groupSysId}.`
+      )
+    );
   }
 }
 
@@ -152,7 +179,12 @@ function saveWorkspace(workspace: WorkspaceRecord): WorkspaceRecord {
   const sysId = cleanText(record.insert());
 
   if (!sysId) {
-    throw new Error(`Failed to create workspace record in ${DOCSERA_WORKSPACE_TABLE}.`);
+    throw new Error(
+      describeInsertFailure(
+        record,
+        `Failed to create workspace record in ${DOCSERA_WORKSPACE_TABLE}.`
+      )
+    );
   }
 
   if (!record.get(sysId)) {

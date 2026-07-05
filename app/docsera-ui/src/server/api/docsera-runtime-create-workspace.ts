@@ -1,5 +1,5 @@
-import type { WorkspaceDraftInput } from "../../shared/workspaces/domain";
-import { createServiceNowWorkspaceProvisioningService } from "../workspaces/serviceNowWorkspaceProvisioning";
+import type { WorkspaceDraftInput } from "../workspaces/serverWorkspaceDomain.ts";
+import { createServiceNowWorkspaceProvisioningService } from "../workspaces/serviceNowWorkspaceProvisioning.ts";
 
 type RequestLike = {
   body?: unknown;

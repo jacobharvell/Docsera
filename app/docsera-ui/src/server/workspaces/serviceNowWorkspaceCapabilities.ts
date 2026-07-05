@@ -3,7 +3,7 @@ import {
   type WorkspaceCapabilityResult,
   type WorkspaceRecord,
   evaluateWorkspaceCapabilities
-} from "../../shared/workspaces/domain";
+} from "./serverWorkspaceDomain.ts";
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";

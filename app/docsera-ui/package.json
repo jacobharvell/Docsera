@@ -20,6 +20,7 @@
     "transform:sdk": "now-sdk transform",
     "types:sdk": "now-sdk dependencies",
     "verify:sdk-runtime": "node ./scripts/verify-sdk-runtime.mjs",
+    "verify:workspace-foundation": "node ./scripts/verify-workspace-foundation.mjs",
     "test": "vitest run",
     "validate": "npm run test && npm run build"
   },
