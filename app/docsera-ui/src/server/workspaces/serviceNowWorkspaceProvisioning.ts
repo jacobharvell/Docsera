@@ -8,27 +8,71 @@ import {
   provisionWorkspace
 } from "./serverWorkspaceDomain.ts";
 
+type WorkspaceProvisioningDiagnosticSnapshot = {
+  hasAdminRole: boolean;
+  hasDocseraAdminRole: boolean;
+  hasEditorRole: boolean;
+  hasWorkspaceAdminRole: boolean;
+  groupExistsBeforeInsert: boolean;
+  userName: string;
+  userSysId: string;
+};
+
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function describeInsertFailure(
+function readLastErrorMessage(
   record: GlideRecord,
-  fallbackMessage: string
 ): string {
-  const errorMessage = cleanText(
+  return cleanText(
     (
       record as GlideRecord & {
         getLastErrorMessage?: () => string;
       }
     ).getLastErrorMessage?.()
   );
+}
 
-  return errorMessage ? `${fallbackMessage} ${errorMessage}` : fallbackMessage;
+function describeThrownInsertFailure(fallbackMessage: string, error: unknown): string {
+  const errorMessage = cleanText(error instanceof Error ? error.message : error);
+  return errorMessage && errorMessage.startsWith(fallbackMessage) ? errorMessage : fallbackMessage;
 }
 
 function normalizeBoolean(value: unknown): boolean {
   return value === true || value === "true" || value === 1 || value === "1";
+}
+
+function captureGroupCreateDiagnostics(groupName: string): WorkspaceProvisioningDiagnosticSnapshot {
+  const currentUserSysId = cleanText(gs.getUserID());
+  const currentUserName = cleanText(gs.getUserName());
+  const existing = new GlideRecord("sys_user_group");
+  existing.addQuery("name", groupName);
+  existing.setLimit(1);
+  existing.query();
+  return {
+    hasAdminRole: Boolean(gs.hasRole("admin")),
+    hasDocseraAdminRole: Boolean(gs.hasRole(WORKSPACE_ROLE_NAMES.docseraAdmin)),
+    hasEditorRole: Boolean(gs.hasRole(WORKSPACE_ROLE_NAMES.editor)),
+    hasWorkspaceAdminRole: Boolean(gs.hasRole(WORKSPACE_ROLE_NAMES.workspaceAdmin)),
+    groupExistsBeforeInsert: existing.next(),
+    userName: currentUserName,
+    userSysId: currentUserSysId
+  };
+}
+
+function logProvisioningFailure(
+  event: string,
+  safeMessage: string,
+  detail?: string,
+  diagnostics?: WorkspaceProvisioningDiagnosticSnapshot
+): void {
+  const payload = {
+    message: safeMessage,
+    detail: cleanText(detail) || undefined,
+    diagnostics
+  };
+  gs.error(`[Docsera workspace provisioning] ${event} ${JSON.stringify(payload)}`);
 }
 
 function getRoleSysId(roleName: string): string {
@@ -45,12 +89,31 @@ function getRoleSysId(roleName: string): string {
 }
 
 function createGroup(input: { name: string; description: string }): WorkspaceGroup {
-  const existing = new GlideRecord("sys_user_group");
-  existing.addQuery("name", input.name);
-  existing.setLimit(1);
-  existing.query();
+  gs.info(`[Docsera workspace provisioning] createGroup start ${input.name}`);
+  let diagnostics: WorkspaceProvisioningDiagnosticSnapshot;
+  try {
+    diagnostics = captureGroupCreateDiagnostics(input.name);
+    gs.info(
+      `[Docsera workspace provisioning] createGroup diagnostics ${JSON.stringify({
+        hasAdminRole: diagnostics.hasAdminRole,
+        hasDocseraAdminRole: diagnostics.hasDocseraAdminRole,
+        hasEditorRole: diagnostics.hasEditorRole,
+        hasWorkspaceAdminRole: diagnostics.hasWorkspaceAdminRole,
+        groupExistsBeforeInsert: diagnostics.groupExistsBeforeInsert,
+        userName: diagnostics.userName,
+        userSysId: diagnostics.userSysId
+      })}`
+    );
+  } catch (error) {
+    gs.error(
+      `[Docsera workspace provisioning] createGroup diagnostics failed ${input.name}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+    throw error;
+  }
 
-  if (existing.next()) {
+  if (diagnostics.groupExistsBeforeInsert) {
     throw new Error(`A ServiceNow group named ${input.name} already exists.`);
   }
 
@@ -58,19 +121,39 @@ function createGroup(input: { name: string; description: string }): WorkspaceGro
   group.initialize();
   group.setValue("name", input.name);
   group.setValue("description", input.description);
-  const sysId = cleanText(group.insert());
 
-  if (!sysId) {
-    throw new Error(
-      describeInsertFailure(group, `Failed to create ServiceNow group ${input.name}.`)
+  try {
+    gs.info(`[Docsera workspace provisioning] createGroup insert begin ${input.name}`);
+    const sysId = cleanText(group.insert());
+
+    if (!sysId) {
+      const safeMessage = "Failed to create a required workspace access group.";
+      logProvisioningFailure(
+        `createGroup insert failed ${input.name}`,
+        safeMessage,
+        readLastErrorMessage(group),
+        diagnostics
+      );
+      throw new Error(safeMessage);
+    }
+
+    gs.info(`[Docsera workspace provisioning] createGroup insert success ${input.name} ${sysId}`);
+
+    return {
+      sysId,
+      name: input.name,
+      description: input.description
+    };
+  } catch (error) {
+    const safeMessage = "Failed to create a required workspace access group.";
+    logProvisioningFailure(
+      `createGroup exception ${input.name}`,
+      safeMessage,
+      error instanceof Error ? error.message : String(error),
+      diagnostics
     );
+    throw new Error(describeThrownInsertFailure(safeMessage, error));
   }
-
-  return {
-    sysId,
-    name: input.name,
-    description: input.description
-  };
 }
 
 function assignRoleToGroup(groupSysId: string, roleName: string): void {
@@ -91,12 +174,13 @@ function assignRoleToGroup(groupSysId: string, roleName: string): void {
   const sysId = cleanText(membership.insert());
 
   if (!sysId) {
-    throw new Error(
-      describeInsertFailure(
-        membership,
-        `Failed to assign role ${roleName} to group ${groupSysId}.`
-      )
+    const safeMessage = "Failed to assign a required workspace role.";
+    logProvisioningFailure(
+      `assignRoleToGroup insert failed ${groupSysId}`,
+      safeMessage,
+      readLastErrorMessage(membership)
     );
+    throw new Error(safeMessage);
   }
 }
 
@@ -117,12 +201,13 @@ function addUserToGroup(groupSysId: string, userSysId: string): void {
   const sysId = cleanText(membership.insert());
 
   if (!sysId) {
-    throw new Error(
-      describeInsertFailure(
-        membership,
-        `Failed to add user ${userSysId} to group ${groupSysId}.`
-      )
+    const safeMessage = "Failed to add the workspace creator to the admin group.";
+    logProvisioningFailure(
+      `addUserToGroup insert failed ${groupSysId}`,
+      safeMessage,
+      readLastErrorMessage(membership)
     );
+    throw new Error(safeMessage);
   }
 }
 
@@ -179,12 +264,13 @@ function saveWorkspace(workspace: WorkspaceRecord): WorkspaceRecord {
   const sysId = cleanText(record.insert());
 
   if (!sysId) {
-    throw new Error(
-      describeInsertFailure(
-        record,
-        `Failed to create workspace record in ${DOCSERA_WORKSPACE_TABLE}.`
-      )
+    const safeMessage = "Failed to create the workspace record.";
+    logProvisioningFailure(
+      `saveWorkspace insert failed ${workspace.slug}`,
+      safeMessage,
+      readLastErrorMessage(record)
     );
+    throw new Error(safeMessage);
   }
 
   if (!record.get(sysId)) {

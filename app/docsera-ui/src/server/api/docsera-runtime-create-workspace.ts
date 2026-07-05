@@ -1,3 +1,4 @@
+import { gs } from "@servicenow/glide";
 import type { WorkspaceDraftInput } from "../workspaces/serverWorkspaceDomain.ts";
 import { createServiceNowWorkspaceProvisioningService } from "../workspaces/serviceNowWorkspaceProvisioning.ts";
 
@@ -72,9 +73,12 @@ export async function process(request: RequestLike, response: ResponseLike) {
       response.setStatus(400);
     }
 
+    const message = error instanceof Error ? error.message : "Workspace creation failed.";
+    gs.error(`[Docsera workspace provisioning] ${message}`);
+
     response.setBody({
       error: {
-        message: error instanceof Error ? error.message : "Workspace creation failed."
+        message
       }
     });
   }

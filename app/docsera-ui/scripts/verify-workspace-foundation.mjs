@@ -393,6 +393,29 @@ async function main() {
   });
   addCheck(checks, tableDefinition.length === 1, "workspace table metadata is installed", tableDefinition.length === 1 ? "" : JSON.stringify(tableDefinition));
 
+  const nativeTableAccess = await tableQuery(instanceUrl, session, "sys_db_object", {
+    query: "nameINsys_user_group,sys_group_has_role,sys_user_grmember",
+    fields: "name,access,read_access,create_access,update_access,delete_access,sys_scope"
+  });
+  console.log("Native table access diagnostics");
+  for (const record of nativeTableAccess) {
+    console.log(
+      JSON.stringify(
+        {
+          name: cleanText(record.name),
+          access: cleanText(record.access),
+          readAccess: cleanText(record.read_access),
+          createAccess: cleanText(record.create_access),
+          updateAccess: cleanText(record.update_access),
+          deleteAccess: cleanText(record.delete_access),
+          scope: cleanText(record.sys_scope)
+        },
+        null,
+        2
+      )
+    );
+  }
+
   const slugDictionary = await tableQuery(instanceUrl, session, "sys_dictionary", {
     query: "name=x_82900_docsera_workspace^element=workspace_slug",
     fields: "sys_id,name,element,mandatory,unique,max_length"

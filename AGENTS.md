@@ -61,7 +61,10 @@ Prototypes are visual and interaction references, especially for layout, spacing
 - Keep all application work inside the project scoped app unless explicitly approved.
 - Do not modify global-scope artifacts unless the task explicitly requires it.
 - Do not modify OOTB ServiceNow records, ACLs, system properties, roles, UI policies, business rules, or platform security settings without explicit approval.
+- Do not use OOTB table application-access changes, baseline ACL changes, or other core platform metadata changes as an implementation shortcut.
 - Do not add paid ServiceNow plugin dependencies without explicit approval.
+- If a protected global resource is required, prefer a narrowly constrained, documented helper or provisioning boundary over changing core platform behavior.
+- Any global/helper component must be narrow, justified, documented, and upgrade-safe.
 - Prefer local/custom-component development for the editor rather than attempting to force the platform rich text editor into a block-editor role.
 - Keep the app PDI-friendly and open-source-friendly.
 - For visible UI work, include Jacob-facing manual verification steps when subjective layout, interaction feel, prototype fidelity, drag/drop behavior, editor behavior, or visual polish is affected.
