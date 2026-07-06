@@ -1,5 +1,6 @@
 export type DocseraRuntimeConfig = {
   backendPingPath?: string;
+  pageCollectionPath?: string;
   workspaceCollectionPath?: string;
   workspaceProvisioningStatusPath?: string;
   cssPath?: string;
@@ -51,6 +52,29 @@ export type WorkspaceIcon = {
   value?: string;
 };
 
+export type PagePublicationState = "draft" | "published" | "published_with_unpublished_changes";
+
+export type PageContentJson = Record<string, unknown>;
+
+export type WorkspacePageRecord = {
+  sysId?: string;
+  workspaceSysId: string;
+  parentPageSysId: string | null;
+  siblingOrder: number;
+  draftTitle: string;
+  draftSlug: string;
+  draftSlugNormalized: string;
+  draftContentJson: PageContentJson;
+  draftBodyText: string | null;
+  publishedTitle: string | null;
+  publishedSlug: string | null;
+  publishedSlugNormalized: string | null;
+  publishedContentJson: PageContentJson | null;
+  publishedBodyText: string | null;
+  publicationState: PagePublicationState;
+  active?: boolean;
+};
+
 export type WorkspaceViewRecord = {
   sysId?: string;
   slug: string;
@@ -81,6 +105,24 @@ export type WorkspaceCreateInput = {
   icon?: WorkspaceIcon | null;
 };
 
+export type PageCreateInput = {
+  workspaceSlug: string;
+  title: string;
+  parentPageSysId?: string | null;
+};
+
+export type PageCreateSucceeded = {
+  page: WorkspacePageRecord;
+  state: "succeeded";
+};
+
+export type PageCreateFailed = {
+  errorMessage: string;
+  state: "failed";
+};
+
+export type PageCreateResult = PageCreateSucceeded | PageCreateFailed;
+
 export type WorkspaceCreateSucceeded = {
   state: "succeeded";
   workspace: WorkspaceViewRecord;
@@ -110,6 +152,7 @@ export type ServiceNowClient = {
   getWorkspace: (workspaceSlug: string) => Promise<WorkspaceLookupResult>;
   createWorkspace: (input: WorkspaceCreateInput) => Promise<WorkspaceCreateResult>;
   getWorkspaceProvisioningStatus: (statusPath: string) => Promise<WorkspaceCreateResult>;
+  createPage: (input: PageCreateInput) => Promise<PageCreateResult>;
 };
 
 export type DemoPageSection = {

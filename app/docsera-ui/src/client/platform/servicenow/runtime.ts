@@ -8,6 +8,7 @@ declare global {
 
 const defaultConfig: DocseraRuntimeConfig = {
   backendPingPath: undefined,
+  pageCollectionPath: undefined,
   workspaceCollectionPath: undefined,
   workspaceProvisioningStatusPath: undefined,
   cssPath: undefined,

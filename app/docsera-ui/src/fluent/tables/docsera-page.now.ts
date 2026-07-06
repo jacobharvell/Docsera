@@ -1,0 +1,85 @@
+import "@servicenow/sdk/global";
+import { BooleanColumn, ChoiceColumn, ReferenceColumn, StringColumn, Table } from "@servicenow/sdk/core";
+
+export const x_82900_docsera_page = Table({
+  name: "x_82900_docsera_page",
+  label: "Docsera Page",
+  display: "draft_title",
+  actions: ["read", "create"],
+  allowWebServiceAccess: true,
+  audit: true,
+  schema: {
+    workspace: ReferenceColumn({
+      label: "Workspace",
+      mandatory: true,
+      referenceTable: "x_82900_docsera_workspace"
+    }),
+    parent_page: ReferenceColumn({
+      label: "Parent page",
+      referenceTable: "x_82900_docsera_page"
+    }),
+    sibling_order: StringColumn({
+      label: "Sibling order",
+      mandatory: true,
+      maxLength: 16
+    }),
+    draft_title: StringColumn({
+      label: "Draft title",
+      mandatory: true,
+      maxLength: 160
+    }),
+    draft_slug: StringColumn({
+      label: "Draft slug",
+      mandatory: true,
+      maxLength: 160
+    }),
+    draft_slug_normalized: StringColumn({
+      label: "Draft slug normalized",
+      mandatory: true,
+      maxLength: 160
+    }),
+    draft_content_json: StringColumn({
+      label: "Draft content JSON",
+      maxLength: 4000
+    }),
+    draft_body_text: StringColumn({
+      label: "Draft body text",
+      maxLength: 4000
+    }),
+    published_title: StringColumn({
+      label: "Published title",
+      maxLength: 160
+    }),
+    published_slug: StringColumn({
+      label: "Published slug",
+      maxLength: 160
+    }),
+    published_slug_normalized: StringColumn({
+      label: "Published slug normalized",
+      maxLength: 160
+    }),
+    published_content_json: StringColumn({
+      label: "Published content JSON",
+      maxLength: 4000
+    }),
+    published_body_text: StringColumn({
+      label: "Published body text",
+      maxLength: 4000
+    }),
+    publication_state: ChoiceColumn({
+      label: "Publication state",
+      mandatory: true,
+      default: "draft",
+      choices: {
+        draft: "Draft",
+        published: "Published",
+        published_with_unpublished_changes: "Published with unpublished changes"
+      }
+    }),
+    active: BooleanColumn({
+      label: "Active",
+      mandatory: true,
+      default: true
+    })
+  }
+});

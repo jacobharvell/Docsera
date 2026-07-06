@@ -1,5 +1,6 @@
 import "@servicenow/sdk/global";
 import { RestApi } from "@servicenow/sdk/core";
+import { process as createPage } from "../../server/api/docsera-runtime-create-page";
 import { process as createWorkspace } from "../../server/api/docsera-runtime-create-workspace";
 import { process as workspaces } from "../../server/api/docsera-runtime-workspaces";
 import { process as workspaceProvisioningStatus } from "../../server/api/docsera-runtime-workspace-provisioning-status";
@@ -49,6 +50,16 @@ RestApi({
       produces: "application/json",
       shortDescription: "Return the current status of a workspace provisioning request.",
       script: workspaceProvisioningStatus
+    },
+    {
+      $id: Now.ID["docsera-runtime-pages-post"],
+      name: "pages",
+      path: "/pages",
+      method: "POST",
+      consumes: "application/json",
+      produces: "application/json",
+      shortDescription: "Create a workspace page record.",
+      script: createPage
     }
   ]
 });

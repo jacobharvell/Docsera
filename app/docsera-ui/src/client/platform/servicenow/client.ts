@@ -2,6 +2,11 @@ import type {
   DocseraRuntimeContext,
   PingEnvelope,
   PingResult,
+  PageCreateFailed,
+  PageCreateInput,
+  PageCreateResult,
+  PageCreateSucceeded,
+  WorkspacePageRecord,
   RawPingPayload,
   ServiceNowClient,
   WorkspaceCreateFailed,
@@ -29,6 +34,7 @@ type JsonResponse<T> = {
 };
 
 const DEFAULT_WORKSPACE_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces";
+const DEFAULT_PAGE_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/pages";
 
 function readWindowUserToken(candidate: Window | null | undefined): string | undefined {
   const tokenWindow = candidate as TokenBearingWindow | null | undefined;
@@ -161,6 +167,44 @@ function normalizeWorkspaceViewRecord(candidate: unknown): WorkspaceViewRecord {
   };
 }
 
+function normalizePageContentJson(candidate: unknown): Record<string, unknown> {
+  if (!isPlainObject(candidate)) {
+    return {
+      type: "doc",
+      content: []
+    };
+  }
+
+  return candidate;
+}
+
+function normalizePageRecord(candidate: unknown): WorkspacePageRecord {
+  const page = candidate as Partial<WorkspacePageRecord>;
+  const publicationState =
+    page.publicationState === "published" || page.publicationState === "published_with_unpublished_changes"
+      ? page.publicationState
+      : "draft";
+
+  return {
+    sysId: cleanText(page.sysId),
+    workspaceSysId: cleanText(page.workspaceSysId),
+    parentPageSysId: cleanText(page.parentPageSysId) || null,
+    siblingOrder: Number(page.siblingOrder) || 1,
+    draftTitle: cleanText(page.draftTitle),
+    draftSlug: cleanText(page.draftSlug),
+    draftSlugNormalized: cleanText(page.draftSlugNormalized),
+    draftContentJson: normalizePageContentJson(page.draftContentJson),
+    draftBodyText: cleanText(page.draftBodyText) || null,
+    publishedTitle: cleanText(page.publishedTitle) || null,
+    publishedSlug: cleanText(page.publishedSlug) || null,
+    publishedSlugNormalized: cleanText(page.publishedSlugNormalized) || null,
+    publishedContentJson: page.publishedContentJson ? normalizePageContentJson(page.publishedContentJson) : null,
+    publishedBodyText: cleanText(page.publishedBodyText) || null,
+    publicationState,
+    active: typeof page.active === "boolean" ? page.active : undefined
+  };
+}
+
 function extractErrorMessage(body: unknown, fallback: string): string {
   const normalizedBody = unwrapServiceNowEnvelope(body);
   const result = isPlainObject(normalizedBody) ? normalizedBody.error : undefined;
@@ -241,6 +285,25 @@ function normalizeWorkspaceCreateFailedResult(body: unknown, fallback: string): 
     errorMessage: extractErrorMessage(body, fallback),
     requestId: cleanText(provisioning?.requestId),
     statusPath: cleanText(provisioning?.statusPath)
+  };
+}
+
+function normalizePageCreateSucceededResult(body: unknown): PageCreateSucceeded {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || !result.page) {
+    throw new Error("Page creation payload was invalid.");
+  }
+
+  return {
+    state: "succeeded",
+    page: normalizePageRecord(result.page)
+  };
+}
+
+function normalizePageCreateFailedResult(body: unknown, fallback: string): PageCreateFailed {
+  return {
+    state: "failed",
+    errorMessage: extractErrorMessage(body, fallback)
   };
 }
 
@@ -325,8 +388,35 @@ async function resolveWorkspaceProvisioningStatus(path: string): Promise<Workspa
   throw new Error(`HTTP ${response.status}`);
 }
 
+async function resolvePageCreateResult(path: string, input: PageCreateInput): Promise<PageCreateResult> {
+  const payload = {
+    title: cleanText(input.title),
+    workspaceSlug: cleanText(input.workspaceSlug),
+    ...(input.parentPageSysId ? { parentPageSysId: cleanText(input.parentPageSysId) } : {})
+  };
+
+  const response = await requestJson<unknown>(path, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    headers: {
+      "Content-Type": "application/json"
+    }
+  });
+
+  if (response.status === 201) {
+    return normalizePageCreateSucceededResult(response.body);
+  }
+
+  if (response.status === 400 || response.status === 403 || response.status === 404) {
+    return normalizePageCreateFailedResult(response.body, "Page creation failed.");
+  }
+
+  throw new Error(`HTTP ${response.status}`);
+}
+
 export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceNowClient {
   const collectionPath = resolvePath(runtime.config.workspaceCollectionPath, DEFAULT_WORKSPACE_COLLECTION_PATH);
+  const pageCollectionPath = resolvePath(runtime.config.pageCollectionPath, DEFAULT_PAGE_COLLECTION_PATH);
   const provisioningStatusPath = resolvePath(
     runtime.config.workspaceProvisioningStatusPath,
     "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status"
@@ -380,6 +470,10 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
     async getWorkspaceProvisioningStatus(statusPath: string): Promise<WorkspaceCreateResult> {
       const targetPath = cleanText(statusPath) || provisioningStatusPath;
       return resolveWorkspaceProvisioningStatus(targetPath);
+    },
+
+    async createPage(input: PageCreateInput): Promise<PageCreateResult> {
+      return resolvePageCreateResult(pageCollectionPath, input);
     }
   };
 }

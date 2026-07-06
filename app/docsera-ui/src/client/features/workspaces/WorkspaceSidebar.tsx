@@ -8,6 +8,9 @@ type WorkspaceSidebarProps = {
   onSelectPage: (pageId: string) => void;
   treeFilter: string;
   onTreeFilterChange: (value: string) => void;
+  canCreatePage: boolean;
+  isCreatingPage: boolean;
+  onShowCreatePage: () => void;
 };
 
 function SearchIcon() {
@@ -60,7 +63,10 @@ export function WorkspaceSidebar({
   selectedPageId,
   onSelectPage,
   treeFilter,
-  onTreeFilterChange
+  onTreeFilterChange,
+  canCreatePage,
+  isCreatingPage,
+  onShowCreatePage
 }: WorkspaceSidebarProps) {
   const totalPages = flattenDemoPages(workspace.pages).length;
 
@@ -81,9 +87,17 @@ export function WorkspaceSidebar({
               onChange={(event) => onTreeFilterChange(event.target.value)}
             />
           </label>
-          <button type="button" className="docsera-sidebar__icon-button" aria-label="New page" disabled>
-            <PlusIcon />
-          </button>
+          {canCreatePage ? (
+            <button
+              type="button"
+              className="docsera-sidebar__icon-button"
+              aria-label="New page"
+              onClick={onShowCreatePage}
+              disabled={isCreatingPage}
+            >
+              <PlusIcon />
+            </button>
+          ) : null}
         </div>
 
         <div className="docsera-sidebar__tree-head">
@@ -98,7 +112,7 @@ export function WorkspaceSidebar({
 
       <nav className="docsera-sidebar__tree" aria-label="Page tree">
         <p className="docsera-sidebar__meta">
-          {totalPages} local demo pages / {workspace.roleLabel}
+          {totalPages} pages / {workspace.roleLabel}
         </p>
         <PageTree
           pages={workspace.pages}
@@ -108,10 +122,12 @@ export function WorkspaceSidebar({
         />
       </nav>
 
-      <button type="button" className="docsera-sidebar__new-page" disabled>
-        <PlusIcon />
-        <span>New page</span>
-      </button>
+      {canCreatePage ? (
+        <button type="button" className="docsera-sidebar__new-page" onClick={onShowCreatePage} disabled={isCreatingPage}>
+          <PlusIcon />
+          <span>{isCreatingPage ? "Creating..." : "New page"}</span>
+        </button>
+      ) : null}
     </aside>
   );
 }

@@ -911,6 +911,15 @@ svg {
   text-align: left;
 }
 
+.docsera-sidebar__new-page:hover {
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--docsera-text);
+}
+
+.docsera-sidebar__new-page:disabled {
+  opacity: 0.55;
+}
+
 .docsera-sidebar__new-page svg {
   width: 16px;
   height: 16px;

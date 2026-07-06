@@ -16,6 +16,9 @@ type WorkspaceShellProps = {
   pingState: RuntimeProbeState;
   onOpenMyWorkspaces: () => void;
   workspaceSettingsNotice?: boolean;
+  canCreatePage: boolean;
+  isCreatingPage: boolean;
+  onShowCreatePage: () => void;
 };
 
 function getSelectedPage(workspace: DemoWorkspace, selectedPageId: string): DemoPage | null {
@@ -30,7 +33,10 @@ export function WorkspaceShell({
   onSelectPage,
   pingState,
   onOpenMyWorkspaces,
-  workspaceSettingsNotice
+  workspaceSettingsNotice,
+  canCreatePage,
+  isCreatingPage,
+  onShowCreatePage
 }: WorkspaceShellProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [treeFilter, setTreeFilter] = useState("");
@@ -88,13 +94,16 @@ export function WorkspaceShell({
 
       <div className={`docsera-workspace${sidebarCollapsed ? " docsera-workspace--sidebar-collapsed" : ""}`}>
         {!sidebarCollapsed ? (
-          <WorkspaceSidebar
-            workspace={workspace}
-            selectedPageId={selectedPage.id}
-            onSelectPage={onSelectPage}
-            treeFilter={treeFilter}
-            onTreeFilterChange={setTreeFilter}
-          />
+        <WorkspaceSidebar
+          workspace={workspace}
+          selectedPageId={selectedPage.id}
+          onSelectPage={onSelectPage}
+          treeFilter={treeFilter}
+          onTreeFilterChange={setTreeFilter}
+          canCreatePage={canCreatePage}
+          isCreatingPage={isCreatingPage}
+          onShowCreatePage={onShowCreatePage}
+        />
         ) : null}
 
         <WorkspaceMainPane page={selectedPage} pagePath={pagePath} />
