@@ -9,6 +9,7 @@ const defaults = {
   keyringAccount: "now-sdk",
   keyringService: "ServiceNow",
   pingPath: "/api/x_82900_docsera/docsera_runtime/ping",
+  workspaceProvisioningStatusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status",
   workspacePath: "/api/x_82900_docsera/docsera_runtime/workspaces",
   workspaceName: "Verification Workspace",
   workspaceDescription: "Temporary workspace for Docsera platform verification"
@@ -66,6 +67,11 @@ function getCookieHeader(cookieStore) {
 
 function cleanText(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeBoolean(value) {
+  const normalized = cleanText(value).toLowerCase();
+  return value === true || value === 1 || normalized === "true" || normalized === "1" || normalized === "yes";
 }
 
 function normalizePayload(payload) {
@@ -286,6 +292,48 @@ function normalizeWorkspaceFromRoute(result) {
   };
 }
 
+function normalizeProvisioningStatus(result) {
+  const normalized = normalizePayload(result);
+  if (!normalized || typeof normalized !== "object") {
+    throw new Error("Workspace provisioning status route did not return the expected result payload.");
+  }
+
+  return {
+    error: normalized.error,
+    groups: normalized.groups,
+    provisioning: normalized.provisioning,
+    roleNames: normalized.roleNames,
+    workspace: normalized.workspace
+  };
+}
+
+async function pollProvisioningStatus(instanceUrl, session, requestId) {
+  const attempts = 20;
+  const delayMs = 500;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    const statusResult = await fetchJson(
+      instanceUrl,
+      session,
+      `${defaults.workspaceProvisioningStatusPath}?requestId=${encodeURIComponent(requestId)}`
+    );
+
+    if (!statusResult.ok) {
+      throw new Error(`Provisioning status lookup failed with HTTP ${statusResult.status}: ${statusResult.text}`);
+    }
+
+    const payload = normalizeProvisioningStatus(statusResult.payload);
+    const state = cleanText(payload.provisioning?.state);
+    if (state === "succeeded" || state === "failed") {
+      return payload;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+
+  throw new Error(`Provisioning request ${requestId} did not leave pending state within ${attempts * delayMs}ms.`);
+}
+
 function printCheck(check) {
   const prefix = check.ok ? "[pass]" : "[fail]";
   console.log(`${prefix} ${check.label}`);
@@ -349,9 +397,11 @@ async function main() {
   const keepData = Boolean(parsedArgs.values["keep-data"]);
 
   const checks = [];
+  const createdRequestSysIds = [];
   const createdWorkspaceSysIds = [];
   const createdGroupSysIds = [];
   const cleanupFailures = [];
+  let flowError = null;
 
   console.log("Docsera workspace foundation verification");
   console.log("");
@@ -392,6 +442,17 @@ async function main() {
     fields: "sys_id,name,label,super_class"
   });
   addCheck(checks, tableDefinition.length === 1, "workspace table metadata is installed", tableDefinition.length === 1 ? "" : JSON.stringify(tableDefinition));
+
+  const requestTableDefinition = await tableQuery(instanceUrl, session, "sys_db_object", {
+    query: "name=x_82900_docsera_workspace_provision_request",
+    fields: "sys_id,name,label,super_class"
+  });
+  addCheck(
+    checks,
+    requestTableDefinition.length === 1,
+    "workspace provision request table metadata is installed",
+    requestTableDefinition.length === 1 ? "" : JSON.stringify(requestTableDefinition)
+  );
 
   const nativeTableAccess = await tableQuery(instanceUrl, session, "sys_db_object", {
     query: "nameINsys_user_group,sys_group_has_role,sys_user_grmember",
@@ -442,18 +503,30 @@ async function main() {
   addCheck(checks, cleanText(restDefinition?.base_uri) === "/api/x_82900_docsera/docsera_runtime", "REST definition base URI matches expected value", JSON.stringify(restDefinition));
 
   const restOperations = await tableQuery(instanceUrl, session, "sys_ws_operation", {
-    query: `web_service_definition=${cleanText(restDefinition?.sys_id)}^nameINping,workspaces`,
+    query: `web_service_definition=${cleanText(restDefinition?.sys_id)}^nameINping,workspaces,workspace_provisioning_status`,
     fields: "sys_id,name,http_method,operation_uri,relative_path"
   });
   const pingOperation = restOperations.find((record) => cleanText(record.name) === "ping");
   const workspaceOperation = restOperations.find((record) => cleanText(record.name) === "workspaces");
+  const workspaceProvisioningStatusOperation = restOperations.find(
+    (record) => cleanText(record.name) === "workspace_provisioning_status"
+  );
   addCheck(checks, Boolean(pingOperation), "ping REST route metadata is installed");
   addCheck(checks, Boolean(workspaceOperation), "workspaces REST route metadata is installed");
+  addCheck(checks, Boolean(workspaceProvisioningStatusOperation), "workspace provisioning status REST route metadata is installed");
   addCheck(checks, cleanText(pingOperation?.operation_uri) === defaults.pingPath, "ping REST route URI matches expected value", JSON.stringify(pingOperation));
   addCheck(checks, cleanText(workspaceOperation?.operation_uri) === defaults.workspacePath, "workspaces REST route URI matches expected value", JSON.stringify(workspaceOperation));
+  addCheck(
+    checks,
+    cleanText(workspaceProvisioningStatusOperation?.operation_uri) === defaults.workspaceProvisioningStatusPath,
+    "workspace provisioning status REST route URI matches expected value",
+    JSON.stringify(workspaceProvisioningStatusOperation)
+  );
 
   let firstWorkspace;
   let secondWorkspace;
+  let firstProvisioningRequest;
+  let secondProvisioningRequest;
 
   try {
     const firstCreate = await fetchJson(instanceUrl, session, defaults.workspacePath, {
@@ -463,11 +536,45 @@ async function main() {
       },
       body: JSON.stringify(createWorkspacePayload())
     });
-    if (!firstCreate.ok) {
+    if (![201, 202].includes(firstCreate.status)) {
       throw new Error(`First workspace create failed with HTTP ${firstCreate.status}: ${firstCreate.text}`);
     }
+    addCheck(
+      checks,
+      [201, 202].includes(firstCreate.status),
+      "first workspace create returned a supported 201/202 provisioning contract",
+      JSON.stringify({ status: firstCreate.status, payload: firstCreate.payload, text: firstCreate.text })
+    );
 
-    firstWorkspace = normalizeWorkspaceFromRoute(firstCreate.payload);
+    const firstCreatePayload = normalizePayload(firstCreate.payload);
+    const firstRequestId = requireValue(
+      cleanText(firstCreatePayload?.provisioning?.requestId),
+      "First workspace response did not include a provisioning requestId."
+    );
+    createdRequestSysIds.push(firstRequestId);
+    const firstRequestSnapshot = (
+      await tableQuery(instanceUrl, session, "x_82900_docsera_workspace_provision_request", {
+        query: `sys_id=${firstRequestId}`,
+        fields: "sys_id,state,requested_by",
+        limit: 1
+      })
+    )[0] ?? null;
+    addCheck(checks, Boolean(firstRequestSnapshot), "first provisioning request row exists immediately after create");
+    addCheck(
+      checks,
+      ["requested", "processing", "succeeded", "failed"].includes(cleanText(firstRequestSnapshot?.state)),
+      "first provisioning request enters the worker queue state model",
+      JSON.stringify(firstRequestSnapshot)
+    );
+    firstProvisioningRequest =
+      firstCreate.status === 201
+        ? normalizeWorkspaceFromRoute(firstCreate.payload)
+        : await pollProvisioningStatus(instanceUrl, session, firstRequestId);
+    firstWorkspace = {
+      groups: firstProvisioningRequest.groups,
+      roleNames: firstProvisioningRequest.roleNames,
+      workspace: firstProvisioningRequest.workspace
+    };
     createdWorkspaceSysIds.push(requireValue(cleanText(firstWorkspace.workspace?.sysId), "First workspace response did not include workspace.sysId."));
     createdGroupSysIds.push(requireValue(cleanText(firstWorkspace.groups?.admin?.sysId), "First workspace response did not include admin group sys_id."));
     createdGroupSysIds.push(requireValue(cleanText(firstWorkspace.groups?.editor?.sysId), "First workspace response did not include editor group sys_id."));
@@ -491,11 +598,45 @@ async function main() {
       },
       body: JSON.stringify(createWorkspacePayload())
     });
-    if (!secondCreate.ok) {
+    if (![201, 202].includes(secondCreate.status)) {
       throw new Error(`Second workspace create failed with HTTP ${secondCreate.status}: ${secondCreate.text}`);
     }
+    addCheck(
+      checks,
+      [201, 202].includes(secondCreate.status),
+      "second workspace create returned a supported 201/202 provisioning contract",
+      JSON.stringify({ status: secondCreate.status, payload: secondCreate.payload, text: secondCreate.text })
+    );
 
-    secondWorkspace = normalizeWorkspaceFromRoute(secondCreate.payload);
+    const secondCreatePayload = normalizePayload(secondCreate.payload);
+    const secondRequestId = requireValue(
+      cleanText(secondCreatePayload?.provisioning?.requestId),
+      "Second workspace response did not include a provisioning requestId."
+    );
+    createdRequestSysIds.push(secondRequestId);
+    const secondRequestSnapshot = (
+      await tableQuery(instanceUrl, session, "x_82900_docsera_workspace_provision_request", {
+        query: `sys_id=${secondRequestId}`,
+        fields: "sys_id,state,requested_by",
+        limit: 1
+      })
+    )[0] ?? null;
+    addCheck(checks, Boolean(secondRequestSnapshot), "second provisioning request row exists immediately after create");
+    addCheck(
+      checks,
+      ["requested", "processing", "succeeded", "failed"].includes(cleanText(secondRequestSnapshot?.state)),
+      "second provisioning request enters the worker queue state model",
+      JSON.stringify(secondRequestSnapshot)
+    );
+    secondProvisioningRequest =
+      secondCreate.status === 201
+        ? normalizeWorkspaceFromRoute(secondCreate.payload)
+        : await pollProvisioningStatus(instanceUrl, session, secondRequestId);
+    secondWorkspace = {
+      groups: secondProvisioningRequest.groups,
+      roleNames: secondProvisioningRequest.roleNames,
+      workspace: secondProvisioningRequest.workspace
+    };
     createdWorkspaceSysIds.push(requireValue(cleanText(secondWorkspace.workspace?.sysId), "Second workspace response did not include workspace.sysId."));
     createdGroupSysIds.push(requireValue(cleanText(secondWorkspace.groups?.admin?.sysId), "Second workspace response did not include admin group sys_id."));
     createdGroupSysIds.push(requireValue(cleanText(secondWorkspace.groups?.editor?.sysId), "Second workspace response did not include editor group sys_id."));
@@ -513,6 +654,24 @@ async function main() {
       })
     );
 
+    const requestRecords = await tableQuery(instanceUrl, session, "x_82900_docsera_workspace_provision_request", {
+      query: `sys_idIN${createdRequestSysIds.join(",")}`,
+      fields: "sys_id,name,workspace_slug,state,workspace,admin_group,editor_group,error_code,error_message,requested_by"
+    });
+    const requestById = new Map(requestRecords.map((record) => [cleanText(record.sys_id), record]));
+    for (const [requestId, workspaceResult] of [
+      [firstRequestId, firstWorkspace],
+      [secondRequestId, secondWorkspace]
+    ]) {
+      const requestRecord = requestById.get(requestId);
+      addCheck(checks, Boolean(requestRecord), `provision request ${requestId} is persisted`);
+      addCheck(checks, cleanText(requestRecord?.state) === "succeeded", `provision request ${requestId} reached succeeded state`, JSON.stringify(requestRecord));
+      addCheck(checks, cleanText(requestRecord?.workspace) === cleanText(workspaceResult.workspace?.sysId), `provision request ${requestId} stores the created workspace ref`, JSON.stringify(requestRecord));
+      addCheck(checks, cleanText(requestRecord?.admin_group) === cleanText(workspaceResult.groups?.admin?.sysId), `provision request ${requestId} stores the admin group ref`, JSON.stringify(requestRecord));
+      addCheck(checks, cleanText(requestRecord?.editor_group) === cleanText(workspaceResult.groups?.editor?.sysId), `provision request ${requestId} stores the editor group ref`, JSON.stringify(requestRecord));
+      addCheck(checks, cleanText(requestRecord?.requested_by) === currentUserSysId, `provision request ${requestId} stores the authenticated request creator`, JSON.stringify(requestRecord));
+    }
+
     const workspaceRecords = await tableQuery(instanceUrl, session, "x_82900_docsera_workspace", {
       query: `sys_idIN${createdWorkspaceSysIds.join(",")}`,
       fields: "sys_id,name,workspace_slug,status,icon_type,icon_key,icon_label,toc_default_visible,page_width,admin_group,editor_group,creator,short_description"
@@ -529,7 +688,7 @@ async function main() {
       addCheck(checks, cleanText(record?.icon_type) === "builtin", `workspace record ${workspaceResult.workspace?.slug} stores the default icon type`);
       addCheck(checks, cleanText(record?.icon_key) === "docsera-workspace", `workspace record ${workspaceResult.workspace?.slug} stores the default icon key`);
       addCheck(checks, cleanText(record?.icon_label) === "Docsera workspace icon", `workspace record ${workspaceResult.workspace?.slug} stores the default icon label`);
-      addCheck(checks, String(record?.toc_default_visible) === "true", `workspace record ${workspaceResult.workspace?.slug} stores the default ToC visibility`, JSON.stringify(record));
+      addCheck(checks, normalizeBoolean(record?.toc_default_visible), `workspace record ${workspaceResult.workspace?.slug} stores the default ToC visibility`, JSON.stringify(record));
       addCheck(checks, cleanText(record?.page_width) === "readable", `workspace record ${workspaceResult.workspace?.slug} stores the default page width`, JSON.stringify(record));
       addCheck(checks, cleanText(record?.admin_group).length > 0, `workspace record ${workspaceResult.workspace?.slug} stores a non-empty admin_group`);
       addCheck(checks, cleanText(record?.editor_group).length > 0, `workspace record ${workspaceResult.workspace?.slug} stores a non-empty editor_group`);
@@ -636,8 +795,18 @@ async function main() {
         text: duplicateInsert.text
       })
     );
+  } catch (error) {
+    flowError = error instanceof Error ? error.message : String(error);
+    addCheck(checks, false, "workspace provisioning flow completed end to end", flowError);
   } finally {
     if (!keepData) {
+      for (const requestSysId of [...new Set(createdRequestSysIds)].reverse()) {
+        const deleted = await tableDelete(instanceUrl, session, "x_82900_docsera_workspace_provision_request", requestSysId);
+        if (!deleted) {
+          cleanupFailures.push(`request:${requestSysId}`);
+        }
+      }
+
       for (const workspaceSysId of [...new Set(createdWorkspaceSysIds)].reverse()) {
         const deleted = await tableDelete(instanceUrl, session, "x_82900_docsera_workspace", workspaceSysId);
         if (!deleted) {
@@ -656,6 +825,11 @@ async function main() {
 
   addCheck(checks, !keepData, "cleanup was configured for this verification run", keepData ? "The verifier ran with --keep-data." : "");
   addCheck(checks, cleanupFailures.length === 0, "verification data cleanup completed", cleanupFailures.join(", "));
+
+  if (flowError) {
+    console.log("");
+    console.log(`Provisioning flow error: ${flowError}`);
+  }
 
   for (const check of checks) {
     printCheck(check);

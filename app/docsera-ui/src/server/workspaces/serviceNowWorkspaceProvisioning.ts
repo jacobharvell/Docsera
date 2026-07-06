@@ -1,224 +1,83 @@
 import { GlideDateTime, GlideRecord, gs } from "@servicenow/glide";
 import {
   DOCSERA_WORKSPACE_TABLE,
+  createWorkspaceDraft,
   type WorkspaceDraftInput,
   type WorkspaceGroup,
   type WorkspaceRecord,
-  WORKSPACE_ROLE_NAMES,
-  provisionWorkspace
+  WORKSPACE_ROLE_NAMES
 } from "./serverWorkspaceDomain.ts";
 
-type WorkspaceProvisioningDiagnosticSnapshot = {
-  hasAdminRole: boolean;
-  hasDocseraAdminRole: boolean;
-  hasEditorRole: boolean;
-  hasWorkspaceAdminRole: boolean;
-  groupExistsBeforeInsert: boolean;
-  userName: string;
-  userSysId: string;
+const DOCSERA_WORKSPACE_PROVISION_REQUEST_TABLE = "x_82900_docsera_workspace_provision_request";
+const PROVISION_STATUS_ROUTE_PATH =
+  "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status";
+type ProvisionRequestState = "requested" | "processing" | "succeeded" | "failed";
+
+type ProvisionRequestRecord = {
+  adminGroupSysId: string;
+  editorGroupSysId: string;
+  errorCode: string;
+  errorMessage: string;
+  requestId: string;
+  state: ProvisionRequestState;
+  workspaceSysId: string;
 };
+
+type WorkspaceProvisioningOutcome =
+  | {
+      kind: "failed";
+      errorCode: string;
+      errorMessage: string;
+      requestId: string;
+    }
+  | {
+      kind: "pending";
+      requestId: string;
+      state: "processing" | "requested";
+    }
+  | {
+      adminGroup: WorkspaceGroup;
+      editorGroup: WorkspaceGroup;
+      kind: "succeeded";
+      requestId: string;
+      workspace: WorkspaceRecord;
+    };
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
-}
-
-function readLastErrorMessage(
-  record: GlideRecord,
-): string {
-  return cleanText(
-    (
-      record as GlideRecord & {
-        getLastErrorMessage?: () => string;
-      }
-    ).getLastErrorMessage?.()
-  );
-}
-
-function describeThrownInsertFailure(fallbackMessage: string, error: unknown): string {
-  const errorMessage = cleanText(error instanceof Error ? error.message : error);
-  return errorMessage && errorMessage.startsWith(fallbackMessage) ? errorMessage : fallbackMessage;
 }
 
 function normalizeBoolean(value: unknown): boolean {
   return value === true || value === "true" || value === 1 || value === "1";
 }
 
-function captureGroupCreateDiagnostics(groupName: string): WorkspaceProvisioningDiagnosticSnapshot {
-  const currentUserSysId = cleanText(gs.getUserID());
-  const currentUserName = cleanText(gs.getUserName());
-  const existing = new GlideRecord("sys_user_group");
-  existing.addQuery("name", groupName);
-  existing.setLimit(1);
-  existing.query();
-  return {
-    hasAdminRole: Boolean(gs.hasRole("admin")),
-    hasDocseraAdminRole: Boolean(gs.hasRole(WORKSPACE_ROLE_NAMES.docseraAdmin)),
-    hasEditorRole: Boolean(gs.hasRole(WORKSPACE_ROLE_NAMES.editor)),
-    hasWorkspaceAdminRole: Boolean(gs.hasRole(WORKSPACE_ROLE_NAMES.workspaceAdmin)),
-    groupExistsBeforeInsert: existing.next(),
-    userName: currentUserName,
-    userSysId: currentUserSysId
-  };
+function serializeBoolean(value: boolean): string {
+  return value ? "true" : "false";
+}
+
+function readLastErrorMessage(record: {
+  getLastErrorMessage?: () => string;
+}): string {
+  return cleanText(record.getLastErrorMessage?.());
 }
 
 function logProvisioningFailure(
   event: string,
   safeMessage: string,
-  detail?: string,
-  diagnostics?: WorkspaceProvisioningDiagnosticSnapshot
+  detail?: string
 ): void {
   const payload = {
     message: safeMessage,
-    detail: cleanText(detail) || undefined,
-    diagnostics
+    detail: cleanText(detail) || undefined
   };
   gs.error(`[Docsera workspace provisioning] ${event} ${JSON.stringify(payload)}`);
 }
 
-function getRoleSysId(roleName: string): string {
-  const role = new GlideRecord("sys_user_role");
-  role.addQuery("name", roleName);
-  role.setLimit(1);
-  role.query();
-
-  if (!role.next()) {
-    throw new Error(`Required Docsera role is missing: ${roleName}`);
-  }
-
-  return cleanText(role.getUniqueValue());
-}
-
-function createGroup(input: { name: string; description: string }): WorkspaceGroup {
-  gs.info(`[Docsera workspace provisioning] createGroup start ${input.name}`);
-  let diagnostics: WorkspaceProvisioningDiagnosticSnapshot;
-  try {
-    diagnostics = captureGroupCreateDiagnostics(input.name);
-    gs.info(
-      `[Docsera workspace provisioning] createGroup diagnostics ${JSON.stringify({
-        hasAdminRole: diagnostics.hasAdminRole,
-        hasDocseraAdminRole: diagnostics.hasDocseraAdminRole,
-        hasEditorRole: diagnostics.hasEditorRole,
-        hasWorkspaceAdminRole: diagnostics.hasWorkspaceAdminRole,
-        groupExistsBeforeInsert: diagnostics.groupExistsBeforeInsert,
-        userName: diagnostics.userName,
-        userSysId: diagnostics.userSysId
-      })}`
-    );
-  } catch (error) {
-    gs.error(
-      `[Docsera workspace provisioning] createGroup diagnostics failed ${input.name}: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-    throw error;
-  }
-
-  if (diagnostics.groupExistsBeforeInsert) {
-    throw new Error(`A ServiceNow group named ${input.name} already exists.`);
-  }
-
-  const group = new GlideRecord("sys_user_group");
-  group.initialize();
-  group.setValue("name", input.name);
-  group.setValue("description", input.description);
-
-  try {
-    gs.info(`[Docsera workspace provisioning] createGroup insert begin ${input.name}`);
-    const sysId = cleanText(group.insert());
-
-    if (!sysId) {
-      const safeMessage = "Failed to create a required workspace access group.";
-      logProvisioningFailure(
-        `createGroup insert failed ${input.name}`,
-        safeMessage,
-        readLastErrorMessage(group),
-        diagnostics
-      );
-      throw new Error(safeMessage);
-    }
-
-    gs.info(`[Docsera workspace provisioning] createGroup insert success ${input.name} ${sysId}`);
-
-    return {
-      sysId,
-      name: input.name,
-      description: input.description
-    };
-  } catch (error) {
-    const safeMessage = "Failed to create a required workspace access group.";
-    logProvisioningFailure(
-      `createGroup exception ${input.name}`,
-      safeMessage,
-      error instanceof Error ? error.message : String(error),
-      diagnostics
-    );
-    throw new Error(describeThrownInsertFailure(safeMessage, error));
-  }
-}
-
-function assignRoleToGroup(groupSysId: string, roleName: string): void {
-  const roleSysId = getRoleSysId(roleName);
-  const membership = new GlideRecord("sys_group_has_role");
-  membership.addQuery("group", groupSysId);
-  membership.addQuery("role", roleSysId);
-  membership.setLimit(1);
-  membership.query();
-
-  if (membership.next()) {
-    return;
-  }
-
-  membership.initialize();
-  membership.setValue("group", groupSysId);
-  membership.setValue("role", roleSysId);
-  const sysId = cleanText(membership.insert());
-
-  if (!sysId) {
-    const safeMessage = "Failed to assign a required workspace role.";
-    logProvisioningFailure(
-      `assignRoleToGroup insert failed ${groupSysId}`,
-      safeMessage,
-      readLastErrorMessage(membership)
-    );
-    throw new Error(safeMessage);
-  }
-}
-
-function addUserToGroup(groupSysId: string, userSysId: string): void {
-  const membership = new GlideRecord("sys_user_grmember");
-  membership.addQuery("group", groupSysId);
-  membership.addQuery("user", userSysId);
-  membership.setLimit(1);
-  membership.query();
-
-  if (membership.next()) {
-    return;
-  }
-
-  membership.initialize();
-  membership.setValue("group", groupSysId);
-  membership.setValue("user", userSysId);
-  const sysId = cleanText(membership.insert());
-
-  if (!sysId) {
-    const safeMessage = "Failed to add the workspace creator to the admin group.";
-    logProvisioningFailure(
-      `addUserToGroup insert failed ${groupSysId}`,
-      safeMessage,
-      readLastErrorMessage(membership)
-    );
-    throw new Error(safeMessage);
-  }
-}
-
-function deleteGroup(groupSysId: string): void {
-  const group = new GlideRecord("sys_user_group");
-  if (group.get(groupSysId)) {
-    group.deleteRecord();
-  }
-}
-
-function mapWorkspaceRecord(record: GlideRecord): WorkspaceRecord {
+function mapWorkspaceRecord(record: {
+  getUniqueValue: () => string;
+  getValue: (fieldName: string) => unknown;
+  getDisplayValue: (fieldName: string) => unknown;
+}): WorkspaceRecord {
   return {
     sysId: cleanText(record.getUniqueValue()),
     name: cleanText(record.getValue("name")),
@@ -245,48 +104,93 @@ function mapWorkspaceRecord(record: GlideRecord): WorkspaceRecord {
   };
 }
 
-function saveWorkspace(workspace: WorkspaceRecord): WorkspaceRecord {
-  const record = new GlideRecord(DOCSERA_WORKSPACE_TABLE);
-  record.initialize();
-  record.setValue("name", workspace.name);
-  record.setValue("workspace_slug", workspace.slug);
-  record.setValue("short_description", workspace.shortDescription ?? "");
-  record.setValue("icon_type", workspace.icon.type);
-  record.setValue("icon_key", workspace.icon.key);
-  record.setValue("icon_label", workspace.icon.label);
-  record.setValue("icon_asset_path", workspace.icon.assetPath ?? "");
-  record.setValue("status", workspace.status);
-  record.setValue("admin_group", workspace.adminGroupSysId);
-  record.setValue("editor_group", workspace.editorGroupSysId);
-  record.setValue("creator", workspace.creatorUserSysId);
-  record.setValue("toc_default_visible", workspace.layout.tocVisibleByDefault);
-  record.setValue("page_width", workspace.layout.pageWidth);
-  const sysId = cleanText(record.insert());
+function mapGroupRecord(record: {
+  getUniqueValue: () => string;
+  getValue: (fieldName: string) => unknown;
+}): WorkspaceGroup {
+  return {
+    sysId: cleanText(record.getUniqueValue()),
+    name: cleanText(record.getValue("name")),
+    description: cleanText(record.getValue("description")) || undefined
+  };
+}
 
-  if (!sysId) {
-    const safeMessage = "Failed to create the workspace record.";
-    logProvisioningFailure(
-      `saveWorkspace insert failed ${workspace.slug}`,
-      safeMessage,
-      readLastErrorMessage(record)
-    );
-    throw new Error(safeMessage);
+function readRequestState(value: unknown): ProvisionRequestState {
+  const state = cleanText(value);
+  if (state === "processing" || state === "succeeded" || state === "failed") {
+    return state;
   }
 
+  return "requested";
+}
+
+function readProvisionRequestRecord(requestId: string): ProvisionRequestRecord | null {
+  const sysId = cleanText(requestId);
+  if (!sysId) {
+    return null;
+  }
+
+  const record = new GlideRecord(DOCSERA_WORKSPACE_PROVISION_REQUEST_TABLE);
   if (!record.get(sysId)) {
-    throw new Error(`Workspace ${sysId} was inserted but could not be reloaded.`);
+    return null;
+  }
+
+  return {
+    adminGroupSysId: cleanText(record.getValue("admin_group")),
+    editorGroupSysId: cleanText(record.getValue("editor_group")),
+    errorCode: cleanText(record.getValue("error_code")),
+    errorMessage: cleanText(record.getValue("error_message")),
+    requestId: sysId,
+    state: readRequestState(record.getValue("state")),
+    workspaceSysId: cleanText(record.getValue("workspace"))
+  };
+}
+
+function loadWorkspaceBySysId(workspaceSysId: string): WorkspaceRecord | null {
+  const sysId = cleanText(workspaceSysId);
+  if (!sysId) {
+    return null;
+  }
+
+  const record = new GlideRecord(DOCSERA_WORKSPACE_TABLE);
+  if (!record.get(sysId)) {
+    return null;
   }
 
   return mapWorkspaceRecord(record);
 }
 
-function listReservedWorkspaceSlugs(): string[] {
-  const record = new GlideRecord(DOCSERA_WORKSPACE_TABLE);
-  record.query();
+function loadGroupBySysId(groupSysId: string): WorkspaceGroup | null {
+  const sysId = cleanText(groupSysId);
+  if (!sysId) {
+    return null;
+  }
 
+  const record = new GlideRecord("sys_user_group");
+  if (!record.get(sysId)) {
+    return null;
+  }
+
+  return mapGroupRecord(record);
+}
+
+function listReservedWorkspaceSlugs(): string[] {
   const slugs: string[] = [];
-  while (record.next()) {
-    const slug = cleanText(record.getValue("workspace_slug"));
+
+  const workspaces = new GlideRecord(DOCSERA_WORKSPACE_TABLE);
+  workspaces.query();
+  while (workspaces.next()) {
+    const slug = cleanText(workspaces.getValue("workspace_slug"));
+    if (slug) {
+      slugs.push(slug);
+    }
+  }
+
+  const requests = new GlideRecord(DOCSERA_WORKSPACE_PROVISION_REQUEST_TABLE);
+  requests.addQuery("state", "IN", "requested,processing");
+  requests.query();
+  while (requests.next()) {
+    const slug = cleanText(requests.getValue("workspace_slug"));
     if (slug) {
       slugs.push(slug);
     }
@@ -295,34 +199,128 @@ function listReservedWorkspaceSlugs(): string[] {
   return slugs;
 }
 
+function createProvisionRequest(input: WorkspaceDraftInput): string {
+  const draft = createWorkspaceDraft(input, listReservedWorkspaceSlugs());
+  const record = new GlideRecord(DOCSERA_WORKSPACE_PROVISION_REQUEST_TABLE);
+  record.initialize();
+  record.setValue("name", draft.name);
+  record.setValue("workspace_slug", draft.slug);
+  record.setValue("workspace_group_key", draft.workspaceGroupKey);
+  record.setValue("admin_group_name", draft.adminGroupName);
+  record.setValue("editor_group_name", draft.editorGroupName);
+  record.setValue("short_description", draft.shortDescription ?? "");
+  record.setValue("icon_type", draft.icon.type);
+  record.setValue("icon_key", draft.icon.key);
+  record.setValue("icon_label", draft.icon.label);
+  record.setValue("icon_asset_path", draft.icon.assetPath ?? "");
+  record.setValue("workspace_status", draft.status);
+  record.setValue("toc_default_visible", serializeBoolean(draft.layout.tocVisibleByDefault));
+  record.setValue("page_width", draft.layout.pageWidth);
+  record.setValue("requested_by", draft.creatorUserSysId);
+  record.setValue("state", "requested");
+  record.setValue("error_code", "");
+  record.setValue("error_message", "");
+
+  const requestId = cleanText(record.insert());
+  if (!requestId) {
+    const safeMessage = "Failed to queue workspace provisioning.";
+    logProvisioningFailure(
+      `createProvisionRequest insert failed ${draft.slug}`,
+      safeMessage,
+      readLastErrorMessage(record)
+    );
+    throw new Error(safeMessage);
+  }
+
+  return requestId;
+}
+
+function buildStatusPath(requestId: string): string {
+  return `${PROVISION_STATUS_ROUTE_PATH}?requestId=${encodeURIComponent(requestId)}`;
+}
+
+function readProvisionRequestImmediately(requestId: string): ProvisionRequestRecord | null {
+  return readProvisionRequestRecord(requestId);
+}
+
+function buildSucceededOutcome(request: ProvisionRequestRecord): WorkspaceProvisioningOutcome {
+  const workspace = loadWorkspaceBySysId(request.workspaceSysId);
+  const adminGroup = loadGroupBySysId(request.adminGroupSysId);
+  const editorGroup = loadGroupBySysId(request.editorGroupSysId);
+
+  if (!workspace || !adminGroup || !editorGroup) {
+    throw new Error("Workspace provisioning finished without complete result data.");
+  }
+
+  return {
+    adminGroup,
+    editorGroup,
+    kind: "succeeded",
+    requestId: request.requestId,
+    workspace
+  };
+}
+
+function buildOutcomeFromRequestRecord(
+  request: ProvisionRequestRecord | null
+): WorkspaceProvisioningOutcome {
+  if (!request) {
+    throw new Error("Workspace provisioning request could not be found.");
+  }
+
+  if (request.state === "succeeded") {
+    return buildSucceededOutcome(request);
+  }
+
+  if (request.state === "failed") {
+    return {
+      kind: "failed",
+      errorCode: request.errorCode || "provisioning_failed",
+      errorMessage: request.errorMessage || "Workspace provisioning failed.",
+      requestId: request.requestId
+    };
+  }
+
+  return {
+    kind: "pending",
+    requestId: request.requestId,
+    state: request.state
+  };
+}
+
 export function createServiceNowWorkspaceProvisioningService() {
   return {
-    async createWorkspace(input: WorkspaceDraftInput) {
+    async createWorkspace(input: WorkspaceDraftInput): Promise<WorkspaceProvisioningOutcome> {
       const creatorUserSysId = cleanText(gs.getUserID());
       if (!creatorUserSysId) {
         throw new Error("The current ServiceNow user could not be resolved.");
       }
 
-      const createdOn = new GlideDateTime().getDisplayValue();
-      return provisionWorkspace(
-        {
-          ...input,
-          creatorUserSysId,
-          creatorUserName: cleanText(gs.getUserName()),
-          createdOn
-        },
-        {
-          createGroup: async ({ name, description }) => createGroup({ name, description }),
-          assignRoleToGroup: async (groupSysId, roleName) => assignRoleToGroup(groupSysId, roleName),
-          addUserToGroup: async ({ groupSysId, userSysId }) => addUserToGroup(groupSysId, userSysId),
-          saveWorkspace: async (workspace) => saveWorkspace(workspace),
-          deleteGroup: async (groupSysId) => deleteGroup(groupSysId),
-          listReservedWorkspaceSlugs: async () => listReservedWorkspaceSlugs()
-        },
-        listReservedWorkspaceSlugs()
-      );
+      const requestId = createProvisionRequest({
+        ...input,
+        createdOn: new GlideDateTime().getDisplayValue(),
+        creatorUserName: cleanText(gs.getUserName()),
+        creatorUserSysId
+      });
+
+      return buildOutcomeFromRequestRecord(readProvisionRequestImmediately(requestId));
     },
+
+    async getProvisioningStatus(requestId: string): Promise<WorkspaceProvisioningOutcome | null> {
+      const request = readProvisionRequestRecord(requestId);
+      if (!request) {
+        return null;
+      }
+
+      return buildOutcomeFromRequestRecord(request);
+    },
+
     listReservedWorkspaceSlugs,
-    roleNames: WORKSPACE_ROLE_NAMES
+
+    roleNames: WORKSPACE_ROLE_NAMES,
+
+    statusPathFor(requestId: string): string {
+      return buildStatusPath(requestId);
+    }
   };
 }

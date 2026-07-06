@@ -1,0 +1,96 @@
+{
+  "name": "Docsera Global Workspace Provisioning Worker Queue 0.1.0 Companion",
+  "version": "0.1.0",
+  "artifactRevision": "worker-queue-companion-r2",
+  "buildType": "global",
+  "generatedAt": "2026-07-06 14:23:18",
+  "remoteUpdateSetSysId": "cbb4d31e2a5358f32458ac92ba22a522",
+  "sourceDistRoot": "dist",
+  "artifactFile": "sys_remote_update_set_docsera_global_workspace_provisioning_worker_queue_0_1_0_companion.xml",
+  "records": [
+    {
+      "sourceFile": "synthetic/sys_package_global.xml",
+      "table": "sys_package",
+      "targetName": "Global",
+      "targetSysId": "global",
+      "updateName": "sys_package_global"
+    },
+    {
+      "sourceFile": "synthetic/sys_scope_global.xml",
+      "table": "sys_scope",
+      "targetName": "global",
+      "targetSysId": "global",
+      "updateName": "sys_scope_global"
+    },
+    {
+      "sourceFile": "update/sys_module_c91f8afbb5884bea9f4169994811d937.xml",
+      "table": "sys_module",
+      "targetName": "/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-provision-request.js",
+      "targetSysId": "c91f8afbb5884bea9f4169994811d937",
+      "updateName": "sys_module_c91f8afbb5884bea9f4169994811d937"
+    },
+    {
+      "sourceFile": "update/sys_module_d9b48b4fd7c4406583535934478c82db.xml",
+      "table": "sys_module",
+      "targetName": "sys_module_d9b48b4fd7c4406583535934478c82db",
+      "targetSysId": "d9b48b4fd7c4406583535934478c82db",
+      "updateName": "sys_module_d9b48b4fd7c4406583535934478c82db"
+    },
+    {
+      "sourceFile": "update/sys_module_dffea7d69a244e5ebc8cb193a29c5e92.xml",
+      "table": "sys_module",
+      "targetName": "/global/docsera-global-workspace-bridge/0.1.0/src/server/script-includes/docsera-global-workspace-provisioning-bridge.js",
+      "targetSysId": "dffea7d69a244e5ebc8cb193a29c5e92",
+      "updateName": "sys_module_dffea7d69a244e5ebc8cb193a29c5e92"
+    },
+    {
+      "sourceFile": "update/sys_module_e1db765a6cbc4f568b5196435a42ef7b.xml",
+      "table": "sys_module",
+      "targetName": "/global/docsera-global-workspace-bridge/0.1.0/package.json",
+      "targetSysId": "e1db765a6cbc4f568b5196435a42ef7b",
+      "updateName": "sys_module_e1db765a6cbc4f568b5196435a42ef7b"
+    },
+    {
+      "sourceFile": "update/sys_scope_privilege_180009d4ff894e0baadce8a57b91fd2f.xml",
+      "table": "sys_scope_privilege",
+      "targetName": "sys_scope_privilege_180009d4ff894e0baadce8a57b91fd2f",
+      "targetSysId": "180009d4ff894e0baadce8a57b91fd2f",
+      "updateName": "sys_scope_privilege_180009d4ff894e0baadce8a57b91fd2f"
+    },
+    {
+      "sourceFile": "update/sys_scope_privilege_9bee1d780be04e5790100aedb520cf64.xml",
+      "table": "sys_scope_privilege",
+      "targetName": "sys_scope_privilege_9bee1d780be04e5790100aedb520cf64",
+      "targetSysId": "9bee1d780be04e5790100aedb520cf64",
+      "updateName": "sys_scope_privilege_9bee1d780be04e5790100aedb520cf64"
+    },
+    {
+      "sourceFile": "update/sys_scope_privilege_9f92dc99a2cc467792837aaa2eda7685.xml",
+      "table": "sys_scope_privilege",
+      "targetName": "sys_scope_privilege_9f92dc99a2cc467792837aaa2eda7685",
+      "targetSysId": "9f92dc99a2cc467792837aaa2eda7685",
+      "updateName": "sys_scope_privilege_9f92dc99a2cc467792837aaa2eda7685"
+    },
+    {
+      "sourceFile": "update/sys_scope_privilege_e27d95e53c7447b29ab1fb9f94284418.xml",
+      "table": "sys_scope_privilege",
+      "targetName": "sys_scope_privilege_e27d95e53c7447b29ab1fb9f94284418",
+      "targetSysId": "e27d95e53c7447b29ab1fb9f94284418",
+      "updateName": "sys_scope_privilege_e27d95e53c7447b29ab1fb9f94284418"
+    },
+    {
+      "sourceFile": "update/sys_script_fa8109eeb6ed4c3e91c11238db780568.xml",
+      "table": "sys_script",
+      "targetName": "Docsera Workspace Provision Request Worker",
+      "targetSysId": "fa8109eeb6ed4c3e91c11238db780568",
+      "updateName": "sys_script_fa8109eeb6ed4c3e91c11238db780568"
+    },
+    {
+      "sourceFile": "update/sys_script_include_abf83bf6db1e46dea88c97ec493153bc.xml",
+      "table": "sys_script_include",
+      "targetName": "DocseraGlobalWorkspaceProvisioningBridge",
+      "targetSysId": "abf83bf6db1e46dea88c97ec493153bc",
+      "updateName": "sys_script_include_abf83bf6db1e46dea88c97ec493153bc"
+    }
+  ]
+}

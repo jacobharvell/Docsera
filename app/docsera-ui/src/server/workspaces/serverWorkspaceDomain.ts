@@ -69,12 +69,19 @@ export type WorkspaceGroup = {
   description?: string;
 };
 
+export type WorkspaceProvisionedAccessGroups = {
+  adminGroup: WorkspaceGroup;
+  editorGroup: WorkspaceGroup;
+};
+
 export type WorkspaceSlugReservation = string | { slug?: string; workspaceSlug?: string };
 
 export type WorkspaceProvisioningDependencies = {
-  createGroup: (input: { name: string; description: string; type: "admin" | "editor" }) => Promise<WorkspaceGroup>;
-  assignRoleToGroup: (groupSysId: string, roleName: string) => Promise<void>;
-  addUserToGroup: (input: { groupSysId: string; userSysId: string }) => Promise<void>;
+  createGroup?: (input: { name: string; description: string; type: "admin" | "editor" }) => Promise<WorkspaceGroup>;
+  assignRoleToGroup?: (groupSysId: string, roleName: string) => Promise<void>;
+  addUserToGroup?: (input: { groupSysId: string; userSysId: string }) => Promise<void>;
+  provisionAccessGroups?: (draft: WorkspaceDraft) => Promise<WorkspaceProvisionedAccessGroups>;
+  deleteProvisionedAccessGroups?: (groups: WorkspaceProvisionedAccessGroups) => Promise<void>;
   saveWorkspace: (workspace: WorkspaceRecord) => Promise<WorkspaceRecord>;
   deleteGroup?: (groupSysId: string) => Promise<void>;
   listReservedWorkspaceSlugs?: () => Promise<WorkspaceSlugReservation[]> | WorkspaceSlugReservation[];
@@ -348,8 +355,14 @@ export function evaluateWorkspaceCapabilities(
 
 async function cleanupProvisionedGroups(
   dependencies: WorkspaceProvisioningDependencies,
-  groupSysIds: string[]
+  groupSysIds: string[],
+  provisionedGroups?: WorkspaceProvisionedAccessGroups
 ): Promise<void> {
+  if (provisionedGroups && typeof dependencies.deleteProvisionedAccessGroups === "function") {
+    await dependencies.deleteProvisionedAccessGroups(provisionedGroups);
+    return;
+  }
+
   if (typeof dependencies.deleteGroup !== "function") {
     return;
   }
@@ -370,18 +383,6 @@ export async function provisionWorkspace(
     throw new TypeError("Workspace provisioning dependencies are required.");
   }
 
-  if (typeof dependencies.createGroup !== "function") {
-    throw new TypeError("A createGroup dependency is required.");
-  }
-
-  if (typeof dependencies.assignRoleToGroup !== "function") {
-    throw new TypeError("An assignRoleToGroup dependency is required.");
-  }
-
-  if (typeof dependencies.addUserToGroup !== "function") {
-    throw new TypeError("An addUserToGroup dependency is required.");
-  }
-
   if (typeof dependencies.saveWorkspace !== "function") {
     throw new TypeError("A saveWorkspace dependency is required.");
   }
@@ -391,8 +392,37 @@ export async function provisionWorkspace(
     draft = reconcileWorkspaceDraftSlug(draft, await dependencies.listReservedWorkspaceSlugs());
   }
   const createdGroupSysIds: string[] = [];
+  let provisionedGroups: WorkspaceProvisionedAccessGroups | undefined;
 
   try {
+    if (typeof dependencies.provisionAccessGroups === "function") {
+      provisionedGroups = await dependencies.provisionAccessGroups(draft);
+      const workspace = await dependencies.saveWorkspace({
+        ...draft,
+        adminGroupSysId: provisionedGroups.adminGroup.sysId,
+        editorGroupSysId: provisionedGroups.editorGroup.sysId
+      });
+
+      return {
+        draft,
+        workspace,
+        adminGroup: provisionedGroups.adminGroup,
+        editorGroup: provisionedGroups.editorGroup
+      };
+    }
+
+    if (typeof dependencies.createGroup !== "function") {
+      throw new TypeError("A createGroup dependency is required.");
+    }
+
+    if (typeof dependencies.assignRoleToGroup !== "function") {
+      throw new TypeError("An assignRoleToGroup dependency is required.");
+    }
+
+    if (typeof dependencies.addUserToGroup !== "function") {
+      throw new TypeError("An addUserToGroup dependency is required.");
+    }
+
     const adminGroup = await dependencies.createGroup({
       name: draft.adminGroupName,
       description: `Workspace admin group for ${draft.name}`,
@@ -430,7 +460,7 @@ export async function provisionWorkspace(
       editorGroup
     };
   } catch (error) {
-    await cleanupProvisionedGroups(dependencies, createdGroupSysIds);
+    await cleanupProvisionedGroups(dependencies, createdGroupSysIds, provisionedGroups);
     throw error;
   }
 }

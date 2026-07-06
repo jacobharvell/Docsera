@@ -288,6 +288,34 @@ test("provisionWorkspace rechecks reserved slugs before group creation when the 
   expect(result.editorGroup.name).toBe("Docsera_HR_Docs_2_Editors");
 });
 
+test("provisionWorkspace accepts a bulk access bridge dependency", async () => {
+  const result = await provisionWorkspace(
+    {
+      name: "Bridge Workspace",
+      creatorUserSysId: "user-123"
+    },
+    {
+      provisionAccessGroups: async (draft) => ({
+        adminGroup: {
+          sysId: `${draft.adminGroupName}-sys-id`,
+          name: draft.adminGroupName
+        },
+        editorGroup: {
+          sysId: `${draft.editorGroupName}-sys-id`,
+          name: draft.editorGroupName
+        }
+      }),
+      saveWorkspace: async (workspace) => ({
+        ...workspace,
+        sysId: "workspace-bridge-001"
+      })
+    }
+  );
+
+  expect(result.workspace.adminGroupSysId).toBe("Docsera_Bridge_Workspace_Admins-sys-id");
+  expect(result.workspace.editorGroupSysId).toBe("Docsera_Bridge_Workspace_Editors-sys-id");
+});
+
 test("provisionWorkspace rolls back created groups when persistence fails and deleteGroup is available", async () => {
   const deletedGroupSysIds: string[] = [];
 
@@ -314,5 +342,41 @@ test("provisionWorkspace rolls back created groups when persistence fails and de
   expect(deletedGroupSysIds).toEqual([
     "Docsera_Broken_Workspace_Editors-sys-id",
     "Docsera_Broken_Workspace_Admins-sys-id"
+  ]);
+});
+
+test("provisionWorkspace rolls back bridge-provisioned groups when persistence fails", async () => {
+  const deletedProvisionedGroups: string[] = [];
+
+  await expect(
+    provisionWorkspace(
+      {
+        name: "Broken Bridge Workspace",
+        creatorUserSysId: "user-123"
+      },
+      {
+        provisionAccessGroups: async (draft) => ({
+          adminGroup: {
+            sysId: `${draft.adminGroupName}-sys-id`,
+            name: draft.adminGroupName
+          },
+          editorGroup: {
+            sysId: `${draft.editorGroupName}-sys-id`,
+            name: draft.editorGroupName
+          }
+        }),
+        deleteProvisionedAccessGroups: async (groups) => {
+          deletedProvisionedGroups.push(groups.editorGroup.sysId, groups.adminGroup.sysId);
+        },
+        saveWorkspace: async () => {
+          throw new Error("Bridge persistence failed");
+        }
+      }
+    )
+  ).rejects.toThrow("Bridge persistence failed");
+
+  expect(deletedProvisionedGroups).toEqual([
+    "Docsera_Broken_Bridge_Workspace_Editors-sys-id",
+    "Docsera_Broken_Bridge_Workspace_Admins-sys-id"
   ]);
 });

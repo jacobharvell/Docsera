@@ -212,7 +212,7 @@ For workspace provisioning, the accepted platform-safe direction is a constraine
 
 Future self-service workspace creation remains separate from this provisioning boundary.
 
-## Current Conclusion
+## Pre-Bridge Conclusion
 
 Current status is:
 
@@ -220,6 +220,8 @@ Current status is:
 - ready for temporary operator test-data management
 - not yet ready for end-to-end runtime workspace provisioning because the scoped runtime route still cannot create `sys_user_group` records while `sys_user_group.create_access` remains `false`
 - not approved to solve the problem by changing OOTB `sys_user_group` application access
+
+This section reflects the earlier direct scoped-insert phase before the bridge spike below.
 
 ## Bridge Feasibility in the Current Toolchain
 
@@ -238,7 +240,7 @@ The active runtime package at `app/docsera-ui` is a single scoped app with `scop
 
 Inference from current SDK docs: restricted caller access can be modeled on the Script Include record, but one-time instance approval and exact install-time handling for restricted-caller records still need to be proven on the PDI.
 
-## Blocker
+## Pre-Bridge Blocker
 
 The remaining blocker is a native table application-access decision, not a missing cross-scope privilege record.
 
@@ -250,3 +252,186 @@ To complete end-to-end runtime workspace provisioning, the project needs the con
 - scoped execute privilege to the bridge
 - caller restriction behavior or equivalent boundary control
 - end-to-end workspace verifier success without OOTB table application-access changes
+
+This section reflects the earlier direct scoped-insert phase before the bridge spike below.
+
+## 2026-07-05 Bridge Spike Update
+
+The repo now contains a companion global bridge package:
+
+- `app/docsera-global-bridge`
+
+The scoped runtime package previously contained the scoped side of the bridge; that direct-call path is now retired in favor of the request-backed worker queue:
+
+- cross-scope execute privilege source: `app/docsera-ui/src/fluent/security/docsera-workspace-global-bridge.now.ts`
+- scoped bridge client source: retired
+- runtime workspace provisioning now uses `POST /workspaces` + the request queue instead of a direct global bridge call
+
+### Current Spike Result
+
+Local repo validation now proves:
+
+- `npm --prefix app/docsera-ui run test` passes
+- `npm --prefix app/docsera-ui run build` passes
+- `npm run build:sdk-global-bridge` passes
+- `npm run validate:docs` passes
+
+PDI validation now proves:
+
+- `npm run install:sdk-ui-page` succeeds
+- the scoped app installs an allowed `execute` privilege for `DocseraGlobalWorkspaceProvisioningBridge`
+- `npm run install:sdk-global-bridge` does **not** succeed
+
+Observed global install failure:
+
+```text
+Exception occurred while installing application
+java.lang.IllegalStateException: RollbackContext is in invalid state
+Application install failed
+```
+
+Direct instance queries after the failed global install originally confirmed:
+
+- no `sys_script_include` named `DocseraGlobalWorkspaceProvisioningBridge` exists on the PDI
+- the scoped `sys_scope_privilege` execute record does exist and is `allowed`
+- no `sys_restricted_caller_access` record exists yet for the bridge call path
+
+That was the earlier absent-record failure mode.
+
+### Updated Live Bridge State
+
+Jacob then manually installed and corrected the global bridge record.
+
+Current verified live metadata:
+
+- `sys_script_include.sys_id=61f7e453c3b98b10c569bf0d0501313f`
+- `name=DocseraGlobalWorkspaceProvisioningBridge`
+- `api_name=global.DocseraGlobalWorkspaceProvisioningBridge`
+- `access=public`
+- `caller_access=2`
+- `active=true`
+- `sys_scope=global`
+
+Current verified execute privilege state:
+
+- `sys_scope_privilege.sys_id=b523541000134b7ba376fb9302a1857f`
+- `operation=execute`
+- `target_name=DocseraGlobalWorkspaceProvisioningBridge`
+- `status=allowed`
+
+Current RCA state:
+
+- no `sys_restricted_caller_access` rows exist for the Docsera scope
+- repeated live route calls did not cause the platform to create an RCA row
+
+### Updated Invocation Result
+
+Even with the manual bridge record present and the execute privilege allowed, the scoped SDK runtime still fails on the first workspace create attempt.
+
+Current live verifier result:
+
+```text
+HTTP 400
+Failed to provision workspace access groups.
+```
+
+The REST response is now safely sanitized, but the remaining blocker is invocation, not metadata presence.
+
+Scoped caller diagnostics from the live route show:
+
+```text
+[Docsera workspace bridge caller] stage=constructor.inspect directType=undefined globalType=object globalCtorType=undefined
+```
+
+That proves the scoped caller cannot resolve either:
+
+- `DocseraGlobalWorkspaceProvisioningBridge`
+- `global.DocseraGlobalWorkspaceProvisioningBridge`
+
+from the installed on-instance runtime context.
+
+No global bridge method-entry logs appear during the failing route call, so the failure occurs before constructor creation and before the global bridge method body runs.
+
+### Updated Feasibility Finding
+
+The current SDK/toolchain can represent both sides of the bridge in source, but it cannot yet cleanly complete the **global install** path on this PDI through `now-sdk install`.
+
+The practical current outcome is therefore:
+
+- keep the bridge source in-repo under `app/docsera-global-bridge`
+- treat the global bridge as a companion manual global install artifact for metadata verification only for now
+- keep the scoped app repo-packaged and SDK-installed
+- treat the scoped runtime invocation path as still blocked until the global companion package can expose a supported runtime binding
+
+### Companion Manual Install Artifact
+
+The smallest current companion artifact is the single global Script Include record represented by either of these local files:
+
+- source script body: `app/docsera-global-bridge/src/server/script-includes/docsera-global-workspace-provisioning-bridge.js`
+- built record XML: `app/docsera-global-bridge/dist/app/update/sys_script_include_abf83bf6db1e46dea88c97ec493153bc.xml`
+
+The built XML contains the full script body inline, which is enough to create the manual Script Include record itself.
+
+Current live evidence shows that this manual record alone is **not** enough to make the bridge callable from the scoped SDK-emitted runtime path.
+
+### Manual Jacob Steps
+
+1. Build the companion bridge artifact locally:
+   - `npm run build:sdk-global-bridge`
+2. On the PDI, create a **global** Script Include with:
+   - Name: `DocseraGlobalWorkspaceProvisioningBridge`
+   - API name: `global.DocseraGlobalWorkspaceProvisioningBridge`
+   - Accessible from: `public`
+   - Caller access: `restriction`
+   - Active: `true`
+   - Client callable: `false`
+   - Mobile callable: `false`
+   - Sandbox callable: `false`
+3. Paste the script body from:
+   - `app/docsera-global-bridge/src/server/script-includes/docsera-global-workspace-provisioning-bridge.js`
+   - or load the built XML record from `app/docsera-global-bridge/dist/app/update/sys_script_include_abf83bf6db1e46dea88c97ec493153bc.xml`
+4. Re-run:
+   - `npm run install:sdk-ui-page`
+   - `npm run verify:sdk-global-bridge`
+   - `npm run verify:sdk-ui-page`
+   - `npm run verify:workspace-foundation`
+5. If the first live bridge call generates a restricted-caller approval record, review and allow it at:
+   - `/sys_restricted_caller_access_list.do?sysparm_query=source_scope=6997f092c3fd8310c569bf0d0501314d^operation=execute`
+6. Re-run:
+   - `npm run verify:sdk-global-bridge`
+   - `npm run verify:workspace-foundation`
+
+Current result after those steps:
+
+- `npm run verify:sdk-global-bridge` passes
+- `npm run verify:sdk-ui-page` passes
+- `npm run verify:workspace-foundation` still fails on scoped runtime invocation
+
+### OOTB Table Access Position
+
+This spike does **not** change the accepted platform position:
+
+- `sys_user_group.create_access` remains unchanged
+- no OOTB table application-access change is required in source
+- the scoped app now depends on a narrow global provisioning boundary instead of direct scoped inserts into `sys_user_group`
+
+## Current Conclusion
+
+Current status is:
+
+- ready for SDK/runtime verification
+- ready for manual bridge metadata verification
+- not yet ready for end-to-end runtime workspace provisioning
+- not approved to solve the problem by changing OOTB `sys_user_group` application access
+
+The remaining blocker is no longer missing global bridge metadata.
+
+The remaining blocker is that the scoped SDK runtime cannot currently resolve the manually installed global Script Include as an executable constructor, even though:
+
+- the Script Include record exists
+- the execute privilege is allowed
+- no RCA row is being generated
+
+## Smallest Next Technical Option
+
+The smallest next technical option is to get the companion global package install path working, or otherwise produce the generated on-instance runtime artifacts that expose a supported binding for the global bridge to scoped SDK-emitted code.

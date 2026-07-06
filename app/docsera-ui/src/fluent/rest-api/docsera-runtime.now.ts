@@ -1,6 +1,7 @@
 import "@servicenow/sdk/global";
 import { RestApi } from "@servicenow/sdk/core";
 import { process as createWorkspace } from "../../server/api/docsera-runtime-create-workspace";
+import { process as workspaceProvisioningStatus } from "../../server/api/docsera-runtime-workspace-provisioning-status";
 import { process } from "../../server/api/docsera-runtime-ping";
 
 RestApi({
@@ -29,6 +30,15 @@ RestApi({
       produces: "application/json",
       shortDescription: "Create a workspace record and provision native ServiceNow access groups.",
       script: createWorkspace
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-provisioning-status-get"],
+      name: "workspace_provisioning_status",
+      path: "/workspace-provisioning-status",
+      method: "GET",
+      produces: "application/json",
+      shortDescription: "Return the current status of a workspace provisioning request.",
+      script: workspaceProvisioningStatus
     }
   ]
 });
