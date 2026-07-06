@@ -26,6 +26,10 @@ declare global {
                         table: 'sys_ws_operation'
                         id: 'd6b8cefeabf34dab9fa3bd1f9a92d97f'
                     }
+                    'docsera-runtime-workspaces-get': {
+                        table: 'sys_ws_operation'
+                        id: 'fcc3ff0a938442a2921579852f5aebea'
+                    }
                     'docsera-runtime-workspaces-post': {
                         table: 'sys_ws_operation'
                         id: '05e86307b95e4b549a1e6b87059767fe'
@@ -46,6 +50,10 @@ declare global {
                         table: 'sys_module'
                         id: '7ef70560cca4454b8456cd9e5635225a'
                     }
+                    'src_server_api_docsera-runtime-workspaces_ts': {
+                        table: 'sys_module'
+                        id: 'd9bb2f597b564a9ab74fab37b5e777e4'
+                    }
                     src_server_workspaces_serverWorkspaceDomain_ts: {
                         table: 'sys_module'
                         id: '15e7818a1cd7415682575fce3df6368e'
@@ -54,9 +62,17 @@ declare global {
                         table: 'sys_module'
                         id: 'e95a4d192e1e4d7e9426e30597dd9910'
                     }
+                    src_server_workspaces_serviceNowWorkspaceCatalog_ts: {
+                        table: 'sys_module'
+                        id: 'c671e60c1d4f4133a3b9fbcc8e98104e'
+                    }
                     src_server_workspaces_serviceNowWorkspaceProvisioning_ts: {
                         table: 'sys_module'
                         id: 'af3b3203ec254b04a09ca602a42829e7'
+                    }
+                    src_server_workspaces_serviceNowWorkspaceRecords_ts: {
+                        table: 'sys_module'
+                        id: '453e4ed122a04dabb3ee142e95de0c8c'
                     }
                     'styles/global.css': {
                         table: 'sys_ux_theme_asset'

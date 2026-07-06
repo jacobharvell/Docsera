@@ -1,11 +1,14 @@
 import type { DemoPage, DemoWorkspace } from "../../shared/types/docsera";
 
 type WorkspaceHeaderProps = {
+  canManageWorkspaceSettings: boolean;
+  onOpenWorkspaceSettings: () => void;
   workspace: DemoWorkspace;
   pagePath: DemoPage[];
   sidebarCollapsed: boolean;
   onToggleSidebar: () => void;
   onSelectPage: (pageId: string) => void;
+  onOpenMyWorkspaces: () => void;
 };
 
 function DoubleChevronIcon() {
@@ -131,11 +134,14 @@ function GearIcon() {
 }
 
 export function WorkspaceHeader({
+  canManageWorkspaceSettings,
+  onOpenWorkspaceSettings,
   workspace,
   pagePath,
   sidebarCollapsed,
   onToggleSidebar,
-  onSelectPage
+  onSelectPage,
+  onOpenMyWorkspaces
 }: WorkspaceHeaderProps) {
   const currentPage = pagePath.length > 0 ? pagePath[pagePath.length - 1] : undefined;
   const parentPages = currentPage ? pagePath.slice(0, -1) : [];
@@ -147,7 +153,7 @@ export function WorkspaceHeader({
           type="button"
           className="docsera-header__workspace-button"
           aria-label={`Workspace switcher: ${workspace.title}`}
-          disabled
+          onClick={onOpenMyWorkspaces}
         >
           <div className="docsera-header__workspace-icon" aria-hidden="true">
             {workspace.iconLabel}
@@ -209,9 +215,16 @@ export function WorkspaceHeader({
           <button type="button" className="docsera-header__ghost-button" aria-label="Toggle theme" disabled>
             <MoonIcon />
           </button>
-          <button type="button" className="docsera-header__ghost-button" aria-label="Workspace settings" disabled>
-            <GearIcon />
-          </button>
+          {canManageWorkspaceSettings ? (
+            <button
+              type="button"
+              className="docsera-header__ghost-button"
+              aria-label="Workspace settings"
+              onClick={onOpenWorkspaceSettings}
+            >
+              <GearIcon />
+            </button>
+          ) : null}
           <div className="docsera-header__profile" aria-label="Current user">
             J
           </div>

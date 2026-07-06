@@ -9,17 +9,29 @@ import { WorkspaceToc } from "./WorkspaceToc";
 
 type WorkspaceShellProps = {
   runtime: DocseraRuntimeContext;
+  onOpenWorkspaceSettings: () => void;
   workspace: DemoWorkspace;
   selectedPageId: string;
   onSelectPage: (pageId: string) => void;
   pingState: RuntimeProbeState;
+  onOpenMyWorkspaces: () => void;
+  workspaceSettingsNotice?: boolean;
 };
 
 function getSelectedPage(workspace: DemoWorkspace, selectedPageId: string): DemoPage | null {
   return findDemoPage(workspace.pages, selectedPageId) ?? getFirstDemoPage(workspace.pages);
 }
 
-export function WorkspaceShell({ runtime, workspace, selectedPageId, onSelectPage, pingState }: WorkspaceShellProps) {
+export function WorkspaceShell({
+  runtime,
+  onOpenWorkspaceSettings,
+  workspace,
+  selectedPageId,
+  onSelectPage,
+  pingState,
+  onOpenMyWorkspaces,
+  workspaceSettingsNotice
+}: WorkspaceShellProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [treeFilter, setTreeFilter] = useState("");
   const selectedPage = getSelectedPage(workspace, selectedPageId);
@@ -32,11 +44,14 @@ export function WorkspaceShell({ runtime, workspace, selectedPageId, onSelectPag
     return (
       <div className="docsera-shell">
         <WorkspaceHeader
+          canManageWorkspaceSettings={Boolean(workspace.canManageSettings)}
+          onOpenWorkspaceSettings={onOpenWorkspaceSettings}
           workspace={workspace}
           pagePath={[]}
           sidebarCollapsed={sidebarCollapsed}
           onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
           onSelectPage={onSelectPage}
+          onOpenMyWorkspaces={onOpenMyWorkspaces}
         />
         <section className="docsera-shell__empty-state" role="status">
           <p className="docsera-shell__eyebrow">Workspace shell</p>
@@ -51,13 +66,25 @@ export function WorkspaceShell({ runtime, workspace, selectedPageId, onSelectPag
 
   return (
     <div className="docsera-shell">
-      <WorkspaceHeader
-        workspace={workspace}
-        pagePath={pagePath}
-        sidebarCollapsed={sidebarCollapsed}
-        onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
-        onSelectPage={onSelectPage}
-      />
+        <WorkspaceHeader
+          canManageWorkspaceSettings={Boolean(workspace.canManageSettings)}
+          onOpenWorkspaceSettings={onOpenWorkspaceSettings}
+          workspace={workspace}
+          pagePath={pagePath}
+          sidebarCollapsed={sidebarCollapsed}
+          onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
+          onSelectPage={onSelectPage}
+          onOpenMyWorkspaces={onOpenMyWorkspaces}
+        />
+
+      {workspaceSettingsNotice ? (
+        <div className="docsera-shell__notice" role="status">
+          <p className="docsera-shell__notice-eyebrow">Workspace settings</p>
+          <p className="docsera-shell__notice-copy">
+            The settings route was preserved, but the full settings surface is not implemented in this slice.
+          </p>
+        </div>
+      ) : null}
 
       <div className={`docsera-workspace${sidebarCollapsed ? " docsera-workspace--sidebar-collapsed" : ""}`}>
         {!sidebarCollapsed ? (

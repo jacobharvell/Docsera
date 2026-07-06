@@ -1,6 +1,7 @@
 import { gs } from "@servicenow/glide";
 import type { WorkspaceDraftInput } from "../workspaces/serverWorkspaceDomain.ts";
 import { createServiceNowWorkspaceProvisioningService } from "../workspaces/serviceNowWorkspaceProvisioning.ts";
+import { toWorkspaceViewRecord } from "../workspaces/serviceNowWorkspaceRecords.ts";
 
 type RequestLike = {
   body?: unknown;
@@ -16,13 +17,16 @@ function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function normalizeWorkspaceErrorMessage(error: unknown): string {
-  const rawMessage = cleanText(error instanceof Error ? error.message : error);
-  if (!rawMessage) {
-    return "Workspace creation failed.";
-  }
-
-  return rawMessage;
+function logUnexpectedWorkspaceCreationError(error: unknown, context: Record<string, unknown>) {
+  const message = cleanText(error instanceof Error ? error.message : error) || "Unknown workspace creation failure.";
+  const stack = error instanceof Error ? cleanText(error.stack) : "";
+  gs.error(
+    `[Docsera workspace provisioning] ${JSON.stringify({
+      context,
+      message,
+      stack: stack || undefined
+    })}`
+  );
 }
 
 function cloneRoleNames(roleNames: Record<string, string>) {
@@ -120,33 +124,34 @@ export async function process(request: RequestLike, response: ResponseLike) {
       response.setStatus(201);
     }
 
-    response.setBody({
-      result: {
-        mode: "servicenow",
-        provisioning: {
-          requestId: result.requestId,
-          state: "succeeded",
-          statusPath: service.statusPathFor(result.requestId)
-        },
-        workspace: result.workspace,
-        groups: {
-          admin: result.adminGroup,
-          editor: result.editorGroup
-        },
+      response.setBody({
+        result: {
+          mode: "servicenow",
+          provisioning: {
+            requestId: result.requestId,
+            state: "succeeded",
+            statusPath: service.statusPathFor(result.requestId)
+          },
+          workspace: toWorkspaceViewRecord(result.workspace, "Admin"),
+          groups: {
+            admin: result.adminGroup,
+            editor: result.editorGroup
+          },
         roleNames: cloneRoleNames(service.roleNames)
       }
     });
   } catch (error) {
     if (typeof response.setStatus === "function") {
-      response.setStatus(400);
+      response.setStatus(500);
     }
 
-    const message = normalizeWorkspaceErrorMessage(error);
-    gs.error(`[Docsera workspace provisioning] ${message}`);
+    logUnexpectedWorkspaceCreationError(error, {
+      requestBody: readRequestBody(request)
+    });
 
     response.setBody({
       error: {
-        message
+        message: "Something went wrong while creating the workspace. The workspace was not created. Please try again."
       }
     });
   }

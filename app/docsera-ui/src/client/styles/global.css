@@ -78,6 +78,127 @@ svg {
   min-height: 100vh;
 }
 
+.docsera-app-frame {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  border-bottom: 1px solid var(--docsera-border);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(12px);
+}
+
+.docsera-app-frame__topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 64px;
+  padding: 0 16px;
+}
+
+.docsera-app-frame__brand-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.docsera-app-frame__brand {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  background: var(--docsera-primary);
+  color: #ffffff;
+  font-family: Geist, Inter, "Segoe UI", sans-serif;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.docsera-app-frame__brand-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.docsera-app-frame__context-label {
+  overflow: hidden;
+  font-family: Geist, Inter, "Segoe UI", sans-serif;
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docsera-app-frame__context-copy {
+  overflow: hidden;
+  color: var(--docsera-text-soft);
+  font-size: 0.8125rem;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docsera-app-frame__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.docsera-app-frame__ghost-button,
+.docsera-app-frame__context-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--docsera-border);
+  border-radius: 4px;
+  background: var(--docsera-surface-muted);
+  color: var(--docsera-text-muted);
+}
+
+.docsera-app-frame__ghost-button {
+  width: 32px;
+  height: 32px;
+}
+
+.docsera-app-frame__ghost-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.docsera-app-frame__context-action {
+  padding: 7px 12px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.docsera-app-frame__profile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: #e91e63;
+  color: #ffffff;
+  font-family: Geist, Inter, "Segoe UI", sans-serif;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.docsera-app-frame__body {
+  min-height: calc(100vh - var(--docsera-header-height));
+}
+
 .docsera-header {
   position: sticky;
   top: 0;

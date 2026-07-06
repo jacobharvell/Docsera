@@ -7,6 +7,7 @@ import {
   type WorkspaceRecord,
   WORKSPACE_ROLE_NAMES
 } from "./serverWorkspaceDomain.ts";
+import { mapWorkspaceRecord } from "./serviceNowWorkspaceRecords.ts";
 
 const DOCSERA_WORKSPACE_PROVISION_REQUEST_TABLE = "x_82900_docsera_workspace_provision_request";
 const PROVISION_STATUS_ROUTE_PATH =
@@ -71,37 +72,6 @@ function logProvisioningFailure(
     detail: cleanText(detail) || undefined
   };
   gs.error(`[Docsera workspace provisioning] ${event} ${JSON.stringify(payload)}`);
-}
-
-function mapWorkspaceRecord(record: {
-  getUniqueValue: () => string;
-  getValue: (fieldName: string) => unknown;
-  getDisplayValue: (fieldName: string) => unknown;
-}): WorkspaceRecord {
-  return {
-    sysId: cleanText(record.getUniqueValue()),
-    name: cleanText(record.getValue("name")),
-    slug: cleanText(record.getValue("workspace_slug")),
-    shortDescription: cleanText(record.getValue("short_description")) || null,
-    icon: {
-      type: cleanText(record.getValue("icon_type")) === "uploaded" ? "uploaded" : "builtin",
-      key: cleanText(record.getValue("icon_key")),
-      label: cleanText(record.getValue("icon_label")) || "Docsera workspace icon",
-      assetPath: cleanText(record.getValue("icon_asset_path")) || undefined
-    },
-    status: cleanText(record.getValue("status")) === "inactive" ? "inactive" : "active",
-    adminGroupSysId: cleanText(record.getValue("admin_group")),
-    editorGroupSysId: cleanText(record.getValue("editor_group")),
-    creatorUserSysId: cleanText(record.getValue("creator")),
-    creatorUserName: cleanText(record.getDisplayValue("creator")) || null,
-    createdOn: cleanText(record.getDisplayValue("sys_created_on")) || null,
-    updatedOn: cleanText(record.getDisplayValue("sys_updated_on")) || null,
-    updatedBy: cleanText(record.getDisplayValue("sys_updated_by")) || null,
-    layout: {
-      tocVisibleByDefault: normalizeBoolean(record.getValue("toc_default_visible")),
-      pageWidth: cleanText(record.getValue("page_width")) === "full" ? "full" : "readable"
-    }
-  };
 }
 
 function mapGroupRecord(record: {

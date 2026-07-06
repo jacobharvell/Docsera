@@ -1,6 +1,7 @@
 import { gs } from "@servicenow/glide";
 import type { RESTAPIRequest, RESTAPIResponse } from "@servicenow/glide/sn_ws_int";
 import { createServiceNowWorkspaceProvisioningService } from "../workspaces/serviceNowWorkspaceProvisioning.ts";
+import { toWorkspaceViewRecord } from "../workspaces/serviceNowWorkspaceRecords.ts";
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -60,6 +61,18 @@ function cloneRoleNames(roleNames: Record<string, string>) {
     editor: cleanText(roleNames.editor),
     workspaceAdmin: cleanText(roleNames.workspaceAdmin)
   };
+}
+
+function logUnexpectedWorkspaceProvisioningStatusError(error: unknown, context: Record<string, unknown>) {
+  const message = cleanText(error instanceof Error ? error.message : error) || "Unknown workspace provisioning status failure.";
+  const stack = error instanceof Error ? cleanText(error.stack) : "";
+  gs.error(
+    `[Docsera workspace provisioning status] ${JSON.stringify({
+      context,
+      message,
+      stack: stack || undefined
+    })}`
+  );
 }
 
 export async function process(request: Partial<RESTAPIRequest>, response: Partial<RESTAPIResponse>) {
@@ -122,29 +135,28 @@ export async function process(request: Partial<RESTAPIRequest>, response: Partia
       return;
     }
 
-    response.setBody?.({
-      result: {
-        mode: "servicenow",
-        provisioning: {
-          requestId: result.requestId,
-          state: "succeeded",
-          statusPath: service.statusPathFor(result.requestId)
-        },
-        workspace: result.workspace,
-        groups: {
-          admin: result.adminGroup,
-          editor: result.editorGroup
-        },
+      response.setBody?.({
+        result: {
+          mode: "servicenow",
+          provisioning: {
+            requestId: result.requestId,
+            state: "succeeded",
+            statusPath: service.statusPathFor(result.requestId)
+          },
+          workspace: toWorkspaceViewRecord(result.workspace, "Admin"),
+          groups: {
+            admin: result.adminGroup,
+            editor: result.editorGroup
+          },
         roleNames: cloneRoleNames(service.roleNames)
       }
     });
   } catch (error) {
-    response.setStatus?.(400);
-    const message = cleanText(error instanceof Error ? error.message : error) || "Workspace provisioning status lookup failed.";
-    gs.error(`[Docsera workspace provisioning status] ${message}`);
+    response.setStatus?.(500);
+    logUnexpectedWorkspaceProvisioningStatusError(error, { requestId });
     response.setBody?.({
       error: {
-        message
+        message: "Workspace provisioning status could not be checked. Please try again."
       }
     });
   }

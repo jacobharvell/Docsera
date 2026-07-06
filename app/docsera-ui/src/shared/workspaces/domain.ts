@@ -109,6 +109,8 @@ export type WorkspaceCapabilityResult = {
   canManageWorkspaceMembers: boolean;
 };
 
+export type WorkspaceCapabilityLabel = "Admin" | "Editor";
+
 export type WorkspaceCapabilityRoleNames = {
   docseraAdmin: string;
   workspaceAdmin: string;
@@ -122,8 +124,32 @@ export type WorkspaceCapabilityDependencies = {
   roleNames?: Partial<WorkspaceCapabilityRoleNames>;
 };
 
+export type WorkspaceListItem = WorkspaceRecord & {
+  roleLabel: WorkspaceCapabilityLabel | null;
+  canManageSettings: boolean;
+};
+
+export type WorkspaceListQuery = {
+  searchText?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type WorkspaceListResult = {
+  items: WorkspaceListItem[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+  hasNextPage: boolean;
+  searchText: string;
+};
+
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+export function normalizeWorkspaceSearchText(value: unknown): string {
+  return cleanText(value).toLowerCase();
 }
 
 function toSlugFragment(value: string): string {
@@ -307,6 +333,109 @@ function hasWorkspaceAccessWithMembership(
   dependencies: WorkspaceCapabilityDependencies
 ): boolean {
   return Boolean(roleName) && Boolean(groupSysId) && dependencies.hasRole(roleName) && dependencies.isMemberOfGroup(groupSysId);
+}
+
+export function resolveWorkspaceCapabilityLabel(
+  capability: WorkspaceCapabilityResult
+): WorkspaceCapabilityLabel | null {
+  if (capability.canAdminWorkspace) {
+    return "Admin";
+  }
+
+  if (capability.canEditWorkspace) {
+    return "Editor";
+  }
+
+  return null;
+}
+
+export function buildWorkspaceListItem(
+  workspace: WorkspaceRecord,
+  capability: WorkspaceCapabilityResult
+): WorkspaceListItem {
+  const roleLabel = resolveWorkspaceCapabilityLabel(capability);
+
+  return {
+    ...workspace,
+    roleLabel,
+    canManageSettings: capability.canAdminWorkspace
+  };
+}
+
+export function sortWorkspacesByName(left: WorkspaceRecord, right: WorkspaceRecord): number {
+  const nameComparison = cleanText(left.name).localeCompare(cleanText(right.name), undefined, { sensitivity: "base" });
+  if (nameComparison !== 0) {
+    return nameComparison;
+  }
+
+  return cleanText(left.slug).localeCompare(cleanText(right.slug), undefined, { sensitivity: "base" });
+}
+
+export function filterWorkspacesByName(workspaces: WorkspaceRecord[], searchText: string): WorkspaceRecord[] {
+  const query = normalizeWorkspaceSearchText(searchText);
+  if (!query) {
+    return [...workspaces];
+  }
+
+  return workspaces.filter((workspace) => normalizeWorkspaceSearchText(workspace.name).includes(query));
+}
+
+export function buildWorkspaceListResult(
+  workspaces: WorkspaceRecord[],
+  capabilitiesByWorkspaceSlug: Map<string, WorkspaceCapabilityResult>,
+  query: WorkspaceListQuery = {}
+): WorkspaceListResult {
+  const pageSize = Math.max(1, Math.min(50, Number(query.pageSize) || 10));
+  const page = Math.max(1, Number(query.page) || 1);
+  const searchText = normalizeWorkspaceSearchText(query.searchText);
+  const filteredWorkspaces = filterWorkspacesByName(workspaces, searchText).sort(sortWorkspacesByName);
+  const listedItems = filteredWorkspaces
+    .map((workspace) => {
+      const capability = capabilitiesByWorkspaceSlug.get(cleanText(workspace.slug));
+      if (!capability) {
+        return null;
+      }
+
+      return buildWorkspaceListItem(workspace, capability);
+    })
+    .filter((item): item is WorkspaceListItem => {
+      if (!item) {
+        return false;
+      }
+
+      return Boolean(item.roleLabel);
+    });
+
+  const startIndex = (page - 1) * pageSize;
+  const items = listedItems.slice(startIndex, startIndex + pageSize);
+
+  return {
+    items,
+    page,
+    pageSize,
+    totalCount: listedItems.length,
+    hasNextPage: startIndex + pageSize < listedItems.length,
+    searchText
+  };
+}
+
+export function createWorkspaceRouteQuery(workspaceSlug: string, settingsIntent = false): string {
+  const query = new URLSearchParams();
+  const slug = cleanText(workspaceSlug);
+
+  if (slug) {
+    query.set("workspace", slug);
+  }
+
+  if (settingsIntent) {
+    query.set("settings", "1");
+  }
+
+  return `?${query.toString()}`;
+}
+
+export function createMyWorkspacesRouteQuery(): string {
+  return "?view=my-workspaces";
 }
 
 export function evaluateWorkspaceCapabilities(
