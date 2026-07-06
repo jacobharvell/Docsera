@@ -7,7 +7,7 @@ import {
   type WorkspaceListQuery,
   type WorkspaceListResult,
   type WorkspaceRecord
-} from "../../shared/workspaces/domain.ts";
+} from "./serverWorkspaceDomain.ts";
 import { evaluateCurrentUserWorkspaceCapabilities } from "./serviceNowWorkspaceCapabilities.ts";
 import { mapWorkspaceRecord } from "./serviceNowWorkspaceRecords.ts";
 

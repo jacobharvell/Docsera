@@ -1,5 +1,4 @@
-import type { WorkspaceIcon } from "../../shared/workspaces/domain.ts";
-import type { WorkspaceRecord as ServerWorkspaceRecord } from "./serverWorkspaceDomain.ts";
+import type { WorkspaceIcon, WorkspaceRecord as ServerWorkspaceRecord } from "./serverWorkspaceDomain.ts";
 import type { WorkspaceRoleLabel, WorkspaceViewRecord } from "../../client/shared/types/docsera.ts";
 
 function cleanText(value: unknown): string {

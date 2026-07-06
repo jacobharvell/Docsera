@@ -35,6 +35,12 @@ Accepted product requirements live in the Obsidian vault; see `docs/process/Requ
 - The runtime API handlers now log detailed unexpected failures internally while returning stable user-safe error messages to the client.
 - The workspace list/lookup, workspace creation, and provisioning-status endpoints no longer forward raw caught exception text to the client for unexpected failures.
 
+## ServiceNow Response Envelopes
+
+- Live ServiceNow runtime responses on the PDI may arrive as nested `result` envelopes instead of a single wrapper.
+- The browser client now normalizes a bounded nested envelope shape before interpreting Docsera ping, list, lookup, create, and provisioning payloads.
+- This transport normalization does not change accepted product behavior or workspace lifecycle semantics.
+
 ## Runtime Routes
 
 - The runtime exposes a list-and-lookup workspace endpoint for the launcher and workspace shell.

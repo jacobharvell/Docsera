@@ -77,6 +77,11 @@ declare global {
                     'styles/global.css': {
                         table: 'sys_ux_theme_asset'
                         id: '6ac9ba7a29374177868bee0c33d414ea'
+                        deleted: true
+                    }
+                    'styles/runtime-shell.css': {
+                        table: 'sys_ux_theme_asset'
+                        id: '338dc50d700a471a847b5ae66bc0c6b4'
                     }
                     'styles\\global.css': {
                         table: 'sys_ux_theme_asset'

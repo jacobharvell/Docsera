@@ -89,7 +89,7 @@ The active client runtime now follows this structure:
 - `src/client/app/` for the shell root component
 - `src/client/features/workspaces/` for demo workspace data and shell subcomponents
 - `src/client/platform/servicenow/` for same-origin ServiceNow access
-- `src/client/styles/global.css` for the SDK-managed visual system
+- `src/client/styles/runtime-shell.css` for the SDK-managed visual system
 
 ## Historical fallback
 

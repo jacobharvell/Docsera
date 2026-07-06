@@ -52,11 +52,28 @@ function createWorkspaceView(name = "Admin Docs", slug = "admin-docs") {
   };
 }
 
+function createResponseBody(payload: unknown, depth = 1): unknown {
+  let current = payload;
+
+  for (let index = 0; index < depth; index += 1) {
+    current = { result: current };
+  }
+
+  return current;
+}
+
+function createFetchResponse(status: number, payload: unknown) {
+  return {
+    status,
+    text: async () => JSON.stringify(payload)
+  };
+}
+
 test("ping sends the ServiceNow user token when one is available", async () => {
   (window as Window & { g_ck?: string }).g_ck = "session-token";
   const fetchMock = vi.fn().mockResolvedValue({
     status: 200,
-    json: async () => createPingEnvelope()
+    text: async () => JSON.stringify(createResponseBody(createPingEnvelope().result, 2))
   });
   globalThis.fetch = fetchMock as typeof fetch;
 
@@ -76,20 +93,24 @@ test("ping sends the ServiceNow user token when one is available", async () => {
   });
 });
 
-test("listWorkspaces sends paging and search query parameters", async () => {
-  const fetchMock = vi.fn().mockResolvedValue({
-    status: 200,
-    json: async () => ({
-      result: {
-        items: [createWorkspaceView()],
-        page: 2,
-        pageSize: 10,
-        totalCount: 1,
-        hasNextPage: false,
-        searchText: "admin"
-      }
-    })
-  });
+test("listWorkspaces normalizes a double-wrapped live response", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(
+    createFetchResponse(
+      200,
+      createResponseBody(
+        {
+          mode: "servicenow",
+          items: [createWorkspaceView()],
+          page: 2,
+          pageSize: 10,
+          totalCount: 1,
+          hasNextPage: false,
+          searchText: "admin"
+        },
+        2
+      )
+    )
+  );
   globalThis.fetch = fetchMock as typeof fetch;
 
   const result = await createServiceNowClient(runtime).listWorkspaces({
@@ -114,37 +135,81 @@ test("listWorkspaces sends paging and search query parameters", async () => {
   });
 });
 
-test("createWorkspace returns pending results and the provisioning status endpoint resolves success", async () => {
+test("getWorkspace still accepts the one-layer response contract", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(
+    createFetchResponse(
+      200,
+      createResponseBody(
+        {
+          mode: "servicenow",
+          workspace: createWorkspaceView("Viewer Docs", "viewer-docs")
+        },
+        1
+      )
+    )
+  );
+  globalThis.fetch = fetchMock as typeof fetch;
+
+  const result = await createServiceNowClient(runtime).getWorkspace("viewer-docs");
+
+  expect(result.workspace).toMatchObject({
+    name: "Viewer Docs",
+    slug: "viewer-docs"
+  });
+});
+
+test("createWorkspace resolves pending workspaces and the status endpoint resolves success from double-wrapped responses", async () => {
   const fetchMock = vi
     .fn()
-    .mockResolvedValueOnce({
-      status: 202,
-      json: async () => ({
-        result: {
-          mode: "servicenow",
-          provisioning: {
-            pollAfterMs: 1000,
-            requestId: "request-001",
-            state: "requested",
-            statusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-001"
-          }
-        }
-      })
-    })
-    .mockResolvedValueOnce({
-      status: 200,
-      json: async () => ({
-        result: {
-          mode: "servicenow",
-          provisioning: {
-            requestId: "request-001",
-            state: "succeeded",
-            statusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-001"
+    .mockResolvedValueOnce(
+      createFetchResponse(
+        202,
+        createResponseBody(
+          {
+            mode: "servicenow",
+            provisioning: {
+              pollAfterMs: 1000,
+              requestId: "request-001",
+              state: "requested",
+              statusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-001"
+            },
+            roleNames: {
+              docseraAdmin: "x_82900_docsera.admin",
+              editor: "x_82900_docsera.editor",
+              workspaceAdmin: "x_82900_docsera.workspace_admin"
+            }
           },
-          workspace: createWorkspaceView("Team Docs", "team-docs")
-        }
-      })
-    });
+          2
+        )
+      )
+    )
+    .mockResolvedValueOnce(
+      createFetchResponse(
+        200,
+        createResponseBody(
+          {
+            mode: "servicenow",
+            provisioning: {
+              requestId: "request-001",
+              state: "succeeded",
+              statusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-001"
+            },
+            workspace: createWorkspaceView("Team Docs", "team-docs"),
+            groups: {
+              admin: {
+                sysId: "group-admin-001",
+                name: "Docsera_Team_Docs_Admins"
+              },
+              editor: {
+                sysId: "group-editor-001",
+                name: "Docsera_Team_Docs_Editors"
+              }
+            }
+          },
+          2
+        )
+      )
+    );
   globalThis.fetch = fetchMock as typeof fetch;
 
   const client = createServiceNowClient(runtime);
@@ -153,7 +218,9 @@ test("createWorkspace returns pending results and the provisioning status endpoi
     shortDescription: "Planning"
   });
   const resolved = await client.getWorkspaceProvisioningStatus(
-    pending.state === "pending" ? pending.statusPath : "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-001"
+    pending.state === "pending"
+      ? pending.statusPath
+      : "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-001"
   );
 
   expect(pending).toMatchObject({
@@ -169,14 +236,58 @@ test("createWorkspace returns pending results and the provisioning status endpoi
   } satisfies WorkspaceCreateResult);
 });
 
+test("provisioning status normalizes double-wrapped failed responses", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(
+    createFetchResponse(
+      200,
+      createResponseBody(
+        {
+          mode: "servicenow",
+          error: {
+            code: "provisioning_failed",
+            message: "Workspace provisioning failed."
+          },
+          provisioning: {
+            requestId: "request-002",
+            state: "failed",
+            statusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-002"
+          },
+          roleNames: {
+            docseraAdmin: "x_82900_docsera.admin",
+            editor: "x_82900_docsera.editor",
+            workspaceAdmin: "x_82900_docsera.workspace_admin"
+          }
+        },
+        2
+      )
+    )
+  );
+  globalThis.fetch = fetchMock as typeof fetch;
+
+  const result = await createServiceNowClient(runtime).getWorkspaceProvisioningStatus(
+    "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-002"
+  );
+
+  expect(result).toMatchObject({
+    state: "failed",
+    errorMessage: "Workspace provisioning failed."
+  });
+});
+
 test("createWorkspace maps provisioning failures into a safe error state", async () => {
   const fetchMock = vi.fn().mockResolvedValue({
     status: 400,
-    json: async () => ({
-      error: {
-        message: "Workspace creation failed."
-      }
-    })
+    text: async () =>
+      JSON.stringify(
+        createResponseBody(
+          {
+            error: {
+              message: "Workspace creation failed."
+            }
+          },
+          2
+        )
+      )
   });
   globalThis.fetch = fetchMock as typeof fetch;
 
@@ -191,3 +302,17 @@ test("createWorkspace maps provisioning failures into a safe error state", async
   });
 });
 
+test("createWorkspace rejects invalid payloads safely", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    status: 201,
+    text: async () => "not-json"
+  });
+  globalThis.fetch = fetchMock as typeof fetch;
+
+  await expect(
+    createServiceNowClient(runtime).createWorkspace({
+      name: "Broken Workspace",
+      shortDescription: ""
+    })
+  ).rejects.toThrow("Workspace creation payload was invalid.");
+});

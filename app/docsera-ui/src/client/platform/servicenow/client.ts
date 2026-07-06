@@ -53,6 +53,38 @@ function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function isResultEnvelope(value: unknown): value is { result: unknown } {
+  if (!isPlainObject(value)) {
+    return false;
+  }
+
+  const keys = Object.keys(value);
+  return keys.length === 1 && keys[0] === "result";
+}
+
+function unwrapServiceNowEnvelope(value: unknown): unknown {
+  let current = value;
+
+  for (let depth = 0; depth < 2; depth += 1) {
+    if (!isResultEnvelope(current)) {
+      break;
+    }
+
+    current = current.result;
+  }
+
+  return current;
+}
+
 function resolvePath(value: string | undefined, fallback: string): string {
   return cleanText(value) || fallback;
 }
@@ -95,8 +127,8 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<Jso
 }
 
 function normalizePingPayload(payload: PingEnvelope): PingResult {
-  const result: RawPingPayload =
-    "result" in payload && payload.result ? payload.result : (payload as RawPingPayload);
+  const normalizedPayload = unwrapServiceNowEnvelope(payload);
+  const result: RawPingPayload = isPlainObject(normalizedPayload) ? (normalizedPayload as RawPingPayload) : (payload as RawPingPayload);
 
   return {
     authenticated: Boolean(result.authenticated),
@@ -130,24 +162,16 @@ function normalizeWorkspaceViewRecord(candidate: unknown): WorkspaceViewRecord {
 }
 
 function extractErrorMessage(body: unknown, fallback: string): string {
-  const result = body && typeof body === "object" ? (body as Record<string, unknown>).error : undefined;
+  const normalizedBody = unwrapServiceNowEnvelope(body);
+  const result = isPlainObject(normalizedBody) ? normalizedBody.error : undefined;
   const nestedMessage =
     result && typeof result === "object" ? cleanText((result as Record<string, unknown>).message) : "";
   return nestedMessage || fallback;
 }
 
-function extractResult(body: unknown): Record<string, unknown> | null {
-  if (!body || typeof body !== "object") {
-    return null;
-  }
-
-  const candidate = (body as Record<string, unknown>).result;
-  return candidate && typeof candidate === "object" ? (candidate as Record<string, unknown>) : null;
-}
-
 function normalizeWorkspaceListResult(body: unknown): WorkspaceListResult {
-  const result = extractResult(body);
-  if (!result) {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result)) {
     throw new Error("Workspace list payload was invalid.");
   }
 
@@ -164,8 +188,8 @@ function normalizeWorkspaceListResult(body: unknown): WorkspaceListResult {
 }
 
 function normalizeWorkspaceLookupResult(body: unknown): WorkspaceLookupResult {
-  const result = extractResult(body);
-  if (!result || !("workspace" in result)) {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || !("workspace" in result)) {
     throw new Error("Workspace payload was invalid.");
   }
 
@@ -177,8 +201,8 @@ function normalizeWorkspaceLookupResult(body: unknown): WorkspaceLookupResult {
 }
 
 function normalizeWorkspaceCreateSucceededResult(body: unknown): WorkspaceCreateSucceeded {
-  const result = extractResult(body);
-  if (!result || !result.workspace) {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || !result.workspace) {
     throw new Error("Workspace creation payload was invalid.");
   }
 
@@ -191,8 +215,8 @@ function normalizeWorkspaceCreateSucceededResult(body: unknown): WorkspaceCreate
 }
 
 function normalizeWorkspaceCreatePendingResult(body: unknown): WorkspaceCreatePending {
-  const result = extractResult(body);
-  if (!result || !result.provisioning) {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || !result.provisioning) {
     throw new Error("Workspace provisioning is pending but the response was invalid.");
   }
 
@@ -207,8 +231,10 @@ function normalizeWorkspaceCreatePendingResult(body: unknown): WorkspaceCreatePe
 }
 
 function normalizeWorkspaceCreateFailedResult(body: unknown, fallback: string): WorkspaceCreateFailed {
-  const result = extractResult(body);
-  const provisioning = result?.provisioning && typeof result.provisioning === "object" ? (result.provisioning as Record<string, unknown>) : null;
+  const result = unwrapServiceNowEnvelope(body);
+  const provisioning = isPlainObject(result) && result.provisioning && typeof result.provisioning === "object"
+    ? (result.provisioning as Record<string, unknown>)
+    : null;
 
   return {
     state: "failed",
@@ -255,8 +281,8 @@ async function resolveWorkspaceProvisioningStatus(path: string): Promise<Workspa
   const response = await requestJson<unknown>(path);
 
   if (response.status === 200) {
-    const result = extractResult(response.body);
-    if (!result || !result.provisioning) {
+    const result = unwrapServiceNowEnvelope(response.body);
+    if (!isPlainObject(result) || !result.provisioning) {
       throw new Error("Workspace provisioning status payload was invalid.");
     }
 

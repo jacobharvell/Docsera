@@ -74,7 +74,7 @@ The baseline Fluent runtime definitions are:
 
 The current React client imports CSS in code and is bundled by the SDK-managed Rollup path. The intended architecture is no longer raw `sys_attachment` CSS links or pasted `sys_ui_script` JavaScript.
 
-The repo-side prebuild wrapper normalizes SDK explicit asset keys to forward-slash paths before registration. This avoids a Windows-only failure mode where `styles\global.css` can be emitted into the JavaScript bundle, producing a `sys_ux_theme_asset` lookup that does not match the installed `styles/global.css` record and results in a CSS `404`.
+The repo-side prebuild wrapper normalizes SDK explicit asset keys to forward-slash paths before registration. This avoids a Windows-only failure mode where `styles\runtime-shell.css` can be emitted into the JavaScript bundle, producing a `sys_ux_theme_asset` lookup that does not match the installed `styles/runtime-shell.css` record and results in a CSS `404`.
 
 Browser-side REST probes from the classic ServiceNow shell must also send the current ServiceNow user token. The runtime client now reads `g_ck` or `NOW.user.token` from the current window and same-origin parent window, then forwards that value as `X-UserToken` on the ping request so the authenticated browser shell does not produce a false `401`.
 

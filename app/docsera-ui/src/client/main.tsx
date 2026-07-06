@@ -1,4 +1,4 @@
-import "./styles/global.css";
+import "./styles/runtime-shell.css";
 import { mountDocseraApp } from "./bootstrap";
 
 mountDocseraApp();
