@@ -419,12 +419,21 @@ export function buildWorkspaceListResult(
   };
 }
 
-export function createWorkspaceRouteQuery(workspaceSlug: string, settingsIntent = false): string {
+export function createWorkspaceRouteQuery(
+  workspaceSlug: string,
+  settingsIntent = false,
+  pageId = ""
+): string {
   const query = new URLSearchParams();
   const slug = cleanText(workspaceSlug);
+  const selectedPageId = cleanText(pageId);
 
   if (slug) {
     query.set("workspace", slug);
+  }
+
+  if (selectedPageId) {
+    query.set("page_id", selectedPageId);
   }
 
   if (settingsIntent) {

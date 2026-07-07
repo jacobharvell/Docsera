@@ -118,6 +118,7 @@ Validation should match change risk and surface area.
 - Custom component/editor changes:
   - Run local build/type/lint checks if available.
   - Deploy to the PDI only when runtime behavior must be verified.
+- For manual browser/PDI smoke tests, use Playwright CLI from the terminal when a usable in-app browser backend is not attached; establish the authenticated PDI session first and record the fallback in validation notes.
 - ServiceNow table/API/security changes:
   - Verify role/ACL behavior and save/load behavior in the PDI.
 - Broad/high-risk editor or persistence changes:

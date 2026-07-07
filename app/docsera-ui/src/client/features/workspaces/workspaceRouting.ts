@@ -8,6 +8,7 @@ export type DocseraAppRoute =
       mode: "workspace";
       settingsIntent: boolean;
       workspaceSlug: string;
+      pageId: string;
     };
 
 function cleanText(value: unknown): string {
@@ -27,7 +28,8 @@ export function readAppRoute(location: Location): DocseraAppRoute {
     return {
       mode: "workspace",
       settingsIntent: readParam(params, "settings") === "1",
-      workspaceSlug
+      workspaceSlug,
+      pageId: readParam(params, "page_id")
     };
   }
 
@@ -42,11 +44,11 @@ export function buildLauncherHref(): string {
   return createMyWorkspacesRouteQuery();
 }
 
-export function buildWorkspaceHref(workspaceSlug: string, settingsIntent = false): string {
-  return createWorkspaceRouteQuery(workspaceSlug, settingsIntent);
+export function buildWorkspaceHref(workspaceSlug: string, settingsIntent = false, pageId = ""): string {
+  return createWorkspaceRouteQuery(workspaceSlug, settingsIntent, pageId);
 }
 
-export function replaceWorkspaceIntentState(workspaceSlug: string): string {
-  return createWorkspaceRouteQuery(workspaceSlug, false);
+export function replaceWorkspaceIntentState(workspaceSlug: string, pageId = ""): string {
+  return createWorkspaceRouteQuery(workspaceSlug, false, pageId);
 }
 

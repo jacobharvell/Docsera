@@ -226,7 +226,7 @@ test("opening a workspace row switches to the workspace shell in the same app fr
   expect(screen.queryByRole("heading", { name: "My Workspaces", level: 1 })).not.toBeInTheDocument();
 });
 
-test("workspace shell hydrates live pages and keeps a newly created page visible after reopen", async () => {
+test("workspace shell hydrates live pages and keeps a newly created page visible after refresh", async () => {
   const livePages: WorkspacePageRecord[] = [
     {
       sysId: "page-001",
@@ -286,7 +286,7 @@ test("workspace shell hydrates live pages and keeps a newly created page visible
     } satisfies WorkspaceCreateResult;
   });
 
-  render(
+  const firstRender = render(
     <App
       runtime={createRuntime()}
       serviceNowClient={createClient({
@@ -340,14 +340,44 @@ test("workspace shell hydrates live pages and keeps a newly created page visible
     expect(screen.getByRole("heading", { name: "Task 33 Refresh Smoke", level: 1 })).toBeInTheDocument();
   });
   expect(screen.getByRole("button", { name: "Task 33 Refresh Smoke" })).toBeInTheDocument();
+  expect(window.location.search).toBe("?workspace=workspace-001&page_id=page-002");
   expect(pageListMock).toHaveBeenCalledTimes(1);
 
-  fireEvent.click(screen.getByRole("button", { name: "Workspace switcher: Product Docs" }));
-  await waitFor(() => {
-    expect(screen.getByRole("heading", { name: "My Workspaces", level: 1 })).toBeInTheDocument();
-  });
+  const refreshedPath = `${window.location.pathname}${window.location.search}`;
+  firstRender.unmount();
 
-  fireEvent.click(screen.getByRole("link", { name: "Product Docs" }));
+  render(
+    <App
+      runtime={createRuntime({}, refreshedPath)}
+      serviceNowClient={createClient({
+        listWorkspaces: async () => ({
+          items: [
+            createWorkspace({
+              name: "Product Docs",
+              roleLabel: "Admin",
+              canManageSettings: true,
+              slug: "workspace-001"
+            })
+          ],
+          page: 1,
+          pageSize: 10,
+          totalCount: 1,
+          hasNextPage: false,
+          searchText: ""
+        }),
+        getWorkspace: async () => ({
+          workspace: createWorkspace({
+            name: "Product Docs",
+            roleLabel: "Admin",
+            canManageSettings: true,
+            slug: "workspace-001"
+          })
+        }),
+        listPages: pageListMock,
+        createPage: createPageMock
+      })}
+    />
+  );
 
   await waitFor(() => {
     expect(screen.getByRole("heading", { name: "Task 33 Refresh Smoke", level: 1 })).toBeInTheDocument();

@@ -65,6 +65,18 @@ function findWorkspacePageBySysId(pages: WorkspacePageRecord[], pageSysId: strin
   return pages.find((page) => cleanText(page.sysId) === normalizedPageSysId) ?? null;
 }
 
+function resolveWorkspacePageSelection(
+  pages: WorkspacePageRecord[],
+  pageSysId: string
+): { page: WorkspacePageRecord | null; pageId: string } {
+  const page = findWorkspacePageBySysId(pages, pageSysId) ?? getFirstWorkspacePage(pages);
+
+  return {
+    page,
+    pageId: cleanText(page?.sysId)
+  };
+}
+
 function getErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error) {
     return cleanText(error.message) || fallback;
@@ -97,7 +109,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({ status: "idle" });
   const [workspacePagesState, setWorkspacePagesState] = useState<WorkspacePagesState>({ status: "idle" });
   const [workspaceSettingsNotice, setWorkspaceSettingsNotice] = useState(false);
-  const [selectedPageId, setSelectedPageId] = useState("overview");
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalPhase, setCreateModalPhase] = useState<"idle" | "submitting" | "polling">("idle");
   const [createModalError, setCreateModalError] = useState<string | undefined>();
@@ -107,6 +118,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
   const currentWorkspaceSlug = route.mode === "workspace" ? route.workspaceSlug : "";
   const currentWorkspaceSettingsIntent = route.mode === "workspace" ? route.settingsIntent : false;
+  const currentWorkspacePageId = route.mode === "workspace" ? route.pageId : "";
   const loadedWorkspaceSlug = workspaceState.status === "success" ? workspaceState.data.slug : "";
 
   useEffect(() => {
@@ -189,7 +201,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       setWorkspaceSettingsNotice(currentWorkspaceSettingsIntent && Boolean(workspaceState.status === "success" && workspaceState.data.canManageSettings));
 
       if (currentWorkspaceSettingsIntent) {
-        navigateTo(buildWorkspaceHref(currentWorkspaceSlug, false), true);
+        navigateTo(buildWorkspaceHref(currentWorkspaceSlug, false, currentWorkspacePageId), true);
         setRoute(readAppRoute(window.location));
       }
 
@@ -220,7 +232,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         setWorkspaceSettingsNotice(currentWorkspaceSettingsIntent && result.workspace.canManageSettings);
 
         if (currentWorkspaceSettingsIntent) {
-          navigateTo(buildWorkspaceHref(currentWorkspaceSlug, false), true);
+          navigateTo(buildWorkspaceHref(currentWorkspaceSlug, false, currentWorkspacePageId), true);
           setRoute(readAppRoute(window.location));
         }
       })
@@ -237,7 +249,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     return () => {
       canceled = true;
     };
-  }, [currentWorkspaceSettingsIntent, currentWorkspaceSlug, loadedWorkspaceSlug, route.mode, serviceNowClient, workspaceState.status]);
+  }, [currentWorkspacePageId, currentWorkspaceSettingsIntent, currentWorkspaceSlug, loadedWorkspaceSlug, route.mode, serviceNowClient, workspaceState.status]);
 
   useEffect(() => {
     if (route.mode !== "workspace" || workspaceState.status !== "success" || workspaceState.data.slug !== currentWorkspaceSlug) {
@@ -263,14 +275,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           workspaceSlug: result.workspaceSlug || currentWorkspaceSlug
         });
 
-        setSelectedPageId((currentSelectedPageId) => {
-          const selectedPage = findWorkspacePageBySysId(pages, currentSelectedPageId);
-          if (selectedPage) {
-            return currentSelectedPageId;
-          }
-
-          return getFirstWorkspacePage(pages)?.sysId ?? currentSelectedPageId;
-        });
       })
       .catch((error: unknown) => {
         if (!canceled) {
@@ -314,9 +318,22 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     commitRoute(buildLauncherHref());
   }
 
-  function openWorkspace(workspaceSlug: string, settingsIntent = false) {
+  function openWorkspace(workspaceSlug: string, settingsIntent = false, pageId = "") {
     setWorkspaceSettingsNotice(settingsIntent);
-    commitRoute(buildWorkspaceHref(workspaceSlug, settingsIntent));
+    commitRoute(buildWorkspaceHref(workspaceSlug, settingsIntent, pageId));
+  }
+
+  function openWorkspacePage(pageId: string) {
+    if (route.mode !== "workspace") {
+      return;
+    }
+
+    const nextPageId = cleanText(pageId);
+    if (!nextPageId || route.pageId === nextPageId) {
+      return;
+    }
+
+    commitRoute(buildWorkspaceHref(currentWorkspaceSlug, false, nextPageId));
   }
 
   function openCreateModal() {
@@ -445,9 +462,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         totalCount: current.totalCount + 1
       };
     });
-    window.setTimeout(() => {
-      setSelectedPageId(cleanText(page.sysId) || selectedPageId);
-    }, 0);
+    commitRoute(buildWorkspaceHref(currentWorkspaceSlug, false, cleanText(page.sysId)), false);
   }
 
   const launcherList = launcherState.status === "success" ? launcherState.data : null;
@@ -468,9 +483,34 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const isCreatingPage = createPageModalOpen || createPageModalPhase !== "idle";
   const selectedWorkspacePage =
     workspacePagesLoaded && livePagesForCurrentWorkspace.length > 0
-      ? findWorkspacePageBySysId(livePagesForCurrentWorkspace, selectedPageId) ??
-        getFirstWorkspacePage(livePagesForCurrentWorkspace)
+      ? resolveWorkspacePageSelection(livePagesForCurrentWorkspace, currentWorkspacePageId).page
       : null;
+  const selectedWorkspacePageId = cleanText(selectedWorkspacePage?.sysId) || currentWorkspacePageId;
+
+  useEffect(() => {
+    if (route.mode !== "workspace" || workspaceState.status !== "success" || workspaceState.data.slug !== currentWorkspaceSlug) {
+      return;
+    }
+
+    if (!workspacePagesLoaded || livePagesForCurrentWorkspace.length === 0) {
+      return;
+    }
+
+    const { pageId } = resolveWorkspacePageSelection(livePagesForCurrentWorkspace, currentWorkspacePageId);
+    if (!pageId || pageId === currentWorkspacePageId) {
+      return;
+    }
+
+    commitRoute(buildWorkspaceHref(currentWorkspaceSlug, false, pageId), true);
+  }, [
+    currentWorkspacePageId,
+    currentWorkspaceSlug,
+    livePagesForCurrentWorkspace,
+    route.mode,
+    workspacePagesLoaded,
+    loadedWorkspaceSlug,
+    workspaceState.status
+  ]);
 
   async function savePageBody(input: { pageSysId: string; draftBodyText: string }): Promise<WorkspacePageRecord> {
     if (workspaceState.status !== "success") {
@@ -599,10 +639,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       <DocseraAppFrame contextLabel={workspaceShellWorkspace.title} contextDescription={workspaceShellDescription}>
         <WorkspaceShell
           runtime={runtime}
-          onOpenWorkspaceSettings={() => openWorkspace(route.workspaceSlug, true)}
+          onOpenWorkspaceSettings={() => openWorkspace(route.workspaceSlug, true, selectedWorkspacePageId)}
           workspace={workspaceShellWorkspace}
-          selectedPageId={selectedPageId}
-          onSelectPage={setSelectedPageId}
+          selectedPageId={selectedWorkspacePageId}
+          onSelectPage={openWorkspacePage}
           pingState={pingState}
           onOpenMyWorkspaces={openLauncher}
           workspaceSettingsNotice={workspaceSettingsNotice}
