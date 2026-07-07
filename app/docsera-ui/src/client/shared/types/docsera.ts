@@ -99,6 +99,13 @@ export type WorkspaceLookupResult = {
   workspace: WorkspaceViewRecord | null;
 };
 
+export type PageListResult = {
+  items: WorkspacePageRecord[];
+  workspaceSlug: string;
+  workspaceSysId: string;
+  totalCount: number;
+};
+
 export type WorkspaceCreateInput = {
   name: string;
   shortDescription?: string | null;
@@ -150,6 +157,7 @@ export type ServiceNowClient = {
   ping: () => Promise<PingResult>;
   listWorkspaces: (input?: { searchText?: string; page?: number; pageSize?: number }) => Promise<WorkspaceListResult>;
   getWorkspace: (workspaceSlug: string) => Promise<WorkspaceLookupResult>;
+  listPages: (input: { workspaceSlug: string }) => Promise<PageListResult>;
   createWorkspace: (input: WorkspaceCreateInput) => Promise<WorkspaceCreateResult>;
   getWorkspaceProvisioningStatus: (statusPath: string) => Promise<WorkspaceCreateResult>;
   createPage: (input: PageCreateInput) => Promise<PageCreateResult>;

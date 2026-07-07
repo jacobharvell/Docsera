@@ -3,9 +3,11 @@ import { App } from "../src/client/app/App";
 import type {
   DocseraRuntimeContext,
   PingResult,
+  PageListResult,
   ServiceNowClient,
   WorkspaceCreateResult,
   WorkspaceListResult,
+  WorkspacePageRecord,
   WorkspaceViewRecord
 } from "../src/client/shared/types/docsera";
 
@@ -51,6 +53,8 @@ function createWorkspace(overrides: Partial<WorkspaceViewRecord> = {}): Workspac
 
 function createClient(options: {
   createWorkspace?: () => Promise<WorkspaceCreateResult>;
+  createPage?: (input: { workspaceSlug: string; title: string }) => Promise<{ state: "failed"; errorMessage: string } | { state: "succeeded"; page: WorkspacePageRecord }>;
+  listPages?: (input: { workspaceSlug: string }) => Promise<PageListResult>;
   getWorkspace?: (workspaceSlug: string) => Promise<{ workspace: WorkspaceViewRecord | null }>;
   getWorkspaceProvisioningStatus?: (statusPath: string) => Promise<WorkspaceCreateResult>;
   listWorkspaces?: (input?: { searchText?: string; page?: number; pageSize?: number }) => Promise<WorkspaceListResult>;
@@ -76,6 +80,14 @@ function createClient(options: {
         searchText: ""
       })),
     getWorkspace: options.getWorkspace ?? (async () => ({ workspace: null })),
+    listPages:
+      options.listPages ??
+      (async () => ({
+        items: [],
+        totalCount: 0,
+        workspaceSlug: "",
+        workspaceSysId: ""
+      })),
     createWorkspace:
       options.createWorkspace ??
       (async () => ({
@@ -87,7 +99,11 @@ function createClient(options: {
       (async () => ({
         state: "failed",
         errorMessage: "Not implemented"
-      }))
+      })),
+    createPage: options.createPage ?? (async () => ({
+      state: "failed",
+      errorMessage: "Not implemented"
+    }))
   };
 }
 
@@ -154,6 +170,34 @@ test("opening a workspace row switches to the workspace shell in the same app fr
             name: workspaceSlug === "workspace-002" ? "Editor Docs" : "Admin Docs",
             slug: workspaceSlug
           })
+        }),
+        listPages: async () => ({
+          items: [
+            {
+              sysId: "page-001",
+              workspaceSysId: "workspace-001",
+              parentPageSysId: null,
+              siblingOrder: 1,
+              draftTitle: "Overview",
+              draftSlug: "overview",
+              draftSlugNormalized: "overview",
+              draftContentJson: {
+                type: "doc",
+                content: []
+              },
+              draftBodyText: null,
+              publishedTitle: null,
+              publishedSlug: null,
+              publishedSlugNormalized: null,
+              publishedContentJson: null,
+              publishedBodyText: null,
+              publicationState: "draft",
+              active: true
+            }
+          ],
+          totalCount: 1,
+          workspaceSlug: "workspace-001",
+          workspaceSysId: "workspace-001"
         })
       })}
     />
@@ -172,6 +216,137 @@ test("opening a workspace row switches to the workspace shell in the same app fr
   expect(container.querySelector(".docsera-app-frame")).toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Overview", level: 1 })).toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "My Workspaces", level: 1 })).not.toBeInTheDocument();
+});
+
+test("workspace shell hydrates live pages and keeps a newly created page visible after reopen", async () => {
+  const livePages: WorkspacePageRecord[] = [
+    {
+      sysId: "page-001",
+      workspaceSysId: "workspace-001",
+      parentPageSysId: null,
+      siblingOrder: 1,
+      draftTitle: "Overview",
+      draftSlug: "overview",
+      draftSlugNormalized: "overview",
+      draftContentJson: {
+        type: "doc",
+        content: []
+      },
+      draftBodyText: null,
+      publishedTitle: null,
+      publishedSlug: null,
+      publishedSlugNormalized: null,
+      publishedContentJson: null,
+      publishedBodyText: null,
+      publicationState: "draft",
+      active: true
+    }
+  ];
+  const pageListMock = vi.fn(async () => ({
+    items: [...livePages],
+    totalCount: livePages.length,
+    workspaceSlug: "workspace-001",
+    workspaceSysId: "workspace-001"
+  } satisfies PageListResult));
+  const createPageMock = vi.fn(async () => {
+    const createdPage: WorkspacePageRecord = {
+      sysId: "page-002",
+      workspaceSysId: "workspace-001",
+      parentPageSysId: null,
+      siblingOrder: 2,
+      draftTitle: "Task 33 Refresh Smoke",
+      draftSlug: "task-33-refresh-smoke",
+      draftSlugNormalized: "task-33-refresh-smoke",
+      draftContentJson: {
+        type: "doc",
+        content: []
+      },
+      draftBodyText: null,
+      publishedTitle: null,
+      publishedSlug: null,
+      publishedSlugNormalized: null,
+      publishedContentJson: null,
+      publishedBodyText: null,
+      publicationState: "draft",
+      active: false
+    };
+
+    livePages.push(createdPage);
+    return {
+      state: "succeeded",
+      page: createdPage
+    } satisfies WorkspaceCreateResult;
+  });
+
+  render(
+    <App
+      runtime={createRuntime()}
+      serviceNowClient={createClient({
+        listWorkspaces: async () => ({
+          items: [
+            createWorkspace({
+              name: "Product Docs",
+              roleLabel: "Admin",
+              canManageSettings: true,
+              slug: "workspace-001"
+            })
+          ],
+          page: 1,
+          pageSize: 10,
+          totalCount: 1,
+          hasNextPage: false,
+          searchText: ""
+        }),
+        getWorkspace: async () => ({
+          workspace: createWorkspace({
+            name: "Product Docs",
+            roleLabel: "Admin",
+            canManageSettings: true,
+            slug: "workspace-001"
+          })
+        }),
+        listPages: pageListMock,
+        createPage: createPageMock
+      })}
+    />
+  );
+
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "My Workspaces", level: 1 })).toBeInTheDocument();
+  });
+
+  fireEvent.click(screen.getByRole("link", { name: "Product Docs" }));
+
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "Overview", level: 1 })).toBeInTheDocument();
+  });
+
+  expect(screen.getByRole("button", { name: "Overview" })).toBeInTheDocument();
+  expect(pageListMock).toHaveBeenCalledTimes(1);
+
+  fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]);
+  fireEvent.change(screen.getByRole("textbox", { name: "Page title" }), { target: { value: "Task 33 Refresh Smoke" } });
+  fireEvent.click(screen.getByRole("button", { name: "Create page" }));
+
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "Task 33 Refresh Smoke", level: 1 })).toBeInTheDocument();
+  });
+  expect(screen.getByRole("button", { name: "Task 33 Refresh Smoke" })).toBeInTheDocument();
+  expect(pageListMock).toHaveBeenCalledTimes(1);
+
+  fireEvent.click(screen.getByRole("button", { name: "Workspace switcher: Product Docs" }));
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "My Workspaces", level: 1 })).toBeInTheDocument();
+  });
+
+  fireEvent.click(screen.getByRole("link", { name: "Product Docs" }));
+
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "Task 33 Refresh Smoke", level: 1 })).toBeInTheDocument();
+  });
+
+  expect(pageListMock).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole("button", { name: "Task 33 Refresh Smoke" })).toBeInTheDocument();
 });
 
 test("workspace load failures still render inside the shared app frame", async () => {

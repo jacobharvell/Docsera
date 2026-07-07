@@ -15,6 +15,7 @@ import type {
   WorkspaceCreateResult,
   WorkspaceCreateSucceeded,
   WorkspaceListResult,
+  PageListResult,
   WorkspaceLookupResult,
   WorkspaceViewRecord
 } from "../../shared/types/docsera";
@@ -202,6 +203,23 @@ function normalizePageRecord(candidate: unknown): WorkspacePageRecord {
     publishedBodyText: cleanText(page.publishedBodyText) || null,
     publicationState,
     active: typeof page.active === "boolean" ? page.active : undefined
+  };
+}
+
+function normalizePageListResult(body: unknown): PageListResult {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result)) {
+    throw new Error("Page list payload was invalid.");
+  }
+
+  const itemsSource = Array.isArray(result.items) ? result.items : Array.isArray(result.pages) ? result.pages : [];
+  const items = itemsSource.map((item) => normalizePageRecord(item));
+
+  return {
+    items,
+    workspaceSlug: cleanText(result.workspaceSlug),
+    workspaceSysId: cleanText(result.workspaceSysId),
+    totalCount: Number(result.totalCount) || items.length
   };
 }
 
@@ -461,6 +479,23 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
 
       const response = await requestJson<unknown>(path.pathname + path.search);
       return normalizeWorkspaceLookupResult(response.body);
+    },
+
+    async listPages(input: { workspaceSlug: string }): Promise<PageListResult> {
+      const path = new URL(pageCollectionPath, window.location.origin);
+      path.searchParams.set("workspaceSlug", cleanText(input.workspaceSlug));
+
+      const response = await requestJson<unknown>(path.pathname + path.search);
+
+      if (response.status === 200) {
+        return normalizePageListResult(response.body);
+      }
+
+      if (response.status === 400 || response.status === 403 || response.status === 404) {
+        throw new Error(extractErrorMessage(response.body, "Unable to load pages."));
+      }
+
+      throw new Error(`HTTP ${response.status}`);
     },
 
     async createWorkspace(input: WorkspaceCreateInput): Promise<WorkspaceCreateResult> {

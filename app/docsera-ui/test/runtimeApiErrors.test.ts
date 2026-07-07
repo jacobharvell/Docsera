@@ -14,14 +14,20 @@ vi.mock("../src/server/workspaces/serviceNowWorkspaceCatalog.ts", () => ({
   createServiceNowWorkspaceCatalogService: vi.fn()
 }));
 
+vi.mock("../src/server/pages/serviceNowPageListing.ts", () => ({
+  createServiceNowPageListingService: vi.fn()
+}));
+
 vi.mock("../src/server/workspaces/serviceNowWorkspaceProvisioning.ts", () => ({
   createServiceNowWorkspaceProvisioningService: vi.fn()
 }));
 
 import { process as processCreateWorkspace } from "../src/server/api/docsera-runtime-create-workspace";
+import { process as processPages } from "../src/server/api/docsera-runtime-pages";
 import { process as processWorkspaceProvisioningStatus } from "../src/server/api/docsera-runtime-workspace-provisioning-status";
 import { process as processWorkspaces } from "../src/server/api/docsera-runtime-workspaces";
 import { createServiceNowWorkspaceCatalogService } from "../src/server/workspaces/serviceNowWorkspaceCatalog.ts";
+import { createServiceNowPageListingService } from "../src/server/pages/serviceNowPageListing.ts";
 import { createServiceNowWorkspaceProvisioningService } from "../src/server/workspaces/serviceNowWorkspaceProvisioning.ts";
 
 type ResponseRecorder = {
@@ -47,6 +53,7 @@ function createResponseRecorder(): ResponseRecorder {
 beforeEach(() => {
   gsError.mockClear();
   vi.mocked(createServiceNowWorkspaceCatalogService).mockReset();
+  vi.mocked(createServiceNowPageListingService).mockReset();
   vi.mocked(createServiceNowWorkspaceProvisioningService).mockReset();
 });
 
@@ -86,6 +93,24 @@ test("workspace lookup failures still return a safe user-facing message", async 
     }
   });
   expect(String(gsError.mock.calls[0]?.[0] ?? "")).toContain("ACL denied on x_82900_docsera_docsera_workspace");
+});
+
+test("page listing failures still return a safe user-facing message", async () => {
+  vi.mocked(createServiceNowPageListingService).mockReturnValue({
+    listPages: vi.fn().mockRejectedValue(new Error("ACL denied on x_82900_docsera_page"))
+  } as never);
+
+  const response = createResponseRecorder();
+
+  await processPages({ queryString: "workspaceSlug=workspace-001" }, response);
+
+  expect(response.status).toBe(500);
+  expect(response.body).toEqual({
+    error: {
+      message: "Unable to load pages. Please try again."
+    }
+  });
+  expect(String(gsError.mock.calls[0]?.[0] ?? "")).toContain("ACL denied on x_82900_docsera_page");
 });
 
 test("create workspace hides unexpected errors behind a safe message", async () => {

@@ -62,9 +62,7 @@ export function WorkspaceShell({
         <section className="docsera-shell__empty-state" role="status">
           <p className="docsera-shell__eyebrow">Workspace shell</p>
           <h2 className="docsera-shell__empty-title">No pages are available.</h2>
-          <p className="docsera-shell__empty-copy">
-            The demo shell rendered, but the seeded page tree is empty. Restore the demo data before continuing.
-          </p>
+          <p className="docsera-shell__empty-copy">This workspace does not currently have any visible pages.</p>
         </section>
       </div>
     );

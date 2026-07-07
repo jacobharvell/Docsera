@@ -2,6 +2,7 @@ import "@servicenow/sdk/global";
 import { RestApi } from "@servicenow/sdk/core";
 import { process as createPage } from "../../server/api/docsera-runtime-create-page";
 import { process as createWorkspace } from "../../server/api/docsera-runtime-create-workspace";
+import { process as listPages } from "../../server/api/docsera-runtime-pages";
 import { process as workspaces } from "../../server/api/docsera-runtime-workspaces";
 import { process as workspaceProvisioningStatus } from "../../server/api/docsera-runtime-workspace-provisioning-status";
 import { process } from "../../server/api/docsera-runtime-ping";
@@ -53,13 +54,22 @@ RestApi({
     },
     {
       $id: Now.ID["docsera-runtime-pages-post"],
-      name: "pages",
+      name: "pages_create",
       path: "/pages",
       method: "POST",
       consumes: "application/json",
       produces: "application/json",
       shortDescription: "Create a workspace page record.",
       script: createPage
+    },
+    {
+      $id: Now.ID["docsera-runtime-pages-get"],
+      name: "pages_list",
+      path: "/pages",
+      method: "GET",
+      produces: "application/json",
+      shortDescription: "List workspace page records for authoring shells.",
+      script: listPages
     }
   ]
 });

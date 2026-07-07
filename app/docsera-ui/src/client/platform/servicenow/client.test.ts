@@ -30,6 +30,102 @@ afterEach(() => {
 });
 
 describe("service now client page creation", () => {
+  it("normalizes a nested live page list response", async () => {
+    const fetchMock = vi.fn(async (path: RequestInfo | URL) => {
+      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/pages?workspaceSlug=product-docs");
+      return createJsonResponse(200, {
+        result: {
+          items: [
+            {
+              sysId: "page-001",
+              workspaceSysId: "workspace-001",
+              parentPageSysId: null,
+              siblingOrder: 1,
+              draftTitle: "Overview",
+              draftSlug: "overview",
+              draftSlugNormalized: "overview",
+              draftContentJson: {
+                type: "doc",
+                content: []
+              },
+              draftBodyText: "",
+              publishedTitle: null,
+              publishedSlug: null,
+              publishedSlugNormalized: null,
+              publishedContentJson: null,
+              publishedBodyText: null,
+              publicationState: "draft",
+              active: true
+            }
+          ],
+          workspaceSlug: "product-docs",
+          workspaceSysId: "workspace-001",
+          totalCount: 1
+        }
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.listPages({
+      workspaceSlug: "product-docs"
+    });
+
+    expect(result.workspaceSlug).toBe("product-docs");
+    expect(result.workspaceSysId).toBe("workspace-001");
+    expect(result.totalCount).toBe(1);
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.draftSlug).toBe("overview");
+  });
+
+  it("normalizes a double-wrapped live page list response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        createJsonResponse(200, {
+          result: {
+            result: {
+              items: [
+                {
+                  sysId: "page-002",
+                  workspaceSysId: "workspace-001",
+                  parentPageSysId: null,
+                  siblingOrder: 2,
+                  draftTitle: "Launch Notes",
+                  draftSlug: "launch-notes",
+                  draftSlugNormalized: "launch-notes",
+                  draftContentJson: {
+                    type: "doc",
+                    content: []
+                  },
+                  draftBodyText: "",
+                  publishedTitle: null,
+                  publishedSlug: null,
+                  publishedSlugNormalized: null,
+                  publishedContentJson: null,
+                  publishedBodyText: null,
+                  publicationState: "draft",
+                  active: true
+                }
+              ],
+              workspaceSlug: "product-docs",
+              workspaceSysId: "workspace-001",
+              totalCount: 1
+            }
+          }
+        })
+      )
+    );
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.listPages({
+      workspaceSlug: "product-docs"
+    });
+
+    expect(result.items[0]?.draftSlugNormalized).toBe("launch-notes");
+  });
+
   it("normalizes a nested page create response", async () => {
     vi.stubGlobal(
       "fetch",

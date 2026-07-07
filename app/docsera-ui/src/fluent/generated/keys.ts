@@ -18,6 +18,10 @@ declare global {
                         table: 'sys_ws_definition'
                         id: '814e0e79e0734df7af652df1e048a18f'
                     }
+                    'docsera-runtime-pages-get': {
+                        table: 'sys_ws_operation'
+                        id: '2c1ee14346fb48d69552e328e5c980be'
+                    }
                     'docsera-runtime-pages-post': {
                         table: 'sys_ws_operation'
                         id: '0123141679ea4a7b9bbf5c118e10360b'
@@ -50,6 +54,10 @@ declare global {
                         table: 'sys_module'
                         id: 'd1c85ce69fec4046a9c4e52ccbf1ed4e'
                     }
+                    'src_server_api_docsera-runtime-pages_ts': {
+                        table: 'sys_module'
+                        id: 'f0ae2028924d46f6b6950914d45a15b1'
+                    }
                     'src_server_api_docsera-runtime-ping_ts': {
                         table: 'sys_module'
                         id: '0cae8437f1b24d1b8e2e27367ffef695'
@@ -69,6 +77,14 @@ declare global {
                     src_server_pages_serviceNowPageCreation_ts: {
                         table: 'sys_module'
                         id: '15f2c4ddfa3d429eaee05457c8553eef'
+                    }
+                    src_server_pages_serviceNowPageListing_ts: {
+                        table: 'sys_module'
+                        id: '6a431e1ba00846fda409ca43a08a23bf'
+                    }
+                    src_server_pages_serviceNowPageQueries_ts: {
+                        table: 'sys_module'
+                        id: '812c5633833a463d8b19cb00aa1678e2'
                     }
                     src_server_pages_serviceNowPageRecords_ts: {
                         table: 'sys_module'

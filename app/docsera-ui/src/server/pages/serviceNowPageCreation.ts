@@ -1,9 +1,9 @@
 import { GlideRecord, gs } from "@servicenow/glide";
-import { DOCSERA_WORKSPACE_TABLE, type WorkspaceCapabilityResult, type WorkspaceRecord } from "../workspaces/serverWorkspaceDomain.ts";
+import { type WorkspaceCapabilityResult, type WorkspaceRecord } from "../workspaces/serverWorkspaceDomain.ts";
 import { evaluateCurrentUserWorkspaceCapabilities } from "../workspaces/serviceNowWorkspaceCapabilities.ts";
-import { mapWorkspaceRecord } from "../workspaces/serviceNowWorkspaceRecords.ts";
 import { DOCSERA_PAGE_TABLE, createPageDraft, normalizePageRecord, type PageDraftInput, type PageRecord } from "./serverPageDomain.ts";
 import { mapPageRecord } from "./serviceNowPageRecords.ts";
+import { listWorkspacePages, loadWorkspaceBySlug } from "./serviceNowPageQueries.ts";
 
 type PageCreationInput = {
   title: string;
@@ -52,52 +52,6 @@ function logUnexpectedPageCreationError(error: unknown, context: Record<string, 
 
 function serializePageContentJson(value: Record<string, unknown>): string {
   return JSON.stringify(value ?? { type: "doc", content: [] });
-}
-
-function loadWorkspaceBySlug(workspaceSlug: string): ReturnType<typeof mapWorkspaceRecord> | null {
-  const slug = cleanText(workspaceSlug);
-  if (!slug) {
-    return null;
-  }
-
-  const record = new GlideRecord(DOCSERA_WORKSPACE_TABLE);
-  record.addQuery("workspace_slug", slug);
-  record.addQuery("status", "active");
-  record.setLimit(1);
-  record.query();
-
-  if (!record.next()) {
-    return null;
-  }
-
-  return mapWorkspaceRecord(record);
-}
-
-function listWorkspacePages(workspaceSysId: string): Promise<PageRecord[]> {
-  const sysId = cleanText(workspaceSysId);
-  const pages = new GlideRecord(DOCSERA_PAGE_TABLE);
-  pages.addQuery("workspace", sysId);
-  pages.query();
-
-  const results: PageRecord[] = [];
-  while (pages.next()) {
-    results.push(mapPageRecord(pages));
-  }
-
-  return Promise.resolve(
-    results.sort((left, right) => {
-      if (left.siblingOrder !== right.siblingOrder) {
-        return left.siblingOrder - right.siblingOrder;
-      }
-
-      const titleComparison = cleanText(left.draftTitle).localeCompare(cleanText(right.draftTitle), undefined, { sensitivity: "base" });
-      if (titleComparison !== 0) {
-        return titleComparison;
-      }
-
-      return cleanText(left.draftSlug).localeCompare(cleanText(right.draftSlug), undefined, { sensitivity: "base" });
-    })
-  );
 }
 
 function savePage(page: PageRecord): Promise<PageRecord> {

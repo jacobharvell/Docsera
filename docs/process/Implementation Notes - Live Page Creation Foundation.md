@@ -11,8 +11,10 @@ Accepted product requirements live in the Obsidian vault; see `docs/process/Requ
 ## Runtime Boundary
 
 - The SDK-native runtime now exposes a scoped `POST /api/x_82900_docsera/docsera_runtime/pages` route for page creation.
+- The runtime also exposes a scoped `GET /api/x_82900_docsera/docsera_runtime/pages?workspaceSlug=<slug>` route for live workspace tree hydration.
 - The browser client calls the runtime through the same same-origin ServiceNow client wrapper used by workspace loading and provisioning.
-- The live workspace shell keeps the existing demo shell frame, but newly created pages are appended into the current tree view so the user can select them immediately.
+- The workspace shell hydrates its visible tree from live ServiceNow page records when a workspace opens.
+- Newly created pages are appended into the current tree view immediately after creation, so the user can select them before a refresh.
 
 ## Page Creation Behavior
 
@@ -36,5 +38,5 @@ Accepted product requirements live in the Obsidian vault; see `docs/process/Requ
 ## Deferred Boundary
 
 - Body/editor persistence is still deferred.
-- The live tree selection uses a small demo-page projection so the created page can be opened immediately without introducing the editor save flow in this task.
+- The live tree projection keeps the current shell/view-model shape, but the underlying tree now comes from ServiceNow page records rather than the seeded demo tree.
 

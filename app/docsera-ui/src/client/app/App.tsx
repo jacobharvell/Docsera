@@ -3,19 +3,20 @@ import { DocseraAppFrame } from "./DocseraAppFrame";
 import { MyWorkspacesScreen } from "../features/workspaces/MyWorkspacesScreen";
 import { PageCreateModal } from "../features/workspaces/PageCreateModal";
 import { WorkspaceShell } from "../features/workspaces/WorkspaceShell";
-import { buildWorkspaceShellPage, buildWorkspaceShellWorkspace } from "../features/workspaces/workspaceViewModels";
+import { buildWorkspaceShellPage, buildWorkspaceShellPages, buildWorkspaceShellWorkspace } from "../features/workspaces/workspaceViewModels";
 import { buildLauncherHref, buildWorkspaceHref, readAppRoute, type DocseraAppRoute } from "../features/workspaces/workspaceRouting";
-import { demoWorkspace } from "../features/workspaces/demoWorkspace";
+import { findDemoPage, getFirstDemoPage } from "../features/workspaces/demoWorkspace";
 import type {
-  DocseraRuntimeContext,
   DemoPage,
+  DocseraRuntimeContext,
+  PageListResult,
   PingResult,
   RuntimeProbeState,
   ServiceNowClient,
-  WorkspacePageRecord,
   WorkspaceCreatePending,
   WorkspaceCreateResult,
   WorkspaceListResult,
+  WorkspacePageRecord,
   WorkspaceViewRecord
 } from "../shared/types/docsera";
 
@@ -30,6 +31,12 @@ type WorkspaceState =
   | { status: "loading" }
   | { errorMessage: string; status: "error" }
   | { data: WorkspaceViewRecord; status: "success" };
+
+type WorkspacePagesState =
+  | { status: "idle" }
+  | { status: "loading"; workspaceSlug: string }
+  | { errorMessage: string; status: "error"; workspaceSlug: string }
+  | { data: DemoPage[]; status: "success"; totalCount: number; workspaceSlug: string };
 
 const DEFAULT_PAGE_SIZE = 10;
 
@@ -75,15 +82,16 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [launcherRefreshToken, setLauncherRefreshToken] = useState(0);
   const [launcherState, setLauncherState] = useState<WorkspaceListState>({ status: "idle" });
   const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({ status: "idle" });
+  const [workspacePagesState, setWorkspacePagesState] = useState<WorkspacePagesState>({ status: "idle" });
   const [workspaceSettingsNotice, setWorkspaceSettingsNotice] = useState(false);
   const [selectedPageId, setSelectedPageId] = useState("overview");
-  const [liveWorkspacePagesBySlug, setLiveWorkspacePagesBySlug] = useState<Record<string, DemoPage[]>>({});
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalPhase, setCreateModalPhase] = useState<"idle" | "submitting" | "polling">("idle");
   const [createModalError, setCreateModalError] = useState<string | undefined>();
   const [createPageModalOpen, setCreatePageModalOpen] = useState(false);
   const [createPageModalPhase, setCreatePageModalPhase] = useState<"idle" | "submitting">("idle");
   const [createPageModalError, setCreatePageModalError] = useState<string | undefined>();
+
   const currentWorkspaceSlug = route.mode === "workspace" ? route.workspaceSlug : "";
   const currentWorkspaceSettingsIntent = route.mode === "workspace" ? route.settingsIntent : false;
   const loadedWorkspaceSlug = workspaceState.status === "success" ? workspaceState.data.slug : "";
@@ -144,7 +152,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           setLauncherState({ status: "success", data });
         }
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (!canceled) {
           setLauncherState({
             errorMessage: "Unable to load workspaces.",
@@ -203,7 +211,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           setRoute(readAppRoute(window.location));
         }
       })
-      .catch((error: unknown) => {
+      .catch(() => {
         if (!canceled) {
           setWorkspaceState({
             errorMessage: "Unable to load workspace.",
@@ -217,6 +225,54 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       canceled = true;
     };
   }, [currentWorkspaceSettingsIntent, currentWorkspaceSlug, loadedWorkspaceSlug, route.mode, serviceNowClient, workspaceState.status]);
+
+  useEffect(() => {
+    if (route.mode !== "workspace" || workspaceState.status !== "success" || workspaceState.data.slug !== currentWorkspaceSlug) {
+      setWorkspacePagesState({ status: "idle" });
+      return;
+    }
+
+    let canceled = false;
+    setWorkspacePagesState({ status: "loading", workspaceSlug: currentWorkspaceSlug });
+
+    serviceNowClient
+      .listPages({ workspaceSlug: currentWorkspaceSlug })
+      .then((result: PageListResult) => {
+        if (canceled) {
+          return;
+        }
+
+        const pages = buildWorkspaceShellPages(result.items);
+        setWorkspacePagesState({
+          data: pages,
+          status: "success",
+          totalCount: result.totalCount,
+          workspaceSlug: result.workspaceSlug || currentWorkspaceSlug
+        });
+
+        setSelectedPageId((currentSelectedPageId) => {
+          const selectedPage = findDemoPage(pages, currentSelectedPageId);
+          if (selectedPage) {
+            return currentSelectedPageId;
+          }
+
+          return getFirstDemoPage(pages)?.id ?? currentSelectedPageId;
+        });
+      })
+      .catch((error: unknown) => {
+        if (!canceled) {
+          setWorkspacePagesState({
+            errorMessage: getErrorMessage(error, "Unable to load pages."),
+            status: "error",
+            workspaceSlug: currentWorkspaceSlug
+          });
+        }
+      });
+
+    return () => {
+      canceled = true;
+    };
+  }, [currentWorkspaceSlug, loadedWorkspaceSlug, route.mode, serviceNowClient, workspaceState.status]);
 
   useEffect(() => {
     if (route.mode !== "launcher") {
@@ -292,7 +348,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }
 
       await finalizeWorkspaceCreation(result.workspace);
-    } catch (error: unknown) {
+    } catch {
       setCreateModalError("Something went wrong while creating the workspace. The workspace was not created. Please try again.");
       setCreateModalPhase("idle");
     }
@@ -353,7 +409,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }
 
       finalizePageCreation(result.page);
-    } catch (error: unknown) {
+    } catch {
       setCreatePageModalError("Something went wrong while creating the page. The page was not created. Please try again.");
       setCreatePageModalPhase("idle");
     }
@@ -361,28 +417,38 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
   function finalizePageCreation(page: WorkspacePageRecord) {
     const livePage = buildWorkspaceShellPage(page);
-    const workspaceSlug = workspaceState.status === "success" ? workspaceState.data.slug : currentWorkspaceSlug;
+    const currentWorkspace = workspaceState.status === "success" ? workspaceState.data.slug : currentWorkspaceSlug;
 
     setCreatePageModalOpen(false);
     setCreatePageModalError(undefined);
     setCreatePageModalPhase("idle");
-    if (workspaceSlug) {
-      setLiveWorkspacePagesBySlug((current) => {
-        const currentPages = current[workspaceSlug] ?? [];
-        return {
-          ...current,
-          [workspaceSlug]: [...currentPages, livePage]
-        };
-      });
-    }
-    setSelectedPageId(livePage.id);
+    setWorkspacePagesState((current) => {
+      if (current.status !== "success" || current.workspaceSlug !== currentWorkspace) {
+        return current;
+      }
+
+      return {
+        ...current,
+        data: [...current.data, livePage],
+        totalCount: current.totalCount + 1
+      };
+    });
+    window.setTimeout(() => {
+      setSelectedPageId(livePage.id);
+    }, 0);
   }
 
   const launcherList = launcherState.status === "success" ? launcherState.data : null;
-  const livePagesForCurrentWorkspace = currentWorkspaceSlug ? liveWorkspacePagesBySlug[currentWorkspaceSlug] ?? [] : [];
+  const workspacePagesLoaded =
+    workspacePagesState.status === "success" && workspacePagesState.workspaceSlug === currentWorkspaceSlug;
+  const workspacePagesLoading =
+    workspacePagesState.status === "loading" ||
+    (workspacePagesState.status === "success" && workspacePagesState.workspaceSlug !== currentWorkspaceSlug) ||
+    (workspacePagesState.status === "error" && workspacePagesState.workspaceSlug !== currentWorkspaceSlug);
+  const livePagesForCurrentWorkspace = workspacePagesLoaded ? workspacePagesState.data : [];
   const workspaceShellWorkspace =
-    workspaceState.status === "success"
-      ? buildWorkspaceShellWorkspace(workspaceState.data, [...demoWorkspace.pages, ...livePagesForCurrentWorkspace])
+    workspaceState.status === "success" && workspacePagesLoaded
+      ? buildWorkspaceShellWorkspace(workspaceState.data, livePagesForCurrentWorkspace)
       : null;
   const workspaceShellDescription =
     workspaceState.status === "success" ? workspaceState.data.shortDescription ?? "Workspace shell" : "Workspace shell";
@@ -392,10 +458,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   if (route.mode === "workspace") {
     if (workspaceState.status === "loading" || workspaceState.status === "idle") {
       return (
-        <DocseraAppFrame
-          contextLabel="Workspace"
-          contextDescription="Loading the selected workspace"
-        >
+        <DocseraAppFrame contextLabel="Workspace" contextDescription="Loading the selected workspace">
           <section className="docsera-shell__empty-state" role="status">
             <p className="docsera-shell__eyebrow">Workspace</p>
             <h2 className="docsera-shell__empty-title">Loading workspace</h2>
@@ -408,7 +471,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       );
     }
 
-    if (workspaceState.status === "error" || !workspaceShellWorkspace) {
+    if (workspaceState.status === "error") {
       return (
         <DocseraAppFrame
           contextLabel="Workspace"
@@ -417,7 +480,61 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           <section className="docsera-shell__empty-state" role="status">
             <p className="docsera-shell__eyebrow">Workspace</p>
             <h2 className="docsera-shell__empty-title">Workspace unavailable</h2>
-            <p className="docsera-shell__empty-copy">{workspaceState.status === "error" ? workspaceState.errorMessage : "The requested workspace could not be found."}</p>
+            <p className="docsera-shell__empty-copy">{workspaceState.errorMessage}</p>
+            <button type="button" className="docsera-launcher-state__secondary" onClick={openLauncher}>
+              Return to My Workspaces
+            </button>
+          </section>
+        </DocseraAppFrame>
+      );
+    }
+
+    if (workspacePagesLoading || workspacePagesState.status === "idle") {
+      return (
+        <DocseraAppFrame
+          contextLabel={workspaceState.data.name}
+          contextDescription="Loading pages for the selected workspace"
+        >
+          <section className="docsera-shell__empty-state" role="status">
+            <p className="docsera-shell__eyebrow">Workspace</p>
+            <h2 className="docsera-shell__empty-title">Loading pages</h2>
+            <p className="docsera-shell__empty-copy">Fetching live page records from ServiceNow.</p>
+            <button type="button" className="docsera-launcher-state__secondary" onClick={openLauncher}>
+              Return to My Workspaces
+            </button>
+          </section>
+        </DocseraAppFrame>
+      );
+    }
+
+    if (workspacePagesState.status === "error" && workspacePagesState.workspaceSlug === currentWorkspaceSlug) {
+      return (
+        <DocseraAppFrame
+          contextLabel={workspaceState.data.name}
+          contextDescription="The workspace loaded, but its page tree could not be loaded"
+        >
+          <section className="docsera-shell__empty-state" role="status">
+            <p className="docsera-shell__eyebrow">Workspace</p>
+            <h2 className="docsera-shell__empty-title">Pages unavailable</h2>
+            <p className="docsera-shell__empty-copy">{workspacePagesState.errorMessage}</p>
+            <button type="button" className="docsera-launcher-state__secondary" onClick={openLauncher}>
+              Return to My Workspaces
+            </button>
+          </section>
+        </DocseraAppFrame>
+      );
+    }
+
+    if (!workspaceShellWorkspace) {
+      return (
+        <DocseraAppFrame
+          contextLabel="Workspace"
+          contextDescription="The selected workspace could not be rendered"
+        >
+          <section className="docsera-shell__empty-state" role="status">
+            <p className="docsera-shell__eyebrow">Workspace</p>
+            <h2 className="docsera-shell__empty-title">Workspace unavailable</h2>
+            <p className="docsera-shell__empty-copy">The selected workspace could not be rendered.</p>
             <button type="button" className="docsera-launcher-state__secondary" onClick={openLauncher}>
               Return to My Workspaces
             </button>
@@ -427,10 +544,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
 
     return (
-      <DocseraAppFrame
-        contextLabel={workspaceShellWorkspace.title}
-        contextDescription={workspaceShellDescription}
-      >
+      <DocseraAppFrame contextLabel={workspaceShellWorkspace.title} contextDescription={workspaceShellDescription}>
         <WorkspaceShell
           runtime={runtime}
           onOpenWorkspaceSettings={() => openWorkspace(route.workspaceSlug, true)}
@@ -473,10 +587,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   };
 
   return (
-    <DocseraAppFrame
-      contextLabel="My Workspaces"
-      contextDescription="Workspace catalog and creation"
-    >
+    <DocseraAppFrame contextLabel="My Workspaces" contextDescription="Workspace catalog and creation">
       <MyWorkspacesScreen
         createModal={{
           errorMessage: createModalError,
