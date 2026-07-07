@@ -87,7 +87,7 @@ export function PageCreateModal({ errorMessage, onClose, onSubmit, open, phase }
           </div>
 
           <p className="docsera-modal__copy">
-            The page will be created at the workspace root. Body persistence is deferred for this slice.
+            The page will be created at the workspace root. Draft body edits can be saved from the page editor after creation.
           </p>
 
           {errorMessage ? (

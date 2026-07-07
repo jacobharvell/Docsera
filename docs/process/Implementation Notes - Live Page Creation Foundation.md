@@ -37,6 +37,6 @@ Accepted product requirements live in the Obsidian vault; see `docs/process/Requ
 
 ## Deferred Boundary
 
-- Body/editor persistence is still deferred.
+- Body/editor persistence is documented separately in `Implementation Notes - Page Body Draft Persistence and Save Foundation.md`.
 - The live tree projection keeps the current shell/view-model shape, but the underlying tree now comes from ServiceNow page records rather than the seeded demo tree.
 

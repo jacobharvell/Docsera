@@ -15,7 +15,7 @@ export function getWorkspaceRoleLabel(workspace: WorkspaceViewRecord | null | un
 
 function getPageBodyPlaceholder(page: WorkspacePageRecord): string {
   const title = cleanText(page.draftTitle) || "This page";
-  return `${title} was created live in ServiceNow. Body persistence is deferred in this slice.`;
+  return `${title} does not have a saved draft body yet.`;
 }
 
 export function buildWorkspaceShellPage(page: WorkspacePageRecord): DemoPage {

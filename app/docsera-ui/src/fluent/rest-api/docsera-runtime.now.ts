@@ -1,6 +1,7 @@
 import "@servicenow/sdk/global";
 import { RestApi } from "@servicenow/sdk/core";
 import { process as createPage } from "../../server/api/docsera-runtime-create-page";
+import { process as savePage } from "../../server/api/docsera-runtime-page-save";
 import { process as createWorkspace } from "../../server/api/docsera-runtime-create-workspace";
 import { process as listPages } from "../../server/api/docsera-runtime-pages";
 import { process as workspaces } from "../../server/api/docsera-runtime-workspaces";
@@ -70,6 +71,16 @@ RestApi({
       produces: "application/json",
       shortDescription: "List workspace page records for authoring shells.",
       script: listPages
+    },
+    {
+      $id: Now.ID["docsera-runtime-pages-patch"],
+      name: "pages_save",
+      path: "/pages",
+      method: "PATCH",
+      consumes: "application/json",
+      produces: "application/json",
+      shortDescription: "Persist draft body changes to an existing workspace page record.",
+      script: savePage
     }
   ]
 });

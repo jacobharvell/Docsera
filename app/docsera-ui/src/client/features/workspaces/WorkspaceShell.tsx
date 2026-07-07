@@ -1,5 +1,11 @@
 import { useMemo, useState } from "react";
-import type { DemoPage, DemoWorkspace, DocseraRuntimeContext, RuntimeProbeState } from "../../shared/types/docsera";
+import type {
+  DemoPage,
+  DemoWorkspace,
+  DocseraRuntimeContext,
+  RuntimeProbeState,
+  WorkspacePageRecord
+} from "../../shared/types/docsera";
 import { findDemoPagePath, getFirstDemoPage, findDemoPage } from "./demoWorkspace";
 import { WorkspaceDevStatus } from "./WorkspaceDevStatus";
 import { WorkspaceHeader } from "./WorkspaceHeader";
@@ -19,6 +25,8 @@ type WorkspaceShellProps = {
   canCreatePage: boolean;
   isCreatingPage: boolean;
   onShowCreatePage: () => void;
+  selectedWorkspacePage: WorkspacePageRecord | null;
+  onSavePageBody: (input: { pageSysId: string; draftBodyText: string }) => Promise<WorkspacePageRecord>;
 };
 
 function getSelectedPage(workspace: DemoWorkspace, selectedPageId: string): DemoPage | null {
@@ -36,7 +44,9 @@ export function WorkspaceShell({
   workspaceSettingsNotice,
   canCreatePage,
   isCreatingPage,
-  onShowCreatePage
+  onShowCreatePage,
+  selectedWorkspacePage,
+  onSavePageBody
 }: WorkspaceShellProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [treeFilter, setTreeFilter] = useState("");
@@ -70,16 +80,16 @@ export function WorkspaceShell({
 
   return (
     <div className="docsera-shell">
-        <WorkspaceHeader
-          canManageWorkspaceSettings={Boolean(workspace.canManageSettings)}
-          onOpenWorkspaceSettings={onOpenWorkspaceSettings}
-          workspace={workspace}
-          pagePath={pagePath}
-          sidebarCollapsed={sidebarCollapsed}
-          onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
-          onSelectPage={onSelectPage}
-          onOpenMyWorkspaces={onOpenMyWorkspaces}
-        />
+      <WorkspaceHeader
+        canManageWorkspaceSettings={Boolean(workspace.canManageSettings)}
+        onOpenWorkspaceSettings={onOpenWorkspaceSettings}
+        workspace={workspace}
+        pagePath={pagePath}
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
+        onSelectPage={onSelectPage}
+        onOpenMyWorkspaces={onOpenMyWorkspaces}
+      />
 
       {workspaceSettingsNotice ? (
         <div className="docsera-shell__notice" role="status">
@@ -92,19 +102,25 @@ export function WorkspaceShell({
 
       <div className={`docsera-workspace${sidebarCollapsed ? " docsera-workspace--sidebar-collapsed" : ""}`}>
         {!sidebarCollapsed ? (
-        <WorkspaceSidebar
-          workspace={workspace}
-          selectedPageId={selectedPage.id}
-          onSelectPage={onSelectPage}
-          treeFilter={treeFilter}
-          onTreeFilterChange={setTreeFilter}
-          canCreatePage={canCreatePage}
-          isCreatingPage={isCreatingPage}
-          onShowCreatePage={onShowCreatePage}
-        />
+          <WorkspaceSidebar
+            workspace={workspace}
+            selectedPageId={selectedPage.id}
+            onSelectPage={onSelectPage}
+            treeFilter={treeFilter}
+            onTreeFilterChange={setTreeFilter}
+            canCreatePage={canCreatePage}
+            isCreatingPage={isCreatingPage}
+            onShowCreatePage={onShowCreatePage}
+          />
         ) : null}
 
-        <WorkspaceMainPane page={selectedPage} pagePath={pagePath} />
+        <WorkspaceMainPane
+          page={selectedPage}
+          pagePath={pagePath}
+          workspacePage={selectedWorkspacePage}
+          canEditPageBody={canCreatePage}
+          onSavePageBody={onSavePageBody}
+        />
 
         <div className="docsera-workspace__aside">
           <WorkspaceToc page={selectedPage} />

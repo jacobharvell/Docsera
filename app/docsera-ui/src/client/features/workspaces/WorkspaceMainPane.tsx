@@ -1,11 +1,21 @@
-import type { DemoPage } from "../../shared/types/docsera";
+import type { DemoPage, WorkspacePageRecord } from "../../shared/types/docsera";
+import { PageBodyEditor } from "./PageBodyEditor";
 
 type WorkspaceMainPaneProps = {
   page: DemoPage;
   pagePath: DemoPage[];
+  workspacePage: WorkspacePageRecord | null;
+  canEditPageBody: boolean;
+  onSavePageBody: (input: { pageSysId: string; draftBodyText: string }) => Promise<WorkspacePageRecord>;
 };
 
-export function WorkspaceMainPane({ page, pagePath }: WorkspaceMainPaneProps) {
+export function WorkspaceMainPane({
+  page,
+  pagePath,
+  workspacePage,
+  canEditPageBody,
+  onSavePageBody
+}: WorkspaceMainPaneProps) {
   return (
     <main className="docsera-main" aria-labelledby="docsera-page-title">
       <article className="docsera-main__surface">
@@ -14,20 +24,17 @@ export function WorkspaceMainPane({ page, pagePath }: WorkspaceMainPaneProps) {
           <h1 id="docsera-page-title" className="docsera-main__title">
             {page.title}
           </h1>
+          <p className="docsera-main__lede">
+            Edit the draft body for this live page and save it explicitly back to ServiceNow.
+          </p>
         </div>
 
-        <div className="docsera-main__body">
-          <p>{page.body}</p>
-        </div>
-
-        <div className="docsera-main__sections">
-          {page.sections.map((section) => (
-            <section key={section.id} id={section.id} className="docsera-main__section">
-              <h3 className="docsera-main__section-title">{section.title}</h3>
-              {section.body ? <p className="docsera-main__section-copy">{section.body}</p> : null}
-            </section>
-          ))}
-        </div>
+        <PageBodyEditor
+          pageSysId={workspacePage?.sysId ?? page.id}
+          initialBodyText={workspacePage?.draftBodyText ?? ""}
+          canEdit={canEditPageBody && Boolean(workspacePage?.sysId)}
+          onSaveBody={onSavePageBody}
+        />
       </article>
     </main>
   );

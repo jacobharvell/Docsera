@@ -243,4 +243,185 @@ describe("service now client page creation", () => {
       expect(result.errorMessage).toBe("You do not have permission to create pages in this workspace.");
     }
   });
+
+  it("normalizes a nested page body save response", async () => {
+    const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/pages");
+      expect(init?.method).toBe("PATCH");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        workspaceSlug: "product-docs",
+        workspaceSysId: "",
+        pageSysId: "page-005",
+        pageSlug: "",
+        draftBodyText: "Saved draft body"
+      });
+
+      return createJsonResponse(200, {
+        result: {
+          page: {
+            sysId: "page-005",
+            workspaceSysId: "workspace-001",
+            parentPageSysId: null,
+            siblingOrder: 5,
+            draftTitle: "Draft Body Page",
+            draftSlug: "draft-body-page",
+            draftSlugNormalized: "draft-body-page",
+            draftContentJson: {
+              type: "doc",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [
+                    {
+                      type: "text",
+                      text: "Saved draft body"
+                    }
+                  ]
+                }
+              ]
+            },
+            draftBodyText: "Saved draft body",
+            publishedTitle: null,
+            publishedSlug: null,
+            publishedSlugNormalized: null,
+            publishedContentJson: null,
+            publishedBodyText: null,
+            publicationState: "draft",
+            active: true
+          }
+        }
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.savePageBody({
+      workspaceSlug: "product-docs",
+      pageSysId: "page-005",
+      draftBodyText: "Saved draft body"
+    });
+
+    expect(result.state).toBe("succeeded");
+    if (result.state === "succeeded") {
+      expect(result.page.sysId).toBe("page-005");
+      expect(result.page.draftBodyText).toBe("Saved draft body");
+    }
+  });
+
+  it("normalizes a double-wrapped page body save response", async () => {
+    const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/pages");
+      expect(init?.method).toBe("PATCH");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        workspaceSlug: "",
+        workspaceSysId: "workspace-001",
+        pageSysId: "",
+        pageSlug: "draft-body-page",
+        draftBodyText: "Saved draft body"
+      });
+
+      return createJsonResponse(200, {
+        result: {
+          result: {
+            page: {
+              sysId: "page-006",
+              workspaceSysId: "workspace-001",
+              parentPageSysId: null,
+              siblingOrder: 6,
+              draftTitle: "Draft Body Page",
+              draftSlug: "draft-body-page",
+              draftSlugNormalized: "draft-body-page",
+              draftContentJson: {
+                type: "doc",
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [
+                      {
+                        type: "text",
+                        text: "Saved draft body"
+                      }
+                    ]
+                  }
+                ]
+              },
+              draftBodyText: "Saved draft body",
+              publishedTitle: null,
+              publishedSlug: null,
+              publishedSlugNormalized: null,
+              publishedContentJson: null,
+              publishedBodyText: null,
+              publicationState: "draft",
+              active: true
+            }
+          }
+        }
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.savePageBody({
+      workspaceSysId: "workspace-001",
+      pageSlug: "draft-body-page",
+      draftBodyText: "Saved draft body"
+    });
+
+    expect(result.state).toBe("succeeded");
+    if (result.state === "succeeded") {
+      expect(result.page.draftSlugNormalized).toBe("draft-body-page");
+    }
+  });
+
+  it("returns a safe failure message for forbidden page body saves", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        createJsonResponse(403, {
+          error: {
+            message: "You do not have permission to edit page bodies in this workspace."
+          }
+        })
+      )
+    );
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.savePageBody({
+      workspaceSlug: "product-docs",
+      pageSysId: "page-005",
+      draftBodyText: "Saved draft body"
+    });
+
+    expect(result.state).toBe("failed");
+    if (result.state === "failed") {
+      expect(result.errorMessage).toBe("You do not have permission to edit page bodies in this workspace.");
+    }
+  });
+
+  it("returns a safe server message for unexpected page body save failures", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        createJsonResponse(500, {
+          error: {
+            message: "Something went wrong while saving the page body. Please try again."
+          }
+        })
+      )
+    );
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.savePageBody({
+      workspaceSlug: "product-docs",
+      pageSysId: "page-005",
+      draftBodyText: "Saved draft body"
+    });
+
+    expect(result.state).toBe("failed");
+    if (result.state === "failed") {
+      expect(result.errorMessage).toBe("Something went wrong while saving the page body. Please try again.");
+    }
+  });
 });

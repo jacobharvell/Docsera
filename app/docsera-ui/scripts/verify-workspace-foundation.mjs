@@ -504,7 +504,7 @@ async function main() {
   addCheck(checks, cleanText(restDefinition?.base_uri) === "/api/x_82900_docsera/docsera_runtime", "REST definition base URI matches expected value", JSON.stringify(restDefinition));
 
   const restOperations = await tableQuery(instanceUrl, session, "sys_ws_operation", {
-    query: `web_service_definition=${cleanText(restDefinition?.sys_id)}^nameINping,workspaces,workspace_provisioning_status,pages_list,pages_create`,
+    query: `web_service_definition=${cleanText(restDefinition?.sys_id)}^nameINping,workspaces,workspace_provisioning_status,pages_list,pages_create,pages_save`,
     fields: "sys_id,name,http_method,operation_uri,relative_path"
   });
   const pingOperation = restOperations.find((record) => cleanText(record.name) === "ping");
@@ -512,11 +512,13 @@ async function main() {
   const workspaceProvisioningStatusOperation = restOperations.find(
     (record) => cleanText(record.name) === "workspace_provisioning_status"
   );
-  const pageOperations = restOperations.filter((record) => cleanText(record.name) === "pages_list" || cleanText(record.name) === "pages_create");
+  const pageOperations = restOperations.filter(
+    (record) => cleanText(record.name) === "pages_list" || cleanText(record.name) === "pages_create" || cleanText(record.name) === "pages_save"
+  );
   addCheck(checks, Boolean(pingOperation), "ping REST route metadata is installed");
   addCheck(checks, Boolean(workspaceOperation), "workspaces REST route metadata is installed");
   addCheck(checks, Boolean(workspaceProvisioningStatusOperation), "workspace provisioning status REST route metadata is installed");
-  addCheck(checks, pageOperations.length === 2, "page REST route metadata is installed for GET and POST");
+  addCheck(checks, pageOperations.length === 3, "page REST route metadata is installed for GET, POST, and PATCH");
   addCheck(checks, cleanText(pingOperation?.operation_uri) === defaults.pingPath, "ping REST route URI matches expected value", JSON.stringify(pingOperation));
   addCheck(checks, cleanText(workspaceOperation?.operation_uri) === defaults.workspacePath, "workspaces REST route URI matches expected value", JSON.stringify(workspaceOperation));
   addCheck(
@@ -528,7 +530,7 @@ async function main() {
   addCheck(
     checks,
     pageOperations.every((record) => cleanText(record.operation_uri) === defaults.pagesPath),
-    "page REST route URI matches expected value for GET and POST",
+    "page REST route URI matches expected value for GET, POST, and PATCH",
     JSON.stringify(pageOperations)
   );
 

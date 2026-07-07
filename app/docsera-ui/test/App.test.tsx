@@ -3,6 +3,7 @@ import { App } from "../src/client/app/App";
 import type {
   DocseraRuntimeContext,
   PingResult,
+  PageBodySaveResult,
   PageListResult,
   ServiceNowClient,
   WorkspaceCreateResult,
@@ -59,6 +60,7 @@ function createClient(options: {
   getWorkspaceProvisioningStatus?: (statusPath: string) => Promise<WorkspaceCreateResult>;
   listWorkspaces?: (input?: { searchText?: string; page?: number; pageSize?: number }) => Promise<WorkspaceListResult>;
   ping?: () => Promise<PingResult>;
+  savePageBody?: (input: { workspaceSlug?: string; workspaceSysId?: string; pageSysId?: string; pageSlug?: string; draftBodyText: string }) => Promise<PageBodySaveResult>;
 } = {}): ServiceNowClient {
   return {
     ping: options.ping ?? (async () => ({
@@ -103,7 +105,13 @@ function createClient(options: {
     createPage: options.createPage ?? (async () => ({
       state: "failed",
       errorMessage: "Not implemented"
-    }))
+    })),
+    savePageBody:
+      options.savePageBody ??
+      (async () => ({
+        state: "failed",
+        errorMessage: "Not implemented"
+      }))
   };
 }
 
@@ -347,6 +355,73 @@ test("workspace shell hydrates live pages and keeps a newly created page visible
 
   expect(pageListMock).toHaveBeenCalledTimes(2);
   expect(screen.getByRole("button", { name: "Task 33 Refresh Smoke" })).toBeInTheDocument();
+});
+
+test("page body save failures from thrown client errors show a generic message and keep draft text", async () => {
+  const { container } = render(
+    <App
+      runtime={createRuntime({}, "/?workspace=workspace-001")}
+      serviceNowClient={createClient({
+        getWorkspace: async () => ({
+          workspace: createWorkspace({
+            name: "Product Docs",
+            roleLabel: "Admin",
+            canManageSettings: true,
+            slug: "workspace-001"
+          })
+        }),
+        listPages: async () => ({
+          items: [
+            {
+              sysId: "page-001",
+              workspaceSysId: "workspace-001",
+              parentPageSysId: null,
+              siblingOrder: 1,
+              draftTitle: "Overview",
+              draftSlug: "overview",
+              draftSlugNormalized: "overview",
+              draftContentJson: {
+                type: "doc",
+                content: []
+              },
+              draftBodyText: "Initial body",
+              publishedTitle: null,
+              publishedSlug: null,
+              publishedSlugNormalized: null,
+              publishedContentJson: null,
+              publishedBodyText: null,
+              publicationState: "draft",
+              active: true
+            }
+          ],
+          totalCount: 1,
+          workspaceSlug: "workspace-001",
+          workspaceSysId: "workspace-001"
+        }),
+        savePageBody: async () => {
+          throw new Error("GlideRecord failed for x_82900_docsera_docsera_page");
+        }
+      })}
+    />
+  );
+
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "Overview", level: 1 })).toBeInTheDocument();
+  });
+
+  const textarea = screen.getByLabelText("Body");
+  fireEvent.change(textarea, { target: { value: "Updated body" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save draft body" }));
+
+  await waitFor(() => {
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Something went wrong while saving the page body. Please try again."
+    );
+  });
+
+  expect(textarea).toHaveValue("Updated body");
+  expect(screen.getByText("Save failed")).toBeInTheDocument();
+  expect(container.querySelector(".docsera-app-frame")).toBeInTheDocument();
 });
 
 test("workspace load failures still render inside the shared app frame", async () => {

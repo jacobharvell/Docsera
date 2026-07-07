@@ -1,9 +1,9 @@
-import { GlideRecord, gs } from "@servicenow/glide";
+import { gs } from "@servicenow/glide";
 import { type WorkspaceCapabilityResult, type WorkspaceRecord } from "../workspaces/serverWorkspaceDomain.ts";
 import { evaluateCurrentUserWorkspaceCapabilities } from "../workspaces/serviceNowWorkspaceCapabilities.ts";
-import { DOCSERA_PAGE_TABLE, createPageDraft, normalizePageRecord, type PageDraftInput, type PageRecord } from "./serverPageDomain.ts";
-import { mapPageRecord } from "./serviceNowPageRecords.ts";
+import { createPageDraft, type PageDraftInput, type PageRecord } from "./serverPageDomain.ts";
 import { listWorkspacePages, loadWorkspaceBySlug } from "./serviceNowPageQueries.ts";
+import { savePageRecord } from "./serviceNowPagePersistence.ts";
 
 type PageCreationInput = {
   title: string;
@@ -48,43 +48,6 @@ function logUnexpectedPageCreationError(error: unknown, context: Record<string, 
       stack: stack || undefined
     })}`
   );
-}
-
-function serializePageContentJson(value: Record<string, unknown>): string {
-  return JSON.stringify(value ?? { type: "doc", content: [] });
-}
-
-function savePage(page: PageRecord): Promise<PageRecord> {
-  const draft = normalizePageRecord(page);
-  const record = new GlideRecord(DOCSERA_PAGE_TABLE);
-  record.initialize();
-  record.setValue("workspace", draft.workspaceSysId);
-  record.setValue("parent_page", draft.parentPageSysId ?? "");
-  record.setValue("sibling_order", String(draft.siblingOrder));
-  record.setValue("draft_title", draft.draftTitle);
-  record.setValue("draft_slug", draft.draftSlug);
-  record.setValue("draft_slug_normalized", draft.draftSlugNormalized);
-  record.setValue("draft_content_json", serializePageContentJson(draft.draftContentJson));
-  record.setValue("draft_body_text", draft.draftBodyText ?? "");
-  record.setValue("published_title", draft.publishedTitle ?? "");
-  record.setValue("published_slug", draft.publishedSlug ?? "");
-  record.setValue("published_slug_normalized", draft.publishedSlugNormalized ?? "");
-  record.setValue("published_content_json", draft.publishedContentJson ? serializePageContentJson(draft.publishedContentJson) : "");
-  record.setValue("published_body_text", draft.publishedBodyText ?? "");
-  record.setValue("publication_state", draft.publicationState);
-  record.setValue("active", draft.active ? "true" : "false");
-
-  const insertedSysId = cleanText(record.insert());
-  if (!insertedSysId) {
-    throw new Error("Failed to create page record.");
-  }
-
-  const inserted = new GlideRecord(DOCSERA_PAGE_TABLE);
-  if (!inserted.get(insertedSysId)) {
-    throw new Error("Page record could not be loaded after insert.");
-  }
-
-  return Promise.resolve(mapPageRecord(inserted));
 }
 
 export function createPageCreationService(dependencies: PageCreationDependencies) {
@@ -171,7 +134,7 @@ export function createServiceNowPageCreationService() {
     evaluateWorkspaceCapabilities: evaluateCurrentUserWorkspaceCapabilities,
     loadWorkspaceBySlug,
     listWorkspacePages,
-    savePage
+    savePage: savePageRecord
   });
 
   return {

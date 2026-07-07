@@ -6,6 +6,10 @@ import type {
   PageCreateInput,
   PageCreateResult,
   PageCreateSucceeded,
+  PageBodySaveFailed,
+  PageBodySaveInput,
+  PageBodySaveResult,
+  PageBodySaveSucceeded,
   WorkspacePageRecord,
   RawPingPayload,
   ServiceNowClient,
@@ -36,6 +40,7 @@ type JsonResponse<T> = {
 
 const DEFAULT_WORKSPACE_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces";
 const DEFAULT_PAGE_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/pages";
+const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
 
 function readWindowUserToken(candidate: Window | null | undefined): string | undefined {
   const tokenWindow = candidate as TokenBearingWindow | null | undefined;
@@ -325,6 +330,25 @@ function normalizePageCreateFailedResult(body: unknown, fallback: string): PageC
   };
 }
 
+function normalizePageBodySaveSucceededResult(body: unknown): PageBodySaveSucceeded {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || !result.page) {
+    throw new Error("Page save payload was invalid.");
+  }
+
+  return {
+    state: "succeeded",
+    page: normalizePageRecord(result.page)
+  };
+}
+
+function normalizePageBodySaveFailedResult(body: unknown, fallback: string): PageBodySaveFailed {
+  return {
+    state: "failed",
+    errorMessage: extractErrorMessage(body, fallback)
+  };
+}
+
 async function resolveWorkspaceCreateResult(
   path: string,
   input: WorkspaceCreateInput
@@ -432,6 +456,44 @@ async function resolvePageCreateResult(path: string, input: PageCreateInput): Pr
   throw new Error(`HTTP ${response.status}`);
 }
 
+async function resolvePageBodySaveResult(path: string, input: PageBodySaveInput): Promise<PageBodySaveResult> {
+  const payload = {
+    workspaceSlug: cleanText(input.workspaceSlug),
+    workspaceSysId: cleanText(input.workspaceSysId),
+    pageSysId: cleanText(input.pageSysId),
+    pageSlug: cleanText(input.pageSlug),
+    draftBodyText: input.draftBodyText
+  };
+
+  try {
+    const response = await requestJson<unknown>(path, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json"
+      }
+    });
+
+    if (response.status === 200) {
+      return normalizePageBodySaveSucceededResult(response.body);
+    }
+
+    if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 500) {
+      return normalizePageBodySaveFailedResult(response.body, SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE);
+    }
+
+    return {
+      state: "failed",
+      errorMessage: SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE
+    };
+  } catch {
+    return {
+      state: "failed",
+      errorMessage: SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE
+    };
+  }
+}
+
 export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceNowClient {
   const collectionPath = resolvePath(runtime.config.workspaceCollectionPath, DEFAULT_WORKSPACE_COLLECTION_PATH);
   const pageCollectionPath = resolvePath(runtime.config.pageCollectionPath, DEFAULT_PAGE_COLLECTION_PATH);
@@ -509,6 +571,10 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
 
     async createPage(input: PageCreateInput): Promise<PageCreateResult> {
       return resolvePageCreateResult(pageCollectionPath, input);
+    },
+
+    async savePageBody(input: PageBodySaveInput): Promise<PageBodySaveResult> {
+      return resolvePageBodySaveResult(pageCollectionPath, input);
     }
   };
 }

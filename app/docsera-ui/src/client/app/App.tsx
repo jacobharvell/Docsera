@@ -3,11 +3,9 @@ import { DocseraAppFrame } from "./DocseraAppFrame";
 import { MyWorkspacesScreen } from "../features/workspaces/MyWorkspacesScreen";
 import { PageCreateModal } from "../features/workspaces/PageCreateModal";
 import { WorkspaceShell } from "../features/workspaces/WorkspaceShell";
-import { buildWorkspaceShellPage, buildWorkspaceShellPages, buildWorkspaceShellWorkspace } from "../features/workspaces/workspaceViewModels";
+import { buildWorkspaceShellPages, buildWorkspaceShellWorkspace } from "../features/workspaces/workspaceViewModels";
 import { buildLauncherHref, buildWorkspaceHref, readAppRoute, type DocseraAppRoute } from "../features/workspaces/workspaceRouting";
-import { findDemoPage, getFirstDemoPage } from "../features/workspaces/demoWorkspace";
 import type {
-  DemoPage,
   DocseraRuntimeContext,
   PageListResult,
   PingResult,
@@ -36,9 +34,11 @@ type WorkspacePagesState =
   | { status: "idle" }
   | { status: "loading"; workspaceSlug: string }
   | { errorMessage: string; status: "error"; workspaceSlug: string }
-  | { data: DemoPage[]; status: "success"; totalCount: number; workspaceSlug: string };
+  | { data: WorkspacePageRecord[]; status: "success"; totalCount: number; workspaceSlug: string };
 
 const DEFAULT_PAGE_SIZE = 10;
+const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
+type SavedPageBodyResult = Awaited<ReturnType<ServiceNowClient["savePageBody"]>>;
 
 function createInitialPingState(runtime: DocseraRuntimeContext): RuntimeProbeState {
   return runtime.config.backendPingPath ? { status: "loading" } : { status: "idle" };
@@ -50,6 +50,19 @@ function createInitialRoute(): DocseraAppRoute {
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getFirstWorkspacePage(pages: WorkspacePageRecord[]): WorkspacePageRecord | null {
+  return pages[0] ?? null;
+}
+
+function findWorkspacePageBySysId(pages: WorkspacePageRecord[], pageSysId: string): WorkspacePageRecord | null {
+  const normalizedPageSysId = cleanText(pageSysId);
+  if (!normalizedPageSysId) {
+    return null;
+  }
+
+  return pages.find((page) => cleanText(page.sysId) === normalizedPageSysId) ?? null;
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -242,7 +255,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           return;
         }
 
-        const pages = buildWorkspaceShellPages(result.items);
+        const pages = result.items;
         setWorkspacePagesState({
           data: pages,
           status: "success",
@@ -251,12 +264,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         });
 
         setSelectedPageId((currentSelectedPageId) => {
-          const selectedPage = findDemoPage(pages, currentSelectedPageId);
+          const selectedPage = findWorkspacePageBySysId(pages, currentSelectedPageId);
           if (selectedPage) {
             return currentSelectedPageId;
           }
 
-          return getFirstDemoPage(pages)?.id ?? currentSelectedPageId;
+          return getFirstWorkspacePage(pages)?.sysId ?? currentSelectedPageId;
         });
       })
       .catch((error: unknown) => {
@@ -416,7 +429,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }
 
   function finalizePageCreation(page: WorkspacePageRecord) {
-    const livePage = buildWorkspaceShellPage(page);
     const currentWorkspace = workspaceState.status === "success" ? workspaceState.data.slug : currentWorkspaceSlug;
 
     setCreatePageModalOpen(false);
@@ -429,12 +441,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
       return {
         ...current,
-        data: [...current.data, livePage],
+        data: [...current.data, page],
         totalCount: current.totalCount + 1
       };
     });
     window.setTimeout(() => {
-      setSelectedPageId(livePage.id);
+      setSelectedPageId(cleanText(page.sysId) || selectedPageId);
     }, 0);
   }
 
@@ -448,12 +460,52 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const livePagesForCurrentWorkspace = workspacePagesLoaded ? workspacePagesState.data : [];
   const workspaceShellWorkspace =
     workspaceState.status === "success" && workspacePagesLoaded
-      ? buildWorkspaceShellWorkspace(workspaceState.data, livePagesForCurrentWorkspace)
+      ? buildWorkspaceShellWorkspace(workspaceState.data, buildWorkspaceShellPages(livePagesForCurrentWorkspace))
       : null;
   const workspaceShellDescription =
     workspaceState.status === "success" ? workspaceState.data.shortDescription ?? "Workspace shell" : "Workspace shell";
   const canCreatePage = Boolean(workspaceState.status === "success" && workspaceState.data.roleLabel);
   const isCreatingPage = createPageModalOpen || createPageModalPhase !== "idle";
+  const selectedWorkspacePage =
+    workspacePagesLoaded && livePagesForCurrentWorkspace.length > 0
+      ? findWorkspacePageBySysId(livePagesForCurrentWorkspace, selectedPageId) ??
+        getFirstWorkspacePage(livePagesForCurrentWorkspace)
+      : null;
+
+  async function savePageBody(input: { pageSysId: string; draftBodyText: string }): Promise<WorkspacePageRecord> {
+    if (workspaceState.status !== "success") {
+      throw new Error(SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE);
+    }
+
+    let result!: SavedPageBodyResult;
+    try {
+      result = await serviceNowClient.savePageBody({
+        workspaceSlug: workspaceState.data.slug,
+        workspaceSysId: workspaceState.data.sysId,
+        pageSysId: input.pageSysId,
+        draftBodyText: input.draftBodyText
+      });
+    } catch {
+      throw new Error(SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE);
+    }
+
+    if (result.state === "failed") {
+      throw new Error(result.errorMessage);
+    }
+
+    setWorkspacePagesState((current) => {
+      if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug) {
+        return current;
+      }
+
+      return {
+        ...current,
+        data: current.data.map((page) => (cleanText(page.sysId) === cleanText(result.page.sysId) ? result.page : page))
+      };
+    });
+
+    return result.page;
+  }
 
   if (route.mode === "workspace") {
     if (workspaceState.status === "loading" || workspaceState.status === "idle") {
@@ -557,6 +609,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           canCreatePage={canCreatePage}
           isCreatingPage={isCreatingPage}
           onShowCreatePage={openCreatePageModal}
+          selectedWorkspacePage={selectedWorkspacePage}
+          onSavePageBody={savePageBody}
         />
         <PageCreateModal
           errorMessage={createPageModalError}

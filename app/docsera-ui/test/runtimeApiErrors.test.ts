@@ -18,15 +18,21 @@ vi.mock("../src/server/pages/serviceNowPageListing.ts", () => ({
   createServiceNowPageListingService: vi.fn()
 }));
 
+vi.mock("../src/server/pages/serviceNowPageDraftPersistence.ts", () => ({
+  createServiceNowPageBodySaveService: vi.fn()
+}));
+
 vi.mock("../src/server/workspaces/serviceNowWorkspaceProvisioning.ts", () => ({
   createServiceNowWorkspaceProvisioningService: vi.fn()
 }));
 
 import { process as processCreateWorkspace } from "../src/server/api/docsera-runtime-create-workspace";
+import { process as processPageSave } from "../src/server/api/docsera-runtime-page-save";
 import { process as processPages } from "../src/server/api/docsera-runtime-pages";
 import { process as processWorkspaceProvisioningStatus } from "../src/server/api/docsera-runtime-workspace-provisioning-status";
 import { process as processWorkspaces } from "../src/server/api/docsera-runtime-workspaces";
 import { createServiceNowWorkspaceCatalogService } from "../src/server/workspaces/serviceNowWorkspaceCatalog.ts";
+import { createServiceNowPageBodySaveService } from "../src/server/pages/serviceNowPageDraftPersistence.ts";
 import { createServiceNowPageListingService } from "../src/server/pages/serviceNowPageListing.ts";
 import { createServiceNowWorkspaceProvisioningService } from "../src/server/workspaces/serviceNowWorkspaceProvisioning.ts";
 
@@ -53,6 +59,7 @@ function createResponseRecorder(): ResponseRecorder {
 beforeEach(() => {
   gsError.mockClear();
   vi.mocked(createServiceNowWorkspaceCatalogService).mockReset();
+  vi.mocked(createServiceNowPageBodySaveService).mockReset();
   vi.mocked(createServiceNowPageListingService).mockReset();
   vi.mocked(createServiceNowWorkspaceProvisioningService).mockReset();
 });
@@ -111,6 +118,49 @@ test("page listing failures still return a safe user-facing message", async () =
     }
   });
   expect(String(gsError.mock.calls[0]?.[0] ?? "")).toContain("ACL denied on x_82900_docsera_page");
+});
+
+test("page save failures redact draft body text from unexpected error logging", async () => {
+  vi.mocked(createServiceNowPageBodySaveService).mockReturnValue({
+    savePageBody: vi.fn().mockRejectedValue(new Error("GlideRecord failed for x_82900_docsera_page"))
+  } as never);
+
+  const response = createResponseRecorder();
+  const requestBody = {
+    workspaceSlug: "product-docs",
+    workspaceSysId: "workspace-001",
+    pageSysId: "page-001",
+    pageSlug: "overview",
+    draftBodyText: "Sensitive draft body text",
+    draft_content_json: {
+      type: "doc",
+      content: []
+    }
+  };
+
+  await processPageSave(
+    {
+      body: {
+        data: requestBody
+      }
+    },
+    response
+  );
+
+  expect(response.status).toBe(500);
+  expect(response.body).toEqual({
+    error: {
+      message: "Something went wrong while saving the page body. Please try again."
+    }
+  });
+
+  const logEntry = String(gsError.mock.calls[0]?.[0] ?? "");
+  expect(logEntry).toContain("workspace-001");
+  expect(logEntry).toContain("page-001");
+  expect(logEntry).toContain("\"draftBodyTextPresent\":true");
+  expect(logEntry).toContain("\"draftBodyTextLength\":25");
+  expect(logEntry).not.toContain("Sensitive draft body text");
+  expect(logEntry).not.toContain("draft_content_json");
 });
 
 test("create workspace hides unexpected errors behind a safe message", async () => {

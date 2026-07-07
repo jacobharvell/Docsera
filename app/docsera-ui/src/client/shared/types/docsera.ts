@@ -130,6 +130,26 @@ export type PageCreateFailed = {
 
 export type PageCreateResult = PageCreateSucceeded | PageCreateFailed;
 
+export type PageBodySaveInput = {
+  workspaceSlug?: string;
+  workspaceSysId?: string;
+  pageSysId?: string;
+  pageSlug?: string;
+  draftBodyText: string;
+};
+
+export type PageBodySaveSucceeded = {
+  page: WorkspacePageRecord;
+  state: "succeeded";
+};
+
+export type PageBodySaveFailed = {
+  errorMessage: string;
+  state: "failed";
+};
+
+export type PageBodySaveResult = PageBodySaveSucceeded | PageBodySaveFailed;
+
 export type WorkspaceCreateSucceeded = {
   state: "succeeded";
   workspace: WorkspaceViewRecord;
@@ -161,6 +181,7 @@ export type ServiceNowClient = {
   createWorkspace: (input: WorkspaceCreateInput) => Promise<WorkspaceCreateResult>;
   getWorkspaceProvisioningStatus: (statusPath: string) => Promise<WorkspaceCreateResult>;
   createPage: (input: PageCreateInput) => Promise<PageCreateResult>;
+  savePageBody: (input: PageBodySaveInput) => Promise<PageBodySaveResult>;
 };
 
 export type DemoPageSection = {
