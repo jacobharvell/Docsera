@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
-import { DocseraAppFrame } from "./DocseraAppFrame";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { DocseraHeader, type HeaderIdentity } from "../features/workspaces/DocseraHeader";
 import { MyWorkspacesScreen } from "../features/workspaces/MyWorkspacesScreen";
 import { PageCreateModal } from "../features/workspaces/PageCreateModal";
 import { PageSettingsDeleteDialog } from "../features/workspaces/PageSettingsDeleteDialog";
 import { PageSettingsOverlay } from "../features/workspaces/PageSettingsOverlay";
+import type { RecentWorkspaceItem } from "../features/workspaces/RecentWorkspacesMenu";
 import { WorkspaceShell } from "../features/workspaces/WorkspaceShell";
 import { buildWorkspaceShellPages, buildWorkspaceShellWorkspace } from "../features/workspaces/workspaceViewModels";
 import { buildLauncherHref, buildWorkspaceHref, readAppRoute, type DocseraAppRoute } from "../features/workspaces/workspaceRouting";
@@ -45,8 +46,18 @@ type WorkspacePagesState =
   | { errorMessage: string; status: "error"; workspaceSlug: string }
   | { data: WorkspacePageRecord[]; status: "success"; totalCount: number; workspaceSlug: string };
 
+type WorkspaceSwitcherState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { items: WorkspaceViewRecord[]; status: "success" }
+  | { status: "error" };
+
+type PendingWorkspaceIdentity = Pick<WorkspaceViewRecord, "icon" | "name" | "slug">;
+
 const DEFAULT_PAGE_SIZE = 10;
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
+const DOCSERA_THEME_STORAGE_KEY = "docsera.theme";
+const DOCSERA_RECENT_WORKSPACES_STORAGE_KEY = "docsera.recent-workspaces";
 type SavedPageBodyResult = Awaited<ReturnType<ServiceNowClient["savePageBody"]>>;
 
 type PageSettingsField = "title" | "slug";
@@ -131,6 +142,116 @@ function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function readStoredTheme(): "dark" | "light" {
+  if (typeof window === "undefined") {
+    return "light";
+  }
+
+  const storedTheme = cleanText(window.localStorage.getItem(DOCSERA_THEME_STORAGE_KEY));
+  return storedTheme === "dark" ? "dark" : "light";
+}
+
+function readStoredRecentWorkspaceSlugs(): string[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(DOCSERA_RECENT_WORKSPACES_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.map((value) => cleanText(value)).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredRecentWorkspaceSlugs(workspaceSlugs: string[]): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(
+    DOCSERA_RECENT_WORKSPACES_STORAGE_KEY,
+    JSON.stringify(workspaceSlugs.map((value) => cleanText(value)).filter(Boolean).slice(0, 10))
+  );
+}
+
+function rememberRecentWorkspaceSlug(workspaceSlug: string): void {
+  const slug = cleanText(workspaceSlug);
+  if (!slug) {
+    return;
+  }
+
+  const nextSlugs = [slug, ...readStoredRecentWorkspaceSlugs().filter((value) => value !== slug)];
+  writeStoredRecentWorkspaceSlugs(nextSlugs);
+}
+
+function sortRecentWorkspaceItems(items: WorkspaceViewRecord[], currentWorkspaceSlug = ""): WorkspaceViewRecord[] {
+  const orderedSlugs = [cleanText(currentWorkspaceSlug), ...readStoredRecentWorkspaceSlugs()].filter(Boolean);
+  const rankBySlug = new Map<string, number>();
+
+  orderedSlugs.forEach((slug, index) => {
+    if (!rankBySlug.has(slug)) {
+      rankBySlug.set(slug, index);
+    }
+  });
+
+  return [...items].sort((left, right) => {
+    const leftRank = rankBySlug.get(cleanText(left.slug));
+    const rightRank = rankBySlug.get(cleanText(right.slug));
+
+    if (leftRank !== undefined || rightRank !== undefined) {
+      if (leftRank === undefined) {
+        return 1;
+      }
+
+      if (rightRank === undefined) {
+        return -1;
+      }
+
+      return leftRank - rightRank;
+    }
+
+    return cleanText(left.name).localeCompare(cleanText(right.name), undefined, { sensitivity: "base" });
+  });
+}
+
+function buildWorkspaceHeaderIdentity(input: {
+  currentWorkspaceSlug: string;
+  pendingWorkspaceIdentity: PendingWorkspaceIdentity | null;
+  recentWorkspaceItems: RecentWorkspaceItem[];
+  workspaceState: WorkspaceState;
+}): HeaderIdentity {
+  const { currentWorkspaceSlug, pendingWorkspaceIdentity, recentWorkspaceItems, workspaceState } = input;
+
+  if (workspaceState.status === "success" && workspaceState.data.slug === currentWorkspaceSlug) {
+    return {
+      kind: "workspace",
+      icon: workspaceState.data.icon,
+      name: workspaceState.data.name
+    };
+  }
+
+  const optimisticIdentity =
+    (pendingWorkspaceIdentity && cleanText(pendingWorkspaceIdentity.slug) === currentWorkspaceSlug ? pendingWorkspaceIdentity : null) ??
+    recentWorkspaceItems.find((item) => cleanText(item.slug) === currentWorkspaceSlug) ??
+    null;
+
+  if (optimisticIdentity) {
+    return {
+      kind: "workspace",
+      icon: optimisticIdentity.icon,
+      name: optimisticIdentity.name
+    };
+  }
+
+  return { kind: "workspace-loading" };
+}
+
 function getFirstWorkspacePage(pages: WorkspacePageRecord[]): WorkspacePageRecord | null {
   return pages[0] ?? null;
 }
@@ -179,13 +300,16 @@ function navigateTo(href: string, replace = false): void {
 }
 
 export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeContext; serviceNowClient: ServiceNowClient }) {
+  const [theme, setTheme] = useState<"dark" | "light">(readStoredTheme);
   const [route, setRoute] = useState<DocseraAppRoute>(createInitialRoute);
   const [pingState, setPingState] = useState<RuntimeProbeState>(() => createInitialPingState(runtime));
   const [launcherSearchText, setLauncherSearchText] = useState("");
   const [launcherPage, setLauncherPage] = useState(1);
   const [launcherRefreshToken, setLauncherRefreshToken] = useState(0);
   const [launcherState, setLauncherState] = useState<WorkspaceListState>({ status: "idle" });
+  const [workspaceSwitcherState, setWorkspaceSwitcherState] = useState<WorkspaceSwitcherState>({ status: "idle" });
   const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({ status: "idle" });
+  const [pendingWorkspaceIdentity, setPendingWorkspaceIdentity] = useState<PendingWorkspaceIdentity | null>(null);
   const [workspacePagesState, setWorkspacePagesState] = useState<WorkspacePagesState>({ status: "idle" });
   const [workspaceSettingsNotice, setWorkspaceSettingsNotice] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -212,6 +336,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }
     };
   }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-docsera-theme", theme);
+    window.localStorage.setItem(DOCSERA_THEME_STORAGE_KEY, theme);
+  }, [theme]);
 
   useEffect(() => {
     if (!pageSettingsState.open) {
@@ -250,7 +379,24 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const currentWorkspaceSettingsIntent = route.mode === "workspace" ? route.settingsIntent : false;
   const currentWorkspacePageId = route.mode === "workspace" ? route.pageId : "";
   const loadedWorkspaceSlug = workspaceState.status === "success" ? workspaceState.data.slug : "";
+  const recentWorkspaceItems = useMemo(
+    () =>
+      workspaceSwitcherState.status === "success"
+        ? sortRecentWorkspaceItems(workspaceSwitcherState.items, currentWorkspaceSlug)
+        : [],
+    [currentWorkspaceSlug, workspaceSwitcherState]
+  );
   const workspaceStateData = workspaceState.status === "success" ? workspaceState.data : null;
+  const workspaceHeaderIdentity = useMemo(
+    () =>
+      buildWorkspaceHeaderIdentity({
+        currentWorkspaceSlug,
+        pendingWorkspaceIdentity,
+        recentWorkspaceItems,
+        workspaceState
+      }),
+    [currentWorkspaceSlug, pendingWorkspaceIdentity, recentWorkspaceItems, workspaceState]
+  );
   const workspacePagesLoaded =
     workspacePagesState.status === "success" && workspacePagesState.workspaceSlug === currentWorkspaceSlug;
   const workspacePagesLoading =
@@ -262,8 +408,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     workspaceState.status === "success" && workspacePagesLoaded
       ? buildWorkspaceShellWorkspace(workspaceState.data, buildWorkspaceShellPages(livePagesForCurrentWorkspace))
       : null;
-  const workspaceShellDescription =
-    workspaceState.status === "success" ? workspaceState.data.shortDescription ?? "Workspace shell" : "Workspace shell";
   const canCreatePage = Boolean(workspaceState.status === "success" && workspaceState.data.roleLabel);
   const isCreatingPage = createPageModalOpen || createPageModalPhase !== "idle";
   const selectedWorkspacePage =
@@ -305,6 +449,34 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }, [runtime.config.backendPingPath, serviceNowClient]);
 
   useEffect(() => {
+    let canceled = false;
+    setWorkspaceSwitcherState({ status: "loading" });
+
+    serviceNowClient
+      .listWorkspaces({
+        page: 1,
+        pageSize: 10
+      })
+      .then((result) => {
+        if (!canceled) {
+          setWorkspaceSwitcherState({
+            items: result.items.slice(0, 10),
+            status: "success"
+          });
+        }
+      })
+      .catch(() => {
+        if (!canceled) {
+          setWorkspaceSwitcherState({ status: "error" });
+        }
+      });
+
+    return () => {
+      canceled = true;
+    };
+  }, [launcherRefreshToken, serviceNowClient]);
+
+  useEffect(() => {
     const handlePopState = () => {
       setRoute(readAppRoute(window.location));
     };
@@ -314,6 +486,25 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       window.removeEventListener("popstate", handlePopState);
     };
   }, []);
+
+  useEffect(() => {
+    if (route.mode !== "workspace") {
+      setPendingWorkspaceIdentity(null);
+      return;
+    }
+
+    if (workspaceState.status === "success" && workspaceState.data.slug === route.workspaceSlug) {
+      setPendingWorkspaceIdentity((current) =>
+        current && cleanText(current.slug) === route.workspaceSlug ? null : current
+      );
+    }
+  }, [route, workspaceState]);
+
+  useEffect(() => {
+    if (route.mode === "workspace") {
+      rememberRecentWorkspaceSlug(route.workspaceSlug);
+    }
+  }, [route]);
 
   useEffect(() => {
     if (route.mode !== "launcher") {
@@ -530,11 +721,23 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
   function openLauncher() {
     setWorkspaceSettingsNotice(false);
+    setPendingWorkspaceIdentity(null);
     commitRoute(buildLauncherHref());
   }
 
-  function openWorkspace(workspaceSlug: string, settingsIntent = false, pageId = "") {
+  function openWorkspace(
+    workspaceSlug: string,
+    settingsIntentOrItem: boolean | PendingWorkspaceIdentity = false,
+    pageIdOrSettingsIntent = "",
+    item?: PendingWorkspaceIdentity
+  ) {
+    const settingsIntent = typeof settingsIntentOrItem === "boolean" ? settingsIntentOrItem : false;
+    const pageId = typeof settingsIntentOrItem === "boolean" ? pageIdOrSettingsIntent : "";
+    const optimisticIdentity = typeof settingsIntentOrItem === "boolean" ? item ?? null : settingsIntentOrItem;
+
+    rememberRecentWorkspaceSlug(workspaceSlug);
     setWorkspaceSettingsNotice(settingsIntent);
+    setPendingWorkspaceIdentity(optimisticIdentity && cleanText(optimisticIdentity.slug) === cleanText(workspaceSlug) ? optimisticIdentity : null);
     commitRoute(buildWorkspaceHref(workspaceSlug, settingsIntent, pageId));
   }
 
@@ -1156,7 +1359,18 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   if (route.mode === "workspace") {
     if (workspaceState.status === "loading" || workspaceState.status === "idle") {
       return (
-        <DocseraAppFrame contextLabel="Workspace" contextDescription="Loading the selected workspace">
+        <div className="docsera-app">
+          <DocseraHeader
+            currentWorkspaceSlug={currentWorkspaceSlug}
+            identity={workspaceHeaderIdentity}
+            mode="workspace"
+            onOpenMyWorkspaces={openLauncher}
+            onOpenWorkspace={openWorkspace}
+            recentWorkspaces={recentWorkspaceItems}
+            showWorkspaceSwitcher={recentWorkspaceItems.length > 0}
+            theme={theme}
+            onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
+          />
           <section className="docsera-shell__empty-state" role="status">
             <p className="docsera-shell__eyebrow">Workspace</p>
             <h2 className="docsera-shell__empty-title">Loading workspace</h2>
@@ -1165,16 +1379,24 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               Return to My Workspaces
             </button>
           </section>
-        </DocseraAppFrame>
+        </div>
       );
     }
 
     if (workspaceState.status === "error") {
       return (
-        <DocseraAppFrame
-          contextLabel="Workspace"
-          contextDescription="The selected workspace could not be loaded"
-        >
+        <div className="docsera-app">
+          <DocseraHeader
+            currentWorkspaceSlug={currentWorkspaceSlug}
+            identity={workspaceHeaderIdentity}
+            mode="workspace"
+            onOpenMyWorkspaces={openLauncher}
+            onOpenWorkspace={openWorkspace}
+            recentWorkspaces={recentWorkspaceItems}
+            showWorkspaceSwitcher={recentWorkspaceItems.length > 0}
+            theme={theme}
+            onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
+          />
           <section className="docsera-shell__empty-state" role="status">
             <p className="docsera-shell__eyebrow">Workspace</p>
             <h2 className="docsera-shell__empty-title">Workspace unavailable</h2>
@@ -1183,16 +1405,23 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               Return to My Workspaces
             </button>
           </section>
-        </DocseraAppFrame>
+        </div>
       );
     }
 
     if (workspacePagesLoading || workspacePagesState.status === "idle") {
       return (
-        <DocseraAppFrame
-          contextLabel={workspaceState.data.name}
-          contextDescription="Loading pages for the selected workspace"
-        >
+        <div className="docsera-app">
+          <DocseraHeader
+            currentWorkspaceSlug={workspaceState.data.slug}
+            identity={workspaceHeaderIdentity}
+            mode="workspace"
+            onOpenMyWorkspaces={openLauncher}
+            onOpenWorkspace={openWorkspace}
+            recentWorkspaces={recentWorkspaceItems}
+            theme={theme}
+            onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
+          />
           <section className="docsera-shell__empty-state" role="status">
             <p className="docsera-shell__eyebrow">Workspace</p>
             <h2 className="docsera-shell__empty-title">Loading pages</h2>
@@ -1201,16 +1430,23 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               Return to My Workspaces
             </button>
           </section>
-        </DocseraAppFrame>
+        </div>
       );
     }
 
     if (workspacePagesState.status === "error" && workspacePagesState.workspaceSlug === currentWorkspaceSlug) {
       return (
-        <DocseraAppFrame
-          contextLabel={workspaceState.data.name}
-          contextDescription="The workspace loaded, but its page tree could not be loaded"
-        >
+        <div className="docsera-app">
+          <DocseraHeader
+            currentWorkspaceSlug={workspaceState.data.slug}
+            identity={workspaceHeaderIdentity}
+            mode="workspace"
+            onOpenMyWorkspaces={openLauncher}
+            onOpenWorkspace={openWorkspace}
+            recentWorkspaces={recentWorkspaceItems}
+            theme={theme}
+            onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
+          />
           <section className="docsera-shell__empty-state" role="status">
             <p className="docsera-shell__eyebrow">Workspace</p>
             <h2 className="docsera-shell__empty-title">Pages unavailable</h2>
@@ -1219,16 +1455,24 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               Return to My Workspaces
             </button>
           </section>
-        </DocseraAppFrame>
+        </div>
       );
     }
 
     if (!workspaceShellWorkspace) {
       return (
-        <DocseraAppFrame
-          contextLabel="Workspace"
-          contextDescription="The selected workspace could not be rendered"
-        >
+        <div className="docsera-app">
+          <DocseraHeader
+            currentWorkspaceSlug={currentWorkspaceSlug}
+            identity={workspaceHeaderIdentity}
+            mode="workspace"
+            onOpenMyWorkspaces={openLauncher}
+            onOpenWorkspace={openWorkspace}
+            recentWorkspaces={recentWorkspaceItems}
+            showWorkspaceSwitcher={recentWorkspaceItems.length > 0}
+            theme={theme}
+            onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
+          />
           <section className="docsera-shell__empty-state" role="status">
             <p className="docsera-shell__eyebrow">Workspace</p>
             <h2 className="docsera-shell__empty-title">Workspace unavailable</h2>
@@ -1237,15 +1481,19 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               Return to My Workspaces
             </button>
           </section>
-        </DocseraAppFrame>
+        </div>
       );
     }
 
     return (
-      <DocseraAppFrame contextLabel={workspaceShellWorkspace.title} contextDescription={workspaceShellDescription}>
+      <div className="docsera-app">
         <WorkspaceShell
+          currentWorkspaceSlug={workspaceState.data.slug}
+          recentWorkspaces={recentWorkspaceItems}
+          showWorkspaceSwitcher={Boolean(workspaceState.data.roleLabel) || recentWorkspaceItems.length > 0}
           runtime={runtime}
           onOpenWorkspaceSettings={() => openWorkspace(route.workspaceSlug, true, selectedWorkspacePageId)}
+          onOpenWorkspace={openWorkspace}
           workspace={workspaceShellWorkspace}
           selectedPageId={selectedWorkspacePageId}
           onSelectPage={openWorkspacePage}
@@ -1260,6 +1508,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           onShowCreatePage={openCreatePageModal}
           selectedWorkspacePage={selectedWorkspacePage}
           onSavePageBody={savePageBody}
+          theme={theme}
+          onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
         />
         <PageSettingsOverlay
           activeField={pageSettingsState.activeField}
@@ -1301,7 +1551,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           open={createPageModalOpen}
           phase={createPageModalPhase}
         />
-      </DocseraAppFrame>
+      </div>
     );
   }
 
@@ -1319,7 +1569,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   };
 
   return (
-    <DocseraAppFrame contextLabel="My Workspaces" contextDescription="Workspace catalog and creation">
+    <div className="docsera-app">
       <MyWorkspacesScreen
         createModal={{
           errorMessage: createModalError,
@@ -1350,9 +1600,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         page={listState.page}
         pageSize={listState.pageSize}
         searchText={launcherSearchText}
+        recentWorkspaces={recentWorkspaceItems}
+        theme={theme}
         totalCount={listState.totalCount}
+        onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
         workspaceListErrorMessage={listState.workspaceListErrorMessage}
       />
-    </DocseraAppFrame>
+    </div>
   );
 }

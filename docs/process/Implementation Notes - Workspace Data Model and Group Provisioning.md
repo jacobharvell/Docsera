@@ -35,6 +35,33 @@ The current default icon is a built-in Docsera icon key:
 - `key: docsera-workspace`
 - `label: Docsera workspace icon`
 
+Client runtime delivery for that built-in default icon is intentionally different from future custom icons:
+
+- the built-in Docsera workspace icon is imported from `app/docsera-ui/src/client/assets/docsera-default-workspace-icon.png?inline`
+- the client ships that default icon as a JS-bundle data URI
+- the runtime does not derive a sibling asset URL from `main.jsdbx`, `/uxasset/externals/...`, or other ServiceNow SDK Direct UI Page paths
+- this avoids fragile runtime asset URL assumptions in the live PDI shell
+- future user-uploaded custom workspace icons should use a ServiceNow-backed storage and delivery model instead of JS-bundle inlining
+
+## Direct UI Page Runtime Asset Guidance
+
+Use JS-bundle inlining only for small built-in runtime assets that must always render, such as the default Docsera workspace icon.
+
+Repo guidance for ServiceNow SDK Direct UI Page runtime work:
+
+- do not derive critical image URLs from `main.jsdbx`
+- do not assume `/uxasset/externals/...` sibling paths or `/assets/...` neighbors will be served reliably by the Direct UI Page runtime
+- for small built-in assets that must always load, prefer the repo's explicit inline import path such as `?inline`
+- do not inline user-provided or runtime data assets into the React bundle
+- for uploaded or runtime-managed assets, store only metadata or references in the record and deliver the bytes through a ServiceNow-backed storage path that can enforce workspace access correctly
+
+High-level PDI diagnosis steps for broken image behavior:
+
+1. Inspect the rendered `img src` value.
+2. Check Network for the image request status and returned content type.
+3. Confirm whether the browser is making a separate image request at all.
+4. For intentionally inlined assets, confirm the built runtime bundle contains a `data:` URI instead of a derived runtime asset URL.
+
 The current layout defaults are:
 
 - table of contents visible by default

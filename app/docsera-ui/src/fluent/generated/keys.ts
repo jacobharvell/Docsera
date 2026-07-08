@@ -154,6 +154,11 @@ declare global {
                         table: 'sys_module'
                         id: '453e4ed122a04dabb3ee142e95de0c8c'
                     }
+                    'x_82900_docsera/assets/docsera-default-workspace-icon.png': {
+                        table: 'db_image'
+                        id: 'e5d2414784714ca5a4ddeae39791462c'
+                        deleted: true
+                    }
                 }
                 composite: [
                     {

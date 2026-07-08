@@ -1,14 +1,28 @@
 export function inlineCssTextPlugin({ fs, path }) {
-  const prefix = "\0inline-css-text:";
+  const prefix = "\0inline-asset:";
+  const supportedExtensions = new Set([".css", ".png"]);
+
+  const getSourcePath = (source) => {
+    if (!source.endsWith("?inline")) {
+      return null;
+    }
+
+    const sourcePath = source.slice(0, -"?inline".length);
+    const extension = path.extname(sourcePath).toLowerCase();
+    if (!supportedExtensions.has(extension)) {
+      return null;
+    }
+
+    return sourcePath;
+  };
 
   return {
     name: "inline-css-text",
     resolveId(source, importer) {
-      if (!source.endsWith(".css?inline")) {
+      const sourcePath = getSourcePath(source);
+      if (!sourcePath) {
         return null;
       }
-
-      const sourcePath = source.slice(0, -"?inline".length);
 
       if (!importer) {
         return `${prefix}${sourcePath}`;
@@ -25,14 +39,25 @@ export function inlineCssTextPlugin({ fs, path }) {
         return null;
       }
 
-      const cssPath = id.slice(prefix.length);
+      const assetPath = id.slice(prefix.length);
+      const extension = path.extname(assetPath).toLowerCase();
 
-      if (!fs.existsSync(cssPath)) {
-        throw new Error(`Inline CSS source is missing: ${cssPath}`);
+      if (!fs.existsSync(assetPath)) {
+        throw new Error(`Inline asset source is missing: ${assetPath}`);
       }
 
-      const cssText = fs.readFileSync(cssPath, "utf8");
-      return `export default ${JSON.stringify(cssText)};`;
+      if (extension === ".css") {
+        const cssText = fs.readFileSync(assetPath, "utf8");
+        return `export default ${JSON.stringify(cssText)};`;
+      }
+
+      if (extension === ".png") {
+        const pngBytes = fs.readFileSync(assetPath);
+        const dataUri = `data:image/png;base64,${pngBytes.toString("base64")}`;
+        return `export default ${JSON.stringify(dataUri)};`;
+      }
+
+      return null;
     }
   };
 }

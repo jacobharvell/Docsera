@@ -127,6 +127,7 @@ export function buildWorkspaceShellWorkspace(workspace: WorkspaceViewRecord, pag
   return {
     ...demoWorkspace,
     title,
+    icon: workspace.icon,
     iconLabel,
     homeLabel: title,
     roleLabel: getWorkspaceRoleLabel(workspace),

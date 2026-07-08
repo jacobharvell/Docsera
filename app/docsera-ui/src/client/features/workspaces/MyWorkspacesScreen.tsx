@@ -1,4 +1,6 @@
 import type { WorkspaceViewRecord } from "../../shared/types/docsera";
+import { DocseraHeader } from "./DocseraHeader";
+import type { RecentWorkspaceItem } from "./RecentWorkspacesMenu";
 import { WorkspaceIconBadge } from "./WorkspacePrimitives";
 import { WorkspaceCreateModal } from "./WorkspaceCreateModal";
 import { buildWorkspaceHref } from "./workspaceRouting";
@@ -17,16 +19,19 @@ type MyWorkspacesScreenProps = {
   isNoResultsState: boolean;
   items: WorkspaceViewRecord[];
   onNextPage: () => void;
-  onOpenWorkspace: (workspaceSlug: string) => void;
+  onOpenWorkspace: (workspaceSlug: string, item?: RecentWorkspaceItem) => void;
   onOpenWorkspaceSettings: (workspaceSlug: string) => void;
   onPreviousPage: () => void;
   onRefresh: () => void;
   onSearchTextChange: (value: string) => void;
   onShowCreateModal: () => void;
+  recentWorkspaces: RecentWorkspaceItem[];
   page: number;
   pageSize: number;
   searchText: string;
+  theme: "dark" | "light";
   totalCount: number;
+  onToggleTheme: () => void;
   workspaceListErrorMessage?: string;
 };
 
@@ -95,7 +100,7 @@ function WorkspaceRow({
   onOpenWorkspaceSettings,
   workspace
 }: {
-  onOpenWorkspace: (workspaceSlug: string) => void;
+  onOpenWorkspace: (workspaceSlug: string, item?: RecentWorkspaceItem) => void;
   onOpenWorkspaceSettings: (workspaceSlug: string) => void;
   workspace: WorkspaceViewRecord;
 }) {
@@ -110,7 +115,7 @@ function WorkspaceRow({
               href={buildWorkspaceHref(workspace.slug)}
               onClick={(event) => {
                 event.preventDefault();
-                onOpenWorkspace(workspace.slug);
+                onOpenWorkspace(workspace.slug, workspace);
               }}
               title={`Open ${workspace.name}`}
             >
@@ -178,127 +183,151 @@ export function MyWorkspacesScreen({
   onRefresh,
   onSearchTextChange,
   onShowCreateModal,
+  recentWorkspaces,
   page,
   pageSize,
   searchText,
+  theme,
   totalCount,
+  onToggleTheme,
   workspaceListErrorMessage
 }: MyWorkspacesScreenProps) {
   const firstResultIndex = totalCount > 0 ? (page - 1) * pageSize + 1 : 0;
   const lastResultIndex = Math.min(totalCount, page * pageSize);
 
   return (
-    <div className="docsera-launcher">
-      <header className="docsera-launcher__header">
-        <div className="docsera-launcher__title-row">
-          <div>
-            <p className="docsera-launcher__eyebrow">Docsera</p>
-            <h1 className="docsera-launcher__title">My Workspaces</h1>
-          </div>
-          <button type="button" className="docsera-launcher__primary" onClick={onShowCreateModal}>
-            <PlusIcon />
-            <span>New Workspace</span>
-          </button>
-        </div>
-        <p className="docsera-launcher__copy">Workspaces where you have editing or administration access.</p>
-      </header>
-
-      {!hasError && !isLoading ? (
-        <section className="docsera-launcher-list__toolbar docsera-launcher-list__toolbar--standalone">
-          <label className="docsera-launcher-list__search">
-            <span className="docsera-launcher-list__search-icon">
-              <SearchIcon />
-            </span>
-            <input
-              className="docsera-launcher-list__search-input"
-              type="search"
-              placeholder="Search workspaces..."
-              value={searchText}
-              onChange={(event) => onSearchTextChange(event.target.value)}
-            />
-          </label>
-          {totalCount > 0 ? (
-            <div className="docsera-launcher-list__summary">
-              <span>
-                Showing {firstResultIndex}-{lastResultIndex} of {totalCount}
-              </span>
-            </div>
-          ) : null}
-        </section>
-      ) : null}
-
-      {hasError ? (
-        <section className="docsera-launcher-state" role="status">
-          <p className="docsera-launcher-state__eyebrow">Unable to load workspaces</p>
-          <h2 className="docsera-launcher-state__title">Something went wrong while loading your workspaces.</h2>
-          <p className="docsera-launcher-state__copy">{workspaceListErrorMessage ?? "Please try again."}</p>
-          <div className="docsera-launcher-state__actions">
-            <button type="button" className="docsera-launcher-state__secondary" onClick={onRefresh}>
-              Retry
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      {!hasError && isLoading ? (
-        <section className="docsera-launcher-state" aria-live="polite" role="status">
-          <p className="docsera-launcher-state__eyebrow">Loading</p>
-          <h2 className="docsera-launcher-state__title">Loading workspaces</h2>
-          <p className="docsera-launcher-state__copy">Fetching your active workspace list from ServiceNow.</p>
-        </section>
-      ) : null}
-
-      {!hasError && !isLoading && isEmptyState ? <EmptyState onShowCreateModal={onShowCreateModal} /> : null}
-
-      {!hasError && !isLoading && isNoResultsState ? (
-        <section className="docsera-launcher-state" role="status">
-          <p className="docsera-launcher-state__eyebrow">No matching workspaces</p>
-          <h2 className="docsera-launcher-state__title">Try a different search term.</h2>
-          <p className="docsera-launcher-state__copy">Only workspace names are searched in this MVP slice.</p>
-        </section>
-      ) : null}
-
-      {!hasError && !isLoading && !isEmptyState && !isNoResultsState ? (
-        <section className="docsera-launcher-list">
-          <ul className="docsera-workspace-list">
-            {items.map((workspace) => (
-              <WorkspaceRow
-                key={workspace.sysId ?? workspace.slug}
-                workspace={workspace}
-                onOpenWorkspace={onOpenWorkspace}
-                onOpenWorkspaceSettings={onOpenWorkspaceSettings}
-              />
-            ))}
-          </ul>
-
-          <div className="docsera-launcher-list__pager">
-            <button type="button" className="docsera-launcher-list__pager-button" onClick={onPreviousPage} disabled={page <= 1}>
-              <ChevronLeftIcon />
-              <span>Previous</span>
-            </button>
-            <span className="docsera-launcher-list__pager-copy">
-              Page {page} of {Math.max(1, Math.ceil(totalCount / pageSize))}
-            </span>
-            <button
-              type="button"
-              className="docsera-launcher-list__pager-button"
-              onClick={onNextPage}
-              disabled={items.length < pageSize || page * pageSize >= totalCount}
-            >
-              <span>Next</span>
-              <ChevronRightIcon />
-            </button>
-          </div>
-        </section>
-      ) : null}
-
-      <WorkspaceCreateModal
-        errorMessage={createModal.errorMessage}
-        onClose={createModal.onClose}
-        onSubmit={createModal.onSubmit}
-        open={createModal.open}
-        phase={createModal.phase}
+    <>
+      <DocseraHeader
+        identity={{
+          kind: "docsera",
+          icon: {
+            type: "builtin",
+            key: "docsera-workspace",
+            label: "Docsera workspace icon"
+          },
+          name: "Docsera"
+        }}
+        mode="launcher"
+        onOpenMyWorkspaces={() => {
+          return;
+        }}
+        onOpenWorkspace={onOpenWorkspace}
+        recentWorkspaces={recentWorkspaces}
+        theme={theme}
+        onToggleTheme={onToggleTheme}
       />
-    </div>
+
+      <div className="docsera-launcher">
+        <header className="docsera-launcher__header">
+          <div className="docsera-launcher__title-row">
+            <div>
+              <h1 className="docsera-launcher__title">My Workspaces</h1>
+              <p className="docsera-launcher__copy">Workspaces where you have editing or administration access.</p>
+            </div>
+            <button type="button" className="docsera-launcher__primary" onClick={onShowCreateModal}>
+              <PlusIcon />
+              <span>New Workspace</span>
+            </button>
+          </div>
+        </header>
+
+        {!hasError && !isLoading ? (
+          <section className="docsera-launcher-list__toolbar docsera-launcher-list__toolbar--standalone">
+            <label className="docsera-launcher-list__search">
+              <span className="docsera-launcher-list__search-icon">
+                <SearchIcon />
+              </span>
+              <input
+                className="docsera-launcher-list__search-input"
+                type="search"
+                placeholder="Search workspaces..."
+                value={searchText}
+                onChange={(event) => onSearchTextChange(event.target.value)}
+              />
+            </label>
+            {totalCount > 0 ? (
+              <div className="docsera-launcher-list__summary">
+                <span>
+                  Showing {firstResultIndex}-{lastResultIndex} of {totalCount}
+                </span>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        {hasError ? (
+          <section className="docsera-launcher-state" role="status">
+            <p className="docsera-launcher-state__eyebrow">Unable to load workspaces</p>
+            <h2 className="docsera-launcher-state__title">Something went wrong while loading your workspaces.</h2>
+            <p className="docsera-launcher-state__copy">{workspaceListErrorMessage ?? "Please try again."}</p>
+            <div className="docsera-launcher-state__actions">
+              <button type="button" className="docsera-launcher-state__secondary" onClick={onRefresh}>
+                Retry
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        {!hasError && isLoading ? (
+          <section className="docsera-launcher-state" aria-live="polite" role="status">
+            <p className="docsera-launcher-state__eyebrow">Loading</p>
+            <h2 className="docsera-launcher-state__title">Loading workspaces</h2>
+            <p className="docsera-launcher-state__copy">Fetching your active workspace list from ServiceNow.</p>
+          </section>
+        ) : null}
+
+        {!hasError && !isLoading && isEmptyState ? <EmptyState onShowCreateModal={onShowCreateModal} /> : null}
+
+        {!hasError && !isLoading && isNoResultsState ? (
+          <section className="docsera-launcher-state" role="status">
+            <p className="docsera-launcher-state__eyebrow">No matching workspaces</p>
+            <h2 className="docsera-launcher-state__title">Try a different search term.</h2>
+            <p className="docsera-launcher-state__copy">Only workspace names are searched in this MVP slice.</p>
+          </section>
+        ) : null}
+
+        {!hasError && !isLoading && !isEmptyState && !isNoResultsState ? (
+          <section className="docsera-launcher-list">
+            <ul className="docsera-workspace-list">
+              {items.map((workspace) => (
+                <WorkspaceRow
+                  key={workspace.sysId ?? workspace.slug}
+                  workspace={workspace}
+                  onOpenWorkspace={onOpenWorkspace}
+                  onOpenWorkspaceSettings={onOpenWorkspaceSettings}
+                />
+              ))}
+            </ul>
+
+            <div className="docsera-launcher-list__pager">
+              <button type="button" className="docsera-launcher-list__pager-button" onClick={onPreviousPage} disabled={page <= 1}>
+                <ChevronLeftIcon />
+                <span>Previous</span>
+              </button>
+              <span className="docsera-launcher-list__pager-copy">
+                Page {page} of {Math.max(1, Math.ceil(totalCount / pageSize))}
+              </span>
+              <button
+                type="button"
+                className="docsera-launcher-list__pager-button"
+                onClick={onNextPage}
+                disabled={items.length < pageSize || page * pageSize >= totalCount}
+              >
+                <span>Next</span>
+                <ChevronRightIcon />
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        <WorkspaceCreateModal
+          errorMessage={createModal.errorMessage}
+          onClose={createModal.onClose}
+          onSubmit={createModal.onSubmit}
+          open={createModal.open}
+          phase={createModal.phase}
+        />
+      </div>
+    </>
   );
 }

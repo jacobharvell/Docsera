@@ -56,4 +56,11 @@ describe("workspace view models", () => {
 
     expect(workspace.pages[0]?.body).toBe("Saved draft body");
   });
+
+  it("preserves the source workspace icon identity for the workspace shell header", () => {
+    const workspace = buildWorkspaceShellWorkspace(createWorkspace(), buildWorkspaceShellPages([createPage()]));
+
+    expect(workspace.icon?.key).toBe("docsera-workspace");
+    expect(workspace.icon?.label).toBe("Docsera workspace icon");
+  });
 });

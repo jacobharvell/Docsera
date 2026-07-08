@@ -4,17 +4,21 @@ import type {
   DemoWorkspace,
   DocseraRuntimeContext,
   RuntimeProbeState,
-  WorkspacePageRecord
+  WorkspacePageRecord,
+  WorkspaceViewRecord
 } from "../../shared/types/docsera";
+import { DocseraHeader } from "./DocseraHeader";
 import { findDemoPagePath, getFirstDemoPage, findDemoPage } from "./demoWorkspace";
 import { WorkspaceDevStatus } from "./WorkspaceDevStatus";
-import { WorkspaceHeader } from "./WorkspaceHeader";
 import { WorkspaceMainPane } from "./WorkspaceMainPane";
+import type { RecentWorkspaceItem } from "./RecentWorkspacesMenu";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { WorkspaceToc } from "./WorkspaceToc";
 
 type WorkspaceShellProps = {
+  currentWorkspaceSlug: string;
   runtime: DocseraRuntimeContext;
+  onOpenWorkspace: (workspaceSlug: string) => void;
   onOpenWorkspaceSettings: () => void;
   workspace: DemoWorkspace;
   selectedPageId: string;
@@ -28,8 +32,12 @@ type WorkspaceShellProps = {
   canCreatePage: boolean;
   isCreatingPage: boolean;
   onShowCreatePage: () => void;
+  recentWorkspaces: RecentWorkspaceItem[];
+  showWorkspaceSwitcher: boolean;
   selectedWorkspacePage: WorkspacePageRecord | null;
   onSavePageBody: (input: { pageSysId: string; draftBodyText: string }) => Promise<WorkspacePageRecord>;
+  theme: "dark" | "light";
+  onToggleTheme: () => void;
 };
 
 function getSelectedPage(workspace: DemoWorkspace, selectedPageId: string): DemoPage | null {
@@ -37,7 +45,9 @@ function getSelectedPage(workspace: DemoWorkspace, selectedPageId: string): Demo
 }
 
 export function WorkspaceShell({
+  currentWorkspaceSlug,
   runtime,
+  onOpenWorkspace,
   onOpenWorkspaceSettings,
   workspace,
   selectedPageId,
@@ -51,8 +61,12 @@ export function WorkspaceShell({
   canCreatePage,
   isCreatingPage,
   onShowCreatePage,
+  recentWorkspaces,
+  showWorkspaceSwitcher,
   selectedWorkspacePage,
-  onSavePageBody
+  onSavePageBody,
+  theme,
+  onToggleTheme
 }: WorkspaceShellProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [treeFilter, setTreeFilter] = useState("");
@@ -64,15 +78,32 @@ export function WorkspaceShell({
 
   return (
     <div className="docsera-shell">
-      <WorkspaceHeader
-        canManageWorkspaceSettings={Boolean(workspace.canManageSettings)}
-        onOpenWorkspaceSettings={onOpenWorkspaceSettings}
-        workspace={workspace}
-        pagePath={pagePath}
-        sidebarCollapsed={sidebarCollapsed}
-        onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
-        onSelectPage={onSelectPage}
+      <DocseraHeader
+        breadcrumbs={pagePath}
+        currentWorkspaceSlug={currentWorkspaceSlug}
+        identity={{
+          kind: "workspace",
+          icon:
+            workspace.icon ??
+            ({
+              type: "builtin",
+              key: workspace.iconLabel,
+              label: workspace.iconLabel
+            } satisfies WorkspaceViewRecord["icon"]),
+          name: workspace.title
+        }}
+        mode="workspace"
         onOpenMyWorkspaces={onOpenMyWorkspaces}
+        onOpenWorkspace={onOpenWorkspace}
+        onOpenWorkspaceSettings={onOpenWorkspaceSettings}
+        onSelectBreadcrumb={onSelectPage}
+        onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
+        recentWorkspaces={recentWorkspaces}
+        showWorkspaceSwitcher={showWorkspaceSwitcher}
+        showWorkspaceSettings={Boolean(workspace.canManageSettings)}
+        sidebarCollapsed={sidebarCollapsed}
+        theme={theme}
+        onToggleTheme={onToggleTheme}
       />
 
       {workspaceSettingsNotice ? (

@@ -242,6 +242,7 @@ export type DemoPage = {
 export type DemoWorkspace = {
   id: string;
   title: string;
+  icon?: WorkspaceIcon;
   iconLabel: string;
   homeLabel: string;
   roleLabel: string;

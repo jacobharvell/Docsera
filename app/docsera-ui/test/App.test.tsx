@@ -3,8 +3,11 @@ import { App } from "../src/client/app/App";
 import type {
   DocseraRuntimeContext,
   PingResult,
+  PageCreateResult,
   PageBodySaveResult,
+  PageDeleteResult,
   PageListResult,
+  PageSettingsSaveResult,
   ServiceNowClient,
   WorkspaceCreateResult,
   WorkspaceListResult,
@@ -61,6 +64,8 @@ function createClient(options: {
   listWorkspaces?: (input?: { searchText?: string; page?: number; pageSize?: number }) => Promise<WorkspaceListResult>;
   ping?: () => Promise<PingResult>;
   savePageBody?: (input: { workspaceSlug?: string; workspaceSysId?: string; pageSysId?: string; pageSlug?: string; draftBodyText: string }) => Promise<PageBodySaveResult>;
+  savePageSettings?: (input: { workspaceSlug: string; workspaceSysId: string; pageSysId: string; title: string; slug: string }) => Promise<PageSettingsSaveResult>;
+  deletePage?: (input: { workspaceSlug: string; workspaceSysId: string; pageSysId: string }) => Promise<PageDeleteResult>;
 } = {}): ServiceNowClient {
   return {
     ping: options.ping ?? (async () => ({
@@ -111,6 +116,18 @@ function createClient(options: {
       (async () => ({
         state: "failed",
         errorMessage: "Not implemented"
+      })),
+    savePageSettings:
+      options.savePageSettings ??
+      (async () => ({
+        state: "failed",
+        errorMessage: "Not implemented"
+      })),
+    deletePage:
+      options.deletePage ??
+      (async () => ({
+        state: "failed",
+        errorMessage: "Not implemented"
       }))
   };
 }
@@ -145,13 +162,14 @@ test("renders My Workspaces with live rows and hides settings from editor-only r
     expect(screen.getByRole("heading", { name: "My Workspaces", level: 1 })).toBeInTheDocument();
   });
 
-  expect(container.querySelector(".docsera-app-frame")).toBeInTheDocument();
+  expect(container.querySelectorAll(".docsera-header")).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "Toggle theme" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Admin Docs" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Editor Docs" })).toBeInTheDocument();
   expect(screen.getAllByRole("link", { name: "Settings" })).toHaveLength(1);
 });
 
-test("opening a workspace row switches to the workspace shell in the same app frame", async () => {
+test("opening a workspace row switches to the workspace shell with a single shared header", async () => {
   const { container } = render(
     <App
       runtime={createRuntime()}
@@ -221,7 +239,7 @@ test("opening a workspace row switches to the workspace shell in the same app fr
     expect(screen.getByRole("button", { name: "Workspace switcher: Admin Docs" })).toBeInTheDocument();
   });
 
-  expect(container.querySelector(".docsera-app-frame")).toBeInTheDocument();
+  expect(container.querySelectorAll(".docsera-header")).toHaveLength(1);
   expect(screen.getByRole("heading", { name: "Overview", level: 1 })).toBeInTheDocument();
   expect(screen.queryByRole("heading", { name: "My Workspaces", level: 1 })).not.toBeInTheDocument();
 });
@@ -283,7 +301,7 @@ test("workspace shell hydrates live pages and keeps a newly created page visible
     return {
       state: "succeeded",
       page: createdPage
-    } satisfies WorkspaceCreateResult;
+    } satisfies PageCreateResult;
   });
 
   const firstRender = render(
@@ -451,10 +469,10 @@ test("page body save failures from thrown client errors show a generic message a
 
   expect(textarea).toHaveValue("Updated body");
   expect(screen.getByText("Save failed")).toBeInTheDocument();
-  expect(container.querySelector(".docsera-app-frame")).toBeInTheDocument();
+  expect(container.querySelectorAll(".docsera-header")).toHaveLength(1);
 });
 
-test("workspace load failures still render inside the shared app frame", async () => {
+test("workspace load failures still render inside the shared header shell", async () => {
   const { container } = render(
     <App
       runtime={createRuntime({}, "/?workspace=workspace-404")}
@@ -470,8 +488,133 @@ test("workspace load failures still render inside the shared app frame", async (
     expect(screen.getByRole("heading", { name: "Workspace unavailable", level: 2 })).toBeInTheDocument();
   });
 
-  expect(container.querySelector(".docsera-app-frame")).toBeInTheDocument();
+  expect(container.querySelectorAll(".docsera-header")).toHaveLength(1);
   expect(screen.getByText("Unable to load workspace.")).toBeInTheDocument();
+});
+
+test("switching from the recent workspace menu keeps the destination workspace identity during load", async () => {
+  let resolveWorkspace: ((value: { workspace: WorkspaceViewRecord | null }) => void) | null = null;
+
+  render(
+    <App
+      runtime={createRuntime({}, "/?workspace=workspace-001")}
+      serviceNowClient={createClient({
+        listWorkspaces: async () => ({
+          items: [
+            createWorkspace({ name: "Admin Docs", slug: "workspace-001" }),
+            createWorkspace({ name: "Editor Docs", slug: "workspace-002", sysId: "workspace-002", canManageSettings: false })
+          ],
+          page: 1,
+          pageSize: 10,
+          totalCount: 2,
+          hasNextPage: false,
+          searchText: ""
+        }),
+        getWorkspace: (workspaceSlug) =>
+          new Promise((resolve) => {
+            if (workspaceSlug === "workspace-002") {
+              resolveWorkspace = resolve;
+              return;
+            }
+
+            resolve({
+              workspace: createWorkspace({
+                name: "Admin Docs",
+                slug: workspaceSlug
+              })
+            });
+          }),
+        listPages: async () => ({
+          items: [
+            {
+              sysId: "page-001",
+              workspaceSysId: "workspace-001",
+              parentPageSysId: null,
+              siblingOrder: 1,
+              draftTitle: "Overview",
+              draftSlug: "overview",
+              draftSlugNormalized: "overview",
+              draftContentJson: {
+                type: "doc",
+                content: []
+              },
+              draftBodyText: null,
+              publishedTitle: null,
+              publishedSlug: null,
+              publishedSlugNormalized: null,
+              publishedContentJson: null,
+              publishedBodyText: null,
+              publicationState: "draft",
+              active: true
+            }
+          ],
+          totalCount: 1,
+          workspaceSlug: "workspace-001",
+          workspaceSysId: "workspace-001"
+        })
+      })}
+    />
+  );
+
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Workspace switcher: Admin Docs" })).toBeInTheDocument();
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: "Workspace switcher: Admin Docs" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Editor Docs" }));
+
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Workspace switcher: Editor Docs" })).toBeInTheDocument();
+  });
+
+  expect(screen.queryByRole("button", { name: "Workspace switcher: Workspace" })).not.toBeInTheDocument();
+
+  resolveWorkspace?.({
+    workspace: createWorkspace({
+      name: "Editor Docs",
+      slug: "workspace-002",
+      sysId: "workspace-002",
+      canManageSettings: false
+    })
+  });
+
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Workspace switcher: Editor Docs" })).toBeInTheDocument();
+  });
+});
+
+test("direct workspace navigation shows a loading identity instead of a generic workspace name", async () => {
+  let resolveWorkspace: ((value: { workspace: WorkspaceViewRecord | null }) => void) | null = null;
+
+  render(
+    <App
+      runtime={createRuntime({}, "/?workspace=workspace-unknown")}
+      serviceNowClient={createClient({
+        getWorkspace: () =>
+          new Promise((resolve) => {
+            resolveWorkspace = resolve;
+          })
+      })}
+    />
+  );
+
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Loading workspace" })).toBeInTheDocument();
+  });
+
+  expect(screen.queryByRole("button", { name: "Workspace" })).not.toBeInTheDocument();
+  expect(document.querySelector(".docsera-header__workspace-name-skeleton")).not.toBeNull();
+
+  resolveWorkspace?.({
+    workspace: createWorkspace({
+      name: "Loaded Docs",
+      slug: "workspace-unknown"
+    })
+  });
+
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Loaded Docs" })).toBeInTheDocument();
+  });
 });
 
 test("workspace creation handles the pending provisioning path and opens the created workspace", async () => {
@@ -537,4 +680,67 @@ test("workspace creation handles the pending provisioning path and opens the cre
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Workspace switcher: Team Docs" })).toBeInTheDocument();
   });
+});
+
+test("viewer workspace header hides admin controls and editor entry points", async () => {
+  render(
+    <App
+      runtime={createRuntime({}, "/?workspace=viewer-docs&page_id=page-001")}
+      serviceNowClient={createClient({
+        listWorkspaces: async () => ({
+          items: [],
+          page: 1,
+          pageSize: 10,
+          totalCount: 0,
+          hasNextPage: false,
+          searchText: ""
+        }),
+        getWorkspace: async () => ({
+          workspace: createWorkspace({
+            name: "Viewer Docs",
+            slug: "viewer-docs",
+            roleLabel: null,
+            canManageSettings: false
+          })
+        }),
+        listPages: async () => ({
+          items: [
+            {
+              sysId: "page-001",
+              workspaceSysId: "workspace-001",
+              parentPageSysId: null,
+              siblingOrder: 1,
+              draftTitle: "Read Me",
+              draftSlug: "read-me",
+              draftSlugNormalized: "read-me",
+              draftContentJson: {
+                type: "doc",
+                content: []
+              },
+              draftBodyText: "Viewer body",
+              publishedTitle: null,
+              publishedSlug: null,
+              publishedSlugNormalized: null,
+              publishedContentJson: null,
+              publishedBodyText: null,
+              publicationState: "draft",
+              active: true
+            }
+          ],
+          totalCount: 1,
+          workspaceSlug: "viewer-docs",
+          workspaceSysId: "workspace-001"
+        })
+      })}
+    />
+  );
+
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "Read Me", level: 1 })).toBeInTheDocument();
+  });
+
+  expect(screen.getByRole("button", { name: "Collapse navigation" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Workspace settings" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "New page" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Workspace switcher: Viewer Docs" })).not.toBeInTheDocument();
 });

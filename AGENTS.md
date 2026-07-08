@@ -190,6 +190,7 @@ Do not re-run broad dependency/version experiments until the relevant runbook di
 - Implementation notes summarize repo-side behavior only.
 - Accepted product requirements remain in the Obsidian requirements notes and must not be replaced or contradicted by repo documentation.
 - Do not create implementation notes for trivial changes that do not alter durable behavior.
+- For ServiceNow SDK Direct UI Page runtime asset behavior, keep guidance aligned with `docs/process/Implementation Notes - Workspace Data Model and Group Provisioning.md` and avoid inferring critical asset URLs from `main.jsdbx` or sibling `/uxasset/externals/...` paths.
 
 ## Docsera Local References
 
