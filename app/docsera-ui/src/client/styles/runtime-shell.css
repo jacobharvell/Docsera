@@ -29,9 +29,13 @@
 }
 
 html,
-body,
+body {
+  min-height: 100%;
+}
+
 #docsera-root {
   min-height: 100%;
+  --docsera-runtime-probe-size: 18px;
 }
 
 body {

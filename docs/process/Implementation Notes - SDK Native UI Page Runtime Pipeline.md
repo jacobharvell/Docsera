@@ -1,202 +1,197 @@
 # Implementation Notes - SDK Native UI Page Runtime Pipeline
 
-Date: 2026-07-02
+Date: 2026-07-07
 
 Status: implementation note
 
 ## Purpose
 
-Record the preferred ServiceNow SDK-native runtime pipeline for Docsera's standalone scoped Direct UI Page host.
+Record the production runtime asset pipeline for Docsera's standalone scoped Direct UI Page host.
 
-This note summarizes repository behavior only. Accepted product behavior remains in the Obsidian requirements notes.
+This note documents repo-side implementation behavior only. Accepted product behavior remains in the Obsidian requirements notes.
 
-## Preferred Runtime Package
+## Final Runtime CSS Architecture
 
-The active runtime package remains `app/docsera-ui/`, but it now follows the SDK-native structure:
+Docsera now uses JS-injected runtime CSS for the SDK-native Direct UI Page runtime.
 
-- `src/client/`: React client entry, styles, and browser-facing runtime code
-- `src/fluent/`: Fluent metadata such as `UiPage` and `RestApi`
-- `src/server/`: server-side handler modules referenced by Fluent metadata
-- `now.config.json`: SDK application identity and server TypeScript entry
-- `now.prebuild.mjs`: SDK front-end bundling hook
+Final source-to-runtime chain:
 
-This keeps `app/docsera-ui` as the active source tree while aligning it to the supported ServiceNow SDK layout instead of introducing a second runtime package.
+- `src/client/styles/runtime-shell.css`
+- `import runtimeShellCssText from "./styles/runtime-shell.css?inline"`
+- `main.jsdbx` string module
+- one injected `style[data-docsera-runtime-style="runtime-shell"]`
+- computed style on the live page
 
-## Workspace Shell Baseline
+The CSS is injected before React mount from `src/client/main.tsx` through `ensureRuntimeStylesheet(...)`.
 
-The SDK-native UI Page now renders a prototype-aligned Docsera workspace skeleton instead of a proof-oriented runtime page.
+Runtime invariants:
 
-The shell is intentionally demo-backed and reads from explicit seed data in `src/client/features/workspaces/`:
+- exactly one runtime style tag is present
+- reinvocation updates the text instead of adding duplicates
+- `main.jsdbx` contains the CSS text and the injection marker
+- no runtime CSS request is made for `runtime-shell.css`
 
-- top application/workspace header
-- workspace icon and name in the header
-- page-tree sidebar/navigation
-- selected page content surface
-- right-side table of contents/context column
-- compact developer-status disclosure for runtime diagnostics
+## Why This Was Chosen
 
-This keeps the runtime visually useful while preserving the future boundaries:
+JS-injected CSS was selected because it gives Docsera a single deployable runtime artifact for the Direct UI Page shell and avoids the prior SDK theme-asset churn.
 
-- no live persistence
-- no page or workspace CRUD
-- no editor integration
-- no publishing workflow
-- no permissions enforcement beyond the existing runtime probe
+Rejected normal pipelines:
 
-The REST ping remains a secondary host/platform probe. It verifies same-origin access and authenticated instance wiring, but it is not the product data model and should not dominate the visible shell.
+- Stable `/uxta` identity:
+  it still required `sys_ux_theme_asset` records and made CSS freshness separate from JS freshness.
+- Hashed `/uxta` filenames:
+  it removed the stable-name mismatch, but it still kept runtime CSS as a second deployed asset, created extra metadata churn, and continued coupling CSS-only edits to theme-asset packaging behavior.
 
-## Runtime Artifacts Proven By Local Build
+The current architecture keeps runtime freshness tied to one deploy target: `main.jsdbx`.
 
-`npm --prefix app/docsera-ui run build` now runs the SDK build pipeline through the local `now-sdk` wrapper.
+## Build Plugin Behavior
 
-The local build emits:
+`app/docsera-ui/inlineCssTextPlugin.mjs` is the only custom CSS pipeline extension.
 
-- `dist/static/index.html`
-- `dist/static/main.jsdbx`
-- `dist/app/update/sys_ui_page_*.xml`
-- `dist/app/update/sys_ux_lib_asset_*.xml`
-- `dist/app/update/sys_ws_definition_*.xml`
-- `dist/app/update/sys_ws_operation_*.xml`
+Behavior:
 
-From the generated output, the SDK-native path is proven locally to compile:
+- resolves `*.css?inline`
+- reads the target file as UTF-8
+- exports the CSS as a JS string
+- throws immediately if the CSS file is missing
 
-- a classic/scoped `sys_ui_page` host
-- SDK-managed static frontend assets through `sys_ux_lib_asset`
-- a same-origin scripted REST surface through `sys_ws_definition` and `sys_ws_operation`
+`now.prebuild.mjs` and `now.dev.mjs` both use the plugin so SDK build and SDK dev stay aligned.
 
-## Fluent Metadata Baseline
+The prebuild hook still keeps a narrow path-normalization pass for backslash-shaped asset query paths. That normalization remains for non-CSS asset stability only; it no longer renames, hashes, or patches runtime CSS assets.
 
-The baseline Fluent runtime definitions are:
+## Removed / Rejected Behavior
 
-- UI Page endpoint: `x_82900_docsera_docsera_sdk_runtime.do`
-- Scripted REST base URI: `/api/x_82900_docsera/docsera_runtime`
-- Scripted REST probe route: `/api/x_82900_docsera/docsera_runtime/ping`
+The production branch does not use the old fallback runtime CSS asset path:
 
-The current React client imports CSS in code and is bundled by the SDK-managed Rollup path. The intended architecture is no longer raw `sys_attachment` CSS links or pasted `sys_ui_script` JavaScript.
+- no runtime CSS rename to `runtime-shell.<hash>.css`
+- no postbuild patching of `/uxta/...assetx?path=...runtime-shell...`
+- no runtime-shell `sys_ux_theme_asset` emission in the build package
+- no `dist/static/styles/runtime-shell*.css`
+- no verifier assumption that runtime CSS resolves from `/uxta`
 
-The repo-side prebuild wrapper normalizes SDK explicit asset keys to forward-slash paths before registration. This avoids a Windows-only failure mode where `styles\runtime-shell.css` can be emitted into the JavaScript bundle, producing a `sys_ux_theme_asset` lookup that does not match the installed `styles/runtime-shell.css` record and results in a CSS `404`.
+Historical deleted `sys_ux_theme_asset` key entries were removed from `src/fluent/generated/keys.ts` so CSS-only edits no longer create theme-asset cleanup churn in the generated key registry.
 
-Browser-side REST probes from the classic ServiceNow shell must also send the current ServiceNow user token. The runtime client now reads `g_ck` or `NOW.user.token` from the current window and same-origin parent window, then forwards that value as `X-UserToken` on the ping request so the authenticated browser shell does not produce a false `401`.
+## Build Outputs And Local Validation
 
-## Preferred Commands
+`npm --prefix app/docsera-ui run validate` is intentionally local-only and does not require PDI credentials.
 
-From the repository root:
+It runs:
 
-- `npm run types:sdk-ui-page`
-- `npm run build:sdk-ui-page`
-- `npm run install:sdk-ui-page`
-- `npm run verify:sdk-ui-page`
-
-From `app/docsera-ui/` directly:
-
-- `npm run types:sdk`
+- `npm run test`
 - `npm run build`
-- `npm run install:sdk`
-- `npm run verify:sdk-runtime`
-- `npm run transform:sdk -- --auth <alias>`
+- `npm run verify:inline-runtime-css-build`
 
-For explicit alias-based install and transform, prefer direct SDK commands from `app/docsera-ui/`:
+The local build verifier checks:
 
-- `npx @servicenow/sdk transform --auth <alias>`
-- `npx @servicenow/sdk install --auth <alias>`
+- `dist/static/main.jsdbx` exists
+- the runtime style injection marker is present
+- the inline CSS probe value is present in `main.jsdbx`
+- no runtime-shell `sys_ux_theme_asset` XML exists anywhere under `dist/app`
+- no `runtime-shell*.css` file exists under `dist/static`
+- `src/fluent/generated/keys.ts` has no runtime-shell explicit asset entry
+- `main.jsdbx` contains no runtime CSS asset URL
 
-## Reusable Runtime Verification
+## Deploy Command
 
-`npm run verify:sdk-runtime` in `app/docsera-ui/` and the repo-level wrapper `npm run verify:sdk-ui-page` provide a repeatable HTTP-only verification command for the installed SDK-native runtime.
+Preferred repo command:
 
-The command reads the stored SDK auth alias from the local `ServiceNow` / `now-sdk` keyring entry, opens a local authenticated session with the same login flow used by the SDK CLI, and verifies:
+- `npm run deploy:sdk-ui-page`
 
-- the auth alias exists
-- the Direct UI Page returns `200` and does not redirect to `session_timeout.do`
-- the page HTML contains the `docsera-root` mount node, the runtime title/config marker, and the SDK-managed `main.jsdbx` reference
-- the SDK-managed `main.jsdbx` asset resolves with `200` and includes the `#docsera-root` selector
-- the SDK-managed runtime CSS asset referenced by `main.jsdbx` resolves with `200` and contains Docsera style markers
-- the scripted REST ping returns authenticated JSON with `scope: x_82900_docsera` and `status: ok`
+It runs, in order:
 
-This command proves install integrity, endpoint accessibility, HTML markers, asset reachability, and REST ping behavior.
+1. `clean`
+2. `build`
+3. `install`
+4. deployed runtime verification
 
-This command does not execute the React app in a browser. It does not prove client-side rendering, CSS layout, runtime console cleanliness, or React bootstrap error handling.
+The app-level script is `npm --prefix app/docsera-ui run deploy:sdk`.
 
-Use a browser smoke test separately when visual rendering or client-side runtime behavior becomes the thing that needs to be proven. For this shell-alignment baseline, the unit tests in `app/docsera-ui/test/App.test.tsx` cover the workspace skeleton, page selection, ToC presence, and ping failure tolerance.
+`npm --prefix app/docsera-ui run install:sdk` now also runs a build before `now-sdk install` so direct install usage does not depend on stale local artifacts.
 
-## Install Guardrails And Current Workflow
+## Runtime Verification Chain
 
-`app/docsera-ui/scripts/verify-sdk-install-prereqs.mjs` still guards `npm run install:sdk` against an incorrect or fresh setup by refusing to install if `now.config.json` contains the placeholder scope ID:
+`npm run verify:sdk-ui-page` / `npm --prefix app/docsera-ui run verify:sdk-runtime` now verify the inline-CSS architecture, not the legacy theme-asset path.
 
-- `00000000000000000000000000000000`
+The verifier proves:
 
-The current repo baseline commits the real `scopeId` for `x_82900_docsera`, so the guard now serves as a safety check rather than an active blocker in the checked-in state.
+- the local build still satisfies the inline runtime CSS invariant
+- the UI page returns `200`
+- the live page exposes the current `main.jsdbx` reference
+- the live `main.jsdbx` hash matches the local built `main.jsdbx`
+- the live bundle contains the style injection marker
+- the live bundle contains the inline CSS probe value
+- the live bundle contains no runtime CSS asset URL
+- the browser requests `main.jsdbx`
+- the browser does not request a runtime-shell CSS asset
+- the browser has exactly one `style[data-docsera-runtime-style="runtime-shell"]`
+- computed style on `#docsera-root` matches the probe value
+- browser console has no CSP/style-injection violations
+- no uncaught browser runtime errors occur
+- the authenticated REST ping still returns the expected scoped payload
 
-Local reusable SDK auth alias `docsera-pdi` is configured on Jacob's workstation through the OS keychain-backed SDK auth store used by `@servicenow/sdk`.
+## `uxpcb` Propagation Retry Behavior
 
-Fresh machines still need to establish SDK auth before transform/install/verify. The secure local helper remains:
+The live page can briefly continue serving a prior `uxpcb` / `main.jsdbx` after install.
 
-- `app/docsera-ui/scripts/initialize-sdk-auth.ps1`
+The verifier now treats that as a freshness problem and retries before success:
 
-It prompts for the password at the terminal, pipes it to `npx @servicenow/sdk auth --add ... --password-stdin`, and never writes credentials into repo files.
+- default window: 10 attempts
+- delay: 3 seconds between attempts
+- success condition:
+  page HTML, referenced `main.jsdbx`, and fetched JS hash all align with the current local build
+- failure behavior:
+  the verifier reports the last observed hash and `uxpcb` instead of silently passing
 
-The SDK 4.8.1 CLI stores auth records in the local OS keychain through `@napi-rs/keyring` using the `ServiceNow` service and `now-sdk` account. That storage is machine-local and reusable across sessions on the same workstation. The repo should still ignore any local `.now-sdk/` cache directory if one is materialized by the CLI on a given platform.
+Observed behavior on 2026-07-07:
 
-Normal current workflow:
+- the deploy-integrated verifier succeeded once the page referenced `uxpcb=1783472521717`
+- a second verifier started in parallel with deploy remained pinned to the prior `uxpcb=1783472377483` for its full retry window and failed
+- rerunning the verifier after deploy completion passed immediately
 
-1. `npm run build:sdk-ui-page`
-2. `npm run install:sdk-ui-page`
-3. `npm run verify:sdk-ui-page`
+That failure mode is intentional: deploy success is not reported while stale JS is still being served.
 
-Explicit alias workflow remains available when the machine does not have a default SDK auth alias selected:
+## CSP Finding
 
-- `npx @servicenow/sdk transform --auth <alias>`
-- `npx @servicenow/sdk install --auth <alias>`
-- `npm run verify:sdk-runtime -- --auth-alias <alias>`
+PDI browser verification on 2026-07-07 showed the injected runtime style tag works without CSP or style-injection console violations.
 
-The REST ping handler must use `new GlideDateTime().getDisplayValue()` in scoped code. `gs.nowDateTime()` is rejected by the instance during runtime verification.
+No console messages were observed for:
 
-For the UI page, raw basic-auth fetches may still land on `session_timeout.do`; create a local login session and reuse its cookies when checking `x_82900_docsera_docsera_sdk_runtime.do`.
+- Content Security Policy violations
+- refused inline style application
+- uncaught runtime bootstrap errors
 
-## Scope Identity Source Control
+## Legacy Theme Asset Inventory
 
-The real `scopeId` for `x_82900_docsera` lives in source control and is part of the checked-in runtime baseline.
+Old runtime-shell theme assets still exist on the current PDI instance and were observed during verification:
 
-Reasoning:
+- `68629ad37dcb406f80aef6c243c82e79` -> `styles/runtime-shell.mrb67au3.4a39c753.css`
+- `e8bdafb97eee48cab1db9caf0a4d9bfa` -> `styles/runtime-shell.mrb6rku3.4a39c753.css`
 
-- The SDK build pipeline emits `dist/app/scope/sys_app_<scopeId>.xml` and references the same ID throughout update records.
-- Leaving a placeholder or requiring per-machine local edits would make a fresh clone produce an invalid installation package by default.
-- `scopeId` identifies the scoped app record, but it is not a secret.
+Current live runtime behavior does not reference them:
 
-The placeholder `scopeId` remains only a guard condition for incorrect or fresh setup, not the current repo baseline.
+- live `main.jsdbx` contains no runtime CSS asset URL
+- browser network verification made no runtime-shell CSS request
 
-## Manual Browser Verification After Install
+Safe cleanup recommendation:
 
-Jacob should open:
+- inventory the stale `sys_ux_theme_asset` records on the target instance
+- confirm no current page or lib asset references them
+- remove them with an explicit, manual, instance-scoped cleanup step if Jacob wants the instance metadata cleaned
 
-- `https://<instance>.service-now.com/x_82900_docsera_docsera_sdk_runtime.do`
+Normal deploy does not delete them automatically.
 
-Expected visible result:
+## Manual Do-Not-Do List
 
-- the Direct UI Page renders a Docsera workspace skeleton rather than a runtime smoke page
-- the header shows the workspace icon/name without long description copy
-- the left page tree, main content well, and right table of contents are visible
-- runtime diagnostics are compact and secondary
-- the backend probe can fail without making the workspace shell appear broken
+Do not:
 
-Console checks:
+- reintroduce `import "./styles/runtime-shell.css"` in the runtime entry
+- add postbuild runtime CSS patching back into the SDK pipeline
+- rely on `/uxta/...runtime-shell...css` as a success signal
+- hand-edit deployed page HTML to inject CSS
+- assume a successful install means the live page has already advanced to the current `uxpcb`
 
-- no `Docsera runtime mount node was not found.`
-- no uncaught React/runtime bootstrap error
-- no failed `main.jsdbx` asset request
+## Known Risks
 
-Network checks:
-
-- `/uxasset/externals/x_82900_docsera/main.jsdbx?...` returns `200`
-- `/api/x_82900_docsera/docsera_runtime/ping` returns `200`
-
-DOM/root checks:
-
-- `#docsera-root` exists
-- React content mounts inside `#docsera-root`
-
-## Historical Fallback
-
-`npm run package:direct-ui-page` remains only as the older manual handoff bundle for comparison or rollback investigation.
-
-That path is now historical because it still assumes manual `sys_ui_page` / `sys_ui_script` / attachment publishing, which is no longer the preferred architecture.
+- The instance can continue to serve a prior `uxpcb` briefly after install; keep the freshness retry in place.
+- Legacy runtime-shell theme-asset records still exist on the PDI and may confuse manual instance inspection until they are cleaned up deliberately.
+- Browser verification depends on a locally launchable Chromium-family browser via `playwright-core`.

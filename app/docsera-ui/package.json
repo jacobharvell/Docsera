@@ -11,18 +11,21 @@
     "node": ">=22"
   },
   "scripts": {
+    "clean": "node ./scripts/clean-sdk-build.mjs",
     "dev": "now-sdk run dev",
     "dev:legacy": "vite",
     "build": "now-sdk build",
     "build:legacy": "tsc --noEmit -p tsconfig.legacy.json && vite build",
     "preview": "vite preview",
-    "install:sdk": "node ./scripts/verify-sdk-install-prereqs.mjs && now-sdk install",
+    "install:sdk": "node ./scripts/verify-sdk-install-prereqs.mjs && npm run build && now-sdk install",
+    "deploy:sdk": "npm run clean && npm run build && node ./scripts/verify-sdk-install-prereqs.mjs && now-sdk install && npm run verify:sdk-runtime",
     "transform:sdk": "now-sdk transform",
     "types:sdk": "now-sdk dependencies",
+    "verify:inline-runtime-css-build": "node ./scripts/verify-inline-runtime-css-build.mjs",
     "verify:sdk-runtime": "node ./scripts/verify-sdk-runtime.mjs",
     "verify:workspace-foundation": "node ./scripts/verify-workspace-foundation.mjs",
     "test": "vitest run",
-    "validate": "npm run test && npm run build"
+    "validate": "npm run test && npm run build && npm run verify:inline-runtime-css-build"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -38,6 +41,7 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.2",
     "jsdom": "^25.0.1",
+    "playwright-core": "^1.61.1",
     "typescript": "^5.6.3",
     "vite": "^5.4.10",
     "vitest": "^2.1.4"

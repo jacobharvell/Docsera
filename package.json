@@ -7,6 +7,7 @@
     "generate:update-set-global-bridge": "npm --prefix app/docsera-global-bridge run generate:update-set --",
     "build:update-set-global-bridge": "npm run build:sdk-global-bridge && npm run generate:update-set-global-bridge",
     "build:sdk-ui-page": "npm --prefix app/docsera-ui run build",
+    "deploy:sdk-ui-page": "npm --prefix app/docsera-ui run deploy:sdk --",
     "install:sdk-global-bridge": "npm --prefix app/docsera-global-bridge run install:sdk --",
     "install:sdk-ui-page": "npm --prefix app/docsera-ui run install:sdk --",
     "transform:sdk-ui-page": "npm --prefix app/docsera-ui run transform:sdk --",

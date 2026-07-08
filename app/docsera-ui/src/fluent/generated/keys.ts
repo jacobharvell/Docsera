@@ -126,20 +126,6 @@ declare global {
                         table: 'sys_module'
                         id: '453e4ed122a04dabb3ee142e95de0c8c'
                     }
-                    'styles/global.css': {
-                        table: 'sys_ux_theme_asset'
-                        id: '6ac9ba7a29374177868bee0c33d414ea'
-                        deleted: true
-                    }
-                    'styles/runtime-shell.css': {
-                        table: 'sys_ux_theme_asset'
-                        id: '338dc50d700a471a847b5ae66bc0c6b4'
-                    }
-                    'styles\\global.css': {
-                        table: 'sys_ux_theme_asset'
-                        id: '7b5fd84f4e72418183171b7e16c36c88'
-                        deleted: true
-                    }
                 }
                 composite: [
                     {

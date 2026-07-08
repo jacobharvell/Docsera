@@ -1,4 +1,5 @@
 import { servicenowFrontEndPlugins, rollup, glob } from "@servicenow/isomorphic-rollup";
+import { inlineCssTextPlugin } from "./inlineCssTextPlugin.mjs";
 
 export default async ({ rootDir, config, fs, path, logger, registerExplicitId }) => {
   const registerNormalizedExplicitId = (table, key, guidOverride) => {
@@ -51,11 +52,14 @@ export default async ({ rootDir, config, fs, path, logger, registerExplicitId })
   const rollupBundle = await rollup({
     fs,
     input: path.join(clientDir, "**", "*.html"),
-    plugins: servicenowFrontEndPlugins({
-      scope: config.scope,
-      rootDir: clientDir,
-      registerExplicitId: registerNormalizedExplicitId
-    })
+    plugins: [
+      inlineCssTextPlugin({ fs, path }),
+      servicenowFrontEndPlugins({
+        scope: config.scope,
+        rootDir: clientDir,
+        registerExplicitId: registerNormalizedExplicitId
+      })
+    ]
   });
 
   const rollupOutput = await rollupBundle.write({

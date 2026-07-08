@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 
 import { Entry } from "@napi-rs/keyring";
+import { chromium } from "playwright-core";
 import { parseArgs } from "node:util";
+import {
+  collectLocalInlineRuntimeCssBuild,
+  runtimeStyleIdentity,
+  sha256Hex
+} from "./inline-runtime-css.mjs";
 
 const defaults = {
   authAlias: "docsera-pdi",
@@ -9,8 +15,12 @@ const defaults = {
   pageEndpoint: "x_82900_docsera_docsera_sdk_runtime.do",
   pingPath: "/api/x_82900_docsera/docsera_runtime/ping",
   keyringAccount: "now-sdk",
-  keyringService: "ServiceNow"
+  keyringService: "ServiceNow",
+  propagationAttempts: 10,
+  propagationDelayMs: 3000
 };
+
+const browserChannels = ["msedge", "chrome", "chromium"];
 
 function readEnv(...names) {
   for (const name of names) {
@@ -105,11 +115,6 @@ function normalizePingPayload(payload) {
   };
 }
 
-function extractCssAssetPaths(bundleText) {
-  const matches = bundleText.match(/\/uxta\/[^"'`\s)]+\.assetx\?path=[^"'`\s)]+\.css(?:&[^"'`\s)]*)?/g);
-  return matches ? [...new Set(matches)] : [];
-}
-
 function printUsage() {
   console.log(`Docsera SDK runtime verification
 
@@ -121,6 +126,7 @@ Options:
   --auth-alias <alias>   Override the SDK auth alias.
   --page-endpoint <path> Override the UI Page endpoint.
   --ping-path <path>     Override the REST ping path.
+  --skip-browser         Skip the browser/computed-style verification step.
   -h, --help             Show this message.
 
 Environment overrides:
@@ -130,9 +136,6 @@ Environment overrides:
   DOCSERA_SDK_PING_PATH
   SN_SDK_INSTANCE_URL
   SN_SDK_AUTH_ALIAS
-
-This command verifies the installed SDK-native UI Page host over HTTP.
-It does not execute the React app in a browser.
 `);
 }
 
@@ -140,17 +143,21 @@ function printCheck(check) {
   const prefix = check.ok ? "[pass]" : "[fail]";
   console.log(`${prefix} ${check.label}`);
 
+  if (check.detail) {
+    console.log(`       ${check.detail}`);
+  }
+
   if (!check.ok && check.diagnostic) {
     console.log(`       Likely next diagnostic: ${check.diagnostic}`);
   }
 }
 
-function failCheck(checks, label, diagnostic) {
-  checks.push({ ok: false, label, diagnostic });
+function passCheck(checks, label, detail) {
+  checks.push({ ok: true, label, detail });
 }
 
-function passCheck(checks, label) {
-  checks.push({ ok: true, label });
+function failCheck(checks, label, diagnostic, detail) {
+  checks.push({ ok: false, label, diagnostic, detail });
 }
 
 function parseKeyringRecord(rawValue, authAlias) {
@@ -216,7 +223,7 @@ async function establishBasicSession(instanceUrl, creds) {
       loginSessionToken = parsedLogin.session_token;
     }
   } catch {
-    // Login body is expected to be JSON for the local SDK auth flow, but keep the session checks going.
+    // Keep going; the session cookie is the primary signal.
   }
 
   const refreshUrl = new URL("angular.do?sysparm_type=get_user", instanceUrl);
@@ -237,8 +244,7 @@ async function establishBasicSession(instanceUrl, creds) {
   }
 
   const userToken = refreshResponse.headers.get("x-usertoken-response");
-  const fallbackToken = loginSessionToken;
-  const resolvedUserToken = userToken || fallbackToken || "";
+  const resolvedUserToken = userToken || loginSessionToken || "";
 
   if (!resolvedUserToken) {
     return {
@@ -249,8 +255,306 @@ async function establishBasicSession(instanceUrl, creds) {
 
   return {
     cookieHeader: getCookieHeader(cookieStore),
-    refreshStatus: refreshResponse.status,
+    cookieStore,
     userToken: resolvedUserToken
+  };
+}
+
+async function fetchJson(instanceUrl, session, pathname, searchParams = {}, fields = []) {
+  const url = new URL(pathname, instanceUrl);
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (value !== undefined && value !== "") {
+      url.searchParams.set(key, value);
+    }
+  }
+
+  if (fields.length > 0) {
+    url.searchParams.set("sysparm_fields", fields.join(","));
+  }
+
+  const response = await fetch(url, {
+    headers: {
+      Accept: "application/json",
+      Cookie: session.cookieHeader,
+      "X-UserToken": session.userToken
+    }
+  });
+
+  const text = await response.text();
+  let payload;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    payload = undefined;
+  }
+
+  return { payload, response, text, url };
+}
+
+async function queryRecords(instanceUrl, session, table, query, fields) {
+  const { payload, response, url } = await fetchJson(
+    instanceUrl,
+    session,
+    `/api/now/table/${table}`,
+    {
+      sysparm_limit: "25",
+      sysparm_query: query,
+      sysparm_exclude_reference_link: "true"
+    },
+    fields
+  );
+
+  if (response.status !== 200) {
+    throw new Error(`${table} query failed with HTTP ${response.status} at ${url.toString()}.`);
+  }
+
+  if (!payload || typeof payload !== "object" || !Array.isArray(payload.result)) {
+    throw new Error(`${table} query did not return a JSON result array.`);
+  }
+
+  return payload.result;
+}
+
+function extractMainBundleReference(pageText, instanceUrl) {
+  const assetMatch = pageText.match(/<script[^>]+src=["']([^"']*main\.jsdbx[^"']*)["'][^>]*>/i);
+
+  if (!assetMatch) {
+    return null;
+  }
+
+  const assetUrl = new URL(assetMatch[1], instanceUrl);
+  const uxpcbEntry = [...assetUrl.searchParams.entries()].find(([key]) => key.toLowerCase().includes("uxpcb"));
+
+  return {
+    assetUrl,
+    source: assetMatch[1],
+    uxpcb: uxpcbEntry?.[1] ?? null
+  };
+}
+
+async function fetchPageAndBundle({ authHeaders, instanceUrl, pageEndpoint }) {
+  const pageUrl = new URL(pageEndpoint, instanceUrl);
+  const pageResponse = await fetch(pageUrl, {
+    headers: {
+      ...authHeaders,
+      Accept: "text/html"
+    }
+  });
+  const pageText = await pageResponse.text();
+  const bundleReference = extractMainBundleReference(pageText, instanceUrl);
+
+  let bundleResponse;
+  let bundleText = "";
+  let bundleHash = null;
+
+  if (bundleReference) {
+    bundleResponse = await fetch(bundleReference.assetUrl, {
+      headers: {
+        ...authHeaders,
+        Accept: "application/javascript,text/javascript,*/*;q=0.1"
+      }
+    });
+    bundleText = await bundleResponse.text();
+    bundleHash = sha256Hex(bundleText);
+  }
+
+  return {
+    bundleHash,
+    bundleReference,
+    bundleResponse,
+    bundleText,
+    pageResponse,
+    pageText,
+    pageUrl
+  };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForExpectedBundle({
+  authHeaders,
+  instanceUrl,
+  localBundleHash,
+  pageEndpoint
+}) {
+  const attempts = [];
+
+  for (let attempt = 1; attempt <= defaults.propagationAttempts; attempt += 1) {
+    const snapshot = await fetchPageAndBundle({
+      authHeaders,
+      instanceUrl,
+      pageEndpoint
+    });
+
+    const matches =
+      snapshot.pageResponse.status === 200 &&
+      !hasSessionTimeout(snapshot.pageText, snapshot.pageResponse.url) &&
+      Boolean(snapshot.bundleReference) &&
+      snapshot.bundleResponse?.status === 200 &&
+      !hasSessionTimeout(snapshot.bundleText, snapshot.bundleResponse.url) &&
+      snapshot.bundleText.includes(runtimeStyleIdentity.marker) &&
+      snapshot.bundleHash === localBundleHash;
+
+    attempts.push({
+      attempt,
+      bundleHash: snapshot.bundleHash,
+      bundleStatus: snapshot.bundleResponse?.status ?? null,
+      bundleUrl: snapshot.bundleReference?.source ?? null,
+      pageStatus: snapshot.pageResponse.status,
+      uxpcb: snapshot.bundleReference?.uxpcb ?? null
+    });
+
+    if (matches) {
+      return { attempts, snapshot };
+    }
+
+    if (attempt < defaults.propagationAttempts) {
+      await sleep(defaults.propagationDelayMs);
+    }
+  }
+
+  return { attempts, snapshot: null };
+}
+
+async function launchVerificationBrowser() {
+  const errors = [];
+
+  for (const channel of browserChannels) {
+    try {
+      const browser =
+        channel === "chromium"
+          ? await chromium.launch({ headless: true })
+          : await chromium.launch({ channel, headless: true });
+
+      return { browser, channel };
+    } catch (error) {
+      errors.push(`${channel}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  throw new Error(`Could not launch Playwright browser. ${errors.join(" | ")}`);
+}
+
+function isRuntimeCssAssetRequest(requestUrl) {
+  try {
+    const parsed = new URL(requestUrl);
+    const pathParam = parsed.searchParams.get("path");
+    return (
+      requestUrl.includes("runtime-shell.css") ||
+      pathParam === "styles/runtime-shell.css" ||
+      pathParam?.includes("runtime-shell") === true
+    );
+  } catch {
+    return requestUrl.includes("runtime-shell.css");
+  }
+}
+
+async function runBrowserVerification({
+  authHeaders,
+  instanceUrl,
+  localBundleHash,
+  pageEndpoint,
+  probeValue,
+  session
+}) {
+  const { browser, channel } = await launchVerificationBrowser();
+  const instance = new URL(instanceUrl);
+  const context = await browser.newContext({ ignoreHTTPSErrors: true });
+  const consoleMessages = [];
+  const pageErrors = [];
+
+  await context.addCookies(
+    [...session.cookieStore.entries()].map(([name, value]) => ({
+      domain: instance.hostname,
+      httpOnly: false,
+      name,
+      path: "/",
+      sameSite: "Lax",
+      secure: instance.protocol === "https:",
+      value
+    }))
+  );
+
+  const page = await context.newPage({
+    extraHTTPHeaders: {
+      "X-UserToken": session.userToken
+    }
+  });
+
+  const mainBundleRequests = [];
+  const runtimeCssRequests = [];
+
+  page.on("console", (message) => {
+    consoleMessages.push({ text: message.text(), type: message.type() });
+  });
+  page.on("pageerror", (error) => {
+    pageErrors.push(error.message);
+  });
+  page.on("request", (request) => {
+    const requestUrl = request.url();
+
+    if (requestUrl.includes("main.jsdbx")) {
+      mainBundleRequests.push(requestUrl);
+    }
+
+    if (isRuntimeCssAssetRequest(requestUrl)) {
+      runtimeCssRequests.push(requestUrl);
+    }
+  });
+
+  const pageUrl = new URL(pageEndpoint, instanceUrl);
+  await page.goto(pageUrl.toString(), {
+    waitUntil: "domcontentloaded"
+  });
+  await page.waitForSelector(runtimeStyleIdentity.styleSelector, { state: "attached", timeout: 20000 });
+  await page.waitForSelector(".docsera-app-frame, .docsera-launcher, .docsera-workspace", {
+    state: "attached",
+    timeout: 20000
+  });
+  await page.waitForLoadState("networkidle");
+
+  const browserBundleReference = await page
+    .locator('script[src*="main.jsdbx"]')
+    .first()
+    .getAttribute("src");
+  const styleTagCount = await page.locator(runtimeStyleIdentity.styleSelector).count();
+  const computedProbeValue = await page.locator(runtimeStyleIdentity.probeSelector).evaluate((element, property) => {
+    return getComputedStyle(element).getPropertyValue(property).trim();
+  }, runtimeStyleIdentity.probeCssProperty);
+  const bundleReferenceUrl = browserBundleReference
+    ? new URL(browserBundleReference, instanceUrl)
+    : null;
+  let browserBundleHash = null;
+
+  if (bundleReferenceUrl) {
+    const bundleResponse = await page.request.get(bundleReferenceUrl.toString(), {
+      headers: authHeaders
+    });
+    const bundleText = await bundleResponse.text();
+    browserBundleHash = sha256Hex(bundleText);
+  }
+
+  await context.close();
+  await browser.close();
+
+  const cspConsoleMessages = consoleMessages.filter(
+    (message) =>
+      message.type === "error" &&
+      /(content security policy|csp|unsafe-inline|refused to apply|refused to load)/i.test(message.text)
+  );
+
+  return {
+    browserBundleHash,
+    browserBundleReference,
+    channel,
+    computedProbeValue,
+    cspConsoleMessages,
+    mainBundleRequests,
+    pageErrors,
+    runtimeCssRequests,
+    styleTagCount
   };
 }
 
@@ -262,6 +566,7 @@ async function main() {
       "instance-url": { type: "string" },
       "page-endpoint": { type: "string" },
       "ping-path": { type: "string" },
+      "skip-browser": { type: "boolean" },
       help: { type: "boolean", short: "h" }
     },
     args: process.argv.slice(2)
@@ -288,15 +593,34 @@ async function main() {
     getOptionValue(parsedArgs.values["ping-path"]) ??
     readEnv("DOCSERA_SDK_PING_PATH") ??
     defaults.pingPath;
+  const skipBrowser = Boolean(parsedArgs.values["skip-browser"]);
 
   const checks = [];
-  let fatalError = null;
+  let fatalError = false;
+  let localBuild;
 
   console.log("Docsera SDK runtime verification");
   console.log("");
   console.log(`Instance: ${instanceUrl}`);
   console.log(`Auth alias: ${authAlias}`);
+  console.log(`Browser proof: ${skipBrowser ? "skipped" : "enabled"}`);
   console.log("");
+
+  try {
+    localBuild = collectLocalInlineRuntimeCssBuild();
+    passCheck(
+      checks,
+      "Local build output satisfies the inline runtime CSS invariant",
+      `main.jsdbx sha256=${localBuild.bundleHash}`
+    );
+  } catch (error) {
+    failCheck(
+      checks,
+      "Local build output satisfies the inline runtime CSS invariant",
+      error instanceof Error ? error.message : String(error)
+    );
+    fatalError = true;
+  }
 
   const keyringEntry = new Entry(defaults.keyringService, defaults.keyringAccount);
   const rawKeyringValue = keyringEntry.getPassword();
@@ -305,6 +629,8 @@ async function main() {
   if (parsedCredential.error) {
     failCheck(checks, "SDK auth alias exists", parsedCredential.error);
     fatalError = true;
+  } else {
+    passCheck(checks, "SDK auth alias exists");
   }
 
   if (fatalError) {
@@ -317,23 +643,18 @@ async function main() {
     return;
   }
 
-  passCheck(checks, "SDK auth alias exists");
-
   const storedCredential = parsedCredential.credential;
   const storedInstanceUrl = storedCredential.creds?.instanceUrl;
+
   if (storedInstanceUrl && storedInstanceUrl !== instanceUrl) {
     failCheck(
       checks,
       "SDK auth alias matches instance URL",
       `Stored alias "${authAlias}" points to ${storedInstanceUrl}, not ${instanceUrl}. Pass the matching \`--instance-url\` or update the local alias before verifying.`
     );
-    for (const check of checks) {
-      printCheck(check);
-    }
-    console.log("");
-    console.log("Result: fail");
-    process.exitCode = 1;
-    return;
+    fatalError = true;
+  } else {
+    passCheck(checks, "SDK auth alias matches instance URL");
   }
 
   if (storedCredential.creds?.type !== "basic") {
@@ -342,6 +663,12 @@ async function main() {
       "SDK auth alias is basic auth",
       `Stored alias "${authAlias}" is ${storedCredential.creds?.type ?? "unknown"} auth. This verifier currently expects a basic-auth alias so it can reuse the local session-cookie flow.`
     );
+    fatalError = true;
+  } else {
+    passCheck(checks, "SDK auth alias is basic auth");
+  }
+
+  if (fatalError) {
     for (const check of checks) {
       printCheck(check);
     }
@@ -350,8 +677,6 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  passCheck(checks, "SDK auth alias matches instance URL");
-  passCheck(checks, "SDK auth alias is basic auth");
 
   const session = await establishBasicSession(instanceUrl, {
     ...storedCredential.creds,
@@ -373,136 +698,160 @@ async function main() {
 
   const authHeaders = {
     Cookie: session.cookieHeader,
-    "X-UserToken": session.userToken,
-    Accept: "text/html"
+    "X-UserToken": session.userToken
   };
 
-  const pageUrl = new URL(pageEndpoint, instanceUrl);
-  const pageResponse = await fetch(pageUrl, { headers: authHeaders });
-  const pageText = await pageResponse.text();
+  const freshnessResult = await waitForExpectedBundle({
+    authHeaders,
+    instanceUrl,
+    localBundleHash: localBuild.bundleHash,
+    pageEndpoint
+  });
+  const finalAttempt = freshnessResult.attempts.at(-1);
 
-  const pageOk = pageResponse.status === 200;
+  if (!freshnessResult.snapshot) {
+    failCheck(
+      checks,
+      "Live UI page advanced to the current main.jsdbx bundle during uxpcb propagation",
+      `Expected bundle sha256=${localBuild.bundleHash}, last observed bundle sha256=${finalAttempt?.bundleHash ?? "missing"}, uxpcb=${finalAttempt?.uxpcb ?? "missing"}, attempts=${freshnessResult.attempts.length}.`,
+      freshnessResult.attempts
+        .map((attempt) => `#${attempt.attempt} hash=${attempt.bundleHash ?? "missing"} uxpcb=${attempt.uxpcb ?? "missing"}`)
+        .join(" | ")
+    );
+    for (const check of checks) {
+      printCheck(check);
+    }
+    console.log("");
+    console.log("Result: fail");
+    process.exitCode = 1;
+    return;
+  }
+
+  const liveSnapshot = freshnessResult.snapshot;
+
+  passCheck(
+    checks,
+    "Live UI page advanced to the current main.jsdbx bundle during uxpcb propagation",
+    `attempts=${freshnessResult.attempts.length} hash=${liveSnapshot.bundleHash} uxpcb=${liveSnapshot.bundleReference?.uxpcb ?? "missing"}`
+  );
+
   checks.push({
-    ok: pageOk,
+    ok: liveSnapshot.pageResponse.status === 200,
     label: "UI Page returned 200",
-    diagnostic: pageOk
-      ? undefined
-      : `The UI Page request returned HTTP ${pageResponse.status}. Re-run \`npx @servicenow/sdk install --auth ${authAlias}\` and confirm the endpoint is still installed on ${instanceUrl}.`
+    diagnostic:
+      liveSnapshot.pageResponse.status === 200
+        ? undefined
+        : `The UI Page request returned HTTP ${liveSnapshot.pageResponse.status}. Re-run \`npx @servicenow/sdk install --auth ${authAlias}\` and confirm the endpoint is still installed on ${instanceUrl}.`
   });
 
   checks.push({
-    ok: !hasSessionTimeout(pageText, pageResponse.url),
+    ok: !hasSessionTimeout(liveSnapshot.pageText, liveSnapshot.pageResponse.url),
     label: "UI Page did not redirect to session_timeout.do",
-    diagnostic: hasSessionTimeout(pageText, pageResponse.url)
+    diagnostic: hasSessionTimeout(liveSnapshot.pageText, liveSnapshot.pageResponse.url)
       ? "The page request landed on session_timeout.do, which usually means the stored login session is stale or the instance rejected the cookie/token pair."
       : undefined
   });
 
   checks.push({
-    ok: pageText.includes('id="docsera-root"'),
+    ok: liveSnapshot.pageText.includes('id="docsera-root"'),
     label: 'UI Page contains id="docsera-root"',
-    diagnostic: pageText.includes("docsera-root")
+    diagnostic: liveSnapshot.pageText.includes("docsera-root")
       ? undefined
       : "The installed page HTML does not contain the Docsera mount node. Re-run the SDK build/install and confirm the UI Page metadata matches the active runtime."
   });
 
   checks.push({
     ok:
-      pageText.includes("Docsera SDK Runtime Baseline") &&
-      pageText.includes("window.DOCSERA_RUNTIME_CONFIG") &&
-      pageText.includes("backendPingPath"),
+      liveSnapshot.pageText.includes("Docsera SDK Runtime Baseline") &&
+      liveSnapshot.pageText.includes("window.DOCSERA_RUNTIME_CONFIG") &&
+      liveSnapshot.pageText.includes("backendPingPath"),
     label: "UI Page contains expected title/config marker",
     diagnostic:
       "The installed page HTML is missing the runtime title or inline config marker. Confirm the HTML shipped by the SDK build matches the current source tree."
   });
 
-  const assetMatch = pageText.match(/<script[^>]+src=["']([^"']*main\.jsdbx[^"']*)["'][^>]*>/i);
-
   checks.push({
-    ok: Boolean(assetMatch),
+    ok: Boolean(liveSnapshot.bundleReference),
     label: "UI Page contains SDK-managed main.jsdbx asset reference",
-    diagnostic: assetMatch
-      ? undefined
-      : "The installed page HTML did not expose the expected SDK-managed main.jsdbx reference. Re-run the SDK build/install and confirm the app is serving the bundled asset path."
+    diagnostic:
+      "The installed page HTML did not expose the expected SDK-managed main.jsdbx reference. Re-run the SDK build/install and confirm the app is serving the bundled asset path."
   });
 
-  if (assetMatch) {
-    const assetUrl = new URL(assetMatch[1], instanceUrl);
-    const assetResponse = await fetch(assetUrl, { headers: authHeaders });
-    const assetText = await assetResponse.text();
+  checks.push({
+    ok: liveSnapshot.bundleResponse?.status === 200,
+    label: "SDK-managed main.jsdbx asset returned 200",
+    diagnostic:
+      liveSnapshot.bundleResponse?.status === 200
+        ? undefined
+        : `The SDK-managed JS asset returned HTTP ${liveSnapshot.bundleResponse?.status ?? "missing"}. Re-run the SDK build/install and confirm the asset path still resolves on the instance.`
+  });
 
-    checks.push({
-      ok: assetResponse.status === 200,
-      label: "SDK-managed main.jsdbx asset returned 200",
-      diagnostic:
-        assetResponse.status === 200
-          ? undefined
-          : `The SDK-managed JS asset returned HTTP ${assetResponse.status}. Re-run the SDK build/install and confirm the asset path still resolves on the instance.`
-    });
+  checks.push({
+    ok: !hasSessionTimeout(liveSnapshot.bundleText, liveSnapshot.bundleResponse?.url ?? ""),
+    label: "SDK-managed main.jsdbx asset did not redirect to session_timeout.do",
+    diagnostic:
+      "The SDK-managed JS asset landed on session_timeout.do, which means the authenticated session is not being reused correctly for the asset request."
+  });
 
-    checks.push({
-      ok: !hasSessionTimeout(assetText, assetResponse.url),
-      label: "SDK-managed main.jsdbx asset did not redirect to session_timeout.do",
-      diagnostic:
-        "The SDK-managed JS asset landed on session_timeout.do, which means the authenticated session is not being reused correctly for the asset request."
-    });
+  checks.push({
+    ok: liveSnapshot.bundleHash === localBuild.bundleHash,
+    label: "Live main.jsdbx hash matches the local built bundle",
+    detail: `live=${liveSnapshot.bundleHash} local=${localBuild.bundleHash}`,
+    diagnostic:
+      `The live bundle hashed to ${liveSnapshot.bundleHash}, but the local build hashed to ${localBuild.bundleHash}. The page is still serving stale JavaScript.`
+  });
 
-    checks.push({
-      ok: assetText.includes("docsera-root"),
-      label: 'SDK-managed main.jsdbx asset contains "docsera-root"',
-      diagnostic:
-        'The bundled SDK-managed asset does not contain the expected "docsera-root" mount marker. Re-run the build/install and confirm the active bundle matches the source tree.'
-    });
+  checks.push({
+    ok: liveSnapshot.bundleText.includes(runtimeStyleIdentity.marker),
+    label: "Live main.jsdbx contains the runtime style injection marker",
+    diagnostic:
+      "The live bundle does not contain the runtime style injection marker. Re-run the build/install and confirm the inline CSS path shipped."
+  });
 
-    const cssAssetPaths = extractCssAssetPaths(assetText);
-    checks.push({
-      ok: cssAssetPaths.length > 0,
-      label: "SDK-managed main.jsdbx asset contains CSS asset reference",
-      diagnostic:
-        "The bundled SDK-managed asset did not expose a scoped CSS asset URL. Confirm the client stylesheet is still imported and emitted by the SDK build."
-    });
+  checks.push({
+    ok: liveSnapshot.bundleText.includes(`${runtimeStyleIdentity.probeCssProperty}: ${localBuild.probeValue};`),
+    label: "Live main.jsdbx contains the inlined runtime CSS probe",
+    detail: `${runtimeStyleIdentity.probeCssProperty}: ${localBuild.probeValue}`,
+    diagnostic:
+      "The live bundle does not contain the expected runtime CSS probe value. The deployed JS bundle is not the current local build."
+  });
 
-    if (cssAssetPaths.length > 0) {
-      const cssAssetUrl = new URL(cssAssetPaths[0], instanceUrl);
-      const cssAssetResponse = await fetch(cssAssetUrl, {
-        headers: {
-          ...authHeaders,
-          Accept: "text/css,*/*;q=0.1"
-        }
-      });
-      const cssAssetText = await cssAssetResponse.text();
+  checks.push({
+    ok: !/\/uxta\/[^"'`\s)]+\.assetx\?path=[^"'`\s)]+\.css/i.test(liveSnapshot.bundleText),
+    label: "Live main.jsdbx contains no runtime CSS asset URL",
+    diagnostic:
+      "The live bundle still references a CSS asset URL. The fallback theme-asset pipeline is still active."
+  });
 
-      checks.push({
-        ok: cssAssetResponse.status === 200,
-        label: "SDK-managed runtime CSS asset returned 200",
-        diagnostic:
-          cssAssetResponse.status === 200
-            ? undefined
-            : `The SDK-managed CSS asset returned HTTP ${cssAssetResponse.status}. Re-run the SDK build/install and confirm the theme asset record referenced by the bundle exists on the instance.`
-      });
-
-      checks.push({
-        ok: !hasSessionTimeout(cssAssetText, cssAssetResponse.url),
-        label: "SDK-managed runtime CSS asset did not redirect to session_timeout.do",
-        diagnostic:
-          "The SDK-managed CSS asset landed on session_timeout.do, which means the authenticated session is not being reused correctly for the CSS request."
-      });
-
-      checks.push({
-        ok: cssAssetText.includes(".docsera-shell") || cssAssetText.includes(":root"),
-        label: "SDK-managed runtime CSS asset contains Docsera styles",
-        diagnostic:
-          "The runtime CSS asset resolved, but it did not contain the expected Docsera style markers. Confirm the emitted stylesheet matches the active client source."
-      });
-    }
+  let legacyThemeAssets = [];
+  try {
+    legacyThemeAssets = await queryRecords(
+      instanceUrl,
+      session,
+      "sys_ux_theme_asset",
+      "nameLIKEruntime-shell",
+      ["sys_id", "name", "sys_updated_on"]
+    );
+    passCheck(
+      checks,
+      "Legacy runtime-shell theme asset inventory was inspected",
+      legacyThemeAssets.length === 0
+        ? "No sys_ux_theme_asset records matched runtime-shell."
+        : legacyThemeAssets.map((record) => `${record.sys_id}:${record.name}`).join(", ")
+    );
+  } catch (error) {
+    failCheck(
+      checks,
+      "Legacy runtime-shell theme asset inventory was inspected",
+      error instanceof Error ? error.message : String(error)
+    );
   }
 
   const pingUrl = new URL(pingPath, instanceUrl);
   const pingResponse = await fetch(pingUrl, {
     headers: {
-      Cookie: session.cookieHeader,
-      "X-UserToken": session.userToken,
-      Accept: "application/json"
+      Accept: "application/json",
+      ...authHeaders
     }
   });
   const pingText = await pingResponse.text();
@@ -531,12 +880,11 @@ async function main() {
   }
 
   if (pingPayload === undefined) {
-    checks.push({
-      ok: false,
-      label: "REST ping returned JSON payload",
-      diagnostic:
-        "The REST ping response was not valid JSON. Re-run the install and confirm the scripted REST endpoint is still returning the expected envelope."
-    });
+    failCheck(
+      checks,
+      "REST ping returned JSON payload",
+      "The REST ping response was not valid JSON. Re-run the install and confirm the scripted REST endpoint is still returning the expected envelope."
+    );
   } else {
     const normalizedPing = normalizePingPayload(pingPayload);
     checks.push({
@@ -548,6 +896,87 @@ async function main() {
       diagnostic:
         `Expected authenticated=true, scope=x_82900_docsera, status=ok but got authenticated=${normalizedPing.authenticated}, scope=${normalizedPing.scope}, status=${normalizedPing.status}.`
     });
+  }
+
+  if (!skipBrowser) {
+    try {
+      const browserResult = await runBrowserVerification({
+        authHeaders,
+        instanceUrl,
+        localBundleHash: localBuild.bundleHash,
+        pageEndpoint,
+        probeValue: localBuild.probeValue,
+        session
+      });
+
+      passCheck(
+        checks,
+        "Browser loaded the runtime page through Playwright",
+        `channel=${browserResult.channel}`
+      );
+
+      checks.push({
+        ok: browserResult.mainBundleRequests.length > 0,
+        label: "Browser requested main.jsdbx",
+        detail: browserResult.mainBundleRequests[0] ?? "",
+        diagnostic:
+          "The browser did not request main.jsdbx while loading the runtime page."
+      });
+
+      checks.push({
+        ok: browserResult.browserBundleHash === localBuild.bundleHash,
+        label: "Browser saw the current main.jsdbx bundle hash",
+        detail: `browser=${browserResult.browserBundleHash} local=${localBuild.bundleHash}`,
+        diagnostic:
+          "The browser did not load the same JS bundle that was built locally."
+      });
+
+      checks.push({
+        ok: browserResult.runtimeCssRequests.length === 0,
+        label: "Browser did not request a runtime-shell CSS asset",
+        detail: browserResult.runtimeCssRequests.join(", "),
+        diagnostic:
+          "The browser still requested a runtime-shell CSS asset. The inline CSS pipeline is not the only active runtime path."
+      });
+
+      checks.push({
+        ok: browserResult.styleTagCount === 1,
+        label: "Browser has exactly one injected runtime style tag",
+        detail: `count=${browserResult.styleTagCount}`,
+        diagnostic:
+          `Expected one ${runtimeStyleIdentity.styleSelector} element, found ${browserResult.styleTagCount}.`
+      });
+
+      checks.push({
+        ok: browserResult.computedProbeValue === localBuild.probeValue,
+        label: "Browser computed style proves the inline runtime CSS applied",
+        detail: `${runtimeStyleIdentity.probeCssProperty}: ${browserResult.computedProbeValue}`,
+        diagnostic:
+          `Expected computed ${runtimeStyleIdentity.probeCssProperty} ${localBuild.probeValue}, got ${browserResult.computedProbeValue || "missing"}.`
+      });
+
+      checks.push({
+        ok: browserResult.cspConsoleMessages.length === 0,
+        label: "Browser console has no CSP/style-injection violations",
+        detail: browserResult.cspConsoleMessages.map((message) => message.text).join(" | "),
+        diagnostic:
+          "The browser reported CSP or style-injection console errors."
+      });
+
+      checks.push({
+        ok: browserResult.pageErrors.length === 0,
+        label: "Browser had no uncaught runtime page errors",
+        detail: browserResult.pageErrors.join(" | "),
+        diagnostic:
+          "The browser reported uncaught runtime page errors during verification."
+      });
+    } catch (error) {
+      failCheck(
+        checks,
+        "Browser verification completed",
+        error instanceof Error ? error.message : String(error)
+      );
+    }
   }
 
   for (const check of checks) {
