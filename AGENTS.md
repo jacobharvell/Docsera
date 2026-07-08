@@ -137,6 +137,19 @@ If automated validation is not practical, document why and provide repeatable ma
 
 Do not remove failing tests just to make checks pass. Tests may be updated or removed only when accepted requirements or the current implementation brief intentionally change the expected behavior. Explain any removed or materially changed tests in the final summary.
 
+### Regression Coverage Is Required
+
+Regression coverage is part of the definition of done for coded behavior changes.
+
+- Every coded behavior change must add regression coverage or update existing regression coverage to match the new behavior.
+- New feature work must include tests for the new behavior.
+- Bug fixes must include a regression test that would have failed before the fix.
+- Stale tests should be updated when behavior changes intentionally; do not leave obsolete assumptions in place.
+- Manual PDI testing is final live verification, not the primary regression test suite.
+- If a regression is found manually in the PDI, the next fix must add or update a test that would have caught it.
+- Merge readiness should include a short summary of which regression tests were added or updated and what behavior they protect.
+- Coverage should be proportional: test the behavior being changed and the nearby workflows most likely to regress, not every possible test type.
+
 ## Git Branch and Merge Discipline
 
 - Do not push directly to `main`.
