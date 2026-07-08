@@ -163,10 +163,140 @@ test("renders My Workspaces with live rows and hides settings from editor-only r
   });
 
   expect(container.querySelectorAll(".docsera-header")).toHaveLength(1);
+  expect(container.querySelectorAll(".docsera-launcher-screen")).toHaveLength(1);
   expect(screen.getByRole("button", { name: "Toggle theme" })).toBeInTheDocument();
+  expect(container.querySelector(".docsera-launcher-panel")).not.toBeNull();
+  expect(screen.getByPlaceholderText("Search workspaces...")).toBeInTheDocument();
+  expect(screen.getByText("Workspace")).toBeInTheDocument();
+  expect(screen.getByText("Role")).toBeInTheDocument();
+  expect(screen.getByText("Showing 1-2 of 2")).toBeInTheDocument();
+  expect(screen.queryByText("Updating...")).not.toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Admin Docs" })).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Editor Docs" })).toBeInTheDocument();
   expect(screen.getAllByRole("link", { name: "Settings" })).toHaveLength(1);
+  expect(container.querySelectorAll(".docsera-workspace-row__role-cell")).toHaveLength(2);
+  expect(container.querySelectorAll(".docsera-workspace-row__settings")).toHaveLength(1);
+  expect(container.querySelectorAll(".docsera-workspace-row__icon")).toHaveLength(2);
+});
+
+test("launcher empty state keeps the list-card shell and create action", async () => {
+  const { container } = render(<App runtime={createRuntime()} serviceNowClient={createClient()} />);
+
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "No workspaces to show", level: 2 })).toBeInTheDocument();
+  });
+
+  expect(container.querySelector(".docsera-launcher-panel")).not.toBeNull();
+  expect(screen.getByText(/request access from a workspace admin/i)).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "New Workspace" })).toHaveLength(2);
+});
+
+test("launcher no-results state keeps search inside the card and shows concise copy", async () => {
+  const listWorkspaces = vi.fn(async (input?: { searchText?: string; page?: number; pageSize?: number }) => {
+    const searchText = input?.searchText ?? "";
+
+    if (searchText) {
+      return {
+        items: [],
+        page: 1,
+        pageSize: 10,
+        totalCount: 0,
+        hasNextPage: false,
+        searchText
+      } satisfies WorkspaceListResult;
+    }
+
+    return {
+      items: [createWorkspace()],
+      page: 1,
+      pageSize: 10,
+      totalCount: 1,
+      hasNextPage: false,
+      searchText
+    } satisfies WorkspaceListResult;
+  });
+
+  const { container } = render(<App runtime={createRuntime()} serviceNowClient={createClient({ listWorkspaces })} />);
+
+  await waitFor(() => {
+    expect(screen.getByRole("link", { name: "Product Docs" })).toBeInTheDocument();
+  });
+
+  fireEvent.change(screen.getByPlaceholderText("Search workspaces..."), { target: { value: "zzz" } });
+
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "No matching workspaces", level: 2 })).toBeInTheDocument();
+  });
+
+  expect(screen.getByText("Try a different search term.")).toBeInTheDocument();
+  expect(screen.getByPlaceholderText("Search workspaces...")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Clear search" })).toBeInTheDocument();
+  expect(container.querySelector(".docsera-launcher-panel")).not.toBeNull();
+
+  fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+
+  await waitFor(() => {
+    expect(screen.getByRole("link", { name: "Product Docs" })).toBeInTheDocument();
+  });
+
+  expect(screen.queryByRole("heading", { name: "No matching workspaces", level: 2 })).not.toBeInTheDocument();
+});
+
+test("typing in workspace search keeps the input mounted and focused while results refresh", async () => {
+  let resolveSearch: ((value: WorkspaceListResult) => void) | null = null;
+  const listWorkspaces = vi.fn((input?: { searchText?: string; page?: number; pageSize?: number }) => {
+    const searchText = input?.searchText ?? "";
+
+    if (!searchText) {
+      return Promise.resolve({
+        items: [createWorkspace()],
+        page: 1,
+        pageSize: 10,
+        totalCount: 1,
+        hasNextPage: false,
+        searchText: ""
+      } satisfies WorkspaceListResult);
+    }
+
+    return new Promise<WorkspaceListResult>((resolve) => {
+      resolveSearch = resolve;
+    });
+  });
+
+  render(<App runtime={createRuntime()} serviceNowClient={createClient({ listWorkspaces })} />);
+
+  await waitFor(() => {
+    expect(screen.getByRole("link", { name: "Product Docs" })).toBeInTheDocument();
+  });
+
+  const searchInput = screen.getByPlaceholderText("Search workspaces...");
+  searchInput.focus();
+  fireEvent.change(searchInput, { target: { value: "prod" } });
+
+  expect(screen.getByPlaceholderText("Search workspaces...")).toBe(searchInput);
+  expect(document.activeElement).toBe(searchInput);
+  expect(screen.getByRole("link", { name: "Product Docs" })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Loading workspaces", level: 2 })).not.toBeInTheDocument();
+  expect(screen.queryByText("Updating...")).not.toBeInTheDocument();
+
+  resolveSearch?.({
+    items: [createWorkspace()],
+    page: 1,
+    pageSize: 10,
+    totalCount: 1,
+    hasNextPage: false,
+    searchText: "prod"
+  });
+
+  await waitFor(() => {
+    expect(listWorkspaces).toHaveBeenCalledWith(
+      expect.objectContaining({
+        page: 1,
+        pageSize: 10,
+        searchText: "prod"
+      })
+    );
+  });
 });
 
 test("opening a workspace row switches to the workspace shell with a single shared header", async () => {
@@ -670,7 +800,7 @@ test("workspace creation handles the pending provisioning path and opens the cre
   fireEvent.click(screen.getAllByRole("button", { name: "New Workspace" })[0]);
   fireEvent.change(screen.getByRole("textbox", { name: "Workspace name" }), { target: { value: "Team Docs" } });
   fireEvent.change(screen.getByRole("textbox", { name: /Short description/ }), { target: { value: "Team workspace" } });
-  fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
+  fireEvent.click(screen.getByRole("button", { name: "Create Workspace" }));
 
   await waitFor(() => {
     expect(createMock).toHaveBeenCalledTimes(1);

@@ -31,6 +31,7 @@ import type {
 type WorkspaceListState =
   | { status: "idle" }
   | { status: "loading" }
+  | { data: WorkspaceListResult; status: "refreshing" }
   | { data: WorkspaceListResult; status: "success" }
   | { errorMessage: string; status: "error" };
 
@@ -319,6 +320,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [createPageModalPhase, setCreatePageModalPhase] = useState<"idle" | "submitting">("idle");
   const [createPageModalError, setCreatePageModalError] = useState<string | undefined>();
   const [pageSettingsState, setPageSettingsState] = useState<PageSettingsState>(createEmptyPageSettingsState);
+  const launcherRequestIdRef = useRef(0);
   const pageSettingsStateRef = useRef<PageSettingsState>(createEmptyPageSettingsState());
   const pageSettingsPanelRef = useRef<HTMLElement>(null);
   const pageSettingsCloseTargetRef = useRef("");
@@ -512,7 +514,16 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
 
     let canceled = false;
-    setLauncherState({ status: "loading" });
+    const requestId = launcherRequestIdRef.current + 1;
+    launcherRequestIdRef.current = requestId;
+
+    setLauncherState((current) => {
+      if (current.status === "success" || current.status === "refreshing") {
+        return { status: "refreshing", data: current.data };
+      }
+
+      return { status: "loading" };
+    });
 
     serviceNowClient
       .listWorkspaces({
@@ -521,12 +532,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         pageSize: DEFAULT_PAGE_SIZE
       })
       .then((data) => {
-        if (!canceled) {
+        if (!canceled && launcherRequestIdRef.current === requestId) {
           setLauncherState({ status: "success", data });
         }
       })
       .catch(() => {
-        if (!canceled) {
+        if (!canceled && launcherRequestIdRef.current === requestId) {
           setLauncherState({
             errorMessage: "Unable to load workspaces.",
             status: "error"
@@ -1294,7 +1305,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     commitRoute(buildWorkspaceHref(currentWorkspaceSlug, false, cleanText(page.sysId)), false);
   }
 
-  const launcherList = launcherState.status === "success" ? launcherState.data : null;
+  const launcherList = launcherState.status === "success" || launcherState.status === "refreshing" ? launcherState.data : null;
 
   useEffect(() => {
     if (route.mode !== "workspace" || workspaceState.status !== "success" || workspaceState.data.slug !== currentWorkspaceSlug) {
@@ -1561,6 +1572,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     isLoading: launcherState.status === "loading" || launcherState.status === "idle",
     isNoResultsState:
       launcherState.status === "success" && launcherList !== null && launcherList.totalCount === 0 && Boolean(launcherList.searchText),
+    isRefreshing: launcherState.status === "refreshing",
     items: launcherList?.items ?? [],
     page: launcherList?.page ?? launcherPage,
     pageSize: launcherList?.pageSize ?? DEFAULT_PAGE_SIZE,
@@ -1596,6 +1608,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         isEmptyState={listState.isEmptyState}
         isLoading={listState.isLoading}
         isNoResultsState={listState.isNoResultsState}
+        isRefreshing={listState.isRefreshing}
         items={listState.items}
         page={listState.page}
         pageSize={listState.pageSize}
