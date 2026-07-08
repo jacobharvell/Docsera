@@ -2,33 +2,24 @@ import type { DemoPage } from "../../shared/types/docsera";
 
 type PageTreeProps = {
   pages: DemoPage[];
+  canManagePageSettings: boolean;
+  pageSettingsOpenPageId: string;
   selectedPageId: string;
   onSelectPage: (pageId: string) => void;
+  onTogglePageSettings: (pageId: string) => void;
   filterText: string;
 };
 
 type PageTreeNodeProps = {
   page: DemoPage;
   depth: number;
+  canManagePageSettings: boolean;
+  pageSettingsOpenPageId: string;
   selectedPageId: string;
   onSelectPage: (pageId: string) => void;
+  onTogglePageSettings: (pageId: string) => void;
   filterText: string;
 };
-
-function PlusIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M12 4.5v15m7.5-7.5h-15"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2.2"
-      />
-    </svg>
-  );
-}
 
 function GearIcon() {
   return (
@@ -53,6 +44,21 @@ function GearIcon() {
   );
 }
 
+function CollapseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M9.75 4.5L16.5 12l-6.75 7.5"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2.2"
+      />
+    </svg>
+  );
+}
+
 function matchesTreeFilter(page: DemoPage, filterText: string): boolean {
   if (!filterText) {
     return true;
@@ -63,15 +69,29 @@ function matchesTreeFilter(page: DemoPage, filterText: string): boolean {
     return true;
   }
 
+  if (page.slug.toLowerCase().includes(normalizedFilter)) {
+    return true;
+  }
+
   return page.children ? page.children.some((child) => matchesTreeFilter(child, filterText)) : false;
 }
 
-function PageTreeNode({ page, depth, selectedPageId, onSelectPage, filterText }: PageTreeNodeProps) {
+function PageTreeNode({
+  page,
+  depth,
+  canManagePageSettings,
+  pageSettingsOpenPageId,
+  selectedPageId,
+  onSelectPage,
+  onTogglePageSettings,
+  filterText
+}: PageTreeNodeProps) {
   if (!matchesTreeFilter(page, filterText)) {
     return null;
   }
 
   const isSelected = page.id === selectedPageId;
+  const isPageSettingsOpen = page.id === pageSettingsOpenPageId;
 
   return (
     <li className="docsera-page-tree__item">
@@ -85,14 +105,19 @@ function PageTreeNode({ page, depth, selectedPageId, onSelectPage, filterText }:
         >
           <span className="docsera-page-tree__title">{page.title}</span>
         </button>
-        <div className="docsera-page-tree__actions" aria-hidden="true">
-          <button type="button" className="docsera-page-tree__action-button" tabIndex={-1} disabled>
-            <PlusIcon />
-          </button>
-          <button type="button" className="docsera-page-tree__action-button" tabIndex={-1} disabled>
-            <GearIcon />
-          </button>
-        </div>
+        {isSelected && canManagePageSettings ? (
+          <div className="docsera-page-tree__actions">
+            <button
+              type="button"
+              className="docsera-page-tree__action-button docsera-page-tree__action-button--settings"
+              aria-label={isPageSettingsOpen ? `Collapse settings for ${page.title}` : `Open settings for ${page.title}`}
+              data-docsera-page-settings-trigger="true"
+              onClick={() => onTogglePageSettings(page.id)}
+            >
+              {isPageSettingsOpen ? <CollapseIcon /> : <GearIcon />}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {page.children?.length ? (
@@ -102,8 +127,11 @@ function PageTreeNode({ page, depth, selectedPageId, onSelectPage, filterText }:
               key={child.id}
               page={child}
               depth={depth + 1}
+              canManagePageSettings={canManagePageSettings}
+              pageSettingsOpenPageId={pageSettingsOpenPageId}
               selectedPageId={selectedPageId}
               onSelectPage={onSelectPage}
+              onTogglePageSettings={onTogglePageSettings}
               filterText={filterText}
             />
           ))}
@@ -113,7 +141,15 @@ function PageTreeNode({ page, depth, selectedPageId, onSelectPage, filterText }:
   );
 }
 
-export function PageTree({ pages, selectedPageId, onSelectPage, filterText }: PageTreeProps) {
+export function PageTree({
+  pages,
+  canManagePageSettings,
+  pageSettingsOpenPageId,
+  selectedPageId,
+  onSelectPage,
+  onTogglePageSettings,
+  filterText
+}: PageTreeProps) {
   return (
     <ul className="docsera-page-tree__list">
       {pages.map((page) => (
@@ -121,8 +157,11 @@ export function PageTree({ pages, selectedPageId, onSelectPage, filterText }: Pa
           key={page.id}
           page={page}
           depth={0}
+          canManagePageSettings={canManagePageSettings}
+          pageSettingsOpenPageId={pageSettingsOpenPageId}
           selectedPageId={selectedPageId}
           onSelectPage={onSelectPage}
+          onTogglePageSettings={onTogglePageSettings}
           filterText={filterText}
         />
       ))}

@@ -128,5 +128,44 @@ describe("service now page creation service", () => {
 
     expect(savedPages).toHaveLength(1);
     expect(savedPages[0]?.draftTitle).toBe("Benefits");
+    expect(savedPages[0]?.active).toBe(true);
+  });
+
+  it("creates the first page in an empty workspace with an active record", async () => {
+    const savedPages: PageRecord[] = [];
+    const service = createPageCreationService({
+      evaluateWorkspaceCapabilities: () => ({
+        canAdminWorkspace: false,
+        canEditWorkspace: true,
+        canManageWorkspaceMembers: false,
+        canViewWorkspace: true
+      }),
+      loadWorkspaceBySlug: async () => createWorkspace(),
+      listWorkspacePages: async () => [],
+      savePage: async (page) => {
+        const nextPage = {
+          ...page,
+          sysId: "page-010"
+        };
+        savedPages.push(nextPage);
+        return nextPage;
+      }
+    });
+
+    const result = await service.createPage({
+      title: "Getting Started",
+      workspaceSlug: "product-docs"
+    });
+
+    expect(result.kind).toBe("succeeded");
+    if (result.kind === "succeeded") {
+      expect(result.page.sysId).toBe("page-010");
+      expect(result.page.active).toBe(true);
+      expect(result.page.siblingOrder).toBe(1);
+      expect(result.page.draftSlug).toBe("getting-started");
+    }
+
+    expect(savedPages).toHaveLength(1);
+    expect(savedPages[0]?.active).toBe(true);
   });
 });

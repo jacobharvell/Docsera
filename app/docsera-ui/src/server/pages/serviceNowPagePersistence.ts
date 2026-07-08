@@ -81,3 +81,22 @@ export function savePageRecord(page: PageRecord): Promise<PageRecord> {
 
   return Promise.resolve(mapPageRecord(savedRecord));
 }
+
+export function deletePageRecord(pageSysId: string): Promise<void> {
+  const normalizedPageSysId = cleanText(pageSysId);
+  if (!normalizedPageSysId) {
+    throw new Error("Page record could not be loaded.");
+  }
+
+  const record = new GlideRecord(DOCSERA_PAGE_TABLE);
+  if (!record.get(normalizedPageSysId)) {
+    throw new Error("Page record could not be loaded.");
+  }
+
+  const deleted = record.deleteRecord();
+  if (!deleted) {
+    throw new Error("Failed to delete page record.");
+  }
+
+  return Promise.resolve();
+}

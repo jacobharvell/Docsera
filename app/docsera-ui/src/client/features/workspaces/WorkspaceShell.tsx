@@ -19,6 +19,9 @@ type WorkspaceShellProps = {
   workspace: DemoWorkspace;
   selectedPageId: string;
   onSelectPage: (pageId: string) => void;
+  canManagePageSettings: boolean;
+  pageSettingsOpenPageId: string;
+  onTogglePageSettings: (pageId: string) => void;
   pingState: RuntimeProbeState;
   onOpenMyWorkspaces: () => void;
   workspaceSettingsNotice?: boolean;
@@ -39,6 +42,9 @@ export function WorkspaceShell({
   workspace,
   selectedPageId,
   onSelectPage,
+  canManagePageSettings,
+  pageSettingsOpenPageId,
+  onTogglePageSettings,
   pingState,
   onOpenMyWorkspaces,
   workspaceSettingsNotice,
@@ -55,28 +61,6 @@ export function WorkspaceShell({
     () => (selectedPage ? findDemoPagePath(workspace.pages, selectedPage.id) : []),
     [selectedPage, workspace.pages]
   );
-
-  if (!selectedPage) {
-    return (
-      <div className="docsera-shell">
-        <WorkspaceHeader
-          canManageWorkspaceSettings={Boolean(workspace.canManageSettings)}
-          onOpenWorkspaceSettings={onOpenWorkspaceSettings}
-          workspace={workspace}
-          pagePath={[]}
-          sidebarCollapsed={sidebarCollapsed}
-          onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
-          onSelectPage={onSelectPage}
-          onOpenMyWorkspaces={onOpenMyWorkspaces}
-        />
-        <section className="docsera-shell__empty-state" role="status">
-          <p className="docsera-shell__eyebrow">Workspace shell</p>
-          <h2 className="docsera-shell__empty-title">No pages are available.</h2>
-          <p className="docsera-shell__empty-copy">This workspace does not currently have any visible pages.</p>
-        </section>
-      </div>
-    );
-  }
 
   return (
     <div className="docsera-shell">
@@ -104,8 +88,11 @@ export function WorkspaceShell({
         {!sidebarCollapsed ? (
           <WorkspaceSidebar
             workspace={workspace}
-            selectedPageId={selectedPage.id}
+            selectedPageId={selectedPage?.id ?? ""}
             onSelectPage={onSelectPage}
+            canManagePageSettings={canManagePageSettings}
+            pageSettingsOpenPageId={pageSettingsOpenPageId}
+            onTogglePageSettings={onTogglePageSettings}
             treeFilter={treeFilter}
             onTreeFilterChange={setTreeFilter}
             canCreatePage={canCreatePage}
@@ -119,6 +106,8 @@ export function WorkspaceShell({
           pagePath={pagePath}
           workspacePage={selectedWorkspacePage}
           canEditPageBody={canCreatePage}
+          canCreatePage={canCreatePage}
+          onShowCreatePage={onShowCreatePage}
           onSavePageBody={onSavePageBody}
         />
 

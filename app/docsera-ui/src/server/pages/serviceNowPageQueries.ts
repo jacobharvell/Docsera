@@ -119,12 +119,16 @@ export function sortPageRecordsForTree(records: PageRecord[]): PageRecord[] {
   return ordered;
 }
 
+export function filterActivePageRecords(records: PageRecord[]): PageRecord[] {
+  return records.filter((record) => record.active !== false);
+}
+
 export function listWorkspacePages(workspaceSysId: string, options: { activeOnly?: boolean } = {}): Promise<PageRecord[]> {
   const sysId = cleanText(workspaceSysId);
   const pages = new GlideRecord(DOCSERA_PAGE_TABLE);
   pages.addQuery("workspace", sysId);
 
-  if (options.activeOnly) {
+  if (options.activeOnly !== false) {
     pages.addQuery("active", "true");
   }
 
@@ -135,5 +139,5 @@ export function listWorkspacePages(workspaceSysId: string, options: { activeOnly
     results.push(mapPageRecord(pages));
   }
 
-  return Promise.resolve(sortPageRecordsForTree(results));
+  return Promise.resolve(sortPageRecordsForTree(filterActivePageRecords(results)));
 }

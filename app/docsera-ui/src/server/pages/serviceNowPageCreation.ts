@@ -115,7 +115,8 @@ export function createPageCreationService(dependencies: PageCreationDependencies
           title,
           workspaceSysId: workspace.sysId,
           parentPageSysId: parentPage?.sysId ?? null,
-          parentPageWorkspaceSysId: parentPage?.workspaceSysId ?? null
+          parentPageWorkspaceSysId: parentPage?.workspaceSysId ?? null,
+          active: true
         } satisfies PageDraftInput,
         retainedPages
       );

@@ -1,10 +1,19 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DocseraAppFrame } from "./DocseraAppFrame";
 import { MyWorkspacesScreen } from "../features/workspaces/MyWorkspacesScreen";
 import { PageCreateModal } from "../features/workspaces/PageCreateModal";
+import { PageSettingsDeleteDialog } from "../features/workspaces/PageSettingsDeleteDialog";
+import { PageSettingsOverlay } from "../features/workspaces/PageSettingsOverlay";
 import { WorkspaceShell } from "../features/workspaces/WorkspaceShell";
 import { buildWorkspaceShellPages, buildWorkspaceShellWorkspace } from "../features/workspaces/workspaceViewModels";
 import { buildLauncherHref, buildWorkspaceHref, readAppRoute, type DocseraAppRoute } from "../features/workspaces/workspaceRouting";
+import {
+  collectPageSubtreeSysIds,
+  pickNextVisiblePageAfterDelete,
+  removePageSubtree,
+  validatePageSettingsSlug,
+  validatePageSettingsTitle
+} from "../../shared/pages/domain";
 import type {
   DocseraRuntimeContext,
   PageListResult,
@@ -39,6 +48,76 @@ type WorkspacePagesState =
 const DEFAULT_PAGE_SIZE = 10;
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
 type SavedPageBodyResult = Awaited<ReturnType<ServiceNowClient["savePageBody"]>>;
+
+type PageSettingsField = "title" | "slug";
+
+type PageSettingsState = {
+  activeField: PageSettingsField | "";
+  deleteError: string;
+  deleteOpen: boolean;
+  deletePending: boolean;
+  generalError: string;
+  pageSysId: string;
+  slug: string;
+  slugSnapshot: string;
+  slugError: string;
+  title: string;
+  titleError: string;
+  titleSnapshot: string;
+  open: boolean;
+};
+
+function createEmptyPageSettingsState(): PageSettingsState {
+  return {
+    activeField: "",
+    deleteError: "",
+    deleteOpen: false,
+    deletePending: false,
+    generalError: "",
+    pageSysId: "",
+    slug: "",
+    slugSnapshot: "",
+    slugError: "",
+    title: "",
+    titleError: "",
+    titleSnapshot: "",
+    open: false
+  };
+}
+
+function isPageSettingsStateEmpty(state: PageSettingsState): boolean {
+  return (
+    !state.open &&
+    !state.activeField &&
+    !state.deleteError &&
+    !state.deleteOpen &&
+    !state.deletePending &&
+    !state.generalError &&
+    !state.pageSysId &&
+    !state.slug &&
+    !state.slugSnapshot &&
+    !state.slugError &&
+    !state.title &&
+    !state.titleError &&
+    !state.titleSnapshot
+  );
+}
+
+function createPageSettingsStateFromPage(page: WorkspacePageRecord): PageSettingsState {
+  const title = cleanText(page.draftTitle || page.publishedTitle || "");
+  const slug = cleanText(page.draftSlug || page.publishedSlug || "");
+
+  return {
+    ...createEmptyPageSettingsState(),
+    pageSysId: cleanText(page.sysId),
+    title,
+    titleSnapshot: title,
+    slug,
+    slugSnapshot: slug,
+    open: true,
+    activeField: "title"
+  };
+}
 
 function createInitialPingState(runtime: DocseraRuntimeContext): RuntimeProbeState {
   return runtime.config.backendPingPath ? { status: "loading" } : { status: "idle" };
@@ -115,11 +194,89 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [createPageModalOpen, setCreatePageModalOpen] = useState(false);
   const [createPageModalPhase, setCreatePageModalPhase] = useState<"idle" | "submitting">("idle");
   const [createPageModalError, setCreatePageModalError] = useState<string | undefined>();
+  const [pageSettingsState, setPageSettingsState] = useState<PageSettingsState>(createEmptyPageSettingsState);
+  const pageSettingsStateRef = useRef<PageSettingsState>(createEmptyPageSettingsState());
+  const pageSettingsPanelRef = useRef<HTMLElement>(null);
+  const pageSettingsCloseTargetRef = useRef("");
+  const pageSettingsCloseTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    pageSettingsStateRef.current = pageSettingsState;
+  }, [pageSettingsState]);
+
+  useEffect(() => {
+    return () => {
+      if (pageSettingsCloseTimerRef.current !== null) {
+        window.clearTimeout(pageSettingsCloseTimerRef.current);
+        pageSettingsCloseTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!pageSettingsState.open) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const panel = pageSettingsPanelRef.current;
+      if (!panel) {
+        return;
+      }
+
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-docsera-page-settings-trigger='true']")) {
+        return;
+      }
+
+      if (target instanceof Element && target.closest("[data-docsera-delete-dialog='true']")) {
+        return;
+      }
+
+      if (target instanceof Node && panel.contains(target)) {
+        return;
+      }
+
+      requestClosePageSettingsPanel(pageSettingsStateRef.current.pageSysId);
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [pageSettingsState.open]);
 
   const currentWorkspaceSlug = route.mode === "workspace" ? route.workspaceSlug : "";
   const currentWorkspaceSettingsIntent = route.mode === "workspace" ? route.settingsIntent : false;
   const currentWorkspacePageId = route.mode === "workspace" ? route.pageId : "";
   const loadedWorkspaceSlug = workspaceState.status === "success" ? workspaceState.data.slug : "";
+  const workspaceStateData = workspaceState.status === "success" ? workspaceState.data : null;
+  const workspacePagesLoaded =
+    workspacePagesState.status === "success" && workspacePagesState.workspaceSlug === currentWorkspaceSlug;
+  const workspacePagesLoading =
+    workspacePagesState.status === "loading" ||
+    (workspacePagesState.status === "success" && workspacePagesState.workspaceSlug !== currentWorkspaceSlug) ||
+    (workspacePagesState.status === "error" && workspacePagesState.workspaceSlug !== currentWorkspaceSlug);
+  const livePagesForCurrentWorkspace = workspacePagesLoaded ? workspacePagesState.data : [];
+  const workspaceShellWorkspace =
+    workspaceState.status === "success" && workspacePagesLoaded
+      ? buildWorkspaceShellWorkspace(workspaceState.data, buildWorkspaceShellPages(livePagesForCurrentWorkspace))
+      : null;
+  const workspaceShellDescription =
+    workspaceState.status === "success" ? workspaceState.data.shortDescription ?? "Workspace shell" : "Workspace shell";
+  const canCreatePage = Boolean(workspaceState.status === "success" && workspaceState.data.roleLabel);
+  const isCreatingPage = createPageModalOpen || createPageModalPhase !== "idle";
+  const selectedWorkspacePage =
+    workspacePagesLoaded && livePagesForCurrentWorkspace.length > 0
+      ? resolveWorkspacePageSelection(livePagesForCurrentWorkspace, currentWorkspacePageId).page
+      : null;
+  const selectedWorkspacePageId = cleanText(selectedWorkspacePage?.sysId) || currentWorkspacePageId;
+  const canManagePageSettings = Boolean(workspaceState.status === "success" && workspaceState.data.roleLabel);
+  const pageSettingsPage =
+    workspacePagesLoaded && pageSettingsState.open ? findWorkspacePageBySysId(livePagesForCurrentWorkspace, pageSettingsState.pageSysId) : null;
+  const pageSettingsHasDescendants = Boolean(
+    pageSettingsPage && collectPageSubtreeSysIds(livePagesForCurrentWorkspace, cleanText(pageSettingsPage.sysId)).length > 1
+  );
 
   useEffect(() => {
     if (!runtime.config.backendPingPath) {
@@ -308,6 +465,64 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
   }, [route.mode]);
 
+  useEffect(() => {
+    if (route.mode !== "workspace" || workspaceState.status !== "success" || workspaceState.data.slug !== currentWorkspaceSlug) {
+      setPageSettingsState((current) => {
+        if (isPageSettingsStateEmpty(current)) {
+          return current;
+        }
+
+        const nextState = createEmptyPageSettingsState();
+        pageSettingsStateRef.current = nextState;
+        return nextState;
+      });
+      return;
+    }
+
+    if (!pageSettingsState.open) {
+      return;
+    }
+
+    if (workspacePagesLoaded && !findWorkspacePageBySysId(livePagesForCurrentWorkspace, pageSettingsState.pageSysId)) {
+      setPageSettingsState((current) => {
+        if (isPageSettingsStateEmpty(current)) {
+          return current;
+        }
+
+        const nextState = createEmptyPageSettingsState();
+        pageSettingsStateRef.current = nextState;
+        return nextState;
+      });
+    }
+  }, [
+    currentWorkspaceSlug,
+    livePagesForCurrentWorkspace,
+    pageSettingsState.open,
+    pageSettingsState.pageSysId,
+    route.mode,
+    workspacePagesLoaded,
+    workspaceStateData,
+    workspaceState.status
+  ]);
+
+  useEffect(() => {
+    if (!pageSettingsState.open || route.mode !== "workspace" || workspaceState.status !== "success" || workspaceState.data.slug !== currentWorkspaceSlug) {
+      return;
+    }
+
+    if (pageSettingsState.pageSysId && pageSettingsState.pageSysId !== currentWorkspacePageId) {
+      setPageSettingsState((current) => {
+        if (isPageSettingsStateEmpty(current)) {
+          return current;
+        }
+
+        const nextState = createEmptyPageSettingsState();
+        pageSettingsStateRef.current = nextState;
+        return nextState;
+      });
+    }
+  }, [currentWorkspacePageId, currentWorkspaceSlug, pageSettingsState.open, pageSettingsState.pageSysId, route.mode, workspaceStateData, workspaceState.status]);
+
   function commitRoute(href: string, replace = false) {
     navigateTo(href, replace);
     setRoute(readAppRoute(window.location));
@@ -333,6 +548,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
+    if (pageSettingsStateRef.current.open && pageSettingsStateRef.current.pageSysId !== nextPageId) {
+      requestClosePageSettingsPanel(nextPageId);
+      return;
+    }
+
     commitRoute(buildWorkspaceHref(currentWorkspaceSlug, false, nextPageId));
   }
 
@@ -354,6 +574,412 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     setCreatePageModalError(undefined);
     setCreatePageModalPhase("idle");
     setCreatePageModalOpen(true);
+  }
+
+  function openPageSettings(pageSysId: string) {
+    if (route.mode !== "workspace" || workspaceState.status !== "success" || !workspacePagesLoaded || !canManagePageSettings) {
+      return;
+    }
+
+    if (pageSettingsCloseTimerRef.current !== null) {
+      window.clearTimeout(pageSettingsCloseTimerRef.current);
+      pageSettingsCloseTimerRef.current = null;
+    }
+    pageSettingsCloseTargetRef.current = "";
+
+    const page = findWorkspacePageBySysId(livePagesForCurrentWorkspace, pageSysId);
+    if (!page) {
+      return;
+    }
+
+    const nextState = createPageSettingsStateFromPage(page);
+    pageSettingsStateRef.current = nextState;
+    setPageSettingsState(nextState);
+  }
+
+  function requestTogglePageSettings(pageSysId: string) {
+    if (pageSettingsStateRef.current.open && pageSettingsStateRef.current.pageSysId === pageSysId) {
+      requestClosePageSettingsPanel(pageSysId);
+      return;
+    }
+
+    openPageSettings(pageSysId);
+  }
+
+  function updatePageSettingsField(field: PageSettingsField, value: string) {
+    setPageSettingsState((current) => {
+      if (!current.open) {
+        return current;
+      }
+
+      const nextErrorKey = field === "title" ? "titleError" : "slugError";
+      const nextState: PageSettingsState = {
+        ...current,
+        [field]: value,
+        [nextErrorKey]: "",
+        generalError: ""
+      };
+      pageSettingsStateRef.current = nextState;
+      return nextState;
+    });
+  }
+
+  function startPageSettingsField(field: PageSettingsField) {
+    if (!pageSettingsState.open) {
+      return;
+    }
+
+    if (pageSettingsState.activeField && pageSettingsState.activeField !== field) {
+      if (!finishPageSettingsField(pageSettingsState.activeField)) {
+        return;
+      }
+    }
+
+    const currentValue = field === "title" ? pageSettingsState.title : pageSettingsState.slug;
+    setPageSettingsState((current) => {
+      const nextState = {
+        ...current,
+        activeField: field,
+        titleSnapshot: field === "title" ? currentValue : current.titleSnapshot,
+        slugSnapshot: field === "slug" ? currentValue : current.slugSnapshot,
+        titleError: field === "title" ? "" : current.titleError,
+        slugError: field === "slug" ? "" : current.slugError,
+        generalError: ""
+      };
+      pageSettingsStateRef.current = nextState;
+      return nextState;
+    });
+  }
+
+  function finishPageSettingsField(field: PageSettingsField): boolean {
+    if (!pageSettingsState.open) {
+      return true;
+    }
+
+    if (field === "title") {
+      const validation = validatePageSettingsTitle(pageSettingsState.title);
+      if (!validation.valid) {
+        setPageSettingsState((current) => {
+          const nextState: PageSettingsState = {
+            ...current,
+            titleError: validation.error,
+            activeField: "title",
+            generalError: ""
+          };
+          pageSettingsStateRef.current = nextState;
+          return nextState;
+        });
+        return false;
+      }
+
+      setPageSettingsState((current) => {
+        const nextState: PageSettingsState = {
+          ...current,
+          title: validation.value,
+          titleError: "",
+          activeField: ""
+        };
+        pageSettingsStateRef.current = nextState;
+        return nextState;
+      });
+      return true;
+    }
+
+    const validation = validatePageSettingsSlug(
+      pageSettingsState.slug,
+      livePagesForCurrentWorkspace,
+      workspaceState.status === "success" ? workspaceState.data.sysId ?? "" : "",
+      pageSettingsState.pageSysId
+    );
+
+    if (!validation.valid) {
+      setPageSettingsState((current) => {
+        const nextState: PageSettingsState = {
+          ...current,
+          slugError: validation.error,
+          activeField: "slug",
+          generalError: ""
+        };
+        pageSettingsStateRef.current = nextState;
+        return nextState;
+      });
+      return false;
+    }
+
+    setPageSettingsState((current) => {
+      const nextState: PageSettingsState = {
+        ...current,
+        slug: validation.value,
+        slugError: "",
+        activeField: ""
+      };
+      pageSettingsStateRef.current = nextState;
+      return nextState;
+    });
+    return true;
+  }
+
+  function cancelPageSettingsField(field: PageSettingsField) {
+    if (!pageSettingsState.open) {
+      return;
+    }
+
+    setPageSettingsState((current) => {
+      const nextState: PageSettingsState = {
+        ...current,
+        title: field === "title" ? current.titleSnapshot : current.title,
+        slug: field === "slug" ? current.slugSnapshot : current.slug,
+        titleError: field === "title" ? "" : current.titleError,
+        slugError: field === "slug" ? "" : current.slugError,
+        activeField: "",
+        generalError: ""
+      };
+      pageSettingsStateRef.current = nextState;
+      return nextState;
+    });
+  }
+
+  async function closePageSettingsPanel(nextSelectedPageId = pageSettingsStateRef.current.pageSysId): Promise<boolean> {
+    const currentPageSettingsState = pageSettingsStateRef.current;
+
+    if (!currentPageSettingsState.open || workspaceState.status !== "success" || !workspacePagesLoaded) {
+      return true;
+    }
+
+    const page = findWorkspacePageBySysId(livePagesForCurrentWorkspace, currentPageSettingsState.pageSysId);
+    if (!page) {
+      const nextState = createEmptyPageSettingsState();
+      pageSettingsStateRef.current = nextState;
+      setPageSettingsState(nextState);
+      return true;
+    }
+
+    const titleValidation = validatePageSettingsTitle(currentPageSettingsState.title);
+    const slugValidation = validatePageSettingsSlug(
+      currentPageSettingsState.slug,
+      livePagesForCurrentWorkspace,
+      workspaceState.data.sysId ?? "",
+      page.sysId ?? currentPageSettingsState.pageSysId
+    );
+
+    if (!titleValidation.valid || !slugValidation.valid) {
+      setPageSettingsState((current) => ({
+        ...current,
+        titleError: titleValidation.valid ? "" : titleValidation.error,
+        slugError: slugValidation.valid ? "" : slugValidation.error,
+        activeField: !titleValidation.valid ? "title" : "slug",
+        generalError: ""
+      }));
+      return false;
+    }
+
+    const normalizedTitle = titleValidation.value;
+    const normalizedSlug = slugValidation.normalizedValue;
+    const currentTitle = cleanText(currentPageSettingsState.titleSnapshot);
+    const currentSlug = cleanText(currentPageSettingsState.slugSnapshot).toLowerCase();
+    const hasChanges = normalizedTitle !== currentTitle || normalizedSlug !== currentSlug;
+
+    if (!hasChanges) {
+      const nextState = createEmptyPageSettingsState();
+      pageSettingsStateRef.current = nextState;
+      setPageSettingsState(nextState);
+      const nextPageId = cleanText(nextSelectedPageId);
+      if (nextPageId && nextPageId !== currentPageSettingsState.pageSysId) {
+        commitRoute(buildWorkspaceHref(currentWorkspaceSlug, false, nextPageId));
+      }
+      return true;
+    }
+
+    setPageSettingsState((current) => ({
+      ...current,
+      titleError: "",
+      slugError: "",
+      generalError: ""
+    }));
+
+    try {
+      const result = await serviceNowClient.savePageSettings({
+        workspaceSlug: workspaceState.data.slug,
+        workspaceSysId: workspaceState.data.sysId ?? "",
+        pageSysId: page.sysId ?? currentPageSettingsState.pageSysId,
+        title: normalizedTitle,
+        slug: normalizedSlug
+      });
+
+      if (result.state === "failed") {
+        setPageSettingsState((current) => ({
+          ...current,
+          generalError: result.errorMessage
+        }));
+        return false;
+      }
+
+      setWorkspacePagesState((current) => {
+        if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug) {
+          return current;
+        }
+
+        return {
+          ...current,
+          data: current.data.map((pageRecord) =>
+            cleanText(pageRecord.sysId) === cleanText(result.page.sysId) ? result.page : pageRecord
+          )
+        };
+      });
+
+      const nextState = createEmptyPageSettingsState();
+      pageSettingsStateRef.current = nextState;
+      setPageSettingsState(nextState);
+      const nextPageId = cleanText(nextSelectedPageId);
+      if (nextPageId && nextPageId !== cleanText(result.page.sysId)) {
+        commitRoute(buildWorkspaceHref(currentWorkspaceSlug, false, nextPageId));
+      }
+      return true;
+    } catch {
+      setPageSettingsState((current) => ({
+        ...current,
+        generalError: "Something went wrong while saving page settings. Your changes were not saved. Please try again."
+      }));
+      return false;
+    }
+  }
+
+  function requestClosePageSettingsPanel(nextSelectedPageId = pageSettingsStateRef.current.pageSysId) {
+    pageSettingsCloseTargetRef.current = cleanText(nextSelectedPageId) || pageSettingsStateRef.current.pageSysId;
+
+    if (pageSettingsCloseTimerRef.current !== null) {
+      return;
+    }
+
+    pageSettingsCloseTimerRef.current = window.setTimeout(() => {
+      pageSettingsCloseTimerRef.current = null;
+      void closePageSettingsPanel(pageSettingsCloseTargetRef.current);
+    }, 0);
+  }
+
+  function requestOpenDeletePageSettings() {
+    if (!pageSettingsStateRef.current.open || !canManagePageSettings || !pageSettingsPage) {
+      return;
+    }
+
+    setPageSettingsState((current) => ({
+      ...current,
+      deleteOpen: true,
+      deletePending: false,
+      deleteError: ""
+    }));
+  }
+
+  function requestCloseDeletePageSettings() {
+    setPageSettingsState((current) => {
+      if (current.deletePending) {
+        return current;
+      }
+
+      return {
+        ...current,
+        deleteOpen: false,
+        deleteError: ""
+      };
+    });
+  }
+
+  async function confirmDeletePageSettings() {
+    const currentPageSettingsState = pageSettingsStateRef.current;
+    if (!currentPageSettingsState.open || !currentPageSettingsState.deleteOpen) {
+      return;
+    }
+
+    if (!canManagePageSettings || !workspacePagesLoaded || workspaceState.status !== "success") {
+      setPageSettingsState((current) => ({
+        ...current,
+        deletePending: false,
+        deleteError: "Unable to delete this page right now. Please reopen Page Settings and try again."
+      }));
+      return;
+    }
+
+    const currentPage = findWorkspacePageBySysId(livePagesForCurrentWorkspace, currentPageSettingsState.pageSysId);
+    if (!currentPage) {
+      setPageSettingsState((current) => ({
+        ...current,
+        deletePending: false,
+        deleteError: "Unable to delete this page right now. Please reopen Page Settings and try again."
+      }));
+      return;
+    }
+
+    const deletedPageSysId = cleanText(currentPage.sysId) || currentPageSettingsState.pageSysId;
+    const nextPageIdFallback = pickNextVisiblePageAfterDelete(livePagesForCurrentWorkspace, deletedPageSysId);
+
+    setPageSettingsState((current) => ({
+      ...current,
+      deletePending: true,
+      deleteError: ""
+    }));
+
+    try {
+      const result = await serviceNowClient.deletePage({
+        workspaceSlug: workspaceState.data.slug,
+        workspaceSysId: workspaceState.data.sysId ?? "",
+        pageSysId: deletedPageSysId
+      });
+
+      if (result.state === "failed") {
+        setPageSettingsState((current) => ({
+          ...current,
+          deletePending: false,
+          deleteError: result.errorMessage
+        }));
+        return;
+      }
+
+      setWorkspacePagesState((current) => {
+        if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug) {
+          return current;
+        }
+
+        const nextPages = removePageSubtree(current.data, deletedPageSysId) as WorkspacePageRecord[];
+        return {
+          ...current,
+          data: nextPages,
+          totalCount: nextPages.length
+        };
+      });
+
+      try {
+        const refreshedPages = await serviceNowClient.listPages({
+          workspaceSlug: workspaceState.data.slug
+        });
+
+        setWorkspacePagesState((current) => {
+          if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug) {
+            return current;
+          }
+
+          return {
+            ...current,
+            data: refreshedPages.items,
+            totalCount: refreshedPages.totalCount
+          };
+        });
+      } catch {
+        // Keep the optimistic subtree removal if the refresh fails.
+      }
+
+      const nextState = createEmptyPageSettingsState();
+      pageSettingsStateRef.current = nextState;
+      setPageSettingsState(nextState);
+
+      const nextPageId = cleanText(result.nextPageSysId) || nextPageIdFallback;
+      commitRoute(buildWorkspaceHref(currentWorkspaceSlug, false, nextPageId));
+    } catch {
+      setPageSettingsState((current) => ({
+        ...current,
+        deletePending: false,
+        deleteError: "Something went wrong while deleting the page. The page was not deleted. Please try again."
+      }));
+    }
   }
 
   async function submitWorkspaceCreation(input: { name: string; shortDescription: string }) {
@@ -466,26 +1092,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }
 
   const launcherList = launcherState.status === "success" ? launcherState.data : null;
-  const workspacePagesLoaded =
-    workspacePagesState.status === "success" && workspacePagesState.workspaceSlug === currentWorkspaceSlug;
-  const workspacePagesLoading =
-    workspacePagesState.status === "loading" ||
-    (workspacePagesState.status === "success" && workspacePagesState.workspaceSlug !== currentWorkspaceSlug) ||
-    (workspacePagesState.status === "error" && workspacePagesState.workspaceSlug !== currentWorkspaceSlug);
-  const livePagesForCurrentWorkspace = workspacePagesLoaded ? workspacePagesState.data : [];
-  const workspaceShellWorkspace =
-    workspaceState.status === "success" && workspacePagesLoaded
-      ? buildWorkspaceShellWorkspace(workspaceState.data, buildWorkspaceShellPages(livePagesForCurrentWorkspace))
-      : null;
-  const workspaceShellDescription =
-    workspaceState.status === "success" ? workspaceState.data.shortDescription ?? "Workspace shell" : "Workspace shell";
-  const canCreatePage = Boolean(workspaceState.status === "success" && workspaceState.data.roleLabel);
-  const isCreatingPage = createPageModalOpen || createPageModalPhase !== "idle";
-  const selectedWorkspacePage =
-    workspacePagesLoaded && livePagesForCurrentWorkspace.length > 0
-      ? resolveWorkspacePageSelection(livePagesForCurrentWorkspace, currentWorkspacePageId).page
-      : null;
-  const selectedWorkspacePageId = cleanText(selectedWorkspacePage?.sysId) || currentWorkspacePageId;
 
   useEffect(() => {
     if (route.mode !== "workspace" || workspaceState.status !== "success" || workspaceState.data.slug !== currentWorkspaceSlug) {
@@ -643,6 +1249,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           workspace={workspaceShellWorkspace}
           selectedPageId={selectedWorkspacePageId}
           onSelectPage={openWorkspacePage}
+          canManagePageSettings={canManagePageSettings}
+          pageSettingsOpenPageId={pageSettingsState.open ? pageSettingsState.pageSysId : ""}
+          onTogglePageSettings={requestTogglePageSettings}
           pingState={pingState}
           onOpenMyWorkspaces={openLauncher}
           workspaceSettingsNotice={workspaceSettingsNotice}
@@ -651,6 +1260,35 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           onShowCreatePage={openCreatePageModal}
           selectedWorkspacePage={selectedWorkspacePage}
           onSavePageBody={savePageBody}
+        />
+        <PageSettingsOverlay
+          activeField={pageSettingsState.activeField}
+          canManagePageSettings={canManagePageSettings}
+          generalError={pageSettingsState.generalError}
+          hasDescendants={pageSettingsHasDescendants}
+          open={pageSettingsState.open}
+          panelRef={pageSettingsPanelRef}
+          pageSlug={pageSettingsState.slug}
+          pageTitle={pageSettingsState.title}
+          slugError={pageSettingsState.slugError}
+          titleError={pageSettingsState.titleError}
+          onCancelField={cancelPageSettingsField}
+          onChangeField={updatePageSettingsField}
+          onFinishField={finishPageSettingsField}
+          onRequestClose={() => {
+            requestClosePageSettingsPanel(pageSettingsStateRef.current.pageSysId);
+          }}
+          onRequestDelete={requestOpenDeletePageSettings}
+          onStartField={startPageSettingsField}
+        />
+        <PageSettingsDeleteDialog
+          errorMessage={pageSettingsState.deleteError}
+          hasDescendants={pageSettingsHasDescendants}
+          open={pageSettingsState.deleteOpen}
+          pageTitle={pageSettingsState.title || pageSettingsPage?.draftTitle || "page"}
+          pending={pageSettingsState.deletePending}
+          onConfirm={confirmDeletePageSettings}
+          onRequestClose={requestCloseDeletePageSettings}
         />
         <PageCreateModal
           errorMessage={createPageModalError}

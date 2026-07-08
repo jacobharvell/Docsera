@@ -71,6 +71,28 @@ export const PAGE_PUBLICATION_STATES = Object.freeze({
 
 export const PAGE_TREE_MAX_DEPTH = 5;
 
+export type PageSettingsValidationResult = {
+  valid: boolean;
+  value: string;
+  normalizedValue: string;
+  error: string;
+};
+
+export type PageLike = {
+  sysId?: string;
+  workspaceSysId: string;
+  parentPageSysId: string | null;
+  siblingOrder: number;
+  draftTitle?: string;
+  draftSlug?: string;
+  draftSlugNormalized?: string;
+  publishedSlug?: string | null;
+  publishedSlugNormalized?: string | null;
+  slug?: string;
+  pageSlug?: string;
+  routingSlug?: string;
+};
+
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -113,6 +135,37 @@ function normalizePagePublicationState(value: unknown): PagePublicationState {
   }
 
   return PAGE_PUBLICATION_STATES.draft;
+}
+
+export function normalizeServiceNowBoolean(value: unknown, fallback = false): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  if (typeof value === "number") {
+    if (value === 1) {
+      return true;
+    }
+
+    if (value === 0) {
+      return false;
+    }
+  }
+
+  const candidate = cleanText(value).toLowerCase();
+  if (!candidate) {
+    return fallback;
+  }
+
+  if (candidate === "true" || candidate === "1") {
+    return true;
+  }
+
+  if (candidate === "false" || candidate === "0") {
+    return false;
+  }
+
+  return fallback;
 }
 
 function resolveWorkspaceSysId(input: unknown): string {
@@ -173,6 +226,24 @@ function resolvePageParentSysId(page: unknown): string {
   return resolvePageSysId(candidate.parentPageSysId ?? candidate.parentPage ?? candidate.parentPageId ?? candidate.parentId);
 }
 
+function resolvePageSlugCandidates(page: PageLike): string[] {
+  return [
+    page.draftSlug,
+    page.draftSlugNormalized,
+    page.publishedSlug,
+    page.publishedSlugNormalized,
+    page.slug,
+    page.pageSlug,
+    page.routingSlug
+  ]
+    .map((value) => cleanText(value))
+    .filter(Boolean);
+}
+
+function isValidPageSlugFormat(value: string): boolean {
+  return /^[A-Za-z0-9._-]+$/.test(value);
+}
+
 function collectReservedPageSlugs(retainedPages: PageSlugReservation[] = [], workspaceSysId = "", excludePageSysId = ""): string[] {
   const workspaceFilter = cleanText(workspaceSysId);
   const excludedPageSysId = cleanText(excludePageSysId);
@@ -215,6 +286,186 @@ function collectReservedPageSlugs(retainedPages: PageSlugReservation[] = [], wor
   }
 
   return [...reserved];
+}
+
+export function validatePageSettingsTitle(title: unknown): PageSettingsValidationResult {
+  const normalizedTitle = cleanText(title);
+
+  if (!normalizedTitle) {
+    return {
+      valid: false,
+      value: "",
+      normalizedValue: "",
+      error: "Page title is required."
+    };
+  }
+
+  if (normalizedTitle.length > 160) {
+    return {
+      valid: false,
+      value: normalizedTitle,
+      normalizedValue: normalizedTitle,
+      error: "Page title must be 160 characters or fewer."
+    };
+  }
+
+  return {
+    valid: true,
+    value: normalizedTitle,
+    normalizedValue: normalizedTitle,
+    error: ""
+  };
+}
+
+export function validatePageSettingsSlug(
+  slug: unknown,
+  retainedPages: PageLike[] = [],
+  workspaceSysId = "",
+  currentPageSysId = ""
+): PageSettingsValidationResult {
+  const rawSlug = typeof slug === "string" ? slug : "";
+  const normalizedSlug = rawSlug.trim();
+
+  if (!normalizedSlug) {
+    return {
+      valid: false,
+      value: "",
+      normalizedValue: "",
+      error: "Slug is required."
+    };
+  }
+
+  if (normalizedSlug !== rawSlug || !isValidPageSlugFormat(normalizedSlug)) {
+    return {
+      valid: false,
+      value: normalizedSlug,
+      normalizedValue: normalizedSlug.toLowerCase(),
+      error: "Invalid slug. Slug must only include letters, numbers, dashes, periods, or underscores."
+    };
+  }
+
+  const normalizedValue = normalizedSlug.toLowerCase();
+  const currentPage = retainedPages.find((page) => resolvePageSysId(page) === cleanText(currentPageSysId));
+  if (currentPage) {
+    const currentSlugCandidates = resolvePageSlugCandidates(currentPage).map((value) => value.toLowerCase());
+    if (currentSlugCandidates.includes(normalizedValue)) {
+      return {
+        valid: true,
+        value: normalizedSlug,
+        normalizedValue,
+        error: ""
+      };
+    }
+  }
+
+  const reservedSlugs = new Set(collectReservedPageSlugs(retainedPages, workspaceSysId, currentPageSysId));
+
+  if (reservedSlugs.has(normalizedValue)) {
+    return {
+      valid: false,
+      value: normalizedSlug,
+      normalizedValue,
+      error: "Slug must be unique within this workspace."
+    };
+  }
+
+  return {
+    valid: true,
+    value: normalizedSlug,
+    normalizedValue,
+    error: ""
+  };
+}
+
+export function collectPageSubtreeSysIds(pages: PageLike[] = [], rootPageSysId = ""): string[] {
+  const normalizedRootPageSysId = cleanText(rootPageSysId);
+  if (!normalizedRootPageSysId) {
+    return [];
+  }
+
+  const pagesByParent = new Map<string, PageLike[]>();
+
+  for (const page of pages) {
+    if (!page || typeof page !== "object") {
+      continue;
+    }
+
+    const parentSysId = cleanText(resolvePageParentSysId(page));
+    if (!pagesByParent.has(parentSysId)) {
+      pagesByParent.set(parentSysId, []);
+    }
+
+    pagesByParent.get(parentSysId)?.push(page);
+  }
+
+  const subtreeIds = new Set<string>();
+  const queue = [normalizedRootPageSysId];
+
+  while (queue.length) {
+    const currentSysId = queue.shift();
+    if (!currentSysId || subtreeIds.has(currentSysId)) {
+      continue;
+    }
+
+    subtreeIds.add(currentSysId);
+
+    const childPages = pagesByParent.get(currentSysId) ?? [];
+    for (const childPage of childPages) {
+      const childSysId = resolvePageSysId(childPage);
+      if (childSysId && !subtreeIds.has(childSysId)) {
+        queue.push(childSysId);
+      }
+    }
+  }
+
+  return [...subtreeIds];
+}
+
+export function removePageSubtree(pages: PageLike[] = [], rootPageSysId = ""): PageLike[] {
+  const subtreeIds = new Set(collectPageSubtreeSysIds(pages, rootPageSysId));
+  if (!subtreeIds.size) {
+    return Array.isArray(pages) ? pages.slice() : [];
+  }
+
+  return pages.filter((page) => !subtreeIds.has(resolvePageSysId(page)));
+}
+
+export function pickNextVisiblePageAfterDelete(pages: PageLike[] = [], deletedPageSysId = ""): string {
+  const normalizedDeletedPageSysId = cleanText(deletedPageSysId);
+  if (!normalizedDeletedPageSysId) {
+    return "";
+  }
+
+  const subtreeIds = new Set(collectPageSubtreeSysIds(pages, normalizedDeletedPageSysId));
+  if (!subtreeIds.size) {
+    return "";
+  }
+
+  const orderedPages = Array.isArray(pages) ? pages : [];
+  const firstDeletedIndex = orderedPages.findIndex((page) => subtreeIds.has(resolvePageSysId(page)));
+  let lastDeletedIndex = firstDeletedIndex;
+
+  for (let index = firstDeletedIndex + 1; index < orderedPages.length; index += 1) {
+    if (subtreeIds.has(resolvePageSysId(orderedPages[index]))) {
+      lastDeletedIndex = index;
+    }
+  }
+
+  for (let index = lastDeletedIndex + 1; index < orderedPages.length; index += 1) {
+    const candidate = cleanText(resolvePageSysId(orderedPages[index]));
+    if (candidate && !subtreeIds.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  for (let index = firstDeletedIndex - 1; index >= 0; index -= 1) {
+    const candidate = cleanText(resolvePageSysId(orderedPages[index]));
+    if (candidate && !subtreeIds.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  return "";
 }
 
 export function allocatePageSlug(
@@ -337,6 +588,6 @@ export function normalizePageRecord(row: Record<string, unknown>): PageRecord {
     publishedContentJson: row.publishedContentJson ? clonePageContentJson(row.publishedContentJson) : null,
     publishedBodyText: cleanText(row.publishedBodyText) || null,
     publicationState: normalizePagePublicationState(row.publicationState),
-    active: row.active === undefined ? true : Boolean(row.active)
+    active: row.active === undefined ? true : normalizeServiceNowBoolean(row.active, true)
   };
 }

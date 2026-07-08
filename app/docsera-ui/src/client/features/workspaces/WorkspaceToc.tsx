@@ -1,14 +1,16 @@
 import type { DemoPage } from "../../shared/types/docsera";
 
 type WorkspaceTocProps = {
-  page: DemoPage;
+  page: DemoPage | null;
 };
 
 export function WorkspaceToc({ page }: WorkspaceTocProps) {
   return (
     <aside className="docsera-toc" aria-label="Page outline">
       <p className="docsera-toc__eyebrow">On this page</p>
-      {page.sections.length > 0 ? (
+      {!page ? (
+        <p className="docsera-toc__empty">No page selected yet.</p>
+      ) : page.sections.length > 0 ? (
         <ol className="docsera-toc__list">
           {page.sections.map((section, index) => (
             <li key={section.id} className="docsera-toc__item">

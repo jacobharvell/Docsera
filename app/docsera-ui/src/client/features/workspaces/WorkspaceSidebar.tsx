@@ -6,6 +6,9 @@ type WorkspaceSidebarProps = {
   workspace: DemoWorkspace;
   selectedPageId: string;
   onSelectPage: (pageId: string) => void;
+  canManagePageSettings: boolean;
+  pageSettingsOpenPageId: string;
+  onTogglePageSettings: (pageId: string) => void;
   treeFilter: string;
   onTreeFilterChange: (value: string) => void;
   canCreatePage: boolean;
@@ -62,6 +65,9 @@ export function WorkspaceSidebar({
   workspace,
   selectedPageId,
   onSelectPage,
+  canManagePageSettings,
+  pageSettingsOpenPageId,
+  onTogglePageSettings,
   treeFilter,
   onTreeFilterChange,
   canCreatePage,
@@ -114,10 +120,18 @@ export function WorkspaceSidebar({
         <p className="docsera-sidebar__meta">
           {totalPages} pages / {workspace.roleLabel}
         </p>
+        {totalPages === 0 ? (
+          <p className="docsera-sidebar__empty">
+            This workspace has no pages yet. Use New page to create the first one.
+          </p>
+        ) : null}
         <PageTree
           pages={workspace.pages}
+          canManagePageSettings={canManagePageSettings}
+          pageSettingsOpenPageId={pageSettingsOpenPageId}
           selectedPageId={selectedPageId}
           onSelectPage={onSelectPage}
+          onTogglePageSettings={onTogglePageSettings}
           filterText={treeFilter}
         />
       </nav>

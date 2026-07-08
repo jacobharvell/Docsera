@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { sortPageRecordsForTree } from "./serviceNowPageQueries";
+import { filterActivePageRecords, sortPageRecordsForTree } from "./serviceNowPageQueries";
 import type { PageRecord } from "./serverPageDomain";
 
 function createPage(overrides: Partial<PageRecord> = {}): PageRecord {
@@ -28,6 +28,16 @@ function createPage(overrides: Partial<PageRecord> = {}): PageRecord {
 }
 
 describe("page query helpers", () => {
+  it("filters inactive pages from the workspace page list", () => {
+    const filtered = filterActivePageRecords([
+      createPage({ sysId: "page-001", active: true }),
+      createPage({ sysId: "page-002", active: false }),
+      createPage({ sysId: "page-003", active: true })
+    ]);
+
+    expect(filtered.map((page) => page.sysId)).toEqual(["page-001", "page-003"]);
+  });
+
   it("orders pages by root, parent, and sibling order", () => {
     const ordered = sortPageRecordsForTree([
       createPage({ sysId: "child-b", parentPageSysId: "root-a", siblingOrder: 2, draftTitle: "Child B", draftSlug: "child-b" }),

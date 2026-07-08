@@ -1,7 +1,10 @@
 import "@servicenow/sdk/global";
 import { RestApi } from "@servicenow/sdk/core";
 import { process as createPage } from "../../server/api/docsera-runtime-create-page";
+import { process as deletePageAction } from "../../server/api/docsera-runtime-page-delete-action";
+import { process as deletePage } from "../../server/api/docsera-runtime-page-delete";
 import { process as savePage } from "../../server/api/docsera-runtime-page-save";
+import { process as savePageSettings } from "../../server/api/docsera-runtime-page-settings-save";
 import { process as createWorkspace } from "../../server/api/docsera-runtime-create-workspace";
 import { process as listPages } from "../../server/api/docsera-runtime-pages";
 import { process as workspaces } from "../../server/api/docsera-runtime-workspaces";
@@ -81,6 +84,35 @@ RestApi({
       produces: "application/json",
       shortDescription: "Persist draft body changes to an existing workspace page record.",
       script: savePage
+    },
+    {
+      $id: Now.ID["docsera-runtime-pages-put"],
+      name: "pages_settings_save",
+      path: "/pages",
+      method: "PUT",
+      consumes: "application/json",
+      produces: "application/json",
+      shortDescription: "Persist page title and slug settings to an existing workspace page record.",
+      script: savePageSettings
+    },
+    {
+      $id: Now.ID["docsera-runtime-pages-delete-action-post"],
+      name: "pages_delete_action",
+      path: "/pages/delete",
+      method: "POST",
+      consumes: "application/json",
+      produces: "application/json",
+      shortDescription: "Hard-delete a workspace page record and its descendant subtree through a ServiceNow-compatible action route.",
+      script: deletePageAction
+    },
+    {
+      $id: Now.ID["docsera-runtime-pages-delete"],
+      name: "pages_delete",
+      path: "/pages",
+      method: "DELETE",
+      produces: "application/json",
+      shortDescription: "Legacy delete route kept body-free because ServiceNow runtime scripts cannot access DELETE request bodies.",
+      script: deletePage
     }
   ]
 });

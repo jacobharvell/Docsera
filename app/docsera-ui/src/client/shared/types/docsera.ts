@@ -150,6 +150,44 @@ export type PageBodySaveFailed = {
 
 export type PageBodySaveResult = PageBodySaveSucceeded | PageBodySaveFailed;
 
+export type PageSettingsSaveInput = {
+  workspaceSlug: string;
+  workspaceSysId: string;
+  pageSysId: string;
+  title: string;
+  slug: string;
+};
+
+export type PageSettingsSaveSucceeded = {
+  page: WorkspacePageRecord;
+  state: "succeeded";
+};
+
+export type PageSettingsSaveFailed = {
+  errorMessage: string;
+  state: "failed";
+};
+
+export type PageSettingsSaveResult = PageSettingsSaveSucceeded | PageSettingsSaveFailed;
+
+export type PageDeleteInput = {
+  workspaceSlug: string;
+  workspaceSysId: string;
+  pageSysId: string;
+};
+
+export type PageDeleteSucceeded = {
+  nextPageSysId: string;
+  state: "succeeded";
+};
+
+export type PageDeleteFailed = {
+  errorMessage: string;
+  state: "failed";
+};
+
+export type PageDeleteResult = PageDeleteSucceeded | PageDeleteFailed;
+
 export type WorkspaceCreateSucceeded = {
   state: "succeeded";
   workspace: WorkspaceViewRecord;
@@ -182,6 +220,8 @@ export type ServiceNowClient = {
   getWorkspaceProvisioningStatus: (statusPath: string) => Promise<WorkspaceCreateResult>;
   createPage: (input: PageCreateInput) => Promise<PageCreateResult>;
   savePageBody: (input: PageBodySaveInput) => Promise<PageBodySaveResult>;
+  savePageSettings: (input: PageSettingsSaveInput) => Promise<PageSettingsSaveResult>;
+  deletePage: (input: PageDeleteInput) => Promise<PageDeleteResult>;
 };
 
 export type DemoPageSection = {

@@ -18,6 +18,14 @@ declare global {
                         table: 'sys_ws_definition'
                         id: '814e0e79e0734df7af652df1e048a18f'
                     }
+                    'docsera-runtime-pages-delete': {
+                        table: 'sys_ws_operation'
+                        id: 'd731c28132024a66bfa57ebb20d175ee'
+                    }
+                    'docsera-runtime-pages-delete-action-post': {
+                        table: 'sys_ws_operation'
+                        id: 'bd0bda51ce3549f69dcdf70235f07629'
+                    }
                     'docsera-runtime-pages-get': {
                         table: 'sys_ws_operation'
                         id: '2c1ee14346fb48d69552e328e5c980be'
@@ -29,6 +37,10 @@ declare global {
                     'docsera-runtime-pages-post': {
                         table: 'sys_ws_operation'
                         id: '0123141679ea4a7b9bbf5c118e10360b'
+                    }
+                    'docsera-runtime-pages-put': {
+                        table: 'sys_ws_operation'
+                        id: '6ffe3ab21b874ff6b0540f5fcddb56bf'
                     }
                     'docsera-runtime-ping-get': {
                         table: 'sys_ws_operation'
@@ -58,9 +70,21 @@ declare global {
                         table: 'sys_module'
                         id: 'd1c85ce69fec4046a9c4e52ccbf1ed4e'
                     }
+                    'src_server_api_docsera-runtime-page-delete_ts': {
+                        table: 'sys_module'
+                        id: 'cc6dadf3e0554cd989a1ea5cc738947c'
+                    }
+                    'src_server_api_docsera-runtime-page-delete-action_ts': {
+                        table: 'sys_module'
+                        id: '08f43b579ccb43b99e77dc804e52fed1'
+                    }
                     'src_server_api_docsera-runtime-page-save_ts': {
                         table: 'sys_module'
                         id: '9f7c1b2a3d4e4f6091a2b3c4d5e6f708'
+                    }
+                    'src_server_api_docsera-runtime-page-settings-save_ts': {
+                        table: 'sys_module'
+                        id: '8e8c2844f2c24db0978b72869252c291'
                     }
                     'src_server_api_docsera-runtime-pages_ts': {
                         table: 'sys_module'
@@ -106,6 +130,10 @@ declare global {
                         table: 'sys_module'
                         id: '4d9911302ec443b399935ca3365063db'
                     }
+                    src_server_pages_serviceNowPageSettings_ts: {
+                        table: 'sys_module'
+                        id: '6e50ac65fad94c23bc09b8c678a0e11c'
+                    }
                     src_server_workspaces_serverWorkspaceDomain_ts: {
                         table: 'sys_module'
                         id: '15e7818a1cd7415682575fce3df6368e'
@@ -150,6 +178,14 @@ declare global {
                         id: '053e258583814373a3f0ef19199023b4'
                         key: {
                             endpoint: 'x_82900_docsera_docsera_sdk_runtime.do'
+                        }
+                    },
+                    {
+                        table: 'sn_glider_source_artifact'
+                        id: '0b944690279d44618ced2280edd7263c'
+                        deleted: true
+                        key: {
+                            name: 'x_82900_docsera_docsera_sdk_runtime.do - BYOUI Files'
                         }
                     },
                     {
@@ -221,6 +257,7 @@ declare global {
                     {
                         table: 'sys_ux_lib_asset'
                         id: '1acd40f0fcb0422e8e047afac7546c60'
+                        deleted: false
                         key: {
                             name: 'x_82900_docsera/main'
                         }
@@ -404,6 +441,7 @@ declare global {
                     {
                         table: 'sys_ux_lib_asset'
                         id: '49074d350f4742d1a1dc581518fd6686'
+                        deleted: false
                         key: {
                             name: 'x_82900_docsera/main.js.map'
                         }
@@ -438,6 +476,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_provision_request'
                             element: 'error_message'
+                        }
+                    },
+                    {
+                        table: 'sn_glider_source_artifact_m2m'
+                        id: '4eb9bf84e89e48a5bf50713fbd2cbe33'
+                        deleted: true
+                        key: {
+                            application_file: '1acd40f0fcb0422e8e047afac7546c60'
+                            source_artifact: '0b944690279d44618ced2280edd7263c'
                         }
                     },
                     {
@@ -928,6 +975,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sn_glider_source_artifact_m2m'
+                        id: 'ae80f34dcfdf4b2e881bce9943b37083'
+                        deleted: true
+                        key: {
+                            application_file: '053e258583814373a3f0ef19199023b4'
+                            source_artifact: '0b944690279d44618ced2280edd7263c'
+                        }
+                    },
+                    {
                         table: 'sys_documentation'
                         id: 'aed1d152f285462f8d975965c18f84ef'
                         key: {
@@ -1323,6 +1379,15 @@ declare global {
                             name: 'x_82900_docsera_workspace_provision_request'
                             element: 'admin_group'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sn_glider_source_artifact_m2m'
+                        id: 'f0d51d93a14349e58288c8e9e13381c8'
+                        deleted: true
+                        key: {
+                            application_file: '49074d350f4742d1a1dc581518fd6686'
+                            source_artifact: '0b944690279d44618ced2280edd7263c'
                         }
                     },
                     {

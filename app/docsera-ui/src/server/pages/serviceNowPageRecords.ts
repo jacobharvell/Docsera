@@ -1,5 +1,5 @@
 import type { PageRecord as ServerPageRecord } from "./serverPageDomain.ts";
-import { normalizePageRecord } from "./serverPageDomain.ts";
+import { normalizePageRecord, normalizeServiceNowBoolean } from "./serverPageDomain.ts";
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -44,6 +44,6 @@ export function mapPageRecord(record: {
     publishedContentJson: parseJsonValue(record.getValue("published_content_json")),
     publishedBodyText: cleanText(record.getValue("published_body_text")) || null,
     publicationState: cleanText(record.getValue("publication_state")) || "draft",
-    active: cleanText(record.getValue("active")) === "true"
+    active: normalizeServiceNowBoolean(record.getValue("active"), true)
   });
 }

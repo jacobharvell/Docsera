@@ -424,4 +424,119 @@ describe("service now client page creation", () => {
       expect(result.errorMessage).toBe("Something went wrong while saving the page body. Please try again.");
     }
   });
+
+  it("normalizes a page settings save response", async () => {
+    const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/pages");
+      expect(init?.method).toBe("PUT");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001",
+        pageSysId: "page-007",
+        title: "Updated title",
+        slug: "updated-title"
+      });
+
+      return createJsonResponse(200, {
+        result: {
+          page: {
+            sysId: "page-007",
+            workspaceSysId: "workspace-001",
+            parentPageSysId: null,
+            siblingOrder: 7,
+            draftTitle: "Updated title",
+            draftSlug: "updated-title",
+            draftSlugNormalized: "updated-title",
+            draftContentJson: {
+              type: "doc",
+              content: []
+            },
+            draftBodyText: "Updated body",
+            publishedTitle: null,
+            publishedSlug: null,
+            publishedSlugNormalized: null,
+            publishedContentJson: null,
+            publishedBodyText: null,
+            publicationState: "draft",
+            active: true
+          }
+        }
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.savePageSettings({
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001",
+      pageSysId: "page-007",
+      title: "Updated title",
+      slug: "updated-title"
+    });
+
+    expect(result.state).toBe("succeeded");
+    if (result.state === "succeeded") {
+      expect(result.page.draftTitle).toBe("Updated title");
+      expect(result.page.draftSlugNormalized).toBe("updated-title");
+    }
+  });
+
+  it("normalizes a page delete response", async () => {
+    const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/pages/delete");
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001",
+        pageSysId: "page-007"
+      });
+
+      return createJsonResponse(200, {
+        result: {
+          deletedPageSysId: "page-007",
+          nextPageSysId: "page-008"
+        }
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.deletePage({
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001",
+      pageSysId: "page-007"
+    });
+
+    expect(result.state).toBe("succeeded");
+    if (result.state === "succeeded") {
+      expect(result.nextPageSysId).toBe("page-008");
+    }
+  });
+
+  it("returns a safe failure message for unexpected page delete responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        createJsonResponse(405, {
+          error: {
+            message: "Delete page requires the action route."
+          }
+        })
+      )
+    );
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.deletePage({
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001",
+      pageSysId: "page-007"
+    });
+
+    expect(result.state).toBe("failed");
+    if (result.state === "failed") {
+      expect(result.errorMessage).toBe("Something went wrong while deleting the page. The page was not deleted. Please try again.");
+    }
+  });
 });

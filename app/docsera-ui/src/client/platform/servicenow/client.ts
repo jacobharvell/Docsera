@@ -10,9 +10,17 @@ import type {
   PageBodySaveInput,
   PageBodySaveResult,
   PageBodySaveSucceeded,
+  PageDeleteFailed,
+  PageDeleteInput,
+  PageDeleteResult,
+  PageDeleteSucceeded,
   WorkspacePageRecord,
   RawPingPayload,
   ServiceNowClient,
+  PageSettingsSaveFailed,
+  PageSettingsSaveInput,
+  PageSettingsSaveResult,
+  PageSettingsSaveSucceeded,
   WorkspaceCreateFailed,
   WorkspaceCreateInput,
   WorkspaceCreatePending,
@@ -41,6 +49,7 @@ type JsonResponse<T> = {
 const DEFAULT_WORKSPACE_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces";
 const DEFAULT_PAGE_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/pages";
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
+const SAFE_PAGE_DELETE_ERROR_MESSAGE = "Something went wrong while deleting the page. The page was not deleted. Please try again.";
 
 function readWindowUserToken(candidate: Window | null | undefined): string | undefined {
   const tokenWindow = candidate as TokenBearingWindow | null | undefined;
@@ -99,6 +108,11 @@ function unwrapServiceNowEnvelope(value: unknown): unknown {
 
 function resolvePath(value: string | undefined, fallback: string): string {
   return cleanText(value) || fallback;
+}
+
+function resolvePageDeleteActionPath(pageCollectionPath: string): string {
+  const normalizedPath = cleanText(pageCollectionPath).replace(/\/+$/g, "");
+  return `${normalizedPath}/delete`;
 }
 
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<JsonResponse<T>> {
@@ -349,6 +363,44 @@ function normalizePageBodySaveFailedResult(body: unknown, fallback: string): Pag
   };
 }
 
+function normalizePageSettingsSaveSucceededResult(body: unknown): PageSettingsSaveSucceeded {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || !result.page) {
+    throw new Error("Page settings payload was invalid.");
+  }
+
+  return {
+    state: "succeeded",
+    page: normalizePageRecord(result.page)
+  };
+}
+
+function normalizePageSettingsSaveFailedResult(body: unknown, fallback: string): PageSettingsSaveFailed {
+  return {
+    state: "failed",
+    errorMessage: extractErrorMessage(body, fallback)
+  };
+}
+
+function normalizePageDeleteSucceededResult(body: unknown): PageDeleteSucceeded {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result)) {
+    throw new Error("Page delete payload was invalid.");
+  }
+
+  return {
+    state: "succeeded",
+    nextPageSysId: cleanText(result.nextPageSysId)
+  };
+}
+
+function normalizePageDeleteFailedResult(body: unknown, fallback: string): PageDeleteFailed {
+  return {
+    state: "failed",
+    errorMessage: extractErrorMessage(body, fallback)
+  };
+}
+
 async function resolveWorkspaceCreateResult(
   path: string,
   input: WorkspaceCreateInput
@@ -494,9 +546,84 @@ async function resolvePageBodySaveResult(path: string, input: PageBodySaveInput)
   }
 }
 
+async function resolvePageSettingsSaveResult(path: string, input: PageSettingsSaveInput): Promise<PageSettingsSaveResult> {
+  const payload = {
+    workspaceSlug: cleanText(input.workspaceSlug),
+    workspaceSysId: cleanText(input.workspaceSysId),
+    pageSysId: cleanText(input.pageSysId),
+    title: cleanText(input.title),
+    slug: cleanText(input.slug)
+  };
+
+  try {
+    const response = await requestJson<unknown>(path, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json"
+      }
+    });
+
+    if (response.status === 200) {
+      return normalizePageSettingsSaveSucceededResult(response.body);
+    }
+
+    if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 500) {
+      return normalizePageSettingsSaveFailedResult(response.body, "Something went wrong while saving page settings. Your changes were not saved. Please try again.");
+    }
+
+    return {
+      state: "failed",
+      errorMessage: "Something went wrong while saving page settings. Your changes were not saved. Please try again."
+    };
+  } catch {
+    return {
+      state: "failed",
+      errorMessage: "Something went wrong while saving page settings. Your changes were not saved. Please try again."
+    };
+  }
+}
+
+async function resolvePageDeleteResult(path: string, input: PageDeleteInput): Promise<PageDeleteResult> {
+  const payload = {
+    workspaceSlug: cleanText(input.workspaceSlug),
+    workspaceSysId: cleanText(input.workspaceSysId),
+    pageSysId: cleanText(input.pageSysId)
+  };
+
+  try {
+    const response = await requestJson<unknown>(path, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json"
+      }
+    });
+
+    if (response.status === 200) {
+      return normalizePageDeleteSucceededResult(response.body);
+    }
+
+    if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 500) {
+      return normalizePageDeleteFailedResult(response.body, SAFE_PAGE_DELETE_ERROR_MESSAGE);
+    }
+
+    return {
+      state: "failed",
+      errorMessage: SAFE_PAGE_DELETE_ERROR_MESSAGE
+    };
+  } catch {
+    return {
+      state: "failed",
+      errorMessage: SAFE_PAGE_DELETE_ERROR_MESSAGE
+    };
+  }
+}
+
 export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceNowClient {
   const collectionPath = resolvePath(runtime.config.workspaceCollectionPath, DEFAULT_WORKSPACE_COLLECTION_PATH);
   const pageCollectionPath = resolvePath(runtime.config.pageCollectionPath, DEFAULT_PAGE_COLLECTION_PATH);
+  const pageDeleteActionPath = resolvePageDeleteActionPath(pageCollectionPath);
   const provisioningStatusPath = resolvePath(
     runtime.config.workspaceProvisioningStatusPath,
     "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status"
@@ -575,6 +702,14 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
 
     async savePageBody(input: PageBodySaveInput): Promise<PageBodySaveResult> {
       return resolvePageBodySaveResult(pageCollectionPath, input);
+    },
+
+    async savePageSettings(input: PageSettingsSaveInput): Promise<PageSettingsSaveResult> {
+      return resolvePageSettingsSaveResult(pageCollectionPath, input);
+    },
+
+    async deletePage(input: PageDeleteInput): Promise<PageDeleteResult> {
+      return resolvePageDeleteResult(pageDeleteActionPath, input);
     }
   };
 }
