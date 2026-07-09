@@ -1,4 +1,6 @@
 import type { DemoWorkspace } from "../../shared/types/docsera";
+import { DocseraIcon } from "../../shared/icons/DocseraIcon";
+import { docseraIcons } from "../../shared/icons/docseraIcons";
 import { flattenDemoPages } from "./demoWorkspace";
 import { PageTree, type InlinePageCreateState } from "./PageTree";
 
@@ -21,33 +23,11 @@ type WorkspaceSidebarProps = {
 };
 
 function SearchIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2"
-      />
-    </svg>
-  );
+  return <DocseraIcon icon={docseraIcons.search} />;
 }
 
 function PlusIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M12 4.5v15m7.5-7.5h-15"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2.2"
-      />
-    </svg>
-  );
+  return <DocseraIcon icon={docseraIcons.plus} />;
 }
 
 export function WorkspaceSidebar({

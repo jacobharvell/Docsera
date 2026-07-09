@@ -1,82 +1,29 @@
 import { useRef, type ReactNode } from "react";
+import { DocseraIcon } from "../../shared/icons/DocseraIcon";
+import { docseraIcons } from "../../shared/icons/docseraIcons";
 import type { WorkspaceViewRecord } from "../../shared/types/docsera";
 import type { RecentWorkspaceItem } from "./RecentWorkspacesMenu";
 import { WorkspaceIconBadge } from "./WorkspacePrimitives";
 import { buildWorkspaceHref } from "./workspaceRouting";
 
 function SearchIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2"
-      />
-    </svg>
-  );
+  return <DocseraIcon icon={docseraIcons.search} />;
 }
 
 function ChevronLeftIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M15 18l-6-6 6-6"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2.25"
-      />
-    </svg>
-  );
+  return <DocseraIcon icon={docseraIcons.chevronLeft} />;
 }
 
 function ChevronRightIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M9 6l6 6-6 6"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2.25"
-      />
-    </svg>
-  );
+  return <DocseraIcon icon={docseraIcons.chevronRight} />;
 }
 
 function ClearIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M6 18 18 6M6 6l12 12"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2"
-      />
-    </svg>
-  );
+  return <DocseraIcon icon={docseraIcons.close} />;
 }
 
 export function PlusIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M12 4.5v15m7.5-7.5h-15"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2.5"
-      />
-    </svg>
-  );
+  return <DocseraIcon icon={docseraIcons.plus} />;
 }
 
 export function LauncherIntro({ onShowCreateModal }: { onShowCreateModal: () => void }) {

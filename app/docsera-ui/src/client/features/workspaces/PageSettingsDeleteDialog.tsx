@@ -1,4 +1,6 @@
 import type { KeyboardEvent } from "react";
+import { DocseraIcon } from "../../shared/icons/DocseraIcon";
+import { docseraIcons } from "../../shared/icons/docseraIcons";
 
 type PageSettingsDeleteDialogProps = {
   errorMessage: string;
@@ -11,18 +13,7 @@ type PageSettingsDeleteDialogProps = {
 };
 
 function CloseIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        d="M6.75 6.75l10.5 10.5m0-10.5l-10.5 10.5"
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2.2"
-      />
-    </svg>
-  );
+  return <DocseraIcon icon={docseraIcons.close} />;
 }
 
 export function PageSettingsDeleteDialog({

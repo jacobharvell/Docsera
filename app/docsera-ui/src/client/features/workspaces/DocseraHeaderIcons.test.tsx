@@ -5,17 +5,16 @@ import { describe, expect, it } from "vitest";
 import { DocseraBrandIcon, DoubleChevronIcon, GearIcon, MoonIcon, SidebarToggleIcon, SunIcon, WorkspaceListIcon } from "./DocseraHeaderIcons";
 
 describe("DocseraHeaderIcons", () => {
-  it("renders the recent-workspaces chevrons at 12px", () => {
+  it("renders the recent-workspaces chevron at 19px with a lighter stroke", () => {
     const { container } = render(<DoubleChevronIcon />);
     const svgs = container.querySelectorAll("svg");
 
-    expect(svgs).toHaveLength(2);
+    expect(svgs).toHaveLength(1);
     expect(svgs[0]).toHaveClass("docsera-header__workspace-chevron-icon");
-    expect(svgs[0]?.getAttribute("width")).toBe("12");
-    expect(svgs[0]?.getAttribute("height")).toBe("12");
-    expect(svgs[1]).toHaveClass("docsera-header__workspace-chevron-icon");
-    expect(svgs[1]?.getAttribute("width")).toBe("12");
-    expect(svgs[1]?.getAttribute("height")).toBe("12");
+    expect(svgs[0]?.getAttribute("width")).toBe("19");
+    expect(svgs[0]?.getAttribute("height")).toBe("19");
+    expect(svgs[0]?.getAttribute("stroke-width")).toBe("1.5");
+    expect(svgs[0]).toHaveAttribute("aria-hidden", "true");
   });
 
   it("renders the sidebar toggle icon at 16px", () => {

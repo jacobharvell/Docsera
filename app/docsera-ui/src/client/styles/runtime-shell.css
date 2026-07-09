@@ -17,9 +17,6 @@
   --docsera-success: #006c49;
   --docsera-error: #ba1a1a;
   --docsera-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
-  --docsera-outline-icon-stroke-width: 2.2;
-  --docsera-outline-icon-stroke-linecap: round;
-  --docsera-outline-icon-stroke-linejoin: round;
   --docsera-header-height: 64px;
   --docsera-workspace-nav-width: 280px;
   --docsera-workspace-nav-resizer-width: 8px;
@@ -355,31 +352,11 @@ html[data-docsera-theme="dark"] .docsera-launcher-screen {
   height: 16px;
 }
 
-:where(
-  .docsera-header__action-icon path,
-  .docsera-header__workspace-chevron-icon path,
-  .docsera-header__ghost-button svg path,
-  .docsera-header__menu-footer svg path,
-  .docsera-launcher__header-action svg path,
-  .docsera-launcher-toolbar__search-icon svg path,
-  .docsera-launcher-toolbar__clear svg path,
-  .docsera-launcher-pagination__button svg path,
-  .docsera-modal__close-icon path,
-  .docsera-modal__primary svg path,
-  .docsera-modal__secondary svg path,
-  .docsera-sidebar__search-icon svg path,
-  .docsera-sidebar__icon-button svg path,
-  .docsera-page-tree__chevron svg path,
-  .docsera-page-tree__action-button svg path,
-  .docsera-page-tree__new-page svg path,
-  .docsera-page-settings__icon-button svg path,
-  .docsera-page-settings__collapse svg path,
-  .docsera-page-settings__destructive svg path
-) {
-  stroke-width: var(--docsera-outline-icon-stroke-width);
-  stroke-linecap: var(--docsera-outline-icon-stroke-linecap);
-  stroke-linejoin: var(--docsera-outline-icon-stroke-linejoin);
+.docsera-icon {
+  display: block;
+  flex: 0 0 auto;
 }
+
 .docsera-launcher-panel,
 .docsera-shell__notice {
   border: 1px solid var(--docsera-border);
@@ -1326,23 +1303,18 @@ html[data-docsera-theme="dark"] .docsera-header__bar {
 .docsera-header__workspace-chevron {
   display: inline-flex;
   align-items: center;
-  flex-direction: column;
-  flex: 0 0 12px;
-  gap: 0;
-  width: 12px;
+  justify-content: center;
+  flex: 0 0 16px;
+  width: 16px;
   height: 20px;
   color: color-mix(in srgb, var(--docsera-text-muted) 88%, transparent);
 }
 
 .docsera-header__workspace-chevron-icon {
   display: block;
-  width: 12px;
-  height: 12px;
-  flex: 0 0 12px;
-}
-
-.docsera-header__workspace-chevron svg + svg {
-  margin-top: -4px;
+  width: 19px;
+  height: 19px;
+  flex: 0 0 19px;
 }
 
 .docsera-header__menu {

@@ -1,4 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { DocseraIcon } from "../../shared/icons/DocseraIcon";
+import { docseraIcons } from "../../shared/icons/docseraIcons";
 
 type WorkspaceCreateModalProps = {
   errorMessage?: string;
@@ -87,16 +89,7 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, open, ph
               New Workspace
             </h2>
             <button type="button" className="docsera-modal__close" onClick={onClose} aria-label="Close modal" disabled={!canClose}>
-              <svg className="docsera-modal__close-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M6 18 18 6M6 6l12 12"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                />
-              </svg>
+              <DocseraIcon className="docsera-modal__close-icon" icon={docseraIcons.close} />
             </button>
           </div>
 
