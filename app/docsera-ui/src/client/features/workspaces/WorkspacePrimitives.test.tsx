@@ -1,3 +1,4 @@
+import "@testing-library/jest-dom/vitest";
 import defaultWorkspaceIconDataUri from "../../assets/docsera-default-workspace-icon.png?inline";
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";

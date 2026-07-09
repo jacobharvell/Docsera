@@ -1,3 +1,4 @@
+import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -179,14 +180,9 @@ describe("App workspace routing", () => {
 
     await screen.findByRole("heading", { name: "Overview" });
 
-    const newPageButton = container.querySelector<HTMLButtonElement>(".docsera-sidebar__new-page");
-    if (!newPageButton) {
-      throw new Error("Expected the workspace sidebar new page button to render.");
-    }
-
-    fireEvent.click(newPageButton);
-    fireEvent.change(screen.getByLabelText("Page title"), { target: { value: "Disposable Page" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create page" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]!);
+    fireEvent.change(screen.getByRole("textbox", { name: "New page title" }), { target: { value: "Disposable Page" } });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "New page title" }), { key: "Enter", code: "Enter" });
 
     await waitFor(() => {
       expect(window.location.search).toBe("?workspace=product-docs&page_id=page-003");
@@ -226,14 +222,9 @@ describe("App workspace routing", () => {
     expect(screen.getByText("This workspace has no pages yet. Use New page to create the first one.")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "No pages yet" })).toBeInTheDocument();
 
-    const newPageButton = container.querySelector<HTMLButtonElement>(".docsera-sidebar__new-page");
-    if (!newPageButton) {
-      throw new Error("Expected the workspace sidebar new page button to render in the empty state.");
-    }
-
-    fireEvent.click(newPageButton);
-    fireEvent.change(screen.getByLabelText("Page title"), { target: { value: "Starter Page" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create page" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]!);
+    fireEvent.change(screen.getByRole("textbox", { name: "New page title" }), { target: { value: "Starter Page" } });
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "New page title" }), { key: "Enter", code: "Enter" });
 
     expect(await screen.findByRole("heading", { name: "Starter Page" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open settings for Starter Page" })).toBeInTheDocument();
@@ -273,6 +264,21 @@ describe("App workspace routing", () => {
       });
     });
     expect(await screen.findByRole("heading", { name: "Updated Overview" })).toBeInTheDocument();
+  });
+
+  it("opens page settings from an unselected row and keeps the panel open for that page", async () => {
+    renderApp("/?workspace=product-docs&page_id=page-001");
+
+    await screen.findByRole("heading", { name: "Overview" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Details" }));
+
+    await waitFor(() => {
+      expect(window.location.search).toBe("?workspace=product-docs&page_id=page-002");
+    });
+    expect(await screen.findByRole("heading", { name: "Details" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Collapse settings for Details" })).toBeInTheDocument();
   });
 
   it("keeps page settings open when slug validation fails on dismiss", async () => {
@@ -445,6 +451,100 @@ describe("App workspace routing", () => {
       pageSysId: "page-001"
     });
     expect(serviceNowClient.listPages).toHaveBeenCalledTimes(2);
+  });
+
+  it("deleting the selected page keeps the first remaining tree page selected even if the server suggests another page", async () => {
+    const first = createPageRecord({ sysId: "page-001", draftTitle: "Overview", draftSlug: "overview", siblingOrder: 1 });
+    const second = createPageRecord({ sysId: "page-002", draftTitle: "Details", draftSlug: "details", draftBodyText: "Details body", siblingOrder: 2 });
+    const third = createPageRecord({ sysId: "page-003", draftTitle: "Appendix", draftSlug: "appendix", draftBodyText: "Appendix body", siblingOrder: 3 });
+    const deletePage = vi.fn(async () => ({
+      state: "succeeded",
+      nextPageSysId: "page-003"
+    })) as ServiceNowClient["deletePage"];
+    let listPagesCallCount = 0;
+    const listPages = vi.fn(async () => {
+      listPagesCallCount += 1;
+
+      return {
+        items: listPagesCallCount === 1 ? [first, second, third] : [second, third],
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001",
+        totalCount: listPagesCallCount === 1 ? 3 : 2
+      };
+    }) as ServiceNowClient["listPages"];
+
+    renderApp("/?workspace=product-docs&page_id=page-001", {
+      deletePage,
+      listPages
+    });
+
+    await screen.findByRole("heading", { name: "Overview" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete page" }));
+    const deleteButtons = await screen.findAllByRole("button", { name: "Delete page" });
+    fireEvent.click(deleteButtons[1] ?? deleteButtons[0]);
+
+    await waitFor(() => {
+      expect(window.location.search).toBe("?workspace=product-docs&page_id=page-002");
+    });
+    expect(await screen.findByRole("heading", { name: "Details" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Appendix" })).not.toBeInTheDocument();
+  });
+
+  it("keeps inline page creation active when cleared, cancels safely on empty submit or blur, and still creates unchanged untitled-page", async () => {
+    const createPage = vi
+      .fn(async () => ({
+        state: "succeeded",
+        page: createPageRecord({
+          sysId: "page-003",
+          draftTitle: "untitled-page",
+          draftSlug: "untitled-page",
+          draftBodyText: "",
+          siblingOrder: 3
+        })
+      })) as ServiceNowClient["createPage"];
+
+    renderApp("/?workspace=product-docs&page_id=page-001", {
+      createPage
+    });
+
+    await screen.findByRole("heading", { name: "Overview" });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]!);
+    const initialInput = screen.getByRole("textbox", { name: "New page title" });
+    fireEvent.keyDown(initialInput, { key: "Backspace", code: "Backspace" });
+    fireEvent.change(initialInput, { target: { value: "" } });
+
+    expect(screen.getByRole("textbox", { name: "New page title" })).toHaveValue("");
+
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "New page title" }), { key: "Enter", code: "Enter" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("textbox", { name: "New page title" })).not.toBeInTheDocument();
+    });
+    expect(createPage).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]!);
+    const blurInput = screen.getByRole("textbox", { name: "New page title" });
+    fireEvent.change(blurInput, { target: { value: "" } });
+    fireEvent.blur(blurInput);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("textbox", { name: "New page title" })).not.toBeInTheDocument();
+    });
+    expect(createPage).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]!);
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "New page title" }), { key: "Enter", code: "Enter" });
+
+    await waitFor(() => {
+      expect(createPage).toHaveBeenCalledWith({
+        title: "untitled-page",
+        workspaceSlug: "product-docs"
+      });
+    });
+    expect(await screen.findByRole("heading", { name: "untitled-page" })).toBeInTheDocument();
   });
 
   it("removes the deleted subtree from the rendered nav tree and keeps it absent after refresh", async () => {

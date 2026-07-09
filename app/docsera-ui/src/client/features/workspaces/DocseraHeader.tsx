@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { DemoPage, WorkspaceViewRecord } from "../../shared/types/docsera";
 import {
   DocseraBrandIcon,
@@ -35,6 +35,7 @@ type DocseraHeaderProps = {
   sidebarCollapsed?: boolean;
   theme: "dark" | "light";
   onToggleTheme: () => void;
+  workspaceNavWidth?: number;
 };
 
 function HeaderIdentityIcon({ identity }: { identity: HeaderIdentity }) {
@@ -68,7 +69,8 @@ export function DocseraHeader({
   showWorkspaceSettings = false,
   sidebarCollapsed = false,
   theme,
-  onToggleTheme
+  onToggleTheme,
+  workspaceNavWidth
 }: DocseraHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -114,7 +116,10 @@ export function DocseraHeader({
   }, [menuOpen]);
 
   return (
-    <header className={`docsera-header${mode === "workspace" && sidebarCollapsed ? " docsera-header--sidebar-collapsed" : ""}`}>
+    <header
+      className={`docsera-header${mode === "workspace" && sidebarCollapsed ? " docsera-header--sidebar-collapsed" : ""}`}
+      style={mode === "workspace" && workspaceNavWidth ? ({ "--docsera-workspace-nav-width": `${workspaceNavWidth}px` } as CSSProperties) : undefined}
+    >
       <div className="docsera-header__workspace">
         {mode === "workspace" && sidebarCollapsed ? null : (
           <div className="docsera-header__workspace-panel" ref={menuRef}>

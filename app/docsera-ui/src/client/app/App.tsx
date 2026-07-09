@@ -1,16 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DocseraHeader, type HeaderIdentity } from "../features/workspaces/DocseraHeader";
 import { MyWorkspacesScreen } from "../features/workspaces/MyWorkspacesScreen";
-import { PageCreateModal } from "../features/workspaces/PageCreateModal";
 import { PageSettingsDeleteDialog } from "../features/workspaces/PageSettingsDeleteDialog";
 import { PageSettingsOverlay } from "../features/workspaces/PageSettingsOverlay";
+import type { InlinePageCreateState } from "../features/workspaces/PageTree";
 import type { RecentWorkspaceItem } from "../features/workspaces/RecentWorkspacesMenu";
 import { WorkspaceShell } from "../features/workspaces/WorkspaceShell";
 import { buildWorkspaceShellPages, buildWorkspaceShellWorkspace } from "../features/workspaces/workspaceViewModels";
 import { buildLauncherHref, buildWorkspaceHref, readAppRoute, type DocseraAppRoute } from "../features/workspaces/workspaceRouting";
 import {
   collectPageSubtreeSysIds,
-  pickNextVisiblePageAfterDelete,
   removePageSubtree,
   validatePageSettingsSlug,
   validatePageSettingsTitle
@@ -78,6 +77,17 @@ type PageSettingsState = {
   titleSnapshot: string;
   open: boolean;
 };
+
+function createInlinePageCreateState(parentPageSysId = "", focusToken = 0): InlinePageCreateState {
+  return {
+    errorMessage: "",
+    focusToken,
+    parentPageSysId: cleanText(parentPageSysId),
+    pending: false,
+    showInput: true,
+    title: "untitled-page"
+  };
+}
 
 function createEmptyPageSettingsState(): PageSettingsState {
   return {
@@ -316,12 +326,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalPhase, setCreateModalPhase] = useState<"idle" | "submitting" | "polling">("idle");
   const [createModalError, setCreateModalError] = useState<string | undefined>();
-  const [createPageModalOpen, setCreatePageModalOpen] = useState(false);
-  const [createPageModalPhase, setCreatePageModalPhase] = useState<"idle" | "submitting">("idle");
-  const [createPageModalError, setCreatePageModalError] = useState<string | undefined>();
+  const [inlinePageCreateState, setInlinePageCreateState] = useState<InlinePageCreateState | null>(null);
   const [pageSettingsState, setPageSettingsState] = useState<PageSettingsState>(createEmptyPageSettingsState);
   const launcherRequestIdRef = useRef(0);
+  const inlinePageCreateFocusTokenRef = useRef(0);
   const pageSettingsStateRef = useRef<PageSettingsState>(createEmptyPageSettingsState());
+  const pageSettingsPendingOpenPageIdRef = useRef("");
   const pageSettingsPanelRef = useRef<HTMLElement>(null);
   const pageSettingsCloseTargetRef = useRef("");
   const pageSettingsCloseTimerRef = useRef<number | null>(null);
@@ -411,7 +421,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       ? buildWorkspaceShellWorkspace(workspaceState.data, buildWorkspaceShellPages(livePagesForCurrentWorkspace))
       : null;
   const canCreatePage = Boolean(workspaceState.status === "success" && workspaceState.data.roleLabel);
-  const isCreatingPage = createPageModalOpen || createPageModalPhase !== "idle";
+  const isCreatingPage = Boolean(inlinePageCreateState?.showInput || inlinePageCreateState?.pending);
   const selectedWorkspacePage =
     workspacePagesLoaded && livePagesForCurrentWorkspace.length > 0
       ? resolveWorkspacePageSelection(livePagesForCurrentWorkspace, currentWorkspacePageId).page
@@ -660,9 +670,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
   useEffect(() => {
     if (route.mode !== "workspace") {
-      setCreatePageModalOpen(false);
-      setCreatePageModalPhase("idle");
-      setCreatePageModalError(undefined);
+      setInlinePageCreateState(null);
       return;
     }
   }, [route.mode]);
@@ -725,6 +733,28 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
   }, [currentWorkspacePageId, currentWorkspaceSlug, pageSettingsState.open, pageSettingsState.pageSysId, route.mode, workspaceStateData, workspaceState.status]);
 
+  useEffect(() => {
+    const pendingPageId = cleanText(pageSettingsPendingOpenPageIdRef.current);
+    if (!pendingPageId || pageSettingsState.open || route.mode !== "workspace" || workspaceState.status !== "success") {
+      return;
+    }
+
+    if (!workspacePagesLoaded || workspaceState.data.slug !== currentWorkspaceSlug || pendingPageId !== currentWorkspacePageId) {
+      return;
+    }
+
+    openPageSettings(pendingPageId);
+  }, [
+    currentWorkspacePageId,
+    currentWorkspaceSlug,
+    livePagesForCurrentWorkspace,
+    pageSettingsState.open,
+    route.mode,
+    workspacePagesLoaded,
+    workspaceStateData,
+    workspaceState.status
+  ]);
+
   function commitRoute(href: string, replace = false) {
     navigateTo(href, replace);
     setRoute(readAppRoute(window.location));
@@ -733,6 +763,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   function openLauncher() {
     setWorkspaceSettingsNotice(false);
     setPendingWorkspaceIdentity(null);
+    pageSettingsPendingOpenPageIdRef.current = "";
     commitRoute(buildLauncherHref());
   }
 
@@ -749,6 +780,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     rememberRecentWorkspaceSlug(workspaceSlug);
     setWorkspaceSettingsNotice(settingsIntent);
     setPendingWorkspaceIdentity(optimisticIdentity && cleanText(optimisticIdentity.slug) === cleanText(workspaceSlug) ? optimisticIdentity : null);
+    pageSettingsPendingOpenPageIdRef.current = "";
     commitRoute(buildWorkspaceHref(workspaceSlug, settingsIntent, pageId));
   }
 
@@ -780,14 +812,14 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     setCreateModalOpen(true);
   }
 
-  function openCreatePageModal() {
+  function openCreatePageModal(parentPageSysId = "", _parentPageTitle = "") {
     if (route.mode !== "workspace") {
       return;
     }
 
-    setCreatePageModalError(undefined);
-    setCreatePageModalPhase("idle");
-    setCreatePageModalOpen(true);
+    void _parentPageTitle;
+    inlinePageCreateFocusTokenRef.current += 1;
+    setInlinePageCreateState(createInlinePageCreateState(parentPageSysId, inlinePageCreateFocusTokenRef.current));
   }
 
   function openPageSettings(pageSysId: string) {
@@ -806,18 +838,31 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
+    pageSettingsPendingOpenPageIdRef.current = "";
     const nextState = createPageSettingsStateFromPage(page);
     pageSettingsStateRef.current = nextState;
     setPageSettingsState(nextState);
   }
 
   function requestTogglePageSettings(pageSysId: string) {
-    if (pageSettingsStateRef.current.open && pageSettingsStateRef.current.pageSysId === pageSysId) {
-      requestClosePageSettingsPanel(pageSysId);
+    const nextPageId = cleanText(pageSysId);
+    if (!nextPageId) {
       return;
     }
 
-    openPageSettings(pageSysId);
+    if (pageSettingsStateRef.current.open && pageSettingsStateRef.current.pageSysId === nextPageId) {
+      pageSettingsPendingOpenPageIdRef.current = "";
+      requestClosePageSettingsPanel(nextPageId);
+      return;
+    }
+
+    if (nextPageId !== currentWorkspacePageId) {
+      pageSettingsPendingOpenPageIdRef.current = nextPageId;
+      openWorkspacePage(nextPageId);
+      return;
+    }
+
+    openPageSettings(nextPageId);
   }
 
   function updatePageSettingsField(field: PageSettingsField, value: string) {
@@ -1124,7 +1169,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
 
     const deletedPageSysId = cleanText(currentPage.sysId) || currentPageSettingsState.pageSysId;
-    const nextPageIdFallback = pickNextVisiblePageAfterDelete(livePagesForCurrentWorkspace, deletedPageSysId);
+    const deletedSubtreeIds = new Set(collectPageSubtreeSysIds(livePagesForCurrentWorkspace, deletedPageSysId));
+    const nextPages = removePageSubtree(livePagesForCurrentWorkspace, deletedPageSysId) as WorkspacePageRecord[];
+    const nextPageId =
+      deletedSubtreeIds.has(selectedWorkspacePageId) ? cleanText(buildWorkspaceShellPages(nextPages)[0]?.id) : selectedWorkspacePageId;
 
     setPageSettingsState((current) => ({
       ...current,
@@ -1153,7 +1201,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           return current;
         }
 
-        const nextPages = removePageSubtree(current.data, deletedPageSysId) as WorkspacePageRecord[];
         return {
           ...current,
           data: nextPages,
@@ -1185,7 +1232,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       pageSettingsStateRef.current = nextState;
       setPageSettingsState(nextState);
 
-      const nextPageId = cleanText(result.nextPageSysId) || nextPageIdFallback;
       commitRoute(buildWorkspaceHref(currentWorkspaceSlug, false, nextPageId));
     } catch {
       setPageSettingsState((current) => ({
@@ -1257,40 +1303,98 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     openWorkspace(workspace.slug);
   }
 
-  async function submitPageCreation(input: { title: string }) {
-    if (workspaceState.status !== "success") {
-      setCreatePageModalError("The selected workspace is not ready yet.");
+  function updateInlinePageCreateTitle(value: string) {
+    setInlinePageCreateState((current) => {
+      if (!current || current.pending) {
+        return current;
+      }
+
+      return {
+        ...current,
+        errorMessage: "",
+        title: value
+      };
+    });
+  }
+
+  async function submitInlinePageCreation() {
+    if (!inlinePageCreateState || inlinePageCreateState.pending) {
       return;
     }
 
-    setCreatePageModalError(undefined);
-    setCreatePageModalPhase("submitting");
+    if (workspaceState.status !== "success") {
+      setInlinePageCreateState((current) =>
+        current
+          ? {
+              ...current,
+              errorMessage: "The selected workspace is not ready yet."
+            }
+          : current
+      );
+      return;
+    }
+
+    const title = cleanText(inlinePageCreateState.title);
+    const parentPageSysId = cleanText(inlinePageCreateState.parentPageSysId);
+
+    if (!title) {
+      setInlinePageCreateState(null);
+      return;
+    }
+
+    setInlinePageCreateState((current) =>
+      current
+        ? {
+            ...current,
+            errorMessage: "",
+            pending: true,
+            title
+          }
+        : current
+    );
 
     try {
       const result = await serviceNowClient.createPage({
-        title: input.title,
+        ...(parentPageSysId ? { parentPageSysId } : {}),
+        title,
         workspaceSlug: workspaceState.data.slug
       });
 
       if (result.state === "failed") {
-        setCreatePageModalError(result.errorMessage);
-        setCreatePageModalPhase("idle");
+        setInlinePageCreateState((current) =>
+          current
+            ? {
+                ...current,
+                errorMessage: result.errorMessage,
+                pending: false,
+                showInput: false,
+                title: ""
+              }
+            : current
+        );
         return;
       }
 
       finalizePageCreation(result.page);
     } catch {
-      setCreatePageModalError("Something went wrong while creating the page. The page was not created. Please try again.");
-      setCreatePageModalPhase("idle");
+        setInlinePageCreateState((current) =>
+          current
+            ? {
+                ...current,
+                errorMessage: "Something went wrong while creating the page. The page was not created. Please try again.",
+                pending: false,
+                showInput: false,
+                title: ""
+              }
+            : current
+        );
     }
   }
 
   function finalizePageCreation(page: WorkspacePageRecord) {
     const currentWorkspace = workspaceState.status === "success" ? workspaceState.data.slug : currentWorkspaceSlug;
 
-    setCreatePageModalOpen(false);
-    setCreatePageModalError(undefined);
-    setCreatePageModalPhase("idle");
+    setInlinePageCreateState(null);
     setWorkspacePagesState((current) => {
       if (current.status !== "success" || current.workspaceSlug !== currentWorkspace) {
         return current;
@@ -1515,32 +1619,38 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           onOpenMyWorkspaces={openLauncher}
           workspaceSettingsNotice={workspaceSettingsNotice}
           canCreatePage={canCreatePage}
+          inlineCreateState={inlinePageCreateState}
           isCreatingPage={isCreatingPage}
+          onCommitInlineCreate={submitInlinePageCreation}
+          onInlineCreateTitleChange={updateInlinePageCreateTitle}
           onShowCreatePage={openCreatePageModal}
+          onShowChildPageCreate={openCreatePageModal}
           selectedWorkspacePage={selectedWorkspacePage}
           onSavePageBody={savePageBody}
           theme={theme}
           onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
-        />
-        <PageSettingsOverlay
-          activeField={pageSettingsState.activeField}
-          canManagePageSettings={canManagePageSettings}
-          generalError={pageSettingsState.generalError}
-          hasDescendants={pageSettingsHasDescendants}
-          open={pageSettingsState.open}
-          panelRef={pageSettingsPanelRef}
-          pageSlug={pageSettingsState.slug}
-          pageTitle={pageSettingsState.title}
-          slugError={pageSettingsState.slugError}
-          titleError={pageSettingsState.titleError}
-          onCancelField={cancelPageSettingsField}
-          onChangeField={updatePageSettingsField}
-          onFinishField={finishPageSettingsField}
-          onRequestClose={() => {
-            requestClosePageSettingsPanel(pageSettingsStateRef.current.pageSysId);
-          }}
-          onRequestDelete={requestOpenDeletePageSettings}
-          onStartField={startPageSettingsField}
+          pageSettingsOverlay={
+            <PageSettingsOverlay
+              activeField={pageSettingsState.activeField}
+              canManagePageSettings={canManagePageSettings}
+              generalError={pageSettingsState.generalError}
+              hasDescendants={pageSettingsHasDescendants}
+              open={pageSettingsState.open}
+              panelRef={pageSettingsPanelRef}
+              pageSlug={pageSettingsState.slug}
+              pageTitle={pageSettingsState.title}
+              slugError={pageSettingsState.slugError}
+              titleError={pageSettingsState.titleError}
+              onCancelField={cancelPageSettingsField}
+              onChangeField={updatePageSettingsField}
+              onFinishField={finishPageSettingsField}
+              onRequestClose={() => {
+                requestClosePageSettingsPanel(pageSettingsStateRef.current.pageSysId);
+              }}
+              onRequestDelete={requestOpenDeletePageSettings}
+              onStartField={startPageSettingsField}
+            />
+          }
         />
         <PageSettingsDeleteDialog
           errorMessage={pageSettingsState.deleteError}
@@ -1550,17 +1660,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           pending={pageSettingsState.deletePending}
           onConfirm={confirmDeletePageSettings}
           onRequestClose={requestCloseDeletePageSettings}
-        />
-        <PageCreateModal
-          errorMessage={createPageModalError}
-          onClose={() => {
-            setCreatePageModalOpen(false);
-            setCreatePageModalError(undefined);
-            setCreatePageModalPhase("idle");
-          }}
-          onSubmit={submitPageCreation}
-          open={createPageModalOpen}
-          phase={createPageModalPhase}
         />
       </div>
     );

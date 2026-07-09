@@ -63,4 +63,25 @@ describe("workspace view models", () => {
     expect(workspace.icon?.key).toBe("docsera-workspace");
     expect(workspace.icon?.label).toBe("Docsera workspace icon");
   });
+
+  it("preserves parent-child relationships from live workspace pages", () => {
+    const pages = buildWorkspaceShellPages([
+      createPage({
+        sysId: "page-parent",
+        draftTitle: "Parent",
+        draftSlug: "parent"
+      }),
+      createPage({
+        sysId: "page-child",
+        parentPageSysId: "page-parent",
+        siblingOrder: 2,
+        draftTitle: "Child",
+        draftSlug: "child"
+      })
+    ]);
+
+    expect(pages).toHaveLength(1);
+    expect(pages[0]?.title).toBe("Parent");
+    expect(pages[0]?.children?.[0]?.title).toBe("Child");
+  });
 });

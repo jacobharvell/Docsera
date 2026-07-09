@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "../src/client/app/App";
 import type {
   DocseraRuntimeContext,
@@ -57,7 +57,7 @@ function createWorkspace(overrides: Partial<WorkspaceViewRecord> = {}): Workspac
 
 function createClient(options: {
   createWorkspace?: () => Promise<WorkspaceCreateResult>;
-  createPage?: (input: { workspaceSlug: string; title: string }) => Promise<{ state: "failed"; errorMessage: string } | { state: "succeeded"; page: WorkspacePageRecord }>;
+  createPage?: (input: { parentPageSysId?: string | null; workspaceSlug: string; title: string }) => Promise<{ state: "failed"; errorMessage: string } | { state: "succeeded"; page: WorkspacePageRecord }>;
   listPages?: (input: { workspaceSlug: string }) => Promise<PageListResult>;
   getWorkspace?: (workspaceSlug: string) => Promise<{ workspace: WorkspaceViewRecord | null }>;
   getWorkspaceProvisioningStatus?: (statusPath: string) => Promise<WorkspaceCreateResult>;
@@ -478,11 +478,20 @@ test("workspace shell hydrates live pages and keeps a newly created page visible
   });
 
   expect(screen.getByRole("button", { name: "Overview" })).toBeInTheDocument();
+  expect(screen.getAllByRole("button", { name: "New page" })).toHaveLength(2);
   expect(pageListMock).toHaveBeenCalledTimes(1);
 
   fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]);
-  fireEvent.change(screen.getByRole("textbox", { name: "Page title" }), { target: { value: "Task 33 Refresh Smoke" } });
-  fireEvent.click(screen.getByRole("button", { name: "Create page" }));
+  expect(screen.queryByRole("dialog", { name: /create page/i })).not.toBeInTheDocument();
+
+  const inlineInput = screen.getByRole("textbox", { name: "New page title" });
+  expect(inlineInput).toHaveValue("untitled-page");
+  expect(document.activeElement).toBe(inlineInput);
+  expect((inlineInput as HTMLInputElement).selectionStart).toBe(0);
+  expect((inlineInput as HTMLInputElement).selectionEnd).toBe("untitled-page".length);
+
+  fireEvent.change(inlineInput, { target: { value: "Task 33 Refresh Smoke" } });
+  fireEvent.keyDown(inlineInput, { key: "Enter", code: "Enter" });
 
   await waitFor(() => {
     expect(screen.getByRole("heading", { name: "Task 33 Refresh Smoke", level: 1 })).toBeInTheDocument();
@@ -533,6 +542,253 @@ test("workspace shell hydrates live pages and keeps a newly created page visible
 
   expect(pageListMock).toHaveBeenCalledTimes(2);
   expect(screen.getByRole("button", { name: "Task 33 Refresh Smoke" })).toBeInTheDocument();
+});
+
+test("workspace page tree ignores first-pass width storage, keeps the bottom new-page row last, and supports inline root and child creation", async () => {
+  window.localStorage.clear();
+  window.localStorage.setItem("docsera.workspace-nav-width:workspace-001", "220");
+
+  const livePages: WorkspacePageRecord[] = [
+    {
+      sysId: "page-parent",
+      workspaceSysId: "workspace-001",
+      parentPageSysId: null,
+      siblingOrder: 1,
+      draftTitle: "Overview",
+      draftSlug: "overview",
+      draftSlugNormalized: "overview",
+      draftContentJson: { type: "doc", content: [] },
+      draftBodyText: null,
+      publishedTitle: null,
+      publishedSlug: null,
+      publishedSlugNormalized: null,
+      publishedContentJson: null,
+      publishedBodyText: null,
+      publicationState: "draft",
+      active: true
+    },
+    {
+      sysId: "page-child",
+      workspaceSysId: "workspace-001",
+      parentPageSysId: "page-parent",
+      siblingOrder: 1,
+      draftTitle: "Child Page",
+      draftSlug: "child-page",
+      draftSlugNormalized: "child-page",
+      draftContentJson: { type: "doc", content: [] },
+      draftBodyText: null,
+      publishedTitle: null,
+      publishedSlug: null,
+      publishedSlugNormalized: null,
+      publishedContentJson: null,
+      publishedBodyText: null,
+      publicationState: "draft",
+      active: true
+    },
+    {
+      sysId: "page-leaf",
+      workspaceSysId: "workspace-001",
+      parentPageSysId: null,
+      siblingOrder: 2,
+      draftTitle: "Leaf Page",
+      draftSlug: "leaf-page",
+      draftSlugNormalized: "leaf-page",
+      draftContentJson: { type: "doc", content: [] },
+      draftBodyText: null,
+      publishedTitle: null,
+      publishedSlug: null,
+      publishedSlugNormalized: null,
+      publishedContentJson: null,
+      publishedBodyText: null,
+      publicationState: "draft",
+      active: true
+    }
+  ];
+
+  const createPageMock = vi.fn(async (input: { parentPageSysId?: string | null; workspaceSlug: string; title: string }) => {
+    const isChildCreate = input.parentPageSysId === "page-parent";
+
+    return {
+      state: "succeeded",
+      page: {
+        sysId: isChildCreate ? "page-new-child" : "page-new-root",
+        workspaceSysId: "workspace-001",
+        parentPageSysId: input.parentPageSysId ?? null,
+        siblingOrder: isChildCreate ? 3 : 4,
+        draftTitle: input.title,
+        draftSlug: isChildCreate ? "new-child" : "untitled-page",
+        draftSlugNormalized: isChildCreate ? "new-child" : "untitled-page",
+        draftContentJson: { type: "doc", content: [] },
+        draftBodyText: null,
+        publishedTitle: null,
+        publishedSlug: null,
+        publishedSlugNormalized: null,
+        publishedContentJson: null,
+        publishedBodyText: null,
+        publicationState: "draft",
+        active: true
+      }
+    } satisfies PageCreateResult;
+  });
+
+  const { container } = render(
+    <App
+      runtime={createRuntime({}, "/?workspace=workspace-001&page_id=page-parent")}
+      serviceNowClient={createClient({
+        getWorkspace: async () => ({
+          workspace: createWorkspace({
+            name: "Product Docs",
+            roleLabel: "Admin",
+            canManageSettings: true,
+            slug: "workspace-001"
+          })
+        }),
+        listPages: async () => ({
+          items: livePages,
+          totalCount: livePages.length,
+          workspaceSlug: "workspace-001",
+          workspaceSysId: "workspace-001"
+        }),
+        createPage: createPageMock
+      })}
+    />
+  );
+
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "Overview", level: 1 })).toBeInTheDocument();
+  });
+
+  expect(container.querySelector(".docsera-sidebar__tree-label")).toBeNull();
+  expect(container.querySelector(".docsera-sidebar__meta")).toBeNull();
+  expect(screen.queryByText("pages / Admin")).not.toBeInTheDocument();
+  expect(container.querySelector(".docsera-shell")).toHaveStyle("--docsera-workspace-nav-width: 280px");
+
+  const pageTree = screen.getByRole("navigation", { name: "Page tree" });
+  const treeButtons = within(pageTree).getAllByRole("button");
+  expect(treeButtons[treeButtons.length - 1]).toHaveTextContent("New page");
+
+  expect(screen.getByLabelText("Open settings for Overview")).toBeInTheDocument();
+  expect(screen.getByLabelText("Open settings for Leaf Page")).toBeInTheDocument();
+  expect(screen.getByLabelText("Add child page to Overview")).toBeInTheDocument();
+  expect(screen.queryByLabelText("Add child page to Leaf Page")).not.toBeInTheDocument();
+
+  fireEvent.mouseDown(screen.getByRole("button", { name: "Resize navigation panel" }));
+  fireEvent.mouseMove(window, { clientX: 420 });
+  fireEvent.mouseUp(window);
+  expect(container.querySelector(".docsera-shell")).toHaveStyle("--docsera-workspace-nav-width: 420px");
+  expect(window.localStorage.getItem("docsera.workspace-nav-width:workspace-001")).toBe("220");
+  expect(window.localStorage.getItem("docsera.workspace-nav-width.v2:workspace-001")).toBe("420");
+
+  fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]);
+  expect(screen.queryByRole("dialog", { name: /create page/i })).not.toBeInTheDocument();
+
+  const rootInlineInput = screen.getByRole("textbox", { name: "New page title" });
+  expect(rootInlineInput).toHaveValue("untitled-page");
+  expect(document.activeElement).toBe(rootInlineInput);
+
+  const rootButtonsDuringCreate = within(pageTree).getAllByRole("button");
+  expect(rootButtonsDuringCreate[rootButtonsDuringCreate.length - 1]).toHaveTextContent("New page");
+
+  fireEvent.change(rootInlineInput, { target: { value: "   " } });
+  fireEvent.blur(rootInlineInput);
+
+  await waitFor(() => {
+    expect(screen.queryByRole("textbox", { name: "New page title" })).not.toBeInTheDocument();
+  });
+  expect(createPageMock).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: "Collapse Overview" }));
+  expect(screen.queryByRole("button", { name: "Child Page" })).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]);
+  fireEvent.keyDown(screen.getByRole("textbox", { name: "New page title" }), { key: "Enter", code: "Enter" });
+
+  await waitFor(() => {
+    expect(createPageMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "untitled-page",
+        workspaceSlug: "workspace-001"
+      })
+    );
+  });
+
+  fireEvent.click(screen.getByLabelText("Add child page to Overview"));
+
+  const childInlineInput = screen.getByRole("textbox", { name: "New page title" });
+  expect(screen.getByRole("button", { name: "Child Page" })).toBeInTheDocument();
+  fireEvent.change(childInlineInput, { target: { value: "New Child" } });
+  fireEvent.keyDown(childInlineInput, { key: "Enter", code: "Enter" });
+
+  await waitFor(() => {
+    expect(createPageMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        parentPageSysId: "page-parent",
+        title: "New Child",
+        workspaceSlug: "workspace-001"
+      })
+    );
+  });
+});
+
+test("inline page creation removes the temporary row and shows a safe error when creation fails", async () => {
+  render(
+    <App
+      runtime={createRuntime({}, "/?workspace=workspace-001&page_id=page-parent")}
+      serviceNowClient={createClient({
+        getWorkspace: async () => ({
+          workspace: createWorkspace({
+            name: "Product Docs",
+            roleLabel: "Admin",
+            canManageSettings: true,
+            slug: "workspace-001"
+          })
+        }),
+        listPages: async () => ({
+          items: [
+            {
+              sysId: "page-parent",
+              workspaceSysId: "workspace-001",
+              parentPageSysId: null,
+              siblingOrder: 1,
+              draftTitle: "Overview",
+              draftSlug: "overview",
+              draftSlugNormalized: "overview",
+              draftContentJson: { type: "doc", content: [] },
+              draftBodyText: null,
+              publishedTitle: null,
+              publishedSlug: null,
+              publishedSlugNormalized: null,
+              publishedContentJson: null,
+              publishedBodyText: null,
+              publicationState: "draft",
+              active: true
+            }
+          ],
+          totalCount: 1,
+          workspaceSlug: "workspace-001",
+          workspaceSysId: "workspace-001"
+        }),
+        createPage: async () => ({
+          state: "failed",
+          errorMessage: "Unable to create page right now."
+        })
+      })}
+    />
+  );
+
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "Overview", level: 1 })).toBeInTheDocument();
+  });
+
+  fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]);
+  const inlineInput = screen.getByRole("textbox", { name: "New page title" });
+  fireEvent.blur(inlineInput);
+
+  await waitFor(() => {
+    expect(screen.getByRole("alert")).toHaveTextContent("Unable to create page right now.");
+  });
+
+  expect(screen.queryByRole("textbox", { name: "New page title" })).not.toBeInTheDocument();
 });
 
 test("page body save failures from thrown client errors show a generic message and keep draft text", async () => {
@@ -873,4 +1129,5 @@ test("viewer workspace header hides admin controls and editor entry points", asy
   expect(screen.queryByRole("button", { name: "Workspace settings" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "New page" })).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "Workspace switcher: Viewer Docs" })).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Open settings for Read Me")).not.toBeInTheDocument();
 });

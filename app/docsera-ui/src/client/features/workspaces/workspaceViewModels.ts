@@ -90,34 +90,30 @@ export function buildWorkspaceShellPages(pages: WorkspacePageRecord[]): DemoPage
   };
 
   sortNodes(roots);
-
-  const ordered: DemoPage[] = [];
   const visited = new Set<string>();
 
-  const visit = (node: TreeNode) => {
+  const buildTreePage = (node: TreeNode): DemoPage => {
     if (visited.has(node.key)) {
-      return;
+      return node.page;
     }
 
     visited.add(node.key);
-    ordered.push(node.page);
-
-    for (const child of node.children) {
-      visit(child);
-    }
+    return {
+      ...node.page,
+      ...(node.children.length > 0
+        ? {
+            children: node.children.map((child) => buildTreePage(child))
+          }
+        : {})
+    };
   };
 
-  for (const root of roots) {
-    visit(root);
-  }
+  const treePages = roots.map((root) => buildTreePage(root));
+  const remaining = [...nodesByKey.values()]
+    .filter((node) => !visited.has(node.key))
+    .sort((left, right) => left.page.title.localeCompare(right.page.title, undefined, { sensitivity: "base" }));
 
-  const remaining = [...nodesByKey.values()].filter((node) => !visited.has(node.key));
-  remaining.sort((left, right) => left.page.title.localeCompare(right.page.title, undefined, { sensitivity: "base" }));
-  for (const node of remaining) {
-    visit(node);
-  }
-
-  return ordered;
+  return [...treePages, ...remaining.map((node) => buildTreePage(node))];
 }
 
 export function buildWorkspaceShellWorkspace(workspace: WorkspaceViewRecord, pages: DemoPage[] = demoWorkspace.pages): DemoWorkspace {
