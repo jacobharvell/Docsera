@@ -7,6 +7,7 @@ import {
   Plus,
   Search,
   Settings,
+  Trash2,
   Sun,
   TriangleAlert,
   X
@@ -22,6 +23,7 @@ export const docseraIcons = {
   plus: Plus,
   search: Search,
   settings: Settings,
+  trash: Trash2,
   sun: Sun,
   triangleAlert: TriangleAlert
 } as const;

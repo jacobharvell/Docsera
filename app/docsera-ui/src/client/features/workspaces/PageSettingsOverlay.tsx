@@ -8,7 +8,6 @@ type PageSettingsOverlayProps = {
   activeField: PageSettingsField | "";
   canManagePageSettings: boolean;
   generalError: string;
-  hasDescendants: boolean;
   open: boolean;
   panelRef: RefObject<HTMLElement>;
   pageSlug: string;
@@ -24,26 +23,17 @@ type PageSettingsOverlayProps = {
 };
 
 function CloseIcon() {
-  return <DocseraIcon icon={docseraIcons.close} />;
+  return <DocseraIcon icon={docseraIcons.close} size={16} />;
 }
 
-function DangerIcon() {
-  return <DocseraIcon icon={docseraIcons.triangleAlert} />;
-}
-
-function SettingsIcon() {
-  return <DocseraIcon icon={docseraIcons.settings} />;
-}
-
-function CollapseIcon() {
-  return <DocseraIcon icon={docseraIcons.chevronRight} />;
+function TrashIcon() {
+  return <DocseraIcon icon={docseraIcons.trash} size={16} />;
 }
 
 export function PageSettingsOverlay({
   activeField,
   canManagePageSettings,
   generalError,
-  hasDescendants,
   open,
   panelRef,
   pageSlug,
@@ -79,9 +69,6 @@ export function PageSettingsOverlay({
   const renderField = (field: PageSettingsField, label: string, value: string, error: string) => (
     <div className="docsera-page-settings__row">
       <div className="docsera-page-settings__label">
-        <span className="docsera-page-settings__row-icon" aria-hidden="true">
-          {field === "title" ? "T" : "#"}
-        </span>
         <span>{label}</span>
       </div>
       <div className="docsera-page-settings__body">
@@ -110,7 +97,11 @@ export function PageSettingsOverlay({
             }}
           />
         ) : (
-          <button type="button" className="docsera-page-settings__value" onClick={() => onStartField(field)}>
+          <button
+            type="button"
+            className={`docsera-page-settings__value${error ? " docsera-page-settings__value--invalid" : ""}`}
+            onClick={() => onStartField(field)}
+          >
             {value || (field === "title" ? "Untitled page" : "page-slug")}
           </button>
         )}
@@ -132,18 +123,19 @@ export function PageSettingsOverlay({
       onKeyDown={handleKeyDown}
     >
       <div className="docsera-page-settings__header">
-        <div>
-          <p className="docsera-page-settings__eyebrow">Page Settings</p>
-          <h2 id="docsera-page-settings-title" className="docsera-page-settings__title">
-            Page Settings
-          </h2>
-        </div>
-        <button type="button" className="docsera-page-settings__icon-button" aria-label="Close page settings" onClick={onRequestClose}>
+        <h2 id="docsera-page-settings-title" className="docsera-page-settings__title">
+          Page Settings
+        </h2>
+        <button
+          type="button"
+          className="docsera-modal__close docsera-page-settings__icon-button"
+          aria-label="Close page settings"
+          onClick={onRequestClose}
+        >
           <CloseIcon />
         </button>
       </div>
-
-      <p className="docsera-page-settings__copy">Edit the selected page title and slug. Changes save when you leave the panel.</p>
+      <div className="docsera-page-settings__header-divider" aria-hidden="true" />
 
       {generalError ? (
         <div className="docsera-page-settings__error" role="alert">
@@ -156,30 +148,16 @@ export function PageSettingsOverlay({
         {renderField("slug", "Slug", pageSlug, slugError)}
       </div>
 
-      <section className="docsera-page-settings__danger">
-        <div className="docsera-page-settings__danger-copy">
-          <p className="docsera-page-settings__eyebrow">Danger zone</p>
-          <p>Delete this page and its descendants from the workspace.</p>
-          {hasDescendants ? (
-            <p>This page has child pages. Deleting it will also delete the nested child pages and their contents.</p>
-          ) : null}
-        </div>
+      <section className="docsera-page-settings__delete-section" aria-label="Delete page">
+        <div className="docsera-page-settings__section-divider" aria-hidden="true" />
         <button type="button" className="docsera-page-settings__destructive" onClick={onRequestDelete}>
-          <DangerIcon />
+          <TrashIcon />
           <span>Delete page</span>
         </button>
+        <p className="docsera-page-settings__footer-helper">
+          Changes are saved automatically when you close this panel or click outside of it.
+        </p>
       </section>
-
-      <div className="docsera-page-settings__footer">
-        <button type="button" className="docsera-page-settings__collapse" onClick={onRequestClose}>
-          <CollapseIcon />
-          <span>Collapse</span>
-        </button>
-        <div className="docsera-page-settings__footer-copy">
-          <SettingsIcon />
-          <span>Dismissing the panel saves valid changes.</span>
-        </div>
-      </div>
     </aside>
   );
 }

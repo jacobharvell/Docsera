@@ -49,24 +49,13 @@ export function PageSettingsDeleteDialog({
       >
         <div className="docsera-modal__form">
           <div className="docsera-modal__header">
-            <div>
-              <p className="docsera-modal__eyebrow">Delete page</p>
-              <h2 id="docsera-delete-page-title" className="docsera-modal__title">
-                Delete {pageTitle || "page"}?
-              </h2>
-            </div>
+            <h2 id="docsera-delete-page-title" className="docsera-modal__title">
+              Confirm deletion
+            </h2>
             <button type="button" className="docsera-modal__close" disabled={pending} onClick={onRequestClose} aria-label="Close delete dialog">
               <CloseIcon />
             </button>
           </div>
-
-          <p className="docsera-modal__copy">This will permanently delete this page.</p>
-
-          {hasDescendants ? (
-            <p className="docsera-modal__copy docsera-modal__copy--warning">
-              All child pages and content inside this page will also be deleted.
-            </p>
-          ) : null}
 
           {errorMessage ? (
             <div className="docsera-modal__alert" role="alert">
@@ -74,13 +63,23 @@ export function PageSettingsDeleteDialog({
             </div>
           ) : null}
 
-          <div className="docsera-modal__actions">
-            <button type="button" className="docsera-modal__secondary" disabled={pending} onClick={onRequestClose}>
-              Cancel
-            </button>
-            <button type="button" className="docsera-modal__primary docsera-modal__primary--destructive" disabled={pending} onClick={onConfirm}>
-              Delete page
-            </button>
+          <div className="docsera-modal__body">
+            <p className="docsera-modal__copy">
+              {hasDescendants
+                ? <>This will permanently delete {pageTitle || "page"} and any nested pages underneath it.</>
+                : <>This will permanently delete {pageTitle || "page"}.</>}
+            </p>
+          </div>
+
+          <div className="docsera-modal__footer">
+            <div className="docsera-modal__actions">
+              <button type="button" className="docsera-modal__secondary" disabled={pending} onClick={onRequestClose}>
+                Cancel
+              </button>
+              <button type="button" className="docsera-modal__primary docsera-modal__primary--destructive" disabled={pending} onClick={onConfirm}>
+                Delete page
+              </button>
+            </div>
           </div>
         </div>
       </div>

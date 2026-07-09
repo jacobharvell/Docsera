@@ -130,6 +130,17 @@ function createDeferredPromise<T>() {
   return { promise, reject, resolve };
 }
 
+function getPageSettingsValueButton(label: string): HTMLElement {
+  const button = Array.from(document.querySelectorAll<HTMLButtonElement>(".docsera-page-settings__value")).find(
+    (candidate) => candidate.textContent?.trim() === label
+  );
+  if (!button) {
+    throw new Error(`Expected the Page Settings value button for "${label}" to render.`);
+  }
+
+  return button;
+}
+
 describe("App workspace routing", () => {
   it("restores the selected page from page_id on hydration", async () => {
     renderApp("/?workspace=product-docs&page_id=page-002");
@@ -251,6 +262,8 @@ describe("App workspace routing", () => {
     await screen.findByRole("heading", { name: "Overview" });
 
     fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    expect(screen.queryByDisplayValue("Overview")).not.toBeInTheDocument();
+    fireEvent.click(getPageSettingsValueButton("Overview"));
     fireEvent.change(screen.getByDisplayValue("Overview"), { target: { value: "Updated Overview" } });
     fireEvent.click(screen.getByRole("button", { name: "Close page settings" }));
 
@@ -278,7 +291,14 @@ describe("App workspace routing", () => {
     });
     expect(await screen.findByRole("heading", { name: "Details" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
+    expect(screen.getAllByText("Page Settings")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Collapse settings for Details" })).toBeInTheDocument();
+    expect(screen.queryByText("Edit the selected page title and slug. Changes save when you leave the panel.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /collapse$/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByText("Changes are saved automatically when you close this panel or click outside of it.")
+    ).toBeInTheDocument();
+    expect(document.querySelector(".docsera-page-settings__input")).toBeNull();
   });
 
   it("keeps page settings open when slug validation fails on dismiss", async () => {
@@ -320,6 +340,7 @@ describe("App workspace routing", () => {
     await screen.findByRole("heading", { name: "Overview" });
 
     fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    fireEvent.click(getPageSettingsValueButton("Overview"));
     expect(screen.getByRole("button", { name: "Collapse settings for Overview" })).toBeInTheDocument();
 
     fireEvent.change(screen.getByDisplayValue("Overview"), { target: { value: "Updated Overview" } });
@@ -359,6 +380,7 @@ describe("App workspace routing", () => {
     await screen.findByRole("heading", { name: "Overview" });
 
     fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    fireEvent.click(getPageSettingsValueButton("Overview"));
     fireEvent.change(screen.getByDisplayValue("Overview"), { target: { value: "Updated Overview" } });
     fireEvent.pointerDown(screen.getByRole("heading", { name: "Overview" }));
 
@@ -398,14 +420,48 @@ describe("App workspace routing", () => {
     await screen.findByRole("heading", { name: "Overview" });
 
     fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    fireEvent.click(getPageSettingsValueButton("Overview"));
     fireEvent.change(screen.getByDisplayValue("Overview"), { target: { value: "Updated Overview" } });
     fireEvent.click(screen.getByRole("button", { name: "Delete page" }));
 
-    expect(await screen.findByRole("dialog", { name: "Delete Updated Overview?" })).toBeInTheDocument();
+    expect(await screen.findByRole("dialog", { name: "Confirm deletion" })).toBeInTheDocument();
+    expect(screen.getByText("This will permanently delete Updated Overview.")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     expect(screen.getByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
     expect(screen.getByDisplayValue("Updated Overview")).toBeInTheDocument();
+  });
+
+  it("uses the nested-page delete warning when the selected page has descendants", async () => {
+    const root = createPageRecord({ sysId: "page-001", draftTitle: "Overview", draftSlug: "overview", siblingOrder: 1 });
+    const child = createPageRecord({
+      sysId: "page-002",
+      parentPageSysId: "page-001",
+      draftTitle: "Child Page",
+      draftSlug: "child-page",
+      draftBodyText: "Child body",
+      siblingOrder: 1
+    });
+    const listPages = vi.fn(async (): Promise<PageListResult> => ({
+      items: [root, child],
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001",
+      totalCount: 2
+    })) as ServiceNowClient["listPages"];
+
+    renderApp("/?workspace=product-docs&page_id=page-001", {
+      listPages
+    });
+
+    await screen.findByRole("heading", { name: "Overview" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete page" }));
+
+    expect(await screen.findByRole("dialog", { name: "Confirm deletion" })).toBeInTheDocument();
+    expect(
+      screen.getByText("This will permanently delete Overview and any nested pages underneath it.")
+    ).toBeInTheDocument();
   });
 
   it("deletes the selected page and navigates to the next visible page", async () => {
@@ -626,7 +682,8 @@ describe("App workspace routing", () => {
     fireEvent.pointerDown(confirmButton);
     await new Promise((resolve) => window.setTimeout(resolve, 0));
 
-    expect(screen.getByRole("dialog", { name: "Delete Overview?" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Confirm deletion" })).toBeInTheDocument();
+    expect(screen.getByText("This will permanently delete Overview.")).toBeInTheDocument();
 
     fireEvent.click(confirmButton);
 
@@ -663,7 +720,7 @@ describe("App workspace routing", () => {
       "Something went wrong while deleting the page. The page was not deleted. Please try again."
     );
     expect(screen.getByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
-    expect(screen.getByRole("dialog", { name: "Delete Overview?" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Confirm deletion" })).toBeInTheDocument();
     expect(window.location.search).toBe("?workspace=product-docs&page_id=page-001");
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(deletePage).toHaveBeenCalledWith({
@@ -697,7 +754,7 @@ describe("App workspace routing", () => {
     await waitFor(() => {
       expect(deletePage).toHaveBeenCalledTimes(1);
     });
-    const dialog = screen.getByRole("dialog", { name: "Delete Overview?" });
+    const dialog = screen.getByRole("dialog", { name: "Confirm deletion" });
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Delete page" })).toBeDisabled();
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
@@ -708,7 +765,7 @@ describe("App workspace routing", () => {
     });
 
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "Delete Overview?" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "Confirm deletion" })).not.toBeInTheDocument();
     });
   });
 
@@ -738,7 +795,7 @@ describe("App workspace routing", () => {
     fireEvent.click(backdrop);
 
     await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "Delete Overview?" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("dialog", { name: "Confirm deletion" })).not.toBeInTheDocument();
     });
     expect(screen.getByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
     expect(deletePage).not.toHaveBeenCalled();

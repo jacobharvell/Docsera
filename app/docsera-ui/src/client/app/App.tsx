@@ -136,8 +136,7 @@ function createPageSettingsStateFromPage(page: WorkspacePageRecord): PageSetting
     titleSnapshot: title,
     slug,
     slugSnapshot: slug,
-    open: true,
-    activeField: "title"
+    open: true
   };
 }
 
@@ -1634,7 +1633,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               activeField={pageSettingsState.activeField}
               canManagePageSettings={canManagePageSettings}
               generalError={pageSettingsState.generalError}
-              hasDescendants={pageSettingsHasDescendants}
               open={pageSettingsState.open}
               panelRef={pageSettingsPanelRef}
               pageSlug={pageSettingsState.slug}
