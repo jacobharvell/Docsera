@@ -67,7 +67,7 @@ export function savePageRecord(page: PageRecord): Promise<PageRecord> {
   const record = new GlideRecord(DOCSERA_PAGE_TABLE);
 
   if (draft.sysId) {
-    if (!record.get(draft.sysId)) {
+    if (!record.get("sys_id", draft.sysId)) {
       throw new Error("Page record could not be loaded.");
     }
   } else {
@@ -81,7 +81,7 @@ export function savePageRecord(page: PageRecord): Promise<PageRecord> {
   record.setValue("draft_slug", draft.draftSlug);
   record.setValue("draft_slug_normalized", draft.draftSlugNormalized);
   record.setValue("draft_content_json", serializePageContentJson(draft.draftContentJson));
-  record.setValue("draft_revision", String(draft.draftRevision));
+  record.setValue("draft_revision", draft.draftRevision ?? 0);
   record.setValue("draft_body_text", draft.draftBodyText ?? "");
   record.setValue("published_title", draft.publishedTitle ?? "");
   record.setValue("published_slug", draft.publishedSlug ?? "");
@@ -89,7 +89,7 @@ export function savePageRecord(page: PageRecord): Promise<PageRecord> {
   record.setValue("published_content_json", draft.publishedContentJson ? serializePageContentJson(draft.publishedContentJson) : "");
   record.setValue("published_body_text", draft.publishedBodyText ?? "");
   record.setValue("publication_state", draft.publicationState);
-  record.setValue("active", draft.active ? "true" : "false");
+  record.setValue("active", draft.active);
 
   const savedSysId = cleanText(draft.sysId ? record.update() : record.insert());
   if (!savedSysId) {
@@ -97,7 +97,7 @@ export function savePageRecord(page: PageRecord): Promise<PageRecord> {
   }
 
   const savedRecord = new GlideRecord(DOCSERA_PAGE_TABLE);
-  if (!savedRecord.get(savedSysId)) {
+  if (!savedRecord.get("sys_id", savedSysId)) {
     throw new Error("Page record could not be loaded after save.");
   }
 
@@ -111,7 +111,7 @@ export function deletePageRecord(pageSysId: string): Promise<void> {
   }
 
   const record = new GlideRecord(DOCSERA_PAGE_TABLE);
-  if (!record.get(normalizedPageSysId)) {
+  if (!record.get("sys_id", normalizedPageSysId)) {
     throw new Error("Page record could not be loaded.");
   }
 

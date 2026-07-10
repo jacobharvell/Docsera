@@ -40,7 +40,7 @@ export const x_82900_docsera_page = Table({
     }),
     draft_content_json: StringColumn({
       label: "Draft content JSON",
-      maxLength: 4000
+      maxLength: 262144
     }),
     draft_revision: IntegerColumn({
       label: "Draft revision",
@@ -66,7 +66,7 @@ export const x_82900_docsera_page = Table({
     }),
     published_content_json: StringColumn({
       label: "Published content JSON",
-      maxLength: 4000
+      maxLength: 262144
     }),
     published_body_text: StringColumn({
       label: "Published body text",

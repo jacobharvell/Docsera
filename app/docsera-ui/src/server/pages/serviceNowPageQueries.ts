@@ -129,7 +129,7 @@ export function listWorkspacePages(workspaceSysId: string, options: { activeOnly
   pages.addQuery("workspace", sysId);
 
   if (options.activeOnly !== false) {
-    pages.addQuery("active", "true");
+    pages.addQuery("active", true);
   }
 
   pages.query();

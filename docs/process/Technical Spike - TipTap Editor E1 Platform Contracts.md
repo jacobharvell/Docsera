@@ -2,7 +2,7 @@
 
 Date: 2026-07-10
 
-Status: PDI host, lazy-asset, canonical-document, practical-capacity, and sequential-revision evidence recorded; storage-type decision and atomic concurrency remain bounded follow-ups.
+Status: PDI host, lazy-asset, canonical-document, bounded JSON storage contract, practical-capacity, and sequential-revision evidence recorded; atomic concurrency remains a bounded follow-up.
 
 ## Purpose
 
@@ -102,20 +102,60 @@ The same PDI page's persisted `draft_content_json` was queried directly through 
 
 The focused regression test exercises the direct `draftContentJson` branch with a large, multi-byte canonical envelope and verifies exact serialized preservation, current-envelope parsing, and revision advancement. It is deliberately separate from the temporary body-text conversion.
 
-Exact canonical JSON capacity remains proven for this PDI payload and code path, but not as a documented ServiceNow field-capacity guarantee.
+Exact canonical JSON capacity remains proven for this PDI payload and code path, but not as an unlimited or permanent product guarantee.
 
 ## Storage Conclusion
 
-**Conclusion: the physical storage decision remains unresolved and needs one bounded follow-up before E2.**
+The bounded MVP storage decision is now implemented and validated for the active PDI.
 
-Current repository and PDI evidence conflict:
+Accepted source declaration:
 
-- The repository defines `draft_content_json`, `published_content_json`, and the temporary body-text fields as `StringColumn({ maxLength: 4000 })`.
-- The deployed PDI dictionary reports `internal_type=string` and `max_length=4000` for those fields.
-- That same deployed `draft_content_json` field retained the verified 240,057-character canonical envelope without truncation.
-- The local Now SDK documentation identifies `JsonColumn` as the dedicated JSON field type, accepts serialized string values, and also exposes `maxLength`; it does not establish a supported physical limit or migration behavior for this deployed field.
+- `draft_content_json`: `StringColumn({ maxLength: 262144 })`
+- `published_content_json`: `StringColumn({ maxLength: 262144 })`
+- `draft_body_text`: unchanged `StringColumn({ maxLength: 4000 })`
+- `published_body_text`: unchanged `StringColumn({ maxLength: 4000 })`
 
-The E1 evidence rules out the apparent 4,000-character physical truncation concern for the tested same-page record. It does not establish what the source declaration should promise, whether `StringColumn` is the supported long-term JSON type, or the safe deployed migration path. The smallest next task is to make and verify only that schema decision: confirm the supported field type and explicit capacity with ServiceNow documentation/PDI metadata, migrate the two canonical JSON fields if warranted, and repeat this readback test. No broad storage redesign, compression, segmentation, or related-table work is implied.
+Live deployed dictionary result after `npm run deploy:sdk-ui-page`:
+
+- `draft_content_json`: `internal_type=string`, `max_length=262144`
+- `published_content_json`: `internal_type=string`, `max_length=262144`
+- `draft_body_text`: `internal_type=string`, `max_length=4000`
+- `published_body_text`: `internal_type=string`, `max_length=4000`
+- No replacement fields, duplicate dictionary rows, or field-type changes were created for those four fields on the tested PDI.
+
+Existing-record preservation evidence:
+
+- Preserved page record: `x_82900_docsera_page:cd0ee2b4c30ac750c569bf0d050131a7`
+- Serialized `draft_content_json` length after deployment: `240057`
+- Schema version after deployment: `1`
+- Semantic fingerprint after deployment: `3000` paragraphs, first/last paragraph text still `Docsera capacity 容量🙂`
+- Draft revision after deployment: `1`
+
+Validated bounded-capacity probes on the same upgraded PDI:
+
+- New large draft canonical envelope saved through the live Docsera draft-save route:
+  - serialized length: `240062`
+  - readback length: `240062`
+  - parsed schema version: `1`
+  - semantic equality: exact
+  - trailing text-node whitespace: preserved
+  - empty-document fallback: not triggered
+  - revision advanced from `0` to `1`
+- Large `published_content_json` probe written directly through the table API on a disposable page:
+  - serialized length: `240062`
+  - readback length: `240062`
+  - parse: successful
+  - semantic equality: exact
+  - trailing text-node whitespace: preserved
+  - unrelated draft/page fields: unchanged
+- The disposable probe page was deleted after validation.
+
+Current conclusion:
+
+- Canonical TipTap/ProseMirror JSON remains on the Docsera page record.
+- The accepted bounded repository contract is now `StringColumn({ maxLength: 262144 })` for the two canonical JSON fields.
+- The tested PDI preserves and reads back canonical envelopes near the validated `~240k` MVP target on both draft and published paths without trimming.
+- This evidence supports the bounded MVP decision only. It should not be presented as a broader ServiceNow storage guarantee, an unlimited-content guarantee, or proof of higher-capacity behavior on fresh installs or different instances.
 
 ## Session and Revision Status
 
@@ -128,6 +168,7 @@ PDI validation passed for sequential two-tab stale-revision behavior. The curren
 - Reader-only/non-authoring role validation is deferred. It was not performed in this closeout task.
 - Deliberately corrupted stored-document validation in the PDI is deferred. The local boundary regression coverage remains in place.
 - Truly simultaneous atomic compare-and-save behavior remains unresolved.
+- Fresh-install evidence for a brand-new instance with this same dictionary contract remains outstanding. The validated path in this task is an upgrade of the current PDI plus disposable record probes after install.
 
 ## Local Validation
 
@@ -143,4 +184,4 @@ Passed:
 
 ## Gate to E2
 
-E2 is not started by this branch. Before it begins, complete the bounded physical storage-type/capacity decision above. Resolve atomic compare-and-save before E3 autosave and publishing. The reader-only role and corrupted-document PDI checks remain deferred E1 validation items.
+E2 is not started by this branch. The bounded physical storage-type/capacity decision above is complete for the current MVP contract. Resolve atomic compare-and-save before E3 autosave and publishing. The reader-only role, corrupted-document PDI check, and fresh-install evidence remain deferred validation items.

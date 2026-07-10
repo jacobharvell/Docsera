@@ -18,6 +18,29 @@ describe("Docsera document envelope", () => {
     });
   });
 
+  it("preserves terminal whitespace inside TipTap text nodes", () => {
+    const envelope = {
+      schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+      document: {
+        type: "doc" as const,
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Trailing spaces stay here   \n" }]
+          }
+        ]
+      }
+    };
+
+    const parsed = parseDocseraDocument(serializeDocseraDocument(envelope));
+
+    expect(parsed).toEqual({
+      ok: true,
+      envelope,
+      migratedLegacyDocument: false
+    });
+  });
+
   it("migrates the existing raw TipTap document shape into schema version one", () => {
     const parsed = parseDocseraDocument({
       type: "doc",

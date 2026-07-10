@@ -20,6 +20,11 @@ Accepted product requirements remain in the Obsidian vault; see `docs/process/Re
 - Explicit save updates the selected page record on the ServiceNow side.
 - The saved fields are `draft_body_text` and `draft_content_json`.
 - `draft_content_json` is stored as a simple document JSON shape derived from the body text, not a full TipTap/Markdown round-trip.
+- Canonical page JSON remains stored directly on the page record rather than in attachments, segmented child records, or compressed side channels.
+- The canonical JSON fields `draft_content_json` and `published_content_json` use the explicit bounded source contract `StringColumn({ maxLength: 262144 })`.
+- The body-text fields `draft_body_text` and `published_body_text` remain temporary compatibility fields at `StringColumn({ maxLength: 4000 })`.
+- Canonical JSON is serialized and persisted without generic text trimming; terminal whitespace inside TipTap text nodes is preserved.
+- The validated MVP storage boundary for the current PDI is approximately `240k` serialized JavaScript characters for both draft and published canonical version-1 envelopes.
 - The selected page remains selected after save.
 - Refreshing or reopening the workspace reloads the saved draft body through the live page list hydration path.
 

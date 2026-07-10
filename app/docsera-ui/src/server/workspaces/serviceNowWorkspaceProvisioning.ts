@@ -52,10 +52,6 @@ function normalizeBoolean(value: unknown): boolean {
   return value === true || value === "true" || value === 1 || value === "1";
 }
 
-function serializeBoolean(value: boolean): string {
-  return value ? "true" : "false";
-}
-
 function readLastErrorMessage(record: {
   getLastErrorMessage?: () => string;
 }): string {
@@ -101,7 +97,7 @@ function readProvisionRequestRecord(requestId: string): ProvisionRequestRecord |
   }
 
   const record = new GlideRecord(DOCSERA_WORKSPACE_PROVISION_REQUEST_TABLE);
-  if (!record.get(sysId)) {
+  if (!record.get("sys_id", sysId)) {
     return null;
   }
 
@@ -123,7 +119,7 @@ function loadWorkspaceBySysId(workspaceSysId: string): WorkspaceRecord | null {
   }
 
   const record = new GlideRecord(DOCSERA_WORKSPACE_TABLE);
-  if (!record.get(sysId)) {
+  if (!record.get("sys_id", sysId)) {
     return null;
   }
 
@@ -137,7 +133,7 @@ function loadGroupBySysId(groupSysId: string): WorkspaceGroup | null {
   }
 
   const record = new GlideRecord("sys_user_group");
-  if (!record.get(sysId)) {
+  if (!record.get("sys_id", sysId)) {
     return null;
   }
 
@@ -184,7 +180,7 @@ function createProvisionRequest(input: WorkspaceDraftInput): string {
   record.setValue("icon_label", draft.icon.label);
   record.setValue("icon_asset_path", draft.icon.assetPath ?? "");
   record.setValue("workspace_status", draft.status);
-  record.setValue("toc_default_visible", serializeBoolean(draft.layout.tocVisibleByDefault));
+  record.setValue("toc_default_visible", draft.layout.tocVisibleByDefault);
   record.setValue("page_width", draft.layout.pageWidth);
   record.setValue("requested_by", draft.creatorUserSysId);
   record.setValue("state", "requested");

@@ -96,7 +96,7 @@ function loadWorkspaceBySysId(workspaceSysId: string): Promise<WorkspaceRecord |
   }
 
   const record = new GlideRecord(DOCSERA_WORKSPACE_TABLE);
-  if (!record.get(sysId)) {
+  if (!record.get("sys_id", sysId)) {
     return Promise.resolve(null);
   }
 

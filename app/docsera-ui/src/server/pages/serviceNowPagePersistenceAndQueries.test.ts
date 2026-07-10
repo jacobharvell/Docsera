@@ -71,8 +71,17 @@ const glideMock = vi.hoisted(() => {
       };
     }
 
-    get(sysId: string) {
-      const row = tables.get(this.tableName)?.find((candidate) => candidate.sysId === cleanText(sysId)) ?? null;
+    get(fieldOrSysId: string, value?: unknown) {
+      const row =
+        value === undefined
+          ? (tables.get(this.tableName)?.find((candidate) => candidate.sysId === cleanText(fieldOrSysId)) ?? null)
+          : (tables
+              .get(this.tableName)
+              ?.find((candidate) =>
+                fieldOrSysId === "sys_id"
+                  ? candidate.sysId === cleanText(value)
+                  : matchField(candidate.fields[fieldOrSysId], value)
+              ) ?? null);
       this.currentRow = row ? row : null;
       return Boolean(row);
     }
@@ -185,6 +194,12 @@ const glideMock = vi.hoisted(() => {
 
   return {
     GlideRecord: MockGlideRecord,
+    getRows(tableName: string) {
+      return (tables.get(tableName) ?? []).map((row) => ({
+        sysId: row.sysId,
+        fields: { ...row.fields }
+      }));
+    },
     reset() {
       tables.clear();
       nextSysId = 1;
@@ -197,6 +212,7 @@ vi.mock("@servicenow/glide", () => ({
 }));
 
 import type { PageRecord } from "./serverPageDomain";
+import { parseServerDocument } from "./serverEditorDocument";
 import { deletePageRecord, savePageRecord } from "./serviceNowPagePersistence";
 import { listWorkspacePages } from "./serviceNowPageQueries";
 
@@ -228,6 +244,24 @@ function createPage(overrides: Partial<PageRecord> = {}): PageRecord {
 beforeEach(() => {
   glideMock.reset();
 });
+
+function createLargeEnvelope(prefix: string) {
+  return {
+    schemaVersion: 1 as const,
+    document: {
+      type: "doc" as const,
+      content: Array.from({ length: 3000 }, (_, index) => ({
+        type: "paragraph",
+        content: [
+          {
+            type: "text",
+            text: `${prefix} 容量🙂 paragraph ${index + 1}${index === 2999 ? "   \n" : ""}`
+          }
+        ]
+      }))
+    }
+  };
+}
 
 describe("page persistence and listing", () => {
   it("keeps a newly created active page visible after save and refresh-style list loading", async () => {
@@ -280,4 +314,54 @@ describe("page persistence and listing", () => {
     expect(listedPages.map((page) => page.sysId)).toEqual([]);
   });
 
+  it("preserves large multi-byte draft and published canonical JSON payloads through save and readback", async () => {
+    const draftEnvelope = createLargeEnvelope("Draft capacity");
+    const publishedEnvelope = createLargeEnvelope("Published capacity");
+
+    const savedPage = await savePageRecord(
+      createPage({
+        draftTitle: "Capacity Probe",
+        draftSlug: "capacity-probe",
+        draftSlugNormalized: "capacity-probe",
+        draftContentJson: draftEnvelope,
+        publishedTitle: "Capacity Probe",
+        publishedSlug: "capacity-probe",
+        publishedSlugNormalized: "capacity-probe",
+        publishedContentJson: publishedEnvelope,
+        publicationState: "published_with_unpublished_changes"
+      })
+    );
+
+    const storedRow = glideMock.getRows("x_82900_docsera_page")[0];
+    const storedDraftJson = String(storedRow?.fields.draft_content_json ?? "");
+    const storedPublishedJson = String(storedRow?.fields.published_content_json ?? "");
+
+    expect(savedPage.sysId).toBeTruthy();
+    expect(storedDraftJson.length).toBeGreaterThan(240000);
+    expect(storedPublishedJson.length).toBeGreaterThan(240000);
+    expect(parseServerDocument(storedDraftJson)).toEqual(draftEnvelope);
+    expect(parseServerDocument(storedPublishedJson)).toEqual(publishedEnvelope);
+
+    const listedPages = await listWorkspacePages("workspace-001");
+
+    expect(listedPages).toHaveLength(1);
+    expect(listedPages[0]?.draftContentJson).toEqual(draftEnvelope);
+    expect(listedPages[0]?.publishedContentJson).toEqual(publishedEnvelope);
+    expect(listedPages[0]?.publishedContentJson?.document.content?.[2999]).toEqual({
+      type: "paragraph",
+      content: [{ type: "text", text: "Published capacity 容量🙂 paragraph 3000   \n" }]
+    });
+  });
+
+  it("keeps published canonical JSON optional when the stored field is empty", async () => {
+    const savedPage = await savePageRecord(createPage());
+    const listedPages = await listWorkspacePages("workspace-001");
+
+    expect(savedPage.publishedContentJson).toBeNull();
+    expect(listedPages[0]?.publishedContentJson).toBeNull();
+
+    const storedRow = glideMock.getRows("x_82900_docsera_page")[0];
+    expect(storedRow?.fields.published_content_json).toBe("");
+    expect(storedRow?.fields.published_body_text).toBe("");
+  });
 });
