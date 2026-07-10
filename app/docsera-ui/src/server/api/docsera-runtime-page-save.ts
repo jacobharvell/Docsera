@@ -34,7 +34,8 @@ function summarizeRequestBody(body: Record<string, unknown>): Record<string, unk
     pageSysId: cleanText(body.pageSysId) || undefined,
     pageSlug: cleanText(body.pageSlug) || undefined,
     draftBodyTextPresent: Boolean(draftBodyText),
-    draftBodyTextLength: draftBodyText.length
+    draftBodyTextLength: draftBodyText.length,
+    expectedRevision: Number.isSafeInteger(Number(body.expectedRevision)) ? Number(body.expectedRevision) : undefined
   };
 }
 
@@ -59,7 +60,12 @@ export async function process(request: RequestLike, response: ResponseLike) {
       workspaceSysId: cleanText(body.workspaceSysId),
       pageSysId: cleanText(body.pageSysId),
       pageSlug: cleanText(body.pageSlug),
-      draftBodyText: cleanText(body.draftBodyText) || ""
+      draftBodyText: cleanText(body.draftBodyText) || "",
+      draftContentJson:
+        body.draftContentJson && typeof body.draftContentJson === "object"
+          ? (body.draftContentJson as Record<string, unknown>)
+          : undefined,
+      expectedRevision: Number.isSafeInteger(Number(body.expectedRevision)) ? Number(body.expectedRevision) : undefined
     });
 
     if (result.kind === "forbidden") {
@@ -77,6 +83,18 @@ export async function process(request: RequestLike, response: ResponseLike) {
       response.setBody({
         error: {
           message: result.errorMessage
+        }
+      });
+      return;
+    }
+
+    if (result.kind === "conflict") {
+      response.setStatus?.(409);
+      response.setBody({
+        error: {
+          code: "draft_revision_conflict",
+          message: result.errorMessage,
+          currentRevision: result.currentRevision
         }
       });
       return;

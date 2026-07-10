@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mapPageRecord } from "./serviceNowPageRecords";
 
-function createRecord(activeValue: unknown) {
+function createRecord(activeValue: unknown, draftContentJson = JSON.stringify({ type: "doc", content: [] })) {
   return {
     getUniqueValue: () => "page-001",
     getValue: (fieldName: string) => {
@@ -19,10 +19,7 @@ function createRecord(activeValue: unknown) {
         case "draft_slug_normalized":
           return "overview";
         case "draft_content_json":
-          return JSON.stringify({
-            type: "doc",
-            content: []
-          });
+          return draftContentJson;
         case "draft_body_text":
           return "";
         case "published_title":
@@ -56,5 +53,16 @@ describe("page record mapping", () => {
     expect(page.active).toBe(expectedActive);
     expect(page.sysId).toBe("page-001");
     expect(page.draftTitle).toBe("Overview");
+    expect(page.draftContentJson).toEqual({
+      schemaVersion: 1,
+      document: { type: "doc", content: [] }
+    });
+  });
+
+  it("rejects invalid stored JSON instead of returning editable empty content", () => {
+    expect(() => mapPageRecord(createRecord(true, "not-json"))).toThrow("not valid JSON");
+    expect(() =>
+      mapPageRecord(createRecord(true, JSON.stringify({ schemaVersion: 99, document: { type: "doc", content: [] } })))
+    ).toThrow("unsupported document schema version");
   });
 });

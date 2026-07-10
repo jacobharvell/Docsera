@@ -1,8 +1,15 @@
+import {
+  createEmptyServerDocumentEnvelope,
+  parseServerDocument,
+  type ServerDocumentEnvelope,
+  type ServerTiptapDocument
+} from "./serverEditorDocument.ts";
+
 export const DOCSERA_PAGE_TABLE = "x_82900_docsera_page";
 
 export type PagePublicationState = "draft" | "published" | "published_with_unpublished_changes";
 
-export type PageContentJson = Record<string, unknown>;
+export type PageContentJson = ServerDocumentEnvelope | ServerTiptapDocument;
 
 export type PageRecord = {
   sysId?: string;
@@ -13,6 +20,7 @@ export type PageRecord = {
   draftSlug: string;
   draftSlugNormalized: string;
   draftContentJson: PageContentJson;
+  draftRevision?: number;
   draftBodyText: string | null;
   publishedTitle: string | null;
   publishedSlug: string | null;
@@ -32,6 +40,7 @@ export type PageDraftInput = {
   slug?: string | null;
   draftSlug?: string | null;
   draftContentJson?: PageContentJson | null;
+  draftRevision?: number | null;
   draftBodyText?: string | null;
   publishedTitle?: string | null;
   publishedSlug?: string | null;
@@ -57,11 +66,6 @@ export type PageSlugReservation =
       workspace?: string;
       parentPageSysId?: string;
     };
-
-const DEFAULT_PAGE_CONTENT_JSON: PageContentJson = Object.freeze({
-  type: "doc",
-  content: []
-});
 
 export const PAGE_PUBLICATION_STATES = Object.freeze({
   draft: "draft" as const,
@@ -97,12 +101,12 @@ function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function clonePageContentJson(value: unknown): PageContentJson {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return JSON.parse(JSON.stringify(DEFAULT_PAGE_CONTENT_JSON)) as PageContentJson;
+function clonePageContentJson(value: unknown): ServerDocumentEnvelope {
+  if (value === undefined || value === null || value === "") {
+    return createEmptyServerDocumentEnvelope();
   }
 
-  return JSON.parse(JSON.stringify(value)) as PageContentJson;
+  return parseServerDocument(value);
 }
 
 function toSlugFragment(value: string): string {
@@ -126,6 +130,11 @@ function normalizeSiblingOrder(value: unknown, fallback = 1): number {
   }
 
   return Math.floor(order);
+}
+
+function normalizeDraftRevision(value: unknown): number {
+  const revision = Number(value);
+  return Number.isSafeInteger(revision) && revision >= 0 ? revision : 0;
 }
 
 function normalizePagePublicationState(value: unknown): PagePublicationState {
@@ -560,6 +569,7 @@ export function createPageDraft(input: PageDraftInput, retainedPages: PageSlugRe
     draftSlug,
     draftSlugNormalized: draftSlug.toLowerCase(),
     draftContentJson: clonePageContentJson(input.draftContentJson ?? null),
+    draftRevision: normalizeDraftRevision(input.draftRevision),
     draftBodyText: cleanText(input.draftBodyText) || null,
     publishedTitle: cleanText(input.publishedTitle) || null,
     publishedSlug: cleanText(input.publishedSlug) || null,
@@ -581,6 +591,7 @@ export function normalizePageRecord(row: Record<string, unknown>): PageRecord {
     draftSlug: cleanText(row.draftSlug),
     draftSlugNormalized: cleanText(row.draftSlugNormalized),
     draftContentJson: clonePageContentJson(row.draftContentJson),
+    draftRevision: normalizeDraftRevision(row.draftRevision),
     draftBodyText: cleanText(row.draftBodyText) || null,
     publishedTitle: cleanText(row.publishedTitle) || null,
     publishedSlug: cleanText(row.publishedSlug) || null,

@@ -3,8 +3,8 @@ import { DOCSERA_WORKSPACE_TABLE, type WorkspaceRecord } from "../workspaces/ser
 import { evaluateCurrentUserWorkspaceCapabilities } from "../workspaces/serviceNowWorkspaceCapabilities.ts";
 import { mapWorkspaceRecord } from "../workspaces/serviceNowWorkspaceRecords.ts";
 import { loadWorkspaceBySlug, listWorkspacePages } from "./serviceNowPageQueries.ts";
-import { buildPageBodySaveRecord, savePageRecord } from "./serviceNowPagePersistence.ts";
-import type { PageRecord } from "./serverPageDomain.ts";
+import { buildPageBodySaveRecord, buildPageContentSaveRecord, savePageRecord } from "./serviceNowPagePersistence.ts";
+import type { PageContentJson, PageRecord } from "./serverPageDomain.ts";
 
 type PageBodySaveInput = {
   workspaceSlug?: string;
@@ -12,6 +12,8 @@ type PageBodySaveInput = {
   pageSysId?: string;
   pageSlug?: string;
   draftBodyText?: string | null;
+  draftContentJson?: unknown;
+  expectedRevision?: number | null;
 };
 
 type PageBodySaveOutcome =
@@ -22,6 +24,11 @@ type PageBodySaveOutcome =
     }
   | {
       kind: "forbidden";
+      errorMessage: string;
+    }
+  | {
+      kind: "conflict";
+      currentRevision: number;
       errorMessage: string;
     }
   | {
@@ -183,8 +190,30 @@ export function createPageBodySaveService(dependencies: PageBodySaveDependencies
         };
       }
 
-      const draftBodyText = input.draftBodyText ?? "";
-      const savedPage = await dependencies.savePage(buildPageBodySaveRecord(page, draftBodyText));
+      const currentRevision = Number.isSafeInteger(Number(page.draftRevision)) ? Number(page.draftRevision) : 0;
+      const expectedRevision = Number(input.expectedRevision);
+      if (Number.isSafeInteger(expectedRevision) && expectedRevision >= 0 && expectedRevision !== currentRevision) {
+        return {
+          kind: "conflict",
+          currentRevision,
+          errorMessage: "This page has a newer saved draft. Reload before saving again."
+        };
+      }
+
+      let nextPage: PageRecord;
+      try {
+        nextPage = input.draftContentJson
+          ? buildPageContentSaveRecord(page, input.draftContentJson as PageContentJson, currentRevision + 1)
+          : buildPageBodySaveRecord(page, input.draftBodyText ?? "", currentRevision + 1);
+      } catch (error) {
+        return {
+          kind: "failed",
+          errorMessage: cleanText(error instanceof Error ? error.message : error) || "The page document is invalid.",
+          status: 400
+        };
+      }
+
+      const savedPage = await dependencies.savePage(nextPage);
 
       return {
         kind: "succeeded",

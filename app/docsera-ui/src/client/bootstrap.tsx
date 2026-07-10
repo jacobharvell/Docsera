@@ -1,6 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { App } from "./app/App";
+import { EditorRuntimeSpikeOutlet } from "./editor/spikes/EditorRuntimeSpikeOutlet";
 import { createServiceNowClient } from "./platform/servicenow/client";
 import { resolveRuntimeContext } from "./platform/servicenow/runtime";
 
@@ -16,6 +17,9 @@ export function mountDocseraApp(): void {
   ReactDOM.createRoot(mountNode).render(
     <React.StrictMode>
       <App runtime={runtime} serviceNowClient={client} />
+      {new URLSearchParams(window.location.search).get("docsera_editor_spike") === "1" ? (
+        <EditorRuntimeSpikeOutlet />
+      ) : null}
     </React.StrictMode>
   );
 }

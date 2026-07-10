@@ -34,7 +34,7 @@ type WorkspaceShellProps = {
   recentWorkspaces: RecentWorkspaceItem[];
   showWorkspaceSwitcher: boolean;
   selectedWorkspacePage: WorkspacePageRecord | null;
-  onSavePageBody: (input: { pageSysId: string; draftBodyText: string }) => Promise<WorkspacePageRecord>;
+  onSavePageBody: (input: { pageSysId: string; draftBodyText: string; expectedRevision: number }) => Promise<WorkspacePageRecord>;
   theme: "dark" | "light";
   onToggleTheme: () => void;
   pageSettingsOverlay?: ReactNode;

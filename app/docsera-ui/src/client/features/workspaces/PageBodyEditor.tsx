@@ -1,11 +1,12 @@
-import { useEffect, useId, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import type { WorkspacePageRecord } from "../../shared/types/docsera";
 
 type PageBodyEditorProps = {
   pageSysId: string;
   initialBodyText: string;
+  initialRevision: number;
   canEdit: boolean;
-  onSaveBody: (input: { pageSysId: string; draftBodyText: string }) => Promise<WorkspacePageRecord>;
+  onSaveBody: (input: { pageSysId: string; draftBodyText: string; expectedRevision: number }) => Promise<WorkspacePageRecord>;
 };
 
 type PageBodyEditorStatus = "saved" | "dirty" | "saving" | "failed";
@@ -38,20 +39,24 @@ function getSafeErrorMessage(error: unknown): string {
   return cleanText(error) || SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE;
 }
 
-export function PageBodyEditor({ pageSysId, initialBodyText, canEdit, onSaveBody }: PageBodyEditorProps) {
+export function PageBodyEditor({ pageSysId, initialBodyText, initialRevision, canEdit, onSaveBody }: PageBodyEditorProps) {
   const textareaId = useId();
   const [draftBodyText, setDraftBodyText] = useState(initialBodyText || "");
   const [savedBodyText, setSavedBodyText] = useState(initialBodyText || "");
+  const [savedRevision, setSavedRevision] = useState(initialRevision);
   const [status, setStatus] = useState<PageBodyEditorStatus>("saved");
   const [errorMessage, setErrorMessage] = useState("");
+  const sessionGenerationRef = useRef(0);
 
   useEffect(() => {
+    sessionGenerationRef.current += 1;
     const nextBodyText = initialBodyText || "";
     setDraftBodyText(nextBodyText);
     setSavedBodyText(nextBodyText);
+    setSavedRevision(initialRevision);
     setStatus("saved");
     setErrorMessage("");
-  }, [initialBodyText, pageSysId]);
+  }, [initialBodyText, initialRevision, pageSysId]);
 
   const isDirty = draftBodyText !== savedBodyText;
   const isSaving = status === "saving";
@@ -67,19 +72,30 @@ export function PageBodyEditor({ pageSysId, initialBodyText, canEdit, onSaveBody
 
     setStatus("saving");
     setErrorMessage("");
+    const saveGeneration = sessionGenerationRef.current;
+    const savePageSysId = pageSysId;
 
     try {
       const savedPage = await onSaveBody({
-        pageSysId,
-        draftBodyText
+        pageSysId: savePageSysId,
+        draftBodyText,
+        expectedRevision: savedRevision
       });
+
+      if (sessionGenerationRef.current !== saveGeneration || pageSysId !== savePageSysId) {
+        return;
+      }
 
       const nextBodyText = cleanText(savedPage.draftBodyText) || "";
       setDraftBodyText(nextBodyText);
       setSavedBodyText(nextBodyText);
+      setSavedRevision(savedPage.draftRevision ?? savedRevision + 1);
       setStatus("saved");
       setErrorMessage("");
     } catch (error) {
+      if (sessionGenerationRef.current !== saveGeneration || pageSysId !== savePageSysId) {
+        return;
+      }
       setStatus("failed");
       setErrorMessage(getSafeErrorMessage(error));
     }

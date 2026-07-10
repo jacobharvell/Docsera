@@ -253,7 +253,8 @@ describe("service now client page creation", () => {
         workspaceSysId: "",
         pageSysId: "page-005",
         pageSlug: "",
-        draftBodyText: "Saved draft body"
+        draftBodyText: "Saved draft body",
+        expectedRevision: 7
       });
 
       return createJsonResponse(200, {
@@ -281,6 +282,7 @@ describe("service now client page creation", () => {
               ]
             },
             draftBodyText: "Saved draft body",
+            draftRevision: 8,
             publishedTitle: null,
             publishedSlug: null,
             publishedSlugNormalized: null,
@@ -299,14 +301,44 @@ describe("service now client page creation", () => {
     const result = await client.savePageBody({
       workspaceSlug: "product-docs",
       pageSysId: "page-005",
-      draftBodyText: "Saved draft body"
+      draftBodyText: "Saved draft body",
+      expectedRevision: 7
     });
 
     expect(result.state).toBe("succeeded");
     if (result.state === "succeeded") {
       expect(result.page.sysId).toBe("page-005");
       expect(result.page.draftBodyText).toBe("Saved draft body");
+      expect(result.page.draftRevision).toBe(8);
     }
+  });
+
+  it("returns a safe conflict result for a stale draft revision", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        createJsonResponse(409, {
+          error: {
+            code: "draft_revision_conflict",
+            message: "This page has a newer saved draft. Reload before saving again.",
+            currentRevision: 9
+          }
+        })
+      )
+    );
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.savePageBody({
+      workspaceSlug: "product-docs",
+      pageSysId: "page-005",
+      draftBodyText: "Stale draft body",
+      expectedRevision: 8
+    });
+
+    expect(result).toEqual({
+      state: "failed",
+      errorMessage: "This page has a newer saved draft. Reload before saving again."
+    });
   });
 
   it("normalizes a double-wrapped page body save response", async () => {

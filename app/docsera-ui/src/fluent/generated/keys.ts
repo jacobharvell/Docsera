@@ -102,6 +102,10 @@ declare global {
                         table: 'sys_module'
                         id: 'd9bb2f597b564a9ab74fab37b5e777e4'
                     }
+                    src_server_pages_serverEditorDocument_ts: {
+                        table: 'sys_module'
+                        id: '82c7f7d7d6804f42ba403e468abeb2db'
+                    }
                     src_server_pages_serverPageDomain_ts: {
                         table: 'sys_module'
                         id: '8405ade511e74b5783d977e8a5cb0165'
@@ -233,6 +237,13 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_page'
                             element: 'draft_title'
+                        }
+                    },
+                    {
+                        table: 'sys_ux_lib_asset'
+                        id: '159c08ca62ab4bc29405fc4522c6e0f4'
+                        key: {
+                            name: 'x_82900_docsera/mountEditorRuntimeSpike'
                         }
                     },
                     {
@@ -551,6 +562,14 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_dictionary'
+                        id: '58c7cd5b8cfa4e178c8ff1660af98e5f'
+                        key: {
+                            name: 'x_82900_docsera_page'
+                            element: 'draft_revision'
+                        }
+                    },
+                    {
                         table: 'sys_choice_set'
                         id: '59806beb596b4774af32174c0f192def'
                         key: {
@@ -766,6 +785,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_page'
                             element: 'publication_state'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '889b58a7c4784199a1a0dedf7657ff8b'
+                        key: {
+                            name: 'x_82900_docsera_page'
+                            element: 'draft_revision'
                             language: 'en'
                         }
                     },
@@ -1186,6 +1214,13 @@ declare global {
                             name: 'x_82900_docsera_workspace'
                             element: 'admin_group'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_ux_lib_asset'
+                        id: 'c8d1260d361b4d9c98f1ae4036fb04c8'
+                        key: {
+                            name: 'x_82900_docsera/mountEditorRuntimeSpike.js.map'
                         }
                     },
                     {

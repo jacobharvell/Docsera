@@ -1,4 +1,5 @@
 import { GlideRecord } from "@servicenow/glide";
+import { createEmptyServerDocumentEnvelope } from "./serverEditorDocument.ts";
 import { DOCSERA_PAGE_TABLE, normalizePageRecord, type PageContentJson, type PageRecord } from "./serverPageDomain.ts";
 import { mapPageRecord } from "./serviceNowPageRecords.ts";
 
@@ -7,7 +8,7 @@ function cleanText(value: unknown): string {
 }
 
 function serializePageContentJson(value: PageContentJson): string {
-  return JSON.stringify(value ?? { type: "doc", content: [] });
+  return JSON.stringify(value ?? createEmptyServerDocumentEnvelope());
 }
 
 export function createPageBodyContentJsonFromText(text: string): PageContentJson {
@@ -15,29 +16,49 @@ export function createPageBodyContentJsonFromText(text: string): PageContentJson
   const lines = normalizedText ? normalizedText.split("\n") : [""];
 
   return {
-    type: "doc",
-    content: lines.map((line) => ({
-      type: "paragraph",
-      content: line
-        ? [
-            {
-              type: "text",
-              text: line
-            }
-          ]
-        : []
-    }))
+    schemaVersion: 1,
+    document: {
+      type: "doc",
+      content: lines.map((line) => ({
+        type: "paragraph",
+        content: line
+          ? [
+              {
+                type: "text",
+                text: line
+              }
+            ]
+          : []
+      }))
+    }
   };
 }
 
-export function buildPageBodySaveRecord(page: PageRecord, draftBodyText: string): PageRecord {
+export function buildPageBodySaveRecord(page: PageRecord, draftBodyText: string, draftRevision = page.draftRevision ?? 0): PageRecord {
   const normalizedPage = normalizePageRecord(page);
   const normalizedBodyText = cleanText(draftBodyText) || null;
 
   return {
     ...normalizedPage,
     draftBodyText: normalizedBodyText,
-    draftContentJson: createPageBodyContentJsonFromText(normalizedBodyText ?? "")
+    draftContentJson: createPageBodyContentJsonFromText(normalizedBodyText ?? ""),
+    draftRevision: Number.isSafeInteger(draftRevision) && draftRevision >= 0 ? draftRevision : normalizedPage.draftRevision ?? 0
+  };
+}
+
+export function buildPageContentSaveRecord(
+  page: PageRecord,
+  draftContentJson: PageContentJson,
+  draftRevision = page.draftRevision ?? 0
+): PageRecord {
+  const normalizedPage = normalizePageRecord({
+    ...page,
+    draftContentJson
+  });
+
+  return {
+    ...normalizedPage,
+    draftRevision: Number.isSafeInteger(draftRevision) && draftRevision >= 0 ? draftRevision : normalizedPage.draftRevision ?? 0
   };
 }
 
@@ -60,6 +81,7 @@ export function savePageRecord(page: PageRecord): Promise<PageRecord> {
   record.setValue("draft_slug", draft.draftSlug);
   record.setValue("draft_slug_normalized", draft.draftSlugNormalized);
   record.setValue("draft_content_json", serializePageContentJson(draft.draftContentJson));
+  record.setValue("draft_revision", String(draft.draftRevision));
   record.setValue("draft_body_text", draft.draftBodyText ?? "");
   record.setValue("published_title", draft.publishedTitle ?? "");
   record.setValue("published_slug", draft.publishedSlug ?? "");

@@ -1435,7 +1435,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     workspaceState.status
   ]);
 
-  async function savePageBody(input: { pageSysId: string; draftBodyText: string }): Promise<WorkspacePageRecord> {
+  async function savePageBody(input: {
+    pageSysId: string;
+    draftBodyText: string;
+    expectedRevision: number;
+  }): Promise<WorkspacePageRecord> {
     if (workspaceState.status !== "success") {
       throw new Error(SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE);
     }
@@ -1446,7 +1450,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         workspaceSlug: workspaceState.data.slug,
         workspaceSysId: workspaceState.data.sysId,
         pageSysId: input.pageSysId,
-        draftBodyText: input.draftBodyText
+        draftBodyText: input.draftBodyText,
+        expectedRevision: input.expectedRevision
       });
     } catch {
       throw new Error(SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE);

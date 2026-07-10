@@ -5,7 +5,7 @@ function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function parseJsonValue(value: unknown): Record<string, unknown> | null {
+function parseJsonValue(value: unknown): unknown | null {
   const text = cleanText(value);
   if (!text) {
     return null;
@@ -13,13 +13,9 @@ function parseJsonValue(value: unknown): Record<string, unknown> | null {
 
   try {
     const parsed = JSON.parse(text);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return null;
-    }
-
-    return parsed as Record<string, unknown>;
+    return parsed;
   } catch {
-    return null;
+    throw new Error("The stored page content is not valid JSON.");
   }
 }
 
@@ -37,6 +33,7 @@ export function mapPageRecord(record: {
     draftSlug: cleanText(record.getValue("draft_slug")),
     draftSlugNormalized: cleanText(record.getValue("draft_slug_normalized")),
     draftContentJson: parseJsonValue(record.getValue("draft_content_json")) ?? undefined,
+    draftRevision: Number(record.getValue("draft_revision")) || 0,
     draftBodyText: cleanText(record.getValue("draft_body_text")) || null,
     publishedTitle: cleanText(record.getValue("published_title")) || null,
     publishedSlug: cleanText(record.getValue("published_slug")) || null,

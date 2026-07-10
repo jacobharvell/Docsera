@@ -8,7 +8,7 @@ type WorkspaceMainPaneProps = {
   canEditPageBody: boolean;
   canCreatePage: boolean;
   onShowCreatePage: () => void;
-  onSavePageBody: (input: { pageSysId: string; draftBodyText: string }) => Promise<WorkspacePageRecord>;
+  onSavePageBody: (input: { pageSysId: string; draftBodyText: string; expectedRevision: number }) => Promise<WorkspacePageRecord>;
 };
 
 export function WorkspaceMainPane({
@@ -60,6 +60,7 @@ export function WorkspaceMainPane({
         <PageBodyEditor
           pageSysId={workspacePage?.sysId ?? page.id}
           initialBodyText={workspacePage?.draftBodyText ?? ""}
+          initialRevision={workspacePage?.draftRevision ?? 0}
           canEdit={canEditPageBody && Boolean(workspacePage?.sysId)}
           onSaveBody={onSavePageBody}
         />

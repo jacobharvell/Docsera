@@ -2553,3 +2553,24 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
     font-size: clamp(2.25rem, 12vw, 3rem);
   }
 }
+.docsera-editor-runtime-spike {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 1000;
+  width: min(520px, calc(100vw - 48px));
+  padding: 12px;
+  border: 1px solid #3b4252;
+  border-radius: 12px;
+  background: #0b0e14;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+  color: #eef2ff;
+}
+
+.docsera-editor-runtime-spike__header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}

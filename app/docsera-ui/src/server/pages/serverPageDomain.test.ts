@@ -152,6 +152,10 @@ describe("server page domain", () => {
     expect(rootDraft.parentPageSysId).toBeNull();
     expect(rootDraft.siblingOrder).toBe(4);
     expect(rootDraft.draftSlug).toBe("release-notes-1");
+    expect(rootDraft.draftContentJson).toEqual({
+      schemaVersion: 1,
+      document: { type: "doc", content: [] }
+    });
 
     const childDraft = createPageDraft(
       {
@@ -175,5 +179,13 @@ describe("server page domain", () => {
         title: "Broken"
       })
     ).toThrow("A parent page must belong to the same workspace.");
+
+    expect(() =>
+      createPageDraft({
+        workspaceSysId: "workspace-001",
+        title: "Invalid content",
+        draftContentJson: { schemaVersion: 99, document: { type: "doc", content: [] } } as never
+      })
+    ).toThrow("unsupported document schema version");
   });
 });

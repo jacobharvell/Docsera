@@ -31,6 +31,7 @@ import type {
   WorkspaceLookupResult,
   WorkspaceViewRecord
 } from "../../shared/types/docsera";
+import { parseDocseraDocument } from "../../../shared/editor/document";
 
 type TokenBearingWindow = Window & {
   NOW?: {
@@ -187,15 +188,13 @@ function normalizeWorkspaceViewRecord(candidate: unknown): WorkspaceViewRecord {
   };
 }
 
-function normalizePageContentJson(candidate: unknown): Record<string, unknown> {
-  if (!isPlainObject(candidate)) {
-    return {
-      type: "doc",
-      content: []
-    };
+function normalizePageContentJson(candidate: unknown) {
+  const parsed = parseDocseraDocument(candidate);
+  if (!parsed.ok) {
+    throw new Error(parsed.message);
   }
 
-  return candidate;
+  return parsed.envelope;
 }
 
 function normalizePageRecord(candidate: unknown): WorkspacePageRecord {
@@ -214,6 +213,7 @@ function normalizePageRecord(candidate: unknown): WorkspacePageRecord {
     draftSlug: cleanText(page.draftSlug),
     draftSlugNormalized: cleanText(page.draftSlugNormalized),
     draftContentJson: normalizePageContentJson(page.draftContentJson),
+    draftRevision: Number.isSafeInteger(Number(page.draftRevision)) && Number(page.draftRevision) >= 0 ? Number(page.draftRevision) : 0,
     draftBodyText: cleanText(page.draftBodyText) || null,
     publishedTitle: cleanText(page.publishedTitle) || null,
     publishedSlug: cleanText(page.publishedSlug) || null,
@@ -514,7 +514,9 @@ async function resolvePageBodySaveResult(path: string, input: PageBodySaveInput)
     workspaceSysId: cleanText(input.workspaceSysId),
     pageSysId: cleanText(input.pageSysId),
     pageSlug: cleanText(input.pageSlug),
-    draftBodyText: input.draftBodyText
+    draftBodyText: input.draftBodyText,
+    draftContentJson: input.draftContentJson,
+    expectedRevision: Number.isSafeInteger(input.expectedRevision) ? input.expectedRevision : undefined
   };
 
   try {
@@ -530,7 +532,13 @@ async function resolvePageBodySaveResult(path: string, input: PageBodySaveInput)
       return normalizePageBodySaveSucceededResult(response.body);
     }
 
-    if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 500) {
+    if (
+      response.status === 400 ||
+      response.status === 403 ||
+      response.status === 404 ||
+      response.status === 409 ||
+      response.status === 500
+    ) {
       return normalizePageBodySaveFailedResult(response.body, SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE);
     }
 
@@ -604,7 +612,12 @@ async function resolvePageDeleteResult(path: string, input: PageDeleteInput): Pr
       return normalizePageDeleteSucceededResult(response.body);
     }
 
-    if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 500) {
+    if (
+      response.status === 400 ||
+      response.status === 403 ||
+      response.status === 404 ||
+      response.status === 500
+    ) {
       return normalizePageDeleteFailedResult(response.body, SAFE_PAGE_DELETE_ERROR_MESSAGE);
     }
 

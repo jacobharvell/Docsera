@@ -1,5 +1,5 @@
 import "@servicenow/sdk/global";
-import { BooleanColumn, ChoiceColumn, ReferenceColumn, StringColumn, Table } from "@servicenow/sdk/core";
+import { BooleanColumn, ChoiceColumn, IntegerColumn, ReferenceColumn, StringColumn, Table } from "@servicenow/sdk/core";
 
 export const x_82900_docsera_page = Table({
   name: "x_82900_docsera_page",
@@ -41,6 +41,12 @@ export const x_82900_docsera_page = Table({
     draft_content_json: StringColumn({
       label: "Draft content JSON",
       maxLength: 4000
+    }),
+    draft_revision: IntegerColumn({
+      label: "Draft revision",
+      mandatory: true,
+      default: 0,
+      min: 0
     }),
     draft_body_text: StringColumn({
       label: "Draft body text",

@@ -43,6 +43,7 @@ describe("page body editor", () => {
       <PageBodyEditor
         pageSysId="page-001"
         initialBodyText="Initial body"
+        initialRevision={0}
         canEdit={true}
         onSaveBody={onSaveBody}
       />
@@ -62,6 +63,11 @@ describe("page body editor", () => {
     expect(saveButton).toBeDisabled();
     fireEvent.click(saveButton);
     expect(onSaveBody).toHaveBeenCalledTimes(1);
+    expect(onSaveBody).toHaveBeenCalledWith({
+      pageSysId: "page-001",
+      draftBodyText: "Updated body",
+      expectedRevision: 0
+    });
     expect(screen.getByText("Saving")).toBeInTheDocument();
 
     const saveResolver = resolveSave as unknown as (value: WorkspacePageRecord) => void;
@@ -88,6 +94,7 @@ describe("page body editor", () => {
       <PageBodyEditor
         pageSysId="page-001"
         initialBodyText="Initial body"
+        initialRevision={0}
         canEdit={true}
         onSaveBody={onSaveBody}
       />
@@ -106,5 +113,45 @@ describe("page body editor", () => {
     expect(textarea).toHaveValue("Updated body");
     expect(saveButton).toBeEnabled();
     expect(screen.getByText("Save failed")).toBeInTheDocument();
+  });
+
+  it("ignores a late save completion after the selected page changes", async () => {
+    let resolveSave: ((value: WorkspacePageRecord) => void) | null = null;
+    const onSaveBody = vi.fn(
+      () =>
+        new Promise<WorkspacePageRecord>((resolve) => {
+          resolveSave = resolve;
+        })
+    );
+    const { rerender } = render(
+      <PageBodyEditor
+        pageSysId="page-001"
+        initialBodyText="First page"
+        initialRevision={0}
+        canEdit={true}
+        onSaveBody={onSaveBody}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Body"), { target: { value: "First page update" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save draft body" }));
+
+    rerender(
+      <PageBodyEditor
+        pageSysId="page-002"
+        initialBodyText="Second page"
+        initialRevision={3}
+        canEdit={true}
+        onSaveBody={onSaveBody}
+      />
+    );
+
+    const saveResolver = resolveSave as unknown as (value: WorkspacePageRecord) => void;
+    saveResolver(createPageRecord({ sysId: "page-001", draftBodyText: "First page update", draftRevision: 1 }));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Body")).toHaveValue("Second page");
+      expect(screen.getByText("Saved")).toBeInTheDocument();
+    });
   });
 });

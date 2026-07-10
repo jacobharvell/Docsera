@@ -1,3 +1,5 @@
+import type { DocseraDocumentEnvelope, DocseraTiptapDocument } from "../../../shared/editor/document";
+
 export type DocseraRuntimeConfig = {
   backendPingPath?: string;
   pageCollectionPath?: string;
@@ -54,7 +56,7 @@ export type WorkspaceIcon = {
 
 export type PagePublicationState = "draft" | "published" | "published_with_unpublished_changes";
 
-export type PageContentJson = Record<string, unknown>;
+export type PageContentJson = DocseraDocumentEnvelope | DocseraTiptapDocument;
 
 export type WorkspacePageRecord = {
   sysId?: string;
@@ -65,6 +67,7 @@ export type WorkspacePageRecord = {
   draftSlug: string;
   draftSlugNormalized: string;
   draftContentJson: PageContentJson;
+  draftRevision?: number;
   draftBodyText: string | null;
   publishedTitle: string | null;
   publishedSlug: string | null;
@@ -135,7 +138,9 @@ export type PageBodySaveInput = {
   workspaceSysId?: string;
   pageSysId?: string;
   pageSlug?: string;
-  draftBodyText: string;
+  draftBodyText?: string;
+  draftContentJson?: PageContentJson;
+  expectedRevision?: number;
 };
 
 export type PageBodySaveSucceeded = {
