@@ -1605,7 +1605,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           currentWorkspaceSlug={workspaceState.data.slug}
           recentWorkspaces={recentWorkspaceItems}
           showWorkspaceSwitcher={Boolean(workspaceState.data.roleLabel) || recentWorkspaceItems.length > 0}
-          runtime={runtime}
           onOpenWorkspaceSettings={() => openWorkspace(route.workspaceSlug, true, selectedWorkspacePageId)}
           onOpenWorkspace={openWorkspace}
           workspace={workspaceShellWorkspace}
@@ -1614,7 +1613,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           canManagePageSettings={canManagePageSettings}
           pageSettingsOpenPageId={pageSettingsState.open ? pageSettingsState.pageSysId : ""}
           onTogglePageSettings={requestTogglePageSettings}
-          pingState={pingState}
           onOpenMyWorkspaces={openLauncher}
           workspaceSettingsNotice={workspaceSettingsNotice}
           canCreatePage={canCreatePage}

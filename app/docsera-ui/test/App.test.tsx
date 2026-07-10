@@ -544,6 +544,85 @@ test("workspace shell hydrates live pages and keeps a newly created page visible
   expect(screen.getByRole("button", { name: "Task 33 Refresh Smoke" })).toBeInTheDocument();
 });
 
+test("workspace toc collapse state stays browser-side and removes placeholder or dev-only text", async () => {
+  window.localStorage.clear();
+
+  const renderWorkspaceApp = () =>
+    render(
+      <App
+        runtime={createRuntime({}, "/?workspace=workspace-001&page_id=page-001")}
+        serviceNowClient={createClient({
+          getWorkspace: async () => ({
+            workspace: createWorkspace({
+              name: "Product Docs",
+              roleLabel: "Admin",
+              canManageSettings: true,
+              slug: "workspace-001"
+            })
+          }),
+          listPages: async () => ({
+            items: [
+              {
+                sysId: "page-001",
+                workspaceSysId: "workspace-001",
+                parentPageSysId: null,
+                siblingOrder: 1,
+                draftTitle: "Overview",
+                draftSlug: "overview",
+                draftSlugNormalized: "overview",
+                draftContentJson: { type: "doc", content: [] },
+                draftBodyText: "Overview body",
+                publishedTitle: null,
+                publishedSlug: null,
+                publishedSlugNormalized: null,
+                publishedContentJson: null,
+                publishedBodyText: null,
+                publicationState: "draft",
+                active: true
+              }
+            ],
+            totalCount: 1,
+            workspaceSlug: "workspace-001",
+            workspaceSysId: "workspace-001"
+          })
+        })}
+      />
+    );
+
+  const firstRender = renderWorkspaceApp();
+
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "Overview", level: 1 })).toBeInTheDocument();
+  });
+
+  expect(screen.queryByText("No headings yet.")).not.toBeInTheDocument();
+  expect(screen.queryByText(/Developer status/i)).not.toBeInTheDocument();
+  expect(screen.queryByText("SUCCESS")).not.toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: "Collapse table of contents" }));
+  const expandButton = screen.getByRole("button", { name: "Expand table of contents" });
+  expect(expandButton).toBeInTheDocument();
+  expect(expandButton).toHaveAttribute("aria-expanded", "false");
+  expect(document.querySelector(".docsera-toc-rail--collapsed")).not.toBeNull();
+  expect(document.querySelector(".docsera-workspace__aside--collapsed")).not.toBeNull();
+  expect(document.querySelector(".docsera-toc-rail__toggle-icon--prototype-exception")).not.toBeNull();
+  expect(document.querySelector(".docsera-toc-rail__toggle .docsera-icon")).toBeNull();
+  expect(document.querySelector(".docsera-toc-rail__clip")).not.toBeNull();
+  expect(document.querySelector(".docsera-toc-rail__clip .docsera-toc-rail__body")).not.toBeNull();
+  expect(document.querySelector(".docsera-toc-rail__toggle-icon--collapsed")).not.toBeNull();
+
+  firstRender.unmount();
+  renderWorkspaceApp();
+
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: "Overview", level: 1 })).toBeInTheDocument();
+  });
+
+  expect(screen.getByRole("button", { name: "Expand table of contents" })).toBeInTheDocument();
+  expect(document.getElementById("docsera-workspace-toc-workspace-001")).toHaveAttribute("aria-hidden", "true");
+  expect(document.querySelector(".docsera-workspace__aside--collapsed")).not.toBeNull();
+});
+
 test("workspace page tree ignores first-pass width storage, keeps the bottom new-page row last, and supports inline root and child creation", async () => {
   window.localStorage.clear();
   window.localStorage.setItem("docsera.workspace-nav-width:workspace-001", "220");

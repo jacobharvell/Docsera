@@ -2,7 +2,16 @@ import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import type { DocseraRuntimeContext, PageCreateResult, PageListResult, ServiceNowClient, WorkspacePageRecord, WorkspaceViewRecord } from "../shared/types/docsera";
+import { WorkspaceToc } from "../features/workspaces/WorkspaceToc";
+import type {
+  DemoPage,
+  DocseraRuntimeContext,
+  PageCreateResult,
+  PageListResult,
+  ServiceNowClient,
+  WorkspacePageRecord,
+  WorkspaceViewRecord
+} from "../shared/types/docsera";
 
 function createWorkspace(overrides: Partial<WorkspaceViewRecord> = {}): WorkspaceViewRecord {
   return {
@@ -142,6 +151,65 @@ function getPageSettingsValueButton(label: string): HTMLElement {
 }
 
 describe("App workspace routing", () => {
+  it("renders a clean table-of-contents rail and keeps the collapse control accessible", async () => {
+    const { container } = renderApp("/?workspace=product-docs&page_id=page-001");
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.queryByText("No headings yet.")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Developer status/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("SUCCESS")).not.toBeInTheDocument();
+
+    const collapseButton = screen.getByRole("button", { name: "Collapse table of contents" });
+    expect(collapseButton).toHaveAttribute("aria-expanded", "true");
+    expect(collapseButton.querySelector(".docsera-toc-rail__toggle-icon--prototype-exception")).not.toBeNull();
+    expect(collapseButton.querySelector(".docsera-icon")).toBeNull();
+    expect(collapseButton.querySelector(".docsera-toc-rail__toggle-icon--collapsed")).toBeNull();
+    expect(container.querySelector(".docsera-toc-rail__clip")).not.toBeNull();
+    expect(container.querySelector(".docsera-toc-rail__clip .docsera-toc-rail__body")).not.toBeNull();
+    expect(container.querySelector(".docsera-toc-rail--collapsed")).toBeNull();
+    expect(container.querySelector(".docsera-workspace__aside--collapsed")).toBeNull();
+
+    fireEvent.click(collapseButton);
+
+    expect(screen.getByRole("button", { name: "Expand table of contents" })).toHaveAttribute("aria-expanded", "false");
+    expect(document.getElementById("docsera-workspace-toc-product-docs")).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector(".docsera-workspace__aside--collapsed")).not.toBeNull();
+    expect(container.querySelector(".docsera-toc-rail--collapsed")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Expand table of contents" }).querySelector(".docsera-toc-rail__toggle-icon--prototype-exception")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Expand table of contents" }).querySelector(".docsera-toc-rail__toggle-icon--collapsed")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand table of contents" }));
+
+    expect(screen.getByRole("button", { name: "Collapse table of contents" })).toHaveAttribute("aria-expanded", "true");
+    expect(container.querySelector(".docsera-workspace__aside--collapsed")).toBeNull();
+  });
+
+  it("renders prototype-style toc links when section data is available", () => {
+    const page: DemoPage = {
+      id: "page-001",
+      title: "Overview",
+      slug: "overview",
+      body: "Overview body",
+      sections: [
+        { id: "overview-section", title: "Overview" },
+        { id: "details-section", title: "Details" }
+      ]
+    };
+
+    render(<WorkspaceToc collapsed={false} page={page} panelId="test-workspace-toc" onToggleCollapsed={() => undefined} />);
+
+    const activeLink = screen.getByRole("link", { name: "Overview" });
+    expect(activeLink).toHaveClass("docsera-toc__link--active");
+    expect(activeLink).not.toHaveClass("docsera-dev-status__badge--success");
+    expect(document.querySelector(".docsera-toc-rail__toggle-icon--prototype-exception")).not.toBeNull();
+    expect(document.querySelector(".docsera-toc-rail__toggle .docsera-icon")).toBeNull();
+    expect(document.querySelector(".docsera-toc-rail__clip")).not.toBeNull();
+    expect(document.querySelector(".docsera-toc-rail__clip .docsera-toc-rail__body")).not.toBeNull();
+    expect(document.querySelector(".docsera-toc-rail__body")).not.toBeNull();
+    expect(screen.getByRole("link", { name: "Details" })).toBeInTheDocument();
+    expect(screen.queryByText("No headings yet.")).not.toBeInTheDocument();
+  });
+
   it("restores the selected page from page_id on hydration", async () => {
     renderApp("/?workspace=product-docs&page_id=page-002");
 

@@ -2,15 +2,12 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNod
 import type {
   DemoPage,
   DemoWorkspace,
-  DocseraRuntimeContext,
-  RuntimeProbeState,
   WorkspacePageRecord,
   WorkspaceViewRecord
 } from "../../shared/types/docsera";
 import { DocseraHeader } from "./DocseraHeader";
 import { findDemoPagePath, getFirstDemoPage, findDemoPage } from "./demoWorkspace";
 import type { InlinePageCreateState } from "./PageTree";
-import { WorkspaceDevStatus } from "./WorkspaceDevStatus";
 import { WorkspaceMainPane } from "./WorkspaceMainPane";
 import type { RecentWorkspaceItem } from "./RecentWorkspacesMenu";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
@@ -18,7 +15,6 @@ import { WorkspaceToc } from "./WorkspaceToc";
 
 type WorkspaceShellProps = {
   currentWorkspaceSlug: string;
-  runtime: DocseraRuntimeContext;
   onOpenWorkspace: (workspaceSlug: string) => void;
   onOpenWorkspaceSettings: () => void;
   workspace: DemoWorkspace;
@@ -27,7 +23,6 @@ type WorkspaceShellProps = {
   canManagePageSettings: boolean;
   pageSettingsOpenPageId: string;
   onTogglePageSettings: (pageId: string) => void;
-  pingState: RuntimeProbeState;
   onOpenMyWorkspaces: () => void;
   workspaceSettingsNotice?: boolean;
   canCreatePage: boolean;
@@ -50,6 +45,7 @@ const DEFAULT_WORKSPACE_NAV_WIDTH = 280;
 const MIN_WORKSPACE_NAV_WIDTH = 180;
 const MAX_WORKSPACE_NAV_WIDTH = 480;
 const WORKSPACE_NAV_WIDTH_STORAGE_KEY_PREFIX = "docsera.workspace-nav-width.v2";
+const WORKSPACE_TOC_COLLAPSED_STORAGE_KEY_PREFIX = "docsera.workspace-toc-collapsed.v1";
 
 function clampWorkspaceNavWidth(value: number): number {
   return Math.max(MIN_WORKSPACE_NAV_WIDTH, Math.min(MAX_WORKSPACE_NAV_WIDTH, value));
@@ -74,13 +70,25 @@ function readStoredWorkspaceNavWidth(workspaceSlug: string): number {
   return Number.isFinite(storedValue) ? clampWorkspaceNavWidth(storedValue) : DEFAULT_WORKSPACE_NAV_WIDTH;
 }
 
+function readStoredWorkspaceTocCollapsed(workspaceSlug: string): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const normalizedWorkspaceSlug = workspaceSlug.trim();
+  if (!normalizedWorkspaceSlug) {
+    return false;
+  }
+
+  return window.localStorage.getItem(`${WORKSPACE_TOC_COLLAPSED_STORAGE_KEY_PREFIX}:${normalizedWorkspaceSlug}`) === "true";
+}
+
 function getSelectedPage(workspace: DemoWorkspace, selectedPageId: string): DemoPage | null {
   return findDemoPage(workspace.pages, selectedPageId) ?? getFirstDemoPage(workspace.pages);
 }
 
 export function WorkspaceShell({
   currentWorkspaceSlug,
-  runtime,
   onOpenWorkspace,
   onOpenWorkspaceSettings,
   workspace,
@@ -89,7 +97,6 @@ export function WorkspaceShell({
   canManagePageSettings,
   pageSettingsOpenPageId,
   onTogglePageSettings,
-  pingState,
   onOpenMyWorkspaces,
   workspaceSettingsNotice,
   canCreatePage,
@@ -108,6 +115,7 @@ export function WorkspaceShell({
   onShowChildPageCreate
 }: WorkspaceShellProps) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [tocCollapsed, setTocCollapsed] = useState(() => readStoredWorkspaceTocCollapsed(currentWorkspaceSlug));
   const [workspaceNavWidth, setWorkspaceNavWidth] = useState(() => readStoredWorkspaceNavWidth(currentWorkspaceSlug));
   const [treeFilter, setTreeFilter] = useState("");
   const resizeStateRef = useRef<{ active: boolean }>({ active: false });
@@ -125,6 +133,7 @@ export function WorkspaceShell({
   useEffect(() => {
     setWorkspaceNavWidth(readStoredWorkspaceNavWidth(currentWorkspaceSlug));
     setSidebarCollapsed(false);
+    setTocCollapsed(readStoredWorkspaceTocCollapsed(currentWorkspaceSlug));
   }, [currentWorkspaceSlug]);
 
   useEffect(() => {
@@ -139,6 +148,19 @@ export function WorkspaceShell({
 
     window.localStorage.setItem(`${WORKSPACE_NAV_WIDTH_STORAGE_KEY_PREFIX}:${normalizedWorkspaceSlug}`, String(workspaceNavWidth));
   }, [currentWorkspaceSlug, sidebarCollapsed, workspaceNavWidth]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const normalizedWorkspaceSlug = currentWorkspaceSlug.trim();
+    if (!normalizedWorkspaceSlug) {
+      return;
+    }
+
+    window.localStorage.setItem(`${WORKSPACE_TOC_COLLAPSED_STORAGE_KEY_PREFIX}:${normalizedWorkspaceSlug}`, String(tocCollapsed));
+  }, [currentWorkspaceSlug, tocCollapsed]);
 
   useEffect(() => {
     const handleMouseMove = (event: MouseEvent) => {
@@ -259,9 +281,13 @@ export function WorkspaceShell({
           onSavePageBody={onSavePageBody}
         />
 
-        <div className="docsera-workspace__aside">
-          <WorkspaceToc page={selectedPage} />
-          <WorkspaceDevStatus runtime={runtime} pingState={pingState} />
+        <div className={`docsera-workspace__aside${tocCollapsed ? " docsera-workspace__aside--collapsed" : ""}`}>
+          <WorkspaceToc
+            collapsed={tocCollapsed}
+            page={selectedPage}
+            panelId={`docsera-workspace-toc-${currentWorkspaceSlug || "workspace"}`}
+            onToggleCollapsed={() => setTocCollapsed((current) => !current)}
+          />
         </div>
       </div>
 
