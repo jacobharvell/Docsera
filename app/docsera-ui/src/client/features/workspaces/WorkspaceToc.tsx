@@ -1,8 +1,10 @@
-import type { DemoPage } from "../../shared/types/docsera";
+import type { WorkspacePageView } from "./workspaceViewModels";
 
 type WorkspaceTocProps = {
   collapsed: boolean;
-  page: DemoPage | null;
+  isLoading?: boolean;
+  showPendingState: boolean;
+  page: WorkspacePageView | null;
   panelId: string;
   onToggleCollapsed: () => void;
 };
@@ -32,8 +34,8 @@ function WorkspaceTocChevron({ collapsed }: { collapsed: boolean }) {
   );
 }
 
-export function WorkspaceToc({ collapsed, page, panelId, onToggleCollapsed }: WorkspaceTocProps) {
-  const hasSections = Boolean(page && page.sections.length > 0);
+export function WorkspaceToc({ collapsed, isLoading = false, showPendingState, page, panelId, onToggleCollapsed }: WorkspaceTocProps) {
+  const hasSections = Boolean(page && page.tocItems.length > 0);
 
   return (
     <div className={`docsera-toc-rail${collapsed ? " docsera-toc-rail--collapsed" : ""}`}>
@@ -57,13 +59,19 @@ export function WorkspaceToc({ collapsed, page, panelId, onToggleCollapsed }: Wo
             aria-label="Page outline"
           >
             <p className="docsera-toc__eyebrow">On this page</p>
-            {hasSections ? (
+            {isLoading && showPendingState ? (
+              <div className="docsera-toc__loading" aria-hidden="true">
+                <span className="docsera-toc__loading-line" />
+                <span className="docsera-toc__loading-line docsera-toc__loading-line--wide" />
+                <span className="docsera-toc__loading-line" />
+              </div>
+            ) : !isLoading && hasSections ? (
               <ol className="docsera-toc__list">
-                {page!.sections.map((section, index) => (
+                {page!.tocItems.map((section, index) => (
                   <li key={section.id} className="docsera-toc__item">
                     <a
                       className={`docsera-toc__link${index === 0 ? " docsera-toc__link--active" : ""}`}
-                      href={`#${section.id}`}
+                      href={`#${section.anchorId}`}
                       tabIndex={collapsed ? -1 : undefined}
                     >
                       {section.title}
@@ -71,9 +79,7 @@ export function WorkspaceToc({ collapsed, page, panelId, onToggleCollapsed }: Wo
                   </li>
                 ))}
               </ol>
-            ) : (
-              <div className="docsera-toc__empty-state" aria-hidden="true" />
-            )}
+            ) : null}
           </aside>
         </div>
       </div>

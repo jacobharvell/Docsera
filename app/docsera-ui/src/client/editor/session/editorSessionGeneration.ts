@@ -35,8 +35,7 @@ export class EditorSessionGeneration {
     return Boolean(
       this.current &&
         token.pageSysId === this.current.pageSysId &&
-        token.generation === this.current.generation &&
-        token.revision === this.current.revision
+        token.generation === this.current.generation
     );
   }
 

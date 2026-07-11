@@ -553,6 +553,13 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_ux_lib_asset'
+                        id: '56a7d664df6a442ab56734faddecc0d1'
+                        key: {
+                            name: 'x_82900_docsera/index'
+                        }
+                    },
+                    {
                         table: 'sys_documentation'
                         id: '57f2fad1d3b24d6b9f22dbdaa4c255ef'
                         key: {
@@ -868,6 +875,13 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_page'
                             element: 'published_slug_normalized'
+                        }
+                    },
+                    {
+                        table: 'sys_ux_lib_asset'
+                        id: '9ab41a4cef344a6a8d83de33963279be'
+                        key: {
+                            name: 'x_82900_docsera/PageEditorHostRuntime.js.map'
                         }
                     },
                     {
@@ -1354,6 +1368,13 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_ux_lib_asset'
+                        id: 'e1482fed27b54655a9044745ba601ad6'
+                        key: {
+                            name: 'x_82900_docsera/index.js.map'
+                        }
+                    },
+                    {
                         table: 'sys_db_object'
                         id: 'e18605b3c86f47529b48bada5c853a3a'
                         key: {
@@ -1446,6 +1467,13 @@ declare global {
                             name: 'x_82900_docsera_workspace_provision_request'
                             element: 'page_width'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_ux_lib_asset'
+                        id: 'f8117032c4f74ba98f743499f7472240'
+                        key: {
+                            name: 'x_82900_docsera/PageEditorHostRuntime'
                         }
                     },
                     {

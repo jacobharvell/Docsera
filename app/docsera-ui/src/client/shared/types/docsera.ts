@@ -44,6 +44,7 @@ export type RawPingPayload = {
 export type PingEnvelope = RawPingPayload | { result?: RawPingPayload };
 
 export type WorkspaceRoleLabel = "Admin" | "Editor";
+export type WorkspaceMode = "live" | "edit";
 
 export type WorkspaceIcon = {
   type: "builtin" | "uploaded";
@@ -56,7 +57,7 @@ export type WorkspaceIcon = {
 
 export type PagePublicationState = "draft" | "published" | "published_with_unpublished_changes";
 
-export type PageContentJson = DocseraDocumentEnvelope | DocseraTiptapDocument;
+export type PageContentInput = DocseraDocumentEnvelope | DocseraTiptapDocument;
 
 export type WorkspacePageRecord = {
   sysId?: string;
@@ -66,13 +67,13 @@ export type WorkspacePageRecord = {
   draftTitle: string;
   draftSlug: string;
   draftSlugNormalized: string;
-  draftContentJson: PageContentJson;
+  draftContentJson: unknown;
   draftRevision?: number;
   draftBodyText: string | null;
   publishedTitle: string | null;
   publishedSlug: string | null;
   publishedSlugNormalized: string | null;
-  publishedContentJson: PageContentJson | null;
+  publishedContentJson: unknown | null;
   publishedBodyText: string | null;
   publicationState: PagePublicationState;
   active?: boolean;
@@ -104,6 +105,7 @@ export type WorkspaceLookupResult = {
 
 export type PageListResult = {
   items: WorkspacePageRecord[];
+  mode: WorkspaceMode;
   workspaceSlug: string;
   workspaceSysId: string;
   totalCount: number;
@@ -139,7 +141,7 @@ export type PageBodySaveInput = {
   pageSysId?: string;
   pageSlug?: string;
   draftBodyText?: string;
-  draftContentJson?: PageContentJson;
+  draftContentJson?: PageContentInput;
   expectedRevision?: number;
 };
 
@@ -149,6 +151,8 @@ export type PageBodySaveSucceeded = {
 };
 
 export type PageBodySaveFailed = {
+  code?: "conflict" | "failed" | "forbidden" | "invalid";
+  currentRevision?: number;
   errorMessage: string;
   state: "failed";
 };
@@ -220,7 +224,7 @@ export type ServiceNowClient = {
   ping: () => Promise<PingResult>;
   listWorkspaces: (input?: { searchText?: string; page?: number; pageSize?: number }) => Promise<WorkspaceListResult>;
   getWorkspace: (workspaceSlug: string) => Promise<WorkspaceLookupResult>;
-  listPages: (input: { workspaceSlug: string }) => Promise<PageListResult>;
+  listPages: (input: { mode?: WorkspaceMode; workspaceSlug: string }) => Promise<PageListResult>;
   createWorkspace: (input: WorkspaceCreateInput) => Promise<WorkspaceCreateResult>;
   getWorkspaceProvisioningStatus: (statusPath: string) => Promise<WorkspaceCreateResult>;
   createPage: (input: PageCreateInput) => Promise<PageCreateResult>;

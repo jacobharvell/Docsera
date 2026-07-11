@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { WorkspacePageRecord, WorkspaceViewRecord } from "../../shared/types/docsera";
-import { buildWorkspaceShellPage, buildWorkspaceShellPages, buildWorkspaceShellWorkspace } from "./workspaceViewModels";
+import {
+  buildWorkspacePageTree,
+  buildWorkspacePageView,
+  buildWorkspaceShellViewModel
+} from "./workspaceViewModels";
 
 function createPage(overrides: Partial<WorkspacePageRecord> = {}): WorkspacePageRecord {
   return {
@@ -12,8 +16,17 @@ function createPage(overrides: Partial<WorkspacePageRecord> = {}): WorkspacePage
     draftSlug: "overview",
     draftSlugNormalized: "overview",
     draftContentJson: {
-      type: "doc",
-      content: []
+      schemaVersion: 1,
+      document: {
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            attrs: { level: 2 },
+            content: [{ type: "text", text: "Overview" }]
+          }
+        ]
+      }
     },
     draftBodyText: "Saved draft body",
     publishedTitle: null,
@@ -45,43 +58,66 @@ function createWorkspace(): WorkspaceViewRecord {
 }
 
 describe("workspace view models", () => {
-  it("carries persisted draft body text into the shell view model", () => {
-    const livePage = buildWorkspaceShellPage(createPage());
+  it("builds a compact shell identity view model", () => {
+    const shell = buildWorkspaceShellViewModel(createWorkspace());
 
-    expect(livePage.body).toBe("Saved draft body");
+    expect(shell.title).toBe("Product Docs");
+    expect(shell.roleLabel).toBe("Editor");
+    expect(shell.icon.key).toBe("docsera-workspace");
   });
 
-  it("preserves saved body text when building a workspace shell workspace", () => {
-    const workspace = buildWorkspaceShellWorkspace(createWorkspace(), buildWorkspaceShellPages([createPage()]));
+  it("builds toc items from canonical heading content", () => {
+    const page = buildWorkspacePageView(createPage(), "edit");
 
-    expect(workspace.pages[0]?.body).toBe("Saved draft body");
-  });
-
-  it("preserves the source workspace icon identity for the workspace shell header", () => {
-    const workspace = buildWorkspaceShellWorkspace(createWorkspace(), buildWorkspaceShellPages([createPage()]));
-
-    expect(workspace.icon?.key).toBe("docsera-workspace");
-    expect(workspace.icon?.label).toBe("Docsera workspace icon");
-  });
-
-  it("preserves parent-child relationships from live workspace pages", () => {
-    const pages = buildWorkspaceShellPages([
-      createPage({
-        sysId: "page-parent",
-        draftTitle: "Parent",
-        draftSlug: "parent"
-      }),
-      createPage({
-        sysId: "page-child",
-        parentPageSysId: "page-parent",
-        siblingOrder: 2,
-        draftTitle: "Child",
-        draftSlug: "child"
-      })
+    expect(page.contentState).toBe("ready");
+    expect(page.tocItems).toEqual([
+      {
+        anchorId: "overview",
+        id: "overview",
+        level: 2,
+        title: "Overview"
+      }
     ]);
+    expect(page.statusIndicator).toBe("Draft");
+  });
+
+  it("keeps invalid canonical documents out of the editable ready state", () => {
+    const page = buildWorkspacePageView(
+      createPage({
+        draftContentJson: "{not-json"
+      }),
+      "edit"
+    );
+
+    expect(page.contentState).toBe("invalid");
+    expect(page.contentEnvelope).toBeNull();
+    expect(page.contentError).toContain("valid JSON");
+  });
+
+  it("preserves parent-child relationships from workspace pages", () => {
+    const pages = buildWorkspacePageTree(
+      [
+        createPage({
+          sysId: "page-parent",
+          draftTitle: "Parent",
+          draftSlug: "parent",
+          publicationState: "published"
+        }),
+        createPage({
+          sysId: "page-child",
+          parentPageSysId: "page-parent",
+          siblingOrder: 2,
+          draftTitle: "Child",
+          draftSlug: "child",
+          publicationState: "published_with_unpublished_changes"
+        })
+      ],
+      "edit"
+    );
 
     expect(pages).toHaveLength(1);
     expect(pages[0]?.title).toBe("Parent");
     expect(pages[0]?.children?.[0]?.title).toBe("Child");
+    expect(pages[0]?.children?.[0]?.statusIndicator).toBe("Unpublished");
   });
 });

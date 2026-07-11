@@ -1,6 +1,5 @@
 import { gs } from "@servicenow/glide";
 import { createServiceNowPageListingService } from "../pages/serviceNowPageListing.ts";
-import { type PageRecord } from "../pages/serverPageDomain.ts";
 
 type RequestLike = {
   queryParams?: unknown;
@@ -72,9 +71,16 @@ function readQueryParam(request: RequestLike | undefined, key: string): string {
   return "";
 }
 
-function normalizePagePayload(result: { items?: PageRecord[]; workspaceSlug?: string; workspaceSysId?: string; totalCount?: number }) {
+function normalizePagePayload(result: {
+  items?: unknown[];
+  mode?: "edit" | "live";
+  workspaceSlug?: string;
+  workspaceSysId?: string;
+  totalCount?: number;
+}) {
   return {
     mode: "servicenow",
+    pageMode: result.mode ?? "live",
     items: result.items ?? [],
     workspaceSlug: cleanText(result.workspaceSlug),
     workspaceSysId: cleanText(result.workspaceSysId),
@@ -98,7 +104,10 @@ export async function process(request: RequestLike, response: ResponseLike) {
   try {
     const service = createServiceNowPageListingService();
     const workspaceSlug = readQueryParam(request, "workspaceSlug") || readQueryParam(request, "workspace");
-    const result = await service.listPages({ workspaceSlug });
+    const result = await service.listPages({
+      mode: readQueryParam(request, "mode") === "edit" ? "edit" : "live",
+      workspaceSlug
+    });
 
     if (result.kind === "forbidden") {
       response.setStatus?.(403);
@@ -123,6 +132,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
     response.setBody({
       result: normalizePagePayload({
         items: result.pages,
+        mode: result.mode,
         workspaceSlug: result.workspace.slug,
         workspaceSysId: result.workspace.sysId,
         totalCount: result.pages.length

@@ -29,9 +29,9 @@ import type {
   WorkspaceListResult,
   PageListResult,
   WorkspaceLookupResult,
+  WorkspaceMode,
   WorkspaceViewRecord
 } from "../../shared/types/docsera";
-import { parseDocseraDocument } from "../../../shared/editor/document";
 
 type TokenBearingWindow = Window & {
   NOW?: {
@@ -188,15 +188,6 @@ function normalizeWorkspaceViewRecord(candidate: unknown): WorkspaceViewRecord {
   };
 }
 
-function normalizePageContentJson(candidate: unknown) {
-  const parsed = parseDocseraDocument(candidate);
-  if (!parsed.ok) {
-    throw new Error(parsed.message);
-  }
-
-  return parsed.envelope;
-}
-
 function normalizePageRecord(candidate: unknown): WorkspacePageRecord {
   const page = candidate as Partial<WorkspacePageRecord>;
   const publicationState =
@@ -212,13 +203,13 @@ function normalizePageRecord(candidate: unknown): WorkspacePageRecord {
     draftTitle: cleanText(page.draftTitle),
     draftSlug: cleanText(page.draftSlug),
     draftSlugNormalized: cleanText(page.draftSlugNormalized),
-    draftContentJson: normalizePageContentJson(page.draftContentJson),
+    draftContentJson: page.draftContentJson ?? null,
     draftRevision: Number.isSafeInteger(Number(page.draftRevision)) && Number(page.draftRevision) >= 0 ? Number(page.draftRevision) : 0,
     draftBodyText: cleanText(page.draftBodyText) || null,
     publishedTitle: cleanText(page.publishedTitle) || null,
     publishedSlug: cleanText(page.publishedSlug) || null,
     publishedSlugNormalized: cleanText(page.publishedSlugNormalized) || null,
-    publishedContentJson: page.publishedContentJson ? normalizePageContentJson(page.publishedContentJson) : null,
+    publishedContentJson: page.publishedContentJson ?? null,
     publishedBodyText: cleanText(page.publishedBodyText) || null,
     publicationState,
     active: typeof page.active === "boolean" ? page.active : undefined
@@ -236,6 +227,7 @@ function normalizePageListResult(body: unknown): PageListResult {
 
   return {
     items,
+    mode: cleanText(result.pageMode) === "edit" ? "edit" : "live",
     workspaceSlug: cleanText(result.workspaceSlug),
     workspaceSysId: cleanText(result.workspaceSysId),
     totalCount: Number(result.totalCount) || items.length
@@ -357,7 +349,24 @@ function normalizePageBodySaveSucceededResult(body: unknown): PageBodySaveSuccee
 }
 
 function normalizePageBodySaveFailedResult(body: unknown, fallback: string): PageBodySaveFailed {
+  const normalizedBody = unwrapServiceNowEnvelope(body);
+  const errorObject =
+    normalizedBody && typeof normalizedBody === "object" && "error" in normalizedBody
+      ? ((normalizedBody as Record<string, unknown>).error as Record<string, unknown> | undefined)
+      : undefined;
+  const errorCode = cleanText(errorObject?.code);
+  const currentRevision = Number(errorObject?.currentRevision);
+
   return {
+    code:
+      errorCode === "draft_revision_conflict"
+        ? "conflict"
+        : errorCode === "forbidden"
+          ? "forbidden"
+          : errorCode === "invalid"
+            ? "invalid"
+            : "failed",
+    currentRevision: Number.isSafeInteger(currentRevision) && currentRevision >= 0 ? currentRevision : undefined,
     state: "failed",
     errorMessage: extractErrorMessage(body, fallback)
   };
@@ -683,9 +692,12 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
       return normalizeWorkspaceLookupResult(response.body);
     },
 
-    async listPages(input: { workspaceSlug: string }): Promise<PageListResult> {
+    async listPages(input: { mode?: WorkspaceMode; workspaceSlug: string }): Promise<PageListResult> {
       const path = new URL(pageCollectionPath, window.location.origin);
       path.searchParams.set("workspaceSlug", cleanText(input.workspaceSlug));
+      if (input.mode === "edit") {
+        path.searchParams.set("mode", "edit");
+      }
 
       const response = await requestJson<unknown>(path.pathname + path.search);
 

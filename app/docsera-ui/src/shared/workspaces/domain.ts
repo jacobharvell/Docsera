@@ -421,22 +421,29 @@ export function buildWorkspaceListResult(
 
 export function createWorkspaceRouteQuery(
   workspaceSlug: string,
-  settingsIntent = false,
-  pageId = ""
+  options: {
+    mode?: "edit" | "live";
+    pageSlug?: string;
+    settingsIntent?: boolean;
+  } = {}
 ): string {
   const query = new URLSearchParams();
   const slug = cleanText(workspaceSlug);
-  const selectedPageId = cleanText(pageId);
+  const pageSlug = cleanText(options.pageSlug);
 
   if (slug) {
     query.set("workspace", slug);
   }
 
-  if (selectedPageId) {
-    query.set("page_id", selectedPageId);
+  if (pageSlug) {
+    query.set("page", pageSlug);
   }
 
-  if (settingsIntent) {
+  if (options.mode === "edit") {
+    query.set("mode", "edit");
+  }
+
+  if (options.settingsIntent) {
     query.set("settings", "1");
   }
 

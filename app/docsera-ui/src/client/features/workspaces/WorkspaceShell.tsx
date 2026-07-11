@@ -1,57 +1,80 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import type {
-  DemoPage,
-  DemoWorkspace,
-  WorkspacePageRecord,
-  WorkspaceViewRecord
-} from "../../shared/types/docsera";
-import { DocseraHeader } from "./DocseraHeader";
-import { findDemoPagePath, getFirstDemoPage, findDemoPage } from "./demoWorkspace";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import type { WorkspaceMode, WorkspaceViewRecord } from "../../shared/types/docsera";
+import type { PageEditorHostFailure } from "../../editor/PageEditorHost";
 import type { InlinePageCreateState } from "./PageTree";
 import { WorkspaceMainPane } from "./WorkspaceMainPane";
-import type { RecentWorkspaceItem } from "./RecentWorkspacesMenu";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { WorkspaceToc } from "./WorkspaceToc";
+import type { WorkspacePageOutlineItem, WorkspacePageView } from "./workspaceViewModels";
+import type { PageBodySaveResult } from "../../shared/types/docsera";
+import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
 
 type WorkspaceShellProps = {
-  currentWorkspaceSlug: string;
-  onOpenWorkspace: (workspaceSlug: string) => void;
-  onOpenWorkspaceSettings: () => void;
-  workspace: DemoWorkspace;
-  selectedPageId: string;
-  onSelectPage: (pageId: string) => void;
-  canManagePageSettings: boolean;
-  pageSettingsOpenPageId: string;
-  onTogglePageSettings: (pageId: string) => void;
-  onOpenMyWorkspaces: () => void;
-  workspaceSettingsNotice?: boolean;
+  breadcrumbs: WorkspacePageView[];
   canCreatePage: boolean;
+  canEditPageBody: boolean;
+  canManagePageSettings: boolean;
+  collapsedPageIds: string[];
+  currentWorkspaceSlug: string;
+  editAccessLost: boolean;
+  editorFailure: PageEditorHostFailure | null;
   inlineCreateState: InlinePageCreateState | null;
   isCreatingPage: boolean;
+  mode: WorkspaceMode;
+  onAccessLost: () => void;
+  onCollapsedPageIdsChange: (pageIds: string[]) => void;
   onCommitInlineCreate: () => void;
+  onEditorFailureChange: (failure: PageEditorHostFailure | null) => void;
   onInlineCreateTitleChange: (value: string) => void;
-  onShowCreatePage: () => void;
-  recentWorkspaces: RecentWorkspaceItem[];
-  showWorkspaceSwitcher: boolean;
-  selectedWorkspacePage: WorkspacePageRecord | null;
-  onSavePageBody: (input: { pageSysId: string; draftBodyText: string; expectedRevision: number }) => Promise<WorkspacePageRecord>;
-  theme: "dark" | "light";
-  onToggleTheme: () => void;
-  pageSettingsOverlay?: ReactNode;
+  onModeChange: (mode: WorkspaceMode) => void;
+  onOutlineChange: (pageSysId: string, outline: WorkspacePageOutlineItem[]) => void;
+  onReturnToMyWorkspaces: () => void;
+  onReturnToLive: () => void;
+  onRetryEditor: () => void;
+  onSavePageDraft: (input: {
+    draftContentJson: DocseraDocumentEnvelope;
+    expectedRevision: number;
+    pageSysId: string;
+  }) => Promise<PageBodySaveResult>;
+  onStatusChange: (state: { isDirty: boolean; isSaving: boolean }) => void;
+  onSelectPage: (pageId: string) => void;
   onShowChildPageCreate: (parentPageId: string, parentPageTitle: string) => void;
+  onShowCreatePage: () => void;
+  onTogglePageSettings: (pageId: string) => void;
+  onToggleTheme: () => void;
+  outlinePage: WorkspacePageView | null;
+  pageSettingsOpenPageId: string;
+  pageSettingsOverlay?: ReactNode;
+  selectedPage: WorkspacePageView | null;
+  selectedPageId: string;
+  sidebarCollapsed: boolean;
+  showEditModeToggle: boolean;
+  sessionKey: string;
+  shellStatus: "loading" | "error" | "ready";
+  shellTitle: string;
+  shellCopy: string;
+  showPendingState: boolean;
+  workspaceNavWidth: number;
+  onSidebarCollapsedChange: (collapsed: boolean) => void;
+  onWorkspaceNavWidthChange: (width: number) => void;
+  theme: "dark" | "light";
+  treeFilter: string;
+  treePages: WorkspacePageView[];
+  workspaceSettingsNotice?: boolean;
+  onTreeFilterChange: (value: string) => void;
 };
 
-const DEFAULT_WORKSPACE_NAV_WIDTH = 280;
+export const DEFAULT_WORKSPACE_NAV_WIDTH = 280;
 const MIN_WORKSPACE_NAV_WIDTH = 180;
 const MAX_WORKSPACE_NAV_WIDTH = 480;
 const WORKSPACE_NAV_WIDTH_STORAGE_KEY_PREFIX = "docsera.workspace-nav-width.v2";
 const WORKSPACE_TOC_COLLAPSED_STORAGE_KEY_PREFIX = "docsera.workspace-toc-collapsed.v1";
 
-function clampWorkspaceNavWidth(value: number): number {
+export function clampWorkspaceNavWidth(value: number): number {
   return Math.max(MIN_WORKSPACE_NAV_WIDTH, Math.min(MAX_WORKSPACE_NAV_WIDTH, value));
 }
 
-function readStoredWorkspaceNavWidth(workspaceSlug: string): number {
+export function readStoredWorkspaceNavWidth(workspaceSlug: string): number {
   if (typeof window === "undefined") {
     return DEFAULT_WORKSPACE_NAV_WIDTH;
   }
@@ -83,47 +106,58 @@ function readStoredWorkspaceTocCollapsed(workspaceSlug: string): boolean {
   return window.localStorage.getItem(`${WORKSPACE_TOC_COLLAPSED_STORAGE_KEY_PREFIX}:${normalizedWorkspaceSlug}`) === "true";
 }
 
-function getSelectedPage(workspace: DemoWorkspace, selectedPageId: string): DemoPage | null {
-  return findDemoPage(workspace.pages, selectedPageId) ?? getFirstDemoPage(workspace.pages);
-}
-
 export function WorkspaceShell({
-  currentWorkspaceSlug,
-  onOpenWorkspace,
-  onOpenWorkspaceSettings,
-  workspace,
-  selectedPageId,
-  onSelectPage,
-  canManagePageSettings,
-  pageSettingsOpenPageId,
-  onTogglePageSettings,
-  onOpenMyWorkspaces,
-  workspaceSettingsNotice,
+  breadcrumbs,
   canCreatePage,
+  canEditPageBody,
+  canManagePageSettings,
+  collapsedPageIds,
+  currentWorkspaceSlug,
+  editAccessLost,
+  editorFailure,
   inlineCreateState,
   isCreatingPage,
+  mode,
+  onAccessLost,
+  onCollapsedPageIdsChange,
   onCommitInlineCreate,
+  onEditorFailureChange,
   onInlineCreateTitleChange,
+  onModeChange,
+  onOutlineChange,
+  onReturnToMyWorkspaces,
+  onReturnToLive,
+  onRetryEditor,
+  onSavePageDraft,
+  onStatusChange,
+  onSelectPage,
+  onShowChildPageCreate,
   onShowCreatePage,
-  recentWorkspaces,
-  showWorkspaceSwitcher,
-  selectedWorkspacePage,
-  onSavePageBody,
-  theme,
+  onTogglePageSettings,
   onToggleTheme,
+  outlinePage,
+  pageSettingsOpenPageId,
   pageSettingsOverlay,
-  onShowChildPageCreate
+  selectedPage,
+  selectedPageId,
+  sidebarCollapsed,
+  sessionKey,
+  showEditModeToggle,
+  shellStatus,
+  shellTitle,
+  shellCopy,
+  showPendingState,
+  workspaceNavWidth,
+  onSidebarCollapsedChange,
+  onWorkspaceNavWidthChange,
+  theme,
+  treeFilter,
+  treePages,
+  workspaceSettingsNotice,
+  onTreeFilterChange
 }: WorkspaceShellProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [tocCollapsed, setTocCollapsed] = useState(() => readStoredWorkspaceTocCollapsed(currentWorkspaceSlug));
-  const [workspaceNavWidth, setWorkspaceNavWidth] = useState(() => readStoredWorkspaceNavWidth(currentWorkspaceSlug));
-  const [treeFilter, setTreeFilter] = useState("");
   const resizeStateRef = useRef<{ active: boolean }>({ active: false });
-  const selectedPage = getSelectedPage(workspace, selectedPageId);
-  const pagePath = useMemo(
-    () => (selectedPage ? findDemoPagePath(workspace.pages, selectedPage.id) : []),
-    [selectedPage, workspace.pages]
-  );
   const currentNavWidth = sidebarCollapsed ? 0 : workspaceNavWidth;
   const shellStyle = {
     "--docsera-workspace-nav-resizer-width": sidebarCollapsed ? "0px" : "8px",
@@ -131,13 +165,11 @@ export function WorkspaceShell({
   } as CSSProperties;
 
   useEffect(() => {
-    setWorkspaceNavWidth(readStoredWorkspaceNavWidth(currentWorkspaceSlug));
-    setSidebarCollapsed(false);
     setTocCollapsed(readStoredWorkspaceTocCollapsed(currentWorkspaceSlug));
   }, [currentWorkspaceSlug]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || sidebarCollapsed) {
+    if (typeof window === "undefined") {
       return;
     }
 
@@ -147,7 +179,7 @@ export function WorkspaceShell({
     }
 
     window.localStorage.setItem(`${WORKSPACE_NAV_WIDTH_STORAGE_KEY_PREFIX}:${normalizedWorkspaceSlug}`, String(workspaceNavWidth));
-  }, [currentWorkspaceSlug, sidebarCollapsed, workspaceNavWidth]);
+  }, [currentWorkspaceSlug, workspaceNavWidth]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -172,7 +204,7 @@ export function WorkspaceShell({
         return;
       }
 
-      setWorkspaceNavWidth(clampWorkspaceNavWidth(event.clientX));
+      onWorkspaceNavWidthChange(clampWorkspaceNavWidth(event.clientX));
     };
 
     const handleMouseUp = () => {
@@ -191,7 +223,7 @@ export function WorkspaceShell({
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [sidebarCollapsed]);
+  }, [onWorkspaceNavWidthChange, sidebarCollapsed]);
 
   function startSidebarResize() {
     resizeStateRef.current.active = true;
@@ -199,37 +231,12 @@ export function WorkspaceShell({
     document.body.style.userSelect = "none";
   }
 
+  const selectedPageViewForShell = shellStatus === "ready" ? selectedPage : null;
+  const outlinePageForShell = shellStatus === "ready" ? outlinePage : null;
+  const showWorkspaceLoading = shellStatus !== "ready";
+
   return (
     <div className="docsera-shell" style={shellStyle}>
-      <DocseraHeader
-        breadcrumbs={pagePath}
-        currentWorkspaceSlug={currentWorkspaceSlug}
-        identity={{
-          kind: "workspace",
-          icon:
-            workspace.icon ??
-            ({
-              type: "builtin",
-              key: workspace.iconLabel,
-              label: workspace.iconLabel
-            } satisfies WorkspaceViewRecord["icon"]),
-          name: workspace.title
-        }}
-        mode="workspace"
-        onOpenMyWorkspaces={onOpenMyWorkspaces}
-        onOpenWorkspace={onOpenWorkspace}
-        onOpenWorkspaceSettings={onOpenWorkspaceSettings}
-        onSelectBreadcrumb={onSelectPage}
-        onToggleSidebar={() => setSidebarCollapsed((collapsed) => !collapsed)}
-        recentWorkspaces={recentWorkspaces}
-        showWorkspaceSwitcher={showWorkspaceSwitcher}
-        showWorkspaceSettings={Boolean(workspace.canManageSettings)}
-        sidebarCollapsed={sidebarCollapsed}
-        theme={theme}
-        onToggleTheme={onToggleTheme}
-        workspaceNavWidth={currentNavWidth}
-      />
-
       {workspaceSettingsNotice ? (
         <div className="docsera-shell__notice" role="status">
           <p className="docsera-shell__notice-eyebrow">Workspace settings</p>
@@ -243,21 +250,26 @@ export function WorkspaceShell({
         {!sidebarCollapsed ? (
           <div className="docsera-workspace__nav-frame">
             <WorkspaceSidebar
-              workspace={workspace}
-              selectedPageId={selectedPage?.id ?? ""}
-              onSelectPage={onSelectPage}
+              canCreatePage={canCreatePage}
               canManagePageSettings={canManagePageSettings}
+              collapsedPageIds={collapsedPageIds}
               inlineCreateState={inlineCreateState}
-              pageSettingsOpenPageId={pageSettingsOpenPageId}
+              isCreatingPage={isCreatingPage}
+              isLoading={showWorkspaceLoading}
+              showPendingState={showPendingState}
+              mode={mode}
+              onCollapsedPageIdsChange={onCollapsedPageIdsChange}
               onCommitInlineCreate={onCommitInlineCreate}
               onInlineCreateTitleChange={onInlineCreateTitleChange}
-              onTogglePageSettings={onTogglePageSettings}
-              treeFilter={treeFilter}
-              onTreeFilterChange={setTreeFilter}
-              canCreatePage={canCreatePage}
-              isCreatingPage={isCreatingPage}
+              onSelectPage={onSelectPage}
               onShowCreatePage={onShowCreatePage}
               onShowChildPageCreate={onShowChildPageCreate}
+              onTogglePageSettings={onTogglePageSettings}
+              pageSettingsOpenPageId={pageSettingsOpenPageId}
+              pages={showWorkspaceLoading ? [] : treePages}
+              selectedPageId={selectedPageViewForShell?.id ?? selectedPageId}
+              treeFilter={treeFilter}
+              onTreeFilterChange={onTreeFilterChange}
             />
             <button
               type="button"
@@ -272,19 +284,36 @@ export function WorkspaceShell({
         ) : null}
 
         <WorkspaceMainPane
-          page={selectedPage}
-          pagePath={pagePath}
-          workspacePage={selectedWorkspacePage}
-          canEditPageBody={canCreatePage}
           canCreatePage={canCreatePage}
+          canEditPageBody={canEditPageBody}
+          editAccessLost={editAccessLost}
+          editorFailure={editorFailure}
+          onAccessLost={onAccessLost}
+          onEditorFailureChange={onEditorFailureChange}
+          onOutlineChange={onOutlineChange}
+          onReturnToMyWorkspaces={onReturnToMyWorkspaces}
+          onReturnToLive={onReturnToLive}
+          onRetryEditor={onRetryEditor}
+          onSavePageDraft={onSavePageDraft}
+          onStatusChange={onStatusChange}
           onShowCreatePage={onShowCreatePage}
-          onSavePageBody={onSavePageBody}
+          page={selectedPageViewForShell}
+          pagePath={breadcrumbs}
+          stateCopy={shellCopy}
+          stateTitle={shellTitle}
+          stateType={shellStatus}
+          showPendingState={showPendingState}
+          sessionKey={sessionKey}
+          theme={theme}
+          workspaceMode={mode}
         />
 
         <div className={`docsera-workspace__aside${tocCollapsed ? " docsera-workspace__aside--collapsed" : ""}`}>
           <WorkspaceToc
             collapsed={tocCollapsed}
-            page={selectedPage}
+            isLoading={showWorkspaceLoading}
+            showPendingState={showPendingState}
+            page={outlinePageForShell}
             panelId={`docsera-workspace-toc-${currentWorkspaceSlug || "workspace"}`}
             onToggleCollapsed={() => setTocCollapsed((current) => !current)}
           />

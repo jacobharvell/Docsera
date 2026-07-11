@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import type { DemoPage, WorkspaceViewRecord } from "../../shared/types/docsera";
+import type { WorkspaceMode, WorkspaceViewRecord } from "../../shared/types/docsera";
 import {
   DocseraBrandIcon,
   DoubleChevronIcon,
@@ -10,6 +10,7 @@ import {
 } from "./DocseraHeaderIcons";
 import { RecentWorkspacesMenu, type RecentWorkspaceItem } from "./RecentWorkspacesMenu";
 import { WorkspaceIconBadge } from "./WorkspacePrimitives";
+import type { WorkspacePageView } from "./workspaceViewModels";
 
 export type HeaderIdentity =
   | (Pick<WorkspaceViewRecord, "icon" | "name"> & {
@@ -20,7 +21,7 @@ export type HeaderIdentity =
     };
 
 type DocseraHeaderProps = {
-  breadcrumbs?: DemoPage[];
+  breadcrumbs?: WorkspacePageView[];
   currentWorkspaceSlug?: string;
   identity: HeaderIdentity;
   mode: "launcher" | "workspace";
@@ -30,8 +31,12 @@ type DocseraHeaderProps = {
   onSelectBreadcrumb?: (pageId: string) => void;
   onToggleSidebar?: () => void;
   recentWorkspaces: RecentWorkspaceItem[];
+  showEditModeToggle?: boolean;
+  showWorkspaceMode?: WorkspaceMode;
+  onWorkspaceModeChange?: (mode: WorkspaceMode) => void;
   showWorkspaceSwitcher?: boolean;
   showWorkspaceSettings?: boolean;
+  workspaceControlsLocked?: boolean;
   sidebarCollapsed?: boolean;
   theme: "dark" | "light";
   onToggleTheme: () => void;
@@ -65,8 +70,12 @@ export function DocseraHeader({
   onSelectBreadcrumb,
   onToggleSidebar,
   recentWorkspaces,
+  showEditModeToggle = false,
+  showWorkspaceMode = "live",
+  onWorkspaceModeChange,
   showWorkspaceSwitcher = recentWorkspaces.length > 0,
   showWorkspaceSettings = false,
+  workspaceControlsLocked = false,
   sidebarCollapsed = false,
   theme,
   onToggleTheme,
@@ -202,6 +211,32 @@ export function DocseraHeader({
         </div>
 
         <div className="docsera-header__actions" aria-label="Header controls">
+          <div className="docsera-header__action-slot docsera-header__action-slot--mode">
+            {mode === "workspace" && showEditModeToggle && onWorkspaceModeChange ? (
+              <div className="docsera-header__mode-toggle" role="group" aria-label="Workspace mode">
+                <button
+                  type="button"
+                  className={`docsera-header__mode-segment${showWorkspaceMode === "live" ? " docsera-header__mode-segment--active" : ""}`}
+                  aria-pressed={showWorkspaceMode === "live"}
+                  disabled={workspaceControlsLocked}
+                  onClick={() => onWorkspaceModeChange("live")}
+                >
+                  Live
+                </button>
+                <button
+                  type="button"
+                  className={`docsera-header__mode-segment${showWorkspaceMode === "edit" ? " docsera-header__mode-segment--active" : ""}`}
+                  aria-pressed={showWorkspaceMode === "edit"}
+                  disabled={workspaceControlsLocked}
+                  onClick={() => onWorkspaceModeChange("edit")}
+                >
+                  Edit
+                </button>
+              </div>
+            ) : (
+              <span className="docsera-header__action-slot-placeholder" aria-hidden="true" />
+            )}
+          </div>
           <button
             type="button"
             className="docsera-header__ghost-button docsera-header__ghost-button--theme"
@@ -210,16 +245,21 @@ export function DocseraHeader({
           >
             {theme === "dark" ? <SunIcon /> : <MoonIcon />}
           </button>
-          {showWorkspaceSettings && onOpenWorkspaceSettings ? (
-            <button
-              type="button"
-              className="docsera-header__ghost-button"
-              aria-label="Workspace settings"
-              onClick={onOpenWorkspaceSettings}
-            >
-              <GearIcon />
-            </button>
-          ) : null}
+          <div className="docsera-header__action-slot docsera-header__action-slot--settings">
+            {showWorkspaceSettings && onOpenWorkspaceSettings ? (
+              <button
+                type="button"
+                className="docsera-header__ghost-button"
+                aria-label="Workspace settings"
+                disabled={workspaceControlsLocked}
+                onClick={onOpenWorkspaceSettings}
+              >
+                <GearIcon />
+              </button>
+            ) : (
+              <span className="docsera-header__action-slot-placeholder" aria-hidden="true" />
+            )}
+          </div>
           <button type="button" className="docsera-header__profile" aria-label="Current user">
             J
           </button>

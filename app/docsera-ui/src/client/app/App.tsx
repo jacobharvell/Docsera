@@ -1,12 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DocseraHeader, type HeaderIdentity } from "../features/workspaces/DocseraHeader";
+import { DirtyTransitionDialog } from "../features/workspaces/DirtyTransitionDialog";
 import { MyWorkspacesScreen } from "../features/workspaces/MyWorkspacesScreen";
 import { PageSettingsDeleteDialog } from "../features/workspaces/PageSettingsDeleteDialog";
 import { PageSettingsOverlay } from "../features/workspaces/PageSettingsOverlay";
 import type { InlinePageCreateState } from "../features/workspaces/PageTree";
 import type { RecentWorkspaceItem } from "../features/workspaces/RecentWorkspacesMenu";
-import { WorkspaceShell } from "../features/workspaces/WorkspaceShell";
-import { buildWorkspaceShellPages, buildWorkspaceShellWorkspace } from "../features/workspaces/workspaceViewModels";
+import { DEFAULT_WORKSPACE_NAV_WIDTH, readStoredWorkspaceNavWidth, WorkspaceShell } from "../features/workspaces/WorkspaceShell";
+import type { PageEditorHostFailure } from "../editor/PageEditorHost";
+import { EditorSessionGeneration, type EditorSessionToken } from "../editor/session/editorSessionGeneration";
+import {
+  buildWorkspacePageTree,
+  buildWorkspaceShellViewModel,
+  type WorkspacePageOutlineItem,
+  type WorkspacePageView
+} from "../features/workspaces/workspaceViewModels";
 import { buildLauncherHref, buildWorkspaceHref, readAppRoute, type DocseraAppRoute } from "../features/workspaces/workspaceRouting";
 import {
   collectPageSubtreeSysIds,
@@ -14,12 +22,15 @@ import {
   validatePageSettingsSlug,
   validatePageSettingsTitle
 } from "../../shared/pages/domain";
+import type { DocseraDocumentEnvelope } from "../../shared/editor/document";
 import type {
   DocseraRuntimeContext,
+  PageBodySaveResult,
   PageListResult,
   PingResult,
   RuntimeProbeState,
   ServiceNowClient,
+  WorkspaceMode,
   WorkspaceCreatePending,
   WorkspaceCreateResult,
   WorkspaceListResult,
@@ -42,9 +53,9 @@ type WorkspaceState =
 
 type WorkspacePagesState =
   | { status: "idle" }
-  | { status: "loading"; workspaceSlug: string }
-  | { errorMessage: string; status: "error"; workspaceSlug: string }
-  | { data: WorkspacePageRecord[]; status: "success"; totalCount: number; workspaceSlug: string };
+  | { mode: WorkspaceMode; status: "loading"; workspaceSlug: string }
+  | { errorMessage: string; mode: WorkspaceMode; status: "error"; workspaceSlug: string }
+  | { data: WorkspacePageRecord[]; mode: WorkspaceMode; status: "success"; totalCount: number; workspaceSlug: string };
 
 type WorkspaceSwitcherState =
   | { status: "idle" }
@@ -53,12 +64,39 @@ type WorkspaceSwitcherState =
   | { status: "error" };
 
 type PendingWorkspaceIdentity = Pick<WorkspaceViewRecord, "icon" | "name" | "slug">;
+type WorkspaceHeaderPresentation = {
+  showEditModeToggle: boolean;
+  showWorkspaceMode: WorkspaceMode;
+  showWorkspaceSettings: boolean;
+  showWorkspaceSwitcher: boolean;
+};
+type WorkspaceModeUiState = {
+  collapsedPageIds: string[];
+  searchQuery: string;
+  selectedPageSysId: string;
+};
+
+type EditorTransitionState = {
+  isDirty: boolean;
+  isSaving: boolean;
+};
+
+type EditorSessionState = {
+  sessionKey: string;
+  token: EditorSessionToken | null;
+};
+
+type RequestedRouteTransition = {
+  href: string;
+  replace: boolean;
+  beforeCommit?: () => void;
+};
 
 const DEFAULT_PAGE_SIZE = 10;
+const TRANSITION_PROGRESS_DELAY_MS = 220;
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
 const DOCSERA_THEME_STORAGE_KEY = "docsera.theme";
 const DOCSERA_RECENT_WORKSPACES_STORAGE_KEY = "docsera.recent-workspaces";
-type SavedPageBodyResult = Awaited<ReturnType<ServiceNowClient["savePageBody"]>>;
 
 type PageSettingsField = "title" | "slug";
 
@@ -148,6 +186,14 @@ function createInitialRoute(): DocseraAppRoute {
   return readAppRoute(window.location);
 }
 
+function createWorkspaceModeUiState(): WorkspaceModeUiState {
+  return {
+    collapsedPageIds: [],
+    searchQuery: "",
+    selectedPageSysId: ""
+  };
+}
+
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -230,6 +276,10 @@ function sortRecentWorkspaceItems(items: WorkspaceViewRecord[], currentWorkspace
   });
 }
 
+function buildModeStateKey(workspaceSlug: string, mode: WorkspaceMode): string {
+  return `${cleanText(workspaceSlug)}::${mode}`;
+}
+
 function buildWorkspaceHeaderIdentity(input: {
   currentWorkspaceSlug: string;
   pendingWorkspaceIdentity: PendingWorkspaceIdentity | null;
@@ -275,16 +325,76 @@ function findWorkspacePageBySysId(pages: WorkspacePageRecord[], pageSysId: strin
   return pages.find((page) => cleanText(page.sysId) === normalizedPageSysId) ?? null;
 }
 
+function findWorkspacePageBySlug(
+  pages: WorkspacePageRecord[],
+  pageSlug: string,
+  mode: WorkspaceMode
+): WorkspacePageRecord | null {
+  const normalizedPageSlug = cleanText(pageSlug).toLowerCase();
+  if (!normalizedPageSlug) {
+    return null;
+  }
+
+  if (mode === "edit") {
+    return (
+      pages.find((page) => cleanText(page.draftSlugNormalized || page.draftSlug).toLowerCase() === normalizedPageSlug) ??
+      pages.find((page) => cleanText(page.publishedSlugNormalized || page.publishedSlug).toLowerCase() === normalizedPageSlug) ??
+      null
+    );
+  }
+
+  return pages.find((page) => cleanText(page.draftSlugNormalized || page.draftSlug).toLowerCase() === normalizedPageSlug) ?? null;
+}
+
 function resolveWorkspacePageSelection(
   pages: WorkspacePageRecord[],
-  pageSysId: string
-): { page: WorkspacePageRecord | null; pageId: string } {
-  const page = findWorkspacePageBySysId(pages, pageSysId) ?? getFirstWorkspacePage(pages);
+  input: {
+    legacyPageId?: string;
+    preferredPageSysId?: string;
+    pageSlug?: string;
+    mode: WorkspaceMode;
+  }
+): { page: WorkspacePageRecord | null; pageId: string; pageSlug: string } {
+  const page =
+    findWorkspacePageBySlug(pages, input.pageSlug ?? "", input.mode) ??
+    findWorkspacePageBySysId(pages, input.preferredPageSysId ?? "") ??
+    findWorkspacePageBySysId(pages, input.legacyPageId ?? "") ??
+    getFirstWorkspacePage(pages);
 
   return {
     page,
-    pageId: cleanText(page?.sysId)
+    pageId: cleanText(page?.sysId),
+    pageSlug: cleanText(page?.draftSlug)
   };
+}
+
+function findWorkspacePageRecordBySysId(pages: WorkspacePageRecord[], pageSysId: string): WorkspacePageRecord | null {
+  const normalizedPageSysId = cleanText(pageSysId);
+  if (!normalizedPageSysId) {
+    return null;
+  }
+
+  return pages.find((page) => cleanText(page.sysId) === normalizedPageSysId) ?? null;
+}
+
+function findWorkspacePageViewBySysId(pages: WorkspacePageView[], pageSysId: string): WorkspacePageView | null {
+  const normalizedPageSysId = cleanText(pageSysId);
+  if (!normalizedPageSysId) {
+    return null;
+  }
+
+  for (const page of pages) {
+    if (cleanText(page.sysId) === normalizedPageSysId) {
+      return page;
+    }
+
+    const childMatch = page.children ? findWorkspacePageViewBySysId(page.children, normalizedPageSysId) : null;
+    if (childMatch) {
+      return childMatch;
+    }
+  }
+
+  return null;
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -309,10 +419,27 @@ function navigateTo(href: string, replace = false): void {
   }
 }
 
+function buildHrefFromRoute(route: DocseraAppRoute): string {
+  if (route.mode === "workspace") {
+    return buildWorkspaceHref(route.workspaceSlug, {
+      mode: route.workspaceMode,
+      pageSlug: route.pageSlug || undefined,
+      settingsIntent: route.settingsIntent
+    });
+  }
+
+  return buildLauncherHref();
+}
+
 export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeContext; serviceNowClient: ServiceNowClient }) {
   const [theme, setTheme] = useState<"dark" | "light">(readStoredTheme);
-  const [route, setRoute] = useState<DocseraAppRoute>(createInitialRoute);
-  const [pingState, setPingState] = useState<RuntimeProbeState>(() => createInitialPingState(runtime));
+  const initialRoute = createInitialRoute();
+  const [route, setRoute] = useState<DocseraAppRoute>(initialRoute);
+  const [workspaceNavWidth, setWorkspaceNavWidth] = useState(() =>
+    initialRoute.mode === "workspace" ? readStoredWorkspaceNavWidth(initialRoute.workspaceSlug) : DEFAULT_WORKSPACE_NAV_WIDTH
+  );
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [, setPingState] = useState<RuntimeProbeState>(() => createInitialPingState(runtime));
   const [launcherSearchText, setLauncherSearchText] = useState("");
   const [launcherPage, setLauncherPage] = useState(1);
   const [launcherRefreshToken, setLauncherRefreshToken] = useState(0);
@@ -325,15 +452,34 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalPhase, setCreateModalPhase] = useState<"idle" | "submitting" | "polling">("idle");
   const [createModalError, setCreateModalError] = useState<string | undefined>();
+  const [editorFailure, setEditorFailure] = useState<PageEditorHostFailure | null>(null);
+  const [editAccessLost, setEditAccessLost] = useState(false);
+  const [editorRetryNonce, setEditorRetryNonce] = useState(0);
+  const [editorTransitionState, setEditorTransitionState] = useState<EditorTransitionState>({ isDirty: false, isSaving: false });
+  const [pendingRouteTransition, setPendingRouteTransition] = useState<RequestedRouteTransition | null>(null);
   const [inlinePageCreateState, setInlinePageCreateState] = useState<InlinePageCreateState | null>(null);
+  const [modeUiState, setModeUiState] = useState<Record<string, WorkspaceModeUiState>>({});
+  const [pageOutlineOverrides, setPageOutlineOverrides] = useState<Record<string, WorkspacePageOutlineItem[]>>({});
   const [pageSettingsState, setPageSettingsState] = useState<PageSettingsState>(createEmptyPageSettingsState);
+  const [showTransitionProgress, setShowTransitionProgress] = useState(false);
+  const [lastCommittedWorkspaceHeaderPresentation, setLastCommittedWorkspaceHeaderPresentation] =
+    useState<WorkspaceHeaderPresentation | null>(null);
   const launcherRequestIdRef = useRef(0);
+  const crossModeTargetPageSysIdRef = useRef("");
   const inlinePageCreateFocusTokenRef = useRef(0);
+  const lastWorkspaceModeKeyRef = useRef("");
   const pageSettingsStateRef = useRef<PageSettingsState>(createEmptyPageSettingsState());
   const pageSettingsPendingOpenPageIdRef = useRef("");
   const pageSettingsPanelRef = useRef<HTMLElement>(null);
   const pageSettingsCloseTargetRef = useRef("");
   const pageSettingsCloseTimerRef = useRef<number | null>(null);
+  const editorSessionGenerationRef = useRef(new EditorSessionGeneration());
+  const editorSessionSeedRef = useRef("");
+  const activeEditorSessionRef = useRef<EditorSessionToken | null>(null);
+  const [editorSessionState, setEditorSessionState] = useState<EditorSessionState>({
+    sessionKey: "",
+    token: null
+  });
 
   useEffect(() => {
     pageSettingsStateRef.current = pageSettingsState;
@@ -388,7 +534,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
   const currentWorkspaceSlug = route.mode === "workspace" ? route.workspaceSlug : "";
   const currentWorkspaceSettingsIntent = route.mode === "workspace" ? route.settingsIntent : false;
-  const currentWorkspacePageId = route.mode === "workspace" ? route.pageId : "";
+  const requestedWorkspaceMode = route.mode === "workspace" ? route.workspaceMode : "live";
+  const currentWorkspacePageSlug = route.mode === "workspace" ? route.pageSlug : "";
+  const currentWorkspaceLegacyPageId = route.mode === "workspace" ? route.legacyPageId : "";
   const loadedWorkspaceSlug = workspaceState.status === "success" ? workspaceState.data.slug : "";
   const recentWorkspaceItems = useMemo(
     () =>
@@ -398,6 +546,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     [currentWorkspaceSlug, workspaceSwitcherState]
   );
   const workspaceStateData = workspaceState.status === "success" ? workspaceState.data : null;
+  const hasAuthoringCapability = Boolean(workspaceState.status === "success" && workspaceState.data.roleLabel);
+  const activeWorkspaceMode: WorkspaceMode =
+    route.mode === "workspace" && requestedWorkspaceMode === "edit" && hasAuthoringCapability ? "edit" : "live";
+  const currentModeStateKey = buildModeStateKey(currentWorkspaceSlug, activeWorkspaceMode);
+  const currentModeUiState = modeUiState[currentModeStateKey] ?? createWorkspaceModeUiState();
   const workspaceHeaderIdentity = useMemo(
     () =>
       buildWorkspaceHeaderIdentity({
@@ -408,30 +561,225 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }),
     [currentWorkspaceSlug, pendingWorkspaceIdentity, recentWorkspaceItems, workspaceState]
   );
+  const currentWorkspaceHeaderPresentation = useMemo(() => {
+    if (route.mode !== "workspace" || workspaceState.status !== "success" || workspaceState.data.slug !== currentWorkspaceSlug) {
+      return null;
+    }
+
+    return {
+      showEditModeToggle: hasAuthoringCapability && !editAccessLost,
+      showWorkspaceMode: activeWorkspaceMode,
+      showWorkspaceSettings: Boolean(workspaceState.data.canManageSettings),
+      showWorkspaceSwitcher: Boolean(workspaceState.data.roleLabel) || recentWorkspaceItems.length > 0
+    };
+  }, [
+    activeWorkspaceMode,
+    currentWorkspaceSlug,
+    editAccessLost,
+    hasAuthoringCapability,
+    recentWorkspaceItems.length,
+    route.mode,
+    workspaceState
+  ]);
+  const isRetainingWorkspaceHeaderPresentation =
+    route.mode === "workspace" &&
+    lastCommittedWorkspaceHeaderPresentation !== null &&
+    workspaceState.status !== "error" &&
+    (workspaceState.status === "loading" || (workspaceState.status === "success" && workspaceState.data.slug !== currentWorkspaceSlug));
+  const workspaceHeaderPresentation =
+    currentWorkspaceHeaderPresentation ?? (isRetainingWorkspaceHeaderPresentation ? lastCommittedWorkspaceHeaderPresentation : null);
+  useEffect(() => {
+    if (currentWorkspaceHeaderPresentation) {
+      setLastCommittedWorkspaceHeaderPresentation(currentWorkspaceHeaderPresentation);
+    }
+  }, [currentWorkspaceHeaderPresentation]);
   const workspacePagesLoaded =
-    workspacePagesState.status === "success" && workspacePagesState.workspaceSlug === currentWorkspaceSlug;
+    workspacePagesState.status === "success" &&
+    workspacePagesState.workspaceSlug === currentWorkspaceSlug &&
+    workspacePagesState.mode === activeWorkspaceMode;
   const workspacePagesLoading =
+    workspacePagesState.status === "idle" ||
     workspacePagesState.status === "loading" ||
     (workspacePagesState.status === "success" && workspacePagesState.workspaceSlug !== currentWorkspaceSlug) ||
-    (workspacePagesState.status === "error" && workspacePagesState.workspaceSlug !== currentWorkspaceSlug);
-  const livePagesForCurrentWorkspace = workspacePagesLoaded ? workspacePagesState.data : [];
-  const workspaceShellWorkspace =
-    workspaceState.status === "success" && workspacePagesLoaded
-      ? buildWorkspaceShellWorkspace(workspaceState.data, buildWorkspaceShellPages(livePagesForCurrentWorkspace))
-      : null;
-  const canCreatePage = Boolean(workspaceState.status === "success" && workspaceState.data.roleLabel);
+    (workspacePagesState.status === "success" && workspacePagesState.mode !== activeWorkspaceMode) ||
+    (workspacePagesState.status === "error" && workspacePagesState.workspaceSlug !== currentWorkspaceSlug) ||
+    (workspacePagesState.status === "error" && workspacePagesState.mode !== activeWorkspaceMode);
+  const currentWorkspacePages = workspacePagesLoaded ? workspacePagesState.data : [];
+  const treePages = useMemo(
+    () => buildWorkspacePageTree(currentWorkspacePages, activeWorkspaceMode),
+    [activeWorkspaceMode, currentWorkspacePages]
+  );
+  const workspaceShellViewModel =
+    workspaceState.status === "success" ? buildWorkspaceShellViewModel(workspaceState.data) : null;
+  const canCreatePage = activeWorkspaceMode === "edit" && hasAuthoringCapability && !editAccessLost;
   const isCreatingPage = Boolean(inlinePageCreateState?.showInput || inlinePageCreateState?.pending);
   const selectedWorkspacePage =
-    workspacePagesLoaded && livePagesForCurrentWorkspace.length > 0
-      ? resolveWorkspacePageSelection(livePagesForCurrentWorkspace, currentWorkspacePageId).page
+    workspacePagesLoaded && currentWorkspacePages.length > 0
+      ? resolveWorkspacePageSelection(currentWorkspacePages, {
+          legacyPageId: currentWorkspaceLegacyPageId,
+          mode: activeWorkspaceMode,
+          pageSlug: currentWorkspacePageSlug,
+          preferredPageSysId: crossModeTargetPageSysIdRef.current || currentModeUiState.selectedPageSysId
+        }).page
       : null;
-  const selectedWorkspacePageId = cleanText(selectedWorkspacePage?.sysId) || currentWorkspacePageId;
-  const canManagePageSettings = Boolean(workspaceState.status === "success" && workspaceState.data.roleLabel);
-  const pageSettingsPage =
-    workspacePagesLoaded && pageSettingsState.open ? findWorkspacePageBySysId(livePagesForCurrentWorkspace, pageSettingsState.pageSysId) : null;
-  const pageSettingsHasDescendants = Boolean(
-    pageSettingsPage && collectPageSubtreeSysIds(livePagesForCurrentWorkspace, cleanText(pageSettingsPage.sysId)).length > 1
+  const selectedWorkspacePageId = cleanText(selectedWorkspacePage?.sysId) || currentModeUiState.selectedPageSysId;
+  const desiredEditorSessionSeed =
+    route.mode === "workspace" && activeWorkspaceMode === "edit" && selectedWorkspacePageId
+      ? `${currentWorkspaceSlug}:${selectedWorkspacePageId}:${editorRetryNonce}`
+      : "";
+
+  useLayoutEffect(() => {
+    if (!desiredEditorSessionSeed) {
+      if (!editorSessionSeedRef.current) {
+        return;
+      }
+
+      editorSessionGenerationRef.current.invalidate();
+      editorSessionSeedRef.current = "";
+      activeEditorSessionRef.current = null;
+      setEditorSessionState({
+        sessionKey: "",
+        token: null
+      });
+      return;
+    }
+
+    if (editorSessionSeedRef.current === desiredEditorSessionSeed) {
+      return;
+    }
+
+    const nextSession = editorSessionGenerationRef.current.begin(selectedWorkspacePageId, selectedWorkspacePage?.draftRevision ?? 0);
+    editorSessionSeedRef.current = desiredEditorSessionSeed;
+    activeEditorSessionRef.current = nextSession;
+    setEditorSessionState({
+      sessionKey: `${nextSession.pageSysId}:${nextSession.generation}`,
+      token: nextSession
+    });
+  }, [desiredEditorSessionSeed, selectedWorkspacePage?.draftRevision, selectedWorkspacePageId]);
+
+  const renderedEditorSession = editorSessionState.token;
+  const editorSessionKey = editorSessionState.sessionKey;
+  const selectedPageView = useMemo(
+    () => findWorkspacePageViewBySysId(treePages, cleanText(selectedWorkspacePage?.sysId)),
+    [selectedWorkspacePage?.sysId, treePages]
   );
+  const selectedPagePath = useMemo(() => {
+    const selectedPageSysId = cleanText(selectedWorkspacePage?.sysId);
+    if (!selectedPageSysId) {
+      return [];
+    }
+
+    const pathRecords: WorkspacePageRecord[] = [];
+    const visitedPageIds = new Set<string>();
+    let currentPage = findWorkspacePageRecordBySysId(currentWorkspacePages, selectedPageSysId);
+
+    while (currentPage) {
+      const currentPageSysId = cleanText(currentPage.sysId);
+      if (!currentPageSysId || visitedPageIds.has(currentPageSysId)) {
+        break;
+      }
+
+      visitedPageIds.add(currentPageSysId);
+      pathRecords.unshift(currentPage);
+      currentPage = findWorkspacePageRecordBySysId(currentWorkspacePages, cleanText(currentPage.parentPageSysId));
+    }
+
+    return pathRecords.map((page) => ({
+      children: undefined,
+      contentEnvelope: null,
+      contentError: "",
+      contentState: "missing" as const,
+      id: cleanText(page.sysId),
+      isDraftOnly: page.publicationState === "draft",
+      page,
+      parentPageSysId: cleanText(page.parentPageSysId) || null,
+      publicationState: page.publicationState,
+      siblingOrder: Number(page.siblingOrder) || 1,
+      slug: cleanText(page.draftSlug),
+      statusIndicator: null,
+      sysId: cleanText(page.sysId),
+      title: cleanText(page.draftTitle) || "Untitled page",
+      tocItems: []
+    }));
+  }, [currentWorkspacePages, selectedWorkspacePage?.sysId]);
+  const outlinePage = useMemo(() => {
+    if (!selectedPageView) {
+      return null;
+    }
+
+    const override = pageOutlineOverrides[cleanText(selectedPageView.sysId)];
+    if (!override) {
+      return selectedPageView;
+    }
+
+    return {
+      ...selectedPageView,
+      tocItems: override
+    };
+  }, [pageOutlineOverrides, selectedPageView]);
+  const canManagePageSettings = activeWorkspaceMode === "edit" && hasAuthoringCapability && !editAccessLost;
+  const pageSettingsPage =
+    workspacePagesLoaded && pageSettingsState.open ? findWorkspacePageBySysId(currentWorkspacePages, pageSettingsState.pageSysId) : null;
+  const pageSettingsHasDescendants = Boolean(
+    pageSettingsPage && collectPageSubtreeSysIds(currentWorkspacePages, cleanText(pageSettingsPage.sysId)).length > 1
+  );
+  const workspacePagesErrorMessage = workspacePagesState.status === "error" ? workspacePagesState.errorMessage : "";
+  const workspaceShellStatus: "loading" | "error" | "ready" =
+    route.mode !== "workspace"
+      ? "ready"
+      : workspaceState.status === "error"
+        ? "error"
+        : workspaceState.status !== "success"
+          ? "loading"
+          : workspacePagesState.status === "error" &&
+              workspacePagesState.workspaceSlug === currentWorkspaceSlug &&
+              workspacePagesState.mode === activeWorkspaceMode
+            ? "error"
+            : workspacePagesLoading
+              ? "loading"
+              : workspaceShellViewModel
+                ? "ready"
+                : "error";
+  const workspaceShellTitle =
+    workspaceShellStatus === "error"
+      ? workspaceState.status === "error"
+        ? "Workspace unavailable"
+        : "Pages unavailable"
+      : workspaceState.status !== "success"
+        ? "Loading workspace"
+        : workspacePagesLoading
+          ? "Loading pages"
+          : workspaceShellViewModel
+            ? ""
+            : "Workspace unavailable";
+  const workspaceShellCopy =
+    workspaceShellStatus === "error"
+      ? workspaceState.status === "error"
+        ? workspaceState.errorMessage
+        : workspacePagesErrorMessage || "Unable to load pages."
+      : workspaceState.status !== "success"
+        ? "Fetching the selected workspace from ServiceNow."
+        : workspacePagesLoading
+          ? "Fetching live page records from ServiceNow."
+          : "";
+  const isLauncherBusy = route.mode === "launcher" && (launcherState.status === "loading" || launcherState.status === "idle" || launcherState.status === "refreshing");
+  const isWorkspaceBusy = route.mode === "workspace" && workspaceShellStatus === "loading";
+  const showLoadingProgress = isLauncherBusy || isWorkspaceBusy;
+
+  useEffect(() => {
+    if (!showLoadingProgress) {
+      setShowTransitionProgress(false);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      setShowTransitionProgress(true);
+    }, TRANSITION_PROGRESS_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [showLoadingProgress]);
 
   useEffect(() => {
     if (!runtime.config.backendPingPath) {
@@ -489,6 +837,16 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
   useEffect(() => {
     const handlePopState = () => {
+      const targetHref = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      if (shouldGuardTransition(targetHref)) {
+        navigateTo(buildHrefFromRoute(route), true);
+        setPendingRouteTransition({
+          href: targetHref,
+          replace: false
+        });
+        return;
+      }
+
       setRoute(readAppRoute(window.location));
     };
 
@@ -496,7 +854,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     return () => {
       window.removeEventListener("popstate", handlePopState);
     };
-  }, []);
+  }, [route, shouldGuardTransition]);
 
   useEffect(() => {
     if (route.mode !== "workspace") {
@@ -569,7 +927,13 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       setWorkspaceSettingsNotice(currentWorkspaceSettingsIntent && Boolean(workspaceState.status === "success" && workspaceState.data.canManageSettings));
 
       if (currentWorkspaceSettingsIntent) {
-        navigateTo(buildWorkspaceHref(currentWorkspaceSlug, false, currentWorkspacePageId), true);
+        navigateTo(
+          buildWorkspaceHref(currentWorkspaceSlug, {
+            mode: requestedWorkspaceMode,
+            pageSlug: currentWorkspacePageSlug
+          }),
+          true
+        );
         setRoute(readAppRoute(window.location));
       }
 
@@ -579,6 +943,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     let canceled = false;
     setWorkspaceState({ status: "loading" });
     setWorkspaceSettingsNotice(false);
+    setEditAccessLost(false);
+    setEditorFailure(null);
 
     serviceNowClient
       .getWorkspace(currentWorkspaceSlug)
@@ -600,7 +966,13 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         setWorkspaceSettingsNotice(currentWorkspaceSettingsIntent && result.workspace.canManageSettings);
 
         if (currentWorkspaceSettingsIntent) {
-          navigateTo(buildWorkspaceHref(currentWorkspaceSlug, false, currentWorkspacePageId), true);
+          navigateTo(
+            buildWorkspaceHref(currentWorkspaceSlug, {
+              mode: requestedWorkspaceMode,
+              pageSlug: currentWorkspacePageSlug
+            }),
+            true
+          );
           setRoute(readAppRoute(window.location));
         }
       })
@@ -617,7 +989,16 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     return () => {
       canceled = true;
     };
-  }, [currentWorkspacePageId, currentWorkspaceSettingsIntent, currentWorkspaceSlug, loadedWorkspaceSlug, route.mode, serviceNowClient, workspaceState.status]);
+  }, [
+    currentWorkspacePageSlug,
+    currentWorkspaceSettingsIntent,
+    currentWorkspaceSlug,
+    loadedWorkspaceSlug,
+    requestedWorkspaceMode,
+    route.mode,
+    serviceNowClient,
+    workspaceState.status
+  ]);
 
   useEffect(() => {
     if (route.mode !== "workspace" || workspaceState.status !== "success" || workspaceState.data.slug !== currentWorkspaceSlug) {
@@ -626,10 +1007,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
 
     let canceled = false;
-    setWorkspacePagesState({ status: "loading", workspaceSlug: currentWorkspaceSlug });
+    setWorkspacePagesState({ mode: activeWorkspaceMode, status: "loading", workspaceSlug: currentWorkspaceSlug });
 
     serviceNowClient
-      .listPages({ workspaceSlug: currentWorkspaceSlug })
+      .listPages({ mode: activeWorkspaceMode, workspaceSlug: currentWorkspaceSlug })
       .then((result: PageListResult) => {
         if (canceled) {
           return;
@@ -638,6 +1019,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         const pages = result.items;
         setWorkspacePagesState({
           data: pages,
+          mode: activeWorkspaceMode,
           status: "success",
           totalCount: result.totalCount,
           workspaceSlug: result.workspaceSlug || currentWorkspaceSlug
@@ -648,6 +1030,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         if (!canceled) {
           setWorkspacePagesState({
             errorMessage: getErrorMessage(error, "Unable to load pages."),
+            mode: activeWorkspaceMode,
             status: "error",
             workspaceSlug: currentWorkspaceSlug
           });
@@ -657,7 +1040,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     return () => {
       canceled = true;
     };
-  }, [currentWorkspaceSlug, loadedWorkspaceSlug, route.mode, serviceNowClient, workspaceState.status]);
+  }, [activeWorkspaceMode, currentWorkspaceSlug, loadedWorkspaceSlug, route.mode, serviceNowClient, workspaceState.status]);
 
   useEffect(() => {
     if (route.mode !== "launcher") {
@@ -668,14 +1051,29 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }, [route.mode]);
 
   useEffect(() => {
-    if (route.mode !== "workspace") {
+    if (route.mode !== "workspace" || activeWorkspaceMode !== "edit") {
       setInlinePageCreateState(null);
       return;
     }
-  }, [route.mode]);
+  }, [activeWorkspaceMode, route.mode]);
 
   useEffect(() => {
     if (route.mode !== "workspace" || workspaceState.status !== "success" || workspaceState.data.slug !== currentWorkspaceSlug) {
+      pageSettingsPendingOpenPageIdRef.current = "";
+      setPageSettingsState((current) => {
+        if (isPageSettingsStateEmpty(current)) {
+          return current;
+        }
+
+        const nextState = createEmptyPageSettingsState();
+        pageSettingsStateRef.current = nextState;
+        return nextState;
+      });
+      return;
+    }
+
+    if (activeWorkspaceMode !== "edit" || !canManagePageSettings) {
+      pageSettingsPendingOpenPageIdRef.current = "";
       setPageSettingsState((current) => {
         if (isPageSettingsStateEmpty(current)) {
           return current;
@@ -692,7 +1090,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
-    if (workspacePagesLoaded && !findWorkspacePageBySysId(livePagesForCurrentWorkspace, pageSettingsState.pageSysId)) {
+    if (workspacePagesLoaded && !findWorkspacePageBySysId(currentWorkspacePages, pageSettingsState.pageSysId)) {
       setPageSettingsState((current) => {
         if (isPageSettingsStateEmpty(current)) {
           return current;
@@ -704,8 +1102,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       });
     }
   }, [
+    activeWorkspaceMode,
+    canManagePageSettings,
+    currentWorkspacePages,
     currentWorkspaceSlug,
-    livePagesForCurrentWorkspace,
     pageSettingsState.open,
     pageSettingsState.pageSysId,
     route.mode,
@@ -719,7 +1119,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
-    if (pageSettingsState.pageSysId && pageSettingsState.pageSysId !== currentWorkspacePageId) {
+    if (pageSettingsState.pageSysId && pageSettingsState.pageSysId !== selectedWorkspacePageId) {
       setPageSettingsState((current) => {
         if (isPageSettingsStateEmpty(current)) {
           return current;
@@ -730,7 +1130,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         return nextState;
       });
     }
-  }, [currentWorkspacePageId, currentWorkspaceSlug, pageSettingsState.open, pageSettingsState.pageSysId, route.mode, workspaceStateData, workspaceState.status]);
+  }, [currentWorkspaceSlug, pageSettingsState.open, pageSettingsState.pageSysId, route.mode, selectedWorkspacePageId, workspaceStateData, workspaceState.status]);
 
   useEffect(() => {
     const pendingPageId = cleanText(pageSettingsPendingOpenPageIdRef.current);
@@ -738,49 +1138,283 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
-    if (!workspacePagesLoaded || workspaceState.data.slug !== currentWorkspaceSlug || pendingPageId !== currentWorkspacePageId) {
+    if (!workspacePagesLoaded || workspaceState.data.slug !== currentWorkspaceSlug || pendingPageId !== selectedWorkspacePageId) {
       return;
     }
 
     openPageSettings(pendingPageId);
   }, [
-    currentWorkspacePageId,
     currentWorkspaceSlug,
-    livePagesForCurrentWorkspace,
     pageSettingsState.open,
     route.mode,
+    selectedWorkspacePageId,
     workspacePagesLoaded,
     workspaceStateData,
     workspaceState.status
   ]);
+
+  useEffect(() => {
+    if (route.mode !== "workspace") {
+      lastWorkspaceModeKeyRef.current = "";
+      return;
+    }
+
+    const nextModeKey = buildModeStateKey(currentWorkspaceSlug, activeWorkspaceMode);
+    const previousModeKey = lastWorkspaceModeKeyRef.current;
+    const sameWorkspaceMode =
+      previousModeKey &&
+      previousModeKey !== nextModeKey &&
+      previousModeKey.startsWith(`${cleanText(currentWorkspaceSlug)}::`);
+
+    if (sameWorkspaceMode) {
+      setModeUiState((current) => {
+        const nextState = current[nextModeKey] ?? createWorkspaceModeUiState();
+        if (!nextState.searchQuery) {
+          return current;
+        }
+
+        return {
+          ...current,
+          [nextModeKey]: {
+            ...nextState,
+            searchQuery: ""
+          }
+        };
+      });
+    }
+
+    lastWorkspaceModeKeyRef.current = nextModeKey;
+  }, [activeWorkspaceMode, currentWorkspaceSlug, route.mode]);
+
+  useEffect(() => {
+    if (route.mode !== "workspace" || workspaceState.status !== "success" || workspaceState.data.slug !== currentWorkspaceSlug) {
+      return;
+    }
+
+    if (requestedWorkspaceMode !== "edit" || activeWorkspaceMode === "edit") {
+      return;
+    }
+
+    commitRoute(
+      buildWorkspaceHref(currentWorkspaceSlug, {
+        settingsIntent: currentWorkspaceSettingsIntent
+      }),
+      true
+    );
+  }, [activeWorkspaceMode, currentWorkspaceSettingsIntent, currentWorkspaceSlug, requestedWorkspaceMode, route.mode, workspaceState]);
+
+  useEffect(() => {
+    if (route.mode !== "workspace" || !workspacePagesLoaded) {
+      return;
+    }
+
+    const resolvedSelection = resolveWorkspacePageSelection(currentWorkspacePages, {
+      legacyPageId: currentWorkspaceLegacyPageId,
+      mode: activeWorkspaceMode,
+      pageSlug: currentWorkspacePageSlug,
+      preferredPageSysId: crossModeTargetPageSysIdRef.current || currentModeUiState.selectedPageSysId
+    });
+    const canonicalPageSlug = cleanText(resolvedSelection.pageSlug);
+    const needsCanonicalRoute =
+      currentWorkspaceLegacyPageId.length > 0 ||
+      requestedWorkspaceMode !== activeWorkspaceMode ||
+      cleanText(currentWorkspacePageSlug) !== canonicalPageSlug;
+
+    if (!currentWorkspacePages.length) {
+      if (currentWorkspaceLegacyPageId || currentWorkspacePageSlug || requestedWorkspaceMode !== activeWorkspaceMode) {
+        commitRoute(
+          buildWorkspaceHref(currentWorkspaceSlug, {
+            mode: activeWorkspaceMode
+          }),
+          true
+        );
+      }
+      return;
+    }
+
+    if (!needsCanonicalRoute) {
+      return;
+    }
+
+    commitRoute(
+      buildWorkspaceHref(currentWorkspaceSlug, {
+        mode: activeWorkspaceMode,
+        pageSlug: canonicalPageSlug || undefined
+      }),
+      true
+    );
+  }, [
+    activeWorkspaceMode,
+    currentModeUiState.selectedPageSysId,
+    currentWorkspaceLegacyPageId,
+    currentWorkspacePageSlug,
+    currentWorkspacePages,
+    currentWorkspaceSlug,
+    requestedWorkspaceMode,
+    route.mode,
+    workspacePagesLoaded
+  ]);
+
+  useEffect(() => {
+    if (route.mode !== "workspace") {
+      return;
+    }
+
+    const nextSelectedPageSysId = cleanText(selectedWorkspacePageId);
+    setModeUiState((current) => {
+      const currentState = current[currentModeStateKey] ?? createWorkspaceModeUiState();
+      if (currentState.selectedPageSysId === nextSelectedPageSysId) {
+        return current;
+      }
+
+      return {
+        ...current,
+        [currentModeStateKey]: {
+          ...currentState,
+          selectedPageSysId: nextSelectedPageSysId
+        }
+      };
+    });
+
+    if (crossModeTargetPageSysIdRef.current && crossModeTargetPageSysIdRef.current === nextSelectedPageSysId) {
+      crossModeTargetPageSysIdRef.current = "";
+    }
+  }, [currentModeStateKey, route.mode, selectedWorkspacePageId]);
+
+  useEffect(() => {
+    setEditorFailure(null);
+    setEditorTransitionState({ isDirty: false, isSaving: false });
+    setPendingRouteTransition(null);
+  }, [activeWorkspaceMode, editorSessionKey, selectedWorkspacePageId]);
 
   function commitRoute(href: string, replace = false) {
     navigateTo(href, replace);
     setRoute(readAppRoute(window.location));
   }
 
+  function isCurrentEditorSession(token: EditorSessionToken | null): token is EditorSessionToken {
+    return Boolean(token && editorSessionGenerationRef.current.isCurrent(token));
+  }
+
+  function resolveEditRoutePageSysId(targetRoute: DocseraAppRoute): string {
+    if (targetRoute.mode !== "workspace" || targetRoute.workspaceMode !== "edit") {
+      return "";
+    }
+
+    return cleanText(
+      resolveWorkspacePageSelection(currentWorkspacePages, {
+        legacyPageId: targetRoute.legacyPageId,
+        mode: "edit",
+        pageSlug: targetRoute.pageSlug
+      }).pageId
+    );
+  }
+
+  function transitionWouldDestroyEditor(targetRoute: DocseraAppRoute): boolean {
+    if (route.mode !== "workspace" || activeWorkspaceMode !== "edit") {
+      return false;
+    }
+
+    if (!isCurrentEditorSession(activeEditorSessionRef.current) || editAccessLost) {
+      return false;
+    }
+
+    const currentPageSysId = cleanText(selectedWorkspacePageId);
+    if (!currentPageSysId) {
+      return false;
+    }
+
+    if (targetRoute.mode !== "workspace") {
+      return true;
+    }
+
+    if (cleanText(targetRoute.workspaceSlug) !== currentWorkspaceSlug) {
+      return true;
+    }
+
+    if (targetRoute.workspaceMode !== "edit") {
+      return true;
+    }
+
+    return resolveEditRoutePageSysId(targetRoute) !== currentPageSysId;
+  }
+
+  function shouldGuardTransition(targetHref: string): boolean {
+    if (!(editorTransitionState.isDirty || editorTransitionState.isSaving)) {
+      return false;
+    }
+
+    return transitionWouldDestroyEditor(readAppRoute(new URL(targetHref, window.location.origin)));
+  }
+
+  function requestRouteTransition(transition: RequestedRouteTransition): void {
+    if (transition.href === buildHrefFromRoute(route)) {
+      return;
+    }
+
+    if (shouldGuardTransition(transition.href)) {
+      setPendingRouteTransition(transition);
+      return;
+    }
+
+    transition.beforeCommit?.();
+    commitRoute(transition.href, transition.replace);
+  }
+
+  function updateCurrentModeUiState(updater: (state: WorkspaceModeUiState) => WorkspaceModeUiState) {
+    setModeUiState((current) => {
+      const nextState = updater(current[currentModeStateKey] ?? createWorkspaceModeUiState());
+      return {
+        ...current,
+        [currentModeStateKey]: nextState
+      };
+    });
+  }
+
+  function buildWorkspaceRouteForPage(pageSysId: string, mode = activeWorkspaceMode): string {
+    const page = findWorkspacePageBySysId(currentWorkspacePages, pageSysId);
+    const pageSlug = cleanText(page?.draftSlug);
+    return buildWorkspaceHref(currentWorkspaceSlug, {
+      mode,
+      pageSlug: pageSlug || undefined
+    });
+  }
+
   function openLauncher() {
-    setWorkspaceSettingsNotice(false);
-    setPendingWorkspaceIdentity(null);
-    pageSettingsPendingOpenPageIdRef.current = "";
-    commitRoute(buildLauncherHref());
+    requestRouteTransition({
+      href: buildLauncherHref(),
+      replace: false,
+      beforeCommit: () => {
+        setWorkspaceSettingsNotice(false);
+        setPendingWorkspaceIdentity(null);
+        pageSettingsPendingOpenPageIdRef.current = "";
+      }
+    });
   }
 
   function openWorkspace(
     workspaceSlug: string,
     settingsIntentOrItem: boolean | PendingWorkspaceIdentity = false,
-    pageIdOrSettingsIntent = "",
     item?: PendingWorkspaceIdentity
   ) {
     const settingsIntent = typeof settingsIntentOrItem === "boolean" ? settingsIntentOrItem : false;
-    const pageId = typeof settingsIntentOrItem === "boolean" ? pageIdOrSettingsIntent : "";
     const optimisticIdentity = typeof settingsIntentOrItem === "boolean" ? item ?? null : settingsIntentOrItem;
 
-    rememberRecentWorkspaceSlug(workspaceSlug);
-    setWorkspaceSettingsNotice(settingsIntent);
-    setPendingWorkspaceIdentity(optimisticIdentity && cleanText(optimisticIdentity.slug) === cleanText(workspaceSlug) ? optimisticIdentity : null);
-    pageSettingsPendingOpenPageIdRef.current = "";
-    commitRoute(buildWorkspaceHref(workspaceSlug, settingsIntent, pageId));
+    requestRouteTransition({
+      href: buildWorkspaceHref(workspaceSlug, {
+        settingsIntent
+      }),
+      replace: false,
+      beforeCommit: () => {
+        rememberRecentWorkspaceSlug(workspaceSlug);
+        setWorkspaceSettingsNotice(settingsIntent);
+        setPendingWorkspaceIdentity(
+          optimisticIdentity && cleanText(optimisticIdentity.slug) === cleanText(workspaceSlug) ? optimisticIdentity : null
+        );
+        pageSettingsPendingOpenPageIdRef.current = "";
+        crossModeTargetPageSysIdRef.current = "";
+      }
+    });
   }
 
   function openWorkspacePage(pageId: string) {
@@ -789,7 +1423,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
 
     const nextPageId = cleanText(pageId);
-    if (!nextPageId || route.pageId === nextPageId) {
+    const nextPage = findWorkspacePageBySysId(currentWorkspacePages, nextPageId);
+    const nextPageSlug = cleanText(nextPage?.draftSlug);
+    if (!nextPageId || !nextPageSlug || currentWorkspacePageSlug === nextPageSlug) {
       return;
     }
 
@@ -798,7 +1434,78 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
-    commitRoute(buildWorkspaceHref(currentWorkspaceSlug, false, nextPageId));
+    requestRouteTransition({
+      href: buildWorkspaceHref(currentWorkspaceSlug, {
+        mode: activeWorkspaceMode,
+        pageSlug: nextPageSlug
+      }),
+      replace: false
+    });
+  }
+
+  function changeWorkspaceMode(mode: WorkspaceMode) {
+    if (route.mode !== "workspace") {
+      return;
+    }
+
+    const nextMode = mode === "edit" ? "edit" : "live";
+    if (nextMode === activeWorkspaceMode && requestedWorkspaceMode === nextMode) {
+      return;
+    }
+
+    const currentPageSysId = cleanText(selectedWorkspacePage?.sysId);
+    const nextModeStateKey = buildModeStateKey(currentWorkspaceSlug, nextMode);
+    const nextModeState = modeUiState[nextModeStateKey] ?? createWorkspaceModeUiState();
+    const rememberedNextPageSysId = cleanText(nextModeState.selectedPageSysId);
+    const rememberedNextPage = rememberedNextPageSysId
+      ? findWorkspacePageBySysId(currentWorkspacePages, rememberedNextPageSysId)
+      : null;
+    const nextPageSlug = nextMode === "live"
+      ? rememberedNextPage
+        ? cleanText(rememberedNextPage.draftSlug)
+        : selectedWorkspacePage?.publicationState === "draft"
+          ? cleanText(getFirstWorkspacePage(currentWorkspacePages.filter((page) => page.publicationState !== "draft"))?.draftSlug)
+          : cleanText(selectedWorkspacePage?.draftSlug)
+      : rememberedNextPageSysId
+        ? cleanText(rememberedNextPage?.draftSlug)
+        : cleanText(selectedWorkspacePage?.draftSlug);
+
+    requestRouteTransition({
+      href: buildWorkspaceHref(currentWorkspaceSlug, {
+        mode: nextMode,
+        pageSlug: nextPageSlug || undefined
+      }),
+      replace: false,
+      beforeCommit: () => {
+        crossModeTargetPageSysIdRef.current = rememberedNextPageSysId || currentPageSysId;
+        pageSettingsPendingOpenPageIdRef.current = "";
+        setInlinePageCreateState(null);
+        setEditorFailure(null);
+
+        if (pageSettingsStateRef.current.open) {
+          const nextState = createEmptyPageSettingsState();
+          pageSettingsStateRef.current = nextState;
+          setPageSettingsState(nextState);
+        }
+
+        setModeUiState((current) => {
+          const currentState = current[currentModeStateKey] ?? createWorkspaceModeUiState();
+          const nextState = current[nextModeStateKey] ?? createWorkspaceModeUiState();
+
+          return {
+            ...current,
+            [currentModeStateKey]: {
+              ...currentState,
+              searchQuery: ""
+            },
+            [nextModeStateKey]: {
+              ...nextState,
+              searchQuery: ""
+            }
+          };
+        });
+      }
+    });
   }
 
   function openCreateModal() {
@@ -832,7 +1539,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
     pageSettingsCloseTargetRef.current = "";
 
-    const page = findWorkspacePageBySysId(livePagesForCurrentWorkspace, pageSysId);
+    const page = findWorkspacePageBySysId(currentWorkspacePages, pageSysId);
     if (!page) {
       return;
     }
@@ -855,7 +1562,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
-    if (nextPageId !== currentWorkspacePageId) {
+    if (nextPageId !== selectedWorkspacePageId) {
       pageSettingsPendingOpenPageIdRef.current = nextPageId;
       openWorkspacePage(nextPageId);
       return;
@@ -945,7 +1652,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
     const validation = validatePageSettingsSlug(
       pageSettingsState.slug,
-      livePagesForCurrentWorkspace,
+      currentWorkspacePages,
       workspaceState.status === "success" ? workspaceState.data.sysId ?? "" : "",
       pageSettingsState.pageSysId
     );
@@ -1004,7 +1711,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return true;
     }
 
-    const page = findWorkspacePageBySysId(livePagesForCurrentWorkspace, currentPageSettingsState.pageSysId);
+    const page = findWorkspacePageBySysId(currentWorkspacePages, currentPageSettingsState.pageSysId);
     if (!page) {
       const nextState = createEmptyPageSettingsState();
       pageSettingsStateRef.current = nextState;
@@ -1015,7 +1722,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     const titleValidation = validatePageSettingsTitle(currentPageSettingsState.title);
     const slugValidation = validatePageSettingsSlug(
       currentPageSettingsState.slug,
-      livePagesForCurrentWorkspace,
+      currentWorkspacePages,
       workspaceState.data.sysId ?? "",
       page.sysId ?? currentPageSettingsState.pageSysId
     );
@@ -1043,7 +1750,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       setPageSettingsState(nextState);
       const nextPageId = cleanText(nextSelectedPageId);
       if (nextPageId && nextPageId !== currentPageSettingsState.pageSysId) {
-        commitRoute(buildWorkspaceHref(currentWorkspaceSlug, false, nextPageId));
+        requestRouteTransition({
+          href: buildWorkspaceRouteForPage(nextPageId),
+          replace: false
+        });
       }
       return true;
     }
@@ -1073,7 +1783,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }
 
       setWorkspacePagesState((current) => {
-        if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug) {
+        if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug || current.mode !== activeWorkspaceMode) {
           return current;
         }
 
@@ -1090,7 +1800,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       setPageSettingsState(nextState);
       const nextPageId = cleanText(nextSelectedPageId);
       if (nextPageId && nextPageId !== cleanText(result.page.sysId)) {
-        commitRoute(buildWorkspaceHref(currentWorkspaceSlug, false, nextPageId));
+        requestRouteTransition({
+          href: buildWorkspaceRouteForPage(nextPageId),
+          replace: false
+        });
       }
       return true;
     } catch {
@@ -1157,7 +1870,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
-    const currentPage = findWorkspacePageBySysId(livePagesForCurrentWorkspace, currentPageSettingsState.pageSysId);
+    const currentPage = findWorkspacePageBySysId(currentWorkspacePages, currentPageSettingsState.pageSysId);
     if (!currentPage) {
       setPageSettingsState((current) => ({
         ...current,
@@ -1168,10 +1881,17 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
 
     const deletedPageSysId = cleanText(currentPage.sysId) || currentPageSettingsState.pageSysId;
-    const deletedSubtreeIds = new Set(collectPageSubtreeSysIds(livePagesForCurrentWorkspace, deletedPageSysId));
-    const nextPages = removePageSubtree(livePagesForCurrentWorkspace, deletedPageSysId) as WorkspacePageRecord[];
-    const nextPageId =
-      deletedSubtreeIds.has(selectedWorkspacePageId) ? cleanText(buildWorkspaceShellPages(nextPages)[0]?.id) : selectedWorkspacePageId;
+    const deletedSubtreeIds = new Set(collectPageSubtreeSysIds(currentWorkspacePages, deletedPageSysId));
+    const nextPages = removePageSubtree(currentWorkspacePages, deletedPageSysId) as WorkspacePageRecord[];
+    const nextSelection = deletedSubtreeIds.has(selectedWorkspacePageId)
+      ? resolveWorkspacePageSelection(nextPages, {
+          mode: activeWorkspaceMode
+        })
+      : resolveWorkspacePageSelection(nextPages, {
+          mode: activeWorkspaceMode,
+          preferredPageSysId: selectedWorkspacePageId
+        });
+    const nextPageId = cleanText(nextSelection.pageId);
 
     setPageSettingsState((current) => ({
       ...current,
@@ -1196,7 +1916,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }
 
       setWorkspacePagesState((current) => {
-        if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug) {
+        if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug || current.mode !== activeWorkspaceMode) {
           return current;
         }
 
@@ -1209,11 +1929,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
       try {
         const refreshedPages = await serviceNowClient.listPages({
+          mode: activeWorkspaceMode,
           workspaceSlug: workspaceState.data.slug
         });
 
         setWorkspacePagesState((current) => {
-          if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug) {
+          if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug || current.mode !== activeWorkspaceMode) {
             return current;
           }
 
@@ -1231,7 +1952,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       pageSettingsStateRef.current = nextState;
       setPageSettingsState(nextState);
 
-      commitRoute(buildWorkspaceHref(currentWorkspaceSlug, false, nextPageId));
+      commitRoute(
+        buildWorkspaceHref(currentWorkspaceSlug, {
+          mode: activeWorkspaceMode,
+          pageSlug: cleanText(nextSelection.pageSlug) || undefined
+        })
+      );
     } catch {
       setPageSettingsState((current) => ({
         ...current,
@@ -1395,7 +2121,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
     setInlinePageCreateState(null);
     setWorkspacePagesState((current) => {
-      if (current.status !== "success" || current.workspaceSlug !== currentWorkspace) {
+      if (current.status !== "success" || current.workspaceSlug !== currentWorkspace || current.mode !== activeWorkspaceMode) {
         return current;
       }
 
@@ -1405,267 +2131,200 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         totalCount: current.totalCount + 1
       };
     });
-    commitRoute(buildWorkspaceHref(currentWorkspaceSlug, false, cleanText(page.sysId)), false);
+    requestRouteTransition({
+      href: buildWorkspaceHref(currentWorkspace, {
+        mode: "edit",
+        pageSlug: cleanText(page.draftSlug) || undefined
+      }),
+      replace: false,
+      beforeCommit: () => {
+        crossModeTargetPageSysIdRef.current = cleanText(page.sysId);
+      }
+    });
   }
 
   const launcherList = launcherState.status === "success" || launcherState.status === "refreshing" ? launcherState.data : null;
 
-  useEffect(() => {
-    if (route.mode !== "workspace" || workspaceState.status !== "success" || workspaceState.data.slug !== currentWorkspaceSlug) {
+  function handleStayOnDirtyTransition() {
+    setPendingRouteTransition(null);
+  }
+
+  function handleDiscardDirtyTransition() {
+    const transition = pendingRouteTransition;
+    if (!transition) {
       return;
     }
 
-    if (!workspacePagesLoaded || livePagesForCurrentWorkspace.length === 0) {
+    setPendingRouteTransition(null);
+    transition.beforeCommit?.();
+    commitRoute(transition.href, transition.replace);
+  }
+
+  function handleOutlineChange(pageSysId: string, outline: WorkspacePageOutlineItem[]) {
+    const sessionToken = renderedEditorSession;
+    const normalizedPageSysId = cleanText(pageSysId);
+    if (!normalizedPageSysId || !isCurrentEditorSession(sessionToken)) {
       return;
     }
 
-    const { pageId } = resolveWorkspacePageSelection(livePagesForCurrentWorkspace, currentWorkspacePageId);
-    if (!pageId || pageId === currentWorkspacePageId) {
+    if (sessionToken.pageSysId !== normalizedPageSysId) {
       return;
     }
 
-    commitRoute(buildWorkspaceHref(currentWorkspaceSlug, false, pageId), true);
-  }, [
-    currentWorkspacePageId,
-    currentWorkspaceSlug,
-    livePagesForCurrentWorkspace,
-    route.mode,
-    workspacePagesLoaded,
-    loadedWorkspaceSlug,
-    workspaceState.status
-  ]);
+    setPageOutlineOverrides((current) => ({
+      ...current,
+      [normalizedPageSysId]: outline
+    }));
+  }
 
-  async function savePageBody(input: {
-    pageSysId: string;
-    draftBodyText: string;
-    expectedRevision: number;
-  }): Promise<WorkspacePageRecord> {
-    if (workspaceState.status !== "success") {
-      throw new Error(SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE);
+  function handleEditorStatusChange(pageSysId: string, state: { isDirty: boolean; isSaving: boolean }) {
+    const sessionToken = renderedEditorSession;
+    if (!isCurrentEditorSession(sessionToken)) {
+      return;
     }
 
-    let result!: SavedPageBodyResult;
-    try {
-      result = await serviceNowClient.savePageBody({
-        workspaceSlug: workspaceState.data.slug,
-        workspaceSysId: workspaceState.data.sysId,
-        pageSysId: input.pageSysId,
-        draftBodyText: input.draftBodyText,
-        expectedRevision: input.expectedRevision
+    if (sessionToken.pageSysId !== cleanText(pageSysId)) {
+      return;
+    }
+
+    setEditorTransitionState((current) =>
+      current.isDirty === state.isDirty && current.isSaving === state.isSaving ? current : state
+    );
+  }
+
+  function handleEditorFailureChangeForSession(sessionToken: EditorSessionToken | null, failure: PageEditorHostFailure | null) {
+    if (!isCurrentEditorSession(sessionToken)) {
+      return;
+    }
+
+    setEditorFailure(failure);
+  }
+
+  function handleEditorAccessLostForSession(sessionToken: EditorSessionToken | null) {
+    if (!isCurrentEditorSession(sessionToken)) {
+      return;
+    }
+
+    handleEditorAccessLost();
+  }
+
+  function handleEditorAccessLost() {
+    const invalidatedPageSysId = cleanText(selectedWorkspacePage?.sysId);
+    editorSessionGenerationRef.current.invalidate();
+    editorSessionSeedRef.current = "";
+    activeEditorSessionRef.current = null;
+    setEditorSessionState({
+      sessionKey: "",
+      token: null
+    });
+    setEditorTransitionState({ isDirty: false, isSaving: false });
+    setPendingRouteTransition(null);
+    setEditAccessLost(true);
+    setInlinePageCreateState(null);
+    pageSettingsPendingOpenPageIdRef.current = "";
+    if (pageSettingsStateRef.current.open) {
+      const nextState = createEmptyPageSettingsState();
+      pageSettingsStateRef.current = nextState;
+      setPageSettingsState(nextState);
+    }
+    if (invalidatedPageSysId) {
+      setPageOutlineOverrides((current) => {
+        if (!(invalidatedPageSysId in current)) {
+          return current;
+        }
+
+        const next = { ...current };
+        delete next[invalidatedPageSysId];
+        return next;
       });
-    } catch {
-      throw new Error(SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE);
+    }
+  }
+
+  function handleReturnToLive() {
+    if (route.mode !== "workspace") {
+      return;
     }
 
-    if (result.state === "failed") {
-      throw new Error(result.errorMessage);
+    const liveTargetSlug =
+      selectedWorkspacePage?.publicationState === "draft"
+        ? cleanText(getFirstWorkspacePage(currentWorkspacePages.filter((page) => page.publicationState !== "draft"))?.draftSlug)
+        : cleanText(selectedWorkspacePage?.draftSlug);
+
+    requestRouteTransition({
+      href: buildWorkspaceHref(currentWorkspaceSlug, {
+        mode: "live",
+        pageSlug: liveTargetSlug || undefined
+      }),
+      replace: false
+    });
+  }
+
+  function applySavedPage(page: WorkspacePageRecord) {
+    if (workspaceState.status !== "success") {
+      return;
     }
 
     setWorkspacePagesState((current) => {
-      if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug) {
+      if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug || current.mode !== activeWorkspaceMode) {
         return current;
       }
 
       return {
         ...current,
-        data: current.data.map((page) => (cleanText(page.sysId) === cleanText(result.page.sysId) ? result.page : page))
+        data: current.data.map((currentPage) => (cleanText(currentPage.sysId) === cleanText(page.sysId) ? page : currentPage))
       };
     });
-
-    return result.page;
   }
 
-  if (route.mode === "workspace") {
-    if (workspaceState.status === "loading" || workspaceState.status === "idle") {
-      return (
-        <div className="docsera-app">
-          <DocseraHeader
-            currentWorkspaceSlug={currentWorkspaceSlug}
-            identity={workspaceHeaderIdentity}
-            mode="workspace"
-            onOpenMyWorkspaces={openLauncher}
-            onOpenWorkspace={openWorkspace}
-            recentWorkspaces={recentWorkspaceItems}
-            showWorkspaceSwitcher={recentWorkspaceItems.length > 0}
-            theme={theme}
-            onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
-          />
-          <section className="docsera-shell__empty-state" role="status">
-            <p className="docsera-shell__eyebrow">Workspace</p>
-            <h2 className="docsera-shell__empty-title">Loading workspace</h2>
-            <p className="docsera-shell__empty-copy">Fetching the selected workspace from ServiceNow.</p>
-            <button type="button" className="docsera-launcher-state__secondary" onClick={openLauncher}>
-              Return to My Workspaces
-            </button>
-          </section>
-        </div>
-      );
+  async function savePageDraft(input: {
+    pageSysId: string;
+    draftContentJson: DocseraDocumentEnvelope;
+    expectedRevision: number;
+  }): Promise<PageBodySaveResult> {
+    if (workspaceState.status !== "success") {
+      return {
+        errorMessage: SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE,
+        state: "failed"
+      };
     }
 
-    if (workspaceState.status === "error") {
-      return (
-        <div className="docsera-app">
-          <DocseraHeader
-            currentWorkspaceSlug={currentWorkspaceSlug}
-            identity={workspaceHeaderIdentity}
-            mode="workspace"
-            onOpenMyWorkspaces={openLauncher}
-            onOpenWorkspace={openWorkspace}
-            recentWorkspaces={recentWorkspaceItems}
-            showWorkspaceSwitcher={recentWorkspaceItems.length > 0}
-            theme={theme}
-            onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
-          />
-          <section className="docsera-shell__empty-state" role="status">
-            <p className="docsera-shell__eyebrow">Workspace</p>
-            <h2 className="docsera-shell__empty-title">Workspace unavailable</h2>
-            <p className="docsera-shell__empty-copy">{workspaceState.errorMessage}</p>
-            <button type="button" className="docsera-launcher-state__secondary" onClick={openLauncher}>
-              Return to My Workspaces
-            </button>
-          </section>
-        </div>
-      );
+    let result: PageBodySaveResult;
+    try {
+      result = await serviceNowClient.savePageBody({
+        draftContentJson: input.draftContentJson,
+        workspaceSlug: workspaceState.data.slug,
+        workspaceSysId: workspaceState.data.sysId,
+        pageSysId: input.pageSysId,
+        expectedRevision: input.expectedRevision
+      });
+    } catch {
+      return {
+        errorMessage: SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE,
+        state: "failed"
+      };
     }
 
-    if (workspacePagesLoading || workspacePagesState.status === "idle") {
-      return (
-        <div className="docsera-app">
-          <DocseraHeader
-            currentWorkspaceSlug={workspaceState.data.slug}
-            identity={workspaceHeaderIdentity}
-            mode="workspace"
-            onOpenMyWorkspaces={openLauncher}
-            onOpenWorkspace={openWorkspace}
-            recentWorkspaces={recentWorkspaceItems}
-            theme={theme}
-            onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
-          />
-          <section className="docsera-shell__empty-state" role="status">
-            <p className="docsera-shell__eyebrow">Workspace</p>
-            <h2 className="docsera-shell__empty-title">Loading pages</h2>
-            <p className="docsera-shell__empty-copy">Fetching live page records from ServiceNow.</p>
-            <button type="button" className="docsera-launcher-state__secondary" onClick={openLauncher}>
-              Return to My Workspaces
-            </button>
-          </section>
-        </div>
-      );
-    }
-
-    if (workspacePagesState.status === "error" && workspacePagesState.workspaceSlug === currentWorkspaceSlug) {
-      return (
-        <div className="docsera-app">
-          <DocseraHeader
-            currentWorkspaceSlug={workspaceState.data.slug}
-            identity={workspaceHeaderIdentity}
-            mode="workspace"
-            onOpenMyWorkspaces={openLauncher}
-            onOpenWorkspace={openWorkspace}
-            recentWorkspaces={recentWorkspaceItems}
-            theme={theme}
-            onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
-          />
-          <section className="docsera-shell__empty-state" role="status">
-            <p className="docsera-shell__eyebrow">Workspace</p>
-            <h2 className="docsera-shell__empty-title">Pages unavailable</h2>
-            <p className="docsera-shell__empty-copy">{workspacePagesState.errorMessage}</p>
-            <button type="button" className="docsera-launcher-state__secondary" onClick={openLauncher}>
-              Return to My Workspaces
-            </button>
-          </section>
-        </div>
-      );
-    }
-
-    if (!workspaceShellWorkspace) {
-      return (
-        <div className="docsera-app">
-          <DocseraHeader
-            currentWorkspaceSlug={currentWorkspaceSlug}
-            identity={workspaceHeaderIdentity}
-            mode="workspace"
-            onOpenMyWorkspaces={openLauncher}
-            onOpenWorkspace={openWorkspace}
-            recentWorkspaces={recentWorkspaceItems}
-            showWorkspaceSwitcher={recentWorkspaceItems.length > 0}
-            theme={theme}
-            onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
-          />
-          <section className="docsera-shell__empty-state" role="status">
-            <p className="docsera-shell__eyebrow">Workspace</p>
-            <h2 className="docsera-shell__empty-title">Workspace unavailable</h2>
-            <p className="docsera-shell__empty-copy">The selected workspace could not be rendered.</p>
-            <button type="button" className="docsera-launcher-state__secondary" onClick={openLauncher}>
-              Return to My Workspaces
-            </button>
-          </section>
-        </div>
-      );
-    }
-
-    return (
-      <div className="docsera-app">
-        <WorkspaceShell
-          currentWorkspaceSlug={workspaceState.data.slug}
-          recentWorkspaces={recentWorkspaceItems}
-          showWorkspaceSwitcher={Boolean(workspaceState.data.roleLabel) || recentWorkspaceItems.length > 0}
-          onOpenWorkspaceSettings={() => openWorkspace(route.workspaceSlug, true, selectedWorkspacePageId)}
-          onOpenWorkspace={openWorkspace}
-          workspace={workspaceShellWorkspace}
-          selectedPageId={selectedWorkspacePageId}
-          onSelectPage={openWorkspacePage}
-          canManagePageSettings={canManagePageSettings}
-          pageSettingsOpenPageId={pageSettingsState.open ? pageSettingsState.pageSysId : ""}
-          onTogglePageSettings={requestTogglePageSettings}
-          onOpenMyWorkspaces={openLauncher}
-          workspaceSettingsNotice={workspaceSettingsNotice}
-          canCreatePage={canCreatePage}
-          inlineCreateState={inlinePageCreateState}
-          isCreatingPage={isCreatingPage}
-          onCommitInlineCreate={submitInlinePageCreation}
-          onInlineCreateTitleChange={updateInlinePageCreateTitle}
-          onShowCreatePage={openCreatePageModal}
-          onShowChildPageCreate={openCreatePageModal}
-          selectedWorkspacePage={selectedWorkspacePage}
-          onSavePageBody={savePageBody}
-          theme={theme}
-          onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
-          pageSettingsOverlay={
-            <PageSettingsOverlay
-              activeField={pageSettingsState.activeField}
-              canManagePageSettings={canManagePageSettings}
-              generalError={pageSettingsState.generalError}
-              open={pageSettingsState.open}
-              panelRef={pageSettingsPanelRef}
-              pageSlug={pageSettingsState.slug}
-              pageTitle={pageSettingsState.title}
-              slugError={pageSettingsState.slugError}
-              titleError={pageSettingsState.titleError}
-              onCancelField={cancelPageSettingsField}
-              onChangeField={updatePageSettingsField}
-              onFinishField={finishPageSettingsField}
-              onRequestClose={() => {
-                requestClosePageSettingsPanel(pageSettingsStateRef.current.pageSysId);
-              }}
-              onRequestDelete={requestOpenDeletePageSettings}
-              onStartField={startPageSettingsField}
-            />
-          }
-        />
-        <PageSettingsDeleteDialog
-          errorMessage={pageSettingsState.deleteError}
-          hasDescendants={pageSettingsHasDescendants}
-          open={pageSettingsState.deleteOpen}
-          pageTitle={pageSettingsState.title || pageSettingsPage?.draftTitle || "page"}
-          pending={pageSettingsState.deletePending}
-          onConfirm={confirmDeletePageSettings}
-          onRequestClose={requestCloseDeletePageSettings}
-        />
-      </div>
-    );
+    return result;
   }
 
+  async function savePageDraftForSession(
+    sessionToken: EditorSessionToken | null,
+    input: {
+      pageSysId: string;
+      draftContentJson: DocseraDocumentEnvelope;
+      expectedRevision: number;
+    }
+  ): Promise<PageBodySaveResult> {
+    const result = await savePageDraft(input);
+
+    if (result.state !== "succeeded" || !sessionToken || !isCurrentEditorSession(sessionToken)) {
+      return result;
+    }
+
+    applySavedPage(result.page);
+
+    return result;
+  }
   const listState = {
     hasError: launcherState.status === "error",
     isEmptyState: launcherState.status === "success" && launcherList !== null && launcherList.totalCount === 0 && !launcherList.searchText,
@@ -1680,45 +2339,196 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     workspaceListErrorMessage: launcherState.status === "error" ? launcherState.errorMessage : undefined
   };
 
+  const launcherHeaderIdentity: HeaderIdentity = {
+    kind: "docsera",
+    icon: {
+      type: "builtin",
+      key: "docsera-workspace",
+      label: "Docsera workspace icon"
+    },
+    name: "Docsera"
+  };
+  const appHeaderIdentity = route.mode === "workspace" ? workspaceHeaderIdentity : launcherHeaderIdentity;
+  const appHeaderMode = route.mode === "workspace" ? "workspace" : "launcher";
+  const appHeaderWorkspaceSlug = route.mode === "workspace" ? currentWorkspaceSlug : "";
+  const appHeaderWorkspaceMode =
+    route.mode === "workspace" ? workspaceHeaderPresentation?.showWorkspaceMode ?? activeWorkspaceMode : "live";
+  const appHeaderSidebarCollapsed = route.mode === "workspace" ? sidebarCollapsed : false;
+  const appHeaderWorkspaceNavWidth = route.mode === "workspace" ? workspaceNavWidth : undefined;
+  const appHeaderShowWorkspaceSettings =
+    route.mode === "workspace" ? Boolean(workspaceHeaderPresentation?.showWorkspaceSettings) : false;
+  const appHeaderShowEditToggle = route.mode === "workspace" ? Boolean(workspaceHeaderPresentation?.showEditModeToggle) : false;
+  const appHeaderShowWorkspaceSwitcher =
+    route.mode === "workspace"
+      ? Boolean(workspaceHeaderPresentation?.showWorkspaceSwitcher)
+      : recentWorkspaceItems.length > 0;
+  const appHeaderWorkspaceControlsLocked = isRetainingWorkspaceHeaderPresentation;
+
   return (
-    <div className="docsera-app">
-      <MyWorkspacesScreen
-        createModal={{
-          errorMessage: createModalError,
-          onClose: () => {
-            setCreateModalOpen(false);
-            setCreateModalError(undefined);
-            setCreateModalPhase("idle");
-          },
-          onSubmit: submitWorkspaceCreation,
-          open: createModalOpen,
-          phase: createModalPhase
-        }}
-        onNextPage={() => setLauncherPage((value) => value + 1)}
-        onOpenWorkspace={(workspaceSlug) => openWorkspace(workspaceSlug)}
-        onOpenWorkspaceSettings={(workspaceSlug) => openWorkspace(workspaceSlug, true)}
-        onPreviousPage={() => setLauncherPage((value) => Math.max(1, value - 1))}
-        onRefresh={() => setLauncherRefreshToken((value) => value + 1)}
-        onSearchTextChange={(value) => {
-          setLauncherSearchText(value);
-          setLauncherPage(1);
-        }}
-        onShowCreateModal={openCreateModal}
-        hasError={listState.hasError}
-        isEmptyState={listState.isEmptyState}
-        isLoading={listState.isLoading}
-        isNoResultsState={listState.isNoResultsState}
-        isRefreshing={listState.isRefreshing}
-        items={listState.items}
-        page={listState.page}
-        pageSize={listState.pageSize}
-        searchText={launcherSearchText}
+    <div className={`docsera-app${route.mode === "launcher" ? " docsera-app--launcher" : ""}`}>
+      <DocseraHeader
+        breadcrumbs={selectedPagePath}
+        currentWorkspaceSlug={appHeaderWorkspaceSlug}
+        identity={appHeaderIdentity}
+        mode={appHeaderMode}
+        onOpenMyWorkspaces={openLauncher}
+        onOpenWorkspace={openWorkspace}
+        onOpenWorkspaceSettings={route.mode === "workspace" ? () => openWorkspace(route.workspaceSlug, true) : undefined}
+        onSelectBreadcrumb={route.mode === "workspace" ? openWorkspacePage : undefined}
+        onToggleSidebar={route.mode === "workspace" ? () => setSidebarCollapsed((collapsed) => !collapsed) : undefined}
         recentWorkspaces={recentWorkspaceItems}
+        showEditModeToggle={appHeaderShowEditToggle}
+        showWorkspaceMode={appHeaderWorkspaceMode}
+        workspaceControlsLocked={appHeaderWorkspaceControlsLocked}
+        onWorkspaceModeChange={route.mode === "workspace" ? changeWorkspaceMode : undefined}
+        showWorkspaceSwitcher={appHeaderShowWorkspaceSwitcher}
+        showWorkspaceSettings={appHeaderShowWorkspaceSettings}
+        sidebarCollapsed={appHeaderSidebarCollapsed}
         theme={theme}
-        totalCount={listState.totalCount}
         onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
-        workspaceListErrorMessage={listState.workspaceListErrorMessage}
+        workspaceNavWidth={appHeaderWorkspaceNavWidth}
       />
+
+      <div className="docsera-app__body" aria-busy={showLoadingProgress}>
+        {route.mode === "workspace" ? (
+          <>
+            <WorkspaceShell
+              breadcrumbs={selectedPagePath}
+              canCreatePage={canCreatePage}
+              canEditPageBody={hasAuthoringCapability && !editAccessLost}
+              canManagePageSettings={canManagePageSettings}
+              collapsedPageIds={currentModeUiState.collapsedPageIds}
+              currentWorkspaceSlug={workspaceState.status === "success" ? workspaceState.data.slug : currentWorkspaceSlug}
+              editAccessLost={editAccessLost}
+              editorFailure={editorFailure}
+              inlineCreateState={inlinePageCreateState}
+              isCreatingPage={isCreatingPage}
+              mode={activeWorkspaceMode}
+              onAccessLost={() => handleEditorAccessLostForSession(renderedEditorSession)}
+              onCollapsedPageIdsChange={(pageIds) => {
+                const normalizedPageIds = [...new Set(pageIds.map((pageId) => cleanText(pageId)).filter(Boolean))];
+                updateCurrentModeUiState((current) => ({
+                  ...current,
+                  collapsedPageIds: normalizedPageIds
+                }));
+              }}
+              onCommitInlineCreate={submitInlinePageCreation}
+              onEditorFailureChange={(failure) => handleEditorFailureChangeForSession(renderedEditorSession, failure)}
+              onInlineCreateTitleChange={updateInlinePageCreateTitle}
+              onModeChange={changeWorkspaceMode}
+              onOutlineChange={handleOutlineChange}
+              onReturnToMyWorkspaces={openLauncher}
+              onReturnToLive={handleReturnToLive}
+              onRetryEditor={() => {
+                setEditorFailure(null);
+                setEditorRetryNonce((value) => value + 1);
+              }}
+              onSavePageDraft={(input) => savePageDraftForSession(renderedEditorSession, input)}
+              onStatusChange={(state) => handleEditorStatusChange(selectedWorkspacePageId, state)}
+              onSelectPage={openWorkspacePage}
+              onShowChildPageCreate={openCreatePageModal}
+              onShowCreatePage={openCreatePageModal}
+              onTogglePageSettings={requestTogglePageSettings}
+              onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
+              outlinePage={outlinePage}
+              pageSettingsOpenPageId={pageSettingsState.open ? pageSettingsState.pageSysId : ""}
+              pageSettingsOverlay={
+                <PageSettingsOverlay
+                  activeField={pageSettingsState.activeField}
+                  canManagePageSettings={canManagePageSettings}
+                  generalError={pageSettingsState.generalError}
+                  open={pageSettingsState.open}
+                  panelRef={pageSettingsPanelRef}
+                  pageSlug={pageSettingsState.slug}
+                  pageTitle={pageSettingsState.title}
+                  slugError={pageSettingsState.slugError}
+                  titleError={pageSettingsState.titleError}
+                  onCancelField={cancelPageSettingsField}
+                  onChangeField={updatePageSettingsField}
+                  onFinishField={finishPageSettingsField}
+                  onRequestClose={() => {
+                    requestClosePageSettingsPanel(pageSettingsStateRef.current.pageSysId);
+                  }}
+                  onRequestDelete={requestOpenDeletePageSettings}
+                  onStartField={startPageSettingsField}
+                />
+              }
+              selectedPage={selectedPageView}
+              selectedPageId={selectedWorkspacePageId}
+              sessionKey={editorSessionKey}
+              shellStatus={workspaceShellStatus}
+              shellTitle={workspaceShellTitle}
+              shellCopy={workspaceShellCopy}
+              showPendingState={showTransitionProgress}
+              sidebarCollapsed={appHeaderSidebarCollapsed}
+              showEditModeToggle={appHeaderShowEditToggle}
+              treeFilter={currentModeUiState.searchQuery}
+              treePages={workspaceShellStatus === "ready" ? treePages : []}
+              workspaceNavWidth={workspaceNavWidth}
+              onSidebarCollapsedChange={setSidebarCollapsed}
+              onWorkspaceNavWidthChange={setWorkspaceNavWidth}
+              theme={theme}
+              workspaceSettingsNotice={workspaceSettingsNotice}
+              onTreeFilterChange={(value) => {
+                updateCurrentModeUiState((current) => ({
+                  ...current,
+                  searchQuery: value
+                }));
+              }}
+            />
+            <PageSettingsDeleteDialog
+              errorMessage={pageSettingsState.deleteError}
+              hasDescendants={pageSettingsHasDescendants}
+              open={pageSettingsState.deleteOpen}
+              pageTitle={pageSettingsState.title || pageSettingsPage?.draftTitle || "page"}
+              pending={pageSettingsState.deletePending}
+              onConfirm={confirmDeletePageSettings}
+              onRequestClose={requestCloseDeletePageSettings}
+            />
+            <DirtyTransitionDialog
+              open={pendingRouteTransition !== null}
+              onDiscard={handleDiscardDirtyTransition}
+              onStay={handleStayOnDirtyTransition}
+            />
+          </>
+        ) : (
+          <MyWorkspacesScreen
+            createModal={{
+              errorMessage: createModalError,
+              onClose: () => {
+                setCreateModalOpen(false);
+                setCreateModalError(undefined);
+                setCreateModalPhase("idle");
+              },
+              onSubmit: submitWorkspaceCreation,
+              open: createModalOpen,
+              phase: createModalPhase
+            }}
+            onNextPage={() => setLauncherPage((value) => value + 1)}
+            onOpenWorkspace={(workspaceSlug) => openWorkspace(workspaceSlug)}
+            onOpenWorkspaceSettings={(workspaceSlug) => openWorkspace(workspaceSlug, true)}
+            onPreviousPage={() => setLauncherPage((value) => Math.max(1, value - 1))}
+            onRefresh={() => setLauncherRefreshToken((value) => value + 1)}
+            onSearchTextChange={(value) => {
+              setLauncherSearchText(value);
+              setLauncherPage(1);
+            }}
+            onShowCreateModal={openCreateModal}
+            hasError={listState.hasError}
+            isEmptyState={listState.isEmptyState}
+            isLoading={listState.isLoading}
+            isNoResultsState={listState.isNoResultsState}
+            isRefreshing={listState.isRefreshing}
+            items={listState.items}
+            showLoadingState={showTransitionProgress}
+            page={listState.page}
+            pageSize={listState.pageSize}
+            searchText={launcherSearchText}
+            totalCount={listState.totalCount}
+            workspaceListErrorMessage={listState.workspaceListErrorMessage}
+          />
+        )}
+      </div>
     </div>
   );
 }

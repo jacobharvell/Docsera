@@ -336,6 +336,8 @@ describe("service now client page creation", () => {
     });
 
     expect(result).toEqual({
+      code: "conflict",
+      currentRevision: 9,
       state: "failed",
       errorMessage: "This page has a newer saved draft. Reload before saving again."
     });

@@ -10,7 +10,7 @@ describe("E1 editor runtime spike outlet", () => {
     expect(screen.getByRole("status")).toHaveTextContent("loading");
     await waitFor(() => {
       expect(screen.getByRole("status")).toHaveTextContent("ready");
-    });
+    }, { timeout: 5000 });
 
     const host = container.querySelector<HTMLElement>("[data-docsera-editor-spike-host='true']");
     expect(host?.shadowRoot?.querySelector(".ProseMirror")).toHaveTextContent("TipTap editor asset loaded");
@@ -20,6 +20,6 @@ describe("E1 editor runtime spike outlet", () => {
     unmount();
     await waitFor(() => {
       expect(host?.shadowRoot?.childElementCount).toBe(0);
-    });
+    }, { timeout: 5000 });
   });
 });

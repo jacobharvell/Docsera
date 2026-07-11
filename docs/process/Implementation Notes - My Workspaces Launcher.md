@@ -15,6 +15,8 @@ This note summarizes repo-side implementation behavior only. Accepted product re
 - The page lists active workspaces where the current user has Docsera Admin, Workspace Admin, or Workspace Editor capability.
 - The launcher body uses a single page intro plus a bordered list card that contains the search toolbar, workspace header row, row list, and pagination footer.
 - The launcher body follows the authoritative prototype styling for this surface: white page background in light mode, dark app background in dark mode, 1152px max content width, compact 40px primary actions, and a white list card with subtle slate toolbar and footer bands.
+- The launcher route now owns its full-page light-theme white background through an explicit launcher surface class so the shared workspace tint does not bleed into My Workspaces.
+- Dark-theme launcher rendering keeps the existing dark background contract and does not force white on the launcher surface.
 - Workspace rows show a compact icon, name, short description when available, and the current user's effective capability label.
 - Workspace settings entry points appear only when the current user has Admin capability for that workspace.
 - Role and Settings render together in the same row column with explicit inline spacing; Settings remains an inline text action for Admin rows only.

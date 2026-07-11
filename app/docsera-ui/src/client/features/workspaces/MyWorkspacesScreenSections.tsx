@@ -154,7 +154,7 @@ export function WorkspaceRow({
           {workspace.canManageSettings ? (
             <a
               className="docsera-workspace-row__settings"
-              href={buildWorkspaceHref(workspace.slug, true)}
+              href={buildWorkspaceHref(workspace.slug, { settingsIntent: true })}
               onClick={(event) => {
                 event.preventDefault();
                 onOpenWorkspaceSettings(workspace.slug);

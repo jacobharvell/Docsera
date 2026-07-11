@@ -17,9 +17,13 @@ describe("editor session generation", () => {
     const advanced = sessions.advanceRevision(current, 5);
 
     expect(advanced).toEqual({ pageSysId: "page-1", generation: current.generation, revision: 5 });
-    expect(sessions.isCurrent(current)).toBe(false);
+    expect(sessions.isCurrent(current)).toBe(true);
     expect(advanced && sessions.isCurrent(advanced)).toBe(true);
-    expect(sessions.advanceRevision(current, 6)).toBeNull();
+    expect(sessions.advanceRevision(current, 6)).toEqual({
+      pageSysId: "page-1",
+      generation: current.generation,
+      revision: 6
+    });
   });
 
   it("rejects missing page identity and invalidates on teardown", () => {

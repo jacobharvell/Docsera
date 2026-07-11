@@ -1,4 +1,3 @@
-import { DocseraHeader } from "./DocseraHeader";
 import {
   LauncherIntro,
   LauncherPaginationFooter,
@@ -27,6 +26,7 @@ type MyWorkspacesScreenProps = {
   isNoResultsState: boolean;
   isRefreshing: boolean;
   items: WorkspaceViewRecord[];
+  showLoadingState: boolean;
   onNextPage: () => void;
   onOpenWorkspace: (workspaceSlug: string, item?: RecentWorkspaceItem) => void;
   onOpenWorkspaceSettings: (workspaceSlug: string) => void;
@@ -34,13 +34,10 @@ type MyWorkspacesScreenProps = {
   onRefresh: () => void;
   onSearchTextChange: (value: string) => void;
   onShowCreateModal: () => void;
-  recentWorkspaces: RecentWorkspaceItem[];
   page: number;
   pageSize: number;
   searchText: string;
-  theme: "dark" | "light";
   totalCount: number;
-  onToggleTheme: () => void;
   workspaceListErrorMessage?: string;
 };
 
@@ -61,6 +58,7 @@ export function MyWorkspacesScreen({
   isNoResultsState,
   isRefreshing,
   items,
+  showLoadingState,
   onNextPage,
   onOpenWorkspace,
   onOpenWorkspaceSettings,
@@ -68,13 +66,10 @@ export function MyWorkspacesScreen({
   onRefresh,
   onSearchTextChange,
   onShowCreateModal,
-  recentWorkspaces,
   page,
   pageSize,
   searchText,
-  theme,
   totalCount,
-  onToggleTheme,
   workspaceListErrorMessage
 }: MyWorkspacesScreenProps) {
   const firstResultIndex = totalCount > 0 ? (page - 1) * pageSize + 1 : 0;
@@ -87,26 +82,6 @@ export function MyWorkspacesScreen({
 
   return (
     <div className="docsera-launcher-screen">
-      <DocseraHeader
-        identity={{
-          kind: "docsera",
-          icon: {
-            type: "builtin",
-            key: "docsera-workspace",
-            label: "Docsera workspace icon"
-          },
-          name: "Docsera"
-        }}
-        mode="launcher"
-        onOpenMyWorkspaces={() => {
-          return;
-        }}
-        onOpenWorkspace={onOpenWorkspace}
-        recentWorkspaces={recentWorkspaces}
-        theme={theme}
-        onToggleTheme={onToggleTheme}
-      />
-
       <div className="docsera-launcher">
         <LauncherIntro onShowCreateModal={onShowCreateModal} />
 
@@ -141,7 +116,7 @@ export function MyWorkspacesScreen({
             />
           ) : null}
 
-          {!hasError && isLoading ? (
+          {!hasError && isLoading && showLoadingState ? (
             <LauncherState
               eyebrow="Loading"
               title="Loading workspaces"

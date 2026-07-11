@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
-import type { DemoPage } from "../../shared/types/docsera";
+import type { WorkspacePageView } from "./workspaceViewModels";
 
 export type InlinePageCreateState = {
   errorMessage: string;
@@ -26,18 +26,20 @@ type PageTreeProps = {
   onShowChildPageCreate: (parentPageId: string, parentPageTitle: string) => void;
   onTogglePageSettings: (pageId: string) => void;
   pageSettingsOpenPageId: string;
-  pages: DemoPage[];
+  pages: WorkspacePageView[];
   selectedPageId: string;
+  collapsedPageIds?: string[];
+  onCollapsedPageIdsChange?: (pageIds: string[]) => void;
 };
 
-type PageTreeNodeProps = PageTreeProps & {
-  collapsedPageIds: Set<string>;
+type PageTreeNodeProps = Omit<PageTreeProps, "collapsedPageIds"> & {
+  collapsedPageIds: ReadonlySet<string>;
   depth: number;
   inlineCreateState: InlinePageCreateState | null;
   onCommitInlineCreate: () => void;
   onInlineCreateTitleChange: (value: string) => void;
   onToggleCollapsed: (pageId: string) => void;
-  page: DemoPage;
+  page: WorkspacePageView;
 };
 
 function GearIcon() {
@@ -62,7 +64,7 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
   );
 }
 
-function matchesTreeFilter(page: DemoPage, filterText: string): boolean {
+function matchesTreeFilter(page: WorkspacePageView, filterText: string): boolean {
   if (!filterText) {
     return true;
   }
@@ -75,7 +77,7 @@ function matchesTreeFilter(page: DemoPage, filterText: string): boolean {
   return page.children ? page.children.some((child) => matchesTreeFilter(child, filterText)) : false;
 }
 
-function pageContainsId(page: DemoPage, pageId: string): boolean {
+function pageContainsId(page: WorkspacePageView, pageId: string): boolean {
   if (!pageId) {
     return false;
   }
@@ -87,7 +89,7 @@ function pageContainsId(page: DemoPage, pageId: string): boolean {
   return page.children ? page.children.some((child) => pageContainsId(child, pageId)) : false;
 }
 
-function pageHasSelectedDescendant(page: DemoPage, selectedPageId: string): boolean {
+function pageHasSelectedDescendant(page: WorkspacePageView, selectedPageId: string): boolean {
   return page.children ? page.children.some((child) => pageContainsId(child, selectedPageId)) : false;
 }
 
@@ -237,6 +239,7 @@ function PageTreeNode({
             title={page.title}
           >
             <span className="docsera-page-tree__title">{page.title}</span>
+            {page.statusIndicator ? <span className="docsera-page-tree__status-indicator">{page.statusIndicator}</span> : null}
           </button>
         </div>
 
@@ -325,13 +328,20 @@ export function PageTree({
   onTogglePageSettings,
   pageSettingsOpenPageId,
   pages,
-  selectedPageId
+  selectedPageId,
+  collapsedPageIds = [],
+  onCollapsedPageIdsChange
 }: PageTreeProps) {
-  const [collapsedPageIds, setCollapsedPageIds] = useState<Set<string>>(() => new Set());
+  const [localCollapsedPageIds, setLocalCollapsedPageIds] = useState<Set<string>>(() => new Set(collapsedPageIds));
+  const effectiveCollapsedPageIds = useMemo(() => new Set(collapsedPageIds), [collapsedPageIds]);
   const visiblePages = useMemo(() => pages.filter((page) => matchesTreeFilter(page, filterText)), [filterText, pages]);
 
+  useEffect(() => {
+    setLocalCollapsedPageIds(new Set(collapsedPageIds));
+  }, [collapsedPageIds]);
+
   function toggleCollapsed(pageId: string) {
-    setCollapsedPageIds((current) => {
+    setLocalCollapsedPageIds((current) => {
       const next = new Set(current);
       if (next.has(pageId)) {
         next.delete(pageId);
@@ -339,6 +349,7 @@ export function PageTree({
         next.add(pageId);
       }
 
+      onCollapsedPageIdsChange?.([...next]);
       return next;
     });
   }
@@ -350,7 +361,7 @@ export function PageTree({
           key={page.id}
           canCreatePage={canCreatePage}
           canManagePageSettings={canManagePageSettings}
-          collapsedPageIds={collapsedPageIds}
+          collapsedPageIds={effectiveCollapsedPageIds.size > 0 ? effectiveCollapsedPageIds : localCollapsedPageIds}
           depth={0}
           filterText={filterText}
           inlineCreateState={inlineCreateState}

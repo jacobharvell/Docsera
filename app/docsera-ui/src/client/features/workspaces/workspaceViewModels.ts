@@ -1,57 +1,139 @@
-import { demoWorkspace } from "./demoWorkspace";
-import type { DemoPage, DemoWorkspace, WorkspacePageRecord, WorkspaceViewRecord } from "../../shared/types/docsera";
+import { parseDocseraDocument, type DocseraDocumentEnvelope } from "../../../shared/editor/document";
+import { extractDocumentOutline, type EditorOutlineItem } from "../../editor/documentOutline";
+import type {
+  PagePublicationState,
+  WorkspaceMode,
+  WorkspacePageRecord,
+  WorkspaceViewRecord
+} from "../../shared/types/docsera";
+
+export type WorkspacePageOutlineItem = EditorOutlineItem;
+
+export type WorkspacePageView = {
+  children?: WorkspacePageView[];
+  contentEnvelope: DocseraDocumentEnvelope | null;
+  contentError: string;
+  contentState: "invalid" | "missing" | "ready";
+  id: string;
+  isDraftOnly: boolean;
+  page: WorkspacePageRecord;
+  publicationState: PagePublicationState;
+  slug: string;
+  statusIndicator: "Draft" | "Unpublished" | null;
+  siblingOrder: number;
+  sysId: string;
+  title: string;
+  tocItems: WorkspacePageOutlineItem[];
+  parentPageSysId: string | null;
+};
+
+export type WorkspaceShellViewModel = {
+  canManageSettings: boolean;
+  icon: WorkspaceViewRecord["icon"];
+  roleLabel: string;
+  title: string;
+};
+
+type TreeNode = {
+  children: TreeNode[];
+  key: string;
+  page: WorkspacePageView;
+  parentKey: string;
+  siblingOrder: number;
+  slug: string;
+  title: string;
+};
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-export function getWorkspaceRoleLabel(workspace: WorkspaceViewRecord | null | undefined): string {
-  if (workspace?.roleLabel) {
-    return workspace.roleLabel;
+function resolvePageContentState(page: WorkspacePageRecord): Pick<WorkspacePageView, "contentEnvelope" | "contentError" | "contentState" | "tocItems"> {
+  if (page.draftContentJson === null || page.draftContentJson === undefined || page.draftContentJson === "") {
+    return {
+      contentEnvelope: null,
+      contentError: "The current page content is unavailable.",
+      contentState: "missing",
+      tocItems: []
+    };
   }
 
-  return "Viewer";
-}
+  const parsed = parseDocseraDocument(page.draftContentJson);
+  if (!parsed.ok) {
+    return {
+      contentEnvelope: null,
+      contentError: parsed.message,
+      contentState: "invalid",
+      tocItems: []
+    };
+  }
 
-function getPageBodyPlaceholder(page: WorkspacePageRecord): string {
-  const title = cleanText(page.draftTitle) || "This page";
-  return `${title} does not have a saved draft body yet.`;
-}
-
-export function buildWorkspaceShellPage(page: WorkspacePageRecord): DemoPage {
   return {
-    id: cleanText(page.sysId) || `${cleanText(page.workspaceSysId)}:${cleanText(page.draftSlug)}`,
-    title: cleanText(page.draftTitle) || "New page",
-    slug: cleanText(page.draftSlug),
-    body: cleanText(page.draftBodyText) || getPageBodyPlaceholder(page),
-    sections: []
+      contentEnvelope: parsed.envelope,
+      contentError: "",
+      contentState: "ready",
+      tocItems: extractDocumentOutline(parsed.envelope)
+    };
+  }
+
+export function getWorkspaceRoleLabel(workspace: WorkspaceViewRecord | null | undefined): string {
+  return workspace?.roleLabel ?? "Viewer";
+}
+
+export function buildWorkspaceShellViewModel(workspace: WorkspaceViewRecord): WorkspaceShellViewModel {
+  return {
+    canManageSettings: Boolean(workspace.canManageSettings),
+    icon: workspace.icon,
+    roleLabel: getWorkspaceRoleLabel(workspace),
+    title: cleanText(workspace.name) || "Workspace"
   };
 }
 
-export function buildWorkspaceShellPages(pages: WorkspacePageRecord[]): DemoPage[] {
-  type TreeNode = {
-    key: string;
-    page: DemoPage;
-    children: TreeNode[];
-    parentKey: string;
-    siblingOrder: number;
-    title: string;
-    slug: string;
-  };
+export function buildWorkspacePageView(page: WorkspacePageRecord, mode: WorkspaceMode): WorkspacePageView {
+  const sysId = cleanText(page.sysId) || `${cleanText(page.workspaceSysId)}:${cleanText(page.draftSlug)}`;
+  const title = cleanText(page.draftTitle) || "Untitled page";
+  const slug = cleanText(page.draftSlug);
+  const isDraftOnly = page.publicationState === "draft";
+  const contentState = resolvePageContentState(page);
 
+  return {
+    ...contentState,
+    id: sysId,
+    isDraftOnly,
+    page,
+    parentPageSysId: cleanText(page.parentPageSysId) || null,
+    publicationState: page.publicationState,
+    siblingOrder: Number(page.siblingOrder) || 1,
+    slug,
+    statusIndicator:
+      mode === "edit"
+        ? page.publicationState === "draft"
+          ? "Draft"
+          : page.publicationState === "published_with_unpublished_changes"
+            ? "Unpublished"
+            : null
+        : null,
+    sysId,
+    title,
+    tocItems: contentState.tocItems
+  };
+}
+
+export function buildWorkspacePageTree(pages: WorkspacePageRecord[], mode: WorkspaceMode): WorkspacePageView[] {
   const nodesByKey = new Map<string, TreeNode>();
   const roots: TreeNode[] = [];
 
   pages.forEach((page, index) => {
-    const key = cleanText(page.sysId) || `${cleanText(page.workspaceSysId)}:${cleanText(page.draftSlug)}:${index}`;
+    const viewPage = buildWorkspacePageView(page, mode);
+    const key = viewPage.sysId || `${cleanText(page.workspaceSysId)}:${cleanText(page.draftSlug)}:${index}`;
     nodesByKey.set(key, {
-      key,
-      page: buildWorkspaceShellPage(page),
       children: [],
+      key,
+      page: viewPage,
       parentKey: cleanText(page.parentPageSysId),
-      siblingOrder: Number(page.siblingOrder) || 1,
-      title: cleanText(page.draftTitle) || "New page",
-      slug: cleanText(page.draftSlug)
+      siblingOrder: viewPage.siblingOrder,
+      slug: viewPage.slug,
+      title: viewPage.title
     });
   });
 
@@ -84,15 +166,13 @@ export function buildWorkspaceShellPages(pages: WorkspacePageRecord[]): DemoPage
       return left.key.localeCompare(right.key, undefined, { sensitivity: "base" });
     });
 
-    for (const node of nodes) {
-      sortNodes(node.children);
-    }
+    nodes.forEach((node) => sortNodes(node.children));
   };
 
   sortNodes(roots);
   const visited = new Set<string>();
 
-  const buildTreePage = (node: TreeNode): DemoPage => {
+  const buildTreePage = (node: TreeNode): WorkspacePageView => {
     if (visited.has(node.key)) {
       return node.page;
     }
@@ -111,23 +191,7 @@ export function buildWorkspaceShellPages(pages: WorkspacePageRecord[]): DemoPage
   const treePages = roots.map((root) => buildTreePage(root));
   const remaining = [...nodesByKey.values()]
     .filter((node) => !visited.has(node.key))
-    .sort((left, right) => left.page.title.localeCompare(right.page.title, undefined, { sensitivity: "base" }));
+    .sort((left, right) => left.title.localeCompare(right.title, undefined, { sensitivity: "base" }));
 
   return [...treePages, ...remaining.map((node) => buildTreePage(node))];
-}
-
-export function buildWorkspaceShellWorkspace(workspace: WorkspaceViewRecord, pages: DemoPage[] = demoWorkspace.pages): DemoWorkspace {
-  const title = cleanText(workspace.name) || "Workspace";
-  const iconLabel = cleanText(workspace.icon?.label) || title.charAt(0).toUpperCase();
-
-  return {
-    ...demoWorkspace,
-    title,
-    icon: workspace.icon,
-    iconLabel,
-    homeLabel: title,
-    roleLabel: getWorkspaceRoleLabel(workspace),
-    canManageSettings: Boolean(workspace.canManageSettings),
-    pages
-  };
 }
