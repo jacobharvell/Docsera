@@ -1,22 +1,36 @@
 import type { PageRecord as ServerPageRecord } from "./serverPageDomain.ts";
+import { parseServerDocument } from "./serverEditorDocument.ts";
 import { normalizePageRecord, normalizeServiceNowBoolean } from "./serverPageDomain.ts";
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function parseJsonValue(value: unknown): unknown | null {
+function parseJsonValue(value: unknown): unknown {
+  const text = cleanText(value);
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("The stored page content is not valid JSON.");
+  }
+}
+
+function parsePersistedDraftContentJson(value: unknown) {
+  const text = cleanText(value);
+  if (!text) {
+    throw new Error("The stored page content does not use a supported document envelope.");
+  }
+
+  return parseJsonValue(text);
+}
+
+function parseOptionalPersistedContentJson(value: unknown): unknown | null {
   const text = cleanText(value);
   if (!text) {
     return null;
   }
 
-  try {
-    const parsed = JSON.parse(text);
-    return parsed;
-  } catch {
-    throw new Error("The stored page content is not valid JSON.");
-  }
+  return parseServerDocument(text);
 }
 
 export function mapPageRecord(record: {
@@ -32,13 +46,13 @@ export function mapPageRecord(record: {
     draftTitle: cleanText(record.getValue("draft_title")),
     draftSlug: cleanText(record.getValue("draft_slug")),
     draftSlugNormalized: cleanText(record.getValue("draft_slug_normalized")),
-    draftContentJson: parseJsonValue(record.getValue("draft_content_json")) ?? undefined,
+    draftContentJson: parsePersistedDraftContentJson(record.getValue("draft_content_json")),
     draftRevision: Number(record.getValue("draft_revision")) || 0,
     draftBodyText: cleanText(record.getValue("draft_body_text")) || null,
     publishedTitle: cleanText(record.getValue("published_title")) || null,
     publishedSlug: cleanText(record.getValue("published_slug")) || null,
     publishedSlugNormalized: cleanText(record.getValue("published_slug_normalized")) || null,
-    publishedContentJson: parseJsonValue(record.getValue("published_content_json")),
+    publishedContentJson: parseOptionalPersistedContentJson(record.getValue("published_content_json")),
     publishedBodyText: cleanText(record.getValue("published_body_text")) || null,
     publicationState: cleanText(record.getValue("publication_state")) || "draft",
     active: normalizeServiceNowBoolean(record.getValue("active"), true)

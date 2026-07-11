@@ -3,8 +3,14 @@ import {
   DOCSERA_DOCUMENT_SCHEMA_VERSION,
   createEmptyDocseraDocumentEnvelope,
   parseDocseraDocument,
+  parseDocseraDocumentOrThrow,
   serializeDocseraDocument
 } from "./document";
+import {
+  createDocseraDocumentFixtureCorpus,
+  createLargeCanonicalDocseraDocumentEnvelope,
+  createLegacyDocseraDocument
+} from "./documentFixtures";
 
 describe("Docsera document envelope", () => {
   it("creates and round-trips the current canonical envelope", () => {
@@ -42,34 +48,49 @@ describe("Docsera document envelope", () => {
   });
 
   it("migrates the existing raw TipTap document shape into schema version one", () => {
-    const parsed = parseDocseraDocument({
-      type: "doc",
-      content: [{ type: "paragraph", content: [{ type: "text", text: "Legacy" }] }]
-    });
+    const legacyDocument = createLegacyDocseraDocument("Legacy");
+    const parsed = parseDocseraDocument(legacyDocument);
 
     expect(parsed).toEqual({
       ok: true,
       envelope: {
         schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
-        document: {
-          type: "doc",
-          content: [{ type: "paragraph", content: [{ type: "text", text: "Legacy" }] }]
-        }
+        document: legacyDocument
       },
       migratedLegacyDocument: true
     });
   });
 
-  it("rejects malformed and unsupported content instead of replacing it with an empty document", () => {
-    expect(parseDocseraDocument("not-json")).toMatchObject({ ok: false, reason: "invalid-json" });
-    expect(parseDocseraDocument({ schemaVersion: 2, document: { type: "doc", content: [] } })).toMatchObject({
-      ok: false,
-      reason: "unsupported-schema-version"
-    });
-    expect(parseDocseraDocument({ schemaVersion: 1, document: { type: "paragraph" } })).toMatchObject({
+  it.each(createDocseraDocumentFixtureCorpus())(
+    "classifies $label",
+    ({ input, expected }) => {
+      const parsed = parseDocseraDocument(input);
+      expect(parsed.ok).toBe(expected.ok);
+
+      if (!expected.ok) {
+        expect(parsed).toMatchObject({
+          ok: false,
+          reason: expected.reason
+        });
+        return;
+      }
+
+      expect(parsed).toMatchObject({
+        ok: true,
+        migratedLegacyDocument: expected.migratedLegacyDocument
+      });
+    }
+  );
+
+  it("rejects malformed raw document roots instead of treating them as unsupported versions", () => {
+    expect(parseDocseraDocument({ type: "doc", content: {} })).toMatchObject({
       ok: false,
       reason: "invalid-document"
     });
+  });
+
+  it("throws from the strict helper for invalid content", () => {
+    expect(() => parseDocseraDocumentOrThrow("not-json")).toThrow("not valid JSON");
   });
 
   it("returns a defensive copy so consumers cannot mutate the parsed source", () => {
@@ -83,5 +104,16 @@ describe("Docsera document envelope", () => {
 
     parsed.envelope.document.content?.push({ type: "paragraph" });
     expect(source.document.content).toEqual([]);
+  });
+
+  it("round-trips a large canonical document without trimming or schema mutation", () => {
+    const envelope = createLargeCanonicalDocseraDocumentEnvelope();
+    const parsed = parseDocseraDocument(serializeDocseraDocument(envelope));
+
+    expect(parsed).toEqual({
+      ok: true,
+      envelope,
+      migratedLegacyDocument: false
+    });
   });
 });

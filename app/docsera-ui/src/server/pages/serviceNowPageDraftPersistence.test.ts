@@ -182,6 +182,20 @@ describe("page body save service", () => {
 
     expect(rejected).toMatchObject({ kind: "failed", status: 400 });
     expect(savePage).not.toHaveBeenCalled();
+
+    const primitiveRejected = await service.savePageBody({
+      workspaceSlug: "product-docs",
+      pageSysId: "page-001",
+      expectedRevision: 2,
+      draftContentJson: "not-json" as never
+    });
+
+    expect(primitiveRejected).toMatchObject({
+      kind: "failed",
+      status: 400,
+      errorMessage: "The stored page content does not use a supported document envelope."
+    });
+    expect(savePage).not.toHaveBeenCalled();
   });
 
   it("preserves a large multi-byte canonical document without trimming through the save boundary", async () => {

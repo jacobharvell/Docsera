@@ -55,6 +55,10 @@ function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function isObjectLike(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function logUnexpectedPageSaveError(error: unknown, context: Record<string, unknown>) {
   const message = cleanText(error instanceof Error ? error.message : error) || "Unknown page save failure.";
   const stack = error instanceof Error ? cleanText(error.stack) : "";
@@ -202,9 +206,19 @@ export function createPageBodySaveService(dependencies: PageBodySaveDependencies
 
       let nextPage: PageRecord;
       try {
-        nextPage = input.draftContentJson
-          ? buildPageContentSaveRecord(page, input.draftContentJson as PageContentJson, currentRevision + 1)
-          : buildPageBodySaveRecord(page, input.draftBodyText ?? "", currentRevision + 1);
+        if (input.draftContentJson !== undefined) {
+          if (!isObjectLike(input.draftContentJson)) {
+            return {
+              kind: "failed",
+              errorMessage: "The stored page content does not use a supported document envelope.",
+              status: 400
+            };
+          }
+
+          nextPage = buildPageContentSaveRecord(page, input.draftContentJson as PageContentJson, currentRevision + 1);
+        } else {
+          nextPage = buildPageBodySaveRecord(page, input.draftBodyText ?? "", currentRevision + 1);
+        }
       } catch (error) {
         return {
           kind: "failed",

@@ -61,10 +61,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
       pageSysId: cleanText(body.pageSysId),
       pageSlug: cleanText(body.pageSlug),
       draftBodyText: cleanText(body.draftBodyText) || "",
-      draftContentJson:
-        body.draftContentJson && typeof body.draftContentJson === "object"
-          ? (body.draftContentJson as Record<string, unknown>)
-          : undefined,
+      draftContentJson: body.draftContentJson,
       expectedRevision: Number.isSafeInteger(Number(body.expectedRevision)) ? Number(body.expectedRevision) : undefined
     });
 

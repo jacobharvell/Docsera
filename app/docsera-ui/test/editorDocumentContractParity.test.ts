@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createEmptyDocseraDocumentEnvelope, parseDocseraDocument } from "../src/shared/editor/document";
+import { createDocseraDocumentFixtureCorpus } from "../src/shared/editor/documentFixtures";
 import { createEmptyServerDocumentEnvelope, parseServerDocument } from "../src/server/pages/serverEditorDocument";
 
 describe("client/server editor document contract parity", () => {
@@ -16,9 +17,26 @@ describe("client/server editor document contract parity", () => {
     expect(parseServerDocument(legacy)).toEqual(clientResult.envelope);
   });
 
-  it("rejects unsupported versions on both boundaries", () => {
-    const unsupported = { schemaVersion: 2, document: { type: "doc", content: [] } };
-    expect(parseDocseraDocument(unsupported)).toMatchObject({ ok: false, reason: "unsupported-schema-version" });
-    expect(() => parseServerDocument(unsupported)).toThrow("unsupported document schema version");
+  it.each(createDocseraDocumentFixtureCorpus())("matches on $label", ({ input, expected }) => {
+    const clientResult = parseDocseraDocument(input);
+
+    if (expected.ok) {
+      expect(clientResult).toMatchObject({
+        ok: true,
+        migratedLegacyDocument: expected.migratedLegacyDocument
+      });
+      expect(parseServerDocument(input)).toEqual(clientResult.envelope);
+      return;
+    }
+
+    expect(clientResult).toMatchObject({
+      ok: false,
+      reason: expected.reason
+    });
+    if (clientResult.ok) {
+      return;
+    }
+
+    expect(() => parseServerDocument(input)).toThrow(clientResult.message);
   });
 });

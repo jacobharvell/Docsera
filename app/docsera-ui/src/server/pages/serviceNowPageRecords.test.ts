@@ -1,7 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { mapPageRecord } from "./serviceNowPageRecords";
+import {
+  createDocseraDocumentFixtureCorpus,
+  createLegacyDocseraDocument
+} from "../../shared/editor/documentFixtures";
 
-function createRecord(activeValue: unknown, draftContentJson = JSON.stringify({ type: "doc", content: [] })) {
+type MockRecordOptions = {
+  activeValue: unknown;
+  draftContentJson?: unknown;
+  draftBodyText?: unknown;
+  publishedContentJson?: unknown;
+  publishedBodyText?: unknown;
+  omitPublishedContentJson?: boolean;
+  omitDraftContentJson?: boolean;
+};
+
+function createRecord({
+  activeValue,
+  draftContentJson = JSON.stringify({ schemaVersion: 1, document: { type: "doc", content: [] } }),
+  draftBodyText = "",
+  publishedContentJson = "",
+  publishedBodyText = "",
+  omitPublishedContentJson = false,
+  omitDraftContentJson = false
+}: MockRecordOptions) {
   return {
     getUniqueValue: () => "page-001",
     getValue: (fieldName: string) => {
@@ -19,16 +41,18 @@ function createRecord(activeValue: unknown, draftContentJson = JSON.stringify({ 
         case "draft_slug_normalized":
           return "overview";
         case "draft_content_json":
-          return draftContentJson;
+          return omitDraftContentJson ? undefined : draftContentJson;
         case "draft_body_text":
-          return "";
+          return draftBodyText;
         case "published_title":
         case "published_slug":
         case "published_slug_normalized":
-        case "published_content_json":
-        case "published_body_text":
         case "publication_state":
           return "";
+        case "published_content_json":
+          return omitPublishedContentJson ? undefined : publishedContentJson;
+        case "published_body_text":
+          return publishedBodyText;
         case "active":
           return activeValue;
         default:
@@ -48,7 +72,7 @@ describe("page record mapping", () => {
     ["0", false],
     [false, false]
   ])("normalizes ServiceNow active value %o to %s", (activeValue, expectedActive) => {
-    const page = mapPageRecord(createRecord(activeValue));
+    const page = mapPageRecord(createRecord({ activeValue }));
 
     expect(page.active).toBe(expectedActive);
     expect(page.sysId).toBe("page-001");
@@ -59,10 +83,174 @@ describe("page record mapping", () => {
     });
   });
 
-  it("rejects invalid stored JSON instead of returning editable empty content", () => {
-    expect(() => mapPageRecord(createRecord(true, "not-json"))).toThrow("not valid JSON");
+  it("rejects an empty persisted draft_content_json string", () => {
     expect(() =>
-      mapPageRecord(createRecord(true, JSON.stringify({ schemaVersion: 99, document: { type: "doc", content: [] } })))
-    ).toThrow("unsupported document schema version");
+      mapPageRecord(
+        createRecord({
+          activeValue: true,
+          draftContentJson: ""
+        })
+      )
+    ).toThrow("supported document envelope");
   });
+
+  it("rejects a whitespace-only persisted draft_content_json value", () => {
+    expect(() =>
+      mapPageRecord(
+        createRecord({
+          activeValue: true,
+          draftContentJson: "   \n\t  "
+        })
+      )
+    ).toThrow("supported document envelope");
+  });
+
+  it.each([
+    ["null", null],
+    ["absent", undefined]
+  ])("rejects a %s persisted draft_content_json value", (_label, draftContentJson) => {
+    expect(() =>
+      mapPageRecord(
+        createRecord({
+          activeValue: true,
+          draftContentJson,
+          omitDraftContentJson: draftContentJson === undefined
+        })
+      )
+    ).toThrow("supported document envelope");
+  });
+
+  it("does not fall back to draft_body_text when draft_content_json is missing", () => {
+    expect(() =>
+      mapPageRecord(
+        createRecord({
+          activeValue: true,
+          omitDraftContentJson: true,
+          draftBodyText: "body-text fallback must not be used"
+        })
+      )
+    ).toThrow("supported document envelope");
+  });
+
+  it.each([
+    ["blank string", ""],
+    ["whitespace", "   \n\t  "],
+    ["null", null],
+    ["absent", undefined]
+  ])("accepts %s published content as null for draft-only pages", (_label, publishedContentJson) => {
+    const page = mapPageRecord(
+      createRecord({
+        activeValue: true,
+        publishedContentJson,
+        omitPublishedContentJson: publishedContentJson === undefined
+      })
+    );
+
+    expect(page.publishedContentJson).toBeNull();
+  });
+
+  it("rejects malformed nonblank published JSON instead of converting it to null", () => {
+    expect(() =>
+      mapPageRecord(
+        createRecord({
+          activeValue: true,
+          publishedContentJson: "{not-json"
+        })
+      )
+    ).toThrow("not valid JSON");
+  });
+
+  it("does not fall back to published_body_text when published_content_json is blank", () => {
+    const page = mapPageRecord(
+      createRecord({
+        activeValue: true,
+        publishedContentJson: "",
+        publishedBodyText: "body-text fallback must not be used"
+      })
+    );
+
+    expect(page.publishedContentJson).toBeNull();
+    expect(page.publishedBodyText).toBe("body-text fallback must not be used");
+  });
+
+  it.each([
+    ["unsupported schema", JSON.stringify({ schemaVersion: 999, document: { type: "doc", content: [] } })],
+    ["invalid envelope", JSON.stringify({ document: { type: "doc", content: [] } })],
+    ["invalid document", JSON.stringify({ schemaVersion: 1, document: { type: "doc", content: {} } })]
+  ])("rejects %s published content", (_label, publishedContentJson) => {
+    expect(() =>
+      mapPageRecord(
+        createRecord({
+          activeValue: true,
+          publishedContentJson
+        })
+      )
+    ).toThrow(
+      _label === "unsupported schema"
+        ? "unsupported document schema version"
+        : _label === "invalid envelope"
+          ? "supported document envelope"
+          : "valid TipTap document"
+    );
+  });
+
+  it.each(createDocseraDocumentFixtureCorpus().filter((fixture) => fixture.expected.ok && !fixture.expected.migratedLegacyDocument))(
+    "accepts the current canonical envelope for $label",
+    ({ input }) => {
+      const page = mapPageRecord(
+        createRecord({
+          activeValue: true,
+          draftContentJson: JSON.stringify(input),
+          publishedContentJson: JSON.stringify(input)
+        })
+      );
+
+      expect(page.draftContentJson).toEqual(input);
+      expect(page.publishedContentJson).toEqual(input);
+    }
+  );
+
+  it("normalizes legacy raw TipTap records into the canonical envelope", () => {
+    const legacyDocument = createLegacyDocseraDocument("Legacy");
+    const page = mapPageRecord(
+      createRecord({
+        activeValue: true,
+        draftContentJson: JSON.stringify(legacyDocument),
+        publishedContentJson: JSON.stringify(legacyDocument)
+      })
+    );
+
+    expect(page.draftContentJson).toEqual({
+      schemaVersion: 1,
+      document: legacyDocument
+    });
+    expect(page.publishedContentJson).toEqual({
+      schemaVersion: 1,
+      document: legacyDocument
+    });
+  });
+
+  it.each(createDocseraDocumentFixtureCorpus().filter((fixture) => !fixture.expected.ok))(
+    "rejects $label instead of returning editable empty content",
+    ({ input, expected }) => {
+      const storedValue = typeof input === "string" ? input : JSON.stringify(input);
+      expect(() =>
+        mapPageRecord(
+          createRecord({
+            activeValue: true,
+            draftContentJson: storedValue,
+            publishedContentJson: storedValue
+          })
+        )
+      ).toThrow(
+        expected.reason === "invalid-json"
+          ? "not valid JSON"
+          : expected.reason === "unsupported-schema-version"
+            ? "unsupported document schema version"
+            : expected.reason === "invalid-envelope"
+              ? "supported document envelope"
+              : "valid TipTap document"
+      );
+    }
+  );
 });

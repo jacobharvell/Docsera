@@ -11,6 +11,12 @@ export type DocseraDocumentEnvelope = {
   document: DocseraTiptapDocument;
 };
 
+export type DocseraDocumentParseFailureReason =
+  | "invalid-json"
+  | "invalid-envelope"
+  | "invalid-document"
+  | "unsupported-schema-version";
+
 export type ParseDocseraDocumentResult =
   | {
       ok: true;
@@ -19,7 +25,7 @@ export type ParseDocseraDocumentResult =
     }
   | {
       ok: false;
-      reason: "invalid-json" | "invalid-envelope" | "invalid-document" | "unsupported-schema-version";
+      reason: DocseraDocumentParseFailureReason;
       message: string;
     };
 
@@ -37,6 +43,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+function hasSchemaVersion(value: Record<string, unknown>): boolean {
+  return Object.prototype.hasOwnProperty.call(value, "schemaVersion");
+}
+
 function isTiptapDocument(value: unknown): value is DocseraTiptapDocument {
   if (!isRecord(value) || value.type !== "doc") {
     return false;
@@ -49,6 +59,14 @@ function cloneDocument(document: DocseraTiptapDocument): DocseraTiptapDocument {
   return JSON.parse(JSON.stringify(document)) as DocseraTiptapDocument;
 }
 
+function createFailure(reason: DocseraDocumentParseFailureReason, message: string): ParseDocseraDocumentResult {
+  return {
+    ok: false,
+    reason,
+    message
+  };
+}
+
 export function parseDocseraDocument(value: unknown): ParseDocseraDocumentResult {
   let parsedValue = value;
 
@@ -56,23 +74,41 @@ export function parseDocseraDocument(value: unknown): ParseDocseraDocumentResult
     try {
       parsedValue = JSON.parse(value);
     } catch {
-      return {
-        ok: false,
-        reason: "invalid-json",
-        message: "The stored page content is not valid JSON."
-      };
+      return createFailure("invalid-json", "The stored page content is not valid JSON.");
     }
   }
 
   if (!isRecord(parsedValue)) {
+    return createFailure("invalid-envelope", "The stored page content does not use a supported document envelope.");
+  }
+
+  if (hasSchemaVersion(parsedValue)) {
+    if (parsedValue.schemaVersion !== DOCSERA_DOCUMENT_SCHEMA_VERSION) {
+      return createFailure(
+        "unsupported-schema-version",
+        "The stored page content uses an unsupported document schema version."
+      );
+    }
+
+    if (!isTiptapDocument(parsedValue.document)) {
+      return createFailure("invalid-document", "The stored page content does not contain a valid TipTap document.");
+    }
+
     return {
-      ok: false,
-      reason: "invalid-envelope",
-      message: "The stored page content does not use a supported document envelope."
+      ok: true,
+      envelope: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: cloneDocument(parsedValue.document)
+      },
+      migratedLegacyDocument: false
     };
   }
 
-  if (isTiptapDocument(parsedValue)) {
+  if (parsedValue.type === "doc") {
+    if (!isTiptapDocument(parsedValue)) {
+      return createFailure("invalid-document", "The stored page content does not contain a valid TipTap document.");
+    }
+
     return {
       ok: true,
       envelope: {
@@ -83,37 +119,18 @@ export function parseDocseraDocument(value: unknown): ParseDocseraDocumentResult
     };
   }
 
-  if (parsedValue.schemaVersion !== DOCSERA_DOCUMENT_SCHEMA_VERSION) {
-    return {
-      ok: false,
-      reason: "unsupported-schema-version",
-      message: "The stored page content uses an unsupported document schema version."
-    };
+  return createFailure("invalid-envelope", "The stored page content does not use a supported document envelope.");
+}
+
+export function parseDocseraDocumentOrThrow(value: unknown): DocseraDocumentEnvelope {
+  const parsed = parseDocseraDocument(value);
+  if (!parsed.ok) {
+    throw new TypeError(parsed.message);
   }
 
-  if (!isTiptapDocument(parsedValue.document)) {
-    return {
-      ok: false,
-      reason: "invalid-document",
-      message: "The stored page content does not contain a valid TipTap document."
-    };
-  }
-
-  return {
-    ok: true,
-    envelope: {
-      schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
-      document: cloneDocument(parsedValue.document)
-    },
-    migratedLegacyDocument: false
-  };
+  return parsed.envelope;
 }
 
 export function serializeDocseraDocument(envelope: DocseraDocumentEnvelope): string {
-  const parsed = parseDocseraDocument(envelope);
-  if (!parsed.ok) {
-    throw new Error(parsed.message);
-  }
-
-  return JSON.stringify(parsed.envelope);
+  return JSON.stringify(parseDocseraDocumentOrThrow(envelope));
 }

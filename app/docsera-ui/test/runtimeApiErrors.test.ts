@@ -163,6 +163,59 @@ test("page save failures redact draft body text from unexpected error logging", 
   expect(logEntry).not.toContain("draft_content_json");
 });
 
+test("page save passes raw draft_content_json through without coercion", async () => {
+  const savePageBody = vi.fn().mockResolvedValue({
+    kind: "succeeded",
+    page: {
+      active: true,
+      draftBodyText: null,
+      draftContentJson: { schemaVersion: 1, document: { type: "doc", content: [] } },
+      draftRevision: 1,
+      draftSlug: "overview",
+      draftSlugNormalized: "overview",
+      draftTitle: "Overview",
+      parentPageSysId: null,
+      publishedBodyText: null,
+      publishedContentJson: null,
+      publishedSlug: null,
+      publishedSlugNormalized: null,
+      publishedTitle: null,
+      publicationState: "draft",
+      siblingOrder: 1,
+      sysId: "page-001",
+      workspaceSysId: "workspace-001"
+    }
+  } as never);
+
+  vi.mocked(createServiceNowPageBodySaveService).mockReturnValue({
+    savePageBody
+  } as never);
+
+  const response = createResponseRecorder();
+
+  await processPageSave(
+    {
+      body: {
+        data: {
+          workspaceSlug: "product-docs",
+          workspaceSysId: "workspace-001",
+          pageSysId: "page-001",
+          pageSlug: "overview",
+          draftBodyText: "",
+          draftContentJson: "not-json"
+        }
+      }
+    },
+    response
+  );
+
+  expect(savePageBody).toHaveBeenCalledWith(
+    expect.objectContaining({
+      draftContentJson: "not-json"
+    })
+  );
+});
+
 test("create workspace hides unexpected errors behind a safe message", async () => {
   vi.mocked(createServiceNowWorkspaceProvisioningService).mockReturnValue({
     createWorkspace: vi.fn().mockRejectedValue(new Error("Insert failed: x_82900_docsera_docsera_workspace_provision_request")),
