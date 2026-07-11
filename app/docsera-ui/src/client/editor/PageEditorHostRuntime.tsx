@@ -1,3 +1,4 @@
+import type { Editor } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { createPortal } from "react-dom";
@@ -18,6 +19,7 @@ type PageEditorHostRuntimeProps = {
     expectedRevision: number;
     pageSysId: string;
   }) => Promise<PageBodySaveResult>;
+  onEditorReady?: (editor: Editor) => void;
   onStatusChange: (state: { isDirty: boolean; isSaving: boolean }) => void;
   overlayRoot: HTMLElement;
   pageSysId: string;
@@ -26,18 +28,28 @@ type PageEditorHostRuntimeProps = {
 
 type RuntimeStatus = "dirty" | "failed" | "saved" | "saving";
 
+const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
+
 function cloneEnvelope(envelope: DocseraDocumentEnvelope): DocseraDocumentEnvelope {
   return JSON.parse(JSON.stringify(envelope)) as DocseraDocumentEnvelope;
 }
 
+function normalizeDocument(document: DocseraTiptapDocument): DocseraTiptapDocument {
+  const cloned = JSON.parse(JSON.stringify(document)) as DocseraTiptapDocument;
+  return {
+    ...cloned,
+    content: Array.isArray(cloned.content) ? cloned.content : []
+  };
+}
+
 function serializeDocument(document: DocseraTiptapDocument): string {
-  return JSON.stringify(document);
+  return JSON.stringify(normalizeDocument(document));
 }
 
 function createEnvelope(document: DocseraTiptapDocument): DocseraDocumentEnvelope {
   return {
     schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
-    document: JSON.parse(JSON.stringify(document)) as DocseraTiptapDocument
+    document: normalizeDocument(document)
   };
 }
 
@@ -62,6 +74,7 @@ export function PageEditorHostRuntime({
   onAccessLost,
   onOutlineChange,
   onSaveDraft,
+  onEditorReady,
   onStatusChange,
   overlayRoot,
   pageSysId,
@@ -72,6 +85,7 @@ export function PageEditorHostRuntime({
   const [savedRevision, setSavedRevision] = useState(initialRevision);
   const [status, setStatus] = useState<RuntimeStatus>("saved");
   const disposedRef = useRef(false);
+  const saveInFlightRef = useRef(false);
   const saveGenerationRef = useRef(0);
   const currentDocumentKeyRef = useRef(savedDocumentKey);
   const savedDocumentKeyRef = useRef(savedDocumentKey);
@@ -100,6 +114,7 @@ export function PageEditorHostRuntime({
     onCreate: ({ editor: runtimeEditor }) => {
       const envelope = createEnvelope(runtimeEditor.getJSON() as DocseraTiptapDocument);
       currentDocumentKeyRef.current = serializeDocument(envelope.document);
+      onEditorReady?.(runtimeEditor);
       onOutlineChange(extractDocumentOutline(envelope));
     },
     onUpdate: ({ editor: runtimeEditor }) => {
@@ -141,7 +156,7 @@ export function PageEditorHostRuntime({
   );
 
   async function handleSave() {
-    if (!editor || !canEdit || isSaving) {
+    if (!editor || !canEdit || isSaving || saveInFlightRef.current) {
       return;
     }
 
@@ -157,33 +172,47 @@ export function PageEditorHostRuntime({
     setErrorMessage("");
     const saveGeneration = saveGenerationRef.current + 1;
     saveGenerationRef.current = saveGeneration;
+    saveInFlightRef.current = true;
 
-    const result = await onSaveDraft({
-      draftContentJson: cloneEnvelope(envelope),
-      expectedRevision: savedRevision,
-      pageSysId
-    });
+    try {
+      const result = await onSaveDraft({
+        draftContentJson: cloneEnvelope(envelope),
+        expectedRevision: savedRevision,
+        pageSysId
+      });
 
-    if (disposedRef.current || saveGenerationRef.current !== saveGeneration) {
-      return;
-    }
-
-    if (result.state === "failed") {
-      setStatus("failed");
-      setErrorMessage(result.errorMessage);
-
-      if (result.code === "forbidden") {
-        onAccessLost();
+      if (disposedRef.current || saveGenerationRef.current !== saveGeneration) {
+        return;
       }
 
-      return;
-    }
+      if (result.state === "failed") {
+        setStatus("failed");
+        setErrorMessage(result.errorMessage);
 
-    const nextSavedKey = pendingDocumentKey;
-    setSavedDocumentKey(nextSavedKey);
-    setSavedRevision(result.page.draftRevision ?? savedRevision + 1);
-    setErrorMessage("");
-    setStatus(currentDocumentKeyRef.current === nextSavedKey ? "saved" : "dirty");
+        if (result.code === "forbidden") {
+          onAccessLost();
+        }
+
+        return;
+      }
+
+      const nextSavedKey = pendingDocumentKey;
+      setSavedDocumentKey(nextSavedKey);
+      setSavedRevision(result.page.draftRevision ?? savedRevision + 1);
+      setErrorMessage("");
+      setStatus(currentDocumentKeyRef.current === nextSavedKey ? "saved" : "dirty");
+    } catch {
+      if (disposedRef.current || saveGenerationRef.current !== saveGeneration) {
+        return;
+      }
+
+      setStatus("failed");
+      setErrorMessage(SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE);
+    } finally {
+      if (saveGenerationRef.current === saveGeneration) {
+        saveInFlightRef.current = false;
+      }
+    }
   }
 
   return (

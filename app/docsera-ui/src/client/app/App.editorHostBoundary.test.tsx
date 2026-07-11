@@ -1,9 +1,9 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect, useRef, useState } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { createEmptyDocseraDocumentEnvelope, type DocseraDocumentEnvelope } from "../../shared/editor/document";
 import type {
@@ -46,6 +46,13 @@ const hostControls = new Map<string, MockHostControl>();
 let latestHostControl: MockHostControl | null = null;
 let mountSequence = 0;
 
+afterEach(() => {
+  cleanup();
+  hostControls.clear();
+  latestHostControl = null;
+  mountSequence = 0;
+});
+
 function createEnvelopeFromText(text: string): DocseraDocumentEnvelope {
   return {
     schemaVersion: 1,
@@ -85,9 +92,10 @@ vi.mock("../editor/PageEditorHost", () => {
         emitOutline: (headingText) =>
           props.onOutlineChange([
             {
+              anchorId: headingText.toLowerCase().replace(/\s+/g, "-"),
               id: headingText.toLowerCase().replace(/\s+/g, "-"),
               level: 2,
-              text: headingText
+              title: headingText
             }
           ]),
         emitStatus: (state) => props.onStatusChange(state),
@@ -612,6 +620,7 @@ describe("App editor-host session boundary", () => {
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
     fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    const staleControl = latestHostControl;
     fireEvent.click(screen.getByRole("button", { name: "Child Draft Unpublished" }));
     expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
@@ -627,7 +636,62 @@ describe("App editor-host session boundary", () => {
       expect(screen.getByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
     });
 
+    staleControl?.emitOutline("Stale draft heading");
+    staleControl?.emitStatus({ isDirty: false, isSaving: true });
+
+    expect(screen.queryByText("Stale draft heading")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
     expect(latestHostControl?.pageSysId).toBe("page-002");
+    expect(window.location.search).toContain("page=child");
+  });
+
+  it("ignores a late failed completion from a discarded prior page session", async () => {
+    const firstSave = createDeferredSave();
+    const savePageBody = vi
+      .fn(async (_input: PageBodySaveInput): Promise<PageBodySaveResult> => ({
+        state: "succeeded",
+        page: createPageRecord({
+          sysId: "page-002",
+          draftTitle: "Child Draft",
+          draftSlug: "child",
+          draftSlugNormalized: "child",
+          draftRevision: 1
+        })
+      }))
+      .mockImplementationOnce(async (_input: PageBodySaveInput) => firstSave.promise);
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { savePageBody });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    const staleControl = latestHostControl;
+    fireEvent.click(screen.getByRole("button", { name: "Child Draft Unpublished" }));
+    expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    latestHostControl?.emitOutline("Child heading");
+
+    firstSave.resolve({
+      state: "failed",
+      code: "conflict",
+      currentRevision: 2,
+      errorMessage: "This draft was updated elsewhere. Refresh to load the latest revision."
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Status dirty")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Child heading" })).toBeInTheDocument();
+    expect(screen.queryByText("Stale draft heading")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "The draft editor is unavailable" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Authoring access is no longer available for this editor session.")).not.toBeInTheDocument();
+    expect(latestHostControl?.pageSysId).toBe("page-002");
+    expect(latestHostControl).not.toBe(staleControl);
     expect(window.location.search).toContain("page=child");
   });
 });
