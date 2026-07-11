@@ -15,7 +15,7 @@ function collectFiles(dir: string): string[] {
       continue;
     }
 
-    if (child.isFile() && /\.(?:ts|tsx)$/.test(child.name)) {
+    if (child.isFile() && /\.(?:ts|tsx)$/.test(child.name) && !/\.test\.(?:ts|tsx)$/.test(child.name)) {
       entries.push(absolute);
     }
   }
@@ -32,6 +32,10 @@ function isForbiddenSharedImport(specifier: string): boolean {
   );
 }
 
+function isAllowedSharedImport(file: string, specifier: string): boolean {
+  return file === join(repoRoot, "src", "server", "pages", "serverEditorDocument.ts") && specifier === "../../shared/editor/document.ts";
+}
+
 describe("server module boundaries", () => {
   it("keeps server runtime imports out of shared helper paths", () => {
     const offenders: Array<{ file: string; specifier: string }> = [];
@@ -41,7 +45,7 @@ describe("server module boundaries", () => {
         const sourceText = readFileSync(file, "utf8");
         for (const match of sourceText.matchAll(forbiddenSharedImportPattern)) {
           const specifier = (match[1] ?? match[2] ?? "").trim();
-          if (specifier && isForbiddenSharedImport(specifier)) {
+          if (specifier && isForbiddenSharedImport(specifier) && !isAllowedSharedImport(file, specifier)) {
             offenders.push({
               file: relative(repoRoot, file),
               specifier

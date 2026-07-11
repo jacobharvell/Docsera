@@ -1,3 +1,5 @@
+import { canonicalizeDocseraStructuredDocument, validateDocseraStructuredDocument } from "./schema";
+
 export const DOCSERA_DOCUMENT_SCHEMA_VERSION = 1 as const;
 
 export type DocseraTiptapDocument = {
@@ -56,7 +58,15 @@ function isTiptapDocument(value: unknown): value is DocseraTiptapDocument {
 }
 
 function cloneDocument(document: DocseraTiptapDocument): DocseraTiptapDocument {
-  return JSON.parse(JSON.stringify(document)) as DocseraTiptapDocument;
+  const clonedDocument = JSON.parse(JSON.stringify(document)) as DocseraTiptapDocument;
+  return {
+    ...clonedDocument,
+    content: Array.isArray(clonedDocument.content) ? clonedDocument.content : []
+  };
+}
+
+function normalizeDocument(document: DocseraTiptapDocument): DocseraTiptapDocument {
+  return cloneDocument(document);
 }
 
 function createFailure(reason: DocseraDocumentParseFailureReason, message: string): ParseDocseraDocumentResult {
@@ -94,11 +104,19 @@ export function parseDocseraDocument(value: unknown): ParseDocseraDocumentResult
       return createFailure("invalid-document", "The stored page content does not contain a valid TipTap document.");
     }
 
+    const validatedDocument = validateDocseraStructuredDocument(parsedValue.document);
+    if (!validatedDocument.ok) {
+      return createFailure("invalid-document", validatedDocument.message);
+    }
+
+    const canonicalDocument = canonicalizeDocseraStructuredDocument(parsedValue.document) as DocseraTiptapDocument;
+    const normalizedDocument = normalizeDocument(canonicalDocument);
+
     return {
       ok: true,
       envelope: {
         schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
-        document: cloneDocument(parsedValue.document)
+        document: normalizedDocument
       },
       migratedLegacyDocument: false
     };
@@ -109,11 +127,19 @@ export function parseDocseraDocument(value: unknown): ParseDocseraDocumentResult
       return createFailure("invalid-document", "The stored page content does not contain a valid TipTap document.");
     }
 
+    const validatedDocument = validateDocseraStructuredDocument(parsedValue);
+    if (!validatedDocument.ok) {
+      return createFailure("invalid-document", validatedDocument.message);
+    }
+
+    const canonicalDocument = canonicalizeDocseraStructuredDocument(parsedValue) as DocseraTiptapDocument;
+    const normalizedDocument = normalizeDocument(canonicalDocument);
+
     return {
       ok: true,
       envelope: {
         schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
-        document: cloneDocument(parsedValue)
+        document: normalizedDocument
       },
       migratedLegacyDocument: true
     };

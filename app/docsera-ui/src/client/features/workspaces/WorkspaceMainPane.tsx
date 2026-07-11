@@ -43,7 +43,7 @@ function readText(node: unknown): string {
     return typeof candidate.text === "string" ? candidate.text : "";
   }
 
-  if (candidate.type === "hard_break") {
+  if (candidate.type === "hardBreak" || candidate.type === "hard_break") {
     return "\n";
   }
 
@@ -89,7 +89,7 @@ function renderInlineContent(content: unknown[]): ReactNode {
       return <span key={`inline-${index}`}>{element}</span>;
     }
 
-    if (candidate.type === "hard_break") {
+    if (candidate.type === "hardBreak" || candidate.type === "hard_break") {
       return <br key={`inline-${index}`} />;
     }
 

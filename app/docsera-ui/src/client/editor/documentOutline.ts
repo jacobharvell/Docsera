@@ -1,4 +1,5 @@
 import type { DocseraDocumentEnvelope } from "../../shared/editor/document";
+import { DOCSERA_BODY_HEADING_LEVELS } from "../../shared/editor/schema";
 
 export type EditorOutlineItem = {
   anchorId: string;
@@ -31,7 +32,7 @@ function extractInlineText(node: unknown): string {
     return typeof candidate.text === "string" ? candidate.text : "";
   }
 
-  if (candidate.type === "hard_break") {
+  if (candidate.type === "hardBreak" || candidate.type === "hard_break") {
     return "\n";
   }
 
@@ -55,7 +56,7 @@ export function extractDocumentOutline(envelope: DocseraDocumentEnvelope): Edito
     }
 
     const level = Number((candidate.attrs as Record<string, unknown> | undefined)?.level);
-    if (level !== 2 && level !== 3) {
+    if (!DOCSERA_BODY_HEADING_LEVELS.includes(level as 2 | 3)) {
       continue;
     }
 

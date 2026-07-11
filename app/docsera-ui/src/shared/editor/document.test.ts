@@ -8,8 +8,13 @@ import {
 } from "./document";
 import {
   createDocseraDocumentFixtureCorpus,
+  createCodeBlockWhitespaceDocseraDocumentEnvelope,
+  createCombinedInlineMarksDocseraDocumentEnvelope,
   createLargeCanonicalDocseraDocumentEnvelope,
-  createLegacyDocseraDocument
+  createLegacyDocseraDocument,
+  createNestedTaskListDocseraDocumentEnvelope,
+  createTaskCheckedStateDocseraDocumentEnvelope,
+  createSupportedE2DocseraDocumentEnvelope
 } from "./documentFixtures";
 
 describe("Docsera document envelope", () => {
@@ -58,6 +63,33 @@ describe("Docsera document envelope", () => {
         document: legacyDocument
       },
       migratedLegacyDocument: true
+    });
+  });
+
+  it("round-trips the supported E2 rich-text schema without losing marks, lists, or code attributes", () => {
+    const envelope = createSupportedE2DocseraDocumentEnvelope();
+    const parsed = parseDocseraDocument(serializeDocseraDocument(envelope));
+
+    expect(parsed).toEqual({
+      ok: true,
+      envelope,
+      migratedLegacyDocument: false
+    });
+  });
+
+  it.each([
+    ["nested task lists", createNestedTaskListDocseraDocumentEnvelope()],
+    ["checked task state", createTaskCheckedStateDocseraDocumentEnvelope(true)],
+    ["unchecked task state", createTaskCheckedStateDocseraDocumentEnvelope(false)],
+    ["code block terminal whitespace", createCodeBlockWhitespaceDocseraDocumentEnvelope()],
+    ["combined inline marks", createCombinedInlineMarksDocseraDocumentEnvelope()]
+  ])("round-trips %s", (_label, envelope) => {
+    const parsed = parseDocseraDocument(serializeDocseraDocument(envelope));
+
+    expect(parsed).toEqual({
+      ok: true,
+      envelope,
+      migratedLegacyDocument: false
     });
   });
 

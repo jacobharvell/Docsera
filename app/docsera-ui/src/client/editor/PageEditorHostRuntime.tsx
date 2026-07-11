@@ -1,11 +1,12 @@
 import type { Editor } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
 import { createPortal } from "react-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { DocseraDocumentEnvelope, DocseraTiptapDocument } from "../../shared/editor/document";
-import { DOCSERA_DOCUMENT_SCHEMA_VERSION } from "../../shared/editor/document";
+import { DOCSERA_DOCUMENT_SCHEMA_VERSION, parseDocseraDocumentOrThrow } from "../../shared/editor/document";
+import { createDocseraEditorExtensions } from "../../shared/editor/schema";
 import { extractDocumentOutline, type EditorOutlineItem } from "./documentOutline";
+import { sanitizeDocseraPastedHTML, sanitizeDocseraPastedText } from "./pasteSanitizer";
 import type { PageBodySaveResult } from "../shared/types/docsera";
 
 type PageEditorHostRuntimeProps = {
@@ -43,14 +44,21 @@ function normalizeDocument(document: DocseraTiptapDocument): DocseraTiptapDocume
 }
 
 function serializeDocument(document: DocseraTiptapDocument): string {
-  return JSON.stringify(normalizeDocument(document));
+  return JSON.stringify(
+    parseDocseraDocumentOrThrow({
+      schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+      document: normalizeDocument(document)
+    })
+  );
 }
 
 function createEnvelope(document: DocseraTiptapDocument): DocseraDocumentEnvelope {
-  return {
+  const envelope = {
     schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
     document: normalizeDocument(document)
   };
+
+  return parseDocseraDocumentOrThrow(envelope);
 }
 
 function statusLabel(status: RuntimeStatus): string {
@@ -81,7 +89,16 @@ export function PageEditorHostRuntime({
   theme
 }: PageEditorHostRuntimeProps) {
   const [errorMessage, setErrorMessage] = useState("");
-  const [savedDocumentKey, setSavedDocumentKey] = useState(() => serializeDocument(initialEnvelope.document));
+  const validatedInitialEnvelope = useMemo(() => parseDocseraDocumentOrThrow(initialEnvelope), [initialEnvelope]);
+  const editorExtensions = useMemo(() => createDocseraEditorExtensions(), []);
+  const editorProps = useMemo(
+    () => ({
+      transformPastedHTML: sanitizeDocseraPastedHTML,
+      transformPastedText: sanitizeDocseraPastedText
+    }),
+    []
+  );
+  const [savedDocumentKey, setSavedDocumentKey] = useState(() => serializeDocument(validatedInitialEnvelope.document));
   const [savedRevision, setSavedRevision] = useState(initialRevision);
   const [status, setStatus] = useState<RuntimeStatus>("saved");
   const disposedRef = useRef(false);
@@ -108,8 +125,9 @@ export function PageEditorHostRuntime({
 
   const editor = useEditor({
     editable: canEdit,
-    extensions: [StarterKit],
-    content: initialEnvelope.document as unknown as Record<string, unknown>,
+    editorProps,
+    extensions: editorExtensions,
+    content: validatedInitialEnvelope.document as unknown as Record<string, unknown>,
     immediatelyRender: false,
     onCreate: ({ editor: runtimeEditor }) => {
       const envelope = createEnvelope(runtimeEditor.getJSON() as DocseraTiptapDocument);
@@ -160,7 +178,15 @@ export function PageEditorHostRuntime({
       return;
     }
 
-    const envelope = createEnvelope(editor.getJSON() as DocseraTiptapDocument);
+    let envelope: DocseraDocumentEnvelope;
+    try {
+      envelope = createEnvelope(editor.getJSON() as DocseraTiptapDocument);
+    } catch {
+      setStatus("failed");
+      setErrorMessage("The page document is invalid.");
+      return;
+    }
+
     const pendingDocumentKey = serializeDocument(envelope.document);
     if (pendingDocumentKey === savedDocumentKeyRef.current) {
       setStatus("saved");

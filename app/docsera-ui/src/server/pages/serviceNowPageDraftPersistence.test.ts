@@ -3,6 +3,7 @@ import type { WorkspaceRecord } from "../workspaces/serverWorkspaceDomain.ts";
 import type { PageRecord } from "./serverPageDomain.ts";
 import { parseServerDocument } from "./serverEditorDocument.ts";
 import { createPageBodySaveService } from "./serviceNowPageDraftPersistence.ts";
+import { createDocseraDocumentFixtureCorpus, createSupportedE2DocseraDocumentEnvelope } from "../../shared/editor/documentFixtures";
 
 function createWorkspace(): WorkspaceRecord {
   return {
@@ -152,20 +153,14 @@ describe("page body save service", () => {
       workspaceSlug: "product-docs",
       pageSysId: "page-001",
       expectedRevision: 2,
-      draftContentJson: {
-        schemaVersion: 1,
-        document: { type: "doc", content: [{ type: "paragraph" }] }
-      }
+      draftContentJson: createSupportedE2DocseraDocumentEnvelope()
     });
 
     expect(accepted.kind).toBe("succeeded");
     expect(savePage).toHaveBeenCalledWith(
       expect.objectContaining({
         draftRevision: 3,
-        draftContentJson: {
-          schemaVersion: 1,
-          document: { type: "doc", content: [{ type: "paragraph" }] }
-        }
+        draftContentJson: createSupportedE2DocseraDocumentEnvelope()
       })
     );
 
@@ -197,6 +192,38 @@ describe("page body save service", () => {
     });
     expect(savePage).not.toHaveBeenCalled();
   });
+
+  it.each(createDocseraDocumentFixtureCorpus().filter((fixture) => !fixture.expected.ok))(
+    "rejects $label at the save boundary without writing",
+    async ({ input }) => {
+      const savePage = vi.fn(async (page: PageRecord) => page);
+      const service = createPageBodySaveService({
+        evaluateWorkspaceCapabilities: () => ({
+          canAdminWorkspace: false,
+          canEditWorkspace: true,
+          canManageWorkspaceMembers: false,
+          canViewWorkspace: true
+        }),
+        loadWorkspaceBySlug: async () => createWorkspace(),
+        loadWorkspaceBySysId: async () => createWorkspace(),
+        listWorkspacePages: async () => [createPage({ draftRevision: 2 })],
+        savePage
+      });
+
+      const rejected = await service.savePageBody({
+        workspaceSlug: "product-docs",
+        pageSysId: "page-001",
+        expectedRevision: 2,
+        draftContentJson: input as never
+      });
+
+      expect(rejected).toMatchObject({
+        kind: "failed",
+        status: 400
+      });
+      expect(savePage).not.toHaveBeenCalled();
+    }
+  );
 
   it("preserves a large multi-byte canonical document without trimming through the save boundary", async () => {
     let storedSerializedDocument = "";
