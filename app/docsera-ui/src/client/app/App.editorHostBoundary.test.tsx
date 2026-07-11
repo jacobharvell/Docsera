@@ -5,6 +5,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { useEffect, useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import type { EditorOutlineItem } from "../editor/documentOutline";
 import { createEmptyDocseraDocumentEnvelope, type DocseraDocumentEnvelope } from "../../shared/editor/document";
 import type {
   DocseraRuntimeContext,
@@ -21,7 +22,7 @@ type MockHostProps = {
   initialRevision: number;
   onAccessLost: () => void;
   onError: (failure: { kind: "load_failed" | "mount_failed"; message: string } | null) => void;
-  onOutlineChange: (outline: Array<{ id: string; level: number; text: string }>) => void;
+  onOutlineChange: (outline: EditorOutlineItem[]) => void;
   onSaveDraft: (input: {
     draftContentJson: DocseraDocumentEnvelope;
     expectedRevision: number;
