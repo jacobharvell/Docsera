@@ -20,11 +20,13 @@ type WorkspaceSidebarProps = {
   treeFilter: string;
   onTreeFilterChange: (value: string) => void;
   canCreatePage: boolean;
+  createPageDisabledReason?: string;
   isCreatingPage: boolean;
   onShowCreatePage: () => void;
   onShowChildPageCreate: (parentPageId: string, parentPageTitle: string) => void;
   collapsedPageIds: string[];
   onCollapsedPageIdsChange: (pageIds: string[]) => void;
+  showCreatePageControl: boolean;
 };
 
 function SearchIcon() {
@@ -51,14 +53,18 @@ export function WorkspaceSidebar({
   treeFilter,
   onTreeFilterChange,
   canCreatePage,
+  createPageDisabledReason = "",
   isCreatingPage,
   onShowCreatePage,
   onShowChildPageCreate,
   collapsedPageIds,
-  onCollapsedPageIdsChange
+  onCollapsedPageIdsChange,
+  showCreatePageControl
 }: WorkspaceSidebarProps) {
   const totalPages = pages.length;
   const showLoadingState = Boolean(isLoading);
+  const createPageReasonId = createPageDisabledReason ? "docsera-create-page-reason" : undefined;
+  const showPageTree = totalPages > 0 || Boolean(canCreatePage && inlineCreateState);
 
   return (
     <aside className="docsera-sidebar" aria-label="Workspace navigation" aria-busy={showLoadingState}>
@@ -77,18 +83,25 @@ export function WorkspaceSidebar({
             onChange={(event) => onTreeFilterChange(event.target.value)}
           />
         </label>
-        {canCreatePage ? (
+        {showCreatePageControl ? (
           <button
             type="button"
             className="docsera-sidebar__icon-button"
             aria-label="New page"
+            aria-describedby={createPageReasonId}
             onClick={onShowCreatePage}
-            disabled={isCreatingPage || showLoadingState}
+            disabled={isCreatingPage || showLoadingState || !canCreatePage}
+            title={createPageDisabledReason || undefined}
           >
             <PlusIcon />
           </button>
         ) : null}
       </div>
+      {createPageDisabledReason ? (
+        <p id={createPageReasonId} className="docsera-sidebar__status-note" role="note">
+          {createPageDisabledReason}
+        </p>
+      ) : null}
 
       <nav className="docsera-sidebar__tree" aria-label="Page tree">
         {showLoadingState && showPendingState ? (
@@ -97,7 +110,7 @@ export function WorkspaceSidebar({
             <span className="docsera-sidebar__pending-line docsera-sidebar__pending-line--wide" />
             <span className="docsera-sidebar__pending-line" />
           </div>
-        ) : showLoadingState ? null : totalPages === 0 ? (
+        ) : showLoadingState ? null : !showPageTree ? (
           <p className="docsera-sidebar__empty">
             {mode === "edit"
               ? "This workspace has no pages yet. Use New page to create the first one."

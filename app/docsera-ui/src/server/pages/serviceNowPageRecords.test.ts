@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mapPageRecord } from "./serviceNowPageRecords";
+import { createEmptyDocseraDocumentEnvelope, parseDocseraDocumentOrThrow } from "../../shared/editor/document";
 import {
   createDocseraDocumentFixtureCorpus,
   createLegacyDocseraDocument
@@ -77,10 +78,7 @@ describe("page record mapping", () => {
     expect(page.active).toBe(expectedActive);
     expect(page.sysId).toBe("page-001");
     expect(page.draftTitle).toBe("Overview");
-    expect(page.draftContentJson).toEqual({
-      schemaVersion: 1,
-      document: { type: "doc", content: [] }
-    });
+    expect(page.draftContentJson).toEqual(createEmptyDocseraDocumentEnvelope());
   });
 
   it("rejects an empty persisted draft_content_json string", () => {
@@ -197,6 +195,7 @@ describe("page record mapping", () => {
   it.each(createDocseraDocumentFixtureCorpus().filter((fixture) => fixture.expected.ok && !fixture.expected.migratedLegacyDocument))(
     "accepts the current canonical envelope for $label",
     ({ input }) => {
+      const canonicalEnvelope = parseDocseraDocumentOrThrow(input);
       const page = mapPageRecord(
         createRecord({
           activeValue: true,
@@ -205,8 +204,8 @@ describe("page record mapping", () => {
         })
       );
 
-      expect(page.draftContentJson).toEqual(input);
-      expect(page.publishedContentJson).toEqual(input);
+      expect(page.draftContentJson).toEqual(canonicalEnvelope);
+      expect(page.publishedContentJson).toEqual(canonicalEnvelope);
     }
   );
 

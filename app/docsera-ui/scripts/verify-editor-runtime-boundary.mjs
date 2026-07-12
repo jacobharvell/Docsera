@@ -1,0 +1,116 @@
+#!/usr/bin/env node
+
+import fs from "node:fs";
+import path from "node:path";
+
+const appRoot = path.resolve(import.meta.dirname, "..");
+const staticRoot = path.join(appRoot, "dist", "static");
+
+function readJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
+function readText(filePath) {
+  return fs.readFileSync(filePath, "utf8");
+}
+
+function printCheck(ok, label, detail = "") {
+  console.log(`${ok ? "[pass]" : "[fail]"} ${label}`);
+  if (detail) {
+    console.log(`       ${detail}`);
+  }
+}
+
+function getSourceEntry(map, suffix) {
+  const index = map.sources.findIndex((source) => source.endsWith(suffix));
+  if (index === -1) {
+    return null;
+  }
+
+  return {
+    content: map.sourcesContent?.[index] ?? "",
+    source: map.sources[index]
+  };
+}
+
+const mainChunkPath = path.join(staticRoot, "main.jsdbx");
+const mainMapPath = path.join(staticRoot, "main.jsdbx.map");
+const runtimeChunkPath = path.join(staticRoot, "PageEditorHostRuntime.jsdbx");
+const runtimeMapPath = path.join(staticRoot, "PageEditorHostRuntime.jsdbx.map");
+
+const mainChunk = readText(mainChunkPath);
+const runtimeChunk = readText(runtimeChunkPath);
+const mainMap = readJson(mainMapPath);
+const runtimeMap = readJson(runtimeMapPath);
+
+const hostSourceSuffix = "src/client/editor/PageEditorHost.tsx";
+const runtimeSourceSuffix = "src/client/editor/PageEditorHostRuntime.tsx";
+
+const hostSourceInMain = getSourceEntry(mainMap, hostSourceSuffix);
+const hostSourceInRuntime = getSourceEntry(runtimeMap, hostSourceSuffix);
+const runtimeSourceInMain = getSourceEntry(mainMap, runtimeSourceSuffix);
+const runtimeSourceInRuntime = getSourceEntry(runtimeMap, runtimeSourceSuffix);
+
+const checks = [
+  {
+    detail: hostSourceInMain?.source ?? "",
+    label: "PageEditorHost source is owned by main.jsdbx",
+    ok: Boolean(hostSourceInMain)
+  },
+  {
+    label: "PageEditorHost source is not emitted into PageEditorHostRuntime.jsdbx",
+    ok: hostSourceInRuntime === null
+  },
+  {
+    detail: runtimeSourceInRuntime?.source ?? "",
+    label: "PageEditorHostRuntime source is owned by PageEditorHostRuntime.jsdbx",
+    ok: Boolean(runtimeSourceInRuntime)
+  },
+  {
+    label: "PageEditorHostRuntime source is not emitted into main.jsdbx",
+    ok: runtimeSourceInMain === null
+  },
+  {
+    label: "PageEditorHost source no longer creates the child React root",
+    ok:
+      Boolean(hostSourceInMain) &&
+      !hostSourceInMain.content.includes("createRoot(") &&
+      hostSourceInMain.content.includes("runtimeModule.mountPageEditorHostRuntime(")
+  },
+  {
+    label: "PageEditorHost source no longer renders the lazy component through the parent renderer",
+    ok:
+      Boolean(hostSourceInMain) &&
+      !hostSourceInMain.content.includes("<runtimeModule.PageEditorHostRuntime") &&
+      !hostSourceInMain.content.includes("entry.reactRoot.render(")
+  },
+  {
+    label: "PageEditorHostRuntime source owns child root creation and lifecycle",
+    ok:
+      Boolean(runtimeSourceInRuntime) &&
+      runtimeSourceInRuntime.content.includes('import { createRoot, type Root } from "react-dom/client";') &&
+      runtimeSourceInRuntime.content.includes("function renderRuntimeRoot(") &&
+      runtimeSourceInRuntime.content.includes("function mountPageEditorHostRuntime(") &&
+      runtimeSourceInRuntime.content.includes("reactRoot.unmount()")
+  },
+  {
+    label: "PageEditorHostRuntime.jsdbx exports the imperative runtime API",
+    ok: runtimeChunk.includes("mountPageEditorHostRuntime")
+  },
+  {
+    label: "main.jsdbx keeps the lazy runtime boundary import path",
+    ok: mainChunk.includes('import("./PageEditorHostRuntime.jsdbx")')
+  }
+];
+
+for (const check of checks) {
+  printCheck(check.ok, check.label, check.detail);
+}
+
+const passed = checks.every((check) => check.ok);
+console.log("");
+console.log(`Result: ${passed ? "pass" : "fail"}`);
+
+if (!passed) {
+  process.exitCode = 1;
+}

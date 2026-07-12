@@ -5,6 +5,8 @@ import { EditorRuntimeSpikeOutlet } from "./editor/spikes/EditorRuntimeSpikeOutl
 import { createServiceNowClient } from "./platform/servicenow/client";
 import { resolveRuntimeContext } from "./platform/servicenow/runtime";
 
+const DOCSERA_MOUNTED_ATTRIBUTE = "data-docsera-mounted";
+
 export function mountDocseraApp(): void {
   const runtime = resolveRuntimeContext();
   const client = createServiceNowClient(runtime);
@@ -13,6 +15,12 @@ export function mountDocseraApp(): void {
   if (!mountNode) {
     throw new Error("Docsera runtime mount node was not found.");
   }
+
+  if (mountNode.getAttribute(DOCSERA_MOUNTED_ATTRIBUTE) === "true") {
+    return;
+  }
+
+  mountNode.setAttribute(DOCSERA_MOUNTED_ATTRIBUTE, "true");
 
   ReactDOM.createRoot(mountNode).render(
     <React.StrictMode>

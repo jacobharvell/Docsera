@@ -76,6 +76,16 @@ type WorkspaceModeUiState = {
   selectedPageSysId: string;
 };
 
+type RetainedWorkspaceShellState = {
+  mode: WorkspaceMode;
+  outlinePage: WorkspacePageView | null;
+  selectedPageId: string;
+  selectedPagePath: WorkspacePageView[];
+  selectedPageView: WorkspacePageView | null;
+  treePages: WorkspacePageView[];
+  workspaceSlug: string;
+};
+
 type EditorTransitionState = {
   isDirty: boolean;
   isSaving: boolean;
@@ -462,8 +472,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [pageOutlineOverrides, setPageOutlineOverrides] = useState<Record<string, WorkspacePageOutlineItem[]>>({});
   const [pageSettingsState, setPageSettingsState] = useState<PageSettingsState>(createEmptyPageSettingsState);
   const [showTransitionProgress, setShowTransitionProgress] = useState(false);
+  const [isEditorReady, setIsEditorReady] = useState(false);
   const [lastCommittedWorkspaceHeaderPresentation, setLastCommittedWorkspaceHeaderPresentation] =
     useState<WorkspaceHeaderPresentation | null>(null);
+  const [lastReadyWorkspaceShell, setLastReadyWorkspaceShell] = useState<RetainedWorkspaceShellState | null>(null);
   const launcherRequestIdRef = useRef(0);
   const crossModeTargetPageSysIdRef = useRef("");
   const inlinePageCreateFocusTokenRef = useRef(0);
@@ -611,8 +623,16 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   );
   const workspaceShellViewModel =
     workspaceState.status === "success" ? buildWorkspaceShellViewModel(workspaceState.data) : null;
-  const canCreatePage = activeWorkspaceMode === "edit" && hasAuthoringCapability && !editAccessLost;
+  const showCreatePageControls = activeWorkspaceMode === "edit" && hasAuthoringCapability && !editAccessLost;
+  const canCreatePage = showCreatePageControls && workspacePagesLoaded;
   const isCreatingPage = Boolean(inlinePageCreateState?.showInput || inlinePageCreateState?.pending);
+  const createPageDisabledReason =
+    showCreatePageControls &&
+    workspacePagesState.status === "error" &&
+    workspacePagesState.workspaceSlug === currentWorkspaceSlug &&
+    workspacePagesState.mode === activeWorkspaceMode
+      ? "New page is unavailable because the workspace page list failed to load."
+      : "";
   const selectedWorkspacePage =
     workspacePagesLoaded && currentWorkspacePages.length > 0
       ? resolveWorkspacePageSelection(currentWorkspacePages, {
@@ -656,6 +676,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       token: nextSession
     });
   }, [desiredEditorSessionSeed, selectedWorkspacePage?.draftRevision, selectedWorkspacePageId]);
+
+  useLayoutEffect(() => {
+    setIsEditorReady(false);
+  }, [activeWorkspaceMode, editorSessionState.sessionKey, selectedWorkspacePageId]);
 
   const renderedEditorSession = editorSessionState.token;
   const editorSessionKey = editorSessionState.sessionKey;
@@ -762,9 +786,58 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         : workspacePagesLoading
           ? "Fetching live page records from ServiceNow."
           : "";
+  const shouldRetainWorkspaceShell =
+    route.mode === "workspace" &&
+    workspaceState.status === "success" &&
+    workspaceState.data.slug === currentWorkspaceSlug &&
+    workspacePagesLoading &&
+    lastReadyWorkspaceShell !== null &&
+    lastReadyWorkspaceShell.workspaceSlug === currentWorkspaceSlug;
+  const displayedTreePages = shouldRetainWorkspaceShell ? lastReadyWorkspaceShell.treePages : treePages;
+  const displayedSelectedPageView = shouldRetainWorkspaceShell ? lastReadyWorkspaceShell.selectedPageView : selectedPageView;
+  const displayedSelectedPageId = shouldRetainWorkspaceShell ? lastReadyWorkspaceShell.selectedPageId : selectedWorkspacePageId;
+  const displayedSelectedPagePath = shouldRetainWorkspaceShell ? lastReadyWorkspaceShell.selectedPagePath : selectedPagePath;
+  const displayedOutlinePage = shouldRetainWorkspaceShell ? lastReadyWorkspaceShell.outlinePage : outlinePage;
+  const displayedWorkspaceShellStatus: "loading" | "error" | "ready" = shouldRetainWorkspaceShell ? "ready" : workspaceShellStatus;
+  const showEditorBodyPending =
+    route.mode === "workspace" &&
+    activeWorkspaceMode === "edit" &&
+    !editAccessLost &&
+    !editorFailure &&
+    displayedSelectedPageView?.contentState === "ready" &&
+    Boolean(displayedSelectedPageView.contentEnvelope) &&
+    (shouldRetainWorkspaceShell || !isEditorReady);
+  const workspaceMainPaneBodyState: "loading" | "ready" = showEditorBodyPending ? "loading" : "ready";
   const isLauncherBusy = route.mode === "launcher" && (launcherState.status === "loading" || launcherState.status === "idle" || launcherState.status === "refreshing");
   const isWorkspaceBusy = route.mode === "workspace" && workspaceShellStatus === "loading";
   const showLoadingProgress = isLauncherBusy || isWorkspaceBusy;
+
+  useEffect(() => {
+    if (route.mode !== "workspace" || workspaceShellStatus !== "ready" || workspaceState.status !== "success") {
+      return;
+    }
+
+    setLastReadyWorkspaceShell({
+      mode: activeWorkspaceMode,
+      outlinePage,
+      selectedPageId: selectedWorkspacePageId,
+      selectedPagePath,
+      selectedPageView,
+      treePages,
+      workspaceSlug: currentWorkspaceSlug
+    });
+  }, [
+    activeWorkspaceMode,
+    currentWorkspaceSlug,
+    outlinePage,
+    route.mode,
+    selectedPagePath,
+    selectedPageView,
+    selectedWorkspacePageId,
+    treePages,
+    workspaceShellStatus,
+    workspaceState
+  ]);
 
   useEffect(() => {
     if (!showLoadingProgress) {
@@ -996,8 +1069,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     loadedWorkspaceSlug,
     requestedWorkspaceMode,
     route.mode,
-    serviceNowClient,
-    workspaceState.status
+    serviceNowClient
   ]);
 
   useEffect(() => {
@@ -2367,7 +2439,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   return (
     <div className={`docsera-app${route.mode === "launcher" ? " docsera-app--launcher" : ""}`}>
       <DocseraHeader
-        breadcrumbs={selectedPagePath}
+        breadcrumbs={displayedSelectedPagePath}
         currentWorkspaceSlug={appHeaderWorkspaceSlug}
         identity={appHeaderIdentity}
         mode={appHeaderMode}
@@ -2393,8 +2465,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         {route.mode === "workspace" ? (
           <>
             <WorkspaceShell
-              breadcrumbs={selectedPagePath}
+              bodyState={workspaceMainPaneBodyState}
+              breadcrumbs={displayedSelectedPagePath}
               canCreatePage={canCreatePage}
+              createPageDisabledReason={createPageDisabledReason}
               canEditPageBody={hasAuthoringCapability && !editAccessLost}
               canManagePageSettings={canManagePageSettings}
               collapsedPageIds={currentModeUiState.collapsedPageIds}
@@ -2414,6 +2488,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               }}
               onCommitInlineCreate={submitInlinePageCreation}
               onEditorFailureChange={(failure) => handleEditorFailureChangeForSession(renderedEditorSession, failure)}
+              onEditorReadyStateChange={setIsEditorReady}
               onInlineCreateTitleChange={updateInlinePageCreateTitle}
               onModeChange={changeWorkspaceMode}
               onOutlineChange={handleOutlineChange}
@@ -2430,7 +2505,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               onShowCreatePage={openCreatePageModal}
               onTogglePageSettings={requestTogglePageSettings}
               onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
-              outlinePage={outlinePage}
+              outlinePage={displayedOutlinePage}
               pageSettingsOpenPageId={pageSettingsState.open ? pageSettingsState.pageSysId : ""}
               pageSettingsOverlay={
                 <PageSettingsOverlay
@@ -2453,17 +2528,18 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
                   onStartField={startPageSettingsField}
                 />
               }
-              selectedPage={selectedPageView}
-              selectedPageId={selectedWorkspacePageId}
+              selectedPage={displayedSelectedPageView}
+              selectedPageId={displayedSelectedPageId}
               sessionKey={editorSessionKey}
-              shellStatus={workspaceShellStatus}
+              shellStatus={displayedWorkspaceShellStatus}
               shellTitle={workspaceShellTitle}
               shellCopy={workspaceShellCopy}
               showPendingState={showTransitionProgress}
               sidebarCollapsed={appHeaderSidebarCollapsed}
               showEditModeToggle={appHeaderShowEditToggle}
+              showCreatePageControls={showCreatePageControls}
               treeFilter={currentModeUiState.searchQuery}
-              treePages={workspaceShellStatus === "ready" ? treePages : []}
+              treePages={displayedTreePages}
               workspaceNavWidth={workspaceNavWidth}
               onSidebarCollapsedChange={setSidebarCollapsed}
               onWorkspaceNavWidthChange={setWorkspaceNavWidth}

@@ -21,9 +21,12 @@
     "deploy:sdk": "npm run clean && npm run build && node ./scripts/verify-sdk-install-prereqs.mjs && now-sdk install && npm run verify:sdk-runtime",
     "transform:sdk": "now-sdk transform",
     "types:sdk": "now-sdk dependencies",
+    "verify:editor-runtime-boundary": "node ./scripts/verify-editor-runtime-boundary.mjs",
     "verify:inline-runtime-css-build": "node ./scripts/verify-inline-runtime-css-build.mjs",
     "verify:sdk-runtime": "node ./scripts/verify-sdk-runtime.mjs",
     "verify:workspace-foundation": "node ./scripts/verify-workspace-foundation.mjs",
+    "reset:editor-smoke-data": "node ./scripts/reset-editor-smoke-data.mjs",
+    "reset:editor-smoke-data:apply": "node ./scripts/reset-editor-smoke-data.mjs --apply",
     "test": "vitest run",
     "validate": "npm run test && npm run build && npm run verify:inline-runtime-css-build"
   },
@@ -40,6 +43,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@napi-rs/keyring": "1.2.0",
     "@servicenow/glide": "27.0.5",
     "@servicenow/isomorphic-rollup": "^1.3.6",
     "@servicenow/sdk": "4.8.1",

@@ -1,10 +1,12 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join, relative, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const repoRoot = process.cwd();
 const serverRoots = [join(repoRoot, "src", "server"), join(repoRoot, "src", "server", "api")];
 const forbiddenSharedImportPattern = /\bfrom\s+['"]([^'"]+)['"]|\bimport\s+['"]([^'"]+)['"]/g;
+const sharedDocumentWrapperPath = join(repoRoot, "src", "shared", "editor", "document.ts");
+const serverDocumentWrapperPath = join(repoRoot, "src", "server", "pages", "serverEditorDocument.ts");
 
 function collectFiles(dir: string): string[] {
   const entries: string[] = [];
@@ -33,7 +35,7 @@ function isForbiddenSharedImport(specifier: string): boolean {
 }
 
 function isAllowedSharedImport(file: string, specifier: string): boolean {
-  return file === join(repoRoot, "src", "server", "pages", "serverEditorDocument.ts") && specifier === "../../shared/editor/document.ts";
+  return false;
 }
 
 describe("server module boundaries", () => {
@@ -56,5 +58,15 @@ describe("server module boundaries", () => {
     }
 
     expect(offenders).toEqual([]);
+  });
+
+  it("keeps the authoritative document contract inside the deployable server module graph", () => {
+    expect(existsSync(serverDocumentWrapperPath)).toBe(true);
+
+    const serverWrapperSource = readFileSync(serverDocumentWrapperPath, "utf8");
+    expect(serverWrapperSource).not.toContain("../editor/docseraDocumentContract.ts");
+
+    const sharedWrapperSource = readFileSync(sharedDocumentWrapperPath, "utf8");
+    expect(sharedWrapperSource).toContain("../../server/pages/serverEditorDocument");
   });
 });

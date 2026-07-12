@@ -5,7 +5,8 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { useEffect } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { createDocseraEditorExtensions } from "../../shared/editor/schema";
-import { createSupportedE2DocseraDocumentEnvelope } from "../../shared/editor/documentFixtures";
+import { parseDocseraDocument } from "../../shared/editor/document";
+import { createDocseraDocumentFixtureCorpus, createSupportedE2DocseraDocumentEnvelope } from "../../shared/editor/documentFixtures";
 import type { JSONContent } from "@tiptap/core";
 
 function React18TipTapProbe({ onReady }: { onReady: (editor: Editor) => void }) {
@@ -53,4 +54,25 @@ describe("TipTap runtime compatibility", () => {
       expect(editor.isDestroyed).toBe(true);
     });
   });
+
+  it.each(createDocseraDocumentFixtureCorpus().filter((fixture) => fixture.expected.ok))(
+    "materializes the same canonical JSON as the shared contract for $label",
+    ({ input }) => {
+      const parsed = parseDocseraDocument(input);
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) {
+        return;
+      }
+
+      const editor = new Editor({
+        element: document.createElement("div"),
+        extensions: createDocseraEditorExtensions(),
+        content: parsed.envelope.document as JSONContent
+      });
+
+      expect(editor.getJSON()).toEqual(parsed.envelope.document);
+
+      editor.destroy();
+    }
+  );
 });

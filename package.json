@@ -16,6 +16,8 @@
     "verify:sdk-ui-page": "npm --prefix app/docsera-ui run verify:sdk-runtime --",
     "verify:workspace-bridge-ping": "npm --prefix app/docsera-ui run verify:workspace-bridge-ping --",
     "verify:workspace-foundation": "npm --prefix app/docsera-ui run verify:workspace-foundation --",
+    "reset:editor-smoke-data": "npm --prefix app/docsera-ui run reset:editor-smoke-data",
+    "reset:editor-smoke-data:apply": "npm --prefix app/docsera-ui run reset:editor-smoke-data:apply",
     "validate": "npm run validate:frontend && npm run validate:shell && npm run validate:docs",
     "validate:frontend": "npm --prefix app/docsera-ui run validate",
     "validate:shell": "npm --prefix app/docsera-shell run verify",

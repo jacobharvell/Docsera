@@ -2,14 +2,23 @@
 
 import "@testing-library/jest-dom/vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PageEditorHost } from "./PageEditorHost";
 import { createEmptyDocseraDocumentEnvelope } from "../../shared/editor/document";
 import type { PageBodySaveResult } from "../shared/types/docsera";
 
 let crashOnRender = false;
 let crashOnLoad = false;
+let mountRuntimeCallCount = 0;
+let updateRuntimeCallCount = 0;
 vi.spyOn(console, "error").mockImplementation(() => {});
+
+afterEach(() => {
+  crashOnRender = false;
+  crashOnLoad = false;
+  mountRuntimeCallCount = 0;
+  updateRuntimeCallCount = 0;
+});
 
 vi.mock("./PageEditorHostRuntime", async () => {
   if (crashOnLoad) {
@@ -17,12 +26,50 @@ vi.mock("./PageEditorHostRuntime", async () => {
   }
 
   return {
-    PageEditorHostRuntime: () => {
+    mountPageEditorHostRuntime: ({
+      props,
+      runtimeRoot
+    }: {
+      props: {
+        onEditorReady?: () => void;
+        onRuntimeError?: () => void;
+        overlayRoot: HTMLElement;
+      };
+      runtimeRoot: HTMLElement;
+    }) => {
+      mountRuntimeCallCount += 1;
       if (crashOnRender) {
-        throw new Error("Sensitive render failure: sys_id=x_82900_docsera_page");
+        props.onRuntimeError?.();
+        return {
+          destroy() {},
+          update() {
+            updateRuntimeCallCount += 1;
+          }
+        };
       }
 
-      return <div>Mock runtime ready</div>;
+      const runtimeText = document.createElement("div");
+      runtimeText.textContent = "Mock runtime ready";
+      const overlayButton = document.createElement("button");
+      overlayButton.type = "button";
+      overlayButton.textContent = "Mock overlay control";
+      runtimeRoot.replaceChildren(runtimeText);
+      props.overlayRoot.replaceChildren(overlayButton);
+      props.onEditorReady?.();
+
+      return {
+        destroy() {
+          runtimeRoot.replaceChildren();
+          props.overlayRoot.replaceChildren();
+        },
+        update(nextProps: typeof props) {
+          updateRuntimeCallCount += 1;
+          props = nextProps;
+          runtimeRoot.replaceChildren(runtimeText);
+          props.overlayRoot.replaceChildren(overlayButton);
+          props.onEditorReady?.();
+        }
+      };
     }
   };
 });
@@ -35,6 +82,7 @@ describe("PageEditorHost runtime containment", () => {
     render(
       <PageEditorHost
         canEdit={true}
+        headerControlsRoot={null}
         initialEnvelope={createEmptyDocseraDocumentEnvelope()}
         initialRevision={0}
         onAccessLost={vi.fn()}
@@ -69,6 +117,7 @@ describe("PageEditorHost runtime containment", () => {
           <p>Workspace shell stays mounted</p>
           <PageEditorHost
             canEdit={true}
+            headerControlsRoot={null}
             initialEnvelope={createEmptyDocseraDocumentEnvelope()}
             initialRevision={0}
             onAccessLost={vi.fn()}
@@ -102,6 +151,7 @@ describe("PageEditorHost runtime containment", () => {
           <p>Workspace shell stays mounted</p>
           <PageEditorHost
             canEdit={true}
+            headerControlsRoot={null}
             initialEnvelope={createEmptyDocseraDocumentEnvelope()}
             initialRevision={0}
             onAccessLost={vi.fn()}
@@ -126,5 +176,116 @@ describe("PageEditorHost runtime containment", () => {
       expect(shadowText).toContain("Mock runtime ready");
     });
     expect(screen.getByText("Workspace shell stays mounted")).toBeInTheDocument();
+  });
+
+  it("tears down overlay controls when the session key changes", async () => {
+    const onError = vi.fn();
+    const view = render(
+      <PageEditorHost
+        canEdit={true}
+        headerControlsRoot={null}
+        initialEnvelope={createEmptyDocseraDocumentEnvelope()}
+        initialRevision={0}
+        onAccessLost={vi.fn()}
+        onError={onError}
+        onOutlineChange={vi.fn()}
+        onSaveDraft={vi.fn()}
+        onStatusChange={vi.fn()}
+        pageSysId="page-001"
+        sessionKey="page-001:1"
+        theme="light"
+      />
+    );
+
+    await waitFor(() => {
+      const host = view.container.querySelector("[data-docsera-page-editor-host='true']");
+      expect(host?.shadowRoot?.querySelector("button")).not.toBeNull();
+    });
+    const initialHost = view.container.querySelector("[data-docsera-page-editor-host='true']") as HTMLElement | null;
+    const initialOverlayRoot = initialHost?.shadowRoot?.querySelector("[data-docsera-editor-overlay-root='true']") as HTMLElement | null;
+    const initialButton = initialOverlayRoot?.querySelector("button");
+    expect(initialButton).toBeTruthy();
+
+    await act(async () => {
+      view.rerender(
+        <PageEditorHost
+          canEdit={true}
+          headerControlsRoot={null}
+          initialEnvelope={createEmptyDocseraDocumentEnvelope()}
+          initialRevision={0}
+          onAccessLost={vi.fn()}
+          onError={onError}
+          onOutlineChange={vi.fn()}
+          onSaveDraft={vi.fn()}
+          onStatusChange={vi.fn()}
+          pageSysId="page-002"
+          sessionKey="page-002:1"
+          theme="light"
+        />
+      );
+    });
+
+    await waitFor(() => {
+      const host = view.container.querySelector("[data-docsera-page-editor-host='true']") as HTMLElement | null;
+      const overlayRoot = host?.shadowRoot?.querySelector("[data-docsera-editor-overlay-root='true']") as HTMLElement | null;
+      const replacementButton = overlayRoot?.querySelector("button");
+      expect(replacementButton).not.toBeNull();
+      expect(replacementButton?.isConnected).toBe(true);
+      expect(initialButton?.isConnected).toBe(false);
+      expect(overlayRoot).not.toBe(initialOverlayRoot);
+    });
+
+    await act(async () => {
+      view.unmount();
+    });
+    expect(initialButton?.isConnected).toBe(false);
+    expect(view.container.querySelector("[data-docsera-editor-overlay-root='true']")).toBeNull();
+    expect(onError).toHaveBeenCalledWith(null);
+  });
+
+  it("mounts the lazy runtime once and reuses it for same-session prop updates", async () => {
+    const view = render(
+      <PageEditorHost
+        canEdit={true}
+        headerControlsRoot={null}
+        initialEnvelope={createEmptyDocseraDocumentEnvelope()}
+        initialRevision={0}
+        onAccessLost={vi.fn()}
+        onError={vi.fn()}
+        onOutlineChange={vi.fn()}
+        onSaveDraft={vi.fn()}
+        onStatusChange={vi.fn()}
+        pageSysId="page-001"
+        sessionKey="page-001:1"
+        theme="light"
+      />
+    );
+
+    await waitFor(() => {
+      expect(view.container.querySelector("[data-docsera-page-editor-host='true']")?.shadowRoot?.textContent).toContain("Mock runtime ready");
+    });
+    expect(mountRuntimeCallCount).toBe(1);
+
+    await act(async () => {
+      view.rerender(
+        <PageEditorHost
+          canEdit={true}
+          headerControlsRoot={document.createElement("div")}
+          initialEnvelope={createEmptyDocseraDocumentEnvelope()}
+          initialRevision={1}
+          onAccessLost={vi.fn()}
+          onError={vi.fn()}
+          onOutlineChange={vi.fn()}
+          onSaveDraft={vi.fn()}
+          onStatusChange={vi.fn()}
+          pageSysId="page-001"
+          sessionKey="page-001:1"
+          theme="dark"
+        />
+      );
+    });
+
+    expect(mountRuntimeCallCount).toBe(1);
+    expect(updateRuntimeCallCount).toBeGreaterThan(0);
   });
 });

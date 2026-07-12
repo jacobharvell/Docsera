@@ -1,5 +1,4 @@
-import { createRoot, type Root } from "react-dom/client";
-import { Component, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { DocseraDocumentEnvelope } from "../../shared/editor/document";
 import type { PageBodySaveResult } from "../shared/types/docsera";
 import type { EditorOutlineItem } from "./documentOutline";
@@ -15,6 +14,7 @@ type PageEditorHostProps = {
   initialRevision: number;
   onAccessLost: () => void;
   onError: (failure: PageEditorHostFailure | null) => void;
+  onReadyStateChange?: (ready: boolean) => void;
   onOutlineChange: (outline: EditorOutlineItem[]) => void;
   onSaveDraft: (input: {
     draftContentJson: DocseraDocumentEnvelope;
@@ -22,6 +22,7 @@ type PageEditorHostProps = {
     pageSysId: string;
   }) => Promise<PageBodySaveResult>;
   onStatusChange: (state: { isDirty: boolean; isSaving: boolean }) => void;
+  headerControlsRoot: HTMLElement | null;
   pageSysId: string;
   sessionKey: string;
   theme: "dark" | "light";
@@ -31,81 +32,47 @@ type RuntimeModule = typeof import("./PageEditorHostRuntime");
 
 type HostRuntimeEntry = {
   overlayRoot: HTMLElement;
-  reactRoot: Root;
   runtimeRoot: HTMLElement;
 };
-
-type RuntimeBoundaryProps = {
-  children: ReactNode;
-  onRuntimeError: (error: unknown) => void;
-  resetKey: string;
-};
-
-type RuntimeBoundaryState = {
-  hasError: boolean;
-};
-
-class RuntimeBoundary extends Component<RuntimeBoundaryProps, RuntimeBoundaryState> {
-  state: RuntimeBoundaryState = { hasError: false };
-
-  static getDerivedStateFromError(): RuntimeBoundaryState {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: unknown) {
-    this.props.onRuntimeError(error);
-  }
-
-  componentDidUpdate(prevProps: RuntimeBoundaryProps) {
-    if (prevProps.resetKey !== this.props.resetKey && this.state.hasError) {
-      this.setState({ hasError: false });
-    }
-  }
-
-  render() {
-    return this.state.hasError ? null : this.props.children;
-  }
-}
-
-function renderRuntime(
-  entry: HostRuntimeEntry,
-  runtimeModule: RuntimeModule,
-  props: PageEditorHostProps
-): void {
-  entry.reactRoot.render(
-    <RuntimeBoundary
-      resetKey={props.sessionKey}
-      onRuntimeError={(error) => {
-        props.onError({
-          kind: "mount_failed",
-          message: "The editor host could not be mounted."
-        });
-      }}
-    >
-      <runtimeModule.PageEditorHostRuntime
-        canEdit={props.canEdit}
-        initialEnvelope={props.initialEnvelope}
-        initialRevision={props.initialRevision}
-        onAccessLost={props.onAccessLost}
-        onOutlineChange={props.onOutlineChange}
-        onSaveDraft={props.onSaveDraft}
-        onStatusChange={props.onStatusChange}
-        overlayRoot={entry.overlayRoot}
-        pageSysId={props.pageSysId}
-        theme={props.theme}
-      />
-    </RuntimeBoundary>
-  );
-}
 
 export function PageEditorHost(props: PageEditorHostProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const runtimeRef = useRef<HostRuntimeEntry | null>(null);
+  const runtimeHandleRef = useRef<import("./PageEditorHostRuntime").PageEditorHostRuntimeHandle | null>(null);
   const runtimeModuleRef = useRef<RuntimeModule | null>(null);
+  const latestPropsRef = useRef(props);
   const runtimeSessionKey = useMemo(
     () => `${props.sessionKey}:${props.canEdit ? "editable" : "readonly"}`,
     [props.canEdit, props.sessionKey]
   );
+
+  latestPropsRef.current = props;
+
+  function buildRuntimeProps(entry: HostRuntimeEntry, currentProps: PageEditorHostProps): Parameters<RuntimeModule["mountPageEditorHostRuntime"]>[0]["props"] {
+    return {
+      canEdit: currentProps.canEdit,
+      headerControlsRoot: currentProps.headerControlsRoot,
+      initialEnvelope: currentProps.initialEnvelope,
+      initialRevision: currentProps.initialRevision,
+      onAccessLost: currentProps.onAccessLost,
+      onEditorReady: () => {
+        currentProps.onReadyStateChange?.(true);
+      },
+      onOutlineChange: currentProps.onOutlineChange,
+      onRuntimeError: () => {
+        currentProps.onReadyStateChange?.(false);
+        currentProps.onError({
+          kind: "mount_failed",
+          message: "The editor host could not be mounted."
+        });
+      },
+      onSaveDraft: currentProps.onSaveDraft,
+      onStatusChange: currentProps.onStatusChange,
+      overlayRoot: entry.overlayRoot,
+      pageSysId: currentProps.pageSysId,
+      theme: currentProps.theme
+    };
+  }
 
   useEffect(() => {
     const host = hostRef.current;
@@ -119,9 +86,9 @@ export function PageEditorHost(props: PageEditorHostProps) {
     const overlayRoot = document.createElement("div");
     overlayRoot.dataset.docseraEditorOverlayRoot = "true";
     shadowRoot.replaceChildren(runtimeRoot, overlayRoot);
-    const reactRoot = createRoot(runtimeRoot);
-    const entry = { overlayRoot, reactRoot, runtimeRoot };
+    const entry = { overlayRoot, runtimeRoot };
     runtimeRef.current = entry;
+    props.onReadyStateChange?.(false);
     props.onError(null);
 
     void import("./PageEditorHostRuntime")
@@ -131,13 +98,17 @@ export function PageEditorHost(props: PageEditorHostProps) {
         }
 
         runtimeModuleRef.current = runtimeModule;
-        renderRuntime(entry, runtimeModule, props);
+        runtimeHandleRef.current = runtimeModule.mountPageEditorHostRuntime({
+          props: buildRuntimeProps(entry, latestPropsRef.current),
+          runtimeRoot
+        });
       })
       .catch(() => {
         if (!active) {
           return;
         }
 
+        props.onReadyStateChange?.(false);
         props.onError({
           kind: "load_failed",
           message: "The editor runtime could not be loaded."
@@ -146,10 +117,13 @@ export function PageEditorHost(props: PageEditorHostProps) {
 
     return () => {
       active = false;
+      const runtimeHandle = runtimeHandleRef.current;
+      runtimeHandleRef.current = null;
       runtimeModuleRef.current = null;
       runtimeRef.current = null;
+      props.onReadyStateChange?.(false);
       queueMicrotask(() => {
-        reactRoot.unmount();
+        runtimeHandle?.destroy();
         runtimeRoot.remove();
         overlayRoot.remove();
       });
@@ -157,11 +131,11 @@ export function PageEditorHost(props: PageEditorHostProps) {
   }, [runtimeSessionKey]);
 
   useEffect(() => {
-    if (!runtimeRef.current || !runtimeModuleRef.current) {
+    if (!runtimeRef.current || !runtimeHandleRef.current) {
       return;
     }
 
-    renderRuntime(runtimeRef.current, runtimeModuleRef.current, props);
+    runtimeHandleRef.current.update(buildRuntimeProps(runtimeRef.current, props));
     props.onError(null);
   }, [
     props.canEdit,
@@ -172,6 +146,7 @@ export function PageEditorHost(props: PageEditorHostProps) {
     props.onOutlineChange,
     props.onSaveDraft,
     props.onStatusChange,
+    props.headerControlsRoot,
     props.pageSysId,
     props.sessionKey,
     props.theme

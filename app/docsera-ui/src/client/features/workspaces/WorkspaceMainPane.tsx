@@ -1,10 +1,11 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { PageEditorHost, type PageEditorHostFailure } from "../../editor/PageEditorHost";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
 import type { PageBodySaveResult, WorkspaceMode } from "../../shared/types/docsera";
 import type { WorkspacePageView } from "./workspaceViewModels";
 
 type WorkspaceMainPaneProps = {
+  bodyState: "loading" | "ready";
   page: WorkspacePageView | null;
   pagePath: WorkspacePageView[];
   workspaceMode: WorkspaceMode;
@@ -18,6 +19,7 @@ type WorkspaceMainPaneProps = {
   onReturnToMyWorkspaces: () => void;
   onReturnToLive: () => void;
   onRetryEditor: () => void;
+  onEditorReadyStateChange: (ready: boolean) => void;
   onOutlineChange: (pageSysId: string, outline: WorkspacePageView["tocItems"]) => void;
   onSavePageDraft: (input: {
     draftContentJson: DocseraDocumentEnvelope;
@@ -268,6 +270,7 @@ function resolveListItemContent(item: unknown): unknown {
 }
 
 export function WorkspaceMainPane({
+  bodyState,
   page,
   pagePath,
   workspaceMode,
@@ -281,6 +284,7 @@ export function WorkspaceMainPane({
   onReturnToMyWorkspaces,
   onReturnToLive,
   onRetryEditor,
+  onEditorReadyStateChange,
   onOutlineChange,
   onSavePageDraft,
   onStatusChange,
@@ -291,6 +295,8 @@ export function WorkspaceMainPane({
   editorFailure,
   onEditorFailureChange
 }: WorkspaceMainPaneProps) {
+  const [editorControlsRoot, setEditorControlsRoot] = useState<HTMLElement | null>(null);
+
   if (stateType !== "ready") {
     return (
       <main className="docsera-main" aria-label={stateType === "error" ? "Workspace unavailable" : "Loading workspace"}>
@@ -339,28 +345,39 @@ export function WorkspaceMainPane({
     );
   }
 
-  const introEyebrow = pagePath.length > 1 ? pagePath[0]?.title : workspaceMode === "edit" ? "Edit" : "Live";
+  const introEyebrow = pagePath.length > 1 ? pagePath[0]?.title : "";
+  const showBodyPending = bodyState === "loading";
   const showEditorRecovery =
     workspaceMode === "edit" &&
+    !showBodyPending &&
     (page.contentState !== "ready" || Boolean(editorFailure));
 
   return (
     <main className="docsera-main" aria-labelledby="docsera-page-title">
-      <article className="docsera-main__surface">
+      <article className={`docsera-main__surface${workspaceMode === "edit" ? " docsera-main__surface--editor" : ""}`}>
         <div className="docsera-main__intro">
           {introEyebrow ? <p className="docsera-main__eyebrow">{introEyebrow}</p> : null}
-          <h1 id="docsera-page-title" className="docsera-main__title">
-            {page.title}
-          </h1>
-          <p className="docsera-main__lede">
-            {workspaceMode === "edit"
-              ? "The selected page is using the shared workspace draft representation."
-              : "The selected page is using the published reader representation."}
-          </p>
+          <div className="docsera-main__page-header">
+            <h1 id="docsera-page-title" className="docsera-main__title">
+              {page.title}
+            </h1>
+            {workspaceMode === "edit" && page.contentEnvelope && sessionKey && !editAccessLost ? (
+              <div ref={setEditorControlsRoot} className="docsera-main__editor-controls" />
+            ) : null}
+          </div>
+          {workspaceMode === "live" ? (
+            <p className="docsera-main__lede">The selected page is using the published reader representation.</p>
+          ) : null}
         </div>
 
         {workspaceMode === "live" ? (
-          page.contentState === "ready" && page.contentEnvelope ? (
+          showBodyPending ? (
+            <section className="docsera-main__pending" aria-label="Loading page content" role="status">
+              <span className="docsera-main__pending-line" />
+              <span className="docsera-main__pending-line docsera-main__pending-line--wide" />
+              <span className="docsera-main__pending-line" />
+            </section>
+          ) : page.contentState === "ready" && page.contentEnvelope ? (
             <section className="docsera-main__reader" aria-label="Published page content">
               {renderDocumentBlocks(page.contentEnvelope)}
             </section>
@@ -392,14 +409,16 @@ export function WorkspaceMainPane({
               </section>
             ) : null}
             {sessionKey && !editAccessLost ? (
-              <div>
+              <div hidden={showBodyPending}>
                 <PageEditorHost
                   canEdit={canEditPageBody && !editAccessLost}
+                  headerControlsRoot={editorControlsRoot}
                   initialEnvelope={page.contentEnvelope}
                   initialRevision={page.page.draftRevision ?? 0}
                   onAccessLost={onAccessLost}
                   onError={onEditorFailureChange}
                   onOutlineChange={(outline) => onOutlineChange(page.sysId, outline)}
+                  onReadyStateChange={onEditorReadyStateChange}
                   onSaveDraft={onSavePageDraft}
                   onStatusChange={onStatusChange}
                   pageSysId={page.sysId}
@@ -407,6 +426,13 @@ export function WorkspaceMainPane({
                   theme={theme}
                 />
               </div>
+            ) : null}
+            {showBodyPending ? (
+              <section className="docsera-main__pending" aria-label="Loading editor" role="status">
+                <span className="docsera-main__pending-line" />
+                <span className="docsera-main__pending-line docsera-main__pending-line--wide" />
+                <span className="docsera-main__pending-line" />
+              </section>
             ) : null}
           </>
         ) : null}

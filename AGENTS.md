@@ -162,6 +162,18 @@ Regression coverage is part of the definition of done for coded behavior changes
 - Ask for explicit user approval before merge.
 - Default merge method is squash merge unless explicitly overridden.
 
+### Task Branch Start Invariant
+
+- Before implementation begins, fetch and prune remote refs and resolve the exact base stated in the implementation brief.
+- Create the task branch explicitly from the stated base ref, normally current `origin/main`. Do not create a task branch from the current worktree `HEAD` unless that `HEAD` has been verified to equal the stated base.
+- Before making changes, verify:
+  - the current branch is the intended task branch;
+  - `HEAD` equals the stated base commit;
+  - the merge base with the stated base is that same commit;
+  - the new task branch is zero commits ahead and zero commits behind the stated base.
+- If the current worktree is dirty, detached, stale, or preserving unrelated changes, leave it intact and use a clean worktree for the new task branch.
+- If any branch-start check fails, correct the branch or worktree before implementation begins.
+
 ## Project Runbooks
 
 Before troubleshooting ServiceNow custom component deployment, UI Builder runtime behavior, or editor mount failures, consult:

@@ -10,8 +10,10 @@ import type { PageBodySaveResult } from "../../shared/types/docsera";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
 
 type WorkspaceShellProps = {
+  bodyState: "loading" | "ready";
   breadcrumbs: WorkspacePageView[];
   canCreatePage: boolean;
+  createPageDisabledReason: string;
   canEditPageBody: boolean;
   canManagePageSettings: boolean;
   collapsedPageIds: string[];
@@ -25,6 +27,7 @@ type WorkspaceShellProps = {
   onCollapsedPageIdsChange: (pageIds: string[]) => void;
   onCommitInlineCreate: () => void;
   onEditorFailureChange: (failure: PageEditorHostFailure | null) => void;
+  onEditorReadyStateChange: (ready: boolean) => void;
   onInlineCreateTitleChange: (value: string) => void;
   onModeChange: (mode: WorkspaceMode) => void;
   onOutlineChange: (pageSysId: string, outline: WorkspacePageOutlineItem[]) => void;
@@ -49,6 +52,7 @@ type WorkspaceShellProps = {
   selectedPageId: string;
   sidebarCollapsed: boolean;
   showEditModeToggle: boolean;
+  showCreatePageControls: boolean;
   sessionKey: string;
   shellStatus: "loading" | "error" | "ready";
   shellTitle: string;
@@ -107,8 +111,10 @@ function readStoredWorkspaceTocCollapsed(workspaceSlug: string): boolean {
 }
 
 export function WorkspaceShell({
+  bodyState,
   breadcrumbs,
   canCreatePage,
+  createPageDisabledReason,
   canEditPageBody,
   canManagePageSettings,
   collapsedPageIds,
@@ -122,6 +128,7 @@ export function WorkspaceShell({
   onCollapsedPageIdsChange,
   onCommitInlineCreate,
   onEditorFailureChange,
+  onEditorReadyStateChange,
   onInlineCreateTitleChange,
   onModeChange,
   onOutlineChange,
@@ -141,6 +148,7 @@ export function WorkspaceShell({
   selectedPage,
   selectedPageId,
   sidebarCollapsed,
+  showCreatePageControls,
   sessionKey,
   showEditModeToggle,
   shellStatus,
@@ -251,6 +259,7 @@ export function WorkspaceShell({
           <div className="docsera-workspace__nav-frame">
             <WorkspaceSidebar
               canCreatePage={canCreatePage}
+              createPageDisabledReason={createPageDisabledReason}
               canManagePageSettings={canManagePageSettings}
               collapsedPageIds={collapsedPageIds}
               inlineCreateState={inlineCreateState}
@@ -268,6 +277,7 @@ export function WorkspaceShell({
               pageSettingsOpenPageId={pageSettingsOpenPageId}
               pages={showWorkspaceLoading ? [] : treePages}
               selectedPageId={selectedPageViewForShell?.id ?? selectedPageId}
+              showCreatePageControl={showCreatePageControls}
               treeFilter={treeFilter}
               onTreeFilterChange={onTreeFilterChange}
             />
@@ -284,12 +294,14 @@ export function WorkspaceShell({
         ) : null}
 
         <WorkspaceMainPane
+          bodyState={bodyState}
           canCreatePage={canCreatePage}
           canEditPageBody={canEditPageBody}
           editAccessLost={editAccessLost}
           editorFailure={editorFailure}
           onAccessLost={onAccessLost}
           onEditorFailureChange={onEditorFailureChange}
+          onEditorReadyStateChange={onEditorReadyStateChange}
           onOutlineChange={onOutlineChange}
           onReturnToMyWorkspaces={onReturnToMyWorkspaces}
           onReturnToLive={onReturnToLive}

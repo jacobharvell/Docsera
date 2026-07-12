@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { createEmptyDocseraDocumentEnvelope } from "../../shared/editor/document";
 import type {
@@ -14,20 +14,57 @@ import type {
   WorkspaceViewRecord
 } from "../shared/types/docsera";
 
+let deferHostReady = false;
+let hostReadyResolvers: Array<() => void> = [];
+
+function resolveDeferredHostReady() {
+  const resolvers = [...hostReadyResolvers];
+  hostReadyResolvers = [];
+  deferHostReady = false;
+  resolvers.forEach((resolve) => resolve());
+}
+
+afterEach(() => {
+  deferHostReady = false;
+  hostReadyResolvers = [];
+});
+
 vi.mock("../editor/PageEditorHost", () => ({
   PageEditorHost: function MockPageEditorHost({
     canEdit,
-    onEditorFailureChange,
+    onError,
+    onReadyStateChange,
+    pageSysId,
+    sessionKey,
     onStatusChange
   }: {
     canEdit: boolean;
-    onEditorFailureChange?: (failure: null) => void;
+    onError?: (failure: null) => void;
+    onReadyStateChange?: (ready: boolean) => void;
+    pageSysId?: string;
+    sessionKey?: string;
     onStatusChange?: (state: { isDirty: boolean; isSaving: boolean }) => void;
   }) {
     useEffect(() => {
-      onEditorFailureChange?.(null);
+      onError?.(null);
       onStatusChange?.({ isDirty: false, isSaving: false });
-    }, [onEditorFailureChange, onStatusChange]);
+      if (!onReadyStateChange) {
+        return;
+      }
+
+      if (!deferHostReady) {
+        onReadyStateChange(true);
+        return;
+      }
+
+      const resolveReady = () => {
+        onReadyStateChange(true);
+      };
+      hostReadyResolvers.push(resolveReady);
+      return () => {
+        hostReadyResolvers = hostReadyResolvers.filter((resolver) => resolver !== resolveReady);
+      };
+    }, [onError, onReadyStateChange, onStatusChange, pageSysId, sessionKey]);
 
     return canEdit ? <div data-docsera-page-editor-host="true" /> : null;
   }
@@ -302,6 +339,53 @@ describe("App live and edit routing", () => {
     expect(document.querySelector(".docsera-sidebar")).toBe(sidebarNav);
   });
 
+  it("retains the committed shell while same-workspace edit pages are loading and limits pending UI to the body", async () => {
+    const deferredEditPages = createDeferred<PageListResult>();
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) => {
+      if (mode === "edit") {
+        return deferredEditPages.promise;
+      }
+
+      return createPageListResult("live", [
+        createPageRecord({
+          draftTitle: "Overview",
+          publishedTitle: "Overview"
+        })
+      ]);
+    });
+
+    renderApp("/?workspace=product-docs&page=overview", { listPages });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    const shellNode = document.querySelector(".docsera-workspace");
+    const mainPane = document.querySelector(".docsera-main");
+    const sidebarNav = screen.getByLabelText("Workspace navigation");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Loading editor" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Workspace navigation")).toBe(sidebarNav);
+    expect(document.querySelector(".docsera-workspace")).toBe(shellNode);
+    expect(document.querySelector(".docsera-main")).toBe(mainPane);
+    expect(document.querySelector(".docsera-sidebar__pending")).toBeNull();
+    expect(document.querySelector(".docsera-toc__loading")).toBeNull();
+
+    await act(async () => {
+      deferredEditPages.resolve(
+        createPageListResult("edit", [
+          createPageRecord({
+            draftTitle: "Overview Draft",
+            publicationState: "published_with_unpublished_changes"
+          })
+        ])
+      );
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+  });
+
   it("keeps shell geometry mounted while switching workspaces and shows only contained loading lines when delayed", async () => {
     const deferredWorkspace = createDeferred<{ workspace: WorkspaceViewRecord }>();
     const getWorkspace = vi.fn(async (workspaceSlug: string) =>
@@ -361,6 +445,47 @@ describe("App live and edit routing", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+  });
+
+  it("requests workspace detail and edit pages once during direct edit bootstrap", async () => {
+    const getWorkspace = vi.fn(async () => ({
+      workspace: createWorkspace()
+    }));
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(
+        mode === "edit" ? "edit" : "live",
+        [createPageRecord({ draftTitle: "Overview Draft", publicationState: "published_with_unpublished_changes" })]
+      )
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { getWorkspace, listPages });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    expect(getWorkspace).toHaveBeenCalledTimes(1);
+    expect(listPages).toHaveBeenCalledTimes(1);
+    expect(listPages).toHaveBeenCalledWith({
+      mode: "edit",
+      workspaceSlug: "product-docs"
+    });
+  });
+
+  it("requests workspace detail and live pages once during direct live bootstrap", async () => {
+    const getWorkspace = vi.fn(async () => ({
+      workspace: createWorkspace()
+    }));
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", [createPageRecord()])
+    );
+
+    renderApp("/?workspace=product-docs", { getWorkspace, listPages });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(getWorkspace).toHaveBeenCalledTimes(1);
+    expect(listPages).toHaveBeenCalledTimes(1);
+    expect(listPages).toHaveBeenCalledWith({
+      mode: "live",
+      workspaceSlug: "product-docs"
+    });
   });
 
   it("retains and disables the committed header controls while a workspace switch is unresolved", async () => {
@@ -560,6 +685,48 @@ describe("App live and edit routing", () => {
     expect(document.querySelector(".docsera-header")).toBe(header);
   });
 
+  it("keeps the create-page control visible but disabled when page loading fails fatally in edit mode", async () => {
+    const createPage = vi.fn(async () => {
+      throw new Error("createPage should not be called while page loading has failed");
+    });
+    const listPages = vi.fn(async () => {
+      throw new Error("HTTP 500");
+    });
+
+    renderApp("/?workspace=product-docs&mode=edit", { createPage, listPages });
+
+    expect(await screen.findByRole("heading", { name: "Pages unavailable" })).toBeInTheDocument();
+    const newPageButtons = screen.getAllByRole("button", { name: "New page" });
+    expect(newPageButtons.length).toBeGreaterThan(0);
+    expect(newPageButtons[0]).toBeDisabled();
+    expect(
+      screen.getByText("New page is unavailable because the workspace page list failed to load.")
+    ).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+    expect(createPage).not.toHaveBeenCalled();
+  });
+
+  it("opens the inline create-page flow from a successfully loaded empty workspace in edit mode", async () => {
+    const createPage = vi.fn(async () => {
+      throw new Error("createPage should not be called before the inline title is committed");
+    });
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", [])
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit", { createPage, listPages });
+
+    expect(await screen.findByRole("heading", { name: "No pages yet" })).toBeInTheDocument();
+    const newPageButtons = screen.getAllByRole("button", { name: "New page" });
+    expect(newPageButtons.length).toBeGreaterThan(0);
+
+    fireEvent.click(newPageButtons[0]);
+
+    expect(await screen.findByRole("textbox", { name: "New page title" })).toBeInTheDocument();
+    expect(createPage).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+  });
+
   it("applies the launcher route background class without changing the workspace route class contract", async () => {
     const launcherView = renderApp("/");
 
@@ -606,6 +773,36 @@ describe("App live and edit routing", () => {
     expect(listPages).toHaveBeenLastCalledWith({
       mode: "edit",
       workspaceSlug: "product-docs"
+    });
+  });
+
+  it("keeps the shell visible while the edit host bootstraps on a direct edit load", async () => {
+    deferHostReady = true;
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", [
+        createPageRecord({
+          draftTitle: "Overview Draft",
+          publicationState: "published_with_unpublished_changes"
+        })
+      ])
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { listPages });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Loading editor" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Workspace navigation")).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Page breadcrumbs" })).toBeInTheDocument();
+    expect(document.querySelector(".docsera-sidebar__pending")).toBeNull();
+    expect(document.querySelector(".docsera-toc__loading")).toBeNull();
+
+    await act(async () => {
+      resolveDeferredHostReady();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("status", { name: "Loading editor" })).toBeNull();
     });
   });
 

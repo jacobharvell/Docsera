@@ -1698,6 +1698,13 @@ html[data-docsera-theme="dark"] .docsera-shell {
   flex: 0 0 auto;
 }
 
+.docsera-sidebar__status-note {
+  margin: 8px 0 0;
+  color: var(--docsera-text-muted);
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
 .docsera-sidebar__search {
   position: relative;
   display: block;
@@ -2165,12 +2172,105 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   letter-spacing: -0.03em;
 }
 
+.docsera-main__page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.docsera-main__editor-controls {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-left: auto;
+  min-height: 32px;
+}
+
+.docsera-main__surface--editor {
+  gap: 18px;
+}
+
+.docsera-main__surface--editor .docsera-main__intro {
+  gap: 12px;
+}
+
 .docsera-main__lede {
   margin: 0;
   max-width: 60ch;
   color: var(--docsera-text-muted);
   font-size: 1rem;
   line-height: 1.7;
+}
+
+.docsera-main__authoring-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.docsera-main__authoring-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.docsera-main__authoring-status--saved {
+  border-color: rgba(23, 125, 84, 0.2);
+  background: rgba(23, 125, 84, 0.1);
+  color: var(--docsera-success);
+}
+
+.docsera-main__authoring-status--dirty {
+  border-color: rgba(185, 112, 0, 0.2);
+  background: rgba(185, 112, 0, 0.1);
+  color: #965800;
+}
+
+.docsera-main__authoring-status--saving {
+  border-color: rgba(11, 102, 204, 0.2);
+  background: rgba(11, 102, 204, 0.1);
+  color: var(--docsera-primary);
+}
+
+.docsera-main__authoring-status--failed {
+  border-color: rgba(186, 26, 26, 0.2);
+  background: rgba(186, 26, 26, 0.1);
+  color: #ba1a1a;
+}
+
+.docsera-main__authoring-save {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 112px;
+  padding: 10px 14px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--docsera-primary), #004fa8);
+  color: #ffffff;
+  font-family: Geist, Inter, "Segoe UI", sans-serif;
+  font-size: 0.875rem;
+  font-weight: 700;
+  box-shadow: 0 16px 30px rgba(1, 94, 194, 0.24);
+}
+
+.docsera-main__authoring-save:disabled {
+  background: linear-gradient(135deg, rgba(99, 117, 147, 0.85), rgba(96, 112, 139, 0.85));
+  box-shadow: none;
+  cursor: not-allowed;
 }
 
 .docsera-main__empty-action {

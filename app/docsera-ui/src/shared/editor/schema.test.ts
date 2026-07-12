@@ -1,3 +1,4 @@
+import { isAllowedUri } from "@tiptap/extension-link";
 import { describe, expect, it } from "vitest";
 import {
   createCodeBlockWhitespaceDocseraDocumentEnvelope,
@@ -6,7 +7,7 @@ import {
   createSupportedE2DocseraDocumentEnvelope,
   createTaskCheckedStateDocseraDocumentEnvelope
 } from "./documentFixtures";
-import { validateDocseraStructuredDocument } from "./schema";
+import { isDocseraAllowedLinkHref, validateDocseraStructuredDocument } from "./schema";
 
 describe("Docsera structured document validation", () => {
   it.each([
@@ -258,5 +259,20 @@ describe("Docsera structured document validation", () => {
       ok: false,
       message: "The stored page content does not contain a valid TipTap document."
     });
+  });
+});
+
+describe("Docsera link policy parity", () => {
+  it.each([
+    ["https URL", "https://example.com/docs"],
+    ["relative URL", "./getting-started"],
+    ["anchor URL", "#overview"],
+    ["mailto URL", "mailto:docs@example.com"],
+    ["unsupported file scheme", "file:///tmp/docsera.txt"],
+    ["unsafe javascript scheme", "javascript:alert(1)"],
+    ["whitespace-obfuscated javascript scheme", "java\nscript:alert(1)"],
+    ["custom scheme", "git://example.com/repo.git"]
+  ])("matches TipTap default URI policy for %s", (_label, href) => {
+    expect(isDocseraAllowedLinkHref(href)).toBe(Boolean(isAllowedUri(href, [])));
   });
 });

@@ -114,6 +114,28 @@ describe("page listing service", () => {
     }
   });
 
+  it("returns an explicit empty page list for an authorized empty workspace", async () => {
+    const service = createPageListingService({
+      evaluateWorkspaceCapabilities: () => ({
+        canAdminWorkspace: true,
+        canEditWorkspace: true,
+        canManageWorkspaceMembers: true,
+        canViewWorkspace: true
+      }),
+      loadWorkspaceBySlug: () => createWorkspace(),
+      listWorkspacePages: async () => []
+    });
+
+    const result = await service.listPages({ mode: "edit", workspaceSlug: "product-docs" });
+
+    expect(result.kind).toBe("succeeded");
+    if (result.kind === "succeeded") {
+      expect(result.mode).toBe("edit");
+      expect(result.pages).toEqual([]);
+      expect(result.workspace.slug).toBe("product-docs");
+    }
+  });
+
   it("loads published-only live pages for viewers", async () => {
     const listWorkspacePages = vi.fn().mockResolvedValue([
       createPage({ sysId: "page-001", publicationState: "draft", draftTitle: "Draft only", draftSlug: "draft-only" }),

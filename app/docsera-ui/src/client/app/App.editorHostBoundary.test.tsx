@@ -22,6 +22,7 @@ type MockHostProps = {
   initialRevision: number;
   onAccessLost: () => void;
   onError: (failure: { kind: "load_failed" | "mount_failed"; message: string } | null) => void;
+  onReadyStateChange?: (ready: boolean) => void;
   onOutlineChange: (outline: EditorOutlineItem[]) => void;
   onSaveDraft: (input: {
     draftContentJson: DocseraDocumentEnvelope;
@@ -78,6 +79,13 @@ vi.mock("../editor/PageEditorHost", () => {
     const [savedText, setSavedText] = useState(() => readPlainText(createEmptyDocseraDocumentEnvelope()));
     const [historyDepth, setHistoryDepth] = useState(0);
     const [isSaving, setIsSaving] = useState(false);
+
+    useEffect(() => {
+      props.onReadyStateChange?.(true);
+      return () => {
+        props.onReadyStateChange?.(false);
+      };
+    }, [props.onReadyStateChange, props.pageSysId, props.sessionKey]);
 
     useEffect(() => {
       props.onStatusChange({
@@ -490,6 +498,7 @@ describe("App editor-host session boundary", () => {
     expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Save draft" });
     fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
 
     await act(async () => {
@@ -626,6 +635,7 @@ describe("App editor-host session boundary", () => {
     expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
     expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Save draft" });
     fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
 
     firstSave.resolve({
@@ -671,7 +681,7 @@ describe("App editor-host session boundary", () => {
     expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
     expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
-
+    await screen.findByRole("button", { name: "Save draft" });
     fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
     latestHostControl?.emitOutline("Child heading");
 

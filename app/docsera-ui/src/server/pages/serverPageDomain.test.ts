@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createEmptyDocseraDocumentEnvelope } from "../../shared/editor/document";
 import {
   allocatePageSiblingOrder,
   allocatePageSlug,
@@ -152,10 +153,7 @@ describe("server page domain", () => {
     expect(rootDraft.parentPageSysId).toBeNull();
     expect(rootDraft.siblingOrder).toBe(4);
     expect(rootDraft.draftSlug).toBe("release-notes-1");
-    expect(rootDraft.draftContentJson).toEqual({
-      schemaVersion: 1,
-      document: { type: "doc", content: [] }
-    });
+    expect(rootDraft.draftContentJson).toEqual(createEmptyDocseraDocumentEnvelope());
 
     const childDraft = createPageDraft(
       {

@@ -344,6 +344,84 @@ export function createCombinedInlineMarksDocseraDocumentEnvelope(): DocseraDocum
   };
 }
 
+export function createHeadingPairDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
+  return {
+    schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+    document: {
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [{ type: "text", text: "Section heading" }]
+        },
+        {
+          type: "heading",
+          attrs: { level: 3 },
+          content: [{ type: "text", text: "Subsection heading" }]
+        }
+      ]
+    }
+  };
+}
+
+export function createRelativeLinkDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
+  return {
+    schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+    document: {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "Relative link",
+              marks: [
+                {
+                  type: "link",
+                  attrs: {
+                    href: "./getting-started?mode=edit#overview",
+                    target: "_blank",
+                    rel: "noopener noreferrer nofollow",
+                    class: null,
+                    title: "Open guide"
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  };
+}
+
+export function createOrderedListDefaultAttrsDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
+  return {
+    schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+    document: {
+      type: "doc",
+      content: [
+        {
+          type: "orderedList",
+          content: [
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Default ordered list item" }]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  };
+}
+
 export function createLargeCanonicalDocseraDocumentEnvelope(paragraphCount = 1200): DocseraDocumentEnvelope {
   return {
     schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
@@ -383,8 +461,40 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
       }
     },
     {
+      input: createCanonicalDocseraDocumentEnvelope(),
+      label: "paragraph document",
+      expected: {
+        ok: true,
+        migratedLegacyDocument: false
+      }
+    },
+    {
+      input: createHeadingPairDocseraDocumentEnvelope(),
+      label: "heading pair document",
+      expected: {
+        ok: true,
+        migratedLegacyDocument: false
+      }
+    },
+    {
       input: createSupportedE2DocseraDocumentEnvelope(),
       label: "supported rich E2 document",
+      expected: {
+        ok: true,
+        migratedLegacyDocument: false
+      }
+    },
+    {
+      input: createRelativeLinkDocseraDocumentEnvelope(),
+      label: "safe relative link document",
+      expected: {
+        ok: true,
+        migratedLegacyDocument: false
+      }
+    },
+    {
+      input: createOrderedListDefaultAttrsDocseraDocumentEnvelope(),
+      label: "ordered list default attributes document",
       expected: {
         ok: true,
         migratedLegacyDocument: false
@@ -497,12 +607,81 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
           content: [
             {
               type: "paragraph",
+              content: [{ type: "text", text: "" }]
+            }
+          ]
+        }
+      },
+      label: "empty text node rejected by schema",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
               attrs: { unknown: "value" }
             }
           ]
         }
       },
       label: "unknown node attribute",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: "Unsupported absolute scheme",
+                  marks: [{ type: "link", attrs: { href: "file:///tmp/docsera.txt" } }]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "unsupported absolute URI scheme",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: "Whitespace-obfuscated javascript",
+                  marks: [{ type: "link", attrs: { href: "java\nscript:alert(1)" } }]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "whitespace-obfuscated unsafe URI scheme",
       expected: {
         ok: false,
         reason: "invalid-document"

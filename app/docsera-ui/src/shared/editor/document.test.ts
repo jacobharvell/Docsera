@@ -135,7 +135,7 @@ describe("Docsera document envelope", () => {
     }
 
     parsed.envelope.document.content?.push({ type: "paragraph" });
-    expect(source.document.content).toEqual([]);
+    expect(source.document.content).toBeUndefined();
   });
 
   it("round-trips a large canonical document without trimming or schema mutation", () => {
