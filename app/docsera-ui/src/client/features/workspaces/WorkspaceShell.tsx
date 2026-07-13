@@ -39,7 +39,7 @@ type WorkspaceShellProps = {
     expectedRevision: number;
     pageSysId: string;
   }) => Promise<PageBodySaveResult>;
-  onStatusChange: (state: { isDirty: boolean; isSaving: boolean }) => void;
+  onStatusChange: (state: { flush?: () => Promise<boolean>; isDirty: boolean; isSaving: boolean; status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved" }) => void;
   onSelectPage: (pageId: string) => void;
   onShowChildPageCreate: (parentPageId: string, parentPageTitle: string) => void;
   onShowCreatePage: () => void;

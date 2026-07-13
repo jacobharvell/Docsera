@@ -31,6 +31,7 @@ type DocseraHeaderProps = {
   onSelectBreadcrumb?: (pageId: string) => void;
   onToggleSidebar?: () => void;
   recentWorkspaces: RecentWorkspaceItem[];
+  saveStatus?: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
   showEditModeToggle?: boolean;
   showWorkspaceMode?: WorkspaceMode;
   onWorkspaceModeChange?: (mode: WorkspaceMode) => void;
@@ -70,6 +71,7 @@ export function DocseraHeader({
   onSelectBreadcrumb,
   onToggleSidebar,
   recentWorkspaces,
+  saveStatus,
   showEditModeToggle = false,
   showWorkspaceMode = "live",
   onWorkspaceModeChange,
@@ -213,26 +215,29 @@ export function DocseraHeader({
         <div className="docsera-header__actions" aria-label="Header controls">
           <div className="docsera-header__action-slot docsera-header__action-slot--mode">
             {mode === "workspace" && showEditModeToggle && onWorkspaceModeChange ? (
-              <div className="docsera-header__mode-toggle" role="group" aria-label="Workspace mode">
-                <button
-                  type="button"
-                  className={`docsera-header__mode-segment${showWorkspaceMode === "live" ? " docsera-header__mode-segment--active" : ""}`}
-                  aria-pressed={showWorkspaceMode === "live"}
-                  disabled={workspaceControlsLocked}
-                  onClick={() => onWorkspaceModeChange("live")}
-                >
-                  Live
-                </button>
-                <button
-                  type="button"
-                  className={`docsera-header__mode-segment${showWorkspaceMode === "edit" ? " docsera-header__mode-segment--active" : ""}`}
-                  aria-pressed={showWorkspaceMode === "edit"}
-                  disabled={workspaceControlsLocked}
-                  onClick={() => onWorkspaceModeChange("edit")}
-                >
-                  Edit
-                </button>
-              </div>
+              <>
+                {saveStatus ? <span className="docsera-header__save-status" aria-live="polite" role="status">{saveStatus}</span> : null}
+                <div className="docsera-header__mode-toggle" role="group" aria-label="Workspace mode">
+                  <button
+                    type="button"
+                    className={`docsera-header__mode-segment${showWorkspaceMode === "live" ? " docsera-header__mode-segment--active" : ""}`}
+                    aria-pressed={showWorkspaceMode === "live"}
+                    disabled={workspaceControlsLocked}
+                    onClick={() => onWorkspaceModeChange("live")}
+                  >
+                    Live
+                  </button>
+                  <button
+                    type="button"
+                    className={`docsera-header__mode-segment${showWorkspaceMode === "edit" ? " docsera-header__mode-segment--active" : ""}`}
+                    aria-pressed={showWorkspaceMode === "edit"}
+                    disabled={workspaceControlsLocked}
+                    onClick={() => onWorkspaceModeChange("edit")}
+                  >
+                    Edit
+                  </button>
+                </div>
+              </>
             ) : (
               <span className="docsera-header__action-slot-placeholder" aria-hidden="true" />
             )}

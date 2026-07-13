@@ -82,7 +82,6 @@ describe("PageEditorHost runtime containment", () => {
     render(
       <PageEditorHost
         canEdit={true}
-        headerControlsRoot={null}
         initialEnvelope={createEmptyDocseraDocumentEnvelope()}
         initialRevision={0}
         onAccessLost={vi.fn()}
@@ -117,7 +116,6 @@ describe("PageEditorHost runtime containment", () => {
           <p>Workspace shell stays mounted</p>
           <PageEditorHost
             canEdit={true}
-            headerControlsRoot={null}
             initialEnvelope={createEmptyDocseraDocumentEnvelope()}
             initialRevision={0}
             onAccessLost={vi.fn()}
@@ -151,7 +149,6 @@ describe("PageEditorHost runtime containment", () => {
           <p>Workspace shell stays mounted</p>
           <PageEditorHost
             canEdit={true}
-            headerControlsRoot={null}
             initialEnvelope={createEmptyDocseraDocumentEnvelope()}
             initialRevision={0}
             onAccessLost={vi.fn()}
@@ -183,7 +180,6 @@ describe("PageEditorHost runtime containment", () => {
     const view = render(
       <PageEditorHost
         canEdit={true}
-        headerControlsRoot={null}
         initialEnvelope={createEmptyDocseraDocumentEnvelope()}
         initialRevision={0}
         onAccessLost={vi.fn()}
@@ -210,7 +206,6 @@ describe("PageEditorHost runtime containment", () => {
       view.rerender(
         <PageEditorHost
           canEdit={true}
-          headerControlsRoot={null}
           initialEnvelope={createEmptyDocseraDocumentEnvelope()}
           initialRevision={0}
           onAccessLost={vi.fn()}
@@ -247,7 +242,6 @@ describe("PageEditorHost runtime containment", () => {
     const view = render(
       <PageEditorHost
         canEdit={true}
-        headerControlsRoot={null}
         initialEnvelope={createEmptyDocseraDocumentEnvelope()}
         initialRevision={0}
         onAccessLost={vi.fn()}
@@ -270,7 +264,6 @@ describe("PageEditorHost runtime containment", () => {
       view.rerender(
         <PageEditorHost
           canEdit={true}
-          headerControlsRoot={document.createElement("div")}
           initialEnvelope={createEmptyDocseraDocumentEnvelope()}
           initialRevision={1}
           onAccessLost={vi.fn()}

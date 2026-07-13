@@ -10,7 +10,7 @@ import {
 } from "../../shared/editor/document";
 import { createSupportedE2DocseraDocumentEnvelope } from "../../shared/editor/documentFixtures";
 import type { PageBodySaveResult } from "../shared/types/docsera";
-import { PageEditorHostRuntime } from "./PageEditorHostRuntime";
+import { getAutosaveRetryDelay, PageEditorHostRuntime } from "./PageEditorHostRuntime";
 
 const geometryShim = {
   getClientRects() {
@@ -79,14 +79,10 @@ function renderRuntime(
   const overlayRoot = options.overlayRoot ?? document.createElement("div");
   overlayRoot.dataset.docseraEditorRuntimeOverlayRoot = "true";
   document.body.append(overlayRoot);
-  const headerControlsRoot = document.createElement("div");
-  headerControlsRoot.dataset.docseraEditorRuntimeHeaderControlsRoot = "true";
-  document.body.append(headerControlsRoot);
 
   const view = render(
     <PageEditorHostRuntime
       canEdit={true}
-      headerControlsRoot={headerControlsRoot}
       initialEnvelope={createEmptyDocseraDocumentEnvelope()}
       initialRevision={0}
       onAccessLost={onAccessLost}
@@ -111,7 +107,6 @@ function renderRuntime(
     onOutlineChange,
     onSaveDraft,
     onStatusChange,
-    headerControlsRoot,
     overlayRoot,
     ...view
   };
@@ -220,6 +215,12 @@ async function setParagraphText(editor: Editor, text: string) {
   });
 }
 
+async function runAutosave() {
+  await act(async () => {
+    await new Promise((resolve) => window.setTimeout(resolve, 710));
+  });
+}
+
 async function selectText(editor: Editor, from: number, to: number) {
   await act(async () => {
     editor.commands.setTextSelection({ from, to });
@@ -253,12 +254,17 @@ async function pasteIntoEditor(editor: Editor, html: string, text = html) {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
   document.querySelectorAll("[data-docsera-editor-runtime-overlay-root='true']").forEach((node) => node.remove());
   document.querySelectorAll("[data-docsera-editor-runtime-header-controls-root='true']").forEach((node) => node.remove());
 });
 
 describe("PageEditorHostRuntime", () => {
+  it("defines exactly four finite automatic retry delays", () => {
+    expect([0, 1, 2, 3, 4, 5].map(getAutosaveRetryDelay)).toEqual([1500, 3000, 6000, 12000, null, null]);
+  });
+
   it("mounts the supported E2 rich-text schema without normalizing away accepted nodes or marks", async () => {
     const supportedEnvelope = createSupportedE2DocseraDocumentEnvelope();
     const { editorReady, onSaveDraft } = renderRuntime({ initialEnvelope: supportedEnvelope });
@@ -269,10 +275,7 @@ describe("PageEditorHostRuntime", () => {
 
     expect(editorReady[0].getJSON()).toEqual(supportedEnvelope.document);
 
-    const saveButton = screen.getByRole("button", { name: "Save draft" });
-    expect(saveButton).toBeDisabled();
-
-    fireEvent.click(saveButton);
+    expect(screen.queryByRole("button", { name: /Save draft/i })).not.toBeInTheDocument();
     expect(onSaveDraft).not.toHaveBeenCalled();
   });
 
@@ -323,11 +326,45 @@ describe("PageEditorHostRuntime", () => {
         }
       ]
     });
-    expect(screen.getByRole("button", { name: "Save draft" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: /Save draft/i })).not.toBeInTheDocument();
   });
 
-  it("renders the editor body without the old diagnostic card chrome and keeps header controls outside the content body", async () => {
-    const { editorReady, headerControlsRoot, container } = renderRuntime();
+  it("starts an empty page clean and focus, caret movement, and selection-only transactions issue zero saves", async () => {
+    const { editorReady, onSaveDraft, container } = renderRuntime();
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+    expect(editor.getJSON()).toEqual({ type: "doc", content: [{ type: "paragraph" }] });
+    fireEvent.click(container.querySelector(".ProseMirror")!);
+    await act(async () => {
+      editor.commands.focus("start", { scrollIntoView: false });
+      editor.commands.setTextSelection(1);
+    });
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(0);
+  });
+
+  it("reuses a trailing empty paragraph and appends exactly one paragraph below non-empty content", async () => {
+    const { editorReady, container } = renderRuntime();
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+    const surface = container.querySelector(".docsera-editor-runtime__surface")!;
+    fireEvent.click(surface);
+    fireEvent.click(surface);
+    expect(editor.getJSON()).toEqual({ type: "doc", content: [{ type: "paragraph" }] });
+    await act(async () => editor.commands.insertContent("First"));
+    fireEvent.click(surface);
+    fireEvent.click(surface);
+    expect(editor.getJSON()).toEqual({
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "First" }] },
+        { type: "paragraph" }
+      ]
+    });
+  });
+
+  it("renders the editor body without the old diagnostic card chrome and keeps the overlay root available", async () => {
+    const { editorReady, container, overlayRoot } = renderRuntime();
 
     await waitFor(() => {
       expect(editorReady[0]).toBeDefined();
@@ -339,7 +376,7 @@ describe("PageEditorHostRuntime", () => {
     expect(container.textContent ?? "").not.toContain("The selected page is using the shared workspace draft representation.");
     expect(container.textContent ?? "").not.toContain("Canonical TipTap content is isolated inside the production child host and saved explicitly during E2.");
     expect(container.querySelector(".docsera-main__authoring-controls")).toBeNull();
-    expect(headerControlsRoot.querySelector(".docsera-main__authoring-controls")).not.toBeNull();
+    expect(overlayRoot).toBeInTheDocument();
     expect(runtimeStyle).not.toContain("padding: 22px");
     expect(runtimeStyle).not.toContain("border-radius: 24px");
     expect(runtimeStyle).not.toContain("box-shadow: 0 18px 48px");
@@ -351,7 +388,7 @@ describe("PageEditorHostRuntime", () => {
 
   it("explicitly saves the supported E2 rich-text schema without flattening accepted structure", async () => {
     const supportedEnvelope = createSupportedE2DocseraDocumentEnvelope();
-    const { editorReady, onSaveDraft } = renderRuntime();
+    const { editorReady, onSaveDraft, onStatusChange } = renderRuntime();
 
     await waitFor(() => {
       expect(editorReady[0]).toBeDefined();
@@ -362,11 +399,7 @@ describe("PageEditorHostRuntime", () => {
       editor.commands.setContent(supportedEnvelope.document as never);
     });
 
-    const saveButton = screen.getByRole("button", { name: "Save draft" });
-    await waitFor(() => {
-      expect(saveButton).toBeEnabled();
-    });
-    fireEvent.click(saveButton);
+    await runAutosave();
 
     await waitFor(() => {
       expect(onSaveDraft).toHaveBeenCalledTimes(1);
@@ -379,7 +412,7 @@ describe("PageEditorHostRuntime", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Saved")).toBeInTheDocument();
+      expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saved" }));
     });
   });
 
@@ -561,7 +594,7 @@ describe("PageEditorHostRuntime", () => {
   });
 
   it("keeps undo and redo available after an explicit save", async () => {
-    const { editorReady, onSaveDraft } = renderRuntime();
+    const { editorReady, onSaveDraft, onStatusChange } = renderRuntime();
 
     await waitFor(() => {
       expect(editorReady[0]).toBeDefined();
@@ -584,11 +617,7 @@ describe("PageEditorHostRuntime", () => {
       editor.commands.insertContent(" edit");
     });
 
-    const saveButton = screen.getByRole("button", { name: "Save draft" });
-    await waitFor(() => {
-      expect(saveButton).toBeEnabled();
-    });
-    fireEvent.click(saveButton);
+    await runAutosave();
 
     await waitFor(() => {
       expect(onSaveDraft).toHaveBeenCalledTimes(1);
@@ -610,27 +639,22 @@ describe("PageEditorHostRuntime", () => {
   });
 
   it("becomes dirty after a real TipTap transaction and does not save a clean document", async () => {
-    const { editorReady, onSaveDraft } = renderRuntime();
+    const { editorReady, onSaveDraft, onStatusChange } = renderRuntime();
 
     await waitFor(() => {
       expect(editorReady[0]).toBeDefined();
     });
 
     const editor = editorReady[0];
-    const saveButton = screen.getByRole("button", { name: "Save draft" });
-
-    expect(saveButton).toBeDisabled();
-    fireEvent.click(saveButton);
+    expect(screen.queryByRole("button", { name: /Save draft/i })).not.toBeInTheDocument();
     expect(onSaveDraft).not.toHaveBeenCalled();
 
     await act(async () => {
       editor.commands.insertContent("Draft change");
     });
 
-    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    expect(saveButton).toBeEnabled();
-
-    fireEvent.click(saveButton);
+    expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Unsaved" }));
+    await runAutosave();
 
     await waitFor(() => {
       expect(onSaveDraft).toHaveBeenCalledTimes(1);
@@ -651,7 +675,7 @@ describe("PageEditorHostRuntime", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Saved")).toBeInTheDocument();
+      expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saved" }));
     });
   });
 
@@ -663,28 +687,27 @@ describe("PageEditorHostRuntime", () => {
           resolveSave = resolve;
         })
     );
-    const { editorReady } = renderRuntime({ onSaveDraft });
+    const { editorReady, onStatusChange } = renderRuntime({ onSaveDraft });
 
     await waitFor(() => {
       expect(editorReady[0]).toBeDefined();
     });
 
     const editor = editorReady[0];
-    const saveButton = screen.getByRole("button", { name: "Save draft" });
     await act(async () => {
       editor.commands.insertContent("First draft");
     });
-    fireEvent.click(saveButton);
+    await runAutosave();
 
     await waitFor(() => {
-      expect(screen.getAllByText("Saving…")).toHaveLength(2);
+      expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saving…" }));
     });
 
     await act(async () => {
       editor.commands.insertContent(" after save begins");
     });
 
-    expect(screen.getAllByText("Saving…")).toHaveLength(2);
+    expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saving…" }));
 
     await act(async () => {
       resolveSave?.({
@@ -693,16 +716,7 @@ describe("PageEditorHostRuntime", () => {
       });
     });
 
-    await waitFor(() => {
-      expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    });
-
-    expect(onSaveDraft).toHaveBeenCalledTimes(1);
-
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
-    await waitFor(() => {
-      expect(onSaveDraft).toHaveBeenCalledTimes(2);
-    });
+    await waitFor(() => expect(onSaveDraft).toHaveBeenCalledTimes(2));
 
     const secondSaveCall = onSaveDraft.mock.calls[1] as unknown as [
       {
@@ -723,13 +737,14 @@ describe("PageEditorHostRuntime", () => {
       .mockResolvedValueOnce({
         state: "failed",
         code: "failed",
+        retryable: true,
         errorMessage: "Something went wrong while saving the page body. Please try again."
       } satisfies PageBodySaveResult)
       .mockResolvedValueOnce({
         state: "succeeded",
         page: createSuccessPage(1)
       } satisfies PageBodySaveResult);
-    const { editorReady } = renderRuntime({ onSaveDraft });
+    const { editorReady, onStatusChange } = renderRuntime({ onSaveDraft });
 
     await waitFor(() => {
       expect(editorReady[0]).toBeDefined();
@@ -740,24 +755,122 @@ describe("PageEditorHostRuntime", () => {
       editor.commands.insertContent("Retry me");
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await runAutosave();
 
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent("Something went wrong while saving the page body. Please try again.");
-    });
+    await waitFor(() => expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Changes not saved" })));
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
 
     expect(editor.getJSON()).toMatchObject({
       type: "doc",
       content: [{ type: "paragraph", content: [{ type: "text", text: "Retry me" }] }]
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
-
-    await waitFor(() => {
-      expect(screen.getByText("Saved")).toBeInTheDocument();
-    });
+    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 1510)); });
+    await waitFor(() => expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saved" })));
 
     expect(onSaveDraft).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops after four automatic retries, preserves content, and lets a new edit reset the sequence", async () => {
+    const onSaveDraft = vi.fn(async (): Promise<PageBodySaveResult> => ({
+      state: "failed",
+      code: "network",
+      retryable: true,
+      errorMessage: "Something went wrong while saving the page body. Please try again."
+    }));
+    const { editorReady, onStatusChange } = renderRuntime({ onSaveDraft });
+
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    vi.useFakeTimers();
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.insertContent("Finite retry draft");
+      await vi.advanceTimersByTimeAsync(700);
+    });
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+
+    for (const delay of [1500, 3000, 6000, 12000]) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(delay);
+      });
+    }
+    expect(onSaveDraft).toHaveBeenCalledTimes(5);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(onSaveDraft).toHaveBeenCalledTimes(5);
+    expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ isDirty: true, status: "Changes not saved" }));
+    expect(editor.getText()).toBe("Finite retry draft");
+
+    await act(async () => {
+      editor.commands.insertContent(" updated");
+      await vi.advanceTimersByTimeAsync(700);
+    });
+    expect(onSaveDraft).toHaveBeenCalledTimes(6);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(onSaveDraft).toHaveBeenCalledTimes(7);
+  });
+
+  it.each([
+    ["conflict", "conflict"],
+    ["forbidden", "forbidden"],
+    ["validation", "invalid"],
+    ["capacity", "capacity"],
+    ["invariant", "persistence_invariant"]
+  ] as const)("does not retry a terminal %s failure", async (_label, code) => {
+    const onSaveDraft = vi.fn(async (): Promise<PageBodySaveResult> => ({
+      state: "failed",
+      code,
+      retryable: false,
+      errorMessage: "Terminal save failure."
+    }));
+    const { editorReady, onAccessLost } = renderRuntime({ onSaveDraft });
+
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    vi.useFakeTimers();
+    await act(async () => {
+      editorReady[0].commands.insertContent("Terminal draft");
+      await vi.advanceTimersByTimeAsync(700);
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+    expect(editorReady[0].getText()).toBe("Terminal draft");
+    expect(onAccessLost).toHaveBeenCalledTimes(code === "forbidden" ? 1 : 0);
+  });
+
+  it("keeps requests serialized and cancels a pending retry on teardown", async () => {
+    let resolveSave: ((result: PageBodySaveResult) => void) | undefined;
+    const onSaveDraft = vi.fn(
+      () =>
+        new Promise<PageBodySaveResult>((resolve) => {
+          resolveSave = resolve;
+        })
+    );
+    const { editorReady, unmount } = renderRuntime({ onSaveDraft });
+
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    vi.useFakeTimers();
+    await act(async () => {
+      editorReady[0].commands.insertContent("Serialized draft");
+      await vi.advanceTimersByTimeAsync(700);
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveSave?.({ state: "failed", code: "transient", retryable: true, errorMessage: "Try later." });
+      await Promise.resolve();
+    });
+    unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
   });
 
   it("preserves the in-memory draft and dirty state after a conflict save failure", async () => {
@@ -768,7 +881,7 @@ describe("PageEditorHostRuntime", () => {
       currentRevision: 3,
       errorMessage: "This draft was updated elsewhere. Refresh to load the latest revision."
     }));
-    const { editorReady } = renderRuntime({ onAccessLost, onSaveDraft });
+    const { editorReady, onStatusChange } = renderRuntime({ onAccessLost, onSaveDraft });
 
     await waitFor(() => {
       expect(editorReady[0]).toBeDefined();
@@ -779,20 +892,16 @@ describe("PageEditorHostRuntime", () => {
       editor.commands.insertContent("Conflict draft");
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await runAutosave();
 
-    await waitFor(() => {
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "This draft was updated elsewhere. Refresh to load the latest revision."
-      );
-    });
+    await waitFor(() => expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Changes not saved" })));
 
     expect(editor.getJSON()).toMatchObject({
       type: "doc",
       content: [{ type: "paragraph", content: [{ type: "text", text: "Conflict draft" }] }]
     });
-    expect(screen.getByText("Save failed")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save draft" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Save draft/i })).not.toBeInTheDocument();
     expect(onAccessLost).not.toHaveBeenCalled();
     expect(onSaveDraft).toHaveBeenCalledTimes(1);
     expect(onSaveDraft).toHaveBeenCalledWith({
@@ -818,7 +927,7 @@ describe("PageEditorHostRuntime", () => {
           resolveSave = resolve;
         })
     );
-    const { editorReady } = renderRuntime({ onSaveDraft });
+    const { editorReady, onStatusChange } = renderRuntime({ onSaveDraft });
 
     await waitFor(() => {
       expect(editorReady[0]).toBeDefined();
@@ -829,12 +938,10 @@ describe("PageEditorHostRuntime", () => {
       editor.commands.insertContent("First draft");
     });
 
-    const saveButton = screen.getByRole("button", { name: "Save draft" });
-    fireEvent.click(saveButton);
-    fireEvent.click(saveButton);
+    await runAutosave();
 
     expect(onSaveDraft).toHaveBeenCalledTimes(1);
-    expect(screen.getAllByText("Saving…")).toHaveLength(2);
+    expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saving…" }));
 
     await act(async () => {
       resolveSave?.({
@@ -844,14 +951,14 @@ describe("PageEditorHostRuntime", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Saved")).toBeInTheDocument();
+      expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saved" }));
     });
 
     await act(async () => {
       editor.commands.insertContent(" second draft");
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await runAutosave();
 
     await waitFor(() => {
       expect(onSaveDraft).toHaveBeenCalledTimes(2);
@@ -887,7 +994,7 @@ describe("PageEditorHostRuntime", () => {
       editor.commands.insertContent("Forbidden draft");
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await runAutosave();
 
     await waitFor(() => {
       expect(onAccessLost).toHaveBeenCalledTimes(1);
@@ -929,7 +1036,7 @@ describe("PageEditorHostRuntime", () => {
       editor.commands.setContent(expectedDocument as never);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await runAutosave();
 
     await waitFor(() => {
       expect(onSaveDraft).toHaveBeenCalledTimes(1);
@@ -956,7 +1063,6 @@ describe("PageEditorHostRuntime", () => {
     rerender(
       <PageEditorHostRuntime
         canEdit={true}
-        headerControlsRoot={null}
         initialEnvelope={createEmptyDocseraDocumentEnvelope()}
         initialRevision={0}
         onAccessLost={onAccessLost}
@@ -1504,7 +1610,7 @@ describe("PageEditorHostRuntime", () => {
     expect(editor.getJSON()).toEqual(afterLink);
   });
 
-  it("saves after control-driven transactions and tears down controls when edit access is lost", async () => {
+  it("keeps a no-op paragraph command clean and tears down controls when edit access is lost", async () => {
     const onSaveDraft = vi.fn(async (): Promise<PageBodySaveResult> => ({
       state: "succeeded",
       page: createSuccessPage(1)
@@ -1522,10 +1628,8 @@ describe("PageEditorHostRuntime", () => {
     fireEvent.click(await screen.findByRole("option", { name: /Paragraph/ }));
     expect(screen.queryByRole("listbox", { name: "Slash command menu" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
-    await waitFor(() => {
-      expect(onSaveDraft).toHaveBeenCalledTimes(1);
-    });
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(0);
 
     await setParagraphText(editor, "Access loss");
     await selectText(editor, 1, 12);
@@ -1535,7 +1639,6 @@ describe("PageEditorHostRuntime", () => {
     rerender(
       <PageEditorHostRuntime
         canEdit={false}
-        headerControlsRoot={null}
         initialEnvelope={createEmptyDocseraDocumentEnvelope()}
         initialRevision={0}
         onAccessLost={onAccessLost}

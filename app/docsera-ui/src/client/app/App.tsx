@@ -89,6 +89,7 @@ type RetainedWorkspaceShellState = {
 type EditorTransitionState = {
   isDirty: boolean;
   isSaving: boolean;
+  status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
 };
 
 type EditorSessionState = {
@@ -465,7 +466,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [editorFailure, setEditorFailure] = useState<PageEditorHostFailure | null>(null);
   const [editAccessLost, setEditAccessLost] = useState(false);
   const [editorRetryNonce, setEditorRetryNonce] = useState(0);
-  const [editorTransitionState, setEditorTransitionState] = useState<EditorTransitionState>({ isDirty: false, isSaving: false });
+  const [editorTransitionState, setEditorTransitionState] = useState<EditorTransitionState>({ isDirty: false, isSaving: false, status: "Saved" });
+  const editorFlushRef = useRef<(() => Promise<boolean>) | null>(null);
+  const routeTransitionGenerationRef = useRef(0);
   const [pendingRouteTransition, setPendingRouteTransition] = useState<RequestedRouteTransition | null>(null);
   const [inlinePageCreateState, setInlinePageCreateState] = useState<InlinePageCreateState | null>(null);
   const [modeUiState, setModeUiState] = useState<Record<string, WorkspaceModeUiState>>({});
@@ -657,6 +660,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       editorSessionGenerationRef.current.invalidate();
       editorSessionSeedRef.current = "";
       activeEditorSessionRef.current = null;
+      editorFlushRef.current = null;
       setEditorSessionState({
         sessionKey: "",
         token: null
@@ -913,10 +917,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       const targetHref = `${window.location.pathname}${window.location.search}${window.location.hash}`;
       if (shouldGuardTransition(targetHref)) {
         navigateTo(buildHrefFromRoute(route), true);
-        setPendingRouteTransition({
-          href: targetHref,
-          replace: false
-        });
+        requestRouteTransition({ href: targetHref, replace: false });
         return;
       }
 
@@ -1354,8 +1355,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }, [currentModeStateKey, route.mode, selectedWorkspacePageId]);
 
   useEffect(() => {
+    editorFlushRef.current = null;
     setEditorFailure(null);
-    setEditorTransitionState({ isDirty: false, isSaving: false });
+    setEditorTransitionState({ isDirty: false, isSaving: false, status: "Saved" });
     setPendingRouteTransition(null);
   }, [activeWorkspaceMode, editorSessionKey, selectedWorkspacePageId]);
 
@@ -1420,12 +1422,30 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }
 
   function requestRouteTransition(transition: RequestedRouteTransition): void {
+    const transitionGeneration = routeTransitionGenerationRef.current + 1;
+    routeTransitionGenerationRef.current = transitionGeneration;
     if (transition.href === buildHrefFromRoute(route)) {
       return;
     }
 
     if (shouldGuardTransition(transition.href)) {
-      setPendingRouteTransition(transition);
+      const flush = editorFlushRef.current;
+      if (!flush) {
+        setPendingRouteTransition(transition);
+        return;
+      }
+      const editorSession = activeEditorSessionRef.current;
+      void flush().then((saved) => {
+        if (routeTransitionGenerationRef.current !== transitionGeneration || !isCurrentEditorSession(editorSession)) {
+          return;
+        }
+        if (!saved) {
+          setPendingRouteTransition(transition);
+          return;
+        }
+        transition.beforeCommit?.();
+        commitRoute(transition.href, transition.replace);
+      });
       return;
     }
 
@@ -2249,7 +2269,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }));
   }
 
-  function handleEditorStatusChange(pageSysId: string, state: { isDirty: boolean; isSaving: boolean }) {
+  function handleEditorStatusChange(pageSysId: string, state: { flush?: () => Promise<boolean>; isDirty: boolean; isSaving: boolean; status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved" }) {
     const sessionToken = renderedEditorSession;
     if (!isCurrentEditorSession(sessionToken)) {
       return;
@@ -2259,8 +2279,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
+    editorFlushRef.current = state.flush ?? null;
+
     setEditorTransitionState((current) =>
-      current.isDirty === state.isDirty && current.isSaving === state.isSaving ? current : state
+      current.isDirty === state.isDirty && current.isSaving === state.isSaving && current.status === state.status ? current : state
     );
   }
 
@@ -2285,11 +2307,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     editorSessionGenerationRef.current.invalidate();
     editorSessionSeedRef.current = "";
     activeEditorSessionRef.current = null;
+    editorFlushRef.current = null;
     setEditorSessionState({
       sessionKey: "",
       token: null
     });
-    setEditorTransitionState({ isDirty: false, isSaving: false });
+    setEditorTransitionState({ isDirty: false, isSaving: false, status: "Saved" });
     setPendingRouteTransition(null);
     setEditAccessLost(true);
     setInlinePageCreateState(null);
@@ -2450,6 +2473,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         onToggleSidebar={route.mode === "workspace" ? () => setSidebarCollapsed((collapsed) => !collapsed) : undefined}
         recentWorkspaces={recentWorkspaceItems}
         showEditModeToggle={appHeaderShowEditToggle}
+        saveStatus={appHeaderWorkspaceMode === "edit" && renderedEditorSession ? editorTransitionState.status : undefined}
         showWorkspaceMode={appHeaderWorkspaceMode}
         workspaceControlsLocked={appHeaderWorkspaceControlsLocked}
         onWorkspaceModeChange={route.mode === "workspace" ? changeWorkspaceMode : undefined}

@@ -32,7 +32,6 @@ import {
 
 type PageEditorHostRuntimeProps = {
   canEdit: boolean;
-  headerControlsRoot: HTMLElement | null;
   initialEnvelope: DocseraDocumentEnvelope;
   initialRevision: number;
   onAccessLost: () => void;
@@ -44,7 +43,7 @@ type PageEditorHostRuntimeProps = {
     pageSysId: string;
   }) => Promise<PageBodySaveResult>;
   onEditorReady?: (editor: Editor) => void;
-  onStatusChange: (state: { isDirty: boolean; isSaving: boolean }) => void;
+  onStatusChange: (state: { flush?: () => Promise<boolean>; isDirty: boolean; isSaving: boolean; status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved" }) => void;
   overlayRoot: HTMLElement;
   pageSysId: string;
   theme: "dark" | "light";
@@ -64,7 +63,7 @@ type RuntimeBoundaryState = {
   hasError: boolean;
 };
 
-type RuntimeStatus = "dirty" | "failed" | "saved" | "saving";
+type RuntimeStatus = "conflict" | "dirty" | "failed" | "saved" | "saving";
 
 type SlashCommandId =
   | "paragraph"
@@ -99,6 +98,13 @@ type LinkSurfaceState =
     };
 
 const SLASH_MENU_WIDTH = 316;
+const AUTOSAVE_RETRY_DELAYS_MS = [1500, 3000, 6000, 12000] as const;
+
+export function getAutosaveRetryDelay(attempt: number): number | null {
+  return Number.isInteger(attempt) && attempt >= 0 && attempt < AUTOSAVE_RETRY_DELAYS_MS.length
+    ? AUTOSAVE_RETRY_DELAYS_MS[attempt]
+    : null;
+}
 const BUBBLE_MENU_WIDTH = 264;
 const LINK_MENU_WIDTH = 336;
 const POPOVER_GAP = 10;
@@ -186,6 +192,7 @@ const SLASH_COMMANDS: SlashCommand[] = [
 ];
 
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
+const AUTOSAVE_IDLE_MS = 700;
 
 class RuntimeBoundary extends React.Component<RuntimeBoundaryProps, RuntimeBoundaryState> {
   state: RuntimeBoundaryState = { hasError: false };
@@ -530,14 +537,16 @@ function createEnvelope(document: DocseraTiptapDocument): DocseraDocumentEnvelop
   return parseDocseraDocumentOrThrow(envelope);
 }
 
-function statusLabel(status: RuntimeStatus): string {
+function statusLabel(status: RuntimeStatus): "Unsaved" | "Saving…" | "Saved" | "Changes not saved" {
   switch (status) {
     case "dirty":
-      return "Unsaved changes";
+      return "Unsaved";
     case "saving":
       return "Saving…";
+    case "conflict":
+      return "Changes not saved";
     case "failed":
-      return "Save failed";
+      return "Changes not saved";
     case "saved":
     default:
       return "Saved";
@@ -546,7 +555,6 @@ function statusLabel(status: RuntimeStatus): string {
 
 export function PageEditorHostRuntime({
   canEdit,
-  headerControlsRoot,
   initialEnvelope,
   initialRevision,
   onAccessLost,
@@ -645,9 +653,14 @@ export function PageEditorHostRuntime({
   const [status, setStatus] = useState<RuntimeStatus>("saved");
   const disposedRef = useRef(false);
   const saveInFlightRef = useRef(false);
+  const savePromiseRef = useRef<Promise<boolean> | null>(null);
+  const autosaveTimerRef = useRef<number | null>(null);
+  const retryTimerRef = useRef<number | null>(null);
+  const retryAttemptRef = useRef(0);
   const saveGenerationRef = useRef(0);
   const currentDocumentKeyRef = useRef(savedDocumentKey);
   const savedDocumentKeyRef = useRef(savedDocumentKey);
+  const savedRevisionRef = useRef(initialRevision);
   const statusRef = useRef<RuntimeStatus>("saved");
   const editorRef = useRef<Editor | null>(null);
   const canEditRef = useRef(canEdit);
@@ -656,6 +669,9 @@ export function PageEditorHostRuntime({
 
   useEffect(() => {
     canEditRef.current = canEdit;
+    if (!canEdit) {
+      cancelPendingTimers();
+    }
   }, [canEdit]);
 
   useEffect(() => {
@@ -675,11 +691,37 @@ export function PageEditorHostRuntime({
   }, [savedDocumentKey]);
 
   useEffect(() => {
+    savedRevisionRef.current = savedRevision;
+  }, [savedRevision]);
+
+  useEffect(() => {
     onStatusChange({
-      isDirty: currentDocumentKeyRef.current !== savedDocumentKey,
-      isSaving: status === "saving"
+      flush: flushLatest,
+      isDirty: currentDocumentKeyRef.current !== savedDocumentKeyRef.current,
+      isSaving: status === "saving",
+      status: statusLabel(status)
     });
   }, [onStatusChange, savedDocumentKey, status]);
+
+  useEffect(() => () => {
+    if (autosaveTimerRef.current !== null) {
+      window.clearTimeout(autosaveTimerRef.current);
+    }
+    if (retryTimerRef.current !== null) {
+      window.clearTimeout(retryTimerRef.current);
+    }
+  }, []);
+
+  useEffect(() => {
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (currentDocumentKeyRef.current !== savedDocumentKeyRef.current) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, []);
 
   const editor = useEditor({
     editable: canEdit,
@@ -700,12 +742,21 @@ export function PageEditorHostRuntime({
       currentDocumentKeyRef.current = nextDocumentKey;
       onOutlineChange(extractDocumentOutline(envelope));
 
-      if (statusRef.current !== "saving") {
+      if (statusRef.current !== "saving" && statusRef.current !== "conflict") {
         setStatus(nextDocumentKey === savedDocumentKeyRef.current ? "saved" : "dirty");
       }
 
       if (errorMessage) {
         setErrorMessage("");
+      }
+
+      if (nextDocumentKey !== savedDocumentKeyRef.current && statusRef.current !== "conflict") {
+        retryAttemptRef.current = 0;
+        if (retryTimerRef.current !== null) {
+          window.clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = null;
+        }
+        scheduleAutosave();
       }
     }
   });
@@ -736,31 +787,10 @@ export function PageEditorHostRuntime({
     editor.setEditable(canEdit);
   }, [canEdit, editor]);
 
-  const isDirty = currentDocumentKeyRef.current !== savedDocumentKey;
-  const isSaving = status === "saving";
   const overlayThemeClass = useMemo(
     () => (theme === "dark" ? "docsera-editor-runtime--dark" : "docsera-editor-runtime--light"),
     [theme]
   );
-  const headerControls =
-    headerControlsRoot && canEdit
-      ? createPortal(
-          <div className="docsera-main__authoring-controls">
-            <div className={`docsera-main__authoring-status docsera-main__authoring-status--${status}`}>{statusLabel(status)}</div>
-            <button
-              type="button"
-              className="docsera-main__authoring-save"
-              disabled={!canEdit || isSaving || !isDirty}
-              onClick={() => {
-                void handleSave();
-              }}
-            >
-            {isSaving ? "Saving…" : "Save draft"}
-            </button>
-          </div>,
-          headerControlsRoot
-        )
-      : null;
   const overlayOwnerDocument = overlayRoot.ownerDocument;
   const overlayOwnerWindow = overlayOwnerDocument.defaultView;
   const selectionSnapshot = useEditorState({
@@ -954,9 +984,71 @@ export function PageEditorHostRuntime({
     }
   }
 
-  async function handleSave() {
-    if (!editor || !canEdit || isSaving || saveInFlightRef.current) {
-      return;
+  function scheduleAutosave() {
+    if (autosaveTimerRef.current !== null) {
+      window.clearTimeout(autosaveTimerRef.current);
+    }
+    autosaveTimerRef.current = window.setTimeout(() => {
+      autosaveTimerRef.current = null;
+      void flushLatest();
+    }, AUTOSAVE_IDLE_MS);
+  }
+
+  function scheduleRetry() {
+    if (retryTimerRef.current !== null || statusRef.current === "conflict" || disposedRef.current) return;
+    const delay = getAutosaveRetryDelay(retryAttemptRef.current);
+    if (delay === null) return;
+    retryAttemptRef.current += 1;
+    retryTimerRef.current = window.setTimeout(() => {
+      retryTimerRef.current = null;
+      void flushLatest();
+    }, delay);
+  }
+
+  function cancelPendingTimers() {
+    if (autosaveTimerRef.current !== null) {
+      window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    if (retryTimerRef.current !== null) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+  }
+
+  async function flushLatest(): Promise<boolean> {
+    if (!editor || !canEdit || disposedRef.current || statusRef.current === "conflict") {
+      return currentDocumentKeyRef.current === savedDocumentKeyRef.current;
+    }
+    if (autosaveTimerRef.current !== null) {
+      window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    if (retryTimerRef.current !== null) {
+      window.clearTimeout(retryTimerRef.current);
+      retryTimerRef.current = null;
+    }
+    while (currentDocumentKeyRef.current !== savedDocumentKeyRef.current) {
+      const savePromise = savePromiseRef.current ?? persistLatest();
+      savePromiseRef.current = savePromise;
+      try {
+        if (!(await savePromise)) {
+          return false;
+        }
+      } finally {
+        if (savePromiseRef.current === savePromise) {
+          savePromiseRef.current = null;
+        }
+      }
+    }
+    setStatus("saved");
+    setErrorMessage("");
+    return true;
+  }
+
+  async function persistLatest(): Promise<boolean> {
+    if (!editor || !canEdit || saveInFlightRef.current) {
+      return currentDocumentKeyRef.current === savedDocumentKeyRef.current;
     }
 
     let envelope: DocseraDocumentEnvelope;
@@ -965,14 +1057,14 @@ export function PageEditorHostRuntime({
     } catch {
       setStatus("failed");
       setErrorMessage("The page document is invalid.");
-      return;
+      return false;
     }
 
     const pendingDocumentKey = serializeDocument(envelope.document);
     if (pendingDocumentKey === savedDocumentKeyRef.current) {
       setStatus("saved");
       setErrorMessage("");
-      return;
+      return true;
     }
 
     setStatus("saving");
@@ -984,37 +1076,48 @@ export function PageEditorHostRuntime({
     try {
       const result = await onSaveDraft({
         draftContentJson: cloneEnvelope(envelope),
-        expectedRevision: savedRevision,
+        expectedRevision: savedRevisionRef.current,
         pageSysId
       });
 
       if (disposedRef.current || saveGenerationRef.current !== saveGeneration) {
-        return;
+        return false;
       }
 
       if (result.state === "failed") {
-        setStatus("failed");
-        setErrorMessage(result.errorMessage);
+        const isConflict = result.code === "conflict";
+        setStatus(isConflict ? "conflict" : "failed");
+        setErrorMessage(result.errorMessage || (isConflict ? "This page has a newer saved draft. Reload before saving again." : SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE));
 
         if (result.code === "forbidden") {
           onAccessLost();
+        } else if (!isConflict && result.retryable) {
+          scheduleRetry();
         }
 
-        return;
+        return false;
       }
 
       const nextSavedKey = pendingDocumentKey;
+      savedDocumentKeyRef.current = nextSavedKey;
       setSavedDocumentKey(nextSavedKey);
-      setSavedRevision(result.page.draftRevision ?? savedRevision + 1);
+      const acceptedRevision = result.page.draftRevision ?? savedRevisionRef.current + 1;
+      savedRevisionRef.current = acceptedRevision;
+      setSavedRevision(acceptedRevision);
       setErrorMessage("");
-      setStatus(currentDocumentKeyRef.current === nextSavedKey ? "saved" : "dirty");
+      retryAttemptRef.current = 0;
+      const isClean = currentDocumentKeyRef.current === nextSavedKey;
+      setStatus(isClean ? "saved" : "dirty");
+      return true;
     } catch {
       if (disposedRef.current || saveGenerationRef.current !== saveGeneration) {
-        return;
+        return false;
       }
 
       setStatus("failed");
       setErrorMessage(SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE);
+      scheduleRetry();
+      return false;
     } finally {
       if (saveGenerationRef.current === saveGeneration) {
         saveInFlightRef.current = false;
@@ -1114,13 +1217,6 @@ export function PageEditorHostRuntime({
           color: var(--docsera-editor-primary);
           text-decoration-thickness: 0.08em;
           text-underline-offset: 0.16em;
-        }
-        .docsera-editor-runtime__status-message {
-          margin: 12px 0 0;
-          color: #ba1a1a;
-          font-size: 0.875rem;
-          font-weight: 700;
-          line-height: 1.5;
         }
         .docsera-editor-floating-layer {
           position: fixed;
@@ -1295,8 +1391,17 @@ export function PageEditorHostRuntime({
           background: transparent;
         }
       `}</style>
-      {headerControls}
-      <div className="docsera-editor-runtime__surface">
+      <div className="docsera-editor-runtime__surface" onClick={(event) => {
+        if (!editor || !canEdit || !(event.target instanceof HTMLElement)) return;
+        const proseMirror = event.currentTarget.querySelector(".ProseMirror");
+        if (!proseMirror || (event.target !== event.currentTarget && event.target !== proseMirror)) return;
+        const lastChild = editor.state.doc.lastChild;
+        if (lastChild?.type.name === "paragraph" && lastChild.content.size === 0) {
+          editor.commands.focus("end", { scrollIntoView: false });
+          return;
+        }
+        editor.chain().insertContentAt(editor.state.doc.content.size, { type: "paragraph" }).focus("end", { scrollIntoView: false }).run();
+      }}>
         <EditorContent editor={editor} />
         {createPortal(
           <div className="docsera-editor-floating-layer" aria-hidden={!editor}>
@@ -1449,11 +1554,6 @@ export function PageEditorHostRuntime({
         )}
       </div>
 
-      {errorMessage ? (
-        <p className="docsera-editor-runtime__status-message" role="alert">
-          {errorMessage}
-        </p>
-      ) : null}
     </section>
   );
 }

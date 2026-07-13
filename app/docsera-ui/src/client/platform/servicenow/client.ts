@@ -348,7 +348,12 @@ function normalizePageBodySaveSucceededResult(body: unknown): PageBodySaveSuccee
   };
 }
 
-function normalizePageBodySaveFailedResult(body: unknown, fallback: string): PageBodySaveFailed {
+function normalizePageBodySaveFailedResult(
+  body: unknown,
+  fallback: string,
+  fallbackCode: PageBodySaveFailed["code"],
+  fallbackRetryable: boolean
+): PageBodySaveFailed {
   const normalizedBody = unwrapServiceNowEnvelope(body);
   const errorObject =
     normalizedBody && typeof normalizedBody === "object" && "error" in normalizedBody
@@ -356,17 +361,25 @@ function normalizePageBodySaveFailedResult(body: unknown, fallback: string): Pag
       : undefined;
   const errorCode = cleanText(errorObject?.code);
   const currentRevision = Number(errorObject?.currentRevision);
+  const normalizedCode: PageBodySaveFailed["code"] =
+    errorCode === "draft_revision_conflict"
+      ? "conflict"
+      : errorCode === "forbidden"
+        ? "forbidden"
+        : errorCode === "invalid"
+          ? "invalid"
+          : errorCode === "document_capacity"
+            ? "capacity"
+            : errorCode === "persistence_invariant"
+              ? "persistence_invariant"
+              : errorCode === "persistence_transient"
+                ? "transient"
+                : fallbackCode;
 
   return {
-    code:
-      errorCode === "draft_revision_conflict"
-        ? "conflict"
-        : errorCode === "forbidden"
-          ? "forbidden"
-          : errorCode === "invalid"
-            ? "invalid"
-            : "failed",
+    code: normalizedCode,
     currentRevision: Number.isSafeInteger(currentRevision) && currentRevision >= 0 ? currentRevision : undefined,
+    retryable: normalizedCode === "transient" ? true : fallbackRetryable,
     state: "failed",
     errorMessage: extractErrorMessage(body, fallback)
   };
@@ -528,8 +541,9 @@ async function resolvePageBodySaveResult(path: string, input: PageBodySaveInput)
     expectedRevision: Number.isSafeInteger(input.expectedRevision) ? input.expectedRevision : undefined
   };
 
+  let response: JsonResponse<unknown>;
   try {
-    const response = await requestJson<unknown>(path, {
+    response = await requestJson<unknown>(path, {
       method: "PATCH",
       body: JSON.stringify(payload),
       headers: {
@@ -537,30 +551,49 @@ async function resolvePageBodySaveResult(path: string, input: PageBodySaveInput)
       }
     });
 
-    if (response.status === 200) {
-      return normalizePageBodySaveSucceededResult(response.body);
-    }
-
-    if (
-      response.status === 400 ||
-      response.status === 403 ||
-      response.status === 404 ||
-      response.status === 409 ||
-      response.status === 500
-    ) {
-      return normalizePageBodySaveFailedResult(response.body, SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE);
-    }
-
-    return {
-      state: "failed",
-      errorMessage: SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE
-    };
   } catch {
     return {
+      code: "network",
+      retryable: true,
       state: "failed",
       errorMessage: SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE
     };
   }
+
+  if (response.status === 200) {
+    try {
+      return normalizePageBodySaveSucceededResult(response.body);
+    } catch {
+      return {
+        code: "persistence_invariant",
+        retryable: false,
+        state: "failed",
+        errorMessage: SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE
+      };
+    }
+  }
+
+  if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 409 || response.status === 500) {
+    const fallbackCode: PageBodySaveFailed["code"] =
+      response.status === 403 ? "forbidden" : response.status === 409 ? "conflict" : response.status === 500 ? "persistence_invariant" : "invalid";
+    return normalizePageBodySaveFailedResult(response.body, SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE, fallbackCode, false);
+  }
+
+  if ([408, 429, 502, 503, 504].includes(response.status)) {
+    return {
+      code: "transient",
+      retryable: true,
+      state: "failed",
+      errorMessage: SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE
+    };
+  }
+
+  return {
+    code: "failed",
+    retryable: false,
+    state: "failed",
+    errorMessage: SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE
+  };
 }
 
 async function resolvePageSettingsSaveResult(path: string, input: PageSettingsSaveInput): Promise<PageSettingsSaveResult> {

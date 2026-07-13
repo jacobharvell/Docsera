@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useEffect, useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -9,7 +9,6 @@ import type { EditorOutlineItem } from "../editor/documentOutline";
 import { createEmptyDocseraDocumentEnvelope, type DocseraDocumentEnvelope } from "../../shared/editor/document";
 import type {
   DocseraRuntimeContext,
-  PageBodySaveInput,
   PageBodySaveResult,
   PageListResult,
   ServiceNowClient,
@@ -29,77 +28,94 @@ type MockHostProps = {
     expectedRevision: number;
     pageSysId: string;
   }) => Promise<PageBodySaveResult>;
-  onStatusChange: (state: { isDirty: boolean; isSaving: boolean }) => void;
+  onStatusChange: (state: {
+    flush?: () => Promise<boolean>;
+    isDirty: boolean;
+    isSaving: boolean;
+    status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
+  }) => void;
   pageSysId: string;
   sessionKey: string;
+};
+
+type MockHostStatus = {
+  flush?: () => Promise<boolean>;
+  isDirty: boolean;
+  isSaving: boolean;
+  status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
 };
 
 type MockHostControl = {
   emitAccessLost: () => void;
   emitError: (message: string) => void;
   emitOutline: (text: string) => void;
-  emitStatus: (state: { isDirty: boolean; isSaving: boolean }) => void;
+  emitStatus: (state: MockHostStatus) => void;
+  makeDirty: () => void;
+  keepTyping: () => void;
+  markSaving: () => void;
+  clearSaving: () => void;
+  registerSuccessfulFlush: () => void;
+  registerFailedFlush: () => void;
+  registerDeferredFlush: () => void;
+  resolveDeferredFlushes: () => void;
+  status: MockHostStatus | null;
   mountId: number;
+  generation: number;
   pageSysId: string;
   sessionKey: string;
 };
 
+type DeferredFlush = {
+  promise: Promise<boolean>;
+  resolve: (value: boolean) => void;
+};
+
 const hostControls = new Map<string, MockHostControl>();
+const savedSnapshots = new Map<string, string>();
 let latestHostControl: MockHostControl | null = null;
 let mountSequence = 0;
 
 afterEach(() => {
   cleanup();
   hostControls.clear();
+  savedSnapshots.clear();
   latestHostControl = null;
   mountSequence = 0;
 });
 
-function createEnvelopeFromText(text: string): DocseraDocumentEnvelope {
-  return {
-    schemaVersion: 1,
-    document: {
-      type: "doc",
-      content: text
-        ? [{ type: "paragraph", content: [{ type: "text", text }] }]
-        : []
-    }
-  };
-}
+function createDeferredFlush(): DeferredFlush {
+  let resolve: (value: boolean) => void = () => undefined;
+  const promise = new Promise<boolean>((nextResolve) => {
+    resolve = nextResolve;
+  });
 
-function readPlainText(envelope: DocseraDocumentEnvelope): string {
-  const paragraph = envelope.document.content?.[0] as { content?: Array<{ text?: string }> } | undefined;
-  return paragraph?.content?.[0]?.text ?? "";
+  return { promise, resolve };
 }
 
 vi.mock("../editor/PageEditorHost", () => {
   function MockPageEditorHost(props: MockHostProps) {
     const mountId = useRef(++mountSequence).current;
-    const [text, setText] = useState(() => readPlainText(createEmptyDocseraDocumentEnvelope()));
-    const [savedText, setSavedText] = useState(() => readPlainText(createEmptyDocseraDocumentEnvelope()));
-    const [historyDepth, setHistoryDepth] = useState(0);
-    const [isSaving, setIsSaving] = useState(false);
+    const propsRef = useRef(props);
+    const [text, setText] = useState("");
+    const [savedText, setSavedText] = useState(() => savedSnapshots.get(props.pageSysId) ?? "");
+    const [manualSaving, setManualSaving] = useState(false);
+    const [flushMode, setFlushMode] = useState<"success" | "failure" | "deferred">("success");
+    const [lastFailure, setLastFailure] = useState(false);
+    const textRef = useRef(text);
+    const savedTextRef = useRef(savedText);
+    const deferredFlushRef = useRef<DeferredFlush | null>(null);
+    const controlRef = useRef<MockHostControl | null>(null);
 
-    useEffect(() => {
-      props.onReadyStateChange?.(true);
-      return () => {
-        props.onReadyStateChange?.(false);
-      };
-    }, [props.onReadyStateChange, props.pageSysId, props.sessionKey]);
+    propsRef.current = props;
+    textRef.current = text;
+    savedTextRef.current = savedText;
 
-    useEffect(() => {
-      props.onStatusChange({
-        isDirty: text !== savedText,
-        isSaving
-      });
-    }, [isSaving, props.onStatusChange, savedText, text]);
-
-    useEffect(() => {
-      const control: MockHostControl = {
-        emitAccessLost: () => props.onAccessLost(),
-        emitError: (message) => props.onError({ kind: "mount_failed", message }),
+    if (!controlRef.current) {
+      controlRef.current = {
+        emitAccessLost: () => propsRef.current.onAccessLost(),
+        emitError: (message) => propsRef.current.onError({ kind: "mount_failed", message }),
         emitOutline: (headingText) =>
-          props.onOutlineChange([
+          propsRef.current.onOutlineChange([
             {
               anchorId: headingText.toLowerCase().replace(/\s+/g, "-"),
               id: headingText.toLowerCase().replace(/\s+/g, "-"),
@@ -107,63 +123,158 @@ vi.mock("../editor/PageEditorHost", () => {
               title: headingText
             }
           ]),
-        emitStatus: (state) => props.onStatusChange(state),
+        emitStatus: (state) => propsRef.current.onStatusChange(state),
+        makeDirty: () => {
+          setLastFailure(false);
+          setText("Draft change");
+        },
+        keepTyping: () => {
+          setLastFailure(false);
+          setText("Draft change 2");
+        },
+        markSaving: () => setManualSaving(true),
+        clearSaving: () => setManualSaving(false),
+        registerSuccessfulFlush: () => {
+          setFlushMode("success");
+          setLastFailure(false);
+        },
+        registerFailedFlush: () => {
+          setFlushMode("failure");
+          setLastFailure(false);
+        },
+        registerDeferredFlush: () => {
+          setFlushMode("deferred");
+          setLastFailure(false);
+        },
+        resolveDeferredFlushes: () => {
+          const deferred = deferredFlushRef.current;
+          if (!deferred) {
+            return;
+          }
+
+          const nextSavedText = textRef.current;
+          savedSnapshots.set(propsRef.current.pageSysId, nextSavedText);
+          savedTextRef.current = nextSavedText;
+          setSavedText(nextSavedText);
+          setLastFailure(false);
+          setManualSaving(false);
+          deferredFlushRef.current = null;
+          deferred.resolve(true);
+        },
+        status: null,
         mountId,
+        generation: mountId,
         pageSysId: props.pageSysId,
         sessionKey: props.sessionKey
       };
+    }
 
+    async function flushDocument() {
+      if (flushMode === "failure") {
+        setLastFailure(true);
+        setManualSaving(false);
+        return false;
+      }
+
+      if (flushMode === "deferred") {
+        const deferred = deferredFlushRef.current ?? createDeferredFlush();
+        deferredFlushRef.current = deferred;
+        setManualSaving(true);
+        const saved = await deferred.promise;
+        setManualSaving(false);
+        if (saved) {
+          const nextSavedText = textRef.current;
+          savedSnapshots.set(propsRef.current.pageSysId, nextSavedText);
+          savedTextRef.current = nextSavedText;
+          setSavedText(nextSavedText);
+          setLastFailure(false);
+        } else {
+          setLastFailure(true);
+        }
+        if (deferredFlushRef.current === deferred) {
+          deferredFlushRef.current = null;
+        }
+        return saved;
+      }
+
+      const nextSavedText = textRef.current;
+      savedSnapshots.set(propsRef.current.pageSysId, nextSavedText);
+      savedTextRef.current = nextSavedText;
+      setSavedText(nextSavedText);
+      setLastFailure(false);
+      setManualSaving(false);
+      return true;
+    }
+
+    useEffect(() => {
+      const control = controlRef.current;
+      if (!control) {
+        return;
+      }
+
+      control.pageSysId = props.pageSysId;
+      control.sessionKey = props.sessionKey;
       hostControls.set(props.sessionKey, control);
       latestHostControl = control;
+      props.onReadyStateChange?.(true);
+      props.onError(null);
       return () => {
         hostControls.delete(props.sessionKey);
         if (latestHostControl?.sessionKey === props.sessionKey) {
           latestHostControl = null;
         }
+        props.onReadyStateChange?.(false);
       };
-    }, [mountId, props.onAccessLost, props.onError, props.onOutlineChange, props.onStatusChange, props.pageSysId, props.sessionKey]);
+    }, [props.onAccessLost, props.onError, props.onOutlineChange, props.onReadyStateChange, props.onStatusChange, props.pageSysId, props.sessionKey]);
 
-    async function saveCurrentDraft() {
-      const snapshot = text;
-      setIsSaving(true);
-      const result = await props.onSaveDraft({
-        draftContentJson: createEnvelopeFromText(snapshot),
-        expectedRevision: props.initialRevision,
-        pageSysId: props.pageSysId
-      });
+    useEffect(() => {
+      const nextStatus: MockHostStatus = {
+        flush: flushDocument,
+        isDirty: text !== savedText,
+        isSaving: manualSaving,
+        status: lastFailure ? "Changes not saved" : manualSaving ? "Saving…" : text === savedText ? "Saved" : "Unsaved"
+      };
 
-      setIsSaving(false);
-      if (result.state === "failed") {
-        if (result.code === "forbidden") {
-          props.onAccessLost();
-        }
-        return;
+      const control = controlRef.current;
+      if (control) {
+        control.status = nextStatus;
       }
 
-      setSavedText(snapshot);
-    }
-
-    function updateText(nextText: string) {
-      setText(nextText);
-      setHistoryDepth((value) => value + 1);
-    }
+      props.onStatusChange(nextStatus);
+    }, [flushDocument, lastFailure, manualSaving, props.onStatusChange, savedText, text]);
 
     return (
-      <section aria-label="Mock draft editor">
+      <section aria-label="Mock draft editor" data-docsera-page-editor-host="true">
         <p>Mount {mountId}</p>
+        <p>Generation {mountId}</p>
         <p>Session {props.sessionKey}</p>
+        <p>Page {props.pageSysId}</p>
         <p>Text {text || "(empty)"}</p>
         <p>Saved {savedText || "(empty)"}</p>
-        <p>Status {text === savedText ? "clean" : "dirty"}</p>
-        <p>History {historyDepth}</p>
-        <button type="button" onClick={() => updateText("Draft change")}>
+        <p>Status {lastFailure ? "Changes not saved" : manualSaving ? "Saving…" : text === savedText ? "Saved" : "Unsaved"}</p>
+        <button type="button" onClick={() => { setLastFailure(false); setText("Draft change"); }}>
           Make dirty
         </button>
-        <button type="button" onClick={() => updateText("Draft change 2")}>
+        <button type="button" onClick={() => { setLastFailure(false); setText("Draft change 2"); }}>
           Keep typing
         </button>
-        <button type="button" onClick={() => void saveCurrentDraft()}>
-          Save draft
+        <button type="button" onClick={() => setManualSaving(true)}>
+          Mark saving
+        </button>
+        <button type="button" onClick={() => setManualSaving(false)}>
+          Clear saving
+        </button>
+        <button type="button" onClick={() => { setFlushMode("success"); setLastFailure(false); }}>
+          Register successful flush
+        </button>
+        <button type="button" onClick={() => { setFlushMode("failure"); setLastFailure(false); }}>
+          Register failed flush
+        </button>
+        <button type="button" onClick={() => { setFlushMode("deferred"); setLastFailure(false); }}>
+          Register deferred flush
+        </button>
+        <button type="button" onClick={() => controlRef.current?.resolveDeferredFlushes()}>
+          Resolve deferred flushes
         </button>
       </section>
     );
@@ -336,22 +447,11 @@ function renderApp(search: string, clientOverrides: Partial<ServiceNowClient> = 
   };
 }
 
-function createDeferredSave() {
-  let resolve: ((value: PageBodySaveResult) => void) | null = null;
-  const promise = new Promise<PageBodySaveResult>((nextResolve) => {
-    resolve = nextResolve;
+async function waitForHostControl() {
+  await waitFor(() => {
+    expect(latestHostControl).not.toBeNull();
+    expect(latestHostControl?.status?.flush).toEqual(expect.any(Function));
   });
-
-  return {
-    promise,
-    resolve: (value: PageBodySaveResult) => {
-      if (!resolve) {
-        throw new Error("Deferred save was not initialized.");
-      }
-
-      resolve(value);
-    }
-  };
 }
 
 describe("App editor-host session boundary", () => {
@@ -359,7 +459,8 @@ describe("App editor-host session boundary", () => {
     renderApp("/?workspace=product-docs&mode=edit&page=overview");
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    await screen.findByRole("button", { name: "Save draft" });
+    await screen.findByRole("button", { name: "Register successful flush" });
+    await waitForHostControl();
 
     const initialMountId = latestHostControl?.mountId;
     const initialSessionKey = latestHostControl?.sessionKey;
@@ -373,336 +474,265 @@ describe("App editor-host session boundary", () => {
     expect(latestHostControl?.sessionKey).toBe(initialSessionKey);
   });
 
-  it("preserves the active editor session across a successful save and keeps local history", async () => {
-    const deferredSave = createDeferredSave();
-    const savePageBody = vi.fn(async () => deferredSave.promise);
-    renderApp("/?workspace=product-docs&mode=edit&page=overview", { savePageBody });
-
-    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    await screen.findByRole("button", { name: "Save draft" });
-
-    const initialMountId = latestHostControl?.mountId;
-    const initialSessionKey = latestHostControl?.sessionKey;
-
-    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
-    expect(screen.getByText("Status dirty")).toBeInTheDocument();
-    expect(screen.getByText("History 1")).toBeInTheDocument();
-    expect(screen.getByText("Mount 1")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
-
-    deferredSave.resolve({
-      state: "succeeded",
-      page: createPageRecord({ draftRevision: 1 })
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Status clean")).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("Mount 1")).toBeInTheDocument();
-    expect(latestHostControl?.mountId).toBe(initialMountId);
-    expect(latestHostControl?.sessionKey).toBe(initialSessionKey);
-    expect(screen.getByText("History 1")).toBeInTheDocument();
-  });
-
-  it("keeps newer in-memory edits dirty while an earlier save completes", async () => {
-    const deferredSave = createDeferredSave();
-    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
-      savePageBody: vi.fn(async () => deferredSave.promise)
-    });
-
-    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
-    fireEvent.click(screen.getByRole("button", { name: "Keep typing" }));
-
-    deferredSave.resolve({
-      state: "succeeded",
-      page: createPageRecord({ draftRevision: 1 })
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Text Draft change 2")).toBeInTheDocument();
-    });
-
-    expect(screen.getByText("Saved Draft change")).toBeInTheDocument();
-    expect(screen.getByText("Status dirty")).toBeInTheDocument();
-    expect(screen.getByText("History 2")).toBeInTheDocument();
-  });
-
-  it("guards dirty route transitions and keeps clean transitions immediate", async () => {
-    renderApp("/?workspace=product-docs&mode=edit&page=child");
-
-    expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
-
-    fireEvent.click(screen.getByRole("button", { name: "Overview Draft Unpublished" }));
-    expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Stay and continue editing" }));
-    expect(screen.getByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Live" }));
-    expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
-    expect(await screen.findByRole("heading", { name: "Child" })).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
-    await waitFor(() => {
-      expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Overview Draft Unpublished" }));
-    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
-  });
-
-  it("creates one new editor generation when changing pages", async () => {
+  it("commits a page navigation after a successful flush without opening leave dialog", async () => {
     renderApp("/?workspace=product-docs&mode=edit&page=overview");
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    await screen.findByRole("button", { name: "Save draft" });
+    await screen.findByRole("button", { name: "Register successful flush" });
+    await waitForHostControl();
 
-    const initialSessionKey = latestHostControl?.sessionKey;
-
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register successful flush" }));
     fireEvent.click(screen.getByRole("button", { name: "Child Draft Unpublished" }));
 
     expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
-    expect(latestHostControl?.sessionKey).not.toBe(initialSessionKey);
-    expect(initialSessionKey ? hostControls.has(initialSessionKey) : false).toBe(false);
+    expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(latestHostControl?.pageSysId).toBe("page-002");
+    });
   });
 
-  it("guards workspace, launcher, breadcrumb, and browser-history transitions while dirty", async () => {
+  it("opens leave dialog after a failed flush", async () => {
+    renderApp("/?workspace=product-docs&mode=edit&page=overview");
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Register successful flush" });
+    await waitForHostControl();
+
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register failed flush" }));
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+
+    expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+  });
+
+  it("commits Edit to Live after a successful flush without opening leave dialog", async () => {
+    renderApp("/?workspace=product-docs&mode=edit&page=overview");
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Register successful flush" });
+    await waitForHostControl();
+
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register successful flush" }));
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
+    expect(window.location.search).toBe("?workspace=product-docs&page=overview");
+  });
+
+  it("commits workspace switch transitions after a successful flush", async () => {
     renderApp("/?workspace=product-docs&mode=edit&page=child");
 
     expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Register successful flush" });
+    await waitForHostControl();
+
     fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
-
-    fireEvent.click(screen.getByRole("button", { name: "Overview Draft Unpublished" }));
-    expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Stay and continue editing" }));
-
+    fireEvent.click(screen.getByRole("button", { name: "Register successful flush" }));
     fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
     fireEvent.click(screen.getByRole("menuitem", { name: /API Docs/i }));
-    expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Stay and continue editing" }));
 
+    expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
+    expect(window.location.search).toContain("workspace=api-docs");
+  });
+
+  it("commits launcher transitions after a successful flush", async () => {
+    renderApp("/?workspace=product-docs&mode=edit&page=child");
+
+    expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Register successful flush" });
+    await waitForHostControl();
+
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register successful flush" }));
     fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
     fireEvent.click(screen.getByRole("menuitem", { name: "My Workspaces" }));
-    expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Stay and continue editing" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Overview Draft Unpublished" }));
-    expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    expect(await screen.findByRole("heading", { name: "My Workspaces" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
+    expect(window.location.search).toBe("?view=my-workspaces");
+  });
+
+  it("uses the same flush boundary for browser back and forward navigation", async () => {
+    renderApp("/?workspace=product-docs&mode=edit&page=overview");
+
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    await screen.findByRole("button", { name: "Save draft" });
+    await screen.findByRole("button", { name: "Register successful flush" });
+    await waitForHostControl();
+
     fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register successful flush" }));
+    fireEvent.click(screen.getByRole("button", { name: "Child Draft Unpublished" }));
+
+    expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register successful flush" }));
 
     await act(async () => {
       window.history.back();
       await Promise.resolve();
     });
 
-    expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    expect(window.location.search).toContain("page=overview");
-  });
-
-  it("guards breadcrumb navigation while dirty", async () => {
-    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
-      createPageListResult(mode === "edit" ? "edit" : "live", [
-        createPageRecord({
-          sysId: "page-root",
-          draftTitle: "Overview",
-          draftSlug: "overview",
-          draftSlugNormalized: "overview",
-          publishedTitle: "Overview",
-          publishedSlug: "overview",
-          publishedSlugNormalized: "overview"
-        }),
-        createPageRecord({
-          parentPageSysId: "page-root",
-          siblingOrder: 2,
-          sysId: "page-child",
-          draftTitle: "Child Draft",
-          draftSlug: "child",
-          draftSlugNormalized: "child",
-          publishedTitle: "Child",
-          publishedSlug: "child",
-          publishedSlugNormalized: "child"
-        })
-      ])
-    );
-
-    renderApp("/?workspace=product-docs&mode=edit&page=child", { listPages });
-
-    expect(await screen.findByRole("navigation", { name: "Page breadcrumbs" })).toBeInTheDocument();
-    const breadcrumbs = screen.getByRole("navigation", { name: "Page breadcrumbs" });
-    expect(within(breadcrumbs).getByRole("button", { name: "Overview" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
-    fireEvent.click(within(breadcrumbs).getByRole("button", { name: "Overview" }));
-
-    expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Stay and continue editing" }));
-    expect(screen.getByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
-  });
-
-  it("contains authoring access loss and ignores stale callbacks afterward", async () => {
-    const savePageBody = vi.fn(async (): Promise<PageBodySaveResult> => ({
-      state: "failed",
-      code: "forbidden",
-      errorMessage: "You do not have permission to edit page bodies in this workspace."
-    }));
-
-    renderApp("/?workspace=product-docs&mode=edit&page=draft-only", { savePageBody });
-
-    expect(await screen.findByRole("heading", { name: "Draft Only" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
-
-    expect(await screen.findByRole("heading", { name: "Authoring access is no longer available" })).toBeInTheDocument();
-    expect(screen.queryByLabelText("Mock draft editor")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "New page" })).not.toBeInTheDocument();
-    expect(screen.queryByText("Draft change")).not.toBeInTheDocument();
-
-    latestHostControl?.emitError("Stale runtime failure");
-    latestHostControl?.emitOutline("Stale draft heading");
-    latestHostControl?.emitStatus({ isDirty: true, isSaving: false });
-
-    expect(screen.queryByRole("heading", { name: "The draft editor is unavailable" })).not.toBeInTheDocument();
-    expect(screen.queryByText("Stale draft heading")).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Return to Live" }));
-    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
-    expect(window.location.search).toBe("?workspace=product-docs&page=overview");
-  });
-
-  it("creates one new editor generation when retrying the editor", async () => {
-    renderApp("/?workspace=product-docs&mode=edit&page=overview");
-
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    await screen.findByRole("button", { name: "Save draft" });
+    expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
 
-    const initialSessionKey = latestHostControl?.sessionKey;
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register successful flush" }));
 
     await act(async () => {
-      latestHostControl?.emitError("Sensitive runtime failure: /tmp/docsera-runtime.js");
+      window.history.forward();
+      await Promise.resolve();
     });
-    expect(await screen.findByRole("heading", { name: "The draft editor is unavailable" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
-
-    await waitFor(() => {
-      expect(latestHostControl?.sessionKey).not.toBe(initialSessionKey);
-    });
-    expect(initialSessionKey ? hostControls.has(initialSessionKey) : false).toBe(false);
+    expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
   });
 
-  it("invalidates the prior generation when leaving Edit", async () => {
+  it("waits for the latest local document before a deferred flush resolves", async () => {
     renderApp("/?workspace=product-docs&mode=edit&page=overview");
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    await screen.findByRole("button", { name: "Save draft" });
+    await screen.findByRole("button", { name: "Register deferred flush" });
+    await waitForHostControl();
+
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register deferred flush" }));
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+
+    await waitFor(() => {
+      expect(latestHostControl?.status?.isSaving).toBe(true);
+      expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep typing" }));
+    fireEvent.click(screen.getByRole("button", { name: "Resolve deferred flushes" }));
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(savedSnapshots.get("page-001")).toBe("Draft change 2");
+    expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
+  });
+
+  it("keeps a late flush from an invalidated prior page session from committing", async () => {
+    renderApp("/?workspace=product-docs&mode=edit&page=overview");
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Register deferred flush" });
+    await waitForHostControl();
+
+    const staleControl = latestHostControl;
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register deferred flush" }));
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+
+    await waitFor(() => {
+      expect(latestHostControl?.status?.isSaving).toBe(true);
+    });
+
+    staleControl?.emitAccessLost();
+    expect(await screen.findByRole("heading", { name: "Authoring access is no longer available" })).toBeInTheDocument();
+
+    const searchBeforeResolve = window.location.search;
+    staleControl?.resolveDeferredFlushes();
+
+    await waitFor(() => {
+      expect(window.location.search).toBe(searchBeforeResolve);
+    });
+    expect(screen.getByRole("heading", { name: "Authoring access is no longer available" })).toBeInTheDocument();
+    expect(latestHostControl).toBeNull();
+  });
+
+  it("prevents an older transition from committing after a newer one supersedes it", async () => {
+    renderApp("/?workspace=product-docs&mode=edit&page=overview");
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Register deferred flush" });
+    await waitForHostControl();
+
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register deferred flush" }));
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /API Docs/i }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Resolve deferred flushes" }));
+
+    expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
+    expect(window.location.search).toContain("workspace=api-docs");
+  });
+
+  it("clears flush registration when the page changes", async () => {
+    renderApp("/?workspace=product-docs&mode=edit&page=overview");
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Register successful flush" });
+    await waitForHostControl();
 
     const priorSessionKey = latestHostControl?.sessionKey;
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register successful flush" }));
+    fireEvent.click(screen.getByRole("button", { name: "Child Draft Unpublished" }));
 
+    expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
+    expect(latestHostControl?.sessionKey).not.toBe(priorSessionKey);
+    expect(priorSessionKey ? hostControls.has(priorSessionKey) : false).toBe(false);
+    expect(latestHostControl?.status?.flush).toEqual(expect.any(Function));
+  });
+
+  it("clears flush registration when Edit mode ends", async () => {
+    renderApp("/?workspace=product-docs&mode=edit&page=overview");
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Register successful flush" });
+    await waitForHostControl();
+
+    const priorSessionKey = latestHostControl?.sessionKey;
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register successful flush" }));
     fireEvent.click(screen.getByRole("button", { name: "Live" }));
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(latestHostControl).toBeNull();
     expect(priorSessionKey ? hostControls.has(priorSessionKey) : false).toBe(false);
+    expect(window.location.search).toBe("?workspace=product-docs&page=overview");
   });
 
-  it("ignores a late save completion from a discarded prior page session", async () => {
-    const firstSave = createDeferredSave();
-    const savePageBody: ServiceNowClient["savePageBody"] = vi
-      .fn(async (_input: PageBodySaveInput): Promise<PageBodySaveResult> => ({
-        state: "succeeded",
-        page: createPageRecord({ sysId: "page-002", draftTitle: "Child Draft", draftSlug: "child", draftSlugNormalized: "child", draftRevision: 1 })
-      }))
-      .mockImplementationOnce(async (_input: PageBodySaveInput) => firstSave.promise);
+  it("clears flush registration after access loss", async () => {
+    renderApp("/?workspace=product-docs&mode=edit&page=draft-only");
 
-    renderApp("/?workspace=product-docs&mode=edit&page=overview", { savePageBody });
+    expect(await screen.findByRole("heading", { name: "Draft Only" })).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Register successful flush" });
+    await waitForHostControl();
 
-    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    const priorSessionKey = latestHostControl?.sessionKey;
     fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
-    const staleControl = latestHostControl;
-    fireEvent.click(screen.getByRole("button", { name: "Child Draft Unpublished" }));
-    expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
-    expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
-    await screen.findByRole("button", { name: "Save draft" });
-    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Register successful flush" }));
 
-    firstSave.resolve({
-      state: "succeeded",
-      page: createPageRecord({ draftRevision: 1 })
-    });
+    latestHostControl?.emitAccessLost();
 
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
-    });
-
-    staleControl?.emitOutline("Stale draft heading");
-    staleControl?.emitStatus({ isDirty: false, isSaving: true });
-
-    expect(screen.queryByText("Stale draft heading")).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
-    expect(latestHostControl?.pageSysId).toBe("page-002");
-    expect(window.location.search).toContain("page=child");
+    expect(await screen.findByRole("heading", { name: "Authoring access is no longer available" })).toBeInTheDocument();
+    expect(latestHostControl).toBeNull();
+    expect(priorSessionKey ? hostControls.has(priorSessionKey) : false).toBe(false);
   });
 
-  it("ignores a late failed completion from a discarded prior page session", async () => {
-    const firstSave = createDeferredSave();
-    const savePageBody = vi
-      .fn(async (_input: PageBodySaveInput): Promise<PageBodySaveResult> => ({
-        state: "succeeded",
-        page: createPageRecord({
-          sysId: "page-002",
-          draftTitle: "Child Draft",
-          draftSlug: "child",
-          draftSlugNormalized: "child",
-          draftRevision: 1
-        })
-      }))
-      .mockImplementationOnce(async (_input: PageBodySaveInput) => firstSave.promise);
-
-    renderApp("/?workspace=product-docs&mode=edit&page=overview", { savePageBody });
+  it("clears flush registration when the host tears down", async () => {
+    const view = renderApp("/?workspace=product-docs&mode=edit&page=overview");
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
-    const staleControl = latestHostControl;
-    fireEvent.click(screen.getByRole("button", { name: "Child Draft Unpublished" }));
-    expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
-    expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
-    await screen.findByRole("button", { name: "Save draft" });
-    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
-    latestHostControl?.emitOutline("Child heading");
+    await screen.findByRole("button", { name: "Register successful flush" });
+    await waitForHostControl();
 
-    firstSave.resolve({
-      state: "failed",
-      code: "conflict",
-      currentRevision: 2,
-      errorMessage: "This draft was updated elsewhere. Refresh to load the latest revision."
-    });
+    const priorSessionKey = latestHostControl?.sessionKey;
 
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
-    });
+    view.unmount();
 
-    expect(screen.getByText("Status dirty")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Child heading" })).toBeInTheDocument();
-    expect(screen.queryByText("Stale draft heading")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "The draft editor is unavailable" })).not.toBeInTheDocument();
-    expect(screen.queryByText("Authoring access is no longer available for this editor session.")).not.toBeInTheDocument();
-    expect(latestHostControl?.pageSysId).toBe("page-002");
-    expect(latestHostControl).not.toBe(staleControl);
-    expect(window.location.search).toContain("page=child");
+    expect(latestHostControl).toBeNull();
+    expect(priorSessionKey ? hostControls.has(priorSessionKey) : false).toBe(false);
   });
 });

@@ -65,12 +65,13 @@ describe("page body save service", () => {
       loadWorkspaceBySlug: async () => createWorkspace(),
       loadWorkspaceBySysId: async () => createWorkspace(),
       listWorkspacePages: async () => [createPage()],
-      savePage
+      savePageDraft: savePage
     });
 
     const result = await service.savePageBody({
       workspaceSlug: "product-docs",
       pageSysId: "page-001",
+      expectedRevision: 0,
       draftBodyText: "Updated draft body"
     });
 
@@ -97,7 +98,8 @@ describe("page body save service", () => {
             ]
           }
         }
-      })
+      }),
+      0
     );
     if (result.kind === "succeeded") {
       expect(result.page.draftBodyText).toBe("Updated draft body");
@@ -116,7 +118,7 @@ describe("page body save service", () => {
       loadWorkspaceBySlug: async () => createWorkspace(),
       loadWorkspaceBySysId: async () => createWorkspace(),
       listWorkspacePages: async () => [createPage({ draftRevision: 4 })],
-      savePage
+      savePageDraft: savePage
     });
 
     const result = await service.savePageBody({
@@ -134,6 +136,31 @@ describe("page body save service", () => {
     expect(savePage).not.toHaveBeenCalled();
   });
 
+  it("allows only one sequential draft save from the same accepted revision", async () => {
+    let persisted = createPage({ draftRevision: 3 });
+    const savePageDraft = vi.fn(async (nextPage: PageRecord, expectedRevision: number) => {
+      if (persisted.draftRevision !== expectedRevision) {
+        return null;
+      }
+      persisted = nextPage;
+      return persisted;
+    });
+    const service = createPageBodySaveService({
+      evaluateWorkspaceCapabilities: () => ({ canAdminWorkspace: false, canEditWorkspace: true, canManageWorkspaceMembers: false, canViewWorkspace: true }),
+      loadWorkspaceBySlug: async () => createWorkspace(),
+      loadWorkspaceBySysId: async () => createWorkspace(),
+      listWorkspacePages: async () => [persisted],
+      savePageDraft
+    });
+
+    const first = await service.savePageBody({ workspaceSlug: "product-docs", pageSysId: "page-001", expectedRevision: 3, draftBodyText: "First" });
+    const second = await service.savePageBody({ workspaceSlug: "product-docs", pageSysId: "page-001", expectedRevision: 3, draftBodyText: "Second" });
+
+    expect(first.kind).toBe("succeeded");
+    expect(second).toMatchObject({ kind: "conflict" });
+    expect(persisted.draftBodyText).toBe("First");
+  });
+
   it("accepts canonical JSON and rejects unsupported documents without writing", async () => {
     const savePage = vi.fn(async (page: PageRecord) => page);
     const service = createPageBodySaveService({
@@ -146,7 +173,7 @@ describe("page body save service", () => {
       loadWorkspaceBySlug: async () => createWorkspace(),
       loadWorkspaceBySysId: async () => createWorkspace(),
       listWorkspacePages: async () => [createPage({ draftRevision: 2 })],
-      savePage
+      savePageDraft: savePage
     });
 
     const accepted = await service.savePageBody({
@@ -161,7 +188,8 @@ describe("page body save service", () => {
       expect.objectContaining({
         draftRevision: 3,
         draftContentJson: createSupportedE2DocseraDocumentEnvelope()
-      })
+      }),
+      2
     );
 
     savePage.mockClear();
@@ -207,7 +235,7 @@ describe("page body save service", () => {
         loadWorkspaceBySlug: async () => createWorkspace(),
         loadWorkspaceBySysId: async () => createWorkspace(),
         listWorkspacePages: async () => [createPage({ draftRevision: 2 })],
-        savePage
+        savePageDraft: savePage
       });
 
       const rejected = await service.savePageBody({
@@ -244,7 +272,7 @@ describe("page body save service", () => {
       loadWorkspaceBySlug: async () => createWorkspace(),
       loadWorkspaceBySysId: async () => createWorkspace(),
       listWorkspacePages: async () => [createPage({ draftRevision: 7 })],
-      savePage
+      savePageDraft: savePage
     });
     const document = {
       schemaVersion: 1 as const,
@@ -288,7 +316,7 @@ describe("page body save service", () => {
       loadWorkspaceBySlug: async () => null,
       loadWorkspaceBySysId: async () => null,
       listWorkspacePages: async () => [],
-      savePage: async (page) => page
+      savePageDraft: async (page) => page
     });
 
     const result = await service.savePageBody({
@@ -315,7 +343,7 @@ describe("page body save service", () => {
       loadWorkspaceBySlug: async () => createWorkspace(),
       loadWorkspaceBySysId: async () => createWorkspace(),
       listWorkspacePages: async () => [],
-      savePage: async (page) => page
+      savePageDraft: async (page) => page
     });
 
     const result = await service.savePageBody({
@@ -347,7 +375,7 @@ describe("page body save service", () => {
           workspaceSysId: "workspace-002"
         })
       ],
-      savePage: async (page) => page
+      savePageDraft: async (page) => page
     });
 
     const result = await service.savePageBody({
@@ -374,7 +402,7 @@ describe("page body save service", () => {
       loadWorkspaceBySlug: async () => createWorkspace(),
       loadWorkspaceBySysId: async () => createWorkspace(),
       listWorkspacePages: async () => [createPage()],
-      savePage: async (page) => page
+      savePageDraft: async (page) => page
     });
 
     const result = await service.savePageBody({

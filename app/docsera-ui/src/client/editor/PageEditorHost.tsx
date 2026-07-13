@@ -21,8 +21,7 @@ type PageEditorHostProps = {
     expectedRevision: number;
     pageSysId: string;
   }) => Promise<PageBodySaveResult>;
-  onStatusChange: (state: { isDirty: boolean; isSaving: boolean }) => void;
-  headerControlsRoot: HTMLElement | null;
+  onStatusChange: (state: { flush?: () => Promise<boolean>; isDirty: boolean; isSaving: boolean; status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved" }) => void;
   pageSysId: string;
   sessionKey: string;
   theme: "dark" | "light";
@@ -51,7 +50,6 @@ export function PageEditorHost(props: PageEditorHostProps) {
   function buildRuntimeProps(entry: HostRuntimeEntry, currentProps: PageEditorHostProps): Parameters<RuntimeModule["mountPageEditorHostRuntime"]>[0]["props"] {
     return {
       canEdit: currentProps.canEdit,
-      headerControlsRoot: currentProps.headerControlsRoot,
       initialEnvelope: currentProps.initialEnvelope,
       initialRevision: currentProps.initialRevision,
       onAccessLost: currentProps.onAccessLost,
@@ -146,7 +144,6 @@ export function PageEditorHost(props: PageEditorHostProps) {
     props.onOutlineChange,
     props.onSaveDraft,
     props.onStatusChange,
-    props.headerControlsRoot,
     props.pageSysId,
     props.sessionKey,
     props.theme

@@ -112,7 +112,7 @@ describe("WorkspaceMainPane", () => {
     view.unmount();
   });
 
-  it("renders the real edit host without diagnostic card chrome and keeps temporary save controls beside the title", async () => {
+  it("renders the real edit host without diagnostic card chrome and keeps the overlay root separate from the page header", async () => {
     const page = createPageView("hardBreak");
     let view!: ReturnType<typeof render>;
     await act(async () => {
@@ -157,7 +157,7 @@ describe("WorkspaceMainPane", () => {
     const host = getEditorHost();
 
     expect(within(pageHeader as HTMLElement).getByRole("heading", { name: "Overview" })).toBeInTheDocument();
-    expect((pageHeader as HTMLElement).querySelector(".docsera-main__editor-controls")).not.toBeNull();
+    expect((pageHeader as HTMLElement).querySelector(".docsera-main__editor-controls")).toBeNull();
     await waitFor(() => {
       expect(host.shadowRoot).not.toBeNull();
       expect(host.shadowRoot?.querySelector(".docsera-editor-runtime")).not.toBeNull();

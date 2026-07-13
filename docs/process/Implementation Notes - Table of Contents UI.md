@@ -12,6 +12,8 @@ This note documents the current Workspace Table of Contents shell behavior in th
   - `Developer Status`
   - `SUCCESS`
 - The rail keeps the `On this page` heading visible in the expanded state, but empty heading data now renders as a visually clean shell with no placeholder copy.
+- At widths above 1180px the ToC remains the right-side rail. At 1180px and below the entire aside, body, and toggle are hidden; it never relocates beneath the document and leaves no grid row or empty strip. Widening restores the mounted rail and its application-controlled collapsed state without a reload. Live and Edit use the same rule.
+- Editor save state is separate from the ToC and appears subtly beside the stable header's Live/Edit toggle.
 
 ## Expanded State Convention
 

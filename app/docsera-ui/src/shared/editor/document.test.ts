@@ -29,6 +29,22 @@ describe("Docsera document envelope", () => {
     });
   });
 
+  it.each([
+    { schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION, document: { type: "doc" } },
+    { schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION, document: { type: "doc", content: [] } },
+    { schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION, document: { type: "doc", content: [{ type: "paragraph" }] } },
+    { type: "doc" },
+    { type: "doc", content: [] },
+    { type: "doc", content: [{ type: "paragraph" }] }
+  ])("canonicalizes every accepted empty representation to the runtime paragraph document", (input) => {
+    const parsed = parseDocseraDocument(input);
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.envelope).toEqual(createEmptyDocseraDocumentEnvelope());
+      expect(parsed.envelope.document.content).toEqual([{ type: "paragraph" }]);
+    }
+  });
+
   it("preserves terminal whitespace inside TipTap text nodes", () => {
     const envelope = {
       schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
@@ -135,7 +151,7 @@ describe("Docsera document envelope", () => {
     }
 
     parsed.envelope.document.content?.push({ type: "paragraph" });
-    expect(source.document.content).toBeUndefined();
+    expect(source.document.content).toEqual([{ type: "paragraph" }]);
   });
 
   it("round-trips a large canonical document without trimming or schema mutation", () => {

@@ -77,7 +77,8 @@ export function createEmptyDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
   return {
     schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
     document: {
-      type: "doc"
+      type: "doc",
+      content: [{ type: "paragraph" }]
     }
   };
 }
@@ -435,7 +436,11 @@ function canonicalizeNode(node: Record<string, unknown>): Record<string, unknown
 }
 
 function normalizeDocument(document: DocseraTiptapDocument): DocseraTiptapDocument {
-  return cloneJson(document);
+  const normalized = cloneJson(document);
+  if (!Array.isArray(normalized.content) || normalized.content.length === 0) {
+    normalized.content = [{ type: "paragraph" }];
+  }
+  return normalized;
 }
 
 export function validateDocseraStructuredDocument(

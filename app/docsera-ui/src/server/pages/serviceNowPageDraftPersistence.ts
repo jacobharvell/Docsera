@@ -3,7 +3,7 @@ import { DOCSERA_WORKSPACE_TABLE, type WorkspaceRecord } from "../workspaces/ser
 import { evaluateCurrentUserWorkspaceCapabilities } from "../workspaces/serviceNowWorkspaceCapabilities.ts";
 import { mapWorkspaceRecord } from "../workspaces/serviceNowWorkspaceRecords.ts";
 import { loadWorkspaceBySlug, listWorkspacePages } from "./serviceNowPageQueries.ts";
-import { buildPageBodySaveRecord, buildPageContentSaveRecord, savePageRecord } from "./serviceNowPagePersistence.ts";
+import { buildPageBodySaveRecord, buildPageContentSaveRecord, savePageDraftRecord } from "./serviceNowPagePersistence.ts";
 import type { PageContentJson, PageRecord } from "./serverPageDomain.ts";
 
 type PageBodySaveInput = {
@@ -13,7 +13,7 @@ type PageBodySaveInput = {
   pageSlug?: string;
   draftBodyText?: string | null;
   draftContentJson?: unknown;
-  expectedRevision?: number | null;
+  expectedRevision?: unknown;
 };
 
 type PageBodySaveOutcome =
@@ -46,7 +46,7 @@ type PageBodySaveDependencies = {
     canViewWorkspace: boolean;
   };
   listWorkspacePages: (workspaceSysId: string) => Promise<PageRecord[]>;
-  savePage: (page: PageRecord) => Promise<PageRecord>;
+  savePageDraft: (page: PageRecord, expectedRevision: number) => Promise<PageRecord | null>;
 };
 
 type Awaitable<T> = T | Promise<T>;
@@ -195,8 +195,15 @@ export function createPageBodySaveService(dependencies: PageBodySaveDependencies
       }
 
       const currentRevision = Number.isSafeInteger(Number(page.draftRevision)) ? Number(page.draftRevision) : 0;
-      const expectedRevision = Number(input.expectedRevision);
-      if (Number.isSafeInteger(expectedRevision) && expectedRevision >= 0 && expectedRevision !== currentRevision) {
+      const expectedRevision = input.expectedRevision;
+      if (typeof expectedRevision !== "number" || !Number.isSafeInteger(expectedRevision) || expectedRevision < 0) {
+        return {
+          kind: "failed",
+          errorMessage: "A non-negative expected draft revision is required.",
+          status: 400
+        };
+      }
+      if (expectedRevision !== currentRevision) {
         return {
           kind: "conflict",
           currentRevision,
@@ -227,7 +234,14 @@ export function createPageBodySaveService(dependencies: PageBodySaveDependencies
         };
       }
 
-      const savedPage = await dependencies.savePage(nextPage);
+      const savedPage = await dependencies.savePageDraft(nextPage, expectedRevision);
+      if (!savedPage) {
+        return {
+          kind: "conflict",
+          currentRevision,
+          errorMessage: "This page has a newer saved draft. Reload before saving again."
+        };
+      }
 
       return {
         kind: "succeeded",
@@ -243,7 +257,7 @@ export function createServiceNowPageBodySaveService() {
     loadWorkspaceBySlug,
     loadWorkspaceBySysId,
     listWorkspacePages,
-    savePage: savePageRecord
+    savePageDraft: savePageDraftRecord
   });
 
   return {

@@ -338,6 +338,7 @@ describe("service now client page creation", () => {
     expect(result).toEqual({
       code: "conflict",
       currentRevision: 9,
+      retryable: false,
       state: "failed",
       errorMessage: "This page has a newer saved draft. Reload before saving again."
     });
@@ -430,6 +431,8 @@ describe("service now client page creation", () => {
 
     expect(result.state).toBe("failed");
     if (result.state === "failed") {
+      expect(result.code).toBe("forbidden");
+      expect(result.retryable).toBe(false);
       expect(result.errorMessage).toBe("You do not have permission to edit page bodies in this workspace.");
     }
   });
@@ -455,8 +458,39 @@ describe("service now client page creation", () => {
 
     expect(result.state).toBe("failed");
     if (result.state === "failed") {
+      expect(result.code).toBe("persistence_invariant");
+      expect(result.retryable).toBe(false);
       expect(result.errorMessage).toBe("Something went wrong while saving the page body. Please try again.");
     }
+  });
+
+  it.each([408, 429, 502, 503, 504])("classifies HTTP %s as transient and retryable", async (status) => {
+    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse(status, { error: { message: "Try again later." } })));
+
+    const result = await createServiceNowClient(createRuntime()).savePageBody({
+      workspaceSlug: "product-docs",
+      pageSysId: "page-005",
+      draftBodyText: "Saved draft body"
+    });
+
+    expect(result).toMatchObject({ code: "transient", retryable: true, state: "failed" });
+  });
+
+  it("classifies network interruption as retryable but malformed success payloads as terminal", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("network interrupted"); }));
+    const client = createServiceNowClient(createRuntime());
+    await expect(client.savePageBody({ workspaceSlug: "product-docs", pageSysId: "page-005" })).resolves.toMatchObject({
+      code: "network",
+      retryable: true,
+      state: "failed"
+    });
+
+    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse(200, { result: { unexpected: true } })));
+    await expect(client.savePageBody({ workspaceSlug: "product-docs", pageSysId: "page-005" })).resolves.toMatchObject({
+      code: "persistence_invariant",
+      retryable: false,
+      state: "failed"
+    });
   });
 
   it("normalizes a page settings save response", async () => {

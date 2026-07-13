@@ -151,9 +151,10 @@ export type PageBodySaveSucceeded = {
 };
 
 export type PageBodySaveFailed = {
-  code?: "conflict" | "failed" | "forbidden" | "invalid";
+  code?: "capacity" | "conflict" | "failed" | "forbidden" | "invalid" | "network" | "persistence_invariant" | "transient";
   currentRevision?: number;
   errorMessage: string;
+  retryable?: boolean;
   state: "failed";
 };
 

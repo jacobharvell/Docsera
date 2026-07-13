@@ -41,8 +41,12 @@ const glideMock = vi.hoisted(() => {
   }
 
   function matchField(rowValue: unknown, queryValue: unknown): boolean {
-    if (typeof rowValue === "boolean" || typeof rowValue === "number" || typeof queryValue === "boolean" || typeof queryValue === "number") {
+    if (typeof rowValue === "boolean" || typeof queryValue === "boolean") {
       return normalizeBooleanLike(rowValue) === normalizeBooleanLike(queryValue);
+    }
+
+    if (typeof rowValue === "number" || typeof queryValue === "number") {
+      return Number(rowValue) === Number(queryValue);
     }
 
     return cleanText(rowValue) === cleanText(queryValue);
@@ -213,7 +217,8 @@ vi.mock("@servicenow/glide", () => ({
 
 import type { PageRecord } from "./serverPageDomain";
 import { parseServerDocument } from "./serverEditorDocument";
-import { deletePageRecord, savePageRecord } from "./serviceNowPagePersistence";
+import { DOCSERA_PAGE_TABLE } from "./serverPageDomain";
+import { deletePageRecord, savePageDraftRecord, savePageRecord } from "./serviceNowPagePersistence";
 import { listWorkspacePages } from "./serviceNowPageQueries";
 
 function createPage(overrides: Partial<PageRecord> = {}): PageRecord {
@@ -243,6 +248,74 @@ function createPage(overrides: Partial<PageRecord> = {}): PageRecord {
 
 beforeEach(() => {
   glideMock.reset();
+});
+
+describe("single-session draft saves", () => {
+  it("persists only the accepted draft fields, advances the draft revision, and leaves published fields untouched", async () => {
+    const persisted = await savePageRecord(
+      createPage({
+        draftRevision: 4,
+        publishedTitle: "Published title",
+        publishedBodyText: "Published body",
+        publishedContentJson: createLargeEnvelope("Published")
+      })
+    );
+    const revision = persisted.draftRevision ?? 0;
+    const accepted = await savePageDraftRecord(
+      {
+        ...persisted,
+        draftRevision: revision + 1,
+        draftBodyText: "First"
+      },
+      revision
+    );
+
+    expect(accepted).toMatchObject({ draftRevision: revision + 1, draftBodyText: "First" });
+
+    const rows = glideMock.getRows(DOCSERA_PAGE_TABLE);
+    expect(rows[0]?.fields).toMatchObject({
+      draft_revision: revision + 1,
+      draft_body_text: "First",
+      published_title: "Published title",
+      published_body_text: "Published body"
+    });
+  });
+
+  it("returns the accepted request snapshot instead of rereading a later document state", async () => {
+    const persisted = await savePageRecord(createPage({ draftRevision: 0 }));
+    const accepted = await savePageDraftRecord({ ...persisted, draftRevision: 1, draftBodyText: "First" }, 0);
+    const later = await savePageDraftRecord({ ...persisted, draftRevision: 2, draftBodyText: "Second" }, 1);
+
+    expect(accepted).toMatchObject({ draftRevision: 1, draftBodyText: "First" });
+    expect(later).toMatchObject({ draftRevision: 2, draftBodyText: "Second" });
+  });
+
+  it.each([undefined, Number.NaN, -1, 1.5])("rejects an invalid expected revision: %s", async (expectedRevision) => {
+    expect(() => savePageDraftRecord(createPage({ sysId: "page-001" }), expectedRevision)).toThrow("expected draft revision");
+  });
+
+  it("returns null when the persisted draft revision no longer matches the caller revision", async () => {
+    const persisted = await savePageRecord(createPage({ draftRevision: 1 }));
+
+    await savePageDraftRecord({ ...persisted, draftRevision: 2, draftBodyText: "First" }, 1);
+    const stale = await savePageDraftRecord({ ...persisted, draftRevision: 2, draftBodyText: "Second" }, 1);
+
+    expect(stale).toBeNull();
+  });
+
+  it("fails closed when the stored draft revision is malformed", async () => {
+    const persisted = await savePageRecord(createPage({ draftRevision: 1 }));
+    const record = new glideMock.GlideRecord(DOCSERA_PAGE_TABLE);
+    if (!record.get("sys_id", persisted.sysId)) {
+      throw new Error("Expected saved page row.");
+    }
+    record.setValue("draft_revision", "not-a-number");
+    record.update();
+
+    expect(() => savePageDraftRecord({ ...persisted, draftRevision: 2 }, 1)).toThrow(
+      "Page record has an invalid persisted draft revision."
+    );
+  });
 });
 
 function createLargeEnvelope(prefix: string) {

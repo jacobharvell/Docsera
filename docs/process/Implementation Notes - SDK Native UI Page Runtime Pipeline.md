@@ -93,6 +93,8 @@ The local build verifier checks:
 
 ## Deploy Command
 
+`now-sdk build` is the only supported application build and ServiceNow SDK installation is the only supported deployment path. Vite and its React plugin remain test-transformation infrastructure for Vitest only; the former standalone Vite/IIFE build, `build:legacy`, `dev:legacy`, and Vite preview are removed and unsupported.
+
 Preferred repo command:
 
 - `npm run deploy:sdk-ui-page`

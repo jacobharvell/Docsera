@@ -26,7 +26,7 @@ type WorkspaceMainPaneProps = {
     expectedRevision: number;
     pageSysId: string;
   }) => Promise<PageBodySaveResult>;
-  onStatusChange: (state: { isDirty: boolean; isSaving: boolean }) => void;
+  onStatusChange: (state: { flush?: () => Promise<boolean>; isDirty: boolean; isSaving: boolean; status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved" }) => void;
   onShowCreatePage: () => void;
   onAccessLost: () => void;
   sessionKey: string;
@@ -295,7 +295,6 @@ export function WorkspaceMainPane({
   editorFailure,
   onEditorFailureChange
 }: WorkspaceMainPaneProps) {
-  const [editorControlsRoot, setEditorControlsRoot] = useState<HTMLElement | null>(null);
 
   if (stateType !== "ready") {
     return (
@@ -361,9 +360,6 @@ export function WorkspaceMainPane({
             <h1 id="docsera-page-title" className="docsera-main__title">
               {page.title}
             </h1>
-            {workspaceMode === "edit" && page.contentEnvelope && sessionKey && !editAccessLost ? (
-              <div ref={setEditorControlsRoot} className="docsera-main__editor-controls" />
-            ) : null}
           </div>
           {workspaceMode === "live" ? (
             <p className="docsera-main__lede">The selected page is using the published reader representation.</p>
@@ -412,7 +408,6 @@ export function WorkspaceMainPane({
               <div hidden={showBodyPending}>
                 <PageEditorHost
                   canEdit={canEditPageBody && !editAccessLost}
-                  headerControlsRoot={editorControlsRoot}
                   initialEnvelope={page.contentEnvelope}
                   initialRevision={page.page.draftRevision ?? 0}
                   onAccessLost={onAccessLost}

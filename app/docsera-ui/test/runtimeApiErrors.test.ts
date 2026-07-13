@@ -150,6 +150,8 @@ test("page save failures redact draft body text from unexpected error logging", 
   expect(response.status).toBe(500);
   expect(response.body).toEqual({
     error: {
+      code: "persistence_invariant",
+      retryable: false,
       message: "Something went wrong while saving the page body. Please try again."
     }
   });

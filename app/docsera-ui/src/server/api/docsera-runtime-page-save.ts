@@ -62,13 +62,15 @@ export async function process(request: RequestLike, response: ResponseLike) {
       pageSlug: cleanText(body.pageSlug),
       draftBodyText: cleanText(body.draftBodyText) || "",
       draftContentJson: body.draftContentJson,
-      expectedRevision: Number.isSafeInteger(Number(body.expectedRevision)) ? Number(body.expectedRevision) : undefined
+      expectedRevision: body.expectedRevision
     });
 
     if (result.kind === "forbidden") {
       response.setStatus?.(403);
       response.setBody({
         error: {
+          code: "forbidden",
+          retryable: false,
           message: result.errorMessage
         }
       });
@@ -79,6 +81,8 @@ export async function process(request: RequestLike, response: ResponseLike) {
       response.setStatus?.(result.status);
       response.setBody({
         error: {
+          code: "invalid",
+          retryable: false,
           message: result.errorMessage
         }
       });
@@ -90,6 +94,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
       response.setBody({
         error: {
           code: "draft_revision_conflict",
+          retryable: false,
           message: result.errorMessage,
           currentRevision: result.currentRevision
         }
@@ -110,6 +115,8 @@ export async function process(request: RequestLike, response: ResponseLike) {
     logUnexpectedPageSaveError(error, summarizeRequestBody(body));
     response.setBody({
       error: {
+        code: "persistence_invariant",
+        retryable: false,
         message: "Something went wrong while saving the page body. Please try again."
       }
     });
