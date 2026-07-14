@@ -3,6 +3,10 @@ import { cleanup } from "@testing-library/react";
 import { afterEach, beforeAll } from "vitest";
 
 beforeAll(() => {
+  if (typeof window === "undefined" || typeof Node === "undefined" || typeof Range === "undefined" || typeof Element === "undefined") {
+    return;
+  }
+
   const rect = () =>
     [
       {
@@ -68,5 +72,7 @@ beforeAll(() => {
 });
 
 afterEach(() => {
-  cleanup();
+  if (typeof document !== "undefined") {
+    cleanup();
+  }
 });

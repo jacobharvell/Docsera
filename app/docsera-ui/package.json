@@ -24,8 +24,8 @@
     "verify:workspace-foundation": "node ./scripts/verify-workspace-foundation.mjs",
     "reset:editor-smoke-data": "node ./scripts/reset-editor-smoke-data.mjs",
     "reset:editor-smoke-data:apply": "node ./scripts/reset-editor-smoke-data.mjs --apply",
-    "test": "vitest run",
-    "validate": "npm run test && npm run build && npm run verify:inline-runtime-css-build"
+    "test": "node ./scripts/run-managed-vitest.mjs",
+    "validate": "node ./scripts/run-managed-validate.mjs"
   },
   "dependencies": {
     "@tiptap/core": "3.27.3",

@@ -23,12 +23,15 @@ The runtime does not depend on a deployed `sys_ux_theme_asset` for `runtime-shel
 ```powershell
 npm --prefix app/docsera-ui install
 npm --prefix app/docsera-ui run test
+npm --prefix app/docsera-ui run test -- src/client/app/App.test.tsx -t navigation --reporter dot --maxWorkers 1
 npm --prefix app/docsera-ui run build
 npm --prefix app/docsera-ui run verify:inline-runtime-css-build
 npm --prefix app/docsera-ui run validate
 ```
 
-`validate` is local-only. It runs tests, build, and inline build-artifact verification without requiring PDI credentials.
+`test` is the managed Vitest entrypoint. It accepts pass-through Vitest filters and reporters while keeping worker counts bounded by default.
+
+`validate` is local-only. It runs Vitest, SDK build, and inline build-artifact verification in sequence without requiring PDI credentials.
 
 ## Deploy Commands
 

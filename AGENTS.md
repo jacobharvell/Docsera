@@ -131,6 +131,13 @@ For each change, report concisely:
 
 For validation guidance, use `docs/process/Test Strategy and Validation Areas.md` as the project reference when deciding which tests/checks to create, update, remove, or run.
 
+For `app/docsera-ui`, use the managed validation commands:
+
+- `npm --prefix app/docsera-ui run test`
+- `npm --prefix app/docsera-ui run validate`
+
+Do not start a second managed frontend validation/test run while one is active. Do not rely on raw long-running `vitest run` commands for diagnostics. Do not manually kill all Node processes to recover from a stuck run. When validation fails, report the managed timeout and cleanup result, not just the child exit code.
+
 Codex is responsible for validating each implementation using the most appropriate available tests and checks. Depending on the change, this may include local tests, build/lint/type checks, ServiceNow ATF, server-side/scripted checks, PDI verification, or manual verification.
 
 If automated validation is not practical, document why and provide repeatable manual verification steps with expected results.
