@@ -3,6 +3,10 @@ import { RestApi } from "@servicenow/sdk/core";
 import { process as createPage } from "../../server/api/docsera-runtime-create-page";
 import { process as deletePageAction } from "../../server/api/docsera-runtime-page-delete-action";
 import { process as deletePage } from "../../server/api/docsera-runtime-page-delete";
+import { process as acquirePageEditLock } from "../../server/api/docsera-runtime-page-lock-acquire";
+import { process as heartbeatPageEditLock } from "../../server/api/docsera-runtime-page-lock-heartbeat";
+import { process as releasePageEditLock } from "../../server/api/docsera-runtime-page-lock-release";
+import { process as pageEditLockStatus } from "../../server/api/docsera-runtime-page-lock-status";
 import { process as savePage } from "../../server/api/docsera-runtime-page-save";
 import { process as savePageSettings } from "../../server/api/docsera-runtime-page-settings-save";
 import { process as createWorkspace } from "../../server/api/docsera-runtime-create-workspace";
@@ -94,6 +98,46 @@ RestApi({
       produces: "application/json",
       shortDescription: "Persist page title and slug settings to an existing workspace page record.",
       script: savePageSettings
+    },
+    {
+      $id: Now.ID["docsera-runtime-page-lock-status-post"],
+      name: "page_lock_status",
+      path: "/pages/edit-lock/status",
+      method: "POST",
+      consumes: "application/json",
+      produces: "application/json",
+      shortDescription: "Resolve the current edit-session status for a page.",
+      script: pageEditLockStatus
+    },
+    {
+      $id: Now.ID["docsera-runtime-page-lock-acquire-post"],
+      name: "page_lock_acquire",
+      path: "/pages/edit-lock/acquire",
+      method: "POST",
+      consumes: "application/json",
+      produces: "application/json",
+      shortDescription: "Acquire the exclusive page edit session for a page.",
+      script: acquirePageEditLock
+    },
+    {
+      $id: Now.ID["docsera-runtime-page-lock-heartbeat-post"],
+      name: "page_lock_heartbeat",
+      path: "/pages/edit-lock/heartbeat",
+      method: "POST",
+      consumes: "application/json",
+      produces: "application/json",
+      shortDescription: "Refresh the active page edit session.",
+      script: heartbeatPageEditLock
+    },
+    {
+      $id: Now.ID["docsera-runtime-page-lock-release-post"],
+      name: "page_lock_release",
+      path: "/pages/edit-lock/release",
+      method: "POST",
+      consumes: "application/json",
+      produces: "application/json",
+      shortDescription: "Release the active page edit session.",
+      script: releasePageEditLock
     },
     {
       $id: Now.ID["docsera-runtime-pages-delete-action-post"],

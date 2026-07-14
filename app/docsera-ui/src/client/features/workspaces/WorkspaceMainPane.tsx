@@ -1,7 +1,14 @@
 import { useState, type ReactNode } from "react";
 import { PageEditorHost, type PageEditorHostFailure } from "../../editor/PageEditorHost";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
-import type { PageBodySaveResult, WorkspaceMode } from "../../shared/types/docsera";
+import type {
+  PageBodySaveResult,
+  PageEditLockAcquireResult,
+  PageEditLockHeartbeatResult,
+  PageEditLockReleaseResult,
+  PageEditLockStatusResult,
+  WorkspaceMode
+} from "../../shared/types/docsera";
 import type { WorkspacePageView } from "./workspaceViewModels";
 
 type WorkspaceMainPaneProps = {
@@ -24,9 +31,20 @@ type WorkspaceMainPaneProps = {
   onSavePageDraft: (input: {
     draftContentJson: DocseraDocumentEnvelope;
     expectedRevision: number;
+    lockToken?: string;
     pageSysId: string;
   }) => Promise<PageBodySaveResult>;
-  onStatusChange: (state: { flush?: () => Promise<boolean>; isDirty: boolean; isSaving: boolean; status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved" }) => void;
+  onAcquirePageEditLock?: (input: { lockToken?: string; pageSysId: string }) => Promise<PageEditLockAcquireResult>;
+  onHeartbeatPageEditLock?: (input: { lockToken: string; pageSysId: string }) => Promise<PageEditLockHeartbeatResult>;
+  onRefreshPageEditLock?: (input: { lockToken?: string; pageSysId: string }) => Promise<PageEditLockStatusResult>;
+  onReleasePageEditLock?: (input: { keepalive?: boolean; lockToken: string; pageSysId: string }) => Promise<PageEditLockReleaseResult>;
+  onStatusChange: (state: {
+    flush?: () => Promise<boolean>;
+    release?: (options?: { keepalive?: boolean }) => Promise<void>;
+    isDirty: boolean;
+    isSaving: boolean;
+    status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
+  }) => void;
   onShowCreatePage: () => void;
   onAccessLost: () => void;
   sessionKey: string;
@@ -287,6 +305,10 @@ export function WorkspaceMainPane({
   onEditorReadyStateChange,
   onOutlineChange,
   onSavePageDraft,
+  onAcquirePageEditLock,
+  onHeartbeatPageEditLock,
+  onRefreshPageEditLock,
+  onReleasePageEditLock,
   onStatusChange,
   onShowCreatePage,
   onAccessLost,
@@ -411,9 +433,13 @@ export function WorkspaceMainPane({
                   initialEnvelope={page.contentEnvelope}
                   initialRevision={page.page.draftRevision ?? 0}
                   onAccessLost={onAccessLost}
+                  onAcquireEditLock={onAcquirePageEditLock}
                   onError={onEditorFailureChange}
+                  onHeartbeatEditLock={onHeartbeatPageEditLock}
                   onOutlineChange={(outline) => onOutlineChange(page.sysId, outline)}
                   onReadyStateChange={onEditorReadyStateChange}
+                  onRefreshEditLock={onRefreshPageEditLock}
+                  onReleaseEditLock={onReleasePageEditLock}
                   onSaveDraft={onSavePageDraft}
                   onStatusChange={onStatusChange}
                   pageSysId={page.sysId}

@@ -26,6 +26,10 @@ import type { DocseraDocumentEnvelope } from "../../shared/editor/document";
 import type {
   DocseraRuntimeContext,
   PageBodySaveResult,
+  PageEditLockAcquireResult,
+  PageEditLockHeartbeatResult,
+  PageEditLockReleaseResult,
+  PageEditLockStatusResult,
   PageListResult,
   PingResult,
   RuntimeProbeState,
@@ -468,6 +472,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [editorRetryNonce, setEditorRetryNonce] = useState(0);
   const [editorTransitionState, setEditorTransitionState] = useState<EditorTransitionState>({ isDirty: false, isSaving: false, status: "Saved" });
   const editorFlushRef = useRef<(() => Promise<boolean>) | null>(null);
+  const editorReleaseRef = useRef<((options?: { keepalive?: boolean }) => Promise<void>) | null>(null);
   const routeTransitionGenerationRef = useRef(0);
   const [pendingRouteTransition, setPendingRouteTransition] = useState<RequestedRouteTransition | null>(null);
   const [inlinePageCreateState, setInlinePageCreateState] = useState<InlinePageCreateState | null>(null);
@@ -1435,7 +1440,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         return;
       }
       const editorSession = activeEditorSessionRef.current;
-      void flush().then((saved) => {
+      void flush().then(async (saved) => {
         if (routeTransitionGenerationRef.current !== transitionGeneration || !isCurrentEditorSession(editorSession)) {
           return;
         }
@@ -1444,12 +1449,28 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           return;
         }
         transition.beforeCommit?.();
+        const release = transitionWouldDestroyEditor(readAppRoute(new URL(transition.href, window.location.origin)))
+          ? editorReleaseRef.current
+          : null;
+        if (release) {
+          await release().catch(() => undefined);
+        }
         commitRoute(transition.href, transition.replace);
       });
       return;
     }
 
     transition.beforeCommit?.();
+    const release = transitionWouldDestroyEditor(readAppRoute(new URL(transition.href, window.location.origin)))
+      ? editorReleaseRef.current
+      : null;
+    if (release) {
+      void release().finally(() => {
+        commitRoute(transition.href, transition.replace);
+      });
+      return;
+    }
+
     commitRoute(transition.href, transition.replace);
   }
 
@@ -2249,6 +2270,14 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
     setPendingRouteTransition(null);
     transition.beforeCommit?.();
+    const release = editorReleaseRef.current;
+    if (release) {
+      void release().finally(() => {
+        commitRoute(transition.href, transition.replace);
+      });
+      return;
+    }
+
     commitRoute(transition.href, transition.replace);
   }
 
@@ -2269,7 +2298,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }));
   }
 
-  function handleEditorStatusChange(pageSysId: string, state: { flush?: () => Promise<boolean>; isDirty: boolean; isSaving: boolean; status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved" }) {
+  function handleEditorStatusChange(pageSysId: string, state: { flush?: () => Promise<boolean>; release?: (options?: { keepalive?: boolean }) => Promise<void>; isDirty: boolean; isSaving: boolean; status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved" }) {
     const sessionToken = renderedEditorSession;
     if (!isCurrentEditorSession(sessionToken)) {
       return;
@@ -2280,6 +2309,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
 
     editorFlushRef.current = state.flush ?? null;
+    editorReleaseRef.current = state.release ?? null;
 
     setEditorTransitionState((current) =>
       current.isDirty === state.isDirty && current.isSaving === state.isSaving && current.status === state.status ? current : state
@@ -2308,6 +2338,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     editorSessionSeedRef.current = "";
     activeEditorSessionRef.current = null;
     editorFlushRef.current = null;
+    editorReleaseRef.current = null;
     setEditorSessionState({
       sessionKey: "",
       token: null
@@ -2375,6 +2406,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     pageSysId: string;
     draftContentJson: DocseraDocumentEnvelope;
     expectedRevision: number;
+    lockToken?: string;
   }): Promise<PageBodySaveResult> {
     if (workspaceState.status !== "success") {
       return {
@@ -2390,6 +2422,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         workspaceSlug: workspaceState.data.slug,
         workspaceSysId: workspaceState.data.sysId,
         pageSysId: input.pageSysId,
+        lockToken: input.lockToken,
         expectedRevision: input.expectedRevision
       });
     } catch {
@@ -2408,6 +2441,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       pageSysId: string;
       draftContentJson: DocseraDocumentEnvelope;
       expectedRevision: number;
+      lockToken?: string;
     }
   ): Promise<PageBodySaveResult> {
     const result = await savePageDraft(input);
@@ -2419,6 +2453,79 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     applySavedPage(result.page);
 
     return result;
+  }
+
+  async function getPageEditLockStatus(input: { lockToken?: string; pageSysId: string }): Promise<PageEditLockStatusResult> {
+    if (workspaceState.status !== "success") {
+      return {
+        code: "failed",
+        errorMessage: "The selected workspace is not ready yet.",
+        retryable: false,
+        state: "failed"
+      };
+    }
+
+    return serviceNowClient.getPageEditLockStatus({
+      lockToken: input.lockToken,
+      pageSysId: input.pageSysId,
+      workspaceSlug: workspaceState.data.slug,
+      workspaceSysId: workspaceState.data.sysId
+    });
+  }
+
+  async function acquirePageEditLock(input: { lockToken?: string; pageSysId: string }): Promise<PageEditLockAcquireResult> {
+    if (workspaceState.status !== "success") {
+      return {
+        code: "failed",
+        errorMessage: "The selected workspace is not ready yet.",
+        retryable: false,
+        state: "failed"
+      };
+    }
+
+    return serviceNowClient.acquirePageEditLock({
+      lockToken: input.lockToken,
+      pageSysId: input.pageSysId,
+      workspaceSlug: workspaceState.data.slug,
+      workspaceSysId: workspaceState.data.sysId
+    });
+  }
+
+  async function heartbeatPageEditLock(input: { lockToken: string; pageSysId: string }): Promise<PageEditLockHeartbeatResult> {
+    if (workspaceState.status !== "success") {
+      return {
+        code: "failed",
+        errorMessage: "The selected workspace is not ready yet.",
+        retryable: false,
+        state: "failed"
+      };
+    }
+
+    return serviceNowClient.heartbeatPageEditLock({
+      lockToken: input.lockToken,
+      pageSysId: input.pageSysId,
+      workspaceSlug: workspaceState.data.slug,
+      workspaceSysId: workspaceState.data.sysId
+    });
+  }
+
+  async function releasePageEditLock(input: { keepalive?: boolean; lockToken: string; pageSysId: string }): Promise<PageEditLockReleaseResult> {
+    if (workspaceState.status !== "success") {
+      return {
+        code: "failed",
+        errorMessage: "The selected workspace is not ready yet.",
+        retryable: false,
+        state: "failed"
+      };
+    }
+
+    return serviceNowClient.releasePageEditLock({
+      keepalive: input.keepalive,
+      lockToken: input.lockToken,
+      pageSysId: input.pageSysId,
+      workspaceSlug: workspaceState.data.slug,
+      workspaceSysId: workspaceState.data.sysId
+    });
   }
   const listState = {
     hasError: launcherState.status === "error",
@@ -2523,6 +2630,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
                 setEditorRetryNonce((value) => value + 1);
               }}
               onSavePageDraft={(input) => savePageDraftForSession(renderedEditorSession, input)}
+              onAcquirePageEditLock={acquirePageEditLock}
+              onHeartbeatPageEditLock={heartbeatPageEditLock}
+              onRefreshPageEditLock={getPageEditLockStatus}
+              onReleasePageEditLock={releasePageEditLock}
               onStatusChange={(state) => handleEditorStatusChange(selectedWorkspacePageId, state)}
               onSelectPage={openWorkspacePage}
               onShowChildPageCreate={openCreatePageModal}

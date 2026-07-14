@@ -1,12 +1,19 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import type { WorkspaceMode, WorkspaceViewRecord } from "../../shared/types/docsera";
+import type {
+  PageBodySaveResult,
+  PageEditLockAcquireResult,
+  PageEditLockHeartbeatResult,
+  PageEditLockReleaseResult,
+  PageEditLockStatusResult,
+  WorkspaceMode,
+  WorkspaceViewRecord
+} from "../../shared/types/docsera";
 import type { PageEditorHostFailure } from "../../editor/PageEditorHost";
 import type { InlinePageCreateState } from "./PageTree";
 import { WorkspaceMainPane } from "./WorkspaceMainPane";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { WorkspaceToc } from "./WorkspaceToc";
 import type { WorkspacePageOutlineItem, WorkspacePageView } from "./workspaceViewModels";
-import type { PageBodySaveResult } from "../../shared/types/docsera";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
 
 type WorkspaceShellProps = {
@@ -37,9 +44,20 @@ type WorkspaceShellProps = {
   onSavePageDraft: (input: {
     draftContentJson: DocseraDocumentEnvelope;
     expectedRevision: number;
+    lockToken?: string;
     pageSysId: string;
   }) => Promise<PageBodySaveResult>;
-  onStatusChange: (state: { flush?: () => Promise<boolean>; isDirty: boolean; isSaving: boolean; status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved" }) => void;
+  onAcquirePageEditLock?: (input: { lockToken?: string; pageSysId: string }) => Promise<PageEditLockAcquireResult>;
+  onHeartbeatPageEditLock?: (input: { lockToken: string; pageSysId: string }) => Promise<PageEditLockHeartbeatResult>;
+  onRefreshPageEditLock?: (input: { lockToken?: string; pageSysId: string }) => Promise<PageEditLockStatusResult>;
+  onReleasePageEditLock?: (input: { keepalive?: boolean; lockToken: string; pageSysId: string }) => Promise<PageEditLockReleaseResult>;
+  onStatusChange: (state: {
+    flush?: () => Promise<boolean>;
+    release?: (options?: { keepalive?: boolean }) => Promise<void>;
+    isDirty: boolean;
+    isSaving: boolean;
+    status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
+  }) => void;
   onSelectPage: (pageId: string) => void;
   onShowChildPageCreate: (parentPageId: string, parentPageTitle: string) => void;
   onShowCreatePage: () => void;
@@ -136,6 +154,10 @@ export function WorkspaceShell({
   onReturnToLive,
   onRetryEditor,
   onSavePageDraft,
+  onAcquirePageEditLock,
+  onHeartbeatPageEditLock,
+  onRefreshPageEditLock,
+  onReleasePageEditLock,
   onStatusChange,
   onSelectPage,
   onShowChildPageCreate,
@@ -307,6 +329,10 @@ export function WorkspaceShell({
           onReturnToLive={onReturnToLive}
           onRetryEditor={onRetryEditor}
           onSavePageDraft={onSavePageDraft}
+          onAcquirePageEditLock={onAcquirePageEditLock}
+          onHeartbeatPageEditLock={onHeartbeatPageEditLock}
+          onRefreshPageEditLock={onRefreshPageEditLock}
+          onReleasePageEditLock={onReleasePageEditLock}
           onStatusChange={onStatusChange}
           onShowCreatePage={onShowCreatePage}
           page={selectedPageViewForShell}

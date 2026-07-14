@@ -140,6 +140,7 @@ export type PageBodySaveInput = {
   workspaceSysId?: string;
   pageSysId?: string;
   pageSlug?: string;
+  lockToken?: string;
   draftBodyText?: string;
   draftContentJson?: PageContentInput;
   expectedRevision?: number;
@@ -151,7 +152,7 @@ export type PageBodySaveSucceeded = {
 };
 
 export type PageBodySaveFailed = {
-  code?: "capacity" | "conflict" | "failed" | "forbidden" | "invalid" | "network" | "persistence_invariant" | "transient";
+  code?: "capacity" | "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "network" | "persistence_invariant" | "transient";
   currentRevision?: number;
   errorMessage: string;
   retryable?: boolean;
@@ -198,6 +199,54 @@ export type PageDeleteFailed = {
 
 export type PageDeleteResult = PageDeleteSucceeded | PageDeleteFailed;
 
+export type PageEditLockReferenceInput = {
+  workspaceSlug?: string;
+  workspaceSysId?: string;
+  pageSysId?: string;
+  pageSlug?: string;
+  lockToken?: string;
+};
+
+export type PageEditLockHeld = {
+  heartbeatIntervalMs: number;
+  lockToken: string;
+  staleAfterMs: number;
+  state: "held";
+};
+
+export type PageEditLockUnlocked = {
+  state: "unlocked";
+};
+
+export type PageEditLockLocked = {
+  holderDisplayName: string | null;
+  sameUserDifferentSession: boolean;
+  state: "locked";
+};
+
+export type PageEditLockLost = {
+  errorMessage: string;
+  holderDisplayName: string | null;
+  sameUserDifferentSession: boolean;
+  state: "lost";
+};
+
+export type PageEditLockReleased = {
+  state: "released";
+};
+
+export type PageEditLockFailed = {
+  code?: "failed" | "forbidden" | "invalid" | "network" | "persistence_invariant" | "transient";
+  errorMessage: string;
+  retryable?: boolean;
+  state: "failed";
+};
+
+export type PageEditLockStatusResult = PageEditLockHeld | PageEditLockLocked | PageEditLockUnlocked | PageEditLockLost | PageEditLockFailed;
+export type PageEditLockAcquireResult = PageEditLockHeld | PageEditLockLocked | PageEditLockFailed;
+export type PageEditLockHeartbeatResult = PageEditLockHeld | PageEditLockLost | PageEditLockFailed;
+export type PageEditLockReleaseResult = PageEditLockReleased | PageEditLockLost | PageEditLockFailed;
+
 export type WorkspaceCreateSucceeded = {
   state: "succeeded";
   workspace: WorkspaceViewRecord;
@@ -229,6 +278,10 @@ export type ServiceNowClient = {
   createWorkspace: (input: WorkspaceCreateInput) => Promise<WorkspaceCreateResult>;
   getWorkspaceProvisioningStatus: (statusPath: string) => Promise<WorkspaceCreateResult>;
   createPage: (input: PageCreateInput) => Promise<PageCreateResult>;
+  getPageEditLockStatus: (input: PageEditLockReferenceInput) => Promise<PageEditLockStatusResult>;
+  acquirePageEditLock: (input: PageEditLockReferenceInput) => Promise<PageEditLockAcquireResult>;
+  heartbeatPageEditLock: (input: PageEditLockReferenceInput) => Promise<PageEditLockHeartbeatResult>;
+  releasePageEditLock: (input: PageEditLockReferenceInput & { keepalive?: boolean }) => Promise<PageEditLockReleaseResult>;
   savePageBody: (input: PageBodySaveInput) => Promise<PageBodySaveResult>;
   savePageSettings: (input: PageSettingsSaveInput) => Promise<PageSettingsSaveResult>;
   deletePage: (input: PageDeleteInput) => Promise<PageDeleteResult>;

@@ -2218,6 +2218,10 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   white-space: nowrap;
 }
 
+.docsera-header__save-status--empty {
+  visibility: hidden;
+}
+
 .docsera-main__empty-action {
   display: inline-flex;
   align-items: center;

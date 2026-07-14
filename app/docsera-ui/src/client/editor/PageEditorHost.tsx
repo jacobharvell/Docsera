@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { DocseraDocumentEnvelope } from "../../shared/editor/document";
-import type { PageBodySaveResult } from "../shared/types/docsera";
+import type {
+  PageBodySaveResult,
+  PageEditLockAcquireResult,
+  PageEditLockHeartbeatResult,
+  PageEditLockReleaseResult,
+  PageEditLockStatusResult
+} from "../shared/types/docsera";
 import type { EditorOutlineItem } from "./documentOutline";
 
 export type PageEditorHostFailure = {
@@ -19,9 +25,20 @@ type PageEditorHostProps = {
   onSaveDraft: (input: {
     draftContentJson: DocseraDocumentEnvelope;
     expectedRevision: number;
+    lockToken?: string;
     pageSysId: string;
   }) => Promise<PageBodySaveResult>;
-  onStatusChange: (state: { flush?: () => Promise<boolean>; isDirty: boolean; isSaving: boolean; status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved" }) => void;
+  onAcquireEditLock?: (input: { lockToken?: string; pageSysId: string }) => Promise<PageEditLockAcquireResult>;
+  onHeartbeatEditLock?: (input: { lockToken: string; pageSysId: string }) => Promise<PageEditLockHeartbeatResult>;
+  onRefreshEditLock?: (input: { lockToken?: string; pageSysId: string }) => Promise<PageEditLockStatusResult>;
+  onReleaseEditLock?: (input: { keepalive?: boolean; lockToken: string; pageSysId: string }) => Promise<PageEditLockReleaseResult>;
+  onStatusChange: (state: {
+    flush?: () => Promise<boolean>;
+    release?: (options?: { keepalive?: boolean }) => Promise<void>;
+    isDirty: boolean;
+    isSaving: boolean;
+    status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
+  }) => void;
   pageSysId: string;
   sessionKey: string;
   theme: "dark" | "light";
@@ -40,10 +57,7 @@ export function PageEditorHost(props: PageEditorHostProps) {
   const runtimeHandleRef = useRef<import("./PageEditorHostRuntime").PageEditorHostRuntimeHandle | null>(null);
   const runtimeModuleRef = useRef<RuntimeModule | null>(null);
   const latestPropsRef = useRef(props);
-  const runtimeSessionKey = useMemo(
-    () => `${props.sessionKey}:${props.canEdit ? "editable" : "readonly"}`,
-    [props.canEdit, props.sessionKey]
-  );
+  const runtimeSessionKey = useMemo(() => props.sessionKey, [props.sessionKey]);
 
   latestPropsRef.current = props;
 
@@ -57,6 +71,10 @@ export function PageEditorHost(props: PageEditorHostProps) {
         currentProps.onReadyStateChange?.(true);
       },
       onOutlineChange: currentProps.onOutlineChange,
+      onAcquireEditLock: currentProps.onAcquireEditLock,
+      onHeartbeatEditLock: currentProps.onHeartbeatEditLock,
+      onRefreshEditLock: currentProps.onRefreshEditLock,
+      onReleaseEditLock: currentProps.onReleaseEditLock,
       onRuntimeError: () => {
         currentProps.onReadyStateChange?.(false);
         currentProps.onError({
@@ -140,8 +158,12 @@ export function PageEditorHost(props: PageEditorHostProps) {
     props.initialEnvelope,
     props.initialRevision,
     props.onAccessLost,
+    props.onAcquireEditLock,
     props.onError,
+    props.onHeartbeatEditLock,
     props.onOutlineChange,
+    props.onRefreshEditLock,
+    props.onReleaseEditLock,
     props.onSaveDraft,
     props.onStatusChange,
     props.pageSysId,

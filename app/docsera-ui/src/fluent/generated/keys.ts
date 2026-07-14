@@ -19,9 +19,29 @@ declare global {
                         id: 'b523541000134b7ba376fb9302a1857f'
                         deleted: true
                     }
+                    'docsera-page-edit-lock-cleanup': {
+                        table: 'sysauto_script'
+                        id: '06461d4fa9594dcb8274d639163414eb'
+                    }
                     'docsera-runtime-api': {
                         table: 'sys_ws_definition'
                         id: '814e0e79e0734df7af652df1e048a18f'
+                    }
+                    'docsera-runtime-page-lock-acquire-post': {
+                        table: 'sys_ws_operation'
+                        id: 'ff6de44fafc74757a38a033a535a5f8d'
+                    }
+                    'docsera-runtime-page-lock-heartbeat-post': {
+                        table: 'sys_ws_operation'
+                        id: '8e1f70f25d914d4cb23e71c3684a17a0'
+                    }
+                    'docsera-runtime-page-lock-release-post': {
+                        table: 'sys_ws_operation'
+                        id: '59b2d849d6094387976dee26f8140d92'
+                    }
+                    'docsera-runtime-page-lock-status-post': {
+                        table: 'sys_ws_operation'
+                        id: '03f65fabd7744fc8a8da96d1415206d8'
                     }
                     'docsera-runtime-pages-delete': {
                         table: 'sys_ws_operation'
@@ -83,6 +103,22 @@ declare global {
                         table: 'sys_module'
                         id: '08f43b579ccb43b99e77dc804e52fed1'
                     }
+                    'src_server_api_docsera-runtime-page-lock-acquire_ts': {
+                        table: 'sys_module'
+                        id: 'bccccfcba4244a409ac9672ab472fd2f'
+                    }
+                    'src_server_api_docsera-runtime-page-lock-heartbeat_ts': {
+                        table: 'sys_module'
+                        id: '96b7005b2bef4402bb799a7b42fbfbaf'
+                    }
+                    'src_server_api_docsera-runtime-page-lock-release_ts': {
+                        table: 'sys_module'
+                        id: '411ed2abc33342c98883eee1d08a02b9'
+                    }
+                    'src_server_api_docsera-runtime-page-lock-status_ts': {
+                        table: 'sys_module'
+                        id: '34628e57ad764459a8b720847e9b8b4f'
+                    }
                     'src_server_api_docsera-runtime-page-save_ts': {
                         table: 'sys_module'
                         id: '9f7c1b2a3d4e4f6091a2b3c4d5e6f708'
@@ -106,6 +142,18 @@ declare global {
                     'src_server_api_docsera-runtime-workspaces_ts': {
                         table: 'sys_module'
                         id: 'd9bb2f597b564a9ab74fab37b5e777e4'
+                    }
+                    'src_server_page-locks_pageEditLockService_ts': {
+                        table: 'sys_module'
+                        id: '307faf9115f34bb1b6509e5d447d7094'
+                    }
+                    'src_server_page-locks_serverPageEditLockDomain_ts': {
+                        table: 'sys_module'
+                        id: '3575ab2ac63d4c77a8c072d2d6f615d8'
+                    }
+                    'src_server_page-locks_serviceNowPageEditLocks_ts': {
+                        table: 'sys_module'
+                        id: '63ccc0a121fd4796a894f11359ed0e0a'
                     }
                     src_server_pages_serverEditorDocument_ts: {
                         table: 'sys_module'
@@ -142,6 +190,10 @@ declare global {
                     src_server_pages_serviceNowPageSettings_ts: {
                         table: 'sys_module'
                         id: '6e50ac65fad94c23bc09b8c678a0e11c'
+                    }
+                    'src_server_scheduled-scripts_docsera-page-edit-lock-cleanup_js': {
+                        table: 'sys_module'
+                        id: '7d58605097d6412bb5ec0bf4d57571c5'
                     }
                     src_server_workspaces_serverWorkspaceDomain_ts: {
                         table: 'sys_module'
@@ -188,6 +240,14 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_dictionary'
+                        id: '0409e4aecc534a648b0a268604e7c864'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
+                            element: 'verifier_digest'
+                        }
+                    },
+                    {
                         table: 'sys_ui_page'
                         id: '053e258583814373a3f0ef19199023b4'
                         key: {
@@ -200,6 +260,15 @@ declare global {
                         deleted: true
                         key: {
                             name: 'x_82900_docsera_docsera_sdk_runtime.do - BYOUI Files'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '0cb7d10157b54686923d1d67aa42904e'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
+                            element: 'last_seen_on'
+                            language: 'en'
                         }
                     },
                     {
@@ -234,6 +303,13 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_page'
                             element: 'active'
+                        }
+                    },
+                    {
+                        table: 'sys_db_object'
+                        id: '14e1a92bab0641dda3aa21ddab2ab9d3'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
                         }
                     },
                     {
@@ -347,10 +423,25 @@ declare global {
                     },
                     {
                         table: 'sys_dictionary'
+                        id: '2607704b7aaa41e79d3d971de5b8d766'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
+                            element: 'page'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
                         id: '29ffcb3bd3b24e57a1ca99032bc82667'
                         key: {
                             name: 'x_82900_docsera_page'
                             element: 'published_body_text'
+                        }
+                    },
+                    {
+                        table: 'ua_table_licensing_config'
+                        id: '2a6a87d0335642efbbf0d75159c8cc78'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
                         }
                     },
                     {
@@ -483,6 +574,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_documentation'
+                        id: '4ba9d8f730e9431985e5e5391703a53d'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
+                            element: 'page_key'
+                            language: 'en'
+                        }
+                    },
+                    {
                         table: 'sys_choice'
                         id: '4c145c03bc1a45fe8584d76876fe95e2'
                         key: {
@@ -575,6 +675,14 @@ declare global {
                     },
                     {
                         table: 'sys_dictionary'
+                        id: '583cbd9b2e59465989e5d6431f8b404d'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
+                            element: 'last_seen_on'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
                         id: '58c7cd5b8cfa4e178c8ff1660af98e5f'
                         key: {
                             name: 'x_82900_docsera_page'
@@ -659,11 +767,28 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_dictionary'
+                        id: '6f604986306349ccb54830ffb2ad17d7'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
+                            element: 'holder_user'
+                        }
+                    },
+                    {
                         table: 'sys_documentation'
                         id: '6fe76cb454f348d3a729093f6c040054'
                         key: {
                             name: 'x_82900_docsera_page'
                             element: 'draft_body_text'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '7006ff2125f0454f945ed07d76d75765'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
+                            element: 'verifier_digest'
                             language: 'en'
                         }
                     },
@@ -715,6 +840,15 @@ declare global {
                             name: 'x_82900_docsera_page'
                             element: 'publication_state'
                             value: 'draft'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '77224652bbd64e918bf8e05e5110f550'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
+                            element: 'NULL'
+                            language: 'en'
                         }
                     },
                     {
@@ -834,6 +968,14 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_index'
+                        id: '8d8fab0b4e0d4ea7b1d8164b42eb65f8'
+                        key: {
+                            logical_table_name: 'x_82900_docsera_page_edit_lock'
+                            col_name_string: 'page_key'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: '8ec1b7d9d77c49ef9a445e1def3eed7c'
                         key: {
@@ -872,6 +1014,14 @@ declare global {
                             name: 'x_82900_docsera_workspace_provision_request'
                             element: 'workspace_status'
                             value: 'inactive'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '964e613756434b978e41e7ce97aabf8c'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
+                            element: 'acquired_on'
                         }
                     },
                     {
@@ -1123,6 +1273,14 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_index'
+                        id: 'b8197bafe3364a82a80a7bf153591ca5'
+                        key: {
+                            logical_table_name: 'x_82900_docsera_page_edit_lock'
+                            col_name_string: 'last_seen_on'
+                        }
+                    },
+                    {
                         table: 'sys_documentation'
                         id: 'b8522b150da14f7890a2159465bb1978'
                         key: {
@@ -1278,6 +1436,23 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_documentation'
+                        id: 'cf04971a6f704d77ab59416bca8d482d'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
+                            element: 'workspace'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'd13ad2d25b94426da1ba6b2e46338696'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
+                            element: 'page_key'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: 'd25c2ee91fd7406d90c59c0c0ce84981'
                         key: {
@@ -1301,6 +1476,24 @@ declare global {
                             name: 'x_82900_docsera_workspace_provision_request'
                             element: 'state'
                             value: 'processing'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd57d6f31835e4d9bbba33ce7ab49974f'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
+                            element: 'holder_user'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd64c376086924484ad1d42151d0a9e59'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
+                            element: 'acquired_on'
+                            language: 'en'
                         }
                     },
                     {
@@ -1406,6 +1599,15 @@ declare global {
                     },
                     {
                         table: 'sys_documentation'
+                        id: 'e2b48b89f7ae42b3a55694a85d287c76'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
+                            element: 'page'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
                         id: 'e4678526df0843ba8504ddecff18d3e3'
                         key: {
                             name: 'x_82900_docsera_workspace'
@@ -1448,12 +1650,28 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_dictionary'
+                        id: 'efbea1aa95674a328bdb4f002ca03a08'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
+                            element: 'NULL'
+                        }
+                    },
+                    {
                         table: 'sn_glider_source_artifact_m2m'
                         id: 'f0d51d93a14349e58288c8e9e13381c8'
                         deleted: true
                         key: {
                             application_file: '49074d350f4742d1a1dc581518fd6686'
                             source_artifact: '0b944690279d44618ced2280edd7263c'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'f2f6d0571e314139b4d64fa3028b5cdc'
+                        key: {
+                            name: 'x_82900_docsera_page_edit_lock'
+                            element: 'workspace'
                         }
                     },
                     {

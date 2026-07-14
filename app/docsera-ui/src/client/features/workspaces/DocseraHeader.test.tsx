@@ -32,7 +32,10 @@ describe("DocseraHeader save status placement", () => {
   );
 
   it("does not render save status in Live mode", () => {
-    render(<DocseraHeader {...baseProps} saveStatus={undefined} showWorkspaceMode="live" />);
+    const { container } = render(<DocseraHeader {...baseProps} saveStatus={undefined} showWorkspaceMode="live" />);
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    const placeholder = container.querySelector(".docsera-header__save-status--empty");
+    expect(placeholder).toBeInTheDocument();
+    expect(placeholder).toHaveAttribute("aria-hidden", "true");
   });
 });

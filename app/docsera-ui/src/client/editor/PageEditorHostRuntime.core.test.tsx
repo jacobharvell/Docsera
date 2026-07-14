@@ -1,0 +1,813 @@
+/* @vitest-environment jsdom */
+
+import "@testing-library/jest-dom/vitest";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import type { PageBodySaveResult } from "../shared/types/docsera";
+import { describe, expect, it, vi } from "vitest";
+import { createSupportedE2DocseraDocumentEnvelope } from "../../shared/editor/documentFixtures";
+import { getAutosaveRetryDelay } from "./PageEditorHostRuntime";
+import {
+  createEnvelopeFromDocument,
+  createSuccessPage,
+  pasteIntoEditor,
+  renderRuntime,
+  runAutosave
+} from "./PageEditorHostRuntime.testUtils";
+
+describe("PageEditorHostRuntime", () => {
+  it("defines exactly four finite automatic retry delays", () => {
+    expect([0, 1, 2, 3, 4, 5].map(getAutosaveRetryDelay)).toEqual([1500, 3000, 6000, 12000, null, null]);
+  });
+
+  it("mounts the supported E2 rich-text schema without normalizing away accepted nodes or marks", async () => {
+    const supportedEnvelope = createSupportedE2DocseraDocumentEnvelope();
+    const { editorReady, onSaveDraft } = renderRuntime({ initialEnvelope: supportedEnvelope });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    expect(editorReady[0].getJSON()).toEqual(supportedEnvelope.document);
+
+    expect(screen.queryByRole("button", { name: /Save draft/i })).not.toBeInTheDocument();
+    expect(onSaveDraft).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid initial envelope before editor mount", () => {
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    expect(() =>
+      renderRuntime({
+        initialEnvelope: {
+          schemaVersion: 1,
+          document: {
+            type: "doc",
+            content: [
+              {
+                type: "image"
+              }
+            ]
+          }
+        } as never
+      })
+    ).toThrow("valid TipTap document");
+
+    consoleErrorSpy.mockRestore();
+  });
+
+  it("exposes an editable contenteditable surface that accepts focus and TipTap document transactions", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    expect(editor.view.dom).toHaveAttribute("contenteditable", "true");
+
+    await act(async () => {
+      editor.view.dom.focus();
+    });
+
+    expect(document.activeElement).toBe(editor.view.dom);
+
+    await act(async () => {
+      editor.commands.insertContent("Hello world");
+    });
+
+    expect(editor.getJSON()).toMatchObject({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Hello world" }]
+        }
+      ]
+    });
+    expect(screen.queryByRole("button", { name: /Save draft/i })).not.toBeInTheDocument();
+  });
+
+  it("starts an empty page clean and focus, caret movement, and selection-only transactions issue zero saves", async () => {
+    const { editorReady, onSaveDraft, container } = renderRuntime();
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+    expect(editor.getJSON()).toEqual({ type: "doc", content: [{ type: "paragraph" }] });
+    fireEvent.click(container.querySelector(".ProseMirror")!);
+    await act(async () => {
+      editor.commands.focus("start", { scrollIntoView: false });
+      editor.commands.setTextSelection(1);
+    });
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(0);
+  });
+
+  it("reuses a trailing empty paragraph and appends exactly one paragraph below non-empty content", async () => {
+    const { editorReady, container } = renderRuntime();
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+    const surface = container.querySelector(".docsera-editor-runtime__surface")!;
+    fireEvent.click(surface);
+    fireEvent.click(surface);
+    expect(editor.getJSON()).toEqual({ type: "doc", content: [{ type: "paragraph" }] });
+    await act(async () => editor.commands.insertContent("First"));
+    fireEvent.click(surface);
+    fireEvent.click(surface);
+    expect(editor.getJSON()).toEqual({
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "First" }] },
+        { type: "paragraph" }
+      ]
+    });
+  });
+
+  it("renders the editor body without the old diagnostic card chrome and keeps the overlay root available", async () => {
+    const { editorReady, container, overlayRoot } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const runtimeStyle = container.querySelector("style")?.textContent ?? "";
+    expect(container.querySelector(".docsera-editor-runtime")).toBeInTheDocument();
+    expect(container.querySelector(".ProseMirror[contenteditable='true']")).toBeInTheDocument();
+    expect(container.textContent ?? "").not.toContain("The selected page is using the shared workspace draft representation.");
+    expect(container.textContent ?? "").not.toContain("Canonical TipTap content is isolated inside the production child host and saved explicitly during E2.");
+    expect(container.querySelector(".docsera-main__authoring-controls")).toBeNull();
+    expect(overlayRoot).toBeInTheDocument();
+    expect(runtimeStyle).not.toContain("padding: 22px");
+    expect(runtimeStyle).not.toContain("border-radius: 24px");
+    expect(runtimeStyle).not.toContain("box-shadow: 0 18px 48px");
+    expect(runtimeStyle).not.toContain("--docsera-editor-surface");
+    expect(runtimeStyle).not.toContain(".docsera-editor-runtime__overlay");
+    expect(runtimeStyle).not.toContain(".docsera-editor-runtime__overlay-button");
+    expect(runtimeStyle).not.toContain(".docsera-editor-runtime__save-button");
+  });
+
+  it("explicitly saves the supported E2 rich-text schema without flattening accepted structure", async () => {
+    const supportedEnvelope = createSupportedE2DocseraDocumentEnvelope();
+    const { editorReady, onSaveDraft, onStatusChange } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent(supportedEnvelope.document as never);
+    });
+
+    await runAutosave();
+
+    await waitFor(() => {
+      expect(onSaveDraft).toHaveBeenCalledTimes(1);
+    });
+
+    expect(onSaveDraft).toHaveBeenCalledWith({
+      draftContentJson: supportedEnvelope,
+      expectedRevision: 0,
+      pageSysId: "page-001"
+    });
+
+    await waitFor(() => {
+      expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saved" }));
+    });
+  });
+
+  it("preserves plain-text paste as paragraphs and auto-links supported URLs", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await pasteIntoEditor(editor, "", "First line\nhttps://example.com/docs\nSecond line");
+
+    expect(editor.getJSON()).toMatchObject({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "First line" }]
+        },
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "https://example.com/docs",
+              marks: [{ type: "link", attrs: { href: "https://example.com/docs" } }]
+            }
+          ]
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Second line" }]
+        }
+      ]
+    });
+  });
+
+  it("preserves supported rich HTML paste while stripping unsupported markup and unsafe links", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await pasteIntoEditor(
+      editor,
+      [
+        "<h2>Overview</h2>",
+        "<p><strong>Bold</strong> <em>italic</em> <s>strike</s> <code>code</code> <a href=\"https://example.com/docs\">link</a></p>",
+        "<ol start=\"3\"><li><p>Ordered item</p><ul><li><p>Nested bullet</p></li></ul></li></ol>",
+        "<ul data-type=\"taskList\"><li data-type=\"taskItem\" data-checked=\"true\"><p>Checked task</p></li></ul>",
+        "<blockquote><p>Quoted text</p></blockquote>",
+        "<pre><code class=\"language-typescript\">const value = 1;</code></pre>",
+        "<script>alert(1)</script>",
+        "<style>.bad{color:red}</style>",
+        "<p><a href=\"javascript:alert(1)\">Unsafe</a></p>"
+      ].join("")
+    );
+
+    const json = editor.getJSON();
+    expect(json).toMatchObject({
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [{ type: "text", text: "Overview" }]
+        },
+        { type: "paragraph" },
+        {
+          type: "orderedList",
+          attrs: { start: 3 },
+          content: [
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Ordered item" }]
+                },
+                {
+                  type: "bulletList",
+                  content: [
+                    {
+                      type: "listItem",
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [{ type: "text", text: "Nested bullet" }]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          type: "taskList",
+          content: [
+            {
+              type: "taskItem",
+              attrs: { checked: true },
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Checked task" }]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          type: "blockquote",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "Quoted text" }]
+            }
+          ]
+        },
+        {
+          type: "codeBlock",
+          attrs: { language: "typescript" },
+          content: [{ type: "text", text: "const value = 1;" }]
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Unsafe" }]
+        }
+      ]
+    });
+
+    const paragraph = (json.content?.[1] as { content?: Array<{ marks?: Array<{ type: string }> }> } | undefined)?.content ?? [];
+    const paragraphMarkTypes = paragraph.flatMap((node) => node.marks?.map((mark) => mark.type) ?? []);
+    expect(paragraphMarkTypes).toEqual(expect.arrayContaining(["bold", "italic", "strike", "code", "link"]));
+  });
+
+  it("keeps unsupported active and embedded markup out of canonical JSON during paste", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await pasteIntoEditor(
+      editor,
+      [
+        "<p>Safe text</p>",
+        "<img src=\"x\" onerror=\"alert(1)\">",
+        "<svg onload=\"alert(1)\"><title>Ignored</title></svg>",
+        "<math><mi>x</mi></math>",
+        "<object data=\"x\"></object>",
+        "<embed src=\"x\"></embed>",
+        "<iframe srcdoc=\"<p>bad</p>\"></iframe>",
+        "<span data-unsupported=\"yes\" style=\"color: red\">still text</span>"
+      ].join("")
+    );
+
+    const jsonValue = editor.getJSON();
+    expect(jsonValue.content?.[0]).toMatchObject({
+      type: "paragraph",
+      content: [{ type: "text", text: "Safe text" }]
+    });
+
+    const json = JSON.stringify(jsonValue);
+    expect(json).not.toContain("image");
+    expect(json).not.toContain("svg");
+    expect(json).not.toContain("math");
+    expect(json).not.toContain("object");
+    expect(json).not.toContain("embed");
+    expect(json).not.toContain("iframe");
+    expect(json).not.toContain("onerror");
+    expect(json).not.toContain("srcdoc");
+  });
+
+  it("keeps undo and redo available after an explicit save", async () => {
+    const { editorReady, onSaveDraft, onStatusChange } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Base" }]
+          }
+        ]
+      });
+    });
+
+    await act(async () => {
+      editor.commands.insertContent(" edit");
+    });
+
+    await runAutosave();
+
+    await waitFor(() => {
+      expect(onSaveDraft).toHaveBeenCalledTimes(1);
+    });
+
+    const savedState = editor.getJSON();
+
+    await act(async () => {
+      editor.commands.undo();
+    });
+
+    expect(editor.getJSON()).not.toEqual(savedState);
+
+    await act(async () => {
+      editor.commands.redo();
+    });
+
+    expect(editor.getJSON()).toEqual(savedState);
+  });
+
+  it("becomes dirty after a real TipTap transaction and does not save a clean document", async () => {
+    const { editorReady, onSaveDraft, onStatusChange } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    expect(screen.queryByRole("button", { name: /Save draft/i })).not.toBeInTheDocument();
+    expect(onSaveDraft).not.toHaveBeenCalled();
+
+    await act(async () => {
+      editor.commands.insertContent("Draft change");
+    });
+
+    expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Unsaved" }));
+    await runAutosave();
+
+    await waitFor(() => {
+      expect(onSaveDraft).toHaveBeenCalledTimes(1);
+    });
+
+    expect(onSaveDraft).toHaveBeenCalledWith({
+      draftContentJson: createEnvelopeFromDocument({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Draft change" }]
+          }
+        ]
+      }),
+      expectedRevision: 0,
+      pageSysId: "page-001"
+    });
+
+    await waitFor(() => {
+      expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saved" }));
+    });
+  });
+
+  it("keeps newer edits dirty while a save is pending and advances the revision after success", async () => {
+    let resolveSave: ((value: PageBodySaveResult) => void) | null = null;
+    const onSaveDraft = vi.fn(
+      () =>
+        new Promise<PageBodySaveResult>((resolve) => {
+          resolveSave = resolve;
+        })
+    );
+    const { editorReady, onStatusChange } = renderRuntime({ onSaveDraft });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.insertContent("First draft");
+    });
+    await runAutosave();
+
+    await waitFor(() => {
+      expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saving…" }));
+    });
+
+    await act(async () => {
+      editor.commands.insertContent(" after save begins");
+    });
+
+    expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saving…" }));
+
+    await act(async () => {
+      resolveSave?.({
+        state: "succeeded",
+        page: createSuccessPage(1)
+      });
+    });
+
+    await waitFor(() => expect(onSaveDraft).toHaveBeenCalledTimes(2));
+
+    const secondSaveCall = onSaveDraft.mock.calls[1] as unknown as [
+      {
+        expectedRevision: number;
+        pageSysId: string;
+      }
+    ];
+
+    expect(secondSaveCall?.[0]).toMatchObject({
+      expectedRevision: 1,
+      pageSysId: "page-001"
+    });
+  });
+
+  it("keeps draft content after save failures and allows retry", async () => {
+    const onSaveDraft = vi
+      .fn()
+      .mockResolvedValueOnce({
+        state: "failed",
+        code: "failed",
+        retryable: true,
+        errorMessage: "Something went wrong while saving the page body. Please try again."
+      } satisfies PageBodySaveResult)
+      .mockResolvedValueOnce({
+        state: "succeeded",
+        page: createSuccessPage(1)
+      } satisfies PageBodySaveResult);
+    const { editorReady, onStatusChange } = renderRuntime({ onSaveDraft });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.insertContent("Retry me");
+    });
+
+    await runAutosave();
+
+    await waitFor(() => expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Changes not saved" })));
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+
+    expect(editor.getJSON()).toMatchObject({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Retry me" }] }]
+    });
+
+    await act(async () => { await new Promise((resolve) => window.setTimeout(resolve, 1510)); });
+    await waitFor(() => expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saved" })));
+
+    expect(onSaveDraft).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops after four automatic retries, preserves content, and lets a new edit reset the sequence", async () => {
+    const onSaveDraft = vi.fn(async (): Promise<PageBodySaveResult> => ({
+      state: "failed",
+      code: "network",
+      retryable: true,
+      errorMessage: "Something went wrong while saving the page body. Please try again."
+    }));
+    const { editorReady, onStatusChange } = renderRuntime({ onSaveDraft });
+
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    vi.useFakeTimers();
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.insertContent("Finite retry draft");
+      await vi.advanceTimersByTimeAsync(700);
+    });
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+
+    for (const delay of [1500, 3000, 6000, 12000]) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(delay);
+      });
+    }
+    expect(onSaveDraft).toHaveBeenCalledTimes(5);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+    expect(onSaveDraft).toHaveBeenCalledTimes(5);
+    expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ isDirty: true, status: "Changes not saved" }));
+    expect(editor.getText()).toBe("Finite retry draft");
+
+    await act(async () => {
+      editor.commands.insertContent(" updated");
+      await vi.advanceTimersByTimeAsync(700);
+    });
+    expect(onSaveDraft).toHaveBeenCalledTimes(6);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1500);
+    });
+    expect(onSaveDraft).toHaveBeenCalledTimes(7);
+  });
+
+  it.each([
+    ["conflict", "conflict"],
+    ["forbidden", "forbidden"],
+    ["validation", "invalid"],
+    ["capacity", "capacity"],
+    ["invariant", "persistence_invariant"]
+  ] as const)("does not retry a terminal %s failure", async (_label, code) => {
+    const onSaveDraft = vi.fn(async (): Promise<PageBodySaveResult> => ({
+      state: "failed",
+      code,
+      retryable: false,
+      errorMessage: "Terminal save failure."
+    }));
+    const { editorReady, onAccessLost } = renderRuntime({ onSaveDraft });
+
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    vi.useFakeTimers();
+    await act(async () => {
+      editorReady[0].commands.insertContent("Terminal draft");
+      await vi.advanceTimersByTimeAsync(700);
+      await vi.advanceTimersByTimeAsync(120_000);
+    });
+
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+    expect(editorReady[0].getText()).toBe("Terminal draft");
+    expect(onAccessLost).toHaveBeenCalledTimes(code === "forbidden" ? 1 : 0);
+  });
+
+  it("keeps requests serialized and cancels a pending retry on teardown", async () => {
+    let resolveSave: ((result: PageBodySaveResult) => void) | undefined;
+    const onSaveDraft = vi.fn(
+      () =>
+        new Promise<PageBodySaveResult>((resolve) => {
+          resolveSave = resolve;
+        })
+    );
+    const { editorReady, unmount } = renderRuntime({ onSaveDraft });
+
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    vi.useFakeTimers();
+    await act(async () => {
+      editorReady[0].commands.insertContent("Serialized draft");
+      await vi.advanceTimersByTimeAsync(700);
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveSave?.({ state: "failed", code: "transient", retryable: true, errorMessage: "Try later." });
+      await Promise.resolve();
+    });
+    unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves the in-memory draft and dirty state after a conflict save failure", async () => {
+    const onAccessLost = vi.fn();
+    const onSaveDraft = vi.fn(async (): Promise<PageBodySaveResult> => ({
+      state: "failed",
+      code: "conflict",
+      currentRevision: 3,
+      errorMessage: "This draft was updated elsewhere. Refresh to load the latest revision."
+    }));
+    const { editorReady, onStatusChange } = renderRuntime({ onAccessLost, onSaveDraft });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.insertContent("Conflict draft");
+    });
+
+    await runAutosave();
+
+    await waitFor(() => expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Changes not saved" })));
+
+    expect(editor.getJSON()).toMatchObject({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Conflict draft" }] }]
+    });
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Save draft/i })).not.toBeInTheDocument();
+    expect(onAccessLost).not.toHaveBeenCalled();
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+    expect(onSaveDraft).toHaveBeenCalledWith({
+      draftContentJson: createEnvelopeFromDocument({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Conflict draft" }]
+          }
+        ]
+      }),
+      expectedRevision: 0,
+      pageSysId: "page-001"
+    });
+  });
+
+  it("suppresses duplicate overlapping explicit saves and accepts a later save after the first settles", async () => {
+    let resolveSave: ((value: PageBodySaveResult) => void) | null = null;
+    const onSaveDraft = vi.fn(
+      () =>
+        new Promise<PageBodySaveResult>((resolve) => {
+          resolveSave = resolve;
+        })
+    );
+    const { editorReady, onStatusChange } = renderRuntime({ onSaveDraft });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.insertContent("First draft");
+    });
+
+    await runAutosave();
+
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+    expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saving…" }));
+
+    await act(async () => {
+      resolveSave?.({
+        state: "succeeded",
+        page: createSuccessPage(1)
+      });
+    });
+
+    await waitFor(() => {
+      expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saved" }));
+    });
+
+    await act(async () => {
+      editor.commands.insertContent(" second draft");
+    });
+
+    await runAutosave();
+
+    await waitFor(() => {
+      expect(onSaveDraft).toHaveBeenCalledTimes(2);
+    });
+
+    const secondSaveCall = onSaveDraft.mock.calls[1] as unknown as [
+      {
+        expectedRevision: number;
+        pageSysId: string;
+      }
+    ];
+
+    expect(secondSaveCall?.[0]).toMatchObject({
+      expectedRevision: 1,
+      pageSysId: "page-001"
+    });
+  });
+
+  it("keeps forbidden saves recoverable and notifies access loss", async () => {
+    const onSaveDraft = vi.fn(async (): Promise<PageBodySaveResult> => ({
+      state: "failed",
+      code: "forbidden",
+      errorMessage: "You do not have permission to edit page bodies in this workspace."
+    }));
+    const { editorReady, onAccessLost } = renderRuntime({ onSaveDraft });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.insertContent("Forbidden draft");
+    });
+
+    await runAutosave();
+
+    await waitFor(() => {
+      expect(onAccessLost).toHaveBeenCalledTimes(1);
+    });
+    expect(editor.getJSON()).toMatchObject({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Forbidden draft" }] }]
+    });
+  });
+
+  it("preserves canonical JSON and terminal whitespace through explicit save", async () => {
+    const expectedDocument = {
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [{ type: "text", text: "Canonical title" }]
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Trailing whitespace " }]
+        }
+      ]
+    } as const;
+
+    const onSaveDraft = vi.fn(async (): Promise<PageBodySaveResult> => ({
+      state: "succeeded",
+      page: createSuccessPage(1)
+    }));
+    const { editorReady } = renderRuntime({ onSaveDraft });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent(expectedDocument as never);
+    });
+
+    await runAutosave();
+
+    await waitFor(() => {
+      expect(onSaveDraft).toHaveBeenCalledTimes(1);
+    });
+
+    expect(onSaveDraft).toHaveBeenCalledWith({
+      draftContentJson: {
+        schemaVersion: 1,
+        document: expectedDocument
+      },
+      expectedRevision: 0,
+      pageSysId: "page-001"
+    });
+  });
+});
+

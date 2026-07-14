@@ -60,6 +60,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
       workspaceSysId: cleanText(body.workspaceSysId),
       pageSysId: cleanText(body.pageSysId),
       pageSlug: cleanText(body.pageSlug),
+      lockToken: cleanText(body.lockToken),
       draftBodyText: cleanText(body.draftBodyText) || "",
       draftContentJson: body.draftContentJson,
       expectedRevision: body.expectedRevision
@@ -97,6 +98,18 @@ export async function process(request: RequestLike, response: ResponseLike) {
           retryable: false,
           message: result.errorMessage,
           currentRevision: result.currentRevision
+        }
+      });
+      return;
+    }
+
+    if (result.kind === "lock_lost") {
+      response.setStatus?.(409);
+      response.setBody({
+        error: {
+          code: "edit_lock_lost",
+          retryable: false,
+          message: result.errorMessage
         }
       });
       return;

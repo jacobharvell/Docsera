@@ -216,7 +216,14 @@ export function DocseraHeader({
           <div className="docsera-header__action-slot docsera-header__action-slot--mode">
             {mode === "workspace" && showEditModeToggle && onWorkspaceModeChange ? (
               <>
-                {saveStatus ? <span className="docsera-header__save-status" aria-live="polite" role="status">{saveStatus}</span> : null}
+                <span
+                  className={`docsera-header__save-status${saveStatus ? "" : " docsera-header__save-status--empty"}`}
+                  aria-live={saveStatus ? "polite" : undefined}
+                  aria-hidden={saveStatus ? undefined : "true"}
+                  role={saveStatus ? "status" : undefined}
+                >
+                  {saveStatus || "Saved"}
+                </span>
                 <div className="docsera-header__mode-toggle" role="group" aria-label="Workspace mode">
                   <button
                     type="button"

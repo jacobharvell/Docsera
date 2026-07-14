@@ -414,6 +414,24 @@ function createClient(overrides: Partial<ServiceNowClient> = {}): ServiceNowClie
     createPage: vi.fn(async () => {
       throw new Error("createPage should not be called");
     }),
+    getPageEditLockStatus: vi.fn(async () => ({
+      state: "unlocked" as const
+    })),
+    acquirePageEditLock: vi.fn(async () => ({
+      code: "failed" as const,
+      errorMessage: "acquirePageEditLock should not be called",
+      retryable: false,
+      state: "failed" as const
+    })),
+    heartbeatPageEditLock: vi.fn(async () => ({
+      code: "failed" as const,
+      errorMessage: "heartbeatPageEditLock should not be called",
+      retryable: false,
+      state: "failed" as const
+    })),
+    releasePageEditLock: vi.fn(async () => ({
+      state: "released" as const
+    })),
     savePageBody: vi.fn(async (): Promise<PageBodySaveResult> => ({
       state: "succeeded",
       page: createPageRecord({ draftRevision: 1 })
