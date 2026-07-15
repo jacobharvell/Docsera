@@ -365,6 +365,48 @@ export function createHeadingPairDocseraDocumentEnvelope(): DocseraDocumentEnvel
   };
 }
 
+export function createDuplicateHeadingDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
+  return {
+    schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+    document: {
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [{ type: "text", text: "Overview" }]
+        },
+        {
+          type: "heading",
+          attrs: { level: 3 },
+          content: [{ type: "text", text: "Overview" }]
+        },
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [{ type: "text", text: "Overview" }]
+        }
+      ]
+    }
+  };
+}
+
+export function createEmptyHeadingDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
+  return {
+    schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+    document: {
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: []
+        }
+      ]
+    }
+  };
+}
+
 export function createRelativeLinkDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
   return {
     schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
@@ -471,6 +513,22 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
     {
       input: createHeadingPairDocseraDocumentEnvelope(),
       label: "heading pair document",
+      expected: {
+        ok: true,
+        migratedLegacyDocument: false
+      }
+    },
+    {
+      input: createDuplicateHeadingDocseraDocumentEnvelope(),
+      label: "duplicate heading document",
+      expected: {
+        ok: true,
+        migratedLegacyDocument: false
+      }
+    },
+    {
+      input: createEmptyHeadingDocseraDocumentEnvelope(),
+      label: "empty heading document",
       expected: {
         ok: true,
         migratedLegacyDocument: false

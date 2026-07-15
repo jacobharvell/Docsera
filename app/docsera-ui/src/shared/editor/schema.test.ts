@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   createCodeBlockWhitespaceDocseraDocumentEnvelope,
   createCombinedInlineMarksDocseraDocumentEnvelope,
+  createDuplicateHeadingDocseraDocumentEnvelope,
+  createEmptyHeadingDocseraDocumentEnvelope,
   createNestedTaskListDocseraDocumentEnvelope,
   createSupportedE2DocseraDocumentEnvelope,
   createTaskCheckedStateDocseraDocumentEnvelope
@@ -16,7 +18,9 @@ describe("Docsera structured document validation", () => {
     ["checked task state document", createTaskCheckedStateDocseraDocumentEnvelope(true).document],
     ["unchecked task state document", createTaskCheckedStateDocseraDocumentEnvelope(false).document],
     ["code block terminal whitespace", createCodeBlockWhitespaceDocseraDocumentEnvelope().document],
-    ["combined inline marks document", createCombinedInlineMarksDocseraDocumentEnvelope().document]
+    ["combined inline marks document", createCombinedInlineMarksDocseraDocumentEnvelope().document],
+    ["duplicate heading document", createDuplicateHeadingDocseraDocumentEnvelope().document],
+    ["empty heading document", createEmptyHeadingDocseraDocumentEnvelope().document]
   ])("accepts %s at the raw validation boundary", (_label, document) => {
     expect(validateDocseraStructuredDocument(document)).toEqual({ ok: true });
   });

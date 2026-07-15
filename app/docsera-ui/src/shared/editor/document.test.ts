@@ -10,6 +10,8 @@ import {
   createDocseraDocumentFixtureCorpus,
   createCodeBlockWhitespaceDocseraDocumentEnvelope,
   createCombinedInlineMarksDocseraDocumentEnvelope,
+  createDuplicateHeadingDocseraDocumentEnvelope,
+  createEmptyHeadingDocseraDocumentEnvelope,
   createLargeCanonicalDocseraDocumentEnvelope,
   createLegacyDocseraDocument,
   createNestedTaskListDocseraDocumentEnvelope,
@@ -98,13 +100,36 @@ describe("Docsera document envelope", () => {
     ["checked task state", createTaskCheckedStateDocseraDocumentEnvelope(true)],
     ["unchecked task state", createTaskCheckedStateDocseraDocumentEnvelope(false)],
     ["code block terminal whitespace", createCodeBlockWhitespaceDocseraDocumentEnvelope()],
-    ["combined inline marks", createCombinedInlineMarksDocseraDocumentEnvelope()]
+    ["combined inline marks", createCombinedInlineMarksDocseraDocumentEnvelope()],
+    ["duplicate headings", createDuplicateHeadingDocseraDocumentEnvelope()]
   ])("round-trips %s", (_label, envelope) => {
     const parsed = parseDocseraDocument(serializeDocseraDocument(envelope));
 
     expect(parsed).toEqual({
       ok: true,
       envelope,
+      migratedLegacyDocument: false
+    });
+  });
+
+  it("canonicalizes empty headings by omitting empty content arrays", () => {
+    const envelope = createEmptyHeadingDocseraDocumentEnvelope();
+    const parsed = parseDocseraDocument(serializeDocseraDocument(envelope));
+
+    expect(parsed).toEqual({
+      ok: true,
+      envelope: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "heading",
+              attrs: { level: 2 }
+            }
+          ]
+        }
+      },
       migratedLegacyDocument: false
     });
   });

@@ -65,10 +65,30 @@ const representativeEnvelope = Object.freeze({
       {
         type: "paragraph",
         content: [
-          { type: "text", text: "Task 32 smoke validation " },
           {
             type: "text",
-            text: "link",
+            text: "Combined",
+            marks: [
+              {
+                type: "link",
+                attrs: {
+                  href: "https://example.com/docs",
+                  target: "_blank",
+                  rel: "noopener noreferrer nofollow",
+                  class: null,
+                  title: null
+                }
+              },
+              { type: "bold" },
+              { type: "italic" },
+              { type: "strike" }
+            ]
+          },
+          { type: "text", text: " inline" },
+          { type: "text", text: " code", marks: [{ type: "code" }] },
+          {
+            type: "text",
+            text: " link",
             marks: [
               {
                 type: "link",
@@ -87,6 +107,89 @@ const representativeEnvelope = Object.freeze({
         ]
       },
       {
+        type: "heading",
+        attrs: { level: 3 },
+        content: [{ type: "text", text: "Overview" }]
+      },
+      {
+        type: "heading",
+        attrs: { level: 2 },
+        content: [{ type: "text", text: "Overview" }]
+      },
+      {
+        type: "bulletList",
+        content: [
+          {
+            type: "listItem",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "Bullet item" }]
+              },
+              {
+                type: "orderedList",
+                attrs: { start: 2, type: "a" },
+                content: [
+                  {
+                    type: "listItem",
+                    content: [
+                      {
+                        type: "paragraph",
+                        content: [{ type: "text", text: "Nested ordered" }]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
+        type: "orderedList",
+        attrs: { start: 3, type: null },
+        content: [
+          {
+            type: "listItem",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "Ordered item" }]
+              },
+              {
+                type: "bulletList",
+                content: [
+                  {
+                    type: "listItem",
+                    content: [
+                      {
+                        type: "paragraph",
+                        content: [{ type: "text", text: "Nested bullet" }]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                type: "taskList",
+                content: [
+                  {
+                    type: "taskItem",
+                    attrs: { checked: false },
+                    content: [
+                      {
+                        type: "paragraph",
+                        content: [{ type: "text", text: "Nested task" }]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      {
         type: "taskList",
         content: [
           {
@@ -95,16 +198,52 @@ const representativeEnvelope = Object.freeze({
             content: [
               {
                 type: "paragraph",
-                content: [{ type: "text", text: "Representative E2 content" }]
+                content: [{ type: "text", text: "Checked task" }]
+              },
+              {
+                type: "taskList",
+                content: [
+                  {
+                    type: "taskItem",
+                    attrs: { checked: false },
+                    content: [
+                      {
+                        type: "paragraph",
+                        content: [{ type: "text", text: "Nested checked task" }]
+                      }
+                    ]
+                  }
+                ]
               }
             ]
           }
         ]
       },
       {
+        type: "blockquote",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Quoted text" }]
+          }
+        ]
+      },
+      { type: "horizontalRule" },
+      {
         type: "codeBlock",
         attrs: { language: "typescript" },
-        content: [{ type: "text", text: "const smoke = true;\n" }]
+        content: [{ type: "text", text: "const smoke = true;   \n" }]
+      },
+      {
+        type: "heading",
+        attrs: { level: 2 },
+        content: []
+      },
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Closing paragraph" }
+        ]
       }
     ]
   }

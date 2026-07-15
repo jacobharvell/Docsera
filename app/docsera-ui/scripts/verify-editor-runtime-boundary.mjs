@@ -45,11 +45,26 @@ const runtimeMap = readJson(runtimeMapPath);
 
 const hostSourceSuffix = "src/client/editor/PageEditorHost.tsx";
 const runtimeSourceSuffix = "src/client/editor/PageEditorHostRuntime.tsx";
+const readerSourceSuffix = "src/client/features/workspaces/PublishedDocumentReader.tsx";
+const workspaceMainPaneSourceSuffix = "src/client/features/workspaces/WorkspaceMainPane.tsx";
 
 const hostSourceInMain = getSourceEntry(mainMap, hostSourceSuffix);
 const hostSourceInRuntime = getSourceEntry(runtimeMap, hostSourceSuffix);
 const runtimeSourceInMain = getSourceEntry(mainMap, runtimeSourceSuffix);
 const runtimeSourceInRuntime = getSourceEntry(runtimeMap, runtimeSourceSuffix);
+const readerSourceInMain = getSourceEntry(mainMap, readerSourceSuffix);
+const workspaceMainPaneSourceInMain = getSourceEntry(mainMap, workspaceMainPaneSourceSuffix);
+
+const readerBoundaryNeedles = [
+  "TipTap",
+  "ProseMirror",
+  "@tiptap",
+  "PageEditorHostRuntime",
+  "createRoot(",
+  "EditorContent",
+  "useEditor(",
+  "mountPageEditorHostRuntime"
+];
 
 const checks = [
   {
@@ -100,6 +115,24 @@ const checks = [
   {
     label: "main.jsdbx keeps the lazy runtime boundary import path",
     ok: mainChunk.includes('import("./PageEditorHostRuntime.jsdbx")')
+  },
+  {
+    detail: readerSourceInMain?.source ?? "",
+    label: "PublishedDocumentReader source is owned by main.jsdbx",
+    ok: Boolean(readerSourceInMain)
+  },
+  {
+    label: "PublishedDocumentReader source stays TipTap/ProseMirror-free",
+    ok: Boolean(readerSourceInMain) && readerBoundaryNeedles.every((needle) => !readerSourceInMain.content.includes(needle))
+  },
+  {
+    label: "WorkspaceMainPane source uses the published reader component in Live mode",
+    ok:
+      Boolean(workspaceMainPaneSourceInMain) &&
+      workspaceMainPaneSourceInMain.content.includes("PublishedDocumentReader") &&
+      !workspaceMainPaneSourceInMain.content.includes(
+        "The selected page is using the published reader representation."
+      )
   }
 ];
 

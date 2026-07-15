@@ -2154,6 +2154,16 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   gap: 16px;
 }
 
+.docsera-main__reader a {
+  color: var(--docsera-primary);
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 0.15em;
+}
+
+.docsera-main__reader a:hover {
+  color: color-mix(in srgb, var(--docsera-primary) 84%, black);
+}
+
 .docsera-main__intro {
   display: grid;
   gap: 10px;
@@ -2436,6 +2446,10 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   line-height: 1.75;
 }
 
+.docsera-main__body {
+  margin: 0;
+}
+
 .docsera-main__body p,
 .docsera-main__section-copy {
   margin: 0;
@@ -2487,6 +2501,8 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   padding: 4px 0 4px 18px;
   border-left: 3px solid color-mix(in srgb, var(--docsera-primary) 28%, var(--docsera-border));
   color: var(--docsera-text-muted);
+  display: grid;
+  gap: 12px;
 }
 
 .docsera-main__code {
@@ -2504,6 +2520,59 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 
 .docsera-main__code code {
   font-family: inherit;
+}
+
+.docsera-main__inline-code {
+  padding: 0.14em 0.38em;
+  border: 1px solid color-mix(in srgb, var(--docsera-border) 76%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--docsera-surface-muted) 88%, transparent);
+  color: var(--docsera-text);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 0.92em;
+}
+
+.docsera-main__list--bullet,
+.docsera-main__list--ordered {
+  gap: 10px;
+}
+
+.docsera-main__list-item {
+  display: grid;
+  gap: 10px;
+}
+
+.docsera-main__task-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.docsera-main__task-item {
+  margin: 0;
+}
+
+.docsera-main__task-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.docsera-main__task-checkbox {
+  margin-top: 0.25rem;
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--docsera-primary);
+  pointer-events: none;
+}
+
+.docsera-main__task-content {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
 }
 
 .docsera-main__divider {

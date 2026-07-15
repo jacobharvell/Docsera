@@ -92,6 +92,13 @@ Transient PowerShell or CIM inspection failure must not start a second managed v
 - If root identity is unavailable or inconclusive while the pid appears live, the runner prefers not to kill a potentially unrelated process and reports that cleanup could not be safely verified.
 - If the original root is gone, cleanup may still remove descendants that remain attributable to the original root pid.
 
+## Platform Spawn Behavior
+
+- On Windows, managed stages remain attached to the invoking console.
+- The Windows spawn path uses `windowsHide: true` so a separate visible child console is not created.
+- On POSIX, stage roots continue to use detached process-group behavior.
+- The watchdog, scoped cleanup model, and owner-checked release rules stay the same across both platform paths.
+
 ## Watchdog
 
 - Each active stage gets a detached watchdog process.

@@ -639,6 +639,28 @@ function parseDurationOverride(rawValue, fallback, label) {
   return Math.floor(parsed);
 }
 
+export function buildManagedSpawnOptions({
+  platform = process.platform,
+  stdio,
+  env
+} = {}) {
+  const options = {
+    cwd: packageRoot,
+    stdio,
+    windowsHide: true
+  };
+
+  if (env) {
+    options.env = env;
+  }
+
+  if (platform !== "win32") {
+    options.detached = true;
+  }
+
+  return options;
+}
+
 async function spawnWatchdog({ rootPid, rootStartTime, runId, stageId, stageLabel, stateDir }) {
   const child = spawn(
     process.execPath,
@@ -657,12 +679,9 @@ async function spawnWatchdog({ rootPid, rootStartTime, runId, stageId, stageLabe
       "--state-dir",
       stateDir
     ],
-    {
-      cwd: packageRoot,
-      detached: true,
-      stdio: ["ignore", "inherit", "inherit", "ipc"],
-      windowsHide: true
-    }
+    buildManagedSpawnOptions({
+      stdio: ["ignore", "inherit", "inherit", "ipc"]
+    })
   );
 
   child.unref();
@@ -762,11 +781,10 @@ async function runManagedStage({
   printStageHeader(commandName, stageLabel, timeoutMs, createCommandLine(command, args));
 
   const child = spawn(command, args, {
-    cwd: packageRoot,
-    detached: true,
-    env: stageEnv,
-    stdio: ["ignore", "inherit", "inherit"],
-    windowsHide: true
+    ...buildManagedSpawnOptions({
+      env: stageEnv,
+      stdio: ["ignore", "inherit", "inherit"]
+    })
   });
   const exitPromise = new Promise((resolve) => {
     child.once("exit", (exitCode, signal) => {

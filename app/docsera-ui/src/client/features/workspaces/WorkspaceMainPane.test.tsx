@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { WorkspaceMainPane } from "./WorkspaceMainPane";
 import type { WorkspacePageView } from "./workspaceViewModels";
 
-function createPageView(breakType: "hardBreak" | "hard_break"): WorkspacePageView {
+function createPageView(): WorkspacePageView {
   return {
     id: "page-001",
     isDraftOnly: false,
@@ -38,7 +38,7 @@ function createPageView(breakType: "hardBreak" | "hard_break"): WorkspacePageVie
             type: "paragraph",
             content: [
               { type: "text", text: "Alpha" },
-              { type: breakType },
+              { type: "hardBreak" },
               { type: "text", text: "Beta" }
             ]
           }
@@ -65,11 +65,8 @@ function getEditorHost(): HTMLElement {
 }
 
 describe("WorkspaceMainPane", () => {
-  it.each([
-    ["canonical hardBreak", "hardBreak" as const],
-    ["legacy hard_break", "hard_break" as const]
-  ])("renders %s as a visible line break in the live reader", (_label, breakType) => {
-    const page = createPageView(breakType);
+  it("renders canonical hardBreak as a visible line break in the live reader", () => {
+    const page = createPageView();
     const view = render(
       <WorkspaceMainPane
         bodyState="ready"
@@ -103,17 +100,19 @@ describe("WorkspaceMainPane", () => {
     );
 
     const reader = screen.getByLabelText("Published page content");
-    expect(within(reader).getByText("Alpha")).toBeInTheDocument();
-    expect(within(reader).getByText("Beta")).toBeInTheDocument();
+    expect(reader).toHaveTextContent("AlphaBeta");
+    expect(reader).toHaveTextContent("Beta");
     expect(reader.querySelectorAll("br")).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Save draft" })).not.toBeInTheDocument();
     expect(screen.queryByText("Saved")).not.toBeInTheDocument();
+    expect(screen.queryByText("The selected page is using the published reader representation.")).not.toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
 
     view.unmount();
   });
 
   it("renders the real edit host without diagnostic card chrome and keeps the overlay root separate from the page header", async () => {
-    const page = createPageView("hardBreak");
+    const page = createPageView();
     let view!: ReturnType<typeof render>;
     await act(async () => {
       view = render(

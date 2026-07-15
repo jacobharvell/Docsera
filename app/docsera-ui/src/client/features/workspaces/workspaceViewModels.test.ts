@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { WorkspacePageRecord, WorkspaceViewRecord } from "../../shared/types/docsera";
 import {
+  createDuplicateHeadingDocseraDocumentEnvelope,
+  createEmptyHeadingDocseraDocumentEnvelope
+} from "../../../shared/editor/documentFixtures";
+import {
   buildWorkspacePageTree,
   buildWorkspacePageView,
   buildWorkspaceShellViewModel
@@ -79,6 +83,47 @@ describe("workspace view models", () => {
       }
     ]);
     expect(page.statusIndicator).toBe("Draft");
+  });
+
+  it("assigns deterministic unique anchors for duplicate headings", () => {
+    const page = buildWorkspacePageView(
+      createPage({
+        draftContentJson: createDuplicateHeadingDocseraDocumentEnvelope()
+      }),
+      "edit"
+    );
+
+    expect(page.tocItems).toEqual([
+      {
+        anchorId: "overview",
+        id: "overview",
+        level: 2,
+        title: "Overview"
+      },
+      {
+        anchorId: "overview-2",
+        id: "overview-2",
+        level: 3,
+        title: "Overview"
+      },
+      {
+        anchorId: "overview-3",
+        id: "overview-3",
+        level: 2,
+        title: "Overview"
+      }
+    ]);
+  });
+
+  it("skips empty headings so the TOC does not get a broken anchor target", () => {
+    const page = buildWorkspacePageView(
+      createPage({
+        draftContentJson: createEmptyHeadingDocseraDocumentEnvelope()
+      }),
+      "edit"
+    );
+
+    expect(page.tocItems).toEqual([]);
   });
 
   it("keeps invalid canonical documents out of the editable ready state", () => {

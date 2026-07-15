@@ -11,6 +11,7 @@ import { describe, expect, it } from "vitest";
 import {
   acquireRunLock,
   buildManagedVitestInvocation,
+  buildManagedSpawnOptions,
   getValidationLockFilePath,
   inspectProcessIdentity,
   isProcessAlive,
@@ -232,6 +233,31 @@ describe("validation-process", () => {
       "--reporter",
       "dot"
     ]);
+  });
+
+  it("keeps managed stages attached on Windows and detached on POSIX without exposing a console", () => {
+    const windowsOptions = buildManagedSpawnOptions({
+      platform: "win32",
+      stdio: ["ignore", "inherit", "inherit"]
+    });
+    expect(windowsOptions).toMatchObject({
+      cwd: packageRoot,
+      stdio: ["ignore", "inherit", "inherit"],
+      windowsHide: true
+    });
+    expect(windowsOptions).not.toHaveProperty("detached");
+
+    expect(
+      buildManagedSpawnOptions({
+        platform: "linux",
+        stdio: ["ignore", "inherit", "inherit"]
+      })
+    ).toMatchObject({
+      cwd: packageRoot,
+      detached: true,
+      stdio: ["ignore", "inherit", "inherit"],
+      windowsHide: true
+    });
   });
 
   it("preserves an explicit Vitest maxWorkers override over the managed workers flag", () => {
