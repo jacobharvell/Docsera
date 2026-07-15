@@ -94,4 +94,3 @@ The reader preserves the published document structure for supported content inst
 - The managed validation lifecycle keeps Windows stages attached to the invoking console by using `windowsHide: true`.
 - POSIX stage roots continue to use detached process-group behavior.
 - The watchdog, scoped stage-tree cleanup, and owner-checked release semantics remain unchanged.
-
