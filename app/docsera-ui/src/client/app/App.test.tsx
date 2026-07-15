@@ -174,6 +174,10 @@ function createClient(overrides: Partial<ServiceNowClient> = {}): ServiceNowClie
       errorMessage: "savePageBody should not be called in these tests",
       state: "failed"
     })),
+    publishPage: vi.fn(async () => ({
+      errorMessage: "publishPage should not be called in these tests",
+      state: "failed" as const
+    })),
     savePageSettings: vi.fn(async () => {
       throw new Error("savePageSettings should not be called in these tests");
     }),

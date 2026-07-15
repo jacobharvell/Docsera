@@ -77,8 +77,16 @@ describe("page settings service", () => {
     expect(result.kind).toBe("forbidden");
   });
 
-  it("saves title and slug changes with lowercase slug storage", async () => {
-    const savePage = vi.fn(async (page: PageRecord) => page);
+  it("saves title and slug changes with lowercase slug storage and returns the persisted record", async () => {
+    const savePage = vi.fn(async (page: PageRecord) => ({
+      ...page,
+      parentPageSysId: "page-parent-moved",
+      siblingOrder: 9,
+      publishedTitle: "Published Overview",
+      publishedSlug: "published-overview",
+      publishedSlugNormalized: "published-overview",
+      publicationState: "published_with_unpublished_changes"
+    }));
     const service = createPageSettingsService({
       evaluateWorkspaceCapabilities: () => ({
         canAdminWorkspace: false,
@@ -113,12 +121,17 @@ describe("page settings service", () => {
       expect(result.page.draftTitle).toBe("Updated Overview");
       expect(result.page.draftSlug).toBe("updated-overview");
       expect(result.page.draftSlugNormalized).toBe("updated-overview");
+      expect(result.page.parentPageSysId).toBe("page-parent-moved");
+      expect(result.page.siblingOrder).toBe(9);
+      expect(result.page.publishedTitle).toBe("Published Overview");
+      expect(result.page.publicationState).toBe("published_with_unpublished_changes");
     }
     expect(savePage).toHaveBeenCalledWith(
       expect.objectContaining({
         draftTitle: "Updated Overview",
         draftSlug: "updated-overview",
-        draftSlugNormalized: "updated-overview"
+        draftSlugNormalized: "updated-overview",
+        publicationState: "draft"
       })
     );
   });

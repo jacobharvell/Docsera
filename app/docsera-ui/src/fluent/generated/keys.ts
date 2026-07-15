@@ -63,6 +63,10 @@ declare global {
                         table: 'sys_ws_operation'
                         id: '0123141679ea4a7b9bbf5c118e10360b'
                     }
+                    'docsera-runtime-pages-publish-post': {
+                        table: 'sys_ws_operation'
+                        id: '7eeef17b41b446478278e93d9563f94f'
+                    }
                     'docsera-runtime-pages-put': {
                         table: 'sys_ws_operation'
                         id: '6ffe3ab21b874ff6b0540f5fcddb56bf'
@@ -118,6 +122,10 @@ declare global {
                     'src_server_api_docsera-runtime-page-lock-status_ts': {
                         table: 'sys_module'
                         id: '34628e57ad764459a8b720847e9b8b4f'
+                    }
+                    'src_server_api_docsera-runtime-page-publish_ts': {
+                        table: 'sys_module'
+                        id: '5ba0370ecbb5427fb7449bf1a38df3c5'
                     }
                     'src_server_api_docsera-runtime-page-save_ts': {
                         table: 'sys_module'
@@ -178,6 +186,10 @@ declare global {
                     src_server_pages_serviceNowPagePersistence_ts: {
                         table: 'sys_module'
                         id: '1980fa8f1354457e8cd75c9f3978bc1a'
+                    }
+                    src_server_pages_serviceNowPagePublishing_ts: {
+                        table: 'sys_module'
+                        id: 'f0ee5ef3e7d0486aaeeef14ea9eba876'
                     }
                     src_server_pages_serviceNowPageQueries_ts: {
                         table: 'sys_module'
@@ -285,6 +297,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_provision_request'
                             element: 'requested_by'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '1003f5c3b95e418c9211a9d8ca1c0cc6'
+                        key: {
+                            name: 'x_82900_docsera_page'
+                            element: 'published_by'
                             language: 'en'
                         }
                     },
@@ -560,6 +581,14 @@ declare global {
                     },
                     {
                         table: 'sys_dictionary'
+                        id: '49b2f68cd8c844cc894c13d36b923f37'
+                        key: {
+                            name: 'x_82900_docsera_page'
+                            element: 'published_at'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
                         id: '4ae8d8e43abc4a17b8af0d87c043b0d1'
                         key: {
                             name: 'x_82900_docsera_workspace_provision_request'
@@ -827,6 +856,14 @@ declare global {
                     },
                     {
                         table: 'sys_dictionary'
+                        id: '761058d9e09c480f84cd1ddc5cd0d6f2'
+                        key: {
+                            name: 'x_82900_docsera_page'
+                            element: 'published_by'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
                         id: '762f9d23622a4ed3b0bdf2eed566f281'
                         key: {
                             name: 'x_82900_docsera_workspace'
@@ -857,6 +894,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_page'
                             element: 'draft_content_json'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '78cf7b238a584525a4fd1a00f703b391'
+                        key: {
+                            name: 'x_82900_docsera_page'
+                            element: 'published_at'
+                            language: 'en'
                         }
                     },
                     {

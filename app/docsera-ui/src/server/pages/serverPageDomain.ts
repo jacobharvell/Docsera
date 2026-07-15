@@ -27,6 +27,9 @@ export type PageRecord = {
   publishedSlugNormalized: string | null;
   publishedContentJson: PageContentJson | null;
   publishedBodyText: string | null;
+  publishedAt?: string | null;
+  publishedBySysId?: string | null;
+  publishedByDisplayName?: string | null;
   publicationState: PagePublicationState;
   active: boolean;
 };
@@ -46,6 +49,9 @@ export type PageDraftInput = {
   publishedSlug?: string | null;
   publishedContentJson?: PageContentJson | null;
   publishedBodyText?: string | null;
+  publishedAt?: string | null;
+  publishedBySysId?: string | null;
+  publishedByDisplayName?: string | null;
   publicationState?: PagePublicationState | string | null;
   active?: boolean | null;
   sysId?: string | null;
@@ -144,6 +150,80 @@ function normalizePagePublicationState(value: unknown): PagePublicationState {
   }
 
   return PAGE_PUBLICATION_STATES.draft;
+}
+
+function canonicalizePageContentJson(value: PageContentJson | null | undefined): string {
+  if (!value) {
+    return "";
+  }
+
+  return JSON.stringify(parseServerDocument(value));
+}
+
+function hasPublishedPageSnapshot(page: Pick<PageRecord, "publishedTitle" | "publishedSlug" | "publishedContentJson" | "publishedBodyText">): boolean {
+  return Boolean(
+    cleanText(page.publishedTitle) ||
+      cleanText(page.publishedSlug) ||
+      page.publishedContentJson ||
+      cleanText(page.publishedBodyText)
+  );
+}
+
+export function hasPageDraftDifferencesFromPublished(
+  page: Pick<
+    PageRecord,
+    | "draftTitle"
+    | "draftSlug"
+    | "draftSlugNormalized"
+    | "draftContentJson"
+    | "publishedTitle"
+    | "publishedSlug"
+    | "publishedSlugNormalized"
+    | "publishedContentJson"
+    | "publishedBodyText"
+  >
+): boolean {
+  if (!hasPublishedPageSnapshot(page)) {
+    return false;
+  }
+
+  const draftTitle = cleanText(page.draftTitle);
+  const publishedTitle = cleanText(page.publishedTitle);
+  if (draftTitle !== publishedTitle) {
+    return true;
+  }
+
+  const draftSlug = cleanText(page.draftSlugNormalized || page.draftSlug).toLowerCase();
+  const publishedSlug = cleanText(page.publishedSlugNormalized || page.publishedSlug).toLowerCase();
+  if (draftSlug !== publishedSlug) {
+    return true;
+  }
+
+  return canonicalizePageContentJson(page.draftContentJson) !== canonicalizePageContentJson(page.publishedContentJson);
+}
+
+export function resolvePagePublicationState(
+  page: Pick<
+    PageRecord,
+    | "draftTitle"
+    | "draftSlug"
+    | "draftSlugNormalized"
+    | "draftContentJson"
+    | "publishedTitle"
+    | "publishedSlug"
+    | "publishedSlugNormalized"
+    | "publishedContentJson"
+    | "publishedBodyText"
+    | "publicationState"
+  >
+): PagePublicationState {
+  if (!hasPublishedPageSnapshot(page)) {
+    return PAGE_PUBLICATION_STATES.draft;
+  }
+
+  return hasPageDraftDifferencesFromPublished(page)
+    ? PAGE_PUBLICATION_STATES.publishedWithUnpublishedChanges
+    : PAGE_PUBLICATION_STATES.published;
 }
 
 export function normalizeServiceNowBoolean(value: unknown, fallback = false): boolean {
@@ -576,6 +656,9 @@ export function createPageDraft(input: PageDraftInput, retainedPages: PageSlugRe
     publishedSlugNormalized: cleanText(input.publishedSlug).toLowerCase() || null,
     publishedContentJson: input.publishedContentJson ? clonePageContentJson(input.publishedContentJson) : null,
     publishedBodyText: cleanText(input.publishedBodyText) || null,
+    publishedAt: cleanText(input.publishedAt) || null,
+    publishedBySysId: cleanText(input.publishedBySysId) || null,
+    publishedByDisplayName: cleanText(input.publishedByDisplayName) || null,
     publicationState: normalizePagePublicationState(input.publicationState),
     active: input.active !== undefined && input.active !== null ? Boolean(input.active) : true
   };
@@ -598,6 +681,9 @@ export function normalizePageRecord(row: Record<string, unknown>): PageRecord {
     publishedSlugNormalized: cleanText(row.publishedSlugNormalized) || null,
     publishedContentJson: row.publishedContentJson ? clonePageContentJson(row.publishedContentJson) : null,
     publishedBodyText: cleanText(row.publishedBodyText) || null,
+    publishedAt: cleanText(row.publishedAt) || null,
+    publishedBySysId: cleanText(row.publishedBySysId) || null,
+    publishedByDisplayName: cleanText(row.publishedByDisplayName) || null,
     publicationState: normalizePagePublicationState(row.publicationState),
     active: row.active === undefined ? true : normalizeServiceNowBoolean(row.active, true)
   };

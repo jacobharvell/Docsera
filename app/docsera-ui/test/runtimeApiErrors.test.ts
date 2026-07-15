@@ -22,17 +22,23 @@ vi.mock("../src/server/pages/serviceNowPageDraftPersistence.ts", () => ({
   createServiceNowPageBodySaveService: vi.fn()
 }));
 
+vi.mock("../src/server/pages/serviceNowPagePublishing.ts", () => ({
+  createServiceNowPagePublishService: vi.fn()
+}));
+
 vi.mock("../src/server/workspaces/serviceNowWorkspaceProvisioning.ts", () => ({
   createServiceNowWorkspaceProvisioningService: vi.fn()
 }));
 
 import { process as processCreateWorkspace } from "../src/server/api/docsera-runtime-create-workspace";
 import { process as processPageSave } from "../src/server/api/docsera-runtime-page-save";
+import { process as processPagePublish } from "../src/server/api/docsera-runtime-page-publish";
 import { process as processPages } from "../src/server/api/docsera-runtime-pages";
 import { process as processWorkspaceProvisioningStatus } from "../src/server/api/docsera-runtime-workspace-provisioning-status";
 import { process as processWorkspaces } from "../src/server/api/docsera-runtime-workspaces";
 import { createServiceNowWorkspaceCatalogService } from "../src/server/workspaces/serviceNowWorkspaceCatalog.ts";
 import { createServiceNowPageBodySaveService } from "../src/server/pages/serviceNowPageDraftPersistence.ts";
+import { createServiceNowPagePublishService } from "../src/server/pages/serviceNowPagePublishing.ts";
 import { createServiceNowPageListingService } from "../src/server/pages/serviceNowPageListing.ts";
 import { createServiceNowWorkspaceProvisioningService } from "../src/server/workspaces/serviceNowWorkspaceProvisioning.ts";
 
@@ -60,6 +66,7 @@ beforeEach(() => {
   gsError.mockClear();
   vi.mocked(createServiceNowWorkspaceCatalogService).mockReset();
   vi.mocked(createServiceNowPageBodySaveService).mockReset();
+  vi.mocked(createServiceNowPagePublishService).mockReset();
   vi.mocked(createServiceNowPageListingService).mockReset();
   vi.mocked(createServiceNowWorkspaceProvisioningService).mockReset();
 });
@@ -216,6 +223,44 @@ test("page save passes raw draft_content_json through without coercion", async (
       draftContentJson: "not-json"
     })
   );
+});
+
+test("page publish failures redact lock tokens from unexpected error logging", async () => {
+  vi.mocked(createServiceNowPagePublishService).mockReturnValue({
+    publishPage: vi.fn().mockRejectedValue(new Error("GlideRecord failed for x_82900_docsera_page"))
+  } as never);
+
+  const response = createResponseRecorder();
+
+  await processPagePublish(
+    {
+      body: {
+        data: {
+          workspaceSlug: "product-docs",
+          workspaceSysId: "workspace-001",
+          pageSysId: "page-001",
+          pageSlug: "overview",
+          lockToken: "sensitive-token",
+          expectedRevision: 4
+        }
+      }
+    },
+    response
+  );
+
+  expect(response.status).toBe(500);
+  expect(response.body).toEqual({
+    error: {
+      code: "persistence_invariant",
+      retryable: false,
+      message: "Something went wrong while publishing. Your changes were not published. Please try again."
+    }
+  });
+
+  const logEntry = String(gsError.mock.calls[0]?.[0] ?? "");
+  expect(logEntry).toContain("\"expectedRevision\":4");
+  expect(logEntry).toContain("\"hasLockToken\":true");
+  expect(logEntry).not.toContain("sensitive-token");
 });
 
 test("create workspace hides unexpected errors behind a safe message", async () => {

@@ -12,6 +12,9 @@ type MockRecordOptions = {
   draftBodyText?: unknown;
   publishedContentJson?: unknown;
   publishedBodyText?: unknown;
+  publishedAt?: unknown;
+  publishedBy?: unknown;
+  publishedByDisplayValue?: unknown;
   omitPublishedContentJson?: boolean;
   omitDraftContentJson?: boolean;
 };
@@ -22,6 +25,9 @@ function createRecord({
   draftBodyText = "",
   publishedContentJson = "",
   publishedBodyText = "",
+  publishedAt = "",
+  publishedBy = "",
+  publishedByDisplayValue = "",
   omitPublishedContentJson = false,
   omitDraftContentJson = false
 }: MockRecordOptions) {
@@ -54,13 +60,27 @@ function createRecord({
           return omitPublishedContentJson ? undefined : publishedContentJson;
         case "published_body_text":
           return publishedBodyText;
+        case "published_at":
+          return publishedAt;
+        case "published_by":
+          return publishedBy;
         case "active":
           return activeValue;
         default:
           return "";
       }
     },
-    getDisplayValue: () => ""
+    getDisplayValue: (fieldName: string) => {
+      if (fieldName === "published_by") {
+        return publishedByDisplayValue;
+      }
+
+      if (fieldName === "published_at") {
+        return publishedAt;
+      }
+
+      return "";
+    }
   };
 }
 
@@ -79,6 +99,21 @@ describe("page record mapping", () => {
     expect(page.sysId).toBe("page-001");
     expect(page.draftTitle).toBe("Overview");
     expect(page.draftContentJson).toEqual(createEmptyDocseraDocumentEnvelope());
+  });
+
+  it("maps published actor and timestamp metadata from the record", () => {
+    const page = mapPageRecord(
+      createRecord({
+        activeValue: true,
+        publishedAt: "2026-07-15 09:30:00",
+        publishedBy: "user-123",
+        publishedByDisplayValue: "Priya Writer"
+      })
+    );
+
+    expect(page.publishedAt).toBe("2026-07-15 09:30:00");
+    expect(page.publishedBySysId).toBe("user-123");
+    expect(page.publishedByDisplayName).toBe("Priya Writer");
   });
 
   it("rejects an empty persisted draft_content_json string", () => {

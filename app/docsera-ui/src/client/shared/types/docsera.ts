@@ -75,6 +75,9 @@ export type WorkspacePageRecord = {
   publishedSlugNormalized: string | null;
   publishedContentJson: unknown | null;
   publishedBodyText: string | null;
+  publishedAt?: string | null;
+  publishedBySysId?: string | null;
+  publishedByDisplayName?: string | null;
   publicationState: PagePublicationState;
   active?: boolean;
 };
@@ -160,6 +163,30 @@ export type PageBodySaveFailed = {
 };
 
 export type PageBodySaveResult = PageBodySaveSucceeded | PageBodySaveFailed;
+
+export type PagePublishInput = {
+  workspaceSlug?: string;
+  workspaceSysId?: string;
+  pageSysId?: string;
+  pageSlug?: string;
+  lockToken?: string;
+  expectedRevision?: number;
+};
+
+export type PagePublishSucceeded = {
+  page: WorkspacePageRecord;
+  state: "succeeded";
+};
+
+export type PagePublishFailed = {
+  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "network" | "persistence_invariant" | "transient";
+  currentRevision?: number;
+  errorMessage: string;
+  retryable?: boolean;
+  state: "failed";
+};
+
+export type PagePublishResult = PagePublishSucceeded | PagePublishFailed;
 
 export type PageSettingsSaveInput = {
   workspaceSlug: string;
@@ -283,6 +310,7 @@ export type ServiceNowClient = {
   heartbeatPageEditLock: (input: PageEditLockReferenceInput) => Promise<PageEditLockHeartbeatResult>;
   releasePageEditLock: (input: PageEditLockReferenceInput & { keepalive?: boolean }) => Promise<PageEditLockReleaseResult>;
   savePageBody: (input: PageBodySaveInput) => Promise<PageBodySaveResult>;
+  publishPage: (input: PagePublishInput) => Promise<PagePublishResult>;
   savePageSettings: (input: PageSettingsSaveInput) => Promise<PageSettingsSaveResult>;
   deletePage: (input: PageDeleteInput) => Promise<PageDeleteResult>;
 };

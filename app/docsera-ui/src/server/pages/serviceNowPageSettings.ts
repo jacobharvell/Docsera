@@ -3,11 +3,12 @@ import { DOCSERA_WORKSPACE_TABLE, type WorkspaceRecord } from "../workspaces/ser
 import { evaluateCurrentUserWorkspaceCapabilities } from "../workspaces/serviceNowWorkspaceCapabilities.ts";
 import { mapWorkspaceRecord } from "../workspaces/serviceNowWorkspaceRecords.ts";
 import { loadWorkspaceBySlug, listWorkspacePages } from "./serviceNowPageQueries.ts";
-import { deletePageRecord, savePageRecord } from "./serviceNowPagePersistence.ts";
+import { deletePageRecord, savePageSettingsRecord } from "./serviceNowPagePersistence.ts";
 import type { PageRecord } from "./serverPageDomain.ts";
 import {
   collectPageSubtreeSysIds,
   pickNextVisiblePageAfterDelete,
+  resolvePagePublicationState,
   validatePageSettingsSlug,
   validatePageSettingsTitle
 } from "./serverPageDomain.ts";
@@ -113,7 +114,7 @@ function findPageBySysId(pages: PageRecord[], pageSysId: string): PageRecord | n
 }
 
 function normalizePageSettingsResult(page: PageRecord): Promise<PageRecord> {
-  return savePageRecord(page);
+  return savePageSettingsRecord(page);
 }
 
 export function createPageSettingsService(dependencies: PageSettingsDependencies) {
@@ -216,11 +217,15 @@ export function createPageSettingsService(dependencies: PageSettingsDependencies
         };
       }
 
-      const savedPage = await dependencies.savePage({
+      const nextPage = {
         ...currentPage,
         draftTitle: titleValidation.value,
         draftSlug: slugValidation.normalizedValue,
         draftSlugNormalized: slugValidation.normalizedValue
+      };
+      const savedPage = await dependencies.savePage({
+        ...nextPage,
+        publicationState: resolvePagePublicationState(nextPage)
       });
 
       return {

@@ -54,6 +54,9 @@ export function mapPageRecord(record: {
     publishedSlugNormalized: cleanText(record.getValue("published_slug_normalized")) || null,
     publishedContentJson: parseOptionalPersistedContentJson(record.getValue("published_content_json")),
     publishedBodyText: cleanText(record.getValue("published_body_text")) || null,
+    publishedAt: cleanText(record.getDisplayValue("published_at")) || cleanText(record.getValue("published_at")) || null,
+    publishedBySysId: cleanText(record.getValue("published_by")) || null,
+    publishedByDisplayName: cleanText(record.getDisplayValue("published_by")) || null,
     publicationState: cleanText(record.getValue("publication_state")) || "draft",
     active: normalizeServiceNowBoolean(record.getValue("active"), true)
   });

@@ -106,6 +106,55 @@ describe("page body save service", () => {
     }
   });
 
+  it("marks a previously published page as having unpublished changes while leaving published fields untouched", async () => {
+    const savePage = vi.fn(async (page: PageRecord) => page);
+    const service = createPageBodySaveService({
+      evaluateWorkspaceCapabilities: () => ({
+        canAdminWorkspace: false,
+        canEditWorkspace: true,
+        canManageWorkspaceMembers: false,
+        canViewWorkspace: true
+      }),
+      loadWorkspaceBySlug: async () => createWorkspace(),
+      loadWorkspaceBySysId: async () => createWorkspace(),
+      listWorkspacePages: async () => [
+        createPage({
+          draftRevision: 2,
+          draftTitle: "Overview Draft",
+          draftSlug: "overview-draft",
+          draftSlugNormalized: "overview-draft",
+          draftContentJson: createSupportedE2DocseraDocumentEnvelope(),
+          draftBodyText: "Draft body",
+          publishedTitle: "Overview",
+          publishedSlug: "overview",
+          publishedSlugNormalized: "overview",
+          publishedContentJson: createSupportedE2DocseraDocumentEnvelope(),
+          publishedBodyText: "Published body",
+          publicationState: "published"
+        })
+      ],
+      savePageDraft: savePage
+    });
+
+    const result = await service.savePageBody({
+      workspaceSlug: "product-docs",
+      pageSysId: "page-001",
+      expectedRevision: 2,
+      draftBodyText: "Updated draft body"
+    });
+
+    expect(result.kind).toBe("succeeded");
+    expect(savePage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        publicationState: "published_with_unpublished_changes",
+        publishedTitle: "Overview",
+        publishedSlug: "overview",
+        publishedBodyText: "Published body"
+      }),
+      2
+    );
+  });
+
   it("rejects a stale expected revision without writing", async () => {
     const savePage = vi.fn(async (page: PageRecord) => page);
     const service = createPageBodySaveService({

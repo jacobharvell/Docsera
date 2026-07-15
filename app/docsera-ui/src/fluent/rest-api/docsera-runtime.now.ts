@@ -5,6 +5,7 @@ import { process as deletePageAction } from "../../server/api/docsera-runtime-pa
 import { process as deletePage } from "../../server/api/docsera-runtime-page-delete";
 import { process as acquirePageEditLock } from "../../server/api/docsera-runtime-page-lock-acquire";
 import { process as heartbeatPageEditLock } from "../../server/api/docsera-runtime-page-lock-heartbeat";
+import { process as publishPage } from "../../server/api/docsera-runtime-page-publish";
 import { process as releasePageEditLock } from "../../server/api/docsera-runtime-page-lock-release";
 import { process as pageEditLockStatus } from "../../server/api/docsera-runtime-page-lock-status";
 import { process as savePage } from "../../server/api/docsera-runtime-page-save";
@@ -88,6 +89,16 @@ RestApi({
       produces: "application/json",
       shortDescription: "Persist draft body changes to an existing workspace page record.",
       script: savePage
+    },
+    {
+      $id: Now.ID["docsera-runtime-pages-publish-post"],
+      name: "pages_publish",
+      path: "/pages/publish",
+      method: "POST",
+      consumes: "application/json",
+      produces: "application/json",
+      shortDescription: "Promote the current persisted draft revision into the reader-facing published page state.",
+      script: publishPage
     },
     {
       $id: Now.ID["docsera-runtime-pages-put"],

@@ -72,5 +72,13 @@ describe("docsera page schema contract", () => {
       columnFactory: "StringColumn",
       maxLength: 4000
     });
+    expect(fieldContracts.get("published_at")).toEqual({
+      columnFactory: "DateTimeColumn",
+      maxLength: null
+    });
+    expect(fieldContracts.get("published_by")).toEqual({
+      columnFactory: "ReferenceColumn",
+      maxLength: null
+    });
   });
 });

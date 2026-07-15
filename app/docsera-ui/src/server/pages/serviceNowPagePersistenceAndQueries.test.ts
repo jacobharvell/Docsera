@@ -218,7 +218,15 @@ vi.mock("@servicenow/glide", () => ({
 import type { PageRecord } from "./serverPageDomain";
 import { parseServerDocument } from "./serverEditorDocument";
 import { DOCSERA_PAGE_TABLE } from "./serverPageDomain";
-import { deletePageRecord, savePageDraftRecord, savePageRecord } from "./serviceNowPagePersistence";
+import {
+  buildPublishedPageRecord,
+  createPageBodyContentJsonFromText,
+  deletePageRecord,
+  savePageDraftRecord,
+  savePageRecord,
+  savePageSettingsRecord,
+  savePublishedPageRecord
+} from "./serviceNowPagePersistence";
 import { listWorkspacePages } from "./serviceNowPageQueries";
 
 function createPage(overrides: Partial<PageRecord> = {}): PageRecord {
@@ -250,6 +258,16 @@ beforeEach(() => {
   glideMock.reset();
 });
 
+function updateStoredPage(pageSysId: string, updater: (record: InstanceType<typeof glideMock.GlideRecord>) => void) {
+  const record = new glideMock.GlideRecord(DOCSERA_PAGE_TABLE);
+  if (!record.get("sys_id", pageSysId)) {
+    throw new Error("Expected saved page row.");
+  }
+
+  updater(record);
+  record.update();
+}
+
 describe("single-session draft saves", () => {
   it("persists only the accepted draft fields, advances the draft revision, and leaves published fields untouched", async () => {
     const persisted = await savePageRecord(
@@ -277,7 +295,8 @@ describe("single-session draft saves", () => {
       draft_revision: revision + 1,
       draft_body_text: "First",
       published_title: "Published title",
-      published_body_text: "Published body"
+      published_body_text: "Published body",
+      publication_state: "published_with_unpublished_changes"
     });
   });
 
@@ -303,6 +322,116 @@ describe("single-session draft saves", () => {
     expect(stale).toBeNull();
   });
 
+  it("publishes the persisted draft snapshot without changing hierarchy, order, or draft revision", async () => {
+    const persisted = await savePageRecord(
+      createPage({
+        draftRevision: 4,
+        parentPageSysId: "page-parent",
+        siblingOrder: 3,
+        draftTitle: "Overview Updated",
+        draftSlug: "overview-updated",
+        draftSlugNormalized: "overview-updated",
+        draftContentJson: createPageBodyContentJsonFromText("Draft body"),
+        draftBodyText: "Draft body",
+        publishedTitle: "Overview",
+        publishedSlug: "overview",
+        publishedSlugNormalized: "overview",
+        publishedContentJson: createPageBodyContentJsonFromText("Published body"),
+        publishedBodyText: "Published body",
+        publicationState: "published_with_unpublished_changes"
+      })
+    );
+
+    const publishCandidate = buildPublishedPageRecord(persisted, {
+      publishedAt: "2026-07-15 09:30:00",
+      publishedByDisplayName: "Priya Writer",
+      publishedBySysId: "user-123"
+    });
+    updateStoredPage(persisted.sysId ?? "", (record) => {
+      record.setValue("parent_page", "page-parent-moved");
+      record.setValue("sibling_order", "7");
+      record.setValue("draft_title", "Overview Renamed After Candidate");
+      record.setValue("draft_slug", "overview-renamed-after-candidate");
+      record.setValue("draft_slug_normalized", "overview-renamed-after-candidate");
+      record.setValue("active", false);
+    });
+    const published = await savePublishedPageRecord(publishCandidate, 4);
+
+    expect(published).toMatchObject({
+      draftRevision: 4,
+      parentPageSysId: "page-parent-moved",
+      siblingOrder: 7,
+      draftTitle: "Overview Renamed After Candidate",
+      draftSlug: "overview-renamed-after-candidate",
+      draftSlugNormalized: "overview-renamed-after-candidate",
+      publishedTitle: "Overview Updated",
+      publishedSlug: "overview-updated",
+      publishedBodyText: "Draft body",
+      publicationState: "published_with_unpublished_changes",
+      publishedAt: "2026-07-15 09:30:00",
+      publishedBySysId: "user-123",
+      publishedByDisplayName: "user-123",
+      active: false
+    });
+
+    const rows = glideMock.getRows(DOCSERA_PAGE_TABLE);
+    expect(rows[0]?.fields).toMatchObject({
+      parent_page: "page-parent-moved",
+      sibling_order: "7",
+      draft_title: "Overview Renamed After Candidate",
+      draft_slug: "overview-renamed-after-candidate",
+      draft_slug_normalized: "overview-renamed-after-candidate",
+      draft_revision: 4,
+      published_title: "Overview Updated",
+      published_slug: "overview-updated",
+      published_body_text: "Draft body",
+      published_at: "2026-07-15 09:30:00",
+      published_by: "user-123",
+      publication_state: "published_with_unpublished_changes",
+      active: false
+    });
+  });
+
+  it("rejects a stale persisted revision during publish without partially mutating published fields", async () => {
+    const persisted = await savePageRecord(
+      createPage({
+        draftRevision: 2,
+        draftTitle: "New draft",
+        draftSlug: "new-draft",
+        draftSlugNormalized: "new-draft",
+        draftContentJson: createPageBodyContentJsonFromText("New draft body"),
+        draftBodyText: "New draft body",
+        publishedTitle: "Published title",
+        publishedSlug: "published-title",
+        publishedSlugNormalized: "published-title",
+        publishedContentJson: createPageBodyContentJsonFromText("Published body"),
+        publishedBodyText: "Published body",
+        publicationState: "published_with_unpublished_changes"
+      })
+    );
+
+    await savePageDraftRecord({ ...persisted, draftRevision: 3, draftBodyText: "Later draft" }, 2);
+
+    const stalePublish = await savePublishedPageRecord(
+      buildPublishedPageRecord(persisted, {
+        publishedAt: "2026-07-15 09:35:00",
+        publishedByDisplayName: "Priya Writer",
+        publishedBySysId: "user-123"
+      }),
+      2
+    );
+
+    expect(stalePublish).toBeNull();
+
+    const rows = glideMock.getRows(DOCSERA_PAGE_TABLE);
+    expect(rows[0]?.fields).toMatchObject({
+      published_title: "Published title",
+      published_slug: "published-title",
+      published_body_text: "Published body",
+      draft_revision: 3
+    });
+  });
+
   it("fails closed when the stored draft revision is malformed", async () => {
     const persisted = await savePageRecord(createPage({ draftRevision: 1 }));
     const record = new glideMock.GlideRecord(DOCSERA_PAGE_TABLE);
@@ -315,6 +444,85 @@ describe("single-session draft saves", () => {
     expect(() => savePageDraftRecord({ ...persisted, draftRevision: 2 }, 1)).toThrow(
       "Page record has an invalid persisted draft revision."
     );
+  });
+
+  it("saves page settings through a field-scoped write and preserves newer published and hierarchy state", async () => {
+    const persisted = await savePageRecord(
+      createPage({
+        draftRevision: 4,
+        parentPageSysId: "page-parent",
+        siblingOrder: 3,
+        draftTitle: "Overview Draft",
+        draftSlug: "overview-draft",
+        draftSlugNormalized: "overview-draft",
+        draftContentJson: createPageBodyContentJsonFromText("Draft body"),
+        draftBodyText: "Draft body",
+        publishedTitle: "Overview",
+        publishedSlug: "overview",
+        publishedSlugNormalized: "overview",
+        publishedContentJson: createPageBodyContentJsonFromText("Published body"),
+        publishedBodyText: "Published body",
+        publishedAt: "2026-07-15 09:30:00",
+        publishedBySysId: "user-111",
+        publicationState: "published_with_unpublished_changes"
+      })
+    );
+
+    updateStoredPage(persisted.sysId ?? "", (record) => {
+      record.setValue("parent_page", "page-parent-moved");
+      record.setValue("sibling_order", "8");
+      record.setValue("published_title", "Published Renamed After Load");
+      record.setValue("published_slug", "published-renamed-after-load");
+      record.setValue("published_slug_normalized", "published-renamed-after-load");
+      record.setValue("published_content_json", JSON.stringify(createPageBodyContentJsonFromText("Published body newer")));
+      record.setValue("published_body_text", "Published body newer");
+      record.setValue("published_at", "2026-07-15 10:00:00");
+      record.setValue("published_by", "user-222");
+      record.setValue("active", false);
+    });
+
+    const saved = await savePageSettingsRecord({
+      ...persisted,
+      draftTitle: "Updated Overview",
+      draftSlug: "updated-overview",
+      draftSlugNormalized: "updated-overview"
+    });
+
+    expect(saved).toMatchObject({
+      draftTitle: "Updated Overview",
+      draftSlug: "updated-overview",
+      draftSlugNormalized: "updated-overview",
+      draftRevision: 4,
+      draftBodyText: "Draft body",
+      parentPageSysId: "page-parent-moved",
+      siblingOrder: 8,
+      publishedTitle: "Published Renamed After Load",
+      publishedSlug: "published-renamed-after-load",
+      publishedBodyText: "Published body newer",
+      publishedAt: "2026-07-15 10:00:00",
+      publishedBySysId: "user-222",
+      publicationState: "published_with_unpublished_changes",
+      active: false
+    });
+
+    const rows = glideMock.getRows(DOCSERA_PAGE_TABLE);
+    expect(rows[0]?.fields).toMatchObject({
+      parent_page: "page-parent-moved",
+      sibling_order: "8",
+      draft_title: "Updated Overview",
+      draft_slug: "updated-overview",
+      draft_slug_normalized: "updated-overview",
+      draft_revision: 4,
+      draft_body_text: "Draft body",
+      published_title: "Published Renamed After Load",
+      published_slug: "published-renamed-after-load",
+      published_slug_normalized: "published-renamed-after-load",
+      published_body_text: "Published body newer",
+      published_at: "2026-07-15 10:00:00",
+      published_by: "user-222",
+      publication_state: "published_with_unpublished_changes",
+      active: false
+    });
   });
 });
 

@@ -535,3 +535,66 @@ export function parseServerDocument(value: unknown): ServerDocumentEnvelope {
 export function serializeDocseraDocument(envelope: DocseraDocumentEnvelope): string {
   return JSON.stringify(parseDocseraDocumentOrThrow(envelope));
 }
+
+export function extractPlainTextFromServerDocument(value: unknown): string {
+  const envelope = parseServerDocument(value);
+  const paragraphs: string[] = [];
+
+  function collectInlineText(content: unknown[] | undefined): string {
+    if (!Array.isArray(content) || content.length === 0) {
+      return "";
+    }
+
+    const fragments: string[] = [];
+    for (const child of content) {
+      if (!isRecord(child) || typeof child.type !== "string") {
+        continue;
+      }
+
+      if (child.type === "text" && typeof child.text === "string") {
+        fragments.push(child.text);
+        continue;
+      }
+
+      if (child.type === "hardBreak") {
+        fragments.push("\n");
+      }
+    }
+
+    return fragments.join("");
+  }
+
+  function visitNode(node: unknown) {
+    if (!isRecord(node) || typeof node.type !== "string") {
+      return;
+    }
+
+    switch (node.type) {
+      case "paragraph":
+      case "heading":
+      case "codeBlock": {
+        paragraphs.push(collectInlineText(Array.isArray(node.content) ? node.content : []));
+        return;
+      }
+      case "horizontalRule":
+        paragraphs.push("");
+        return;
+      case "bulletList":
+      case "orderedList":
+      case "taskList":
+      case "blockquote":
+      case "listItem":
+      case "taskItem":
+      case "doc":
+        if (Array.isArray(node.content)) {
+          node.content.forEach(visitNode);
+        }
+        return;
+      default:
+        return;
+    }
+  }
+
+  visitNode(envelope.document);
+  return paragraphs.join("\n").trim();
+}

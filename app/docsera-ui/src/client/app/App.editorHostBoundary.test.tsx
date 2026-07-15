@@ -436,6 +436,10 @@ function createClient(overrides: Partial<ServiceNowClient> = {}): ServiceNowClie
       state: "succeeded",
       page: createPageRecord({ draftRevision: 1 })
     })),
+    publishPage: vi.fn(async () => ({
+      errorMessage: "publishPage should not be called",
+      state: "failed" as const
+    })),
     savePageSettings: vi.fn(async () => {
       throw new Error("savePageSettings should not be called");
     }),

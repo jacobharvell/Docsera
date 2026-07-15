@@ -1,5 +1,5 @@
 import "@servicenow/sdk/global";
-import { BooleanColumn, ChoiceColumn, IntegerColumn, ReferenceColumn, StringColumn, Table } from "@servicenow/sdk/core";
+import { BooleanColumn, ChoiceColumn, DateTimeColumn, IntegerColumn, ReferenceColumn, StringColumn, Table } from "@servicenow/sdk/core";
 
 export const x_82900_docsera_page = Table({
   name: "x_82900_docsera_page",
@@ -71,6 +71,13 @@ export const x_82900_docsera_page = Table({
     published_body_text: StringColumn({
       label: "Published body text",
       maxLength: 4000
+    }),
+    published_at: DateTimeColumn({
+      label: "Published at"
+    }),
+    published_by: ReferenceColumn({
+      label: "Published by",
+      referenceTable: "sys_user"
     }),
     publication_state: ChoiceColumn({
       label: "Publication state",

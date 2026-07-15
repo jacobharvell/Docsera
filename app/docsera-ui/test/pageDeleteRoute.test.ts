@@ -50,6 +50,7 @@ describe("page delete action route", () => {
     }));
     vi.mocked(createServiceNowPageSettingsService).mockReturnValue({
       deletePage,
+      publishPage: vi.fn(),
       savePageSettings: vi.fn()
     } as never);
 
@@ -90,6 +91,7 @@ describe("page delete action route", () => {
         errorMessage: "A workspace reference is required.",
         status: 400 as const
       })),
+      publishPage: vi.fn(),
       savePageSettings: vi.fn()
     } as never);
 

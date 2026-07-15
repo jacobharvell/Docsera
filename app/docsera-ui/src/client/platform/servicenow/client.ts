@@ -10,6 +10,10 @@ import type {
   PageBodySaveInput,
   PageBodySaveResult,
   PageBodySaveSucceeded,
+  PagePublishFailed,
+  PagePublishInput,
+  PagePublishResult,
+  PagePublishSucceeded,
   PageEditLockAcquireResult,
   PageEditLockFailed,
   PageEditLockHeartbeatResult,
@@ -129,6 +133,11 @@ function resolvePageEditLockPath(pageCollectionPath: string, action: "acquire" |
   return `${normalizedPath}/edit-lock/${action}`;
 }
 
+function resolvePagePublishPath(pageCollectionPath: string): string {
+  const normalizedPath = cleanText(pageCollectionPath).replace(/\/+$/g, "");
+  return `${normalizedPath}/publish`;
+}
+
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<JsonResponse<T>> {
   const userToken = resolveUserToken();
   const response = await fetch(path, {
@@ -224,6 +233,9 @@ function normalizePageRecord(candidate: unknown): WorkspacePageRecord {
     publishedSlugNormalized: cleanText(page.publishedSlugNormalized) || null,
     publishedContentJson: page.publishedContentJson ?? null,
     publishedBodyText: cleanText(page.publishedBodyText) || null,
+    publishedAt: cleanText(page.publishedAt) || null,
+    publishedBySysId: cleanText(page.publishedBySysId) || null,
+    publishedByDisplayName: cleanText(page.publishedByDisplayName) || null,
     publicationState,
     active: typeof page.active === "boolean" ? page.active : undefined
   };
@@ -375,6 +387,18 @@ function normalizePageEditLockHeldResult(body: unknown): PageEditLockHeld {
   };
 }
 
+function normalizePagePublishSucceededResult(body: unknown): PagePublishSucceeded {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || !result.page) {
+    throw new Error("Page publish payload was invalid.");
+  }
+
+  return {
+    state: "succeeded",
+    page: normalizePageRecord(result.page)
+  };
+}
+
 function normalizePageEditLockLockedResult(body: unknown): PageEditLockLocked {
   const result = unwrapServiceNowEnvelope(body);
   if (!isPlainObject(result)) {
@@ -460,6 +484,43 @@ function normalizePageBodySaveFailedResult(
               ? "persistence_invariant"
               : errorCode === "edit_lock_lost"
                 ? "lock_lost"
+              : errorCode === "persistence_transient"
+                ? "transient"
+                : fallbackCode;
+
+  return {
+    code: normalizedCode,
+    currentRevision: Number.isSafeInteger(currentRevision) && currentRevision >= 0 ? currentRevision : undefined,
+    retryable: normalizedCode === "transient" ? true : fallbackRetryable,
+    state: "failed",
+    errorMessage: extractErrorMessage(body, fallback)
+  };
+}
+
+function normalizePagePublishFailedResult(
+  body: unknown,
+  fallback: string,
+  fallbackCode: PagePublishFailed["code"],
+  fallbackRetryable: boolean
+): PagePublishFailed {
+  const normalizedBody = unwrapServiceNowEnvelope(body);
+  const errorObject =
+    normalizedBody && typeof normalizedBody === "object" && "error" in normalizedBody
+      ? ((normalizedBody as Record<string, unknown>).error as Record<string, unknown> | undefined)
+      : undefined;
+  const errorCode = cleanText(errorObject?.code);
+  const currentRevision = Number(errorObject?.currentRevision);
+  const normalizedCode: PagePublishFailed["code"] =
+    errorCode === "draft_revision_conflict"
+      ? "conflict"
+      : errorCode === "forbidden"
+        ? "forbidden"
+        : errorCode === "invalid"
+          ? "invalid"
+          : errorCode === "persistence_invariant"
+            ? "persistence_invariant"
+            : errorCode === "edit_lock_lost"
+              ? "lock_lost"
               : errorCode === "persistence_transient"
                 ? "transient"
                 : fallbackCode;
@@ -682,6 +743,75 @@ async function resolvePageBodySaveResult(path: string, input: PageBodySaveInput)
     retryable: false,
     state: "failed",
     errorMessage: SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE
+  };
+}
+
+async function resolvePagePublishResult(path: string, input: PagePublishInput): Promise<PagePublishResult> {
+  const payload = {
+    workspaceSlug: cleanText(input.workspaceSlug),
+    workspaceSysId: cleanText(input.workspaceSysId),
+    pageSysId: cleanText(input.pageSysId),
+    pageSlug: cleanText(input.pageSlug),
+    ...(cleanText(input.lockToken) ? { lockToken: cleanText(input.lockToken) } : {}),
+    expectedRevision: Number.isSafeInteger(input.expectedRevision) ? input.expectedRevision : undefined
+  };
+
+  let response: JsonResponse<unknown>;
+  try {
+    response = await requestJson<unknown>(path, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: {
+        "Content-Type": "application/json"
+      }
+    });
+  } catch {
+    return {
+      code: "network",
+      retryable: true,
+      state: "failed",
+      errorMessage: "Something went wrong while publishing. Your changes were not published. Please try again."
+    };
+  }
+
+  if (response.status === 200) {
+    try {
+      return normalizePagePublishSucceededResult(response.body);
+    } catch {
+      return {
+        code: "persistence_invariant",
+        retryable: false,
+        state: "failed",
+        errorMessage: "Something went wrong while publishing. Your changes were not published. Please try again."
+      };
+    }
+  }
+
+  if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 409 || response.status === 500) {
+    const fallbackCode: PagePublishFailed["code"] =
+      response.status === 403 ? "forbidden" : response.status === 409 ? "conflict" : response.status === 500 ? "persistence_invariant" : "invalid";
+    return normalizePagePublishFailedResult(
+      response.body,
+      "Something went wrong while publishing. Your changes were not published. Please try again.",
+      fallbackCode,
+      false
+    );
+  }
+
+  if ([408, 429, 502, 503, 504].includes(response.status)) {
+    return {
+      code: "transient",
+      retryable: true,
+      state: "failed",
+      errorMessage: "Something went wrong while publishing. Your changes were not published. Please try again."
+    };
+  }
+
+  return {
+    code: "failed",
+    retryable: false,
+    state: "failed",
+    errorMessage: "Something went wrong while publishing. Your changes were not published. Please try again."
   };
 }
 
@@ -1055,6 +1185,7 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
   const collectionPath = resolvePath(runtime.config.workspaceCollectionPath, DEFAULT_WORKSPACE_COLLECTION_PATH);
   const pageCollectionPath = resolvePath(runtime.config.pageCollectionPath, DEFAULT_PAGE_COLLECTION_PATH);
   const pageDeleteActionPath = resolvePageDeleteActionPath(pageCollectionPath);
+  const pagePublishPath = resolvePagePublishPath(pageCollectionPath);
   const pageEditLockStatusPath = resolvePageEditLockPath(pageCollectionPath, "status");
   const pageEditLockAcquirePath = resolvePageEditLockPath(pageCollectionPath, "acquire");
   const pageEditLockHeartbeatPath = resolvePageEditLockPath(pageCollectionPath, "heartbeat");
@@ -1156,6 +1287,10 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
 
     async savePageBody(input: PageBodySaveInput): Promise<PageBodySaveResult> {
       return resolvePageBodySaveResult(pageCollectionPath, input);
+    },
+
+    async publishPage(input: PagePublishInput): Promise<PagePublishResult> {
+      return resolvePagePublishResult(pagePublishPath, input);
     },
 
     async savePageSettings(input: PageSettingsSaveInput): Promise<PageSettingsSaveResult> {

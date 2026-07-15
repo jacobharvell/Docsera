@@ -344,6 +344,158 @@ describe("service now client page creation", () => {
     });
   });
 
+  it("normalizes a page publish response and preserves published metadata", async () => {
+    const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/pages/publish");
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        workspaceSlug: "product-docs",
+        workspaceSysId: "",
+        pageSysId: "page-005",
+        pageSlug: "",
+        lockToken: "held-token",
+        expectedRevision: 8
+      });
+
+      return createJsonResponse(200, {
+        result: {
+          page: {
+            sysId: "page-005",
+            workspaceSysId: "workspace-001",
+            parentPageSysId: null,
+            siblingOrder: 5,
+            draftTitle: "Published title",
+            draftSlug: "published-title",
+            draftSlugNormalized: "published-title",
+            draftContentJson: {
+              type: "doc",
+              content: []
+            },
+            draftBodyText: "Published body",
+            draftRevision: 8,
+            publishedTitle: "Published title",
+            publishedSlug: "published-title",
+            publishedSlugNormalized: "published-title",
+            publishedContentJson: {
+              type: "doc",
+              content: []
+            },
+            publishedBodyText: "Published body",
+            publishedAt: "2026-07-15 09:30:00",
+            publishedBySysId: "user-123",
+            publishedByDisplayName: "Priya Writer",
+            publicationState: "published",
+            active: true
+          }
+        }
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.publishPage({
+      workspaceSlug: "product-docs",
+      pageSysId: "page-005",
+      lockToken: "held-token",
+      expectedRevision: 8
+    });
+
+    expect(result.state).toBe("succeeded");
+    if (result.state === "succeeded") {
+      expect(result.page.publicationState).toBe("published");
+      expect(result.page.publishedAt).toBe("2026-07-15 09:30:00");
+      expect(result.page.publishedBySysId).toBe("user-123");
+      expect(result.page.publishedByDisplayName).toBe("Priya Writer");
+    }
+  });
+
+  it("maps publish stale revision and lock loss to the dedicated failure codes", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        createJsonResponse(409, {
+          error: {
+            code: "draft_revision_conflict",
+            message: "This page has a newer saved draft. Reload before publishing again.",
+            currentRevision: 9
+          }
+        })
+      )
+    );
+
+    const client = createServiceNowClient(createRuntime());
+    const staleResult = await client.publishPage({
+      workspaceSlug: "product-docs",
+      pageSysId: "page-005",
+      lockToken: "held-token",
+      expectedRevision: 8
+    });
+
+    expect(staleResult).toEqual({
+      code: "conflict",
+      currentRevision: 9,
+      retryable: false,
+      state: "failed",
+      errorMessage: "This page has a newer saved draft. Reload before publishing again."
+    });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        createJsonResponse(409, {
+          error: {
+            code: "edit_lock_lost",
+            message: "This edit session ended and unsaved changes were not published."
+          }
+        })
+      )
+    );
+
+    const lockLostResult = await client.publishPage({
+      workspaceSlug: "product-docs",
+      pageSysId: "page-005",
+      lockToken: "held-token",
+      expectedRevision: 8
+    });
+
+    expect(lockLostResult).toEqual({
+      code: "lock_lost",
+      retryable: false,
+      state: "failed",
+      errorMessage: "This edit session ended and unsaved changes were not published."
+    });
+  });
+
+  it("maps a publish persistence failure to persistence_invariant instead of invalid input", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        createJsonResponse(500, {
+          error: {
+            code: "persistence_invariant",
+            message: "Something went wrong while publishing. Your changes were not published. Please try again."
+          }
+        })
+      )
+    );
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.publishPage({
+      workspaceSlug: "product-docs",
+      pageSysId: "page-005",
+      lockToken: "held-token",
+      expectedRevision: 8
+    });
+
+    expect(result).toEqual({
+      code: "persistence_invariant",
+      retryable: false,
+      state: "failed",
+      errorMessage: "Something went wrong while publishing. Your changes were not published. Please try again."
+    });
+  });
+
   it("normalizes a double-wrapped page body save response", async () => {
     const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
       expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/pages");
