@@ -2,6 +2,7 @@ import "@servicenow/sdk/global";
 import {
   BooleanColumn,
   ChoiceColumn,
+  IntegerColumn,
   ReferenceColumn,
   StringColumn,
   Table
@@ -90,6 +91,20 @@ export const x_82900_docsera_workspace = Table({
         readable: "Readable",
         full: "Full width"
       }
+    }),
+    pending_change_set: ReferenceColumn({
+      label: "Active pending change set",
+      referenceTable: "x_82900_docsera_workspace_change_set"
+    }),
+    published_snapshot_set: ReferenceColumn({
+      label: "Published snapshot set",
+      referenceTable: "x_82900_docsera_workspace_snapshot_set"
+    }),
+    workspace_state_revision: IntegerColumn({
+      label: "Workspace selector revision",
+      mandatory: true,
+      default: 0,
+      min: 0
     })
   }
 });

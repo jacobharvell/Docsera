@@ -23,6 +23,26 @@ export const x_82900_docsera_page = Table({
       mandatory: true,
       maxLength: 16
     }),
+    draft_parent_page: ReferenceColumn({
+      label: "Draft parent page",
+      referenceTable: "x_82900_docsera_page"
+    }),
+    draft_sibling_order: StringColumn({
+      label: "Draft sibling order",
+      maxLength: 16
+    }),
+    draft_removed: BooleanColumn({
+      label: "Draft removed",
+      mandatory: true,
+      default: false
+    }),
+    last_draft_changed_on: DateTimeColumn({
+      label: "Last draft changed on"
+    }),
+    last_draft_changed_by: ReferenceColumn({
+      label: "Last draft changed by",
+      referenceTable: "sys_user"
+    }),
     draft_title: StringColumn({
       label: "Draft title",
       mandatory: true,
