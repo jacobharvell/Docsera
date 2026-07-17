@@ -70,19 +70,12 @@ describe("page publish service", () => {
       loadWorkspaceBySlug: async () => createWorkspace(),
       loadWorkspaceBySysId: async () => createWorkspace(),
       listWorkspacePages: async () => [createPage()],
-      publishPage,
-      touchPageEditLock: vi.fn(async () => ({
-        kind: "held",
-        lockToken: "held-token",
-        heartbeatIntervalMs: 30000,
-        staleAfterMs: 180000
-      }))
+      publishPage
     });
 
     const result = await service.publishPage({
       workspaceSlug: "product-docs",
       pageSysId: "page-001",
-      lockToken: "held-token",
       expectedRevision: 4
     });
 
@@ -149,19 +142,12 @@ describe("page publish service", () => {
           publicationState: "published_with_unpublished_changes"
         })
       ],
-      publishPage,
-      touchPageEditLock: vi.fn(async () => ({
-        kind: "held",
-        lockToken: "held-token",
-        heartbeatIntervalMs: 30000,
-        staleAfterMs: 180000
-      }))
+      publishPage
     });
 
     const result = await service.publishPage({
       workspaceSlug: "product-docs",
       pageSysId: "page-001",
-      lockToken: "held-token",
       expectedRevision: 4
     });
 
@@ -212,19 +198,12 @@ describe("page publish service", () => {
           parentPageSysId: "page-parent"
         })
       ],
-      publishPage,
-      touchPageEditLock: vi.fn(async () => ({
-        kind: "held",
-        lockToken: "held-token",
-        heartbeatIntervalMs: 30000,
-        staleAfterMs: 180000
-      }))
+      publishPage
     });
 
     const result = await service.publishPage({
       workspaceSlug: "product-docs",
       pageSysId: "page-001",
-      lockToken: "held-token",
       expectedRevision: 4
     });
 
@@ -265,19 +244,12 @@ describe("page publish service", () => {
           parentPageSysId: "page-parent"
         })
       ],
-      publishPage,
-      touchPageEditLock: vi.fn(async () => ({
-        kind: "held",
-        lockToken: "held-token",
-        heartbeatIntervalMs: 30000,
-        staleAfterMs: 180000
-      }))
+      publishPage
     });
 
     const result = await service.publishPage({
       workspaceSlug: "product-docs",
       pageSysId: "page-001",
-      lockToken: "held-token",
       expectedRevision: 4
     });
 
@@ -310,19 +282,12 @@ describe("page publish service", () => {
           parentPageSysId: "page-parent"
         })
       ],
-      publishPage,
-      touchPageEditLock: vi.fn(async () => ({
-        kind: "held",
-        lockToken: "held-token",
-        heartbeatIntervalMs: 30000,
-        staleAfterMs: 180000
-      }))
+      publishPage
     });
 
     const result = await service.publishPage({
       workspaceSlug: "product-docs",
       pageSysId: "page-001",
-      lockToken: "held-token",
       expectedRevision: 4
     });
 
@@ -372,19 +337,12 @@ describe("page publish service", () => {
           parentPageSysId: "page-parent"
         })
       ],
-      publishPage,
-      touchPageEditLock: vi.fn(async () => ({
-        kind: "held",
-        lockToken: "held-token",
-        heartbeatIntervalMs: 30000,
-        staleAfterMs: 180000
-      }))
+      publishPage
     });
 
     const result = await service.publishPage({
       workspaceSlug: "product-docs",
       pageSysId: "page-001",
-      lockToken: "held-token",
       expectedRevision: 4
     });
 
@@ -413,19 +371,12 @@ describe("page publish service", () => {
       loadWorkspaceBySlug: async () => createWorkspace(),
       loadWorkspaceBySysId: async () => createWorkspace(),
       listWorkspacePages: async () => [createPage({ draftRevision: 5 })],
-      publishPage,
-      touchPageEditLock: vi.fn(async () => ({
-        kind: "held",
-        lockToken: "held-token",
-        heartbeatIntervalMs: 30000,
-        staleAfterMs: 180000
-      }))
+      publishPage
     });
 
     const result = await service.publishPage({
       workspaceSlug: "product-docs",
       pageSysId: "page-001",
-      lockToken: "held-token",
       expectedRevision: 4
     });
 
@@ -437,7 +388,7 @@ describe("page publish service", () => {
     expect(publishPage).not.toHaveBeenCalled();
   });
 
-  it("rejects missing or invalid edit-session authority", async () => {
+  it("does not use legacy page-lock authority in the publish persistence service", async () => {
     const publishPage = vi.fn(async (page: PageRecord) => page);
     const service = createPagePublishService({
       currentTimestamp: () => "2026-07-15 09:45:00",
@@ -454,13 +405,7 @@ describe("page publish service", () => {
       loadWorkspaceBySlug: async () => createWorkspace(),
       loadWorkspaceBySysId: async () => createWorkspace(),
       listWorkspacePages: async () => [createPage()],
-      publishPage,
-      touchPageEditLock: vi.fn(async () => ({
-        kind: "failed",
-        errorMessage: "A page edit lock token is required.",
-        retryable: false,
-        status: 400
-      }))
+      publishPage
     });
 
     const result = await service.publishPage({
@@ -469,17 +414,12 @@ describe("page publish service", () => {
       expectedRevision: 4
     });
 
-    expect(result).toEqual({
-      kind: "failed",
-      errorMessage: "A page edit lock token is required.",
-      status: 400
-    });
-    expect(publishPage).not.toHaveBeenCalled();
+    expect(result.kind).toBe("succeeded");
+    expect(publishPage).toHaveBeenCalledTimes(1);
   });
 
   it("rejects unauthorized callers before publishing", async () => {
     const publishPage = vi.fn(async (page: PageRecord) => page);
-    const touchPageEditLock = vi.fn();
     const service = createPagePublishService({
       currentTimestamp: () => "2026-07-15 09:45:00",
       evaluateWorkspaceCapabilities: () => ({
@@ -495,19 +435,16 @@ describe("page publish service", () => {
       loadWorkspaceBySlug: async () => createWorkspace(),
       loadWorkspaceBySysId: async () => createWorkspace(),
       listWorkspacePages: async () => [createPage()],
-      publishPage,
-      touchPageEditLock
+      publishPage
     });
 
     const result = await service.publishPage({
       workspaceSlug: "product-docs",
       pageSysId: "page-001",
-      lockToken: "held-token",
       expectedRevision: 4
     });
 
     expect(result.kind).toBe("forbidden");
-    expect(touchPageEditLock).not.toHaveBeenCalled();
     expect(publishPage).not.toHaveBeenCalled();
   });
 
@@ -541,19 +478,12 @@ describe("page publish service", () => {
           publishedBodyText: "Published body"
         })
       ],
-      publishPage,
-      touchPageEditLock: vi.fn(async () => ({
-        kind: "held",
-        lockToken: "held-token",
-        heartbeatIntervalMs: 30000,
-        staleAfterMs: 180000
-      }))
+      publishPage
     });
 
     const result = await service.publishPage({
       workspaceSlug: "product-docs",
       pageSysId: "page-001",
-      lockToken: "held-token",
       expectedRevision: 4
     });
 
@@ -565,7 +495,7 @@ describe("page publish service", () => {
     expect(publishPage).not.toHaveBeenCalled();
   });
 
-  it("rejects invalid canonical draft content surfaced by the edit-session guard", async () => {
+  it("rejects invalid canonical draft content surfaced while loading the draft", async () => {
     const publishPage = vi.fn(async (page: PageRecord) => page);
     const service = createPagePublishService({
       currentTimestamp: () => "2026-07-15 09:45:00",
@@ -581,17 +511,13 @@ describe("page publish service", () => {
       }),
       loadWorkspaceBySlug: async () => createWorkspace(),
       loadWorkspaceBySysId: async () => createWorkspace(),
-      listWorkspacePages: async () => [createPage()],
-      publishPage,
-      touchPageEditLock: vi.fn(async () => {
-        throw new Error("The stored page content is not valid JSON.");
-      })
+      listWorkspacePages: async () => { throw new Error("The stored page content is not valid JSON."); },
+      publishPage
     });
 
     const result = await service.publishPage({
       workspaceSlug: "product-docs",
       pageSysId: "page-001",
-      lockToken: "held-token",
       expectedRevision: 4
     });
 
@@ -633,19 +559,12 @@ describe("page publish service", () => {
       loadWorkspaceBySlug: async () => createWorkspace(),
       loadWorkspaceBySysId: async () => createWorkspace(),
       listWorkspacePages: async () => [originalPage],
-      publishPage,
-      touchPageEditLock: vi.fn(async () => ({
-        kind: "held",
-        lockToken: "held-token",
-        heartbeatIntervalMs: 30000,
-        staleAfterMs: 180000
-      }))
+      publishPage
     });
 
     const result = await service.publishPage({
       workspaceSlug: "product-docs",
       pageSysId: "page-001",
-      lockToken: "held-token",
       expectedRevision: 4
     });
 

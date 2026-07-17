@@ -1,5 +1,6 @@
 import { gs } from "@servicenow/glide";
 import { createServiceNowPageBodySaveService } from "../pages/serviceNowPageDraftPersistence.ts";
+import { sendWorkspaceLeaseMutationFailure, verifyWorkspaceEditLease } from "./docsera-runtime-workspace-edit-lease.ts";
 
 type RequestLike = {
   body?: unknown;
@@ -55,12 +56,12 @@ export async function process(request: RequestLike, response: ResponseLike) {
   try {
     const service = createServiceNowPageBodySaveService();
     const body = readRequestBody(request);
+    if (sendWorkspaceLeaseMutationFailure(await verifyWorkspaceEditLease(body), response)) return;
     const result = await service.savePageBody({
       workspaceSlug: cleanText(body.workspaceSlug),
       workspaceSysId: cleanText(body.workspaceSysId),
       pageSysId: cleanText(body.pageSysId),
       pageSlug: cleanText(body.pageSlug),
-      lockToken: cleanText(body.lockToken),
       draftBodyText: cleanText(body.draftBodyText) || "",
       draftContentJson: body.draftContentJson,
       expectedRevision: body.expectedRevision
@@ -98,18 +99,6 @@ export async function process(request: RequestLike, response: ResponseLike) {
           retryable: false,
           message: result.errorMessage,
           currentRevision: result.currentRevision
-        }
-      });
-      return;
-    }
-
-    if (result.kind === "lock_lost") {
-      response.setStatus?.(409);
-      response.setBody({
-        error: {
-          code: "edit_lock_lost",
-          retryable: false,
-          message: result.errorMessage
         }
       });
       return;

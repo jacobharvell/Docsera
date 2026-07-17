@@ -1,5 +1,6 @@
 import { gs } from "@servicenow/glide";
 import { createServiceNowPageCreationService } from "../pages/serviceNowPageCreation.ts";
+import { sendWorkspaceLeaseMutationFailure, verifyWorkspaceEditLease } from "./docsera-runtime-workspace-edit-lease.ts";
 
 type RequestLike = {
   body?: unknown;
@@ -41,6 +42,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
   try {
     const service = createServiceNowPageCreationService();
     const body = readRequestBody(request);
+    if (sendWorkspaceLeaseMutationFailure(await verifyWorkspaceEditLease(body), response)) return;
     const result = await service.createPage({
       title: cleanText(body.title),
       workspaceSlug: cleanText(body.workspaceSlug),

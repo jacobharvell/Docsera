@@ -124,6 +124,7 @@ export type PageCreateInput = {
   workspaceSlug: string;
   title: string;
   parentPageSysId?: string | null;
+  workspaceLeaseToken?: string;
 };
 
 export type PageCreateSucceeded = {
@@ -132,6 +133,7 @@ export type PageCreateSucceeded = {
 };
 
 export type PageCreateFailed = {
+  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "transient";
   errorMessage: string;
   state: "failed";
 };
@@ -143,6 +145,10 @@ export type PageBodySaveInput = {
   workspaceSysId?: string;
   pageSysId?: string;
   pageSlug?: string;
+  /** Workspace lease is the only persistence authority. Page-lock fields remain
+   * on the editor transport temporarily, but are never sent to mutations. */
+  workspaceLeaseToken?: string;
+  /** @deprecated retained for editor-session compatibility; never sent as mutation authority. */
   lockToken?: string;
   draftBodyText?: string;
   draftContentJson?: PageContentInput;
@@ -169,6 +175,8 @@ export type PagePublishInput = {
   workspaceSysId?: string;
   pageSysId?: string;
   pageSlug?: string;
+  workspaceLeaseToken?: string;
+  /** @deprecated retained for editor-session compatibility; never sent as mutation authority. */
   lockToken?: string;
   expectedRevision?: number;
 };
@@ -194,6 +202,7 @@ export type PageSettingsSaveInput = {
   pageSysId: string;
   title: string;
   slug: string;
+  workspaceLeaseToken?: string;
 };
 
 export type PageSettingsSaveSucceeded = {
@@ -202,6 +211,7 @@ export type PageSettingsSaveSucceeded = {
 };
 
 export type PageSettingsSaveFailed = {
+  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "transient";
   errorMessage: string;
   state: "failed";
 };
@@ -212,7 +222,27 @@ export type PageDeleteInput = {
   workspaceSlug: string;
   workspaceSysId: string;
   pageSysId: string;
+  workspaceLeaseToken?: string;
 };
+
+export type WorkspaceEditLeaseReferenceInput = {
+  workspaceSlug?: string;
+  workspaceSysId?: string;
+  leaseToken?: string;
+};
+export type WorkspaceEditLeaseGeneration = { changeSetId: string; changeSetRevision: number; workspaceStateRevision?: number };
+export type WorkspaceEditLeaseHeld = WorkspaceEditLeaseGeneration & { state: "held"; leaseToken: string; heartbeatIntervalMs: number; staleAfterMs: number };
+export type WorkspaceEditLeaseStatusHeld = WorkspaceEditLeaseGeneration & { state: "held"; heartbeatIntervalMs: number; staleAfterMs: number };
+export type WorkspaceEditLeaseLocked = { state: "locked"; holderDisplayName: string | null; sameUserDifferentSession: boolean };
+export type WorkspaceEditLeaseLost = { state: "lost"; errorMessage: string; holderDisplayName: string | null; sameUserDifferentSession: boolean };
+export type WorkspaceEditLeaseReleased = { state: "released" };
+export type WorkspaceEditLeaseUnlocked = { state: "unlocked" };
+export type WorkspaceEditLeaseFailureKind = "forbidden" | "transient" | "terminal";
+export type WorkspaceEditLeaseFailed = { state: "failed"; errorMessage: string; failure: WorkspaceEditLeaseFailureKind; retryable?: boolean };
+export type WorkspaceEditLeaseAcquireResult = WorkspaceEditLeaseHeld | WorkspaceEditLeaseLocked | WorkspaceEditLeaseFailed;
+export type WorkspaceEditLeaseRenewResult = WorkspaceEditLeaseHeld | WorkspaceEditLeaseLost | WorkspaceEditLeaseFailed;
+export type WorkspaceEditLeaseReleaseResult = WorkspaceEditLeaseReleased | WorkspaceEditLeaseLost | WorkspaceEditLeaseFailed;
+export type WorkspaceEditLeaseStatusResult = WorkspaceEditLeaseStatusHeld | WorkspaceEditLeaseLocked | WorkspaceEditLeaseUnlocked | WorkspaceEditLeaseFailed;
 
 export type PageDeleteSucceeded = {
   nextPageSysId: string;
@@ -220,6 +250,7 @@ export type PageDeleteSucceeded = {
 };
 
 export type PageDeleteFailed = {
+  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "transient";
   errorMessage: string;
   state: "failed";
 };
@@ -305,6 +336,11 @@ export type ServiceNowClient = {
   createWorkspace: (input: WorkspaceCreateInput) => Promise<WorkspaceCreateResult>;
   getWorkspaceProvisioningStatus: (statusPath: string) => Promise<WorkspaceCreateResult>;
   createPage: (input: PageCreateInput) => Promise<PageCreateResult>;
+  acquireWorkspaceEditLease?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspaceEditLeaseAcquireResult>;
+  resumeWorkspaceEditLease?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspaceEditLeaseRenewResult>;
+  renewWorkspaceEditLease?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspaceEditLeaseRenewResult>;
+  releaseWorkspaceEditLease?: (input: WorkspaceEditLeaseReferenceInput & { keepalive?: boolean }) => Promise<WorkspaceEditLeaseReleaseResult>;
+  getWorkspaceEditLeaseStatus?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspaceEditLeaseStatusResult>;
   getPageEditLockStatus: (input: PageEditLockReferenceInput) => Promise<PageEditLockStatusResult>;
   acquirePageEditLock: (input: PageEditLockReferenceInput) => Promise<PageEditLockAcquireResult>;
   heartbeatPageEditLock: (input: PageEditLockReferenceInput) => Promise<PageEditLockHeartbeatResult>;

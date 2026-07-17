@@ -8,6 +8,7 @@ export const x_82900_docsera_workspace_removal_member = Table({
   accessibleFrom: "package_private",
   audit: true,
   createAccessControls: false,
+  allowWebServiceAccess: false,
   schema: {
     removal_batch: ReferenceColumn({ label: "Removal batch", mandatory: true, referenceTable: "x_82900_docsera_workspace_removal_batch" }),
     page: ReferenceColumn({ label: "Page identity", mandatory: true, referenceTable: "x_82900_docsera_page" }),

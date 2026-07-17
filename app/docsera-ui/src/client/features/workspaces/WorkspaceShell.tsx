@@ -1,14 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
-import type {
-  PageBodySaveResult,
-  PageEditLockAcquireResult,
-  PageEditLockHeartbeatResult,
-  PageEditLockReleaseResult,
-  PageEditLockStatusResult,
-  WorkspaceMode,
-  WorkspaceViewRecord
-} from "../../shared/types/docsera";
-import type { PageEditorHostFailure } from "../../editor/PageEditorHost";
+import type { PageBodySaveResult, WorkspaceMode, WorkspaceViewRecord } from "../../shared/types/docsera";
+import type { PageEditorHostFailure, PageEditorRecoverySnapshot } from "../../editor/PageEditorHost";
 import type { InlinePageCreateState } from "./PageTree";
 import { WorkspaceMainPane } from "./WorkspaceMainPane";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
@@ -17,6 +9,11 @@ import type { WorkspacePageOutlineItem, WorkspacePageView } from "./workspaceVie
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
 
 type WorkspaceShellProps = {
+  bodyNotice?: {
+    eyebrow: string;
+    kind: "alert" | "status";
+    message: string;
+  } | null;
   bodyState: "loading" | "ready";
   breadcrumbs: WorkspacePageView[];
   canCreatePage: boolean;
@@ -25,7 +22,9 @@ type WorkspaceShellProps = {
   canManagePageSettings: boolean;
   collapsedPageIds: string[];
   currentWorkspaceSlug: string;
+  editorInitialSavedEnvelope?: DocseraDocumentEnvelope;
   editAccessLost: boolean;
+  accessLossMessage?: string;
   editorFailure: PageEditorHostFailure | null;
   inlineCreateState: InlinePageCreateState | null;
   isCreatingPage: boolean;
@@ -44,15 +43,11 @@ type WorkspaceShellProps = {
   onSavePageDraft: (input: {
     draftContentJson: DocseraDocumentEnvelope;
     expectedRevision: number;
-    lockToken?: string;
     pageSysId: string;
   }) => Promise<PageBodySaveResult>;
-  onAcquirePageEditLock?: (input: { lockToken?: string; pageSysId: string }) => Promise<PageEditLockAcquireResult>;
-  onHeartbeatPageEditLock?: (input: { lockToken: string; pageSysId: string }) => Promise<PageEditLockHeartbeatResult>;
-  onRefreshPageEditLock?: (input: { lockToken?: string; pageSysId: string }) => Promise<PageEditLockStatusResult>;
-  onReleasePageEditLock?: (input: { keepalive?: boolean; lockToken: string; pageSysId: string }) => Promise<PageEditLockReleaseResult>;
   onStatusChange: (state: {
     flush?: () => Promise<boolean>;
+    getRecoverySnapshot?: () => PageEditorRecoverySnapshot | null;
     release?: (options?: { keepalive?: boolean }) => Promise<void>;
     isDirty: boolean;
     isSaving: boolean;
@@ -129,6 +124,7 @@ function readStoredWorkspaceTocCollapsed(workspaceSlug: string): boolean {
 }
 
 export function WorkspaceShell({
+  bodyNotice,
   bodyState,
   breadcrumbs,
   canCreatePage,
@@ -137,7 +133,9 @@ export function WorkspaceShell({
   canManagePageSettings,
   collapsedPageIds,
   currentWorkspaceSlug,
+  editorInitialSavedEnvelope,
   editAccessLost,
+  accessLossMessage,
   editorFailure,
   inlineCreateState,
   isCreatingPage,
@@ -154,10 +152,6 @@ export function WorkspaceShell({
   onReturnToLive,
   onRetryEditor,
   onSavePageDraft,
-  onAcquirePageEditLock,
-  onHeartbeatPageEditLock,
-  onRefreshPageEditLock,
-  onReleasePageEditLock,
   onStatusChange,
   onSelectPage,
   onShowChildPageCreate,
@@ -316,9 +310,12 @@ export function WorkspaceShell({
         ) : null}
 
         <WorkspaceMainPane
+          bodyNotice={bodyNotice}
           bodyState={bodyState}
           canCreatePage={canCreatePage}
           canEditPageBody={canEditPageBody}
+          accessLossMessage={accessLossMessage}
+          editorInitialSavedEnvelope={editorInitialSavedEnvelope}
           editAccessLost={editAccessLost}
           editorFailure={editorFailure}
           onAccessLost={onAccessLost}
@@ -329,10 +326,6 @@ export function WorkspaceShell({
           onReturnToLive={onReturnToLive}
           onRetryEditor={onRetryEditor}
           onSavePageDraft={onSavePageDraft}
-          onAcquirePageEditLock={onAcquirePageEditLock}
-          onHeartbeatPageEditLock={onHeartbeatPageEditLock}
-          onRefreshPageEditLock={onRefreshPageEditLock}
-          onReleasePageEditLock={onReleasePageEditLock}
           onStatusChange={onStatusChange}
           onShowCreatePage={onShowCreatePage}
           page={selectedPageViewForShell}

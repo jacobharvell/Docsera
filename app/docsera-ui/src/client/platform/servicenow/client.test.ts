@@ -127,10 +127,14 @@ describe("service now client page creation", () => {
   });
 
   it("normalizes a nested page create response", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () =>
-        createJsonResponse(201, {
+    const fetchMock = vi.fn(async (_path: RequestInfo | URL, init?: RequestInit) => {
+      expect(JSON.parse(String(init?.body))).toEqual({
+        title: "Task 33 Page Smoke",
+        workspaceLeaseToken: "workspace-lease-token",
+        workspaceSlug: "product-docs"
+      });
+      expect(JSON.parse(String(init?.body))).not.toHaveProperty("lockToken");
+      return createJsonResponse(201, {
           result: {
             page: {
               sysId: "page-003",
@@ -154,13 +158,14 @@ describe("service now client page creation", () => {
               active: true
             }
           }
-        })
-      )
-    );
+        });
+    });
+    vi.stubGlobal("fetch", fetchMock);
 
     const client = createServiceNowClient(createRuntime());
     const result = await client.createPage({
       workspaceSlug: "product-docs",
+      workspaceLeaseToken: "workspace-lease-token",
       title: "Task 33 Page Smoke"
     });
 
@@ -209,6 +214,7 @@ describe("service now client page creation", () => {
     const client = createServiceNowClient(createRuntime());
     const result = await client.createPage({
       workspaceSlug: "product-docs",
+      workspaceLeaseToken: "workspace-lease-token",
       title: "Task 33 Browser Page Smoke"
     });
 
@@ -235,6 +241,7 @@ describe("service now client page creation", () => {
     const client = createServiceNowClient(createRuntime());
     const result = await client.createPage({
       workspaceSlug: "product-docs",
+      workspaceLeaseToken: "workspace-lease-token",
       title: "Task 33 Page Smoke"
     });
 
@@ -254,7 +261,8 @@ describe("service now client page creation", () => {
         pageSysId: "page-005",
         pageSlug: "",
         draftBodyText: "Saved draft body",
-        expectedRevision: 7
+        expectedRevision: 7,
+        workspaceLeaseToken: "workspace-lease-token"
       });
 
       return createJsonResponse(200, {
@@ -302,7 +310,8 @@ describe("service now client page creation", () => {
       workspaceSlug: "product-docs",
       pageSysId: "page-005",
       draftBodyText: "Saved draft body",
-      expectedRevision: 7
+      expectedRevision: 7,
+      workspaceLeaseToken: "workspace-lease-token"
     });
 
     expect(result.state).toBe("succeeded");
@@ -332,7 +341,8 @@ describe("service now client page creation", () => {
       workspaceSlug: "product-docs",
       pageSysId: "page-005",
       draftBodyText: "Stale draft body",
-      expectedRevision: 8
+      expectedRevision: 8,
+      workspaceLeaseToken: "workspace-lease-token"
     });
 
     expect(result).toEqual({
@@ -353,7 +363,7 @@ describe("service now client page creation", () => {
         workspaceSysId: "",
         pageSysId: "page-005",
         pageSlug: "",
-        lockToken: "held-token",
+        workspaceLeaseToken: "workspace-lease-token",
         expectedRevision: 8
       });
 
@@ -397,7 +407,7 @@ describe("service now client page creation", () => {
     const result = await client.publishPage({
       workspaceSlug: "product-docs",
       pageSysId: "page-005",
-      lockToken: "held-token",
+      workspaceLeaseToken: "workspace-lease-token",
       expectedRevision: 8
     });
 
@@ -410,7 +420,7 @@ describe("service now client page creation", () => {
     }
   });
 
-  it("maps publish stale revision and lock loss to the dedicated failure codes", async () => {
+  it("maps publish stale revision and workspace lease loss to the dedicated failure codes", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
@@ -428,7 +438,7 @@ describe("service now client page creation", () => {
     const staleResult = await client.publishPage({
       workspaceSlug: "product-docs",
       pageSysId: "page-005",
-      lockToken: "held-token",
+      workspaceLeaseToken: "workspace-lease-token",
       expectedRevision: 8
     });
 
@@ -445,21 +455,21 @@ describe("service now client page creation", () => {
       vi.fn(async () =>
         createJsonResponse(409, {
           error: {
-            code: "edit_lock_lost",
+            code: "workspace_lease_lost",
             message: "This edit session ended and unsaved changes were not published."
           }
         })
       )
     );
 
-    const lockLostResult = await client.publishPage({
+    const leaseLostResult = await client.publishPage({
       workspaceSlug: "product-docs",
       pageSysId: "page-005",
-      lockToken: "held-token",
+      workspaceLeaseToken: "workspace-lease-token",
       expectedRevision: 8
     });
 
-    expect(lockLostResult).toEqual({
+    expect(leaseLostResult).toEqual({
       code: "lock_lost",
       retryable: false,
       state: "failed",
@@ -484,7 +494,7 @@ describe("service now client page creation", () => {
     const result = await client.publishPage({
       workspaceSlug: "product-docs",
       pageSysId: "page-005",
-      lockToken: "held-token",
+      workspaceLeaseToken: "workspace-lease-token",
       expectedRevision: 8
     });
 
@@ -719,6 +729,414 @@ describe("service now client page creation", () => {
     });
   });
 
+  it.each([
+    {
+      action: "acquireWorkspaceEditLease" as const,
+      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/acquire",
+      input: {
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001"
+      },
+      payload: {
+        state: "held" as const,
+        leaseToken: "workspace-lease-token",
+        heartbeatIntervalMs: 60000,
+        staleAfterMs: 300000,
+        changeSetId: "change-set-001",
+        changeSetRevision: 9,
+        workspaceStateRevision: 4
+      },
+      expected: {
+        state: "held" as const,
+        leaseToken: "workspace-lease-token",
+        heartbeatIntervalMs: 60000,
+        staleAfterMs: 300000,
+        changeSetId: "change-set-001",
+        changeSetRevision: 9,
+        workspaceStateRevision: 4
+      }
+    },
+    {
+      action: "resumeWorkspaceEditLease" as const,
+      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/resume",
+      input: {
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001",
+        leaseToken: "workspace-lease-token"
+      },
+      payload: {
+        state: "held" as const,
+        leaseToken: "workspace-lease-token",
+        heartbeatIntervalMs: 60000,
+        staleAfterMs: 300000,
+        changeSetId: "change-set-001",
+        changeSetRevision: 9
+      },
+      expected: {
+        state: "held" as const,
+        leaseToken: "workspace-lease-token",
+        heartbeatIntervalMs: 60000,
+        staleAfterMs: 300000,
+        changeSetId: "change-set-001",
+        changeSetRevision: 9
+      }
+    },
+    {
+      action: "renewWorkspaceEditLease" as const,
+      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/renew",
+      input: {
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001",
+        leaseToken: "workspace-lease-token"
+      },
+      payload: {
+        state: "held" as const,
+        leaseToken: "workspace-lease-token",
+        heartbeatIntervalMs: 60000,
+        staleAfterMs: 300000,
+        changeSetId: "change-set-001",
+        changeSetRevision: 9,
+        workspaceStateRevision: 5
+      },
+      expected: {
+        state: "held" as const,
+        leaseToken: "workspace-lease-token",
+        heartbeatIntervalMs: 60000,
+        staleAfterMs: 300000,
+        changeSetId: "change-set-001",
+        changeSetRevision: 9,
+        workspaceStateRevision: 5
+      }
+    }
+  ])("normalizes held workspace lease $action responses", async ({ action, expectedPath, input, payload, expected }) => {
+    const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(path)).toContain(expectedPath);
+      expect(JSON.parse(String(init?.body))).toEqual(input);
+      return createJsonResponse(200, {
+        result: payload
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createServiceNowClient(createRuntime());
+    const leaseMethod = client[action] as (leaseInput: { workspaceSlug: string; workspaceSysId: string; leaseToken?: string }) => Promise<unknown>;
+    const result = await leaseMethod(input);
+
+    expect(result).toEqual(expected);
+  });
+
+  it.each([
+    {
+      action: "acquireWorkspaceEditLease" as const,
+      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/acquire",
+      input: {
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001"
+      },
+      payload: { state: "released" as const }
+    },
+    {
+      action: "acquireWorkspaceEditLease" as const,
+      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/acquire",
+      input: {
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001"
+      },
+      payload: { state: "unlocked" as const }
+    },
+    {
+      action: "resumeWorkspaceEditLease" as const,
+      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/resume",
+      input: {
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001",
+        leaseToken: "workspace-lease-token"
+      },
+      payload: { state: "released" as const }
+    },
+    {
+      action: "resumeWorkspaceEditLease" as const,
+      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/resume",
+      input: {
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001",
+        leaseToken: "workspace-lease-token"
+      },
+      payload: { state: "unlocked" as const }
+    },
+    {
+      action: "renewWorkspaceEditLease" as const,
+      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/renew",
+      input: {
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001",
+        leaseToken: "workspace-lease-token"
+      },
+      payload: { state: "released" as const }
+    },
+    {
+      action: "renewWorkspaceEditLease" as const,
+      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/renew",
+      input: {
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001",
+        leaseToken: "workspace-lease-token"
+      },
+      payload: { state: "unlocked" as const }
+    },
+    {
+      action: "releaseWorkspaceEditLease" as const,
+      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/release",
+      input: {
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001",
+        leaseToken: "workspace-lease-token"
+      },
+      payload: {
+        state: "held" as const,
+        leaseToken: "workspace-lease-token",
+        heartbeatIntervalMs: 60000,
+        staleAfterMs: 300000,
+        changeSetId: "change-set-001",
+        changeSetRevision: 9,
+        workspaceStateRevision: 4
+      }
+    },
+    {
+      action: "releaseWorkspaceEditLease" as const,
+      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/release",
+      input: {
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001",
+        leaseToken: "workspace-lease-token"
+      },
+      payload: { state: "unlocked" as const }
+    },
+    {
+      action: "getWorkspaceEditLeaseStatus" as const,
+      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/status",
+      input: {
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001"
+      },
+      payload: { state: "released" as const }
+    }
+  ])("fails closed for invalid workspace lease $action state $payload.state", async ({ action, expectedPath, input, payload }) => {
+    const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(path)).toContain(expectedPath);
+      expect(JSON.parse(String(init?.body))).toEqual(input);
+      if (action === "releaseWorkspaceEditLease") {
+        expect(init?.keepalive).toBe(true);
+      }
+      return createJsonResponse(200, {
+        result: payload
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const client = createServiceNowClient(createRuntime());
+    const leaseMethod = client[action] as (leaseInput: { workspaceSlug: string; workspaceSysId: string; leaseToken?: string; keepalive?: boolean }) => Promise<unknown>;
+    const result = await leaseMethod(input);
+
+    expect(result).toEqual({
+      failure: "terminal",
+      retryable: false,
+      state: "failed",
+      errorMessage: "Workspace editing is unavailable."
+    });
+  });
+
+  it("preserves successful release responses", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        createJsonResponse(200, {
+          result: {
+            state: "released"
+          }
+        })
+      )
+    );
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.releaseWorkspaceEditLease?.({
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001",
+      leaseToken: "workspace-lease-token"
+    });
+
+    expect(result).toEqual({
+      state: "released"
+    });
+  });
+
+  it("preserves valid workspace lease action-state combinations", async () => {
+    const cases = [
+      {
+        action: "acquireWorkspaceEditLease" as const,
+        expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/acquire",
+        input: {
+          workspaceSlug: "product-docs",
+          workspaceSysId: "workspace-001"
+        },
+        payload: {
+          state: "locked" as const,
+          holderDisplayName: "Priya Writer",
+          sameUserDifferentSession: true
+        },
+        expected: {
+          state: "locked" as const,
+          holderDisplayName: "Priya Writer",
+          sameUserDifferentSession: true
+        }
+      },
+      {
+        action: "resumeWorkspaceEditLease" as const,
+        expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/resume",
+        input: {
+          workspaceSlug: "product-docs",
+          workspaceSysId: "workspace-001",
+          leaseToken: "workspace-lease-token"
+        },
+        payload: {
+          state: "lost" as const,
+          errorMessage: "This workspace edit session ended and unsaved changes were not saved.",
+          holderDisplayName: "Priya Writer",
+          sameUserDifferentSession: false
+        },
+        expected: {
+          state: "lost" as const,
+          errorMessage: "This workspace edit session ended and unsaved changes were not saved.",
+          holderDisplayName: "Priya Writer",
+          sameUserDifferentSession: false
+        }
+      },
+      {
+        action: "renewWorkspaceEditLease" as const,
+        expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/renew",
+        input: {
+          workspaceSlug: "product-docs",
+          workspaceSysId: "workspace-001",
+          leaseToken: "workspace-lease-token"
+        },
+        payload: {
+          state: "lost" as const,
+          errorMessage: "This workspace edit session ended and unsaved changes were not saved.",
+          holderDisplayName: null,
+          sameUserDifferentSession: false
+        },
+        expected: {
+          state: "lost" as const,
+          errorMessage: "This workspace edit session ended and unsaved changes were not saved.",
+          holderDisplayName: null,
+          sameUserDifferentSession: false
+        }
+      },
+      {
+        action: "getWorkspaceEditLeaseStatus" as const,
+        expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/status",
+        input: {
+          workspaceSlug: "product-docs",
+          workspaceSysId: "workspace-001"
+        },
+        payload: {
+          state: "unlocked" as const
+        },
+        expected: {
+          state: "unlocked" as const
+        }
+      },
+      {
+        action: "releaseWorkspaceEditLease" as const,
+        expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/release",
+        input: {
+          workspaceSlug: "product-docs",
+          workspaceSysId: "workspace-001",
+          leaseToken: "workspace-lease-token"
+        },
+        payload: {
+          state: "released" as const
+        },
+        expected: {
+          state: "released" as const
+        }
+      },
+      {
+        action: "releaseWorkspaceEditLease" as const,
+        expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/release",
+        input: {
+          workspaceSlug: "product-docs",
+          workspaceSysId: "workspace-001",
+          leaseToken: "workspace-lease-token"
+        },
+        payload: {
+          state: "lost" as const,
+          errorMessage: "This workspace edit session ended and unsaved changes were not saved.",
+          holderDisplayName: "Priya Writer",
+          sameUserDifferentSession: false
+        },
+        expected: {
+          state: "lost" as const,
+          errorMessage: "This workspace edit session ended and unsaved changes were not saved.",
+          holderDisplayName: "Priya Writer",
+          sameUserDifferentSession: false
+        }
+      }
+    ];
+
+    for (const { action, expectedPath, input, payload, expected } of cases) {
+      const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+        expect(String(path)).toContain(expectedPath);
+        expect(JSON.parse(String(init?.body))).toEqual(input);
+        if (action === "releaseWorkspaceEditLease") {
+          expect(init?.keepalive).toBe(true);
+        }
+        return createJsonResponse(200, { result: payload });
+      });
+
+      vi.stubGlobal("fetch", fetchMock);
+
+      const client = createServiceNowClient(createRuntime());
+      const leaseMethod = client[action] as (leaseInput: { workspaceSlug: string; workspaceSysId: string; leaseToken?: string; keepalive?: boolean }) => Promise<unknown>;
+      const result = await leaseMethod(input);
+
+      expect(result).toEqual(expected);
+    }
+  });
+
+  it("fails closed when release receives malformed held payloads", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        createJsonResponse(200, {
+          result: {
+            state: "held",
+            leaseToken: "",
+            heartbeatIntervalMs: 60000,
+            staleAfterMs: 300000,
+            changeSetRevision: 9
+          }
+        })
+      )
+    );
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.releaseWorkspaceEditLease?.({
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001",
+      leaseToken: "workspace-lease-token"
+    });
+
+    expect(result).toEqual({
+      failure: "terminal",
+      retryable: false,
+      state: "failed",
+      errorMessage: "Workspace editing is unavailable."
+    });
+  });
+
   it("normalizes a stale status resume as lock loss", async () => {
     const fetchMock = vi.fn(async () =>
       createJsonResponse(409, {
@@ -786,13 +1204,13 @@ describe("service now client page creation", () => {
     });
   });
 
-  it("maps lock-aware autosave rejection onto the dedicated lock_lost code", async () => {
+  it("maps workspace-lease autosave rejection onto the dedicated lock_lost code", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () =>
         createJsonResponse(409, {
           error: {
-            code: "edit_lock_lost",
+            code: "workspace_lease_lost",
             message: "This edit session ended and unsaved changes were not saved."
           }
         })
@@ -801,9 +1219,9 @@ describe("service now client page creation", () => {
 
     const client = createServiceNowClient(createRuntime());
     const result = await client.savePageBody({
-      lockToken: "held-token",
       workspaceSlug: "product-docs",
-      pageSysId: "page-005"
+      pageSysId: "page-005",
+      workspaceLeaseToken: "workspace-lease-token"
     });
 
     expect(result).toEqual({
@@ -823,7 +1241,8 @@ describe("service now client page creation", () => {
         workspaceSysId: "workspace-001",
         pageSysId: "page-007",
         title: "Updated title",
-        slug: "updated-title"
+        slug: "updated-title",
+        workspaceLeaseToken: "workspace-lease-token"
       });
 
       return createJsonResponse(200, {
@@ -861,7 +1280,8 @@ describe("service now client page creation", () => {
       workspaceSysId: "workspace-001",
       pageSysId: "page-007",
       title: "Updated title",
-      slug: "updated-title"
+      slug: "updated-title",
+      workspaceLeaseToken: "workspace-lease-token"
     });
 
     expect(result.state).toBe("succeeded");
@@ -878,7 +1298,8 @@ describe("service now client page creation", () => {
       expect(JSON.parse(String(init?.body))).toEqual({
         workspaceSlug: "product-docs",
         workspaceSysId: "workspace-001",
-        pageSysId: "page-007"
+        pageSysId: "page-007",
+        workspaceLeaseToken: "workspace-lease-token"
       });
 
       return createJsonResponse(200, {
@@ -895,7 +1316,8 @@ describe("service now client page creation", () => {
     const result = await client.deletePage({
       workspaceSlug: "product-docs",
       workspaceSysId: "workspace-001",
-      pageSysId: "page-007"
+      pageSysId: "page-007",
+      workspaceLeaseToken: "workspace-lease-token"
     });
 
     expect(result.state).toBe("succeeded");
@@ -927,5 +1349,224 @@ describe("service now client page creation", () => {
     if (result.state === "failed") {
       expect(result.errorMessage).toBe("Something went wrong while deleting the page. The page was not deleted. Please try again.");
     }
+  });
+
+  it("normalizes workspace lease acquisition with the active generation pair", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/acquire");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001"
+      });
+      return createJsonResponse(200, {
+        result: {
+          state: "held",
+          leaseToken: "workspace-lease-token",
+          heartbeatIntervalMs: 60000,
+          staleAfterMs: 300000,
+          changeSetId: "change-set-001",
+          changeSetRevision: 9,
+          workspaceStateRevision: 4
+        }
+      });
+    }));
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.acquireWorkspaceEditLease?.({
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    });
+
+    expect(result).toEqual({
+      state: "held",
+      leaseToken: "workspace-lease-token",
+      heartbeatIntervalMs: 60000,
+      staleAfterMs: 300000,
+      changeSetId: "change-set-001",
+      changeSetRevision: 9,
+      workspaceStateRevision: 4
+    });
+  });
+
+  it("normalizes workspace lease status without exposing the plaintext token", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse(200, {
+      result: {
+        state: "held",
+        heartbeatIntervalMs: 60000,
+        staleAfterMs: 300000,
+        changeSetId: "change-set-001",
+        changeSetRevision: 9
+      }
+    })));
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.getWorkspaceEditLeaseStatus?.({
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001",
+      leaseToken: "workspace-lease-token"
+    });
+
+    expect(result).toEqual({
+      state: "held",
+      heartbeatIntervalMs: 60000,
+      staleAfterMs: 300000,
+      changeSetId: "change-set-001",
+      changeSetRevision: 9
+    });
+  });
+
+  it("maps workspace foundation invalid responses to a terminal failure instead of lease loss", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse(409, {
+      error: {
+        code: "workspace_foundation_invalid",
+        message: "Workspace editing is unavailable for this workspace.",
+        holderDisplayName: "Priya Writer",
+        sameUserDifferentSession: true
+      }
+    })));
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.acquireWorkspaceEditLease?.({
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    });
+
+    expect(result).toEqual({
+      state: "failed",
+      errorMessage: "Workspace editing is unavailable for this workspace.",
+      failure: "terminal",
+      retryable: false
+    });
+  });
+
+  it("maps unknown structured 409 responses to a terminal failure instead of invented contention", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse(409, {
+      error: {
+        code: "workspace_unexpected_conflict",
+        message: "Workspace editing is unavailable."
+      }
+    })));
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.renewWorkspaceEditLease?.({
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001",
+      leaseToken: "workspace-lease-token"
+    });
+
+    expect(result).toEqual({
+      state: "failed",
+      errorMessage: "Workspace editing is unavailable.",
+      failure: "terminal",
+      retryable: false
+    });
+  });
+
+  it("fails closed when held acquisition omits the change-set id", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse(200, {
+      result: {
+        state: "held",
+        leaseToken: "workspace-lease-token",
+        heartbeatIntervalMs: 60000,
+        staleAfterMs: 300000,
+        changeSetRevision: 9
+      }
+    })));
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.acquireWorkspaceEditLease?.({
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    });
+
+    expect(result).toEqual({
+      state: "failed",
+      errorMessage: "Workspace editing is unavailable.",
+      failure: "terminal",
+      retryable: false
+    });
+  });
+
+  it.each([
+    { label: "fractional", value: 1.5 },
+    { label: "negative", value: -1 },
+    { label: "missing", value: undefined },
+    { label: "non-numeric", value: "not-a-number" }
+  ])("fails closed when held acquisition has a $label change-set revision", async ({ value }) => {
+    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse(200, {
+      result: {
+        state: "held",
+        leaseToken: "workspace-lease-token",
+        heartbeatIntervalMs: 60000,
+        staleAfterMs: 300000,
+        changeSetId: "change-set-001",
+        changeSetRevision: value
+      }
+    })));
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.acquireWorkspaceEditLease?.({
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    });
+
+    expect(result).toEqual({
+      state: "failed",
+      errorMessage: "Workspace editing is unavailable.",
+      failure: "terminal",
+      retryable: false
+    });
+  });
+
+  it("fails closed when held acquisition omits the plaintext lease token", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse(200, {
+      result: {
+        state: "held",
+        heartbeatIntervalMs: 60000,
+        staleAfterMs: 300000,
+        changeSetId: "change-set-001",
+        changeSetRevision: 9
+      }
+    })));
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.acquireWorkspaceEditLease?.({
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    });
+
+    expect(result).toEqual({
+      state: "failed",
+      errorMessage: "Workspace editing is unavailable.",
+      failure: "terminal",
+      retryable: false
+    });
+  });
+
+  it("fails closed when status exposes a plaintext lease token", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse(200, {
+      result: {
+        state: "held",
+        leaseToken: "workspace-lease-token",
+        heartbeatIntervalMs: 60000,
+        staleAfterMs: 300000,
+        changeSetId: "change-set-001",
+        changeSetRevision: 9
+      }
+    })));
+
+    const client = createServiceNowClient(createRuntime());
+    const result = await client.getWorkspaceEditLeaseStatus?.({
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001",
+      leaseToken: "workspace-lease-token"
+    });
+
+    expect(result).toEqual({
+      state: "failed",
+      errorMessage: "Workspace editing is unavailable.",
+      failure: "terminal",
+      retryable: false
+    });
   });
 });

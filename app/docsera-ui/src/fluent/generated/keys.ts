@@ -34,6 +34,118 @@ declare global {
                         table: 'sys_security_acl'
                         id: '9fc3cf4280f449f59b2e062e32479c00'
                     }
+                    docsera_workspace_change_entry_create_deny: {
+                        table: 'sys_security_acl'
+                        id: '89b57403786041deb8dfa62f32c5a670'
+                    }
+                    docsera_workspace_change_entry_delete_deny: {
+                        table: 'sys_security_acl'
+                        id: 'e5af3ddcc59146a4858c8347ffbf6c72'
+                    }
+                    docsera_workspace_change_entry_read_deny: {
+                        table: 'sys_security_acl'
+                        id: 'f3d4c5ceb8fe4d40a9446fd25c7de7b4'
+                    }
+                    docsera_workspace_change_entry_write_deny: {
+                        table: 'sys_security_acl'
+                        id: '17937a8f40ae456b9787d3385f14b015'
+                    }
+                    docsera_workspace_change_set_create_deny: {
+                        table: 'sys_security_acl'
+                        id: 'f61f041d0c214bc28a76295a2ccdf5d5'
+                    }
+                    docsera_workspace_change_set_delete_deny: {
+                        table: 'sys_security_acl'
+                        id: '4ae8e86a3b5c49f7a9d26e9ca67c4709'
+                    }
+                    docsera_workspace_change_set_read_deny: {
+                        table: 'sys_security_acl'
+                        id: '0989dffb081145a8ab93815d6802b8f6'
+                    }
+                    docsera_workspace_change_set_write_deny: {
+                        table: 'sys_security_acl'
+                        id: 'f4e0f3f1c14941769c85cb2de549caf7'
+                    }
+                    docsera_workspace_edit_lease_create_deny: {
+                        table: 'sys_security_acl'
+                        id: '4b6cc6a9f2ea44fdafd8dbc314ff81bc'
+                    }
+                    docsera_workspace_edit_lease_delete_deny: {
+                        table: 'sys_security_acl'
+                        id: 'b83c836a9265450fb12c7b7aa54f0d83'
+                    }
+                    docsera_workspace_edit_lease_read_deny: {
+                        table: 'sys_security_acl'
+                        id: '8e4d5cc76a594cc08280f10cd7b0d3d2'
+                    }
+                    docsera_workspace_edit_lease_write_deny: {
+                        table: 'sys_security_acl'
+                        id: '605c1621a605441ba2113e35b797da13'
+                    }
+                    docsera_workspace_page_snapshot_create_deny: {
+                        table: 'sys_security_acl'
+                        id: 'e5fff99e9b844f2caad819ed91c3fd60'
+                    }
+                    docsera_workspace_page_snapshot_delete_deny: {
+                        table: 'sys_security_acl'
+                        id: 'f140e0b7e3eb426ca8b666d7c94d5c65'
+                    }
+                    docsera_workspace_page_snapshot_read_deny: {
+                        table: 'sys_security_acl'
+                        id: 'e1c72b37fce34207af2de882e2876df5'
+                    }
+                    docsera_workspace_page_snapshot_write_deny: {
+                        table: 'sys_security_acl'
+                        id: 'dcae77963642435aa7f117fa536a6fe6'
+                    }
+                    docsera_workspace_removal_batch_create_deny: {
+                        table: 'sys_security_acl'
+                        id: 'bfcb2f02f15549258209290676c65965'
+                    }
+                    docsera_workspace_removal_batch_delete_deny: {
+                        table: 'sys_security_acl'
+                        id: '05299bc06fa24cb8949a63b0baf2e951'
+                    }
+                    docsera_workspace_removal_batch_read_deny: {
+                        table: 'sys_security_acl'
+                        id: 'd35131d914f64019807ba5613f83bd44'
+                    }
+                    docsera_workspace_removal_batch_write_deny: {
+                        table: 'sys_security_acl'
+                        id: 'f1d32618d7214ed1aa414d9f22385bea'
+                    }
+                    docsera_workspace_removal_member_create_deny: {
+                        table: 'sys_security_acl'
+                        id: '0605b7ec27274052bca7a2d2b8bb1c90'
+                    }
+                    docsera_workspace_removal_member_delete_deny: {
+                        table: 'sys_security_acl'
+                        id: 'ac25d4ff219d450fb9ddfc82aac603c0'
+                    }
+                    docsera_workspace_removal_member_read_deny: {
+                        table: 'sys_security_acl'
+                        id: '2db50e05f8b34e14b16c3f318b6e0577'
+                    }
+                    docsera_workspace_removal_member_write_deny: {
+                        table: 'sys_security_acl'
+                        id: 'fca815ff662245c8a9cb71176092c094'
+                    }
+                    docsera_workspace_snapshot_set_create_deny: {
+                        table: 'sys_security_acl'
+                        id: '59fcdd9365ef4773af055df8d871b802'
+                    }
+                    docsera_workspace_snapshot_set_delete_deny: {
+                        table: 'sys_security_acl'
+                        id: '947979c4a5e54d718f58900ded94c7d2'
+                    }
+                    docsera_workspace_snapshot_set_read_deny: {
+                        table: 'sys_security_acl'
+                        id: 'ffef165d8fb042d886d0fbe0452b1813'
+                    }
+                    docsera_workspace_snapshot_set_write_deny: {
+                        table: 'sys_security_acl'
+                        id: 'd7f33f5f7a3b4570ab316ff20e18800e'
+                    }
                     'docsera-global-workspace-provisioning-bridge-execute': {
                         table: 'sys_scope_privilege'
                         id: 'b523541000134b7ba376fb9302a1857f'
@@ -95,6 +207,26 @@ declare global {
                         table: 'sys_ws_operation'
                         id: 'a054642614c6403a92e30682e1de4aec'
                     }
+                    'docsera-runtime-workspace-edit-lease-acquire-post': {
+                        table: 'sys_ws_operation'
+                        id: 'd9b512c471e84df9af57ae21b4db3414'
+                    }
+                    'docsera-runtime-workspace-edit-lease-release-post': {
+                        table: 'sys_ws_operation'
+                        id: 'abf52c7cd4094770960c81a515336b67'
+                    }
+                    'docsera-runtime-workspace-edit-lease-renew-post': {
+                        table: 'sys_ws_operation'
+                        id: 'a9b2ba469e944b2883a171c509d73e32'
+                    }
+                    'docsera-runtime-workspace-edit-lease-resume-post': {
+                        table: 'sys_ws_operation'
+                        id: '939433ddcd4d49de91c35e765ca5af76'
+                    }
+                    'docsera-runtime-workspace-edit-lease-status-post': {
+                        table: 'sys_ws_operation'
+                        id: '38193dfc681443eeba57c8b83150a313'
+                    }
                     'docsera-runtime-workspace-provisioning-status-get': {
                         table: 'sys_ws_operation'
                         id: 'd6b8cefeabf34dab9fa3bd1f9a92d97f'
@@ -106,6 +238,10 @@ declare global {
                     'docsera-runtime-workspaces-post': {
                         table: 'sys_ws_operation'
                         id: '05e86307b95e4b549a1e6b87059767fe'
+                    }
+                    'docsera-workspace-edit-lease-cleanup': {
+                        table: 'sysauto_script'
+                        id: 'b243fba1b5f7443192a4aaf93f25186c'
                     }
                     package_json: {
                         table: 'sys_module'
@@ -162,6 +298,30 @@ declare global {
                     'src_server_api_docsera-runtime-ping_ts': {
                         table: 'sys_module'
                         id: '0cae8437f1b24d1b8e2e27367ffef695'
+                    }
+                    'src_server_api_docsera-runtime-workspace-edit-lease_ts': {
+                        table: 'sys_module'
+                        id: 'f742dd684dfa465197e67bd6ab8c1348'
+                    }
+                    'src_server_api_docsera-runtime-workspace-edit-lease-acquire_ts': {
+                        table: 'sys_module'
+                        id: '59e85952305f4bb2b7176d43b85b5dbf'
+                    }
+                    'src_server_api_docsera-runtime-workspace-edit-lease-release_ts': {
+                        table: 'sys_module'
+                        id: '5f0fe80bad56448da5c54e76224d808a'
+                    }
+                    'src_server_api_docsera-runtime-workspace-edit-lease-renew_ts': {
+                        table: 'sys_module'
+                        id: '0512911163324a6989860438b6716dff'
+                    }
+                    'src_server_api_docsera-runtime-workspace-edit-lease-resume_ts': {
+                        table: 'sys_module'
+                        id: 'e364bb56f9ca475fb70f97abd934e3d2'
+                    }
+                    'src_server_api_docsera-runtime-workspace-edit-lease-status_ts': {
+                        table: 'sys_module'
+                        id: 'b5be1f4d19db4db781c89ba7c5648bb4'
                     }
                     'src_server_api_docsera-runtime-workspace-provisioning-status_ts': {
                         table: 'sys_module'
@@ -226,6 +386,22 @@ declare global {
                     'src_server_scheduled-scripts_docsera-page-edit-lock-cleanup_js': {
                         table: 'sys_module'
                         id: '7d58605097d6412bb5ec0bf4d57571c5'
+                    }
+                    'src_server_scheduled-scripts_docsera-workspace-edit-lease-cleanup_js': {
+                        table: 'sys_module'
+                        id: '1e31c75ebf0f4905897c7d24d582c0bb'
+                    }
+                    'src_server_workspace-leases_serverWorkspaceEditLeaseDomain_ts': {
+                        table: 'sys_module'
+                        id: '265d61c2e2a849caae00e0ca6cbd1b43'
+                    }
+                    'src_server_workspace-leases_serviceNowWorkspaceEditLeases_ts': {
+                        table: 'sys_module'
+                        id: 'a4760ccdb9594e0fbc910d7cac801935'
+                    }
+                    'src_server_workspace-leases_workspaceEditLeaseService_ts': {
+                        table: 'sys_module'
+                        id: '0dfee33b216d4a278b9b60eea95dc482'
                     }
                     src_server_workspaces_serverWorkspaceDomain_ts: {
                         table: 'sys_module'
@@ -658,6 +834,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_documentation'
+                        id: '23953ceef7164cdaa83453453bae9ede'
+                        key: {
+                            name: 'x_82900_docsera_workspace_edit_lease'
+                            element: 'holder_user'
+                            language: 'en'
+                        }
+                    },
+                    {
                         table: 'sys_choice'
                         id: '2463e62d7f204a8c8dbd25611ce729e2'
                         key: {
@@ -689,6 +874,14 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_page_snapshot'
                             element: 'content_json'
+                        }
+                    },
+                    {
+                        table: 'sys_index'
+                        id: '278a8809e2f14b55af2cbbbdd5683fdb'
+                        key: {
+                            logical_table_name: 'x_82900_docsera_workspace_edit_lease'
+                            col_name_string: 'last_seen_on'
                         }
                     },
                     {
@@ -737,6 +930,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_documentation'
+                        id: '2c47c632112640439541997bf1c7a2bd'
+                        key: {
+                            name: 'x_82900_docsera_workspace_edit_lease'
+                            element: 'verifier_digest'
+                            language: 'en'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: '2cec6be967e7434cb819ec01da0dbda0'
                         key: {
@@ -760,6 +962,14 @@ declare global {
                             name: 'x_82900_docsera_workspace'
                             element: 'creator'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '2ecb5229d5724069a8b31283d613f0f9'
+                        key: {
+                            name: 'x_82900_docsera_workspace_edit_lease'
+                            element: 'last_seen_on'
                         }
                     },
                     {
@@ -815,12 +1025,28 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_dictionary'
+                        id: '311e5f7129ef44639282f0f132052ad6'
+                        key: {
+                            name: 'x_82900_docsera_workspace_edit_lease'
+                            element: 'acquired_on'
+                        }
+                    },
+                    {
                         table: 'sys_documentation'
                         id: '31836902b8f44557adad29a5c426291c'
                         key: {
                             name: 'x_82900_docsera_workspace_change_entry'
                             element: 'NULL'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '318cb5808fee434d96ddd34eb01ca986'
+                        key: {
+                            name: 'x_82900_docsera_workspace_edit_lease'
+                            element: 'workspace_key'
                         }
                     },
                     {
@@ -853,6 +1079,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_provision_request'
                             element: 'NULL'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '360643cc4b0949909c9d29850f9094e7'
+                        key: {
+                            name: 'x_82900_docsera_workspace_edit_lease'
+                            element: 'acquired_on'
+                            language: 'en'
                         }
                     },
                     {
@@ -894,6 +1129,14 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_page'
                             element: 'last_draft_changed_on'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '3f3309d2c5f34d3aa0f4ff344c7168fd'
+                        key: {
+                            name: 'x_82900_docsera_workspace_edit_lease'
+                            element: 'workspace'
                         }
                     },
                     {
@@ -1564,6 +1807,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_documentation'
+                        id: '7b9a7d2f035b4fe0ab3be1b6f3a179a8'
+                        key: {
+                            name: 'x_82900_docsera_workspace_edit_lease'
+                            element: 'workspace'
+                            language: 'en'
+                        }
+                    },
+                    {
                         table: 'ua_table_licensing_config'
                         id: '7c2fc91592484bc4b42aa107e39f870e'
                         key: {
@@ -1653,6 +1905,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_removal_member'
                             element: 'removal_batch'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '8596388673e5446cb3a1d9df33b5f6fd'
+                        key: {
+                            name: 'x_82900_docsera_workspace_edit_lease'
+                            element: 'NULL'
+                            language: 'en'
                         }
                     },
                     {
@@ -1848,6 +2109,13 @@ declare global {
                         }
                     },
                     {
+                        table: 'ua_table_licensing_config'
+                        id: '96dee943430c4d239bd1a8cb9cb312d2'
+                        key: {
+                            name: 'x_82900_docsera_workspace_edit_lease'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: '9843a28d29b74736bc4983a61a5cbf34'
                         key: {
@@ -1886,6 +2154,15 @@ declare global {
                         id: '9ab41a4cef344a6a8d83de33963279be'
                         key: {
                             name: 'x_82900_docsera/PageEditorHostRuntime.js.map'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '9b17ced7190a466ea1e92613302ea281'
+                        key: {
+                            name: 'x_82900_docsera_workspace_edit_lease'
+                            element: 'workspace_key'
+                            language: 'en'
                         }
                     },
                     {
@@ -2008,6 +2285,13 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_db_object'
+                        id: 'a7eceaf5b7c74fa7a8f8a0484c4c4b54'
+                        key: {
+                            name: 'x_82900_docsera_workspace_edit_lease'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: 'a874f4635f4c4883bc41800b022b041d'
                         key: {
@@ -2065,6 +2349,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_page_snapshot'
                             element: 'title'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'ac8624760aab4a2ea9dd9fabd1df41b2'
+                        key: {
+                            name: 'x_82900_docsera_workspace_edit_lease'
+                            element: 'last_seen_on'
                             language: 'en'
                         }
                     },
@@ -2205,6 +2498,14 @@ declare global {
                             name: 'x_82900_docsera_workspace_change_entry'
                             element: 'page'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_index'
+                        id: 'b5841b5d3d3543aab64ef9a177426ff0'
+                        key: {
+                            logical_table_name: 'x_82900_docsera_workspace_edit_lease'
+                            col_name_string: 'workspace_key'
                         }
                     },
                     {
@@ -2421,6 +2722,14 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_dictionary'
+                        id: 'c4fb5bfe7b6b4d92858d6e4b1d039bea'
+                        key: {
+                            name: 'x_82900_docsera_workspace_edit_lease'
+                            element: 'holder_user'
+                        }
+                    },
+                    {
                         table: 'ua_table_licensing_config'
                         id: 'c50bfa3a7ca04e05a1583f014851c68f'
                         key: {
@@ -2569,6 +2878,14 @@ declare global {
                         id: 'd1421798c8964d0b94834eab4e9dc369'
                         key: {
                             name: 'x_82900_docsera_workspace_removal_member'
+                            element: 'NULL'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'd1bc8066c15041dba91ef3c3b5cc0914'
+                        key: {
+                            name: 'x_82900_docsera_workspace_edit_lease'
                             element: 'NULL'
                         }
                     },
@@ -3093,6 +3410,14 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_page'
                             element: 'last_draft_changed_by'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'fc32d2b21d0e40dba4b5cd9291ed50fd'
+                        key: {
+                            name: 'x_82900_docsera_workspace_edit_lease'
+                            element: 'verifier_digest'
                         }
                     },
                     {

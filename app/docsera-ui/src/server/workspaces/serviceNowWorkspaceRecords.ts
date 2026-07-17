@@ -21,6 +21,7 @@ export function mapWorkspaceRecord(record: {
   getValue: (fieldName: string) => unknown;
   getDisplayValue: (fieldName: string) => unknown;
 }): ServerWorkspaceRecord {
+  const workspaceStateRevision = Number(record.getValue("workspace_state_revision"));
   return {
     sysId: cleanText(record.getUniqueValue()),
     name: cleanText(record.getValue("name")),
@@ -35,6 +36,9 @@ export function mapWorkspaceRecord(record: {
     createdOn: cleanText(record.getDisplayValue("sys_created_on")) || null,
     updatedOn: cleanText(record.getDisplayValue("sys_updated_on")) || null,
     updatedBy: cleanText(record.getDisplayValue("sys_updated_by")) || null,
+    pendingChangeSetSysId: cleanText(record.getValue("pending_change_set")) || null,
+    publishedSnapshotSetSysId: cleanText(record.getValue("published_snapshot_set")) || null,
+    workspaceStateRevision: Number.isSafeInteger(workspaceStateRevision) && workspaceStateRevision >= 0 ? workspaceStateRevision : null,
     layout: {
       tocVisibleByDefault: cleanText(record.getValue("toc_default_visible")) === "true",
       pageWidth: cleanText(record.getValue("page_width")) === "full" ? "full" : "readable"

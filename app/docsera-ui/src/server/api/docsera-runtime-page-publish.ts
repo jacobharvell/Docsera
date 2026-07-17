@@ -1,5 +1,6 @@
 import { gs } from "@servicenow/glide";
 import { createServiceNowPagePublishService } from "../pages/serviceNowPagePublishing.ts";
+import { sendWorkspaceLeaseMutationFailure, verifyWorkspaceEditLease } from "./docsera-runtime-workspace-edit-lease.ts";
 
 type RequestLike = {
   body?: unknown;
@@ -31,8 +32,7 @@ function summarizeRequestBody(body: Record<string, unknown>): Record<string, unk
     workspaceSysId: cleanText(body.workspaceSysId) || undefined,
     pageSysId: cleanText(body.pageSysId) || undefined,
     pageSlug: cleanText(body.pageSlug) || undefined,
-    expectedRevision: Number.isSafeInteger(Number(body.expectedRevision)) ? Number(body.expectedRevision) : undefined,
-    hasLockToken: Boolean(cleanText(body.lockToken))
+    expectedRevision: Number.isSafeInteger(Number(body.expectedRevision)) ? Number(body.expectedRevision) : undefined
   };
 }
 
@@ -52,12 +52,12 @@ export async function process(request: RequestLike, response: ResponseLike) {
   try {
     const service = createServiceNowPagePublishService();
     const body = readRequestBody(request);
+    if (sendWorkspaceLeaseMutationFailure(await verifyWorkspaceEditLease(body), response)) return;
     const result = await service.publishPage({
       workspaceSlug: cleanText(body.workspaceSlug),
       workspaceSysId: cleanText(body.workspaceSysId),
       pageSysId: cleanText(body.pageSysId),
       pageSlug: cleanText(body.pageSlug),
-      lockToken: cleanText(body.lockToken),
       expectedRevision: body.expectedRevision
     });
 
@@ -96,18 +96,6 @@ export async function process(request: RequestLike, response: ResponseLike) {
           retryable: false,
           message: result.errorMessage,
           currentRevision: result.currentRevision
-        }
-      });
-      return;
-    }
-
-    if (result.kind === "lock_lost") {
-      response.setStatus?.(409);
-      response.setBody({
-        error: {
-          code: "edit_lock_lost",
-          retryable: false,
-          message: result.errorMessage
         }
       });
       return;

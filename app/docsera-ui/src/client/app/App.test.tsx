@@ -7,7 +7,9 @@ import { createEmptyDocseraDocumentEnvelope } from "../../shared/editor/document
 import type {
   DocseraRuntimeContext,
   PageBodySaveResult,
+  PageCreateResult,
   PageListResult,
+  PageSettingsSaveResult,
   ServiceNowClient,
   WorkspaceMode,
   WorkspacePageRecord,
@@ -25,8 +27,11 @@ function resolveDeferredHostReady() {
 }
 
 afterEach(() => {
+  window.localStorage.clear();
   deferHostReady = false;
   hostReadyResolvers = [];
+  window.sessionStorage.clear();
+  window.name = "";
 });
 
 vi.mock("../editor/PageEditorHost", () => ({
@@ -152,6 +157,34 @@ function createClient(overrides: Partial<ServiceNowClient> = {}): ServiceNowClie
     createPage: vi.fn(async () => {
       throw new Error("createPage should not be called in these tests");
     }),
+    acquireWorkspaceEditLease: vi.fn(async () => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 7,
+      heartbeatIntervalMs: 60_000,
+      leaseToken: "workspace-lease-token",
+      staleAfterMs: 300_000,
+      workspaceStateRevision: 3,
+      state: "held" as const
+    })),
+    resumeWorkspaceEditLease: vi.fn(async () => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 7,
+      heartbeatIntervalMs: 60_000,
+      leaseToken: "workspace-lease-token",
+      staleAfterMs: 300_000,
+      workspaceStateRevision: 3,
+      state: "held" as const
+    })),
+    renewWorkspaceEditLease: vi.fn(async () => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 7,
+      heartbeatIntervalMs: 60_000,
+      leaseToken: "workspace-lease-token",
+      staleAfterMs: 300_000,
+      workspaceStateRevision: 3,
+      state: "held" as const
+    })),
+    releaseWorkspaceEditLease: vi.fn(async () => ({ state: "released" as const })),
     getPageEditLockStatus: vi.fn(async () => ({
       state: "unlocked" as const
     })),
@@ -264,6 +297,18 @@ function expectWorkspaceSearch(expected: Record<string, string>) {
   for (const [key, value] of Object.entries(expected)) {
     expect(params.get(key)).toBe(value);
   }
+}
+
+function heldLease(leaseToken: string) {
+  return {
+    changeSetId: "change-set-001",
+    changeSetRevision: 7,
+    heartbeatIntervalMs: 60_000,
+    leaseToken,
+    staleAfterMs: 300_000,
+    workspaceStateRevision: 3,
+    state: "held" as const
+  };
 }
 
 describe("App live and edit routing", () => {
@@ -489,6 +534,40 @@ describe("App live and edit routing", () => {
       mode: "edit",
       workspaceSlug: "product-docs"
     });
+  });
+
+  it("returns safely to Live when initial Edit acquisition fails with workspace foundation invalid", async () => {
+    const acquireWorkspaceEditLease = vi.fn(async () => ({
+      errorMessage: "Workspace editing is unavailable for this workspace.",
+      failure: "terminal" as const,
+      retryable: false,
+      state: "failed" as const
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Workspace editing is unavailable for this workspace.");
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
+    expect(screen.queryByText(/currently being edited/i)).toBeNull();
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+    expect(window.sessionStorage.length).toBe(0);
+  });
+
+  it("keeps malformed-held failures out of Edit and does not invent holder metadata", async () => {
+    const acquireWorkspaceEditLease = vi.fn(async () => ({
+      errorMessage: "Workspace editing is unavailable.",
+      failure: "terminal" as const,
+      retryable: false,
+      state: "failed" as const
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Workspace editing is unavailable.");
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
+    expect(screen.queryByText(/Priya Writer/i)).toBeNull();
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+    expect(window.sessionStorage.length).toBe(0);
   });
 
   it("requests workspace detail and live pages once during direct live bootstrap", async () => {
@@ -775,7 +854,36 @@ describe("App live and edit routing", () => {
       createPageListResult(mode === "edit" ? "edit" : "live", [mode === "edit" ? draftPage : publishedPage])
     );
 
-    renderApp("/?workspace=product-docs&page=overview", { listPages });
+    const acquireWorkspaceEditLease = vi.fn(async () => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 7,
+      heartbeatIntervalMs: 60_000,
+      leaseToken: "workspace-lease-token",
+      staleAfterMs: 300_000,
+      workspaceStateRevision: 3,
+      state: "held" as const
+    }));
+    const getPageEditLockStatus = vi.fn(async () => {
+      throw new Error("active client must not request page-lock status");
+    });
+    const acquirePageEditLock = vi.fn(async () => {
+      throw new Error("active client must not acquire a page lock");
+    });
+    const heartbeatPageEditLock = vi.fn(async () => {
+      throw new Error("active client must not heartbeat a page lock");
+    });
+    const releasePageEditLock = vi.fn(async () => {
+      throw new Error("active client must not release a page lock");
+    });
+
+    renderApp("/?workspace=product-docs&page=overview", {
+      acquireWorkspaceEditLease,
+      acquirePageEditLock,
+      getPageEditLockStatus,
+      heartbeatPageEditLock,
+      listPages,
+      releasePageEditLock
+    });
 
     await screen.findByRole("heading", { name: "Overview" });
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
@@ -792,10 +900,138 @@ describe("App live and edit routing", () => {
     await waitFor(() => {
       expect(document.querySelector("[data-docsera-page-editor-host='true']")).not.toBeNull();
     });
+    expect(acquireWorkspaceEditLease).toHaveBeenCalledWith(expect.objectContaining({ workspaceSysId: "workspace-001" }));
+    expect(getPageEditLockStatus).not.toHaveBeenCalled();
+    expect(acquirePageEditLock).not.toHaveBeenCalled();
+    expect(heartbeatPageEditLock).not.toHaveBeenCalled();
+    expect(releasePageEditLock).not.toHaveBeenCalled();
     expect(listPages).toHaveBeenLastCalledWith({
       mode: "edit",
       workspaceSlug: "product-docs"
     });
+  });
+
+  it("retains a direct Edit intent until the workspace lease is held", async () => {
+    const deferredLease = createDeferred<{
+      changeSetId: string;
+      changeSetRevision: number;
+      heartbeatIntervalMs: number;
+      leaseToken: string;
+      staleAfterMs: number;
+      workspaceStateRevision: number;
+      state: "held";
+    }>();
+    const acquireWorkspaceEditLease = vi.fn(() => deferredLease.promise);
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", [createPageRecord({ draftTitle: "Overview Draft" })])
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease, listPages });
+
+    await waitFor(() => expect(acquireWorkspaceEditLease).toHaveBeenCalledTimes(1));
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
+    expect(listPages).not.toHaveBeenCalledWith({ mode: "edit", workspaceSlug: "product-docs" });
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+
+    await act(async () => {
+      deferredLease.resolve({
+        changeSetId: "change-set-001",
+        changeSetRevision: 7,
+        heartbeatIntervalMs: 60_000,
+        leaseToken: "workspace-lease-token",
+        staleAfterMs: 300_000,
+        workspaceStateRevision: 3,
+        state: "held"
+      });
+    });
+
+    await waitFor(() => expect(listPages).toHaveBeenCalledWith({ mode: "edit", workspaceSlug: "product-docs" }));
+    await waitFor(() => expect(document.querySelector("[data-docsera-page-editor-host='true']")).not.toBeNull());
+  });
+
+  it("releases the workspace lease when leaving edit mode and when unmounted", async () => {
+    const releaseWorkspaceEditLease = vi.fn(async () => ({ state: "released" as const }));
+    const view = renderApp("/?workspace=product-docs&mode=edit&page=overview", { releaseWorkspaceEditLease });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => expect(releaseWorkspaceEditLease).not.toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+    await waitFor(() => expect(releaseWorkspaceEditLease).toHaveBeenCalledTimes(1));
+    expect(releaseWorkspaceEditLease).toHaveBeenLastCalledWith(expect.objectContaining({ keepalive: true, workspaceSysId: "workspace-001" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Live" })).toBeInTheDocument());
+    view.unmount();
+    await waitFor(() => expect(releaseWorkspaceEditLease).toHaveBeenCalledTimes(2));
+  });
+
+  it("returns to Live and retains another holder's display name after blocked Edit entry", async () => {
+    const acquireWorkspaceEditLease = vi.fn(async () => ({
+      holderDisplayName: "Priya Writer",
+      sameUserDifferentSession: false,
+      state: "locked" as const
+    }));
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get("mode")).toBeNull());
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+  });
+
+  it("renders the same-account tab/window holder notice after blocked Edit entry", async () => {
+    const acquireWorkspaceEditLease = vi.fn(async () => ({
+      holderDisplayName: "Ignored Name",
+      sameUserDifferentSession: true,
+      state: "locked" as const
+    }));
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is already being edited in another tab or window for your account.");
+  });
+
+  it("returns to Live with the safe server permission message after a forbidden acquisition", async () => {
+    const acquireWorkspaceEditLease = vi.fn(async () => ({
+      errorMessage: "You do not have permission to edit this workspace.",
+      failure: "forbidden" as const,
+      retryable: false,
+      state: "failed" as const
+    }));
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("You do not have permission to edit this workspace.");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("another user is editing");
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get("mode")).toBeNull());
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+  });
+
+  it("returns to Live with the safe availability message after a transient acquisition failure", async () => {
+    const acquireWorkspaceEditLease = vi.fn(async () => ({
+      errorMessage: "Workspace editing is temporarily unavailable. Please try again.",
+      failure: "transient" as const,
+      retryable: true,
+      state: "failed" as const
+    }));
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Workspace editing is temporarily unavailable. Please try again.");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("another user is editing");
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get("mode")).toBeNull());
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+  });
+
+  it("returns to Live with a safe terminal server failure without inventing a holder", async () => {
+    const acquireWorkspaceEditLease = vi.fn(async () => ({
+      errorMessage: "Workspace editing is unavailable for this workspace.",
+      failure: "terminal" as const,
+      retryable: false,
+      state: "failed" as const
+    }));
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Workspace editing is unavailable for this workspace.");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("another user is editing");
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get("mode")).toBeNull());
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
   });
 
   it("keeps the shell visible while the edit host bootstraps on a direct edit load", async () => {
@@ -988,5 +1224,1070 @@ describe("App live and edit routing", () => {
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Return to Live" })).toBeInTheDocument();
     expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+  });
+
+  it("keeps Page Settings open with retained values after a transient mutation recovery failure", async () => {
+    const savePageSettings = vi
+      .fn()
+      .mockResolvedValueOnce({
+        code: "lock_lost",
+        errorMessage: "Workspace lease lost.",
+        state: "failed" as const
+      });
+    const acquireWorkspaceEditLease = vi
+      .fn()
+      .mockResolvedValueOnce(heldLease("workspace-lease-token"))
+      .mockResolvedValueOnce({
+        errorMessage: "Workspace editing is temporarily unavailable. Please try again.",
+        failure: "transient" as const,
+        retryable: true,
+        state: "failed" as const
+      });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      savePageSettings
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
+    const pageSettingsPanel = screen.getByRole("complementary", { name: "Page Settings" });
+
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
+    const titleInput = screen.getByDisplayValue("Overview");
+    fireEvent.change(titleInput, { target: { value: "Overview Draft Retained" } });
+    fireEvent.blur(titleInput);
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
+    expect(savePageSettings).toHaveBeenCalledWith(expect.objectContaining({ workspaceLeaseToken: "workspace-lease-token" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Workspace editing is temporarily unavailable. Please try again.");
+    expect(screen.getByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
+    expect(within(pageSettingsPanel).getByRole("button", { name: "Overview Draft Retained" })).toBeInTheDocument();
+    expect(within(pageSettingsPanel).getByRole("button", { name: "overview" })).toBeInTheDocument();
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).not.toBeNull();
+    expect(screen.queryByText(/currently being edited by another user/i)).toBeNull();
+  });
+
+  it("captures Page Settings before forced Live and restores them only after deliberate Edit re-entry", async () => {
+    const savePageSettings = vi
+      .fn()
+      .mockResolvedValueOnce({
+        code: "lock_lost",
+        errorMessage: "Workspace lease lost.",
+        state: "failed" as const
+      })
+      .mockResolvedValueOnce({
+        page: createPageRecord({
+          draftSlug: "overview-restored",
+          draftSlugNormalized: "overview-restored",
+          draftTitle: "Overview Restored"
+        }),
+        state: "succeeded" as const
+      });
+    const acquireWorkspaceEditLease = vi
+      .fn()
+      .mockResolvedValueOnce(heldLease("workspace-lease-token"))
+      .mockResolvedValueOnce({
+        holderDisplayName: "Priya Writer",
+        sameUserDifferentSession: false,
+        state: "locked" as const
+      })
+      .mockResolvedValueOnce(heldLease("replacement-lease-token"));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      savePageSettings
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
+    const pageSettingsPanel = screen.getByRole("complementary", { name: "Page Settings" });
+
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
+    const titleInput = screen.getByDisplayValue("Overview");
+    fireEvent.change(titleInput, { target: { value: "Overview Restored" } });
+    fireEvent.blur(titleInput);
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "overview" }));
+    const slugInput = screen.getByDisplayValue("overview");
+    fireEvent.change(slugInput, { target: { value: "overview-restored" } });
+    fireEvent.blur(slugInput);
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
+
+    expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
+    expect(screen.getByText("Your unsaved Page Settings changes were restored. Review them before saving.")).toBeInTheDocument();
+    expect(within(screen.getByRole("complementary", { name: "Page Settings" })).getByRole("button", { name: "Overview Restored" })).toBeInTheDocument();
+    expect(within(screen.getByRole("complementary", { name: "Page Settings" })).getByRole("button", { name: "overview-restored" })).toBeInTheDocument();
+    expect(savePageSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears existing Page Settings recovery when Edit re-entry acquisition returns forbidden", async () => {
+    const savePageSettings = vi.fn(async (): Promise<PageSettingsSaveResult> => ({
+      code: "lock_lost",
+      errorMessage: "Workspace lease lost.",
+      state: "failed"
+    }));
+    const acquireWorkspaceEditLease = vi
+      .fn()
+      .mockResolvedValueOnce(heldLease("workspace-lease-token"))
+      .mockResolvedValueOnce({
+        holderDisplayName: "Priya Writer",
+        sameUserDifferentSession: false,
+        state: "locked" as const
+      })
+      .mockResolvedValueOnce({
+        errorMessage: "You do not have permission to edit this workspace.",
+        failure: "forbidden" as const,
+        retryable: false,
+        state: "failed" as const
+      })
+      .mockResolvedValueOnce(heldLease("replacement-lease-token"));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      savePageSettings
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
+    const titleInput = screen.getByDisplayValue("Overview");
+    fireEvent.change(titleInput, { target: { value: "Overview Forbidden Re-entry" } });
+    fireEvent.blur(titleInput);
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("You do not have permission to edit this workspace.");
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
+
+    expect(screen.queryByText("Your unsaved Page Settings changes were restored. Review them before saving.")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Page Settings" })).toBeNull();
+  });
+
+  it("clears the stale Page Settings snapshot when the server title changed before Edit re-entry", async () => {
+    const savePageSettings = vi.fn(async (): Promise<PageSettingsSaveResult> => ({
+      code: "lock_lost",
+      errorMessage: "Workspace lease lost.",
+      state: "failed"
+    }));
+    const acquireWorkspaceEditLease = vi
+      .fn()
+      .mockResolvedValueOnce(heldLease("workspace-lease-token"))
+      .mockResolvedValueOnce({
+        holderDisplayName: "Priya Writer",
+        sameUserDifferentSession: false,
+        state: "locked" as const
+      })
+      .mockResolvedValueOnce(heldLease("replacement-lease-token"));
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(
+        mode === "edit" && acquireWorkspaceEditLease.mock.calls.length >= 3 ? "edit" : mode === "edit" ? "edit" : "live",
+        [
+          createPageRecord({
+            draftTitle: mode === "edit" && acquireWorkspaceEditLease.mock.calls.length >= 3 ? "Overview Server Changed" : "Overview Draft",
+            publishedTitle: mode === "edit" && acquireWorkspaceEditLease.mock.calls.length >= 3 ? "Overview Server Changed" : "Overview"
+          })
+        ]
+      )
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      listPages,
+      savePageSettings
+    });
+
+    expect(await screen.findByRole("button", { name: /Open settings for Overview/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Open settings for Overview/i }));
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview Draft" }));
+    const titleInput = screen.getByDisplayValue("Overview Draft");
+    fireEvent.change(titleInput, { target: { value: "Overview Restored" } });
+    fireEvent.blur(titleInput);
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
+    expect(await screen.findByText("Your earlier Page Settings changes could not be restored because the shared page settings changed.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Page Settings" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+    expect(await screen.findByRole("heading", { name: "Overview Server Changed" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
+    expect(screen.queryByText("Your earlier Page Settings changes could not be restored because the shared page settings changed.")).toBeNull();
+  });
+
+  it("clears the stale Page Settings snapshot when the server slug changed before Edit re-entry", async () => {
+    const savePageSettings = vi.fn(async (): Promise<PageSettingsSaveResult> => ({
+      code: "lock_lost",
+      errorMessage: "Workspace lease lost.",
+      state: "failed"
+    }));
+    const acquireWorkspaceEditLease = vi
+      .fn()
+      .mockResolvedValueOnce(heldLease("workspace-lease-token"))
+      .mockResolvedValueOnce({
+        holderDisplayName: "Priya Writer",
+        sameUserDifferentSession: false,
+        state: "locked" as const
+      })
+      .mockResolvedValueOnce(heldLease("replacement-lease-token"));
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(
+        mode === "edit" && acquireWorkspaceEditLease.mock.calls.length >= 3 ? "edit" : mode === "edit" ? "edit" : "live",
+        [
+          createPageRecord({
+            draftSlug: mode === "edit" && acquireWorkspaceEditLease.mock.calls.length >= 3 ? "overview-server-changed" : "overview",
+            draftSlugNormalized: mode === "edit" && acquireWorkspaceEditLease.mock.calls.length >= 3 ? "overview-server-changed" : "overview",
+            publishedSlug: mode === "edit" && acquireWorkspaceEditLease.mock.calls.length >= 3 ? "overview-server-changed" : "overview",
+            publishedSlugNormalized: mode === "edit" && acquireWorkspaceEditLease.mock.calls.length >= 3 ? "overview-server-changed" : "overview"
+          })
+        ]
+      )
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      listPages,
+      savePageSettings
+    });
+
+    expect(await screen.findByRole("button", { name: /Open settings for Overview/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Open settings for Overview/i }));
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "overview" }));
+    const slugInput = screen.getByDisplayValue("overview");
+    fireEvent.change(slugInput, { target: { value: "overview-restored" } });
+    fireEvent.blur(slugInput);
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
+    expect(await screen.findByText("Your earlier Page Settings changes could not be restored because the shared page settings changed.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Page Settings" })).toBeNull();
+  });
+
+  it("retains inline page-create title and parent after a transient recovery failure, then retries on a later action", async () => {
+    const createdChild = createPageRecord({
+      sysId: "page-003",
+      parentPageSysId: "page-001",
+      draftTitle: "Nested draft",
+      draftSlug: "nested-draft",
+      draftSlugNormalized: "nested-draft",
+      publishedTitle: null,
+      publishedSlug: null,
+      publishedSlugNormalized: null,
+      publicationState: "draft"
+    });
+    const createPage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        code: "lock_lost",
+        errorMessage: "Workspace lease lost.",
+        state: "failed" as const
+      })
+      .mockResolvedValueOnce({
+        page: createdChild,
+        state: "succeeded" as const
+      });
+    const acquireWorkspaceEditLease = vi
+      .fn()
+      .mockResolvedValueOnce(heldLease("workspace-lease-token"))
+      .mockResolvedValueOnce({
+        errorMessage: "Workspace editing is temporarily unavailable. Please try again.",
+        failure: "transient" as const,
+        retryable: true,
+        state: "failed" as const
+      })
+      .mockResolvedValueOnce(heldLease("replacement-lease-token"));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      createPage,
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+        createPageListResult(mode === "edit" ? "edit" : "live", [
+          createPageRecord({ draftTitle: "Overview Draft", publicationState: "published_with_unpublished_changes" }),
+          createPageRecord({
+            sysId: "page-002",
+            parentPageSysId: "page-001",
+            siblingOrder: 2,
+            draftTitle: "Child Draft",
+            draftSlug: "child",
+            draftSlugNormalized: "child",
+            publishedTitle: "Child",
+            publishedSlug: "child",
+            publishedSlugNormalized: "child",
+            publicationState: "published_with_unpublished_changes"
+          })
+        ])
+      )
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add child page to Overview Draft" }));
+
+    const titleInput = await screen.findByRole("textbox", { name: "New page title" });
+    fireEvent.change(titleInput, { target: { value: "Nested draft" } });
+    fireEvent.keyDown(titleInput, { key: "Enter" });
+
+    await waitFor(() => expect(createPage).toHaveBeenCalledTimes(1));
+    expect(createPage).toHaveBeenCalledWith(expect.objectContaining({
+      parentPageSysId: "page-001",
+      title: "Nested draft",
+      workspaceLeaseToken: "workspace-lease-token"
+    }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Workspace editing is temporarily unavailable. Please try again.");
+    expect(screen.getByRole("textbox", { name: "New page title" })).toHaveValue("Nested draft");
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
+
+    fireEvent.keyDown(screen.getByRole("textbox", { name: "New page title" }), { key: "Enter" });
+
+    await waitFor(() => expect(createPage).toHaveBeenCalledTimes(2));
+    expect(createPage).toHaveBeenLastCalledWith(expect.objectContaining({
+      parentPageSysId: "page-001",
+      title: "Nested draft",
+      workspaceLeaseToken: "replacement-lease-token"
+    }));
+    expect(await screen.findByRole("heading", { name: "Nested draft" })).toBeInTheDocument();
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "nested-draft" });
+  });
+
+  it("restores inline-create input after forced Live and falls back to the root when the original parent is gone", async () => {
+    const createPage = vi.fn(async (): Promise<PageCreateResult> => ({
+      code: "lock_lost",
+      errorMessage: "Workspace lease lost.",
+      state: "failed" as const
+    }));
+    const acquireWorkspaceEditLease = vi
+      .fn()
+      .mockResolvedValueOnce(heldLease("workspace-lease-token"))
+      .mockResolvedValueOnce({
+        holderDisplayName: "Priya Writer",
+        sameUserDifferentSession: false,
+        state: "locked" as const
+      })
+      .mockResolvedValueOnce(heldLease("replacement-lease-token"));
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(
+        mode === "edit" && acquireWorkspaceEditLease.mock.calls.length >= 3
+          ? "edit"
+          : mode === "edit"
+            ? "edit"
+            : "live",
+        mode === "edit" && acquireWorkspaceEditLease.mock.calls.length >= 3
+          ? [createPageRecord({ draftTitle: "Overview Draft", publicationState: "published_with_unpublished_changes" })]
+          : [
+              createPageRecord({ draftTitle: "Overview Draft", publicationState: "published_with_unpublished_changes" }),
+              createPageRecord({
+                sysId: "page-002",
+                parentPageSysId: "page-001",
+                siblingOrder: 2,
+                draftTitle: "Child Draft",
+                draftSlug: "child",
+                draftSlugNormalized: "child",
+                publishedTitle: "Child",
+                publishedSlug: "child",
+                publishedSlugNormalized: "child",
+                publicationState: "published_with_unpublished_changes"
+              }),
+              createPageRecord({
+                sysId: "page-003",
+                parentPageSysId: "page-002",
+                siblingOrder: 1,
+                draftTitle: "Grandchild Draft",
+                draftSlug: "grandchild",
+                draftSlugNormalized: "grandchild",
+                publishedTitle: "Grandchild",
+                publishedSlug: "grandchild",
+                publishedSlugNormalized: "grandchild",
+                publicationState: "published_with_unpublished_changes"
+              })
+            ]
+      )
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      createPage,
+      listPages
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Add child page to Child Draft" }));
+    const titleInput = await screen.findByRole("textbox", { name: "New page title" });
+    fireEvent.change(titleInput, { target: { value: "Nested draft" } });
+    fireEvent.keyDown(titleInput, { key: "Enter" });
+
+    await waitFor(() => expect(createPage).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
+
+    expect(await screen.findByRole("textbox", { name: "New page title" })).toHaveValue("Nested draft");
+    expect(screen.getByText("The original parent is no longer available. Review the restored title before creating the page.")).toBeInTheDocument();
+    expect(createPage).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears existing inline-create recovery when Edit re-entry acquisition returns forbidden", async () => {
+    const createPage = vi.fn(async (): Promise<PageCreateResult> => ({
+      code: "lock_lost",
+      errorMessage: "Workspace lease lost.",
+      state: "failed"
+    }));
+    const acquireWorkspaceEditLease = vi
+      .fn()
+      .mockResolvedValueOnce(heldLease("workspace-lease-token"))
+      .mockResolvedValueOnce({
+        holderDisplayName: "Priya Writer",
+        sameUserDifferentSession: false,
+        state: "locked" as const
+      })
+      .mockResolvedValueOnce({
+        errorMessage: "You do not have permission to edit this workspace.",
+        failure: "forbidden" as const,
+        retryable: false,
+        state: "failed" as const
+      })
+      .mockResolvedValueOnce(heldLease("replacement-lease-token"));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      createPage,
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+        createPageListResult(mode === "edit" ? "edit" : "live", [
+          createPageRecord({ draftTitle: "Overview Draft", publicationState: "published_with_unpublished_changes" })
+        ])
+      )
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]);
+    const titleInput = await screen.findByRole("textbox", { name: "New page title" });
+    fireEvent.change(titleInput, { target: { value: "Forbidden recovery child" } });
+    fireEvent.keyDown(titleInput, { key: "Enter" });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("You do not have permission to edit this workspace.");
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
+
+    expect(screen.queryByRole("textbox", { name: "New page title" })).toBeNull();
+  });
+
+  it("ignores a stale forbidden re-entry acquisition after navigation changes the active workspace", async () => {
+    const staleAcquireDeferred = createDeferred<{
+      errorMessage: string;
+      failure: "forbidden";
+      retryable: false;
+      state: "failed";
+    }>();
+    const savePageSettings = vi.fn(async (): Promise<PageSettingsSaveResult> => ({
+      code: "lock_lost",
+      errorMessage: "Workspace lease lost.",
+      state: "failed"
+    }));
+    const acquireWorkspaceEditLease = vi
+      .fn()
+      .mockResolvedValueOnce(heldLease("workspace-lease-token"))
+      .mockResolvedValueOnce({
+        holderDisplayName: "Priya Writer",
+        sameUserDifferentSession: false,
+        state: "locked" as const
+      })
+      .mockImplementationOnce(() => staleAcquireDeferred.promise)
+      .mockResolvedValueOnce(heldLease("replacement-lease-token"));
+    const getWorkspace = vi.fn(async (workspaceSlug: string) => ({
+      workspace:
+        workspaceSlug === "api-docs"
+          ? createWorkspace({
+              name: "API Docs",
+              slug: "api-docs",
+              sysId: "workspace-002"
+            })
+          : createWorkspace()
+    }));
+    const listPages = vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }): Promise<PageListResult> => {
+      if (workspaceSlug === "api-docs") {
+        const apiMode: WorkspaceMode = mode === "edit" ? "edit" : "live";
+        return {
+          items: [
+            createPageRecord({
+              draftSlug: "api-overview",
+              draftSlugNormalized: "api-overview",
+              draftTitle: "API Overview",
+              publishedSlug: "api-overview",
+              publishedSlugNormalized: "api-overview",
+              publishedTitle: "API Overview",
+              workspaceSysId: "workspace-002"
+            })
+          ],
+          mode: apiMode,
+          totalCount: 1,
+          workspaceSlug: "api-docs",
+          workspaceSysId: "workspace-002"
+        };
+      }
+
+      return createPageListResult(mode === "edit" ? "edit" : "live", [
+        createPageRecord({
+          draftTitle: "Overview Draft",
+          publicationState: "published_with_unpublished_changes"
+        })
+      ]);
+    });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      getWorkspace,
+      listPages,
+      savePageSettings
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview Draft" }));
+    const titleInput = screen.getByDisplayValue("Overview Draft");
+    fireEvent.change(titleInput, { target: { value: "Recovered after stale forbidden" } });
+    fireEvent.blur(titleInput);
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expect(acquireWorkspaceEditLease).toHaveBeenCalledTimes(3));
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "API Docs" }));
+    expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+
+    await act(async () => {
+      staleAcquireDeferred.resolve({
+        errorMessage: "You do not have permission to edit this workspace.",
+        failure: "forbidden",
+        retryable: false,
+        state: "failed"
+      });
+      await Promise.resolve();
+    });
+
+    expectWorkspaceSearch({ workspace: "api-docs", page: "api-overview" });
+    expect(screen.queryByRole("alert")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: API Docs/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Product Docs" }));
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
+    expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
+    expect(screen.getByText("Your unsaved Page Settings changes were restored. Review them before saving.")).toBeInTheDocument();
+  });
+
+  it("clears prior workspace recovery when that same workspace loads as viewer-only", async () => {
+    const savePageSettings = vi.fn(async (): Promise<PageSettingsSaveResult> => ({
+      code: "lock_lost",
+      errorMessage: "Workspace lease lost.",
+      state: "failed"
+    }));
+    const getWorkspace = vi
+      .fn()
+      .mockResolvedValueOnce({
+        workspace: createWorkspace()
+      })
+      .mockResolvedValueOnce({
+        workspace: createWorkspace({
+          name: "API Docs",
+          slug: "api-docs",
+          sysId: "workspace-002"
+        })
+      })
+      .mockResolvedValueOnce({
+        workspace: createWorkspace({
+          canManageSettings: false,
+          roleLabel: null,
+          slug: "product-docs",
+          sysId: "workspace-001"
+        })
+      })
+      .mockResolvedValueOnce({
+        workspace: createWorkspace({
+          name: "API Docs",
+          slug: "api-docs",
+          sysId: "workspace-002"
+        })
+      })
+      .mockResolvedValueOnce({
+        workspace: createWorkspace()
+      })
+      .mockImplementation(async (workspaceSlug: string) => ({
+        workspace:
+          workspaceSlug === "api-docs"
+            ? createWorkspace({
+                name: "API Docs",
+                slug: "api-docs",
+                sysId: "workspace-002"
+              })
+            : createWorkspace()
+      }));
+    const acquireWorkspaceEditLease = vi
+      .fn()
+      .mockResolvedValueOnce(heldLease("workspace-lease-token"))
+      .mockResolvedValueOnce({
+        holderDisplayName: "Priya Writer",
+        sameUserDifferentSession: false,
+        state: "locked" as const
+      })
+      .mockResolvedValueOnce(heldLease("replacement-lease-token"));
+    const listPages = vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }): Promise<PageListResult> => {
+      if (workspaceSlug === "api-docs") {
+        const apiMode: WorkspaceMode = mode === "edit" ? "edit" : "live";
+        return {
+          items: [
+            createPageRecord({
+              draftSlug: "api-overview",
+              draftSlugNormalized: "api-overview",
+              draftTitle: "API Overview",
+              publishedSlug: "api-overview",
+              publishedSlugNormalized: "api-overview",
+              publishedTitle: "API Overview",
+              workspaceSysId: "workspace-002"
+            })
+          ],
+          mode: apiMode,
+          totalCount: 1,
+          workspaceSlug: "api-docs",
+          workspaceSysId: "workspace-002"
+        };
+      }
+
+      return createPageListResult(mode === "edit" ? "edit" : "live", [
+        createPageRecord({
+          draftTitle: mode === "edit" ? "Overview Draft" : "Overview",
+          publicationState: mode === "edit" ? "published_with_unpublished_changes" : "published"
+        })
+      ]);
+    });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      getWorkspace,
+      listPages,
+      savePageSettings
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview Draft" }));
+    const titleInput = screen.getByDisplayValue("Overview Draft");
+    fireEvent.change(titleInput, { target: { value: "Viewer cleared title" } });
+    fireEvent.blur(titleInput);
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "API Docs" }));
+    expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: API Docs/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Product Docs" }));
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "API Docs" }));
+    expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: API Docs/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Product Docs" }));
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
+
+    expect(screen.queryByText("Your unsaved Page Settings changes were restored. Review them before saving.")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Page Settings" })).toBeNull();
+  });
+
+  it("does not clear another workspace's recovery when a different workspace loads as viewer-only", async () => {
+    const savePageSettings = vi.fn(async (): Promise<PageSettingsSaveResult> => ({
+      code: "lock_lost",
+      errorMessage: "Workspace lease lost.",
+      state: "failed"
+    }));
+    const getWorkspace = vi.fn(async (workspaceSlug: string) => ({
+      workspace:
+        workspaceSlug === "api-docs"
+          ? createWorkspace({
+              canManageSettings: false,
+              name: "API Docs",
+              roleLabel: null,
+              slug: "api-docs",
+              sysId: "workspace-002"
+            })
+          : createWorkspace()
+    }));
+    const acquireWorkspaceEditLease = vi
+      .fn()
+      .mockResolvedValueOnce(heldLease("workspace-lease-token"))
+      .mockResolvedValueOnce({
+        holderDisplayName: "Priya Writer",
+        sameUserDifferentSession: false,
+        state: "locked" as const
+      })
+      .mockResolvedValueOnce(heldLease("replacement-lease-token"));
+    const listPages = vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }): Promise<PageListResult> => {
+      if (workspaceSlug === "api-docs") {
+        const apiMode: WorkspaceMode = mode === "edit" ? "edit" : "live";
+        return {
+          items: [
+            createPageRecord({
+              draftSlug: "api-overview",
+              draftSlugNormalized: "api-overview",
+              draftTitle: "API Overview",
+              publishedSlug: "api-overview",
+              publishedSlugNormalized: "api-overview",
+              publishedTitle: "API Overview",
+              workspaceSysId: "workspace-002"
+            })
+          ],
+          mode: apiMode,
+          totalCount: 1,
+          workspaceSlug: "api-docs",
+          workspaceSysId: "workspace-002"
+        };
+      }
+
+      return createPageListResult(mode === "edit" ? "edit" : "live", [
+        createPageRecord({
+          draftTitle: mode === "edit" ? "Overview Draft" : "Overview",
+          publicationState: mode === "edit" ? "published_with_unpublished_changes" : "published"
+        })
+      ]);
+    });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      getWorkspace,
+      listPages,
+      savePageSettings
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview Draft" }));
+    const titleInput = screen.getByDisplayValue("Overview Draft");
+    fireEvent.change(titleInput, { target: { value: "Still restorable title" } });
+    fireEvent.blur(titleInput);
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "API Docs" }));
+    expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: API Docs/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Product Docs" }));
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
+
+    expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
+    expect(screen.getByText("Your unsaved Page Settings changes were restored. Review them before saving.")).toBeInTheDocument();
+  });
+
+  it("keeps the page tree unchanged and clears delete pending after a transient recovery failure", async () => {
+    const deletePage = vi
+      .fn()
+      .mockResolvedValueOnce({
+        code: "lock_lost",
+        errorMessage: "Workspace lease lost.",
+        state: "failed" as const
+      });
+    const acquireWorkspaceEditLease = vi
+      .fn()
+      .mockResolvedValueOnce(heldLease("workspace-lease-token"))
+      .mockResolvedValueOnce({
+        errorMessage: "Workspace editing is temporarily unavailable. Please try again.",
+        failure: "transient" as const,
+        retryable: true,
+        state: "failed" as const
+      });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      deletePage,
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+        createPageListResult(mode === "edit" ? "edit" : "live", [
+          createPageRecord({ draftTitle: "Overview Draft", publicationState: "published_with_unpublished_changes" }),
+          createPageRecord({
+            sysId: "page-002",
+            parentPageSysId: "page-001",
+            siblingOrder: 2,
+            draftTitle: "Child Draft",
+            draftSlug: "child",
+            draftSlugNormalized: "child",
+            publishedTitle: "Child",
+            publishedSlug: "child",
+            publishedSlugNormalized: "child",
+            publicationState: "published_with_unpublished_changes"
+          })
+        ])
+      )
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete page" }));
+
+    const deleteDialog = await screen.findByRole("dialog", { name: "Confirm deletion" });
+    const confirmDelete = within(deleteDialog).getByRole("button", { name: "Delete page" });
+    fireEvent.click(confirmDelete);
+
+    await waitFor(() => expect(deletePage).toHaveBeenCalledTimes(1));
+    expect(deletePage).toHaveBeenCalledWith(expect.objectContaining({
+      pageSysId: "page-001",
+      workspaceLeaseToken: "workspace-lease-token"
+    }));
+    expect(await within(deleteDialog).findByRole("alert")).toHaveTextContent("Workspace editing is temporarily unavailable. Please try again.");
+    expect(confirmDelete).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Overview Draft" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Child Draft Unpublished" })).toBeInTheDocument();
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
+  });
+
+  it("uses centralized fallback for direct forbidden Page Settings saves and clears recovery", async () => {
+    const savePageSettings = vi.fn(async () => ({
+      code: "forbidden" as const,
+      errorMessage: "You do not have permission to edit this workspace.",
+      state: "failed" as const
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { savePageSettings });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
+    const titleInput = screen.getByDisplayValue("Overview");
+    fireEvent.change(titleInput, { target: { value: "Overview Forbidden" } });
+    fireEvent.blur(titleInput);
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("alert")).toHaveTextContent("You do not have permission to edit this workspace.");
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
+    expect(screen.queryByText("Your unsaved Page Settings changes were restored. Review them before saving.")).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Page Settings" })).toBeNull();
+  });
+
+  it("uses centralized fallback for direct forbidden inline creation and clears recovery", async () => {
+    const createPage = vi.fn(async (): Promise<PageCreateResult> => ({
+      code: "forbidden",
+      errorMessage: "You do not have permission to edit this workspace.",
+      state: "failed"
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      createPage,
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+        createPageListResult(mode === "edit" ? "edit" : "live", [
+          createPageRecord({ draftTitle: "Overview Draft", publicationState: "published_with_unpublished_changes" })
+        ])
+      )
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]);
+    const titleInput = await screen.findByRole("textbox", { name: "New page title" });
+    fireEvent.change(titleInput, { target: { value: "Forbidden child" } });
+    fireEvent.keyDown(titleInput, { key: "Enter" });
+
+    await waitFor(() => expect(createPage).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("alert")).toHaveTextContent("You do not have permission to edit this workspace.");
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
+    expect(screen.queryByRole("textbox", { name: "New page title" })).toBeNull();
+  });
+
+  it("does not restore delete intent after a direct forbidden delete result", async () => {
+    const deletePage = vi.fn(async () => ({
+      code: "forbidden" as const,
+      errorMessage: "You do not have permission to edit this workspace.",
+      state: "failed" as const
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      deletePage,
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+        createPageListResult(mode === "edit" ? "edit" : "live", [
+          createPageRecord({ draftTitle: "Overview Draft", publicationState: "published_with_unpublished_changes" })
+        ])
+      )
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Delete page" }));
+
+    const deleteDialog = await screen.findByRole("dialog", { name: "Confirm deletion" });
+    fireEvent.click(within(deleteDialog).getByRole("button", { name: "Delete page" }));
+
+    await waitFor(() => expect(deletePage).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("alert")).toHaveTextContent("You do not have permission to edit this workspace.");
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
+    expect(screen.queryByRole("dialog", { name: "Confirm deletion" })).toBeNull();
+    expect(screen.queryByText("Your unsaved Page Settings changes were restored. Review them before saving.")).toBeNull();
+  });
+
+  it("ignores a stale direct forbidden settings result after navigation changes the active session", async () => {
+    const deferredSave = createDeferred<{
+      code: "forbidden";
+      errorMessage: string;
+      state: "failed";
+    }>();
+    const apiWorkspaceDeferred = createDeferred<{ workspace: WorkspaceViewRecord }>();
+    const savePageSettings = vi.fn(() => deferredSave.promise);
+    const getWorkspace = vi.fn(async (workspaceSlug: string) => {
+      if (workspaceSlug === "api-docs") {
+        return apiWorkspaceDeferred.promise;
+      }
+
+      return {
+        workspace: createWorkspace()
+      };
+    });
+    const listWorkspaces = vi.fn(async () => ({
+      items: [
+        createWorkspace(),
+        createWorkspace({ slug: "api-docs", sysId: "workspace-002", name: "API Docs" })
+      ],
+      page: 1,
+      pageSize: 10,
+      totalCount: 2,
+      hasNextPage: false,
+      searchText: ""
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      getWorkspace,
+      listWorkspaces,
+      savePageSettings,
+      listPages: vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }) => {
+        if (workspaceSlug === "api-docs") {
+          return {
+            ...createPageListResult(mode === "edit" ? "edit" : "live", [
+              createPageRecord({
+                sysId: "page-api",
+                workspaceSysId: "workspace-002",
+                draftTitle: "API Overview",
+                draftSlug: "api-overview",
+                draftSlugNormalized: "api-overview",
+                publishedTitle: "API Overview",
+                publishedSlug: "api-overview",
+                publishedSlugNormalized: "api-overview"
+              })
+            ]),
+            workspaceSlug
+          };
+        }
+
+        return createPageListResult(mode === "edit" ? "edit" : "live", [
+          createPageRecord({ draftTitle: "Overview Draft", publicationState: "published_with_unpublished_changes" }),
+          createPageRecord({
+            sysId: "page-002",
+            parentPageSysId: "page-001",
+            siblingOrder: 2,
+            draftTitle: "Child Draft",
+            draftSlug: "child",
+            draftSlugNormalized: "child",
+            publishedTitle: "Child",
+            publishedSlug: "child",
+            publishedSlugNormalized: "child",
+            publicationState: "published_with_unpublished_changes"
+          })
+        ]);
+      })
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview Draft" }));
+    const titleInput = screen.getByDisplayValue("Overview Draft");
+    fireEvent.change(titleInput, { target: { value: "Stale forbidden title" } });
+    fireEvent.blur(titleInput);
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "API Docs" }));
+
+    await act(async () => {
+      apiWorkspaceDeferred.resolve({
+        workspace: createWorkspace({
+          slug: "api-docs",
+          sysId: "workspace-002",
+          name: "API Docs"
+        })
+      });
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+
+    await act(async () => {
+      deferredSave.resolve({
+        code: "forbidden",
+        errorMessage: "You do not have permission to edit this workspace.",
+        state: "failed"
+      });
+      await Promise.resolve();
+    });
+
+    expect(window.location.search).toContain("workspace=api-docs");
+    expect(screen.getByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+    expect(screen.queryByText("You do not have permission to edit this workspace.")).toBeNull();
   });
 });

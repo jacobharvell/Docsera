@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import type { DocseraDocumentEnvelope } from "../../shared/editor/document";
-import type {
-  PageBodySaveResult,
-  PageEditLockAcquireResult,
-  PageEditLockHeartbeatResult,
-  PageEditLockReleaseResult,
-  PageEditLockStatusResult
-} from "../shared/types/docsera";
+import type { PageBodySaveResult } from "../shared/types/docsera";
 import type { EditorOutlineItem } from "./documentOutline";
 
 export type PageEditorHostFailure = {
@@ -14,9 +8,18 @@ export type PageEditorHostFailure = {
   message: string;
 };
 
+export type PageEditorRecoverySnapshot = Readonly<{
+  envelope: DocseraDocumentEnvelope;
+  isDirty: boolean;
+  pageSysId: string;
+  savedRevision: number;
+  sessionKey: string;
+}>;
+
 type PageEditorHostProps = {
   canEdit: boolean;
   initialEnvelope: DocseraDocumentEnvelope;
+  initialSavedEnvelope?: DocseraDocumentEnvelope;
   initialRevision: number;
   onAccessLost: () => void;
   onError: (failure: PageEditorHostFailure | null) => void;
@@ -25,16 +28,11 @@ type PageEditorHostProps = {
   onSaveDraft: (input: {
     draftContentJson: DocseraDocumentEnvelope;
     expectedRevision: number;
-    lockToken?: string;
     pageSysId: string;
   }) => Promise<PageBodySaveResult>;
-  onAcquireEditLock?: (input: { lockToken?: string; pageSysId: string }) => Promise<PageEditLockAcquireResult>;
-  onHeartbeatEditLock?: (input: { lockToken: string; pageSysId: string }) => Promise<PageEditLockHeartbeatResult>;
-  onRefreshEditLock?: (input: { lockToken?: string; pageSysId: string }) => Promise<PageEditLockStatusResult>;
-  onReleaseEditLock?: (input: { keepalive?: boolean; lockToken: string; pageSysId: string }) => Promise<PageEditLockReleaseResult>;
   onStatusChange: (state: {
     flush?: () => Promise<boolean>;
-    release?: (options?: { keepalive?: boolean }) => Promise<void>;
+    getRecoverySnapshot?: () => PageEditorRecoverySnapshot | null;
     isDirty: boolean;
     isSaving: boolean;
     status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
@@ -65,16 +63,13 @@ export function PageEditorHost(props: PageEditorHostProps) {
     return {
       canEdit: currentProps.canEdit,
       initialEnvelope: currentProps.initialEnvelope,
+      initialSavedEnvelope: currentProps.initialSavedEnvelope,
       initialRevision: currentProps.initialRevision,
       onAccessLost: currentProps.onAccessLost,
       onEditorReady: () => {
         currentProps.onReadyStateChange?.(true);
       },
       onOutlineChange: currentProps.onOutlineChange,
-      onAcquireEditLock: currentProps.onAcquireEditLock,
-      onHeartbeatEditLock: currentProps.onHeartbeatEditLock,
-      onRefreshEditLock: currentProps.onRefreshEditLock,
-      onReleaseEditLock: currentProps.onReleaseEditLock,
       onRuntimeError: () => {
         currentProps.onReadyStateChange?.(false);
         currentProps.onError({
@@ -86,6 +81,7 @@ export function PageEditorHost(props: PageEditorHostProps) {
       onStatusChange: currentProps.onStatusChange,
       overlayRoot: entry.overlayRoot,
       pageSysId: currentProps.pageSysId,
+      sessionKey: currentProps.sessionKey,
       theme: currentProps.theme
     };
   }
@@ -156,14 +152,11 @@ export function PageEditorHost(props: PageEditorHostProps) {
   }, [
     props.canEdit,
     props.initialEnvelope,
+    props.initialSavedEnvelope,
     props.initialRevision,
     props.onAccessLost,
-    props.onAcquireEditLock,
     props.onError,
-    props.onHeartbeatEditLock,
     props.onOutlineChange,
-    props.onRefreshEditLock,
-    props.onReleaseEditLock,
     props.onSaveDraft,
     props.onStatusChange,
     props.pageSysId,

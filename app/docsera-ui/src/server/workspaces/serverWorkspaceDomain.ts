@@ -43,6 +43,9 @@ export type WorkspaceRecord = {
   createdOn?: string | null;
   updatedOn?: string | null;
   updatedBy?: string | null;
+  pendingChangeSetSysId?: string | null;
+  publishedSnapshotSetSysId?: string | null;
+  workspaceStateRevision?: number | null;
   layout: WorkspaceLayoutDefaults;
 };
 

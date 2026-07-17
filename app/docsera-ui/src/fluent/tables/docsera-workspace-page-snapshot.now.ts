@@ -8,6 +8,7 @@ export const x_82900_docsera_workspace_page_snapshot = Table({
   accessibleFrom: "package_private",
   audit: true,
   createAccessControls: false,
+  allowWebServiceAccess: false,
   schema: {
     snapshot_set: ReferenceColumn({ label: "Snapshot set", mandatory: true, referenceTable: "x_82900_docsera_workspace_snapshot_set" }),
     page: ReferenceColumn({ label: "Page identity", mandatory: true, referenceTable: "x_82900_docsera_page" }),

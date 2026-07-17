@@ -8,6 +8,7 @@ export const x_82900_docsera_workspace_change_entry = Table({
   accessibleFrom: "package_private",
   audit: true,
   createAccessControls: false,
+  allowWebServiceAccess: false,
   schema: {
     change_set: ReferenceColumn({ label: "Change set", mandatory: true, referenceTable: "x_82900_docsera_workspace_change_set" }),
     page: ReferenceColumn({ label: "Page identity", mandatory: true, referenceTable: "x_82900_docsera_page" }),

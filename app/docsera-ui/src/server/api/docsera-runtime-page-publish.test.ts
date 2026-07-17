@@ -1,11 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const publishPage = vi.fn();
+const { publishPage, sendWorkspaceLeaseMutationFailure, verifyWorkspaceEditLease } = vi.hoisted(() => ({
+  publishPage: vi.fn(),
+  sendWorkspaceLeaseMutationFailure: vi.fn(() => false),
+  verifyWorkspaceEditLease: vi.fn()
+}));
 
 vi.mock("../pages/serviceNowPagePublishing.ts", () => ({
   createServiceNowPagePublishService: () => ({
     publishPage
   })
+}));
+
+vi.mock("./docsera-runtime-workspace-edit-lease.ts", () => ({
+  sendWorkspaceLeaseMutationFailure,
+  verifyWorkspaceEditLease
 }));
 
 vi.mock("@servicenow/glide", () => ({
@@ -22,6 +31,10 @@ import { process } from "./docsera-runtime-page-publish.ts";
 describe("docsera runtime page publish route", () => {
   beforeEach(() => {
     publishPage.mockReset();
+    verifyWorkspaceEditLease.mockReset();
+    verifyWorkspaceEditLease.mockResolvedValue({ kind: "held" });
+    sendWorkspaceLeaseMutationFailure.mockReset();
+    sendWorkspaceLeaseMutationFailure.mockReturnValue(false);
   });
 
   it("maps a persistence failure result to persistence_invariant instead of invalid input", async () => {
@@ -38,8 +51,10 @@ describe("docsera runtime page publish route", () => {
       {
         body: {
           workspaceSlug: "product-docs",
+          workspaceSysId: "workspace-001",
           pageSysId: "page-001",
-          lockToken: "held-token",
+          workspaceLeaseToken: "workspace-lease-token",
+          lockToken: "ignored-page-token",
           expectedRevision: 4
         }
       },
@@ -50,6 +65,18 @@ describe("docsera runtime page publish route", () => {
     );
 
     expect(setStatus).toHaveBeenCalledWith(500);
+    expect(verifyWorkspaceEditLease).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceLeaseToken: "workspace-lease-token",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+    expect(publishPage).toHaveBeenCalledWith({
+      expectedRevision: 4,
+      pageSlug: "",
+      pageSysId: "page-001",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    });
     expect(setBody).toHaveBeenCalledWith({
       error: {
         code: "persistence_invariant",
@@ -70,9 +97,7 @@ describe("docsera runtime page publish route", () => {
     const setStatus = vi.fn();
 
     await process(
-      {
-        body: {}
-      },
+      { body: { workspaceSlug: "product-docs", workspaceSysId: "workspace-001", workspaceLeaseToken: "workspace-lease-token" } },
       {
         setBody,
         setStatus
@@ -87,5 +112,20 @@ describe("docsera runtime page publish route", () => {
         message: "A page reference is required."
       }
     });
+  });
+
+  it("returns a workspace lease failure before publishing", async () => {
+    sendWorkspaceLeaseMutationFailure.mockImplementation((_result, response) => {
+      response.setStatus?.(409);
+      response.setBody({ error: { code: "workspace_lease_lost", message: "Workspace lease lost.", retryable: false } });
+      return true;
+    });
+    const setBody = vi.fn();
+    const setStatus = vi.fn();
+
+    await process({ body: { workspaceSlug: "product-docs", workspaceSysId: "workspace-001", pageSysId: "page-001", workspaceLeaseToken: "lost-token", expectedRevision: 4 } }, { setBody, setStatus });
+
+    expect(publishPage).not.toHaveBeenCalled();
+    expect(setStatus).toHaveBeenCalledWith(409);
   });
 });

@@ -7,6 +7,7 @@ import type { WorkspacePageView } from "./workspaceViewModels";
 export type InlinePageCreateState = {
   errorMessage: string;
   focusToken: number;
+  noticeMessage: string;
   parentPageSysId: string;
   pending: boolean;
   showInput: boolean;
@@ -97,6 +98,7 @@ function InlineCreateRow({
   depth,
   errorMessage,
   focusToken,
+  noticeMessage,
   pending,
   showInput,
   title,
@@ -106,6 +108,7 @@ function InlineCreateRow({
   depth: number;
   errorMessage: string;
   focusToken: number;
+  noticeMessage: string;
   pending: boolean;
   showInput: boolean;
   title: string;
@@ -158,6 +161,11 @@ function InlineCreateRow({
             </label>
           </div>
         </div>
+      ) : null}
+      {noticeMessage ? (
+        <p className="docsera-page-tree__inline-notice" role="status">
+          {noticeMessage}
+        </p>
       ) : null}
       {errorMessage ? (
         <p className="docsera-page-tree__inline-error" role="alert">
@@ -296,18 +304,21 @@ function PageTreeNode({
               selectedPageId={selectedPageId}
             />
           ))}
-          {isInlineCreateParent ? (
-            <InlineCreateRow
-              depth={depth + 1}
-              errorMessage={inlineCreateState.errorMessage}
-              focusToken={inlineCreateState.focusToken}
-              pending={inlineCreateState.pending}
-              showInput={inlineCreateState.showInput}
-              title={inlineCreateState.title}
-              onCommit={onCommitInlineCreate}
-              onTitleChange={onInlineCreateTitleChange}
-            />
-          ) : null}
+        </ul>
+      ) : null}
+      {isInlineCreateParent ? (
+        <ul className="docsera-page-tree__children">
+          <InlineCreateRow
+            depth={depth + 1}
+            errorMessage={inlineCreateState.errorMessage}
+            focusToken={inlineCreateState.focusToken}
+            noticeMessage={inlineCreateState.noticeMessage}
+            pending={inlineCreateState.pending}
+            showInput={inlineCreateState.showInput}
+            title={inlineCreateState.title}
+            onCommit={onCommitInlineCreate}
+            onTitleChange={onInlineCreateTitleChange}
+          />
         </ul>
       ) : null}
     </li>
@@ -384,6 +395,7 @@ export function PageTree({
           depth={0}
           errorMessage={inlineCreateState.errorMessage}
           focusToken={inlineCreateState.focusToken}
+          noticeMessage={inlineCreateState.noticeMessage}
           pending={inlineCreateState.pending}
           showInput={inlineCreateState.showInput}
           title={inlineCreateState.title}

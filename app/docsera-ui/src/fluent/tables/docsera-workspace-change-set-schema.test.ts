@@ -9,6 +9,7 @@ function source(name: string) {
 describe("workspace change-set metadata contract", () => {
   it("keeps workflow tables scoped, package-private, and outside generic web-service access", () => {
     for (const name of [
+      "docsera-workspace-edit-lease.now.ts",
       "docsera-workspace-change-set.now.ts",
       "docsera-workspace-snapshot-set.now.ts",
       "docsera-workspace-page-snapshot.now.ts",
@@ -19,7 +20,7 @@ describe("workspace change-set metadata contract", () => {
       const text = source(name);
       expect(text).toContain('accessibleFrom: "package_private"');
       expect(text).toContain("createAccessControls: false");
-      expect(text).not.toContain("allowWebServiceAccess: true");
+      expect(text).toContain("allowWebServiceAccess: false");
     }
   });
 
@@ -48,5 +49,23 @@ describe("workspace change-set metadata contract", () => {
     expect(acl.match(/script: "return false;"/g)).toHaveLength(5);
     expect(acl.match(/adminOverrides: false/g)).toHaveLength(5);
     expect(acl).toContain('decisionType: "deny"');
+  });
+
+  it("denies generic CRUD across the workspace lease and workflow tables", () => {
+    const acl = source("security/docsera-workspace-foundation-table-access.now.ts");
+    for (const table of [
+      "x_82900_docsera_workspace_edit_lease",
+      "x_82900_docsera_workspace_change_set",
+      "x_82900_docsera_workspace_snapshot_set",
+      "x_82900_docsera_workspace_page_snapshot",
+      "x_82900_docsera_workspace_change_entry",
+      "x_82900_docsera_workspace_removal_batch",
+      "x_82900_docsera_workspace_removal_member"
+    ]) {
+      expect(acl).toContain(table);
+    }
+    expect(acl.match(/decisionType: "deny"/g)).toHaveLength(28);
+    expect(acl.match(/adminOverrides: false/g)).toHaveLength(28);
+    expect(acl.match(/script: "return false;"/g)).toHaveLength(28);
   });
 });

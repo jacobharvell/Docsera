@@ -4,6 +4,11 @@ const { createServiceNowPageSettingsService } = vi.hoisted(() => ({
   createServiceNowPageSettingsService: vi.fn()
 }));
 
+const { sendWorkspaceLeaseMutationFailure, verifyWorkspaceEditLease } = vi.hoisted(() => ({
+  sendWorkspaceLeaseMutationFailure: vi.fn(() => false),
+  verifyWorkspaceEditLease: vi.fn(async () => ({ kind: "held" }))
+}));
+
 vi.mock("@servicenow/glide", () => ({
   gs: {
     error: vi.fn()
@@ -12,6 +17,11 @@ vi.mock("@servicenow/glide", () => ({
 
 vi.mock("../src/server/pages/serviceNowPageSettings.ts", () => ({
   createServiceNowPageSettingsService
+}));
+
+vi.mock("../src/server/api/docsera-runtime-workspace-edit-lease.ts", () => ({
+  sendWorkspaceLeaseMutationFailure,
+  verifyWorkspaceEditLease
 }));
 
 import { process as processDeletePageAction } from "../src/server/api/docsera-runtime-page-delete-action";
@@ -39,6 +49,8 @@ function createResponseRecorder(): ResponseRecorder {
 
 beforeEach(() => {
   vi.mocked(createServiceNowPageSettingsService).mockReset();
+  vi.mocked(sendWorkspaceLeaseMutationFailure).mockReturnValue(false);
+  vi.mocked(verifyWorkspaceEditLease).mockResolvedValue({ kind: "held" } as never);
 });
 
 describe("page delete action route", () => {
@@ -62,7 +74,9 @@ describe("page delete action route", () => {
           data: {
             workspaceSlug: "product-docs",
             workspaceSysId: "workspace-001",
-            pageSysId: "page-001"
+            pageSysId: "page-001",
+            workspaceLeaseToken: "workspace-lease-token",
+            lockToken: "ignored-page-token"
           }
         }
       },
@@ -74,6 +88,11 @@ describe("page delete action route", () => {
       workspaceSysId: "workspace-001",
       pageSysId: "page-001"
     });
+    expect(verifyWorkspaceEditLease).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceLeaseToken: "workspace-lease-token",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
       result: {
@@ -103,7 +122,8 @@ describe("page delete action route", () => {
           data: {
             workspaceSlug: "",
             workspaceSysId: "",
-            pageSysId: ""
+            pageSysId: "",
+            workspaceLeaseToken: "workspace-lease-token"
           }
         }
       },
@@ -116,6 +136,27 @@ describe("page delete action route", () => {
         message: "A workspace reference is required."
       }
     });
+  });
+
+  it("returns the workspace lease failure before calling the delete service", async () => {
+    const deletePage = vi.fn();
+    vi.mocked(createServiceNowPageSettingsService).mockReturnValue({
+      deletePage,
+      publishPage: vi.fn(),
+      savePageSettings: vi.fn()
+    } as never);
+    vi.mocked(sendWorkspaceLeaseMutationFailure).mockImplementation((_result, response) => {
+      response.setStatus?.(409);
+      response.setBody({ error: { code: "workspace_lease_lost", message: "Workspace lease lost.", retryable: false } });
+      return true;
+    });
+
+    const response = createResponseRecorder();
+    await processDeletePageAction({ body: { workspaceSlug: "product-docs", workspaceSysId: "workspace-001", pageSysId: "page-001", workspaceLeaseToken: "lost-token" } }, response);
+
+    expect(deletePage).not.toHaveBeenCalled();
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({ error: { code: "workspace_lease_lost", message: "Workspace lease lost.", retryable: false } });
   });
 
   it("keeps the legacy DELETE route body-free", async () => {

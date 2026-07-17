@@ -1,25 +1,25 @@
 import { useState } from "react";
-import { PageEditorHost, type PageEditorHostFailure } from "../../editor/PageEditorHost";
+import { PageEditorHost, type PageEditorHostFailure, type PageEditorRecoverySnapshot } from "../../editor/PageEditorHost";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
 import { PublishedDocumentReader } from "./PublishedDocumentReader";
-import type {
-  PageBodySaveResult,
-  PageEditLockAcquireResult,
-  PageEditLockHeartbeatResult,
-  PageEditLockReleaseResult,
-  PageEditLockStatusResult,
-  WorkspaceMode
-} from "../../shared/types/docsera";
+import type { PageBodySaveResult, WorkspaceMode } from "../../shared/types/docsera";
 import type { WorkspacePageView } from "./workspaceViewModels";
 
 type WorkspaceMainPaneProps = {
+  bodyNotice?: {
+    eyebrow: string;
+    kind: "alert" | "status";
+    message: string;
+  } | null;
   bodyState: "loading" | "ready";
+  editorInitialSavedEnvelope?: DocseraDocumentEnvelope;
   page: WorkspacePageView | null;
   pagePath: WorkspacePageView[];
   workspaceMode: WorkspaceMode;
   canCreatePage: boolean;
   canEditPageBody: boolean;
   editAccessLost: boolean;
+  accessLossMessage?: string;
   stateCopy: string;
   stateTitle: string;
   stateType: "loading" | "error" | "ready";
@@ -32,15 +32,11 @@ type WorkspaceMainPaneProps = {
   onSavePageDraft: (input: {
     draftContentJson: DocseraDocumentEnvelope;
     expectedRevision: number;
-    lockToken?: string;
     pageSysId: string;
   }) => Promise<PageBodySaveResult>;
-  onAcquirePageEditLock?: (input: { lockToken?: string; pageSysId: string }) => Promise<PageEditLockAcquireResult>;
-  onHeartbeatPageEditLock?: (input: { lockToken: string; pageSysId: string }) => Promise<PageEditLockHeartbeatResult>;
-  onRefreshPageEditLock?: (input: { lockToken?: string; pageSysId: string }) => Promise<PageEditLockStatusResult>;
-  onReleasePageEditLock?: (input: { keepalive?: boolean; lockToken: string; pageSysId: string }) => Promise<PageEditLockReleaseResult>;
   onStatusChange: (state: {
     flush?: () => Promise<boolean>;
+    getRecoverySnapshot?: () => PageEditorRecoverySnapshot | null;
     release?: (options?: { keepalive?: boolean }) => Promise<void>;
     isDirty: boolean;
     isSaving: boolean;
@@ -106,13 +102,16 @@ function WorkspaceStateCard({
 }
 
 export function WorkspaceMainPane({
+  bodyNotice,
   bodyState,
+  editorInitialSavedEnvelope,
   page,
   pagePath,
   workspaceMode,
   canCreatePage,
   canEditPageBody,
   editAccessLost,
+  accessLossMessage,
   stateCopy,
   stateTitle,
   stateType,
@@ -123,10 +122,6 @@ export function WorkspaceMainPane({
   onEditorReadyStateChange,
   onOutlineChange,
   onSavePageDraft,
-  onAcquirePageEditLock,
-  onHeartbeatPageEditLock,
-  onRefreshPageEditLock,
-  onReleasePageEditLock,
   onStatusChange,
   onShowCreatePage,
   onAccessLost,
@@ -203,7 +198,25 @@ export function WorkspaceMainPane({
           </div>
         </div>
 
-        {workspaceMode === "live" ? (
+        {bodyNotice ? (
+          <section className="docsera-main__reader-notice" role={bodyNotice.kind}>
+            <p className="docsera-main__eyebrow">{bodyNotice.eyebrow}</p>
+            <p className="docsera-main__lede">{bodyNotice.message}</p>
+          </section>
+        ) : null}
+
+        {editAccessLost ? (
+          <section className="docsera-main__access-loss" role="alert">
+            <p className="docsera-main__eyebrow">Access lost</p>
+            <h2 className="docsera-main__recovery-title">Authoring access is no longer available</h2>
+            <p className="docsera-main__lede">
+              {accessLossMessage || "Further draft actions are disabled for this session. Return to Live to reload the published workspace view."}
+            </p>
+            <button type="button" className="docsera-main__secondary-action" onClick={onReturnToLive}>
+              Return to Live
+            </button>
+          </section>
+        ) : workspaceMode === "live" ? (
           showBodyPending ? (
             <section className="docsera-main__pending" aria-label="Loading page content" role="status">
               <span className="docsera-main__pending-line" />
@@ -227,32 +240,17 @@ export function WorkspaceMainPane({
           />
         ) : page.contentEnvelope ? (
           <>
-            {editAccessLost ? (
-              <section className="docsera-main__access-loss" role="alert">
-                <p className="docsera-main__eyebrow">Access lost</p>
-                <h2 className="docsera-main__recovery-title">Authoring access is no longer available</h2>
-                <p className="docsera-main__lede">
-                  Further draft actions are disabled for this session. Return to Live to reload the published workspace view.
-                </p>
-                <button type="button" className="docsera-main__secondary-action" onClick={onReturnToLive}>
-                  Return to Live
-                </button>
-              </section>
-            ) : null}
-            {sessionKey && !editAccessLost ? (
+            {sessionKey ? (
               <div hidden={showBodyPending}>
                 <PageEditorHost
                   canEdit={canEditPageBody && !editAccessLost}
                   initialEnvelope={page.contentEnvelope}
+                  initialSavedEnvelope={editorInitialSavedEnvelope}
                   initialRevision={page.page.draftRevision ?? 0}
                   onAccessLost={onAccessLost}
-                  onAcquireEditLock={onAcquirePageEditLock}
                   onError={onEditorFailureChange}
-                  onHeartbeatEditLock={onHeartbeatPageEditLock}
                   onOutlineChange={(outline) => onOutlineChange(page.sysId, outline)}
                   onReadyStateChange={onEditorReadyStateChange}
-                  onRefreshEditLock={onRefreshPageEditLock}
-                  onReleaseEditLock={onReleasePageEditLock}
                   onSaveDraft={onSavePageDraft}
                   onStatusChange={onStatusChange}
                   pageSysId={page.sysId}

@@ -147,6 +147,25 @@ function createClient(overrides: Partial<ServiceNowClient> = {}): ServiceNowClie
     createPage: vi.fn(async () => {
       throw new Error("createPage should not be called in these tests");
     }),
+    acquireWorkspaceEditLease: vi.fn(async () => ({
+      heartbeatIntervalMs: 60_000,
+      leaseToken: "workspace-lease-token",
+      staleAfterMs: 300_000,
+      state: "held" as const
+    })),
+    resumeWorkspaceEditLease: vi.fn(async () => ({
+      heartbeatIntervalMs: 60_000,
+      leaseToken: "workspace-lease-token",
+      staleAfterMs: 300_000,
+      state: "held" as const
+    })),
+    renewWorkspaceEditLease: vi.fn(async () => ({
+      heartbeatIntervalMs: 60_000,
+      leaseToken: "workspace-lease-token",
+      staleAfterMs: 300_000,
+      state: "held" as const
+    })),
+    releaseWorkspaceEditLease: vi.fn(async () => ({ state: "released" as const })),
     savePageBody: vi.fn(async (): Promise<PageBodySaveResult> => ({
       errorMessage: "savePageBody should not be called in these tests",
       state: "failed"
@@ -264,6 +283,7 @@ describe("workspace integration flows", () => {
     expect(await screen.findByRole("heading", { name: "Fresh Page" })).toBeInTheDocument();
     expect(createPage).toHaveBeenCalledWith({
       title: "Fresh Page",
+      workspaceLeaseToken: "workspace-lease-token",
       workspaceSlug: "product-docs"
     });
     expectSearchValues({

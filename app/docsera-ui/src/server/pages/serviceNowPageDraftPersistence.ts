@@ -1,6 +1,4 @@
 import { GlideRecord, gs } from "@servicenow/glide";
-import { createServiceNowPageEditLockService } from "../page-locks/serviceNowPageEditLocks.ts";
-import type { PageEditLockResult } from "../page-locks/serverPageEditLockDomain.ts";
 import { DOCSERA_WORKSPACE_TABLE, type WorkspaceRecord } from "../workspaces/serverWorkspaceDomain.ts";
 import { evaluateCurrentUserWorkspaceCapabilities } from "../workspaces/serviceNowWorkspaceCapabilities.ts";
 import { mapWorkspaceRecord } from "../workspaces/serviceNowWorkspaceRecords.ts";
@@ -13,7 +11,6 @@ type PageBodySaveInput = {
   workspaceSysId?: string;
   pageSysId?: string;
   pageSlug?: string;
-  lockToken?: string;
   draftBodyText?: string | null;
   draftContentJson?: unknown;
   expectedRevision?: unknown;
@@ -35,10 +32,6 @@ type PageBodySaveOutcome =
       errorMessage: string;
     }
   | {
-      kind: "lock_lost";
-      errorMessage: string;
-    }
-  | {
       kind: "succeeded";
       page: PageRecord;
     };
@@ -53,13 +46,6 @@ type PageBodySaveDependencies = {
     canViewWorkspace: boolean;
   };
   listWorkspacePages: (workspaceSysId: string) => Promise<PageRecord[]>;
-  touchPageEditLock: (input: {
-    lockToken?: string;
-    pageSlug?: string;
-    pageSysId?: string;
-    workspaceSlug?: string;
-    workspaceSysId?: string;
-  }) => Promise<PageEditLockResult>;
   savePageDraft: (page: PageRecord, expectedRevision: number) => Promise<PageRecord | null>;
 };
 
@@ -183,45 +169,6 @@ export function createPageBodySaveService(dependencies: PageBodySaveDependencies
         };
       }
 
-      const lockResult = await (typeof dependencies.touchPageEditLock === "function"
-        ? dependencies.touchPageEditLock({
-            lockToken: cleanText(input.lockToken),
-            pageSlug,
-            pageSysId,
-            workspaceSlug,
-            workspaceSysId: workspace.sysId
-          })
-        : Promise.resolve({
-            heartbeatIntervalMs: 30000,
-            kind: "held" as const,
-            lockToken: cleanText(input.lockToken),
-            staleAfterMs: 180000
-          }));
-      if (lockResult.kind === "failed") {
-        return lockResult.status === 403
-          ? {
-              kind: "forbidden",
-              errorMessage: lockResult.errorMessage
-            }
-          : {
-              kind: "failed",
-              errorMessage: lockResult.errorMessage,
-              status: lockResult.status
-            };
-      }
-      if (lockResult.kind === "lost") {
-        return {
-          kind: "lock_lost",
-          errorMessage: lockResult.errorMessage
-        };
-      }
-      if (lockResult.kind !== "held") {
-        return {
-          kind: "lock_lost",
-          errorMessage: "This edit session ended and unsaved changes were not saved."
-        };
-      }
-
       const pages = await dependencies.listWorkspacePages(workspace.sysId);
       const page = findPageByReference(pages, input);
       if (!page) {
@@ -310,7 +257,6 @@ export function createServiceNowPageBodySaveService() {
     loadWorkspaceBySlug,
     loadWorkspaceBySysId,
     listWorkspacePages,
-    touchPageEditLock: createServiceNowPageEditLockService().touchPageEditLock,
     savePageDraft: savePageDraftRecord
   });
 

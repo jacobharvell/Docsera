@@ -8,6 +8,7 @@ type PageSettingsOverlayProps = {
   activeField: PageSettingsField | "";
   canManagePageSettings: boolean;
   generalError: string;
+  noticeMessage?: string;
   open: boolean;
   panelRef: RefObject<HTMLElement>;
   pageSlug: string;
@@ -34,6 +35,7 @@ export function PageSettingsOverlay({
   activeField,
   canManagePageSettings,
   generalError,
+  noticeMessage,
   open,
   panelRef,
   pageSlug,
@@ -136,6 +138,12 @@ export function PageSettingsOverlay({
         </button>
       </div>
       <div className="docsera-page-settings__header-divider" aria-hidden="true" />
+
+      {noticeMessage ? (
+        <div className="docsera-page-settings__notice" role="status">
+          {noticeMessage}
+        </div>
+      ) : null}
 
       {generalError ? (
         <div className="docsera-page-settings__error" role="alert">

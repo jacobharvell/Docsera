@@ -4,6 +4,11 @@ const { gsError } = vi.hoisted(() => ({
   gsError: vi.fn()
 }));
 
+const { sendWorkspaceLeaseMutationFailure, verifyWorkspaceEditLease } = vi.hoisted(() => ({
+  sendWorkspaceLeaseMutationFailure: vi.fn(() => false),
+  verifyWorkspaceEditLease: vi.fn(async () => ({ kind: "held" }))
+}));
+
 vi.mock("@servicenow/glide", () => ({
   gs: {
     error: gsError
@@ -24,6 +29,11 @@ vi.mock("../src/server/pages/serviceNowPageDraftPersistence.ts", () => ({
 
 vi.mock("../src/server/pages/serviceNowPagePublishing.ts", () => ({
   createServiceNowPagePublishService: vi.fn()
+}));
+
+vi.mock("../src/server/api/docsera-runtime-workspace-edit-lease.ts", () => ({
+  sendWorkspaceLeaseMutationFailure,
+  verifyWorkspaceEditLease
 }));
 
 vi.mock("../src/server/workspaces/serviceNowWorkspaceProvisioning.ts", () => ({
@@ -69,6 +79,8 @@ beforeEach(() => {
   vi.mocked(createServiceNowPagePublishService).mockReset();
   vi.mocked(createServiceNowPageListingService).mockReset();
   vi.mocked(createServiceNowWorkspaceProvisioningService).mockReset();
+  vi.mocked(sendWorkspaceLeaseMutationFailure).mockReturnValue(false);
+  vi.mocked(verifyWorkspaceEditLease).mockResolvedValue({ kind: "held" } as never);
 });
 
 test("workspaces endpoint hides unexpected internal errors behind a safe message", async () => {
@@ -138,6 +150,7 @@ test("page save failures redact draft body text from unexpected error logging", 
     workspaceSysId: "workspace-001",
     pageSysId: "page-001",
     pageSlug: "overview",
+    workspaceLeaseToken: "workspace-lease-token",
     draftBodyText: "Sensitive draft body text",
     draft_content_json: {
       type: "doc",
@@ -170,6 +183,7 @@ test("page save failures redact draft body text from unexpected error logging", 
   expect(logEntry).toContain("\"draftBodyTextLength\":25");
   expect(logEntry).not.toContain("Sensitive draft body text");
   expect(logEntry).not.toContain("draft_content_json");
+  expect(logEntry).not.toContain("workspace-lease-token");
 });
 
 test("page save passes raw draft_content_json through without coercion", async () => {
@@ -211,7 +225,8 @@ test("page save passes raw draft_content_json through without coercion", async (
           pageSysId: "page-001",
           pageSlug: "overview",
           draftBodyText: "",
-          draftContentJson: "not-json"
+          draftContentJson: "not-json",
+          workspaceLeaseToken: "workspace-lease-token"
         }
       }
     },
@@ -225,7 +240,7 @@ test("page save passes raw draft_content_json through without coercion", async (
   );
 });
 
-test("page publish failures redact lock tokens from unexpected error logging", async () => {
+test("page publish failures redact workspace lease tokens from unexpected error logging", async () => {
   vi.mocked(createServiceNowPagePublishService).mockReturnValue({
     publishPage: vi.fn().mockRejectedValue(new Error("GlideRecord failed for x_82900_docsera_page"))
   } as never);
@@ -240,7 +255,7 @@ test("page publish failures redact lock tokens from unexpected error logging", a
           workspaceSysId: "workspace-001",
           pageSysId: "page-001",
           pageSlug: "overview",
-          lockToken: "sensitive-token",
+          workspaceLeaseToken: "sensitive-token",
           expectedRevision: 4
         }
       }
@@ -259,7 +274,6 @@ test("page publish failures redact lock tokens from unexpected error logging", a
 
   const logEntry = String(gsError.mock.calls[0]?.[0] ?? "");
   expect(logEntry).toContain("\"expectedRevision\":4");
-  expect(logEntry).toContain("\"hasLockToken\":true");
   expect(logEntry).not.toContain("sensitive-token");
 });
 

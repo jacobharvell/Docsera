@@ -22,6 +22,15 @@ import type {
   PageEditLockReferenceInput,
   PageEditLockReleaseResult,
   PageEditLockStatusResult,
+  WorkspaceEditLeaseAcquireResult,
+  WorkspaceEditLeaseFailed,
+  WorkspaceEditLeaseHeld,
+  WorkspaceEditLeaseLocked,
+  WorkspaceEditLeaseLost,
+  WorkspaceEditLeaseReferenceInput,
+  WorkspaceEditLeaseReleaseResult,
+  WorkspaceEditLeaseRenewResult,
+  WorkspaceEditLeaseStatusResult,
   PageDeleteFailed,
   PageDeleteInput,
   PageDeleteResult,
@@ -87,6 +96,28 @@ function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function readSafeInteger(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value >= 0 ? value : null;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+  }
+  return null;
+}
+
+function readPositiveDuration(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  }
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+  return null;
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return false;
@@ -136,6 +167,11 @@ function resolvePageEditLockPath(pageCollectionPath: string, action: "acquire" |
 function resolvePagePublishPath(pageCollectionPath: string): string {
   const normalizedPath = cleanText(pageCollectionPath).replace(/\/+$/g, "");
   return `${normalizedPath}/publish`;
+}
+
+function resolveWorkspaceEditLeasePath(pageCollectionPath: string, action: "acquire" | "resume" | "renew" | "release" | "status"): string {
+  const normalizedPath = cleanText(pageCollectionPath).replace(/\/pages$/i, "").replace(/\/+$/g, "");
+  return `${normalizedPath}/workspaces/edit-lease/${action}`;
 }
 
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<JsonResponse<T>> {
@@ -342,6 +378,60 @@ function normalizeWorkspaceCreateFailedResult(body: unknown, fallback: string): 
   };
 }
 
+function normalizeWorkspaceLeaseHeldResult(
+  body: unknown,
+  action: "acquire" | "resume" | "renew" | "status"
+): WorkspaceEditLeaseHeld | WorkspaceEditLeaseStatusResult | WorkspaceEditLeaseFailed {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || result.state !== "held") {
+    return {
+      state: "failed",
+      errorMessage: "Workspace editing is unavailable.",
+      failure: "terminal",
+      retryable: false
+    };
+  }
+
+  const changeSetId = cleanText(result.changeSetId);
+  const changeSetRevision = readSafeInteger(result.changeSetRevision);
+  const workspaceStateRevision =
+    result.workspaceStateRevision === undefined || result.workspaceStateRevision === null
+      ? undefined
+      : readSafeInteger(result.workspaceStateRevision);
+  const heartbeatIntervalMs = readPositiveDuration(result.heartbeatIntervalMs);
+  const staleAfterMs = readPositiveDuration(result.staleAfterMs);
+  const leaseToken = cleanText(result.leaseToken);
+  const requiresLeaseToken = action !== "status";
+
+  if (
+    !changeSetId ||
+    changeSetRevision === null ||
+    heartbeatIntervalMs === null ||
+    staleAfterMs === null ||
+    (result.workspaceStateRevision !== undefined && result.workspaceStateRevision !== null && workspaceStateRevision === null) ||
+    (requiresLeaseToken && !leaseToken) ||
+    (!requiresLeaseToken && leaseToken)
+  ) {
+    return {
+      state: "failed",
+      errorMessage: "Workspace editing is unavailable.",
+      failure: "terminal",
+      retryable: false
+    };
+  }
+
+  const held = {
+    state: "held" as const,
+    heartbeatIntervalMs,
+    staleAfterMs,
+    changeSetId,
+    changeSetRevision,
+    ...(typeof workspaceStateRevision === "number" ? { workspaceStateRevision } : {})
+  };
+
+  return requiresLeaseToken ? { ...held, leaseToken } : held;
+}
+
 function normalizePageCreateSucceededResult(body: unknown): PageCreateSucceeded {
   const result = unwrapServiceNowEnvelope(body);
   if (!isPlainObject(result) || !result.page) {
@@ -354,9 +444,60 @@ function normalizePageCreateSucceededResult(body: unknown): PageCreateSucceeded 
   };
 }
 
-function normalizePageCreateFailedResult(body: unknown, fallback: string): PageCreateFailed {
+function normalizeWorkspaceLeaseLockedResult(candidate: unknown): WorkspaceEditLeaseLocked {
+  const result = isPlainObject(candidate) ? candidate : {};
+
+  return {
+    state: "locked",
+    holderDisplayName: cleanText(result.holderDisplayName) || null,
+    sameUserDifferentSession: Boolean(result.sameUserDifferentSession)
+  };
+}
+
+function normalizeWorkspaceLeaseLostResult(candidate: unknown): WorkspaceEditLeaseLost {
+  const result = isPlainObject(candidate) ? candidate : {};
+
+  return {
+    state: "lost",
+    errorMessage: cleanText(result.errorMessage) || "This workspace edit session ended and unsaved changes were not saved.",
+    holderDisplayName: cleanText(result.holderDisplayName) || null,
+    sameUserDifferentSession: Boolean(result.sameUserDifferentSession)
+  };
+}
+
+function normalizeWorkspaceLeaseFailedResult(candidate: unknown): WorkspaceEditLeaseFailed {
+  const result = isPlainObject(candidate) ? candidate : {};
+  const nestedErrorMessage =
+    result.error && typeof result.error === "object" ? cleanText((result.error as Record<string, unknown>).message) : "";
+
   return {
     state: "failed",
+    errorMessage: cleanText(result.errorMessage) || cleanText(result.message) || nestedErrorMessage || "Workspace editing is unavailable.",
+    failure: "terminal",
+    retryable: false
+  };
+}
+
+function isWorkspaceEditLeaseStateAllowed(action: "acquire" | "resume" | "renew" | "release" | "status", state: string): boolean {
+  switch (action) {
+    case "acquire":
+      return state === "held" || state === "locked" || state === "failed";
+    case "resume":
+    case "renew":
+      return state === "held" || state === "lost" || state === "failed";
+    case "release":
+      return state === "released" || state === "lost" || state === "failed";
+    case "status":
+      return state === "held" || state === "unlocked" || state === "locked" || state === "failed";
+  }
+}
+
+function normalizePageCreateFailedResult(body: unknown, fallback: string): PageCreateFailed {
+  const error = unwrapServiceNowEnvelope(body);
+  const code = isPlainObject(error) && isPlainObject(error.error) ? cleanText(error.error.code) : "";
+  return {
+    state: "failed",
+    code: code === "workspace_lease_lost" || code === "workspace_locked" ? "lock_lost" : code === "forbidden" ? "forbidden" : code === "conflict" ? "conflict" : code === "invalid" || code === "validation" ? "invalid" : undefined,
     errorMessage: extractErrorMessage(body, fallback)
   };
 }
@@ -482,7 +623,7 @@ function normalizePageBodySaveFailedResult(
             ? "capacity"
             : errorCode === "persistence_invariant"
               ? "persistence_invariant"
-              : errorCode === "edit_lock_lost"
+              : errorCode === "workspace_lease_lost" || errorCode === "workspace_locked"
                 ? "lock_lost"
               : errorCode === "persistence_transient"
                 ? "transient"
@@ -519,7 +660,7 @@ function normalizePagePublishFailedResult(
           ? "invalid"
           : errorCode === "persistence_invariant"
             ? "persistence_invariant"
-            : errorCode === "edit_lock_lost"
+            : errorCode === "workspace_lease_lost" || errorCode === "workspace_locked"
               ? "lock_lost"
               : errorCode === "persistence_transient"
                 ? "transient"
@@ -547,8 +688,11 @@ function normalizePageSettingsSaveSucceededResult(body: unknown): PageSettingsSa
 }
 
 function normalizePageSettingsSaveFailedResult(body: unknown, fallback: string): PageSettingsSaveFailed {
+  const error = unwrapServiceNowEnvelope(body);
+  const code = isPlainObject(error) && isPlainObject(error.error) ? cleanText(error.error.code) : "";
   return {
     state: "failed",
+    code: code === "workspace_lease_lost" || code === "workspace_locked" ? "lock_lost" : code === "forbidden" ? "forbidden" : code === "conflict" ? "conflict" : code === "invalid" || code === "validation" ? "invalid" : undefined,
     errorMessage: extractErrorMessage(body, fallback)
   };
 }
@@ -566,8 +710,11 @@ function normalizePageDeleteSucceededResult(body: unknown): PageDeleteSucceeded 
 }
 
 function normalizePageDeleteFailedResult(body: unknown, fallback: string): PageDeleteFailed {
+  const error = unwrapServiceNowEnvelope(body);
+  const code = isPlainObject(error) && isPlainObject(error.error) ? cleanText(error.error.code) : "";
   return {
     state: "failed",
+    code: code === "workspace_lease_lost" || code === "workspace_locked" ? "lock_lost" : code === "forbidden" ? "forbidden" : code === "conflict" ? "conflict" : code === "invalid" || code === "validation" ? "invalid" : undefined,
     errorMessage: extractErrorMessage(body, fallback)
   };
 }
@@ -657,6 +804,7 @@ async function resolvePageCreateResult(path: string, input: PageCreateInput): Pr
   const payload = {
     title: cleanText(input.title),
     workspaceSlug: cleanText(input.workspaceSlug),
+    ...(cleanText(input.workspaceLeaseToken) ? { workspaceLeaseToken: cleanText(input.workspaceLeaseToken) } : {}),
     ...(input.parentPageSysId ? { parentPageSysId: cleanText(input.parentPageSysId) } : {})
   };
 
@@ -672,7 +820,7 @@ async function resolvePageCreateResult(path: string, input: PageCreateInput): Pr
     return normalizePageCreateSucceededResult(response.body);
   }
 
-  if (response.status === 400 || response.status === 403 || response.status === 404) {
+  if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 409) {
     return normalizePageCreateFailedResult(response.body, "Page creation failed.");
   }
 
@@ -685,7 +833,7 @@ async function resolvePageBodySaveResult(path: string, input: PageBodySaveInput)
     workspaceSysId: cleanText(input.workspaceSysId),
     pageSysId: cleanText(input.pageSysId),
     pageSlug: cleanText(input.pageSlug),
-    ...(cleanText(input.lockToken) ? { lockToken: cleanText(input.lockToken) } : {}),
+    ...(cleanText(input.workspaceLeaseToken) ? { workspaceLeaseToken: cleanText(input.workspaceLeaseToken) } : {}),
     draftBodyText: input.draftBodyText,
     draftContentJson: input.draftContentJson,
     expectedRevision: Number.isSafeInteger(input.expectedRevision) ? input.expectedRevision : undefined
@@ -752,7 +900,7 @@ async function resolvePagePublishResult(path: string, input: PagePublishInput): 
     workspaceSysId: cleanText(input.workspaceSysId),
     pageSysId: cleanText(input.pageSysId),
     pageSlug: cleanText(input.pageSlug),
-    ...(cleanText(input.lockToken) ? { lockToken: cleanText(input.lockToken) } : {}),
+    ...(cleanText(input.workspaceLeaseToken) ? { workspaceLeaseToken: cleanText(input.workspaceLeaseToken) } : {}),
     expectedRevision: Number.isSafeInteger(input.expectedRevision) ? input.expectedRevision : undefined
   };
 
@@ -857,7 +1005,7 @@ async function resolvePageEditLockStatusResult(path: string, input: PageEditLock
       );
     }
 
-    if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 500) {
+    if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 409 || response.status === 500) {
       const fallbackCode: PageEditLockFailed["code"] =
         response.status === 403 ? "forbidden" : response.status === 500 ? "persistence_invariant" : "invalid";
       return normalizePageEditLockFailedResult(
@@ -1108,7 +1256,8 @@ async function resolvePageSettingsSaveResult(path: string, input: PageSettingsSa
     workspaceSysId: cleanText(input.workspaceSysId),
     pageSysId: cleanText(input.pageSysId),
     title: cleanText(input.title),
-    slug: cleanText(input.slug)
+    slug: cleanText(input.slug),
+    ...(cleanText(input.workspaceLeaseToken) ? { workspaceLeaseToken: cleanText(input.workspaceLeaseToken) } : {})
   };
 
   try {
@@ -1144,7 +1293,8 @@ async function resolvePageDeleteResult(path: string, input: PageDeleteInput): Pr
   const payload = {
     workspaceSlug: cleanText(input.workspaceSlug),
     workspaceSysId: cleanText(input.workspaceSysId),
-    pageSysId: cleanText(input.pageSysId)
+    pageSysId: cleanText(input.pageSysId),
+    ...(cleanText(input.workspaceLeaseToken) ? { workspaceLeaseToken: cleanText(input.workspaceLeaseToken) } : {})
   };
 
   try {
@@ -1163,7 +1313,7 @@ async function resolvePageDeleteResult(path: string, input: PageDeleteInput): Pr
     if (
       response.status === 400 ||
       response.status === 403 ||
-      response.status === 404 ||
+      response.status === 404 || response.status === 409 ||
       response.status === 500
     ) {
       return normalizePageDeleteFailedResult(response.body, SAFE_PAGE_DELETE_ERROR_MESSAGE);
@@ -1181,6 +1331,61 @@ async function resolvePageDeleteResult(path: string, input: PageDeleteInput): Pr
   }
 }
 
+async function resolveWorkspaceEditLeaseResult(
+  path: string,
+  input: WorkspaceEditLeaseReferenceInput,
+  action: "acquire" | "resume" | "renew" | "release" | "status"
+): Promise<WorkspaceEditLeaseAcquireResult | WorkspaceEditLeaseRenewResult | WorkspaceEditLeaseReleaseResult | WorkspaceEditLeaseStatusResult> {
+  try {
+    const response = await requestJson<unknown>(path, { method: "POST", body: JSON.stringify({ workspaceSlug: cleanText(input.workspaceSlug), workspaceSysId: cleanText(input.workspaceSysId), ...(cleanText(input.leaseToken) ? { leaseToken: cleanText(input.leaseToken) } : {}) }), headers: { "Content-Type": "application/json" }, keepalive: action === "release" });
+    const result = unwrapServiceNowEnvelope(response.body);
+    const error = isPlainObject(result) && isPlainObject(result.error) ? result.error : null;
+    const resultState = isPlainObject(result) ? cleanText(result.state) : "";
+    if (response.status === 200 && resultState) {
+      if (!isWorkspaceEditLeaseStateAllowed(action, resultState)) {
+        return normalizeWorkspaceLeaseFailedResult(result);
+      }
+      if (resultState === "held") {
+        return normalizeWorkspaceLeaseHeldResult(response.body, action === "status" ? "status" : action === "acquire" || action === "resume" || action === "renew" ? action : "renew");
+      }
+      if (resultState === "locked") {
+        return normalizeWorkspaceLeaseLockedResult(result);
+      }
+      if (resultState === "lost") {
+        return normalizeWorkspaceLeaseLostResult(result);
+      }
+      if (resultState === "released") return { state: "released" };
+      if (resultState === "unlocked") return { state: "unlocked" };
+      if (resultState === "failed") return normalizeWorkspaceLeaseFailedResult(result);
+      return normalizeWorkspaceLeaseFailedResult(result);
+    }
+    if (response.status === 409 && error && cleanText(error.code) === "workspace_locked") return { state: "locked", holderDisplayName: cleanText(error.holderDisplayName) || null, sameUserDifferentSession: Boolean(error.sameUserDifferentSession) } satisfies WorkspaceEditLeaseLocked;
+    if (response.status === 409 && error && cleanText(error.code) === "workspace_lease_lost") {
+      return {
+        state: "lost",
+        errorMessage: cleanText(error.message) || "This workspace edit session ended and unsaved changes were not saved.",
+        holderDisplayName: cleanText(error.holderDisplayName) || null,
+        sameUserDifferentSession: Boolean(error.sameUserDifferentSession)
+      } satisfies WorkspaceEditLeaseLost;
+    }
+    if (response.status === 409) {
+      return {
+        state: "failed",
+        errorMessage: cleanText(error?.message) || "Workspace editing is unavailable.",
+        failure: "terminal",
+        retryable: false
+      } satisfies WorkspaceEditLeaseFailed;
+    }
+    const failure = response.status === 403 ? "forbidden" : response.status >= 500 ? "transient" : "terminal";
+    const fallback = failure === "transient"
+      ? "Workspace editing is temporarily unavailable. Please try again."
+      : "Workspace editing is unavailable.";
+    return { state: "failed", errorMessage: cleanText(error?.message) || fallback, failure, retryable: failure === "transient" } satisfies WorkspaceEditLeaseFailed;
+  } catch {
+    return { state: "failed", errorMessage: "Workspace editing is temporarily unavailable. Please try again.", failure: "transient", retryable: true } satisfies WorkspaceEditLeaseFailed;
+  }
+}
+
 export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceNowClient {
   const collectionPath = resolvePath(runtime.config.workspaceCollectionPath, DEFAULT_WORKSPACE_COLLECTION_PATH);
   const pageCollectionPath = resolvePath(runtime.config.pageCollectionPath, DEFAULT_PAGE_COLLECTION_PATH);
@@ -1190,6 +1395,11 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
   const pageEditLockAcquirePath = resolvePageEditLockPath(pageCollectionPath, "acquire");
   const pageEditLockHeartbeatPath = resolvePageEditLockPath(pageCollectionPath, "heartbeat");
   const pageEditLockReleasePath = resolvePageEditLockPath(pageCollectionPath, "release");
+  const workspaceEditLeaseAcquirePath = resolveWorkspaceEditLeasePath(pageCollectionPath, "acquire");
+  const workspaceEditLeaseResumePath = resolveWorkspaceEditLeasePath(pageCollectionPath, "resume");
+  const workspaceEditLeaseRenewPath = resolveWorkspaceEditLeasePath(pageCollectionPath, "renew");
+  const workspaceEditLeaseReleasePath = resolveWorkspaceEditLeasePath(pageCollectionPath, "release");
+  const workspaceEditLeaseStatusPath = resolveWorkspaceEditLeasePath(pageCollectionPath, "status");
   const provisioningStatusPath = resolvePath(
     runtime.config.workspaceProvisioningStatusPath,
     "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status"
@@ -1268,6 +1478,12 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
     async createPage(input: PageCreateInput): Promise<PageCreateResult> {
       return resolvePageCreateResult(pageCollectionPath, input);
     },
+
+    async acquireWorkspaceEditLease(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspaceEditLeaseAcquireResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseAcquirePath, input, "acquire") as Promise<WorkspaceEditLeaseAcquireResult>; },
+    async resumeWorkspaceEditLease(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspaceEditLeaseRenewResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseResumePath, input, "resume") as Promise<WorkspaceEditLeaseRenewResult>; },
+    async renewWorkspaceEditLease(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspaceEditLeaseRenewResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseRenewPath, input, "renew") as Promise<WorkspaceEditLeaseRenewResult>; },
+    async releaseWorkspaceEditLease(input: WorkspaceEditLeaseReferenceInput & { keepalive?: boolean }): Promise<WorkspaceEditLeaseReleaseResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseReleasePath, input, "release") as Promise<WorkspaceEditLeaseReleaseResult>; },
+    async getWorkspaceEditLeaseStatus(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspaceEditLeaseStatusResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseStatusPath, input, "status") as Promise<WorkspaceEditLeaseStatusResult>; },
 
     async getPageEditLockStatus(input: PageEditLockReferenceInput): Promise<PageEditLockStatusResult> {
       return resolvePageEditLockStatusResult(pageEditLockStatusPath, input);

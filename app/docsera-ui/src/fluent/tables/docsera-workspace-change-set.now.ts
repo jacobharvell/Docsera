@@ -8,6 +8,7 @@ export const x_82900_docsera_workspace_change_set = Table({
   accessibleFrom: "package_private",
   audit: true,
   createAccessControls: false,
+  allowWebServiceAccess: false,
   schema: {
     workspace: ReferenceColumn({ label: "Workspace", mandatory: true, referenceTable: "x_82900_docsera_workspace" }),
     generation_key: StringColumn({ label: "Generation key", mandatory: true, maxLength: 80 }),

@@ -1,6 +1,4 @@
 import { GlideDateTime, GlideRecord, gs } from "@servicenow/glide";
-import { createServiceNowPageEditLockService } from "../page-locks/serviceNowPageEditLocks.ts";
-import type { PageEditLockResult } from "../page-locks/serverPageEditLockDomain.ts";
 import { DOCSERA_WORKSPACE_TABLE, type WorkspaceRecord } from "../workspaces/serverWorkspaceDomain.ts";
 import { evaluateCurrentUserWorkspaceCapabilities } from "../workspaces/serviceNowWorkspaceCapabilities.ts";
 import { mapWorkspaceRecord } from "../workspaces/serviceNowWorkspaceRecords.ts";
@@ -16,7 +14,6 @@ type PagePublishInput = {
   workspaceSysId?: string;
   pageSysId?: string;
   pageSlug?: string;
-  lockToken?: string;
   expectedRevision?: unknown;
 };
 
@@ -33,10 +30,6 @@ type PagePublishOutcome =
   | {
       kind: "conflict";
       currentRevision: number;
-      errorMessage: string;
-    }
-  | {
-      kind: "lock_lost";
       errorMessage: string;
     }
   | {
@@ -60,13 +53,6 @@ type PagePublishDependencies = {
   loadWorkspaceBySysId: (workspaceSysId: string) => Awaitable<WorkspaceRecord | null>;
   listWorkspacePages: (workspaceSysId: string) => Promise<PageRecord[]>;
   publishPage: (page: PageRecord, expectedRevision: number) => Promise<PageRecord | null>;
-  touchPageEditLock: (input: {
-    lockToken?: string;
-    pageSlug?: string;
-    pageSysId?: string;
-    workspaceSlug?: string;
-    workspaceSysId?: string;
-  }) => Promise<PageEditLockResult>;
 };
 
 function cleanText(value: unknown): string {
@@ -237,51 +223,6 @@ export function createPagePublishService(dependencies: PagePublishDependencies) 
         };
       }
 
-      let lockResult: PageEditLockResult;
-      try {
-        lockResult = await dependencies.touchPageEditLock({
-          lockToken: cleanText(input.lockToken),
-          pageSlug,
-          pageSysId,
-          workspaceSlug,
-          workspaceSysId: workspace.sysId
-        });
-      } catch (error) {
-        if (isDocumentValidationFailure(error)) {
-          return {
-            kind: "failed",
-            errorMessage: "The current draft content cannot be published.",
-            status: 400
-          };
-        }
-
-        throw error;
-      }
-      if (lockResult.kind === "failed") {
-        return lockResult.status === 403
-          ? {
-              kind: "forbidden",
-              errorMessage: lockResult.errorMessage
-            }
-          : {
-              kind: "failed",
-              errorMessage: lockResult.errorMessage,
-              status: lockResult.status
-            };
-      }
-      if (lockResult.kind === "lost") {
-        return {
-          kind: "lock_lost",
-          errorMessage: lockResult.errorMessage
-        };
-      }
-      if (lockResult.kind !== "held") {
-        return {
-          kind: "lock_lost",
-          errorMessage: "This edit session ended and unsaved changes were not published."
-        };
-      }
-
       let pages: PageRecord[];
       try {
         pages = await dependencies.listWorkspacePages(workspace.sysId);
@@ -393,7 +334,6 @@ export function createServiceNowPagePublishService() {
     loadWorkspaceBySysId,
     listWorkspacePages,
     publishPage: savePublishedPageRecord,
-    touchPageEditLock: createServiceNowPageEditLockService().touchPageEditLock
   });
 
   return {

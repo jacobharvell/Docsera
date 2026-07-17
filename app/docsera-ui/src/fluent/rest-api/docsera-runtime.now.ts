@@ -14,6 +14,11 @@ import { process as createWorkspace } from "../../server/api/docsera-runtime-cre
 import { process as listPages } from "../../server/api/docsera-runtime-pages";
 import { process as workspaces } from "../../server/api/docsera-runtime-workspaces";
 import { process as workspaceProvisioningStatus } from "../../server/api/docsera-runtime-workspace-provisioning-status";
+import { process as acquireWorkspaceEditLease } from "../../server/api/docsera-runtime-workspace-edit-lease-acquire";
+import { process as resumeWorkspaceEditLease } from "../../server/api/docsera-runtime-workspace-edit-lease-resume";
+import { process as renewWorkspaceEditLease } from "../../server/api/docsera-runtime-workspace-edit-lease-renew";
+import { process as releaseWorkspaceEditLease } from "../../server/api/docsera-runtime-workspace-edit-lease-release";
+import { process as statusWorkspaceEditLease } from "../../server/api/docsera-runtime-workspace-edit-lease-status";
 import { process } from "../../server/api/docsera-runtime-ping";
 
 RestApi({
@@ -60,6 +65,21 @@ RestApi({
       produces: "application/json",
       shortDescription: "Return the current status of a workspace provisioning request.",
       script: workspaceProvisioningStatus
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-edit-lease-acquire-post"], name: "workspace_edit_lease_acquire", path: "/workspaces/edit-lease/acquire", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Acquire the exclusive workspace authoring lease.", script: acquireWorkspaceEditLease
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-edit-lease-resume-post"], name: "workspace_edit_lease_resume", path: "/workspaces/edit-lease/resume", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Resume the current tab's workspace authoring lease.", script: resumeWorkspaceEditLease
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-edit-lease-renew-post"], name: "workspace_edit_lease_renew", path: "/workspaces/edit-lease/renew", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Renew the exclusive workspace authoring lease.", script: renewWorkspaceEditLease
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-edit-lease-release-post"], name: "workspace_edit_lease_release", path: "/workspaces/edit-lease/release", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Release the exclusive workspace authoring lease.", script: releaseWorkspaceEditLease
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-edit-lease-status-post"], name: "workspace_edit_lease_status", path: "/workspaces/edit-lease/status", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Report the current workspace authoring lease status.", script: statusWorkspaceEditLease
     },
     {
       $id: Now.ID["docsera-runtime-pages-post"],
