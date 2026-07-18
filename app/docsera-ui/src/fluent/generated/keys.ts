@@ -203,6 +203,10 @@ declare global {
                         table: 'sys_ws_operation'
                         id: '2c1ee14346fb48d69552e328e5c980be'
                     }
+                    'docsera-runtime-pages-move-post': {
+                        table: 'sys_ws_operation'
+                        id: '0b28f2e7060b4602912000b44d28b46e'
+                    }
                     'docsera-runtime-pages-patch': {
                         table: 'sys_ws_operation'
                         id: '6aa2c4f5b3d44d2f8d8e8f7f1f6a0c1b'
@@ -294,6 +298,10 @@ declare global {
                     'src_server_api_docsera-runtime-page-lock-status_ts': {
                         table: 'sys_module'
                         id: '34628e57ad764459a8b720847e9b8b4f'
+                    }
+                    'src_server_api_docsera-runtime-page-move_ts': {
+                        table: 'sys_module'
+                        id: '91c731fa0a3c4a75b746a975c5a726a7'
                     }
                     'src_server_api_docsera-runtime-page-publish_ts': {
                         table: 'sys_module'

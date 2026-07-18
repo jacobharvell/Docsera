@@ -6,6 +6,7 @@ import type {
   WorkspacePageRecord,
   WorkspaceViewRecord
 } from "../../shared/types/docsera";
+import { normalizeNumericSiblingOrder } from "../../../shared/pages/siblingOrder";
 
 export type WorkspacePageOutlineItem = EditorOutlineItem;
 
@@ -103,7 +104,7 @@ export function buildWorkspacePageView(page: WorkspacePageRecord, mode: Workspac
     page,
     parentPageSysId: cleanText(page.parentPageSysId) || null,
     publicationState: page.publicationState,
-    siblingOrder: Number(page.siblingOrder) || 1,
+    siblingOrder: normalizeNumericSiblingOrder(page.siblingOrder),
     slug,
     statusIndicator:
       mode === "edit"

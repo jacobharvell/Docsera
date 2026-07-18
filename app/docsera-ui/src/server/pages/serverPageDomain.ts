@@ -129,13 +129,17 @@ function normalizePageSlug(value: unknown, fallback = ""): string {
   return toSlugFragment(cleanText(value)) || fallback;
 }
 
-function normalizeSiblingOrder(value: unknown, fallback = 1): number {
-  const order = Number(value);
-  if (!Number.isFinite(order) || order < 1) {
+export function normalizeSiblingOrder(value: unknown, fallback = 1): number {
+  if (typeof value !== "number" && typeof value !== "string") {
     return fallback;
   }
 
-  return Math.floor(order);
+  if (typeof value === "string" && !value.trim()) {
+    return fallback;
+  }
+
+  const order = Number(value);
+  return Number.isFinite(order) ? order : fallback;
 }
 
 function normalizeDraftRevision(value: unknown): number {

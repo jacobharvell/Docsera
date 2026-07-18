@@ -11,6 +11,7 @@ type WorkspaceSidebarProps = {
   isLoading?: boolean;
   showPendingState: boolean;
   onSelectPage: (pageId: string) => void;
+  onMovePage?: (input: { pageSysId: string; parentPageSysId: string | null; siblingOrder: string | number }) => void;
   canManagePageSettings: boolean;
   inlineCreateState: InlinePageCreateState | null;
   pageSettingsOpenPageId: string;
@@ -44,6 +45,7 @@ export function WorkspaceSidebar({
   isLoading = false,
   showPendingState,
   onSelectPage,
+  onMovePage,
   canManagePageSettings,
   inlineCreateState,
   pageSettingsOpenPageId,
@@ -128,6 +130,7 @@ export function WorkspaceSidebar({
             onCommitInlineCreate={onCommitInlineCreate}
             onInlineCreateTitleChange={onInlineCreateTitleChange}
             onSelectPage={onSelectPage}
+            onMovePage={onMovePage}
             onShowCreatePage={onShowCreatePage}
             onShowChildPageCreate={onShowChildPageCreate}
             onTogglePageSettings={onTogglePageSettings}

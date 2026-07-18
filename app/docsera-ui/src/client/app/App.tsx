@@ -31,12 +31,14 @@ import {
   validatePageSettingsSlug,
   validatePageSettingsTitle
 } from "../../shared/pages/domain";
+import { normalizeNumericSiblingOrder } from "../../shared/pages/siblingOrder";
 import type { DocseraDocumentEnvelope } from "../../shared/editor/document";
 import type {
   DocseraRuntimeContext,
   PageBodySaveResult,
   PageCreateResult,
   PageDeleteResult,
+  PageMoveResult,
   PageSettingsSaveResult,
   PageListResult,
   PingResult,
@@ -1340,7 +1342,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       page,
       parentPageSysId: cleanText(page.parentPageSysId) || null,
       publicationState: page.publicationState,
-      siblingOrder: Number(page.siblingOrder) || 1,
+      siblingOrder: normalizeNumericSiblingOrder(page.siblingOrder),
       slug: cleanText(page.draftSlug),
       statusIndicator: null,
       sysId: cleanText(page.sysId),
@@ -3641,6 +3643,103 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     });
   }
 
+  async function moveWorkspacePage(input: { pageSysId: string; parentPageSysId: string | null; siblingOrder: string | number }) {
+    if (!serviceNowClient.movePage || !canManagePageSettings || !workspacePagesLoaded || workspaceState.status !== "success") {
+      return;
+    }
+    if (staleRefreshBlocksCurrentWorkspaceWrites) {
+      requestStaleRefreshBlock(currentWorkspaceMutationAuthority() ?? {});
+      return;
+    }
+    const pageSysId = cleanText(input.pageSysId);
+    const siblingOrder = String(input.siblingOrder);
+    const parentPageSysId = cleanText(input.parentPageSysId) || null;
+    const movingPage = findWorkspacePageBySysId(currentWorkspacePages, pageSysId);
+    if (!movingPage || ((cleanText(movingPage.parentPageSysId) || null) === parentPageSysId && String(movingPage.siblingOrder) === siblingOrder)) {
+      return;
+    }
+    const previousPages = currentWorkspacePages;
+    const optimisticPages = previousPages.map((page) =>
+      cleanText(page.sysId) === pageSysId
+        ? { ...page, parentPageSysId, siblingOrder: normalizeNumericSiblingOrder(siblingOrder, page.siblingOrder) }
+        : page
+    );
+    setWorkspacePagesState((current) =>
+      current.status === "success" && current.workspaceSlug === workspaceState.data.slug && current.mode === activeWorkspaceMode
+        ? { ...current, data: optimisticPages }
+        : current
+    );
+    const isCurrentMutation = beginAuthoringMutation();
+    try {
+      const outcome = await workspaceLeaseRecoveryRef.current.runMutation<PageMoveResult>({
+        scope: workspaceLeaseRecoveryScope,
+        ensure: ensureWorkspaceLeaseForMutation,
+        invalidateLeaseRace: invalidateWorkspaceLeaseRace,
+        isLeaseRace: (result) => result.state === "failed" && result.code === "lock_lost",
+        mutate: (workspaceLeaseToken) => serviceNowClient.movePage!({
+          workspaceSlug: workspaceState.data.slug,
+          workspaceSysId: workspaceState.data.sysId ?? "",
+          pageSysId,
+          parentPageSysId,
+          siblingOrder,
+          workspaceLeaseToken,
+          workspaceAuthority: currentWorkspaceMutationAuthority()
+        })
+      });
+      if (!isCurrentMutation()) return;
+      if (outcome.state === "contention" || outcome.state === "forbidden" || outcome.state === "transient_failure") {
+        setWorkspacePagesState((current) =>
+          current.status === "success" && current.workspaceSlug === workspaceState.data.slug && current.mode === activeWorkspaceMode
+            ? { ...current, data: previousPages }
+            : current
+        );
+        return;
+      }
+      const result = outcome;
+      if (result.state === "failed" && result.code === "forbidden") {
+        setWorkspacePagesState((current) =>
+          current.status === "success" && current.workspaceSlug === workspaceState.data.slug && current.mode === activeWorkspaceMode
+            ? { ...current, data: previousPages }
+            : current
+        );
+        forceLiveAfterAuthoringAccessLoss({
+          expectedBinding: workspaceLeaseBindingRef.current,
+          expectedWorkspaceLeaseGeneration: workspaceLeaseOperationGenerationRef.current,
+          message: result.errorMessage,
+          nextLeaseState: createWorkspaceLeaseFailureNotice({ errorMessage: result.errorMessage, failure: "forbidden" }),
+          reason: "forbidden",
+          workspaceSlug: workspaceState.data.slug,
+          workspaceSysId: cleanText(workspaceState.data.sysId)
+        });
+        return;
+      }
+      if (result.state === "failed") {
+        setWorkspacePagesState((current) =>
+          current.status === "success" && current.workspaceSlug === workspaceState.data.slug && current.mode === activeWorkspaceMode
+            ? { ...current, data: previousPages }
+            : current
+        );
+        if (result.code === "conflict") {
+          requestStaleRefreshBlock({ changeSetId: result.currentChangeSetId, changeSetRevision: result.currentChangeSetRevision });
+        }
+        return;
+      }
+      installWorkspaceMutationAuthority({ changeSetId: result.changeSetId, changeSetRevision: result.changeSetRevision });
+      setWorkspacePagesState((current) =>
+        current.status === "success" && current.workspaceSlug === workspaceState.data.slug && current.mode === activeWorkspaceMode
+          ? { ...current, data: result.pages, totalCount: result.pages.length }
+          : current
+      );
+    } catch {
+      if (!isCurrentMutation()) return;
+      setWorkspacePagesState((current) =>
+        current.status === "success" && current.workspaceSlug === workspaceState.data.slug && current.mode === activeWorkspaceMode
+          ? { ...current, data: previousPages }
+          : current
+      );
+    }
+  }
+
   const launcherList = launcherState.status === "success" || launcherState.status === "refreshing" ? launcherState.data : null;
 
   function handleStayOnDirtyTransition() {
@@ -4124,6 +4223,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               onSavePageDraft={(input) => savePageDraftForSession(renderedEditorSession, input)}
               onStatusChange={(state) => handleEditorStatusChange(selectedWorkspacePageId, state)}
               onSelectPage={openWorkspacePage}
+              onMovePage={moveWorkspacePage}
               onShowChildPageCreate={openCreatePageModal}
               onShowCreatePage={openCreatePageModal}
               onTogglePageSettings={requestTogglePageSettings}

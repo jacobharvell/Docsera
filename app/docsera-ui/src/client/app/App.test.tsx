@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
@@ -9,6 +9,7 @@ import type {
   PageBodySaveResult,
   PageCreateResult,
   PageListResult,
+  PageMoveResult,
   PageSettingsSaveResult,
   ServiceNowClient,
   WorkspaceMode,
@@ -309,6 +310,40 @@ function heldLease(leaseToken: string) {
     workspaceStateRevision: 3,
     state: "held" as const
   };
+}
+
+function treeRow(title: string): HTMLElement {
+  const tree = screen.getByRole("navigation", { name: "Page tree" });
+  const element = within(tree).getByRole("button", { name: title }).closest(".docsera-page-tree__row");
+  if (!element) {
+    throw new Error(`Missing tree row for ${title}.`);
+  }
+  Object.defineProperty(element, "getBoundingClientRect", {
+    configurable: true,
+    value: () => ({ bottom: 90, height: 90, left: 0, right: 200, top: 0, width: 200, x: 0, y: 0, toJSON: () => ({}) })
+  });
+  return element as HTMLElement;
+}
+
+function dragTreePage(sourceTitle: string, targetTitle: string, clientY: number) {
+  const dataTransfer = {
+    dropEffect: "move",
+    effectAllowed: "move",
+    getData: vi.fn(() => ""),
+    setData: vi.fn()
+  };
+  fireEvent.dragStart(treeRow(sourceTitle), { dataTransfer });
+  fireEvent.dragOver(treeRow(targetTitle), { clientY, dataTransfer });
+  const drop = createEvent.drop(treeRow(targetTitle), { dataTransfer });
+  Object.defineProperty(drop, "clientY", { value: clientY });
+  fireEvent(treeRow(targetTitle), drop);
+}
+
+function pageTreeButtonLabels(): string[] {
+  const tree = screen.getByRole("navigation", { name: "Page tree" });
+  return within(tree)
+    .getAllByRole("button")
+    .map((button) => button.textContent?.trim() ?? "");
 }
 
 describe("App live and edit routing", () => {
@@ -909,6 +944,145 @@ describe("App live and edit routing", () => {
       mode: "edit",
       workspaceSlug: "product-docs"
     });
+  });
+
+  it("moves a page from the Edit tree through the movement client contract and reconciles returned pages", async () => {
+    const initialPages = createBreadcrumbPages();
+    const movedPages = [
+      initialPages[0],
+      createPageRecord({
+        ...initialPages[1],
+        parentPageSysId: null,
+        siblingOrder: 2,
+        draftTitle: "Child Moved"
+      })
+    ];
+    const movePage = vi.fn(async (): Promise<PageMoveResult> => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 8,
+      pages: movedPages,
+      state: "succeeded"
+    }));
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? initialPages : [initialPages[0]])
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=child", { listPages, movePage });
+    expect(await screen.findByRole("button", { name: "Child Draft" })).toBeInTheDocument();
+
+    dragTreePage("Child Draft", "Overview", 89);
+
+    await waitFor(() => expect(movePage).toHaveBeenCalledTimes(1));
+    expect(movePage).toHaveBeenCalledWith(expect.objectContaining({
+      pageSysId: "page-child",
+      parentPageSysId: null,
+      siblingOrder: "2",
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 7 }),
+      workspaceLeaseToken: "workspace-lease-token"
+    }));
+    expect(await screen.findByRole("button", { name: "Child Moved" })).toBeInTheDocument();
+  });
+
+  it("preserves rank zero when moving the second root page before the first in Edit while Live stays published", async () => {
+    const returnedMove = createDeferred<PageMoveResult>();
+    const editPages = [
+      createPageRecord({ sysId: "page-first", draftTitle: "First", draftSlug: "first", siblingOrder: 1 }),
+      createPageRecord({ sysId: "page-second", draftTitle: "Second", draftSlug: "second", siblingOrder: 2 })
+    ];
+    const returnedEditPages = [
+      createPageRecord({ sysId: "page-second", draftTitle: "Second", draftSlug: "second", siblingOrder: 0 }),
+      createPageRecord({ sysId: "page-first", draftTitle: "First", draftSlug: "first", siblingOrder: 1 })
+    ];
+    const livePages = [
+      createPageRecord({ sysId: "page-first", draftTitle: "First", draftSlug: "first", siblingOrder: 1 }),
+      createPageRecord({ sysId: "page-second", draftTitle: "Second", draftSlug: "second", siblingOrder: 2 })
+    ];
+    const movePage = vi.fn(() => returnedMove.promise);
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? editPages : livePages)
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=first", { listPages, movePage });
+    expect(await screen.findByRole("button", { name: "Second" })).toBeInTheDocument();
+    expect(pageTreeButtonLabels()).toEqual(expect.arrayContaining(["First", "Second"]));
+
+    dragTreePage("Second", "First", 1);
+
+    await waitFor(() => expect(movePage).toHaveBeenCalledTimes(1));
+    expect(movePage).toHaveBeenCalledWith(expect.objectContaining({
+      pageSysId: "page-second",
+      parentPageSysId: null,
+      siblingOrder: "0"
+    }));
+    await waitFor(() => expect(pageTreeButtonLabels().indexOf("Second")).toBeLessThan(pageTreeButtonLabels().indexOf("First")));
+
+    returnedMove.resolve({
+      changeSetId: "change-set-001",
+      changeSetRevision: 8,
+      pages: returnedEditPages,
+      state: "succeeded"
+    });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Second" })).toBeInTheDocument());
+    expect(pageTreeButtonLabels().indexOf("Second")).toBeLessThan(pageTreeButtonLabels().indexOf("First"));
+    expect(livePages.map((page) => [page.sysId, page.siblingOrder])).toEqual([
+      ["page-first", 1],
+      ["page-second", 2]
+    ]);
+  });
+
+  it("rolls back a rejected movement and starts stale refresh for conflict authority", async () => {
+    const refreshDeferred = createDeferred<PageListResult>();
+    const initialPages = createBreadcrumbPages();
+    let editListCount = 0;
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) => {
+      if (mode === "edit") {
+        editListCount += 1;
+        if (editListCount > 1) {
+          return refreshDeferred.promise;
+        }
+        return createPageListResult("edit", initialPages);
+      }
+      return createPageListResult("live", [initialPages[0]]);
+    });
+    const movePage = vi.fn(async (): Promise<PageMoveResult> => ({
+      code: "conflict",
+      currentChangeSetId: "change-set-001",
+      currentChangeSetRevision: 8,
+      errorMessage: "The active draft generation changed. Reload before moving again.",
+      state: "failed"
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=child", { listPages, movePage });
+    expect(await screen.findByRole("button", { name: "Child Draft" })).toBeInTheDocument();
+
+    dragTreePage("Child Draft", "Overview", 89);
+
+    await waitFor(() => expect(movePage).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "Child Draft" })).toBeInTheDocument();
+    refreshDeferred.resolve(createPageListResult("edit", initialPages));
+  });
+
+  it("rolls back movement and returns to Live when the Edit lease or access is lost", async () => {
+    const initialPages = createBreadcrumbPages();
+    const movePage = vi.fn(async (): Promise<PageMoveResult> => ({
+      code: "forbidden",
+      errorMessage: "Workspace editing is no longer available.",
+      state: "failed"
+    }));
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? initialPages : [initialPages[0]])
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=child", { listPages, movePage });
+    expect(await screen.findByRole("button", { name: "Child Draft" })).toBeInTheDocument();
+
+    dragTreePage("Child Draft", "Overview", 89);
+
+    await waitFor(() => expect(movePage).toHaveBeenCalledTimes(1));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Workspace editing is no longer available.");
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
   });
 
   it("retains a direct Edit intent until the workspace lease is held", async () => {

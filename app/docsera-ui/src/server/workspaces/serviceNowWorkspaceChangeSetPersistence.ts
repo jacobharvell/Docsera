@@ -2,6 +2,7 @@ import { GlideDateTime, GlideDigest, GlideRecord, GlideSecureRandomUtil, gs } fr
 import {
   createRemovalBatch,
   deriveChangeCategory,
+  movePage,
   pendingEntries,
   projectEdit,
   projectLive,
@@ -19,6 +20,7 @@ import {
   collectPageSubtreeSysIds,
   createPageDraft,
   hasPageDraftDifferencesFromPublished,
+  normalizeSiblingOrder,
   pickNextVisiblePageAfterDelete,
   type PageRecord
 } from "../pages/serverPageDomain.ts";
@@ -38,7 +40,7 @@ export type WorkspaceMutationAuthority = {
   changeSetRevision: number;
 };
 
-type WorkspaceMutationKind = "body" | "create" | "delete" | "settings";
+type WorkspaceMutationKind = "body" | "create" | "delete" | "move" | "settings";
 type WorkspaceMutationState = "claimed" | "applied" | "finalized" | "rolled_back";
 type WorkspaceMutationPhase =
   | "claimed"
@@ -75,6 +77,12 @@ type WorkspaceMutationClaimPayload =
       rootPageId: string;
       memberPageIds: string[];
       batchId?: string;
+    }
+  | {
+      kind: "move";
+      pageSysId: string;
+      parentPageSysId: string | null;
+      siblingOrder: string;
     };
 
 type WorkspaceMutationClaimRecord = {
@@ -170,6 +178,7 @@ export type WorkspaceBodySaveResult = WorkspaceMutationSuccess<{ page: PageRecor
 export type WorkspaceSettingsSaveResult = WorkspaceMutationSuccess<{ page: PageRecord }> | WorkspaceMutationFailure;
 export type WorkspaceCreateResult = WorkspaceMutationSuccess<{ page: PageRecord }> | WorkspaceMutationFailure;
 export type WorkspaceDeleteResult = WorkspaceMutationSuccess<{ deletedPageSysId: string; nextPageSysId: string }> | WorkspaceMutationFailure;
+export type WorkspaceMoveResult = WorkspaceMutationSuccess<{ pages: PageRecord[] }> | WorkspaceMutationFailure;
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -517,6 +526,14 @@ function updateReplayableMutationClaimRow(
     throw new Error(fallbackMessage);
   }
   if (mutationClaimAlreadyRepresents(input, reloaded)) {
+    return reloaded;
+  }
+  if (
+    reloaded.state === "finalized" &&
+    reloaded.phase === "finalized" &&
+    reloaded.resultAuthority &&
+    reloaded.resultJson
+  ) {
     return reloaded;
   }
   throw new Error(fallbackMessage);
@@ -1048,7 +1065,9 @@ function buildDraftPages(pageRecords: PageRecord[], snapshotPages: SnapshotPage[
       throw new Error(`Legacy draft overlay references unpublished page ${pageId}.`);
     }
     if (hasPublishedIdentity) {
-      const changed = hasPageDraftDifferencesFromPublished({
+      const changed = page.parentPageSysId !== selectedSnapshot.parentPageId ||
+        String(page.siblingOrder) !== selectedSnapshot.siblingOrder ||
+        hasPageDraftDifferencesFromPublished({
         draftTitle: page.draftTitle,
         draftSlug: page.draftSlug,
         draftSlugNormalized: page.draftSlugNormalized,
@@ -1326,6 +1345,26 @@ function updateDraftPageRecord(page: PageRecord) {
   }
 }
 
+function updateDraftPageHierarchy(pageSysId: string, parentPageSysId: string | null, siblingOrder: string) {
+  const row = new GlideRecord(DOCSERA_PAGE_TABLE);
+  if (!row.get("sys_id", cleanText(pageSysId))) {
+    throw new Error("Page could not be found.");
+  }
+  row.setValue("parent_page", cleanText(parentPageSysId) || "");
+  row.setValue("sibling_order", cleanText(siblingOrder));
+  if (!row.update()) {
+    throw new Error("Page hierarchy could not be updated.");
+  }
+}
+
+function pageHierarchyMatches(pageSysId: string, parentPageSysId: string | null, siblingOrder: string): boolean {
+  const row = new GlideRecord(DOCSERA_PAGE_TABLE);
+  if (!row.get("sys_id", cleanText(pageSysId))) {
+    return false;
+  }
+  return cleanText(row.getValue("parent_page")) === cleanText(parentPageSysId) && cleanText(row.getValue("sibling_order")) === cleanText(siblingOrder);
+}
+
 function insertPageRecord(page: PageRecord, targetSysId: string): PageRecord {
   const row = new GlideRecord(DOCSERA_PAGE_TABLE);
   row.initialize();
@@ -1363,7 +1402,7 @@ function pageFromProjectionPage(page: SnapshotPage, existing: PageRecord | undef
     sysId: page.pageId,
     workspaceSysId,
     parentPageSysId: page.parentPageId,
-    siblingOrder: Number(page.siblingOrder) || 1,
+    siblingOrder: normalizeSiblingOrder(page.siblingOrder),
     draftTitle: page.title,
     draftSlug: page.slug,
     draftSlugNormalized: page.slug,
@@ -1381,6 +1420,36 @@ function pageFromProjectionPage(page: SnapshotPage, existing: PageRecord | undef
     publicationState: mode === "live" ? "published" : existing?.publicationState ?? "published",
     active: page.active
   };
+}
+
+function orderProjectionPages(pages: SnapshotPage[]): SnapshotPage[] {
+  const childrenByParent = new Map<string, SnapshotPage[]>();
+  for (const page of pages) {
+    const parentKey = cleanText(page.parentPageId);
+    childrenByParent.set(parentKey, [...(childrenByParent.get(parentKey) ?? []), page]);
+  }
+
+  const sortSiblings = (siblings: SnapshotPage[]) =>
+    siblings.sort((left, right) => {
+      const leftOrder = normalizeSiblingOrder(left.siblingOrder);
+      const rightOrder = normalizeSiblingOrder(right.siblingOrder);
+      if (leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+
+      const titleComparison = cleanText(left.title).localeCompare(cleanText(right.title), undefined, { sensitivity: "base" });
+      return titleComparison || cleanText(left.slug).localeCompare(cleanText(right.slug), undefined, { sensitivity: "base" }) || cleanText(left.pageId).localeCompare(cleanText(right.pageId), undefined, { sensitivity: "base" });
+    });
+
+  const ordered: SnapshotPage[] = [];
+  const appendBranch = (parentKey: string) => {
+    for (const page of sortSiblings(childrenByParent.get(parentKey) ?? [])) {
+      ordered.push(page);
+      appendBranch(cleanText(page.pageId));
+    }
+  };
+  appendBranch("");
+  return ordered.length === pages.length ? ordered : [...pages].sort((left, right) => normalizeSiblingOrder(left.siblingOrder) - normalizeSiblingOrder(right.siblingOrder));
 }
 
 function refreshEntriesForPage(state: WorkspaceChangeSetState, pageId: string) {
@@ -1453,7 +1522,7 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
       try {
         const loaded = loadWorkspaceState(workspace, dependencies);
         const recordMap = new Map(loaded.pageRecords.map((page) => [cleanText(page.sysId), page]));
-        const projected = (mode === "live" ? projectLive(loaded.state) : projectEdit(loaded.state)).map((page) =>
+        const projected = orderProjectionPages(mode === "live" ? projectLive(loaded.state) : projectEdit(loaded.state)).map((page) =>
           pageFromProjectionPage(page, recordMap.get(page.pageId), cleanText(loaded.workspace.sysId), mode)
         );
         return {
@@ -2306,6 +2375,257 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
         return {
           kind: "failed",
           errorMessage: cleanText(error instanceof Error ? error.message : error) || "Something went wrong while deleting the page. The page was not deleted. Please try again.",
+          status: 500
+        };
+      }
+    },
+
+    movePage(input: {
+      authority: WorkspaceMutationAuthority;
+      pageSysId: string;
+      parentPageSysId?: string | null;
+      siblingOrder: string;
+      workspace: WorkspaceRecord;
+    }): WorkspaceMoveResult {
+      try {
+        const loaded = loadWorkspaceState(input.workspace, dependencies);
+        const pageId = cleanText(input.pageSysId);
+        const parentId = cleanText(input.parentPageSysId) || null;
+        const siblingOrder = cleanText(input.siblingOrder);
+        const generationKey = buildMutationGenerationKey(input.authority);
+        const existingClaim = loadMutationClaimByGeneration(generationKey);
+        if (
+          existingClaim &&
+          (
+            existingClaim.kind !== "move" ||
+            existingClaim.targetPageSysId !== pageId ||
+            existingClaim.payload.kind !== "move" ||
+            cleanText(existingClaim.payload.parentPageSysId) !== cleanText(parentId) ||
+            existingClaim.payload.siblingOrder !== siblingOrder
+          )
+        ) {
+          return staleFailure(nextAuthority(loaded.state));
+        }
+        if (!pageId || !siblingOrder) {
+          return { kind: "failed", errorMessage: "A page and sibling placement are required.", status: 400 };
+        }
+        const prospective = movePage(loaded.state, {
+          expectedChangeSetId: input.authority.changeSetId,
+          expectedChangeSetRevision: input.authority.changeSetRevision
+        }, {
+          pageId,
+          parentPageId: parentId,
+          siblingOrder,
+          actorId: dependencies.currentUserSysId(),
+          changedOn: dependencies.currentTimestamp()
+        });
+        if (!existingClaim) {
+          if (prospective.kind === "stale") {
+            return staleFailure(prospective.current);
+          }
+          if (prospective.kind === "invalid") {
+            return { kind: "failed", code: "invalid", errorMessage: prospective.reason, status: 400 };
+          }
+          if (prospective.kind === "noop") {
+            const pages = this.listPages(loaded.workspace, "edit");
+            if (pages.kind !== "succeeded") {
+              return pages;
+            }
+            return {
+              kind: "succeeded",
+              authority: nextAuthority(loaded.state),
+              result: { pages: pages.pages }
+            };
+          }
+        }
+        let claim = existingClaim ?? {
+          sysId: "",
+          workspaceId: cleanText(loaded.workspace.sysId),
+          changeSetId: input.authority.changeSetId,
+          generationKey,
+          mutationKey: buildMutationKey(dependencies, input.authority, "move", {
+            kind: "move",
+            pageSysId: pageId,
+            parentPageSysId: parentId,
+            siblingOrder
+          }),
+          kind: "move" as const,
+          state: "claimed" as const,
+          ownerKey: dependencies.randomKey("mutation-owner"),
+          ownerExpiresOn: plusDuration(dependencies.currentTimestamp(), dependencies.ownerTimeoutMs),
+          claimedOn: dependencies.currentTimestamp(),
+          phase: "claimed" as const,
+          payload: {
+            kind: "move",
+            pageSysId: pageId,
+            parentPageSysId: parentId,
+            siblingOrder
+          },
+          targetPageSysId: pageId
+        };
+        const acquired = acquireMutationClaim(dependencies, loaded.state, claim);
+        if (acquired.kind === "failed") {
+          return acquired.failure;
+        }
+        if (acquired.kind === "replay") {
+          return {
+            kind: "succeeded",
+            authority: acquired.resultAuthority,
+            result: parseReplayResult<{ pages: PageRecord[] }>(acquired.resultJson)
+          };
+        }
+        claim = acquired.claim;
+        const executorKey = acquired.executorKey;
+        if (claim.phase === "claimed") {
+          const candidate = prospective;
+          if (candidate.kind === "stale") {
+            return staleFailure(candidate.current);
+          }
+          if (candidate.kind === "invalid") {
+            return { kind: "failed", code: "invalid", errorMessage: candidate.reason, status: 400 };
+          }
+          if (candidate.kind === "noop") {
+            if (!existingClaim || !pageHierarchyMatches(pageId, parentId, siblingOrder)) {
+              const pages = this.listPages(loaded.workspace, "edit");
+              if (pages.kind !== "succeeded") {
+                return pages;
+              }
+              return {
+                kind: "succeeded",
+                authority: nextAuthority(loaded.state),
+                result: { pages: pages.pages }
+              };
+            }
+            claim = requireClaimOwner(claim, executorKey);
+            claim = persistClaimProgress(dependencies, claim, {
+              appliedOn: claim.appliedOn ?? dependencies.currentTimestamp(),
+              phase: "page_persisted"
+            }, executorKey);
+            triggerDurablePhase(dependencies, "mutation_page_persisted", { generationKey, kind: "move", pageSysId: pageId });
+          } else {
+            claim = requireClaimOwner(claim, executorKey);
+            updateDraftPageHierarchy(pageId, parentId, siblingOrder);
+            claim = persistClaimProgress(dependencies, claim, {
+              appliedOn: dependencies.currentTimestamp(),
+              phase: "page_persisted"
+            }, executorKey);
+            triggerDurablePhase(dependencies, "mutation_page_persisted", { generationKey, kind: "move", pageSysId: pageId });
+          }
+        }
+        const recovered = loadWorkspaceState(input.workspace, dependencies);
+        let resultAuthority = claim.resultAuthority;
+        const recoveredAuthority = nextAuthority(recovered.state);
+        const preparedAuthority = preparedResultAuthority(claim);
+        if (!resultAuthority && claim.phase === "change_set_advancing" && authorityMatchesOrExceeds(recoveredAuthority, preparedAuthority)) {
+          resultAuthority = preparedAuthority;
+          claim = persistClaimProgress(dependencies, claim, {
+            appliedOn: claim.appliedOn ?? dependencies.currentTimestamp(),
+            phase: "change_set_persisted",
+            resultAuthority,
+            state: "applied"
+          }, null);
+        } else if (!resultAuthority && isExpectedNextAuthority(recoveredAuthority, input.authority)) {
+          resultAuthority = recoveredAuthority;
+          claim = persistClaimProgress(dependencies, claim, {
+            appliedOn: claim.appliedOn ?? dependencies.currentTimestamp(),
+            phase: "change_set_persisted",
+            resultAuthority,
+            state: "applied"
+          }, null);
+        }
+        if (!resultAuthority) {
+          claim = requireClaimOwner(claim, executorKey);
+          const changedOn = claim.appliedOn ?? dependencies.currentTimestamp();
+          const moved = movePage(recovered.state, {
+            expectedChangeSetId: input.authority.changeSetId,
+            expectedChangeSetRevision: input.authority.changeSetRevision
+          }, {
+            pageId,
+            parentPageId: parentId,
+            siblingOrder,
+            actorId: dependencies.currentUserSysId(),
+            changedOn
+          });
+          if (moved.kind === "stale") {
+            return staleFailure(moved.current);
+          }
+          if (moved.kind === "invalid") {
+            return { kind: "failed", code: "invalid", errorMessage: moved.reason, status: 400 };
+          }
+          const changed = moved.kind === "applied"
+            ? moved
+            : recordPendingChange(recovered.state, {
+                expectedChangeSetId: input.authority.changeSetId,
+                expectedChangeSetRevision: input.authority.changeSetRevision
+              }, {
+                pageId,
+                actorId: dependencies.currentUserSysId(),
+                changedOn
+              });
+          if (changed.kind === "stale") {
+            return staleFailure(changed.current);
+          }
+          refreshEntriesForPage(changed.state, pageId);
+          upsertChangeEntry(changed.state, pageId);
+          claim = persistClaimProgress(dependencies, claim, {
+            appliedOn: changedOn,
+            phase: "entry_persisted"
+          }, executorKey);
+          triggerDurablePhase(dependencies, "mutation_entry_persisted", { generationKey, kind: "move", pageSysId: pageId });
+          const projected = orderProjectionPages(projectEdit(changed.state)).map((page) =>
+            pageFromProjectionPage(page, recovered.pageRecords.find((record) => cleanText(record.sysId) === page.pageId), cleanText(recovered.workspace.sysId), "edit")
+          );
+          const persistedResult = { pages: projected };
+          const persistedResultJson = stableSerialize(persistedResult);
+          claim = persistClaimProgress(dependencies, claim, {
+            appliedOn: changedOn,
+            phase: "change_set_advancing",
+            resultJson: persistedResultJson
+          }, executorKey);
+          claim = requireDurableChangeSetAdvancingMarker(claim, executorKey, persistedResultJson);
+          updateChangeSetRow(changed.state);
+          triggerDurablePhase(dependencies, "mutation_change_set_row_updated", { generationKey, kind: "move", pageSysId: pageId });
+          resultAuthority = preparedResultAuthority(claim);
+          claim = persistClaimProgress(dependencies, claim, {
+            appliedOn: changedOn,
+            phase: "change_set_persisted",
+            resultAuthority,
+            state: "applied"
+          }, null);
+          triggerDurablePhase(dependencies, "mutation_change_set_persisted", { generationKey, kind: "move", pageSysId: pageId });
+        }
+        if (claim.phase === "change_set_persisted" && resultAuthority) {
+          if (!claim.resultJson) {
+            const refreshed = this.listPages(input.workspace, "edit");
+            if (refreshed.kind !== "succeeded") {
+              return refreshed;
+            }
+            claim = { ...claim, resultJson: stableSerialize({ pages: refreshed.pages }) };
+          }
+          claim = persistClaimProgress(dependencies, claim, {
+            appliedOn: claim.appliedOn ?? dependencies.currentTimestamp(),
+            phase: "result_persisted",
+            resultAuthority,
+            resultJson: claim.resultJson,
+            state: "applied"
+          }, null);
+          triggerDurablePhase(dependencies, "mutation_result_persisted", { generationKey, kind: "move", pageSysId: pageId });
+        }
+        if (!claim.resultAuthority || !claim.resultJson) {
+          throw new Error("Recovered move result could not be persisted.");
+        }
+        const replayed = parseReplayResult<{ pages: PageRecord[] }>(claim.resultJson);
+        claim = finalizeMutationClaim(dependencies, claim, claim.resultAuthority, replayed, null);
+        triggerDurablePhase(dependencies, "mutation_finalized", { generationKey, kind: "move", pageSysId: pageId });
+        return {
+          kind: "succeeded",
+          authority: claim.resultAuthority,
+          result: replayed
+        };
+      } catch (error) {
+        return {
+          kind: "failed",
+          errorMessage: cleanText(error instanceof Error ? error.message : error) || "Something went wrong while moving the page. The page was not moved. Please try again.",
           status: 500
         };
       }

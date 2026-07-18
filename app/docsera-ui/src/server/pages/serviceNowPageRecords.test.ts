@@ -15,6 +15,7 @@ type MockRecordOptions = {
   publishedAt?: unknown;
   publishedBy?: unknown;
   publishedByDisplayValue?: unknown;
+  siblingOrder?: unknown;
   omitPublishedContentJson?: boolean;
   omitDraftContentJson?: boolean;
 };
@@ -28,6 +29,7 @@ function createRecord({
   publishedAt = "",
   publishedBy = "",
   publishedByDisplayValue = "",
+  siblingOrder = "1",
   omitPublishedContentJson = false,
   omitDraftContentJson = false
 }: MockRecordOptions) {
@@ -40,7 +42,7 @@ function createRecord({
         case "parent_page":
           return "";
         case "sibling_order":
-          return "1";
+          return siblingOrder;
         case "draft_title":
           return "Overview";
         case "draft_slug":
@@ -85,6 +87,22 @@ function createRecord({
 }
 
 describe("page record mapping", () => {
+  it("preserves persisted rank zero as numeric zero", () => {
+    const page = mapPageRecord(createRecord({ activeValue: true, siblingOrder: "0" }));
+
+    expect(page.siblingOrder).toBe(0);
+  });
+
+  it.each([
+    ["blank", "", 1],
+    ["whitespace", "   ", 1],
+    ["null", null, 1]
+  ])("maps persisted %s sibling order to the established fallback", (_label, siblingOrder, expected) => {
+    const page = mapPageRecord(createRecord({ activeValue: true, siblingOrder }));
+
+    expect(page.siblingOrder).toBe(expected);
+  });
+
   it.each([
     ["true", true],
     ["1", true],

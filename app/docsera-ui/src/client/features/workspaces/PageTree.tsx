@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, DragEvent } from "react";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
 import type { WorkspacePageView } from "./workspaceViewModels";
@@ -23,6 +23,7 @@ type PageTreeProps = {
   onCommitInlineCreate: () => void;
   onInlineCreateTitleChange: (value: string) => void;
   onSelectPage: (pageId: string) => void;
+  onMovePage?: (input: { pageSysId: string; parentPageSysId: string | null; siblingOrder: string | number }) => void;
   onShowCreatePage: () => void;
   onShowChildPageCreate: (parentPageId: string, parentPageTitle: string) => void;
   onTogglePageSettings: (pageId: string) => void;
@@ -36,8 +37,12 @@ type PageTreeProps = {
 type PageTreeNodeProps = Omit<PageTreeProps, "collapsedPageIds"> & {
   collapsedPageIds: ReadonlySet<string>;
   depth: number;
+  draggedPageId: string;
   inlineCreateState: InlinePageCreateState | null;
   onCommitInlineCreate: () => void;
+  onDragEnd: () => void;
+  onDragStart: (pageId: string) => void;
+  onDropPage: (event: DragEvent<HTMLElement>, targetPageId: string) => void;
   onInlineCreateTitleChange: (value: string) => void;
   onToggleCollapsed: (pageId: string) => void;
   page: WorkspacePageView;
@@ -92,6 +97,80 @@ function pageContainsId(page: WorkspacePageView, pageId: string): boolean {
 
 function pageHasSelectedDescendant(page: WorkspacePageView, selectedPageId: string): boolean {
   return page.children ? page.children.some((child) => pageContainsId(child, selectedPageId)) : false;
+}
+
+function flattenPages(pages: WorkspacePageView[]): WorkspacePageView[] {
+  return pages.flatMap((page) => [page, ...flattenPages(page.children ?? [])]);
+}
+
+function subtreeHeight(page: WorkspacePageView): number {
+  const childHeights = (page.children ?? []).map(subtreeHeight);
+  return 1 + (childHeights.length ? Math.max(...childHeights) : 0);
+}
+
+function pageDepth(pageId: string | null, pagesById: Map<string, WorkspacePageView>): number {
+  if (!pageId) {
+    return 0;
+  }
+  const page = pagesById.get(pageId);
+  return page ? pageDepth(page.parentPageSysId, pagesById) + 1 : 0;
+}
+
+function pageContainsTarget(page: WorkspacePageView, targetPageId: string): boolean {
+  return page.id === targetPageId || Boolean(page.children?.some((child) => pageContainsTarget(child, targetPageId)));
+}
+
+function rankBetween(previous: number | null, next: number | null): string {
+  if (previous === null && next === null) {
+    return "1";
+  }
+  if (previous === null) {
+    return String((next ?? 1) - 1);
+  }
+  if (next === null) {
+    return String(previous + 1);
+  }
+  return String((previous + next) / 2);
+}
+
+function movementRankForSiblingDrop(input: {
+  draggedPageId: string;
+  parentPageSysId: string | null;
+  pagesByParent: Map<string, WorkspacePageView[]>;
+  position: "before" | "after";
+  targetPageId: string;
+}): string {
+  const parentKey = input.parentPageSysId ?? "";
+  const siblings = (input.pagesByParent.get(parentKey) ?? []).filter((page) => page.id !== input.draggedPageId);
+  const targetIndex = siblings.findIndex((page) => page.id === input.targetPageId);
+  if (targetIndex < 0) {
+    return "1";
+  }
+
+  if (input.position === "before") {
+    return rankBetween(siblings[targetIndex - 1]?.siblingOrder ?? null, siblings[targetIndex]?.siblingOrder ?? null);
+  }
+
+  return rankBetween(siblings[targetIndex]?.siblingOrder ?? null, siblings[targetIndex + 1]?.siblingOrder ?? null);
+}
+
+function movementRankForChildDrop(parentPageId: string, pagesByParent: Map<string, WorkspacePageView[]>, draggedPageId: string): string {
+  const children = (pagesByParent.get(parentPageId) ?? []).filter((page) => page.id !== draggedPageId);
+  const lastOrder = children.length ? children[children.length - 1]?.siblingOrder ?? null : null;
+  return rankBetween(lastOrder, null);
+}
+
+function dropPosition(event: DragEvent<HTMLElement>): "before" | "after" | "inside" {
+  const rect = event.currentTarget.getBoundingClientRect();
+  const height = rect.height || 1;
+  const offset = event.clientY - rect.top;
+  if (offset <= height / 3) {
+    return "before";
+  }
+  if (offset >= (height * 2) / 3) {
+    return "after";
+  }
+  return "inside";
 }
 
 function InlineCreateRow({
@@ -181,12 +260,17 @@ function PageTreeNode({
   canManagePageSettings,
   collapsedPageIds,
   depth,
+  draggedPageId,
   filterText,
   inlineCreateState,
   isCreatingPage,
   onCommitInlineCreate,
+  onDragEnd,
+  onDragStart,
+  onDropPage,
   onInlineCreateTitleChange,
   onSelectPage,
+  onMovePage,
   onShowChildPageCreate,
   onToggleCollapsed,
   onTogglePageSettings,
@@ -213,6 +297,7 @@ function PageTreeNode({
   const showChildCreateButton = canCreatePage && hasChildren;
   const showSettingsButton = canManagePageSettings;
   const actionCount = [showChildCreateButton, showSettingsButton].filter(Boolean).length;
+  const canMovePage = Boolean(onMovePage && canManagePageSettings);
   const rowStyle = {
     "--docsera-page-tree-action-count": String(actionCount),
     "--docsera-page-tree-depth": String(depth)
@@ -223,7 +308,28 @@ function PageTreeNode({
       <div
         className={`docsera-page-tree__row${isSelected ? " docsera-page-tree__row--selected" : ""}${
           isPageSettingsOpen ? " docsera-page-tree__row--settings-open" : ""
-        }`}
+        }${draggedPageId === page.id ? " docsera-page-tree__row--dragging" : ""}`}
+        data-docsera-page-id={page.id}
+        draggable={canMovePage}
+        onDragEnd={canMovePage ? onDragEnd : undefined}
+        onDragOver={
+          canMovePage
+            ? (event) => {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "move";
+              }
+            : undefined
+        }
+        onDragStart={
+          canMovePage
+            ? (event) => {
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", page.id);
+                onDragStart(page.id);
+              }
+            : undefined
+        }
+        onDrop={canMovePage ? (event) => onDropPage(event, page.id) : undefined}
         style={rowStyle}
       >
         <div className="docsera-page-tree__row-main">
@@ -292,8 +398,13 @@ function PageTreeNode({
               inlineCreateState={inlineCreateState}
               isCreatingPage={isCreatingPage}
               onCommitInlineCreate={onCommitInlineCreate}
+              draggedPageId={draggedPageId}
+              onDragEnd={onDragEnd}
+              onDragStart={onDragStart}
+              onDropPage={onDropPage}
               onInlineCreateTitleChange={onInlineCreateTitleChange}
               onSelectPage={onSelectPage}
+              onMovePage={onMovePage}
               onShowChildPageCreate={onShowChildPageCreate}
               onShowCreatePage={() => undefined}
               onToggleCollapsed={onToggleCollapsed}
@@ -334,6 +445,7 @@ export function PageTree({
   onCommitInlineCreate,
   onInlineCreateTitleChange,
   onSelectPage,
+  onMovePage,
   onShowCreatePage,
   onShowChildPageCreate,
   onTogglePageSettings,
@@ -344,8 +456,24 @@ export function PageTree({
   onCollapsedPageIdsChange
 }: PageTreeProps) {
   const [localCollapsedPageIds, setLocalCollapsedPageIds] = useState<Set<string>>(() => new Set(collapsedPageIds));
+  const [draggedPageId, setDraggedPageId] = useState("");
   const effectiveCollapsedPageIds = useMemo(() => new Set(collapsedPageIds), [collapsedPageIds]);
   const visiblePages = useMemo(() => pages.filter((page) => matchesTreeFilter(page, filterText)), [filterText, pages]);
+  const flatPages = useMemo(() => flattenPages(pages), [pages]);
+  const pagesById = useMemo(() => new Map(flatPages.map((page) => [page.id, page])), [flatPages]);
+  const pagesByParent = useMemo(() => {
+    const groups = new Map<string, WorkspacePageView[]>();
+    for (const page of flatPages) {
+      const key = page.parentPageSysId ?? "";
+      const siblings = groups.get(key) ?? [];
+      siblings.push(page);
+      groups.set(key, siblings);
+    }
+    for (const siblings of groups.values()) {
+      siblings.sort((left, right) => left.siblingOrder - right.siblingOrder);
+    }
+    return groups;
+  }, [flatPages]);
 
   useEffect(() => {
     setLocalCollapsedPageIds(new Set(collapsedPageIds));
@@ -365,6 +493,53 @@ export function PageTree({
     });
   }
 
+  function completeDrop(event: DragEvent<HTMLElement>, targetPageId: string) {
+    if (!onMovePage || !canManagePageSettings || !draggedPageId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const draggedPage = pagesById.get(draggedPageId);
+    const targetPage = pagesById.get(targetPageId);
+    if (!draggedPage || !targetPage || draggedPage.id === targetPage.id || pageContainsTarget(draggedPage, targetPage.id)) {
+      setDraggedPageId("");
+      return;
+    }
+
+    const position = dropPosition(event);
+    const parentPageSysId = position === "inside" ? targetPage.id : targetPage.parentPageSysId;
+    const parentDepth = pageDepth(parentPageSysId, pagesById);
+    if (parentDepth + subtreeHeight(draggedPage) > 6) {
+      setDraggedPageId("");
+      return;
+    }
+
+    const siblingOrder =
+      position === "inside"
+        ? movementRankForChildDrop(targetPage.id, pagesByParent, draggedPage.id)
+        : movementRankForSiblingDrop({
+            draggedPageId: draggedPage.id,
+            parentPageSysId,
+            pagesByParent,
+            position,
+            targetPageId: targetPage.id
+          });
+
+    if (draggedPage.parentPageSysId === parentPageSysId && String(draggedPage.siblingOrder) === siblingOrder) {
+      setDraggedPageId("");
+      return;
+    }
+
+    onMovePage({
+      pageSysId: draggedPage.id,
+      parentPageSysId,
+      siblingOrder
+    });
+    setDraggedPageId("");
+  }
+
   return (
     <ul className="docsera-page-tree__list">
       {visiblePages.map((page) => (
@@ -374,12 +549,17 @@ export function PageTree({
           canManagePageSettings={canManagePageSettings}
           collapsedPageIds={effectiveCollapsedPageIds.size > 0 ? effectiveCollapsedPageIds : localCollapsedPageIds}
           depth={0}
+          draggedPageId={draggedPageId}
           filterText={filterText}
           inlineCreateState={inlineCreateState}
           isCreatingPage={isCreatingPage}
           onCommitInlineCreate={onCommitInlineCreate}
+          onDragEnd={() => setDraggedPageId("")}
+          onDragStart={setDraggedPageId}
+          onDropPage={completeDrop}
           onInlineCreateTitleChange={onInlineCreateTitleChange}
           onSelectPage={onSelectPage}
+          onMovePage={onMovePage}
           onShowChildPageCreate={onShowChildPageCreate}
           onShowCreatePage={onShowCreatePage}
           onToggleCollapsed={toggleCollapsed}

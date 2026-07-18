@@ -1854,6 +1854,10 @@ html[data-docsera-theme="dark"] .docsera-shell {
   background: color-mix(in srgb, var(--docsera-primary-soft) 58%, #ffffff 42%);
 }
 
+.docsera-page-tree__row--dragging {
+  opacity: 0.58;
+}
+
 html[data-docsera-theme="dark"] .docsera-page-tree__row:hover {
   background: rgba(70, 72, 212, 0.16);
 }

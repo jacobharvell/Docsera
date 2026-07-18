@@ -1,6 +1,6 @@
 import type { PageRecord as ServerPageRecord } from "./serverPageDomain.ts";
 import { parseServerDocument } from "./serverEditorDocument.ts";
-import { normalizePageRecord, normalizeServiceNowBoolean } from "./serverPageDomain.ts";
+import { normalizePageRecord, normalizeServiceNowBoolean, normalizeSiblingOrder } from "./serverPageDomain.ts";
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -42,7 +42,7 @@ export function mapPageRecord(record: {
     sysId: cleanText(record.getUniqueValue()),
     workspaceSysId: cleanText(record.getValue("workspace")),
     parentPageSysId: cleanText(record.getValue("parent_page")) || null,
-    siblingOrder: Number(record.getValue("sibling_order")) || 1,
+    siblingOrder: normalizeSiblingOrder(record.getValue("sibling_order")),
     draftTitle: cleanText(record.getValue("draft_title")),
     draftSlug: cleanText(record.getValue("draft_slug")),
     draftSlugNormalized: cleanText(record.getValue("draft_slug_normalized")),

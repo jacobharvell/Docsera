@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     createPage: vi.fn(),
     deletePage: vi.fn(),
     listPages: vi.fn(),
+    movePage: vi.fn(),
     savePageBody: vi.fn(),
     savePageSettings: vi.fn()
   },
@@ -61,6 +62,7 @@ vi.mock("@servicenow/glide", () => ({
 }));
 
 import { process as processCreatePage } from "./docsera-runtime-create-page.ts";
+import { process as processMovePage } from "./docsera-runtime-page-move.ts";
 import { process as processSavePageBody } from "./docsera-runtime-page-save.ts";
 
 function responseRecorder() {
@@ -84,6 +86,7 @@ describe("docsera runtime mutation routes", () => {
     mocks.persistence.createPage.mockReset();
     mocks.persistence.deletePage.mockReset();
     mocks.persistence.listPages.mockReset();
+    mocks.persistence.movePage.mockReset();
     mocks.persistence.savePageBody.mockReset();
     mocks.persistence.savePageSettings.mockReset();
     mocks.glide.gs.error.mockReset();
@@ -217,6 +220,53 @@ describe("docsera runtime mutation routes", () => {
       })
     );
     expect(response.status).toBe(201);
+  });
+
+  it("passes the caller's claimed generation pair to move-page persistence and returns refreshed pages", async () => {
+    mocks.lease.verifyWorkspaceEditLease.mockResolvedValue({
+      kind: "held",
+      leaseToken: "workspace-lease-token",
+      heartbeatIntervalMs: 60_000,
+      staleAfterMs: 300_000,
+      changeSetId: "change-set-009",
+      changeSetRevision: 12
+    });
+    mocks.lease.readWorkspaceMutationAuthority.mockReturnValue({ changeSetId: "change-set-008", changeSetRevision: 11 });
+    mocks.persistence.movePage.mockReturnValue({
+      kind: "succeeded",
+      authority: { changeSetId: "change-set-009", changeSetRevision: 12 },
+      result: { pages: [{ sysId: "page-101", parentPageSysId: null, siblingOrder: 4 }] }
+    });
+    const response = responseRecorder();
+
+    await processMovePage({
+      body: {
+        workspaceSysId: "workspace-001",
+        workspaceSlug: "product-docs",
+        workspaceLeaseToken: "workspace-lease-token",
+        expectedChangeSetId: "change-set-008",
+        expectedChangeSetRevision: 11,
+        pageSysId: "page-101",
+        parentPageSysId: null,
+        siblingOrder: "4"
+      }
+    }, response);
+
+    expect(mocks.persistence.movePage).toHaveBeenCalledWith(expect.objectContaining({
+      authority: { changeSetId: "change-set-008", changeSetRevision: 11 },
+      pageSysId: "page-101",
+      parentPageSysId: null,
+      siblingOrder: "4"
+    }));
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      result: {
+        mode: "servicenow",
+        pages: [{ sysId: "page-101", parentPageSysId: null, siblingOrder: 4 }],
+        changeSetId: "change-set-009",
+        changeSetRevision: 12
+      }
+    });
   });
 
   it("still blocks mutation routes when the workspace lease has been lost", async () => {

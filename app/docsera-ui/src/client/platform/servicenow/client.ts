@@ -35,6 +35,10 @@ import type {
   PageDeleteInput,
   PageDeleteResult,
   PageDeleteSucceeded,
+  PageMoveFailed,
+  PageMoveInput,
+  PageMoveResult,
+  PageMoveSucceeded,
   WorkspacePageRecord,
   RawPingPayload,
   ServiceNowClient,
@@ -53,6 +57,7 @@ import type {
   WorkspaceMode,
   WorkspaceViewRecord
 } from "../../shared/types/docsera";
+import { normalizeNumericSiblingOrder } from "../../../shared/pages/siblingOrder";
 
 type TokenBearingWindow = Window & {
   NOW?: {
@@ -72,6 +77,7 @@ const DEFAULT_WORKSPACE_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/
 const DEFAULT_PAGE_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/pages";
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
 const SAFE_PAGE_DELETE_ERROR_MESSAGE = "Something went wrong while deleting the page. The page was not deleted. Please try again.";
+const SAFE_PAGE_MOVE_ERROR_MESSAGE = "Something went wrong while moving the page. The page was not moved. Please try again.";
 
 function readWindowUserToken(candidate: Window | null | undefined): string | undefined {
   const tokenWindow = candidate as TokenBearingWindow | null | undefined;
@@ -157,6 +163,11 @@ function resolvePath(value: string | undefined, fallback: string): string {
 function resolvePageDeleteActionPath(pageCollectionPath: string): string {
   const normalizedPath = cleanText(pageCollectionPath).replace(/\/+$/g, "");
   return `${normalizedPath}/delete`;
+}
+
+function resolvePageMovePath(pageCollectionPath: string): string {
+  const normalizedPath = cleanText(pageCollectionPath).replace(/\/+$/g, "");
+  return `${normalizedPath}/move`;
 }
 
 function resolvePageEditLockPath(pageCollectionPath: string, action: "acquire" | "heartbeat" | "release" | "status"): string {
@@ -257,7 +268,7 @@ function normalizePageRecord(candidate: unknown): WorkspacePageRecord {
     sysId: cleanText(page.sysId),
     workspaceSysId: cleanText(page.workspaceSysId),
     parentPageSysId: cleanText(page.parentPageSysId) || null,
-    siblingOrder: Number(page.siblingOrder) || 1,
+    siblingOrder: normalizeNumericSiblingOrder(page.siblingOrder),
     draftTitle: cleanText(page.draftTitle),
     draftSlug: cleanText(page.draftSlug),
     draftSlugNormalized: cleanText(page.draftSlugNormalized),
@@ -761,6 +772,41 @@ function normalizePageDeleteSucceededResult(body: unknown): PageDeleteSucceeded 
 }
 
 function normalizePageDeleteFailedResult(body: unknown, fallback: string): PageDeleteFailed {
+  const error = unwrapServiceNowEnvelope(body);
+  const errorObject = isPlainObject(error) && isPlainObject(error.error) ? error.error : null;
+  const code = cleanText(errorObject?.code);
+  return {
+    state: "failed",
+    code:
+      code === "workspace_lease_lost" || code === "workspace_locked"
+        ? "lock_lost"
+        : code === "forbidden"
+          ? "forbidden"
+          : code === "conflict" || code === "stale_generation"
+            ? "conflict"
+            : code === "invalid" || code === "validation"
+              ? "invalid"
+              : undefined,
+    currentChangeSetId: cleanText(errorObject?.currentChangeSetId) || undefined,
+    currentChangeSetRevision: readSafeInteger(errorObject?.currentChangeSetRevision) ?? undefined,
+    errorMessage: extractErrorMessage(body, fallback)
+  };
+}
+
+function normalizePageMoveSucceededResult(body: unknown): PageMoveSucceeded {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || !Array.isArray(result.pages)) {
+    throw new Error("Page move payload was invalid.");
+  }
+  return {
+    state: "succeeded",
+    pages: result.pages.map((page) => normalizePageRecord(page)),
+    changeSetId: cleanText(result.changeSetId) || undefined,
+    changeSetRevision: readSafeInteger(result.changeSetRevision) ?? undefined
+  };
+}
+
+function normalizePageMoveFailedResult(body: unknown, fallback: string): PageMoveFailed {
   const error = unwrapServiceNowEnvelope(body);
   const errorObject = isPlainObject(error) && isPlainObject(error.error) ? error.error : null;
   const code = cleanText(errorObject?.code);
@@ -1402,6 +1448,31 @@ async function resolvePageDeleteResult(path: string, input: PageDeleteInput): Pr
   }
 }
 
+async function resolvePageMoveResult(path: string, input: PageMoveInput): Promise<PageMoveResult> {
+  const authority = resolveMutationAuthority(input);
+  const payload = {
+    workspaceSlug: cleanText(input.workspaceSlug),
+    workspaceSysId: cleanText(input.workspaceSysId),
+    pageSysId: cleanText(input.pageSysId),
+    parentPageSysId: cleanText(input.parentPageSysId) || null,
+    siblingOrder: String(input.siblingOrder),
+    workspaceLeaseToken: cleanText(input.workspaceLeaseToken),
+    ...(authority ?? {})
+  };
+  const response = await requestJson<unknown>(path, {
+    method: "POST",
+    body: JSON.stringify(payload),
+    headers: { "Content-Type": "application/json" }
+  });
+  if (response.status === 200) {
+    return normalizePageMoveSucceededResult(response.body);
+  }
+  if (response.status === 400 || response.status === 403 || response.status === 409 || response.status === 404) {
+    return normalizePageMoveFailedResult(response.body, SAFE_PAGE_MOVE_ERROR_MESSAGE);
+  }
+  return { state: "failed", code: "transient", errorMessage: SAFE_PAGE_MOVE_ERROR_MESSAGE };
+}
+
 async function resolveWorkspaceEditLeaseResult(
   path: string,
   input: WorkspaceEditLeaseReferenceInput,
@@ -1461,6 +1532,7 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
   const collectionPath = resolvePath(runtime.config.workspaceCollectionPath, DEFAULT_WORKSPACE_COLLECTION_PATH);
   const pageCollectionPath = resolvePath(runtime.config.pageCollectionPath, DEFAULT_PAGE_COLLECTION_PATH);
   const pageDeleteActionPath = resolvePageDeleteActionPath(pageCollectionPath);
+  const pageMovePath = resolvePageMovePath(pageCollectionPath);
   const pagePublishPath = resolvePagePublishPath(pageCollectionPath);
   const pageEditLockStatusPath = resolvePageEditLockPath(pageCollectionPath, "status");
   const pageEditLockAcquirePath = resolvePageEditLockPath(pageCollectionPath, "acquire");
@@ -1586,6 +1658,10 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
 
     async deletePage(input: PageDeleteInput): Promise<PageDeleteResult> {
       return resolvePageDeleteResult(pageDeleteActionPath, input);
+    },
+
+    async movePage(input: PageMoveInput): Promise<PageMoveResult> {
+      return resolvePageMoveResult(pageMovePath, input);
     }
   };
 }

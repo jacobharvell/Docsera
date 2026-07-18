@@ -165,4 +165,19 @@ describe("workspace view models", () => {
     expect(pages[0]?.children?.[0]?.title).toBe("Child");
     expect(pages[0]?.children?.[0]?.statusIndicator).toBe("Unpublished");
   });
+
+  it("sorts finite rank zero before positive sibling ranks", () => {
+    const pages = buildWorkspacePageTree(
+      [
+        createPage({ sysId: "page-first", siblingOrder: 1, draftTitle: "First", draftSlug: "first" }),
+        createPage({ sysId: "page-second", siblingOrder: 0, draftTitle: "Second", draftSlug: "second" })
+      ],
+      "edit"
+    );
+
+    expect(pages.map((page) => [page.title, page.siblingOrder])).toEqual([
+      ["Second", 0],
+      ["First", 1]
+    ]);
+  });
 });

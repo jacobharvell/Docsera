@@ -285,6 +285,35 @@ export type PageDeleteFailed = {
 
 export type PageDeleteResult = PageDeleteSucceeded | PageDeleteFailed;
 
+export type PageMoveInput = {
+  workspaceSlug: string;
+  workspaceSysId: string;
+  pageSysId: string;
+  parentPageSysId?: string | null;
+  siblingOrder: string | number;
+  workspaceLeaseToken?: string;
+  workspaceAuthority?: WorkspaceEditLeaseGeneration;
+  expectedChangeSetId?: string;
+  expectedChangeSetRevision?: number;
+};
+
+export type PageMoveSucceeded = {
+  changeSetId?: string;
+  changeSetRevision?: number;
+  pages: WorkspacePageRecord[];
+  state: "succeeded";
+};
+
+export type PageMoveFailed = {
+  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "transient";
+  currentChangeSetId?: string;
+  currentChangeSetRevision?: number;
+  errorMessage: string;
+  state: "failed";
+};
+
+export type PageMoveResult = PageMoveSucceeded | PageMoveFailed;
+
 export type PageEditLockReferenceInput = {
   workspaceSlug?: string;
   workspaceSysId?: string;
@@ -377,6 +406,7 @@ export type ServiceNowClient = {
   publishPage: (input: PagePublishInput) => Promise<PagePublishResult>;
   savePageSettings: (input: PageSettingsSaveInput) => Promise<PageSettingsSaveResult>;
   deletePage: (input: PageDeleteInput) => Promise<PageDeleteResult>;
+  movePage?: (input: PageMoveInput) => Promise<PageMoveResult>;
 };
 
 export type DemoPageSection = {

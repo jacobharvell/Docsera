@@ -300,6 +300,13 @@ function createDocument(text: string) {
   };
 }
 
+function createDocumentEnvelope(text: string) {
+  return {
+    schemaVersion: 1,
+    document: createDocument(text)
+  };
+}
+
 function createSeedPage(overrides: Partial<SeedPage> & Pick<SeedPage, "pageId">): SeedPage {
   const title = overrides.draftTitle ?? overrides.publishedTitle ?? `Draft ${overrides.pageId}`;
   const slug = overrides.draftSlug ?? overrides.publishedSlug ?? title.toLowerCase().replace(/\s+/g, "-");
@@ -1715,6 +1722,408 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     expect(new Set(getRows(removalMemberTable).map((row) => row.fields.batch_page_key))).toHaveLength(2);
     expect(getRows(mutationClaimTable)).toHaveLength(1);
     expect(claimRow("change-set-001:0")?.fields.execution_phase).toBe("finalized");
+  });
+
+  it("persists a page move only in Edit projection, records one moved entry, and advances once", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({ pageId: "page-001", draftBodyText: "Root body", draftContentJson: createDocument("Root body"), draftTitle: "Root", publishedBodyText: "Root body", publishedContentJson: createDocument("Root body"), publishedTitle: "Root", siblingOrder: "1" }),
+        createSeedPage({ pageId: "page-002", parentPageId: "page-001", draftBodyText: "Child body", draftContentJson: createDocument("Child body"), draftTitle: "Child", publishedBodyText: "Child body", publishedContentJson: createDocument("Child body"), publishedTitle: "Child", siblingOrder: "1" }),
+        createSeedPage({ pageId: "page-003", draftBodyText: "Sibling body", draftContentJson: createDocument("Sibling body"), draftTitle: "Sibling", publishedBodyText: "Sibling body", publishedContentJson: createDocument("Sibling body"), publishedTitle: "Sibling", siblingOrder: "2" })
+      ]
+    });
+    const service = createService();
+    const result = expectSucceeded(service.movePage({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-002",
+      parentPageSysId: null,
+      siblingOrder: "3",
+      workspace: workspaceRef()
+    }));
+
+    expect(result.authority).toEqual({ changeSetId: "change-set-001", changeSetRevision: 1 });
+    expect(pageRow("page-002")?.fields.parent_page).toBe("");
+    expect(pageRow("page-002")?.fields.sibling_order).toBe("3");
+    expect(getRows(changeEntryTable)).toHaveLength(1);
+    expect(getRows(changeEntryTable)[0]?.fields.page).toBe("page-002");
+    expect(changeSetRow()?.fields.change_set_revision).toBe(1);
+    expect(service.pendingChanges(workspaceRef())).toEqual([expect.objectContaining({ pageId: "page-002" })]);
+    expect(service.pendingChanges(workspaceRef())[0]?.category).toContain("Modified");
+    expect(service.pendingChanges(workspaceRef())[0]?.category).toContain("Moved");
+    expect(expectSucceeded(service.listPages(workspaceRef(), "edit")).pages.find((page) => page.sysId === "page-002")?.parentPageSysId).toBe(null);
+    expect(expectSucceeded(service.listPages(workspaceRef(), "live")).pages.find((page) => page.sysId === "page-002")?.parentPageSysId).toBe("page-001");
+  });
+
+  it("round-trips rank zero when moving the second root before the first while Live remains published", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({ pageId: "page-001", draftTitle: "First", publishedTitle: "First", siblingOrder: "1" }),
+        createSeedPage({ pageId: "page-002", draftTitle: "Second", publishedTitle: "Second", siblingOrder: "2" })
+      ]
+    });
+    const service = createService();
+    const beforeEdit = expectSucceeded(service.listPages(workspaceRef(), "edit"));
+    expect(beforeEdit.pages.map((page) => [page.sysId, page.siblingOrder])).toEqual([
+      ["page-001", 1],
+      ["page-002", 2]
+    ]);
+
+    const moved = expectSucceeded(service.movePage({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-002",
+      parentPageSysId: null,
+      siblingOrder: "0",
+      workspace: workspaceRef()
+    }));
+
+    expect(moved.authority).toEqual({ changeSetId: "change-set-001", changeSetRevision: 1 });
+    expect(moved.result.pages.map((page) => [page.sysId, page.siblingOrder])).toEqual([
+      ["page-002", 0],
+      ["page-001", 1]
+    ]);
+    expect(pageRow("page-002")?.fields.sibling_order).toBe("0");
+    expect(getRows(changeEntryTable)).toHaveLength(1);
+    expect(getRows(changeEntryTable)[0]?.fields.page).toBe("page-002");
+    expect(changeSetRow()?.fields.change_set_revision).toBe(1);
+    expect(getRows(mutationClaimTable)).toHaveLength(1);
+
+    const reloadedEdit = expectSucceeded(service.listPages(workspaceRef(), "edit"));
+    expect(reloadedEdit.pages.map((page) => [page.sysId, page.siblingOrder])).toEqual([
+      ["page-002", 0],
+      ["page-001", 1]
+    ]);
+
+    const live = expectSucceeded(service.listPages(workspaceRef(), "live"));
+    expect(live.pages.map((page) => [page.sysId, page.siblingOrder])).toEqual([
+      ["page-001", 1],
+      ["page-002", 2]
+    ]);
+  });
+
+  it("rejects invalid movement without page-row or revision changes", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({ pageId: "page-001", publishedTitle: "Root" }),
+        createSeedPage({ pageId: "page-002", parentPageId: "page-001", publishedTitle: "Child" })
+      ]
+    });
+    const result = createService().movePage({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-001",
+      parentPageSysId: "page-002",
+      siblingOrder: "1",
+      workspace: workspaceRef()
+    });
+
+    expect(result.kind).toBe("failed");
+    expect(changeSetRow()?.fields.change_set_revision).toBe(0);
+    expect(pageRow("page-001")?.fields.parent_page).toBe("");
+    expect(getRows(changeEntryTable)).toHaveLength(0);
+    expect(getRows(mutationClaimTable)).toHaveLength(0);
+  });
+
+  it("returns invalid and no-op movement before claiming the generation and leaves same-authority mutations unblocked", () => {
+    const bodyDocument = createDocumentEnvelope("Unblocked same authority body");
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({ pageId: "page-001", draftContentJson: createDocumentEnvelope("Root"), publishedContentJson: createDocumentEnvelope("Root"), publishedTitle: "Root" }),
+        createSeedPage({ pageId: "page-002", draftContentJson: createDocumentEnvelope("Child"), parentPageId: "page-001", publishedContentJson: createDocumentEnvelope("Child"), publishedTitle: "Child" }),
+        createSeedPage({ pageId: "page-003", draftContentJson: createDocumentEnvelope("Sibling"), publishedContentJson: createDocumentEnvelope("Sibling"), publishedTitle: "Sibling", siblingOrder: "2" })
+      ]
+    });
+
+    const service = createService();
+    const invalid = service.movePage({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-001",
+      parentPageSysId: "page-002",
+      siblingOrder: "1",
+      workspace: workspaceRef()
+    });
+    expect(invalid).toMatchObject({ kind: "failed", code: "invalid" });
+    expect(getRows(mutationClaimTable)).toHaveLength(0);
+    expect(getRows(changeEntryTable)).toHaveLength(0);
+    expect(changeSetRow()?.fields.change_set_revision).toBe(0);
+
+    const noop = expectSucceeded(service.movePage({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-002",
+      parentPageSysId: "page-001",
+      siblingOrder: "1",
+      workspace: workspaceRef()
+    }));
+    expect(noop.authority).toEqual({ changeSetId: "change-set-001", changeSetRevision: 0 });
+    expect(getRows(mutationClaimTable)).toHaveLength(0);
+    expect(getRows(changeEntryTable)).toHaveLength(0);
+    expect(changeSetRow()?.fields.change_set_revision).toBe(0);
+
+    expectSucceeded(service.savePageBody({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      draftContentJson: bodyDocument,
+      expectedRevision: 0,
+      pageSysId: "page-003",
+      workspace: workspaceRef()
+    }));
+    expect(changeSetRow()?.fields.change_set_revision).toBe(1);
+    expect(getRows(mutationClaimTable)).toHaveLength(1);
+    expect(claimRow("change-set-001:0")?.fields.mutation_kind).toBe("body");
+  });
+
+  it("does not let invalid or no-op movement block other same-authority mutation kinds", () => {
+    const seed = () => seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({ pageId: "page-001", draftContentJson: createDocumentEnvelope("Root"), publishedContentJson: createDocumentEnvelope("Root"), publishedTitle: "Root" }),
+        createSeedPage({ pageId: "page-002", draftContentJson: createDocumentEnvelope("Child"), parentPageId: "page-001", publishedContentJson: createDocumentEnvelope("Child"), publishedTitle: "Child" }),
+        createSeedPage({ pageId: "page-003", draftContentJson: createDocumentEnvelope("Sibling"), publishedContentJson: createDocumentEnvelope("Sibling"), publishedTitle: "Sibling", siblingOrder: "2" })
+      ]
+    });
+    const assertPreflightDidNotClaim = (service = createService()) => {
+      expect(service.movePage({ authority: { changeSetId: "change-set-001", changeSetRevision: 0 }, pageSysId: "page-001", parentPageSysId: "page-002", siblingOrder: "1", workspace: workspaceRef() }).kind).toBe("failed");
+      expectSucceeded(service.movePage({ authority: { changeSetId: "change-set-001", changeSetRevision: 0 }, pageSysId: "page-002", parentPageSysId: "page-001", siblingOrder: "1", workspace: workspaceRef() }));
+      expect(getRows(mutationClaimTable)).toHaveLength(0);
+      expect(changeSetRow()?.fields.change_set_revision).toBe(0);
+      expect(getRows(changeEntryTable)).toHaveLength(0);
+      return service;
+    };
+
+    for (const [kind, mutate] of [
+      ["settings", (service: ReturnType<typeof createService>) => service.savePageSettings({ authority: { changeSetId: "change-set-001", changeSetRevision: 0 }, pageSysId: "page-003", slug: "sibling-renamed", title: "Sibling renamed", workspace: workspaceRef() })],
+      ["create", (service: ReturnType<typeof createService>) => service.createPage({ authority: { changeSetId: "change-set-001", changeSetRevision: 0 }, parentPageSysId: null, title: "Created after no-op", workspace: workspaceRef() })],
+      ["delete", (service: ReturnType<typeof createService>) => service.deletePage({ authority: { changeSetId: "change-set-001", changeSetRevision: 0 }, pageSysId: "page-003", workspace: workspaceRef() })],
+      ["move", (service: ReturnType<typeof createService>) => service.movePage({ authority: { changeSetId: "change-set-001", changeSetRevision: 0 }, pageSysId: "page-003", parentPageSysId: "page-001", siblingOrder: "2", workspace: workspaceRef() })]
+    ] as const) {
+      glideMock.reset();
+      seed();
+      const result = mutate(assertPreflightDidNotClaim());
+      expect(result.kind).toBe("succeeded");
+      expect(claimRow("change-set-001:0")?.fields.mutation_kind).toBe(kind);
+      expect(changeSetRow()?.fields.change_set_revision).toBe(1);
+    }
+  });
+
+  it("recovers movement after page persistence and after change-set row advancement without duplicate entries", () => {
+    for (const phase of ["mutation_page_persisted", "mutation_change_set_row_updated"] satisfies FailurePhase[]) {
+      glideMock.reset();
+      seedWorkspaceFoundation({
+        pages: [
+          createSeedPage({ pageId: "page-001", publishedTitle: "Root" }),
+          createSeedPage({ pageId: "page-002", parentPageId: "page-001", publishedTitle: "Child" })
+        ]
+      });
+      const input = {
+        authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+        pageSysId: "page-002",
+        parentPageSysId: null,
+        siblingOrder: "5",
+        workspace: workspaceRef()
+      };
+
+      expect(createService({ failPhase: phase }).movePage(input).kind).toBe("failed");
+      const retry = expectSucceeded(createService({ currentTimestamp: () => "2026-07-18 00:01:00" }).movePage(input));
+      const replay = expectSucceeded(createService({ currentTimestamp: () => "2026-07-18 00:01:00" }).movePage(input));
+
+      expect(retry.authority).toEqual({ changeSetId: "change-set-001", changeSetRevision: 1 });
+      expect(replay.authority).toEqual(retry.authority);
+      expect(changeSetRow()?.fields.change_set_revision).toBe(1);
+      expect(getRows(changeEntryTable)).toHaveLength(1);
+      expect(pageRow("page-002")?.fields.parent_page).toBe("");
+      expect(claimRow("change-set-001:0")?.fields.execution_phase).toBe("finalized");
+    }
+  });
+
+  it("recovers movement when the page row persisted but the page_persisted claim marker did not", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({ pageId: "page-001", draftContentJson: createDocumentEnvelope("Root"), publishedContentJson: createDocumentEnvelope("Root"), publishedTitle: "Root" }),
+        createSeedPage({ pageId: "page-002", draftContentJson: createDocumentEnvelope("Child"), parentPageId: "page-001", publishedContentJson: createDocumentEnvelope("Child"), publishedTitle: "Child" })
+      ]
+    });
+    const input = {
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-002",
+      parentPageSysId: null,
+      siblingOrder: "5",
+      workspace: workspaceRef()
+    };
+    failNextClaimUpdateToPhase("page_persisted");
+
+    const failed = createService().movePage(input);
+    expect(failed.kind).toBe("failed");
+    expect(pageRow("page-002")?.fields.parent_page).toBe("");
+    expect(pageRow("page-002")?.fields.sibling_order).toBe("5");
+    expect(claimRow("change-set-001:0")?.fields.execution_phase).toBe("claimed");
+    expect(changeSetRow()?.fields.change_set_revision).toBe(0);
+    expect(getRows(changeEntryTable)).toHaveLength(0);
+
+    glideMock.setUpdateHook(mutationClaimTable, null);
+    const retry = expectSucceeded(createService({ currentTimestamp: () => "2026-07-18 00:01:00" }).movePage(input));
+    const replay = expectSucceeded(createService({ currentTimestamp: () => "2026-07-18 00:01:00" }).movePage(input));
+
+    expect(retry.authority).toEqual({ changeSetId: "change-set-001", changeSetRevision: 1 });
+    expect(replay.authority).toEqual(retry.authority);
+    expect(changeSetRow()?.fields.change_set_revision).toBe(1);
+    expect(getRows(changeEntryTable)).toHaveLength(1);
+    expect(getRows(changeEntryTable)[0]?.fields.page).toBe("page-002");
+    expect(getRows(changeEntryTable)[0]?.fields.first_pending_sequence).toBe(1);
+    expect(claimRow("change-set-001:0")?.fields.execution_phase).toBe("finalized");
+    expect(claimRow("change-set-001:0")?.fields.result_change_set_revision).toBe(1);
+  });
+
+  it("recovers movement when change_set_advancing claim persistence fails before revision advancement", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({ pageId: "page-001", draftContentJson: createDocumentEnvelope("Root"), publishedContentJson: createDocumentEnvelope("Root"), publishedTitle: "Root" }),
+        createSeedPage({ pageId: "page-002", draftContentJson: createDocumentEnvelope("Child"), parentPageId: "page-001", publishedContentJson: createDocumentEnvelope("Child"), publishedTitle: "Child" })
+      ]
+    });
+    const input = {
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-002",
+      parentPageSysId: null,
+      siblingOrder: "6",
+      workspace: workspaceRef()
+    };
+    failNextClaimUpdateToPhase("change_set_advancing");
+
+    expect(createService().movePage(input).kind).toBe("failed");
+    expect(changeSetRow()?.fields.change_set_revision).toBe(0);
+    expect(claimRow("change-set-001:0")?.fields.execution_phase).toBe("entry_persisted");
+    expect(claimRow("change-set-001:0")?.fields.mutation_result_json ?? "").toBe("");
+
+    glideMock.setUpdateHook(mutationClaimTable, null);
+    const retry = expectSucceeded(createService({ currentTimestamp: () => "2026-07-18 00:01:00" }).movePage(input));
+    const replay = expectSucceeded(createService({ currentTimestamp: () => "2026-07-18 00:01:00" }).movePage(input));
+    expect(retry.authority).toEqual({ changeSetId: "change-set-001", changeSetRevision: 1 });
+    expect(replay.authority).toEqual(retry.authority);
+    expect(replay.result.pages).toEqual(retry.result.pages);
+    expect(changeSetRow()?.fields.change_set_revision).toBe(1);
+    expect(getRows(changeEntryTable)).toHaveLength(1);
+    expect(claimRow("change-set-001:0")?.fields.execution_phase).toBe("finalized");
+  });
+
+  it("returns one winner for same-generation movement contention", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({ pageId: "page-001", publishedTitle: "Root" }),
+        createSeedPage({ pageId: "page-002", parentPageId: "page-001", publishedTitle: "Child" }),
+        createSeedPage({ pageId: "page-003", publishedTitle: "Sibling", siblingOrder: "2" })
+      ]
+    });
+    const service = createService();
+    const winner = service.movePage({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-002",
+      parentPageSysId: null,
+      siblingOrder: "4",
+      workspace: workspaceRef()
+    });
+    const loser = service.movePage({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-003",
+      parentPageSysId: "page-001",
+      siblingOrder: "1",
+      workspace: workspaceRef()
+    });
+
+    expect(winner.kind).toBe("succeeded");
+    expect(loser).toMatchObject({ kind: "failed", code: "stale_generation", currentChangeSetRevision: 1 });
+    expect(changeSetRow()?.fields.change_set_revision).toBe(1);
+    expect(getRows(changeEntryTable)).toHaveLength(1);
+  });
+
+  it("derives movement categories without legacy document migration noise or descendant and sibling entries", () => {
+    const canonical = (title: string, order: string, parentPageId: string | null = null) =>
+      createSeedPage({
+        pageId: `page-${title.toLowerCase()}`,
+        draftBodyText: `${title} body`,
+        draftContentJson: createDocumentEnvelope(`${title} body`),
+        draftTitle: title,
+        draftSlug: title.toLowerCase(),
+        parentPageId,
+        publishedBodyText: `${title} body`,
+        publishedContentJson: createDocumentEnvelope(`${title} body`),
+        publishedTitle: title,
+        publishedSlug: title.toLowerCase(),
+        siblingOrder: order
+      });
+    seedWorkspaceFoundation({
+      pages: [
+        canonical("Root", "1"),
+        canonical("Child", "1", "page-root"),
+        canonical("Grandchild", "1", "page-child"),
+        canonical("Sibling", "2")
+      ]
+    });
+    const service = createService();
+
+    const moved = expectSucceeded(service.movePage({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-child",
+      parentPageSysId: null,
+      siblingOrder: "3",
+      workspace: workspaceRef()
+    }));
+    expect(service.pendingChanges(workspaceRef())).toEqual([expect.objectContaining({ category: "Moved", pageId: "page-child" })]);
+    expect(getRows(changeEntryTable).map((row) => row.fields.page)).toEqual(["page-child"]);
+
+    const modifiedMoved = expectSucceeded(service.savePageSettings({
+      authority: moved.authority,
+      pageSysId: "page-child",
+      slug: "child-renamed",
+      title: "Child renamed",
+      workspace: workspaceRef()
+    }));
+    expect(service.pendingChanges(workspaceRef())).toEqual([expect.objectContaining({ pageId: "page-child" })]);
+    expect(service.pendingChanges(workspaceRef())[0]?.category).toContain("Modified");
+    expect(service.pendingChanges(workspaceRef())[0]?.category).toContain("Moved");
+
+    const restoredModified = expectSucceeded(service.movePage({
+      authority: modifiedMoved.authority,
+      pageSysId: "page-child",
+      parentPageSysId: "page-root",
+      siblingOrder: "1",
+      workspace: workspaceRef()
+    }));
+    expect(service.pendingChanges(workspaceRef())).toEqual([expect.objectContaining({ category: "Modified", pageId: "page-child" })]);
+    expect(getRows(changeEntryTable)).toHaveLength(1);
+
+    glideMock.reset();
+    seedWorkspaceFoundation({ pages: [canonical("Root", "1"), canonical("Child", "1", "page-root"), canonical("Grandchild", "1", "page-child"), canonical("Sibling", "2")] });
+    const movedOnly = expectSucceeded(createService().movePage({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-child",
+      parentPageSysId: null,
+      siblingOrder: "3",
+      workspace: workspaceRef()
+    }));
+    expectSucceeded(createService().movePage({
+      authority: movedOnly.authority,
+      pageSysId: "page-child",
+      parentPageSysId: "page-root",
+      siblingOrder: "1",
+      workspace: workspaceRef()
+    }));
+    expect(createService().pendingChanges(workspaceRef())).toEqual([]);
+    expect(getRows(changeEntryTable)).toHaveLength(0);
+
+    glideMock.reset();
+    seedWorkspaceFoundation({ pages: [canonical("Root", "1"), canonical("Child", "1", "page-root"), canonical("Sibling", "2")] });
+    const added = expectSucceeded(createService().createPage({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      parentPageSysId: null,
+      title: "Added",
+      workspace: workspaceRef()
+    }));
+    expectSucceeded(createService().movePage({
+      authority: added.authority,
+      pageSysId: added.result.page.sysId,
+      parentPageSysId: "page-root",
+      siblingOrder: "2",
+      workspace: workspaceRef()
+    }));
+    expect(createService().pendingChanges(workspaceRef())).toEqual([expect.objectContaining({ category: "Added", pageId: added.result.page.sysId })]);
+
+    expect(restoredModified.authority.changeSetRevision).toBe(3);
   });
 
   it("does not proceed to entry persistence when an earlier body owner-scoped claim update fails", () => {

@@ -5,6 +5,7 @@ import {
   allocatePageSlug,
   collectPageSubtreeSysIds,
   createPageDraft,
+  normalizeSiblingOrder,
   pickNextVisiblePageAfterDelete,
   validatePageSettingsSlug,
   validatePageSettingsTitle
@@ -34,6 +35,28 @@ function createPage(overrides: Partial<{
 }
 
 describe("server page domain", () => {
+  it.each([
+    ["zero", 0, 0],
+    ["persisted zero string", "0", 0],
+    ["negative", -2, -2],
+    ["persisted negative string", "-2", -2],
+    ["fractional", 1.5, 1.5],
+    ["persisted fractional string", "1.5", 1.5],
+    ["null", null, 1],
+    ["missing", undefined, 1],
+    ["empty string", "", 1],
+    ["whitespace", "   ", 1],
+    ["nonnumeric", "abc", 1],
+    ["true", true, 1],
+    ["false", false, 1],
+    ["array", [0], 1],
+    ["object", { value: 0 }, 1],
+    ["infinite", Infinity, 1],
+    ["nan", Number.NaN, 1]
+  ])("normalizes sibling order by preserving finite numeric ranks and falling back for %s", (_label, input, expected) => {
+    expect(normalizeSiblingOrder(input)).toBe(expected);
+  });
+
   it("validates title and slug rules", () => {
     expect(validatePageSettingsTitle("").valid).toBe(false);
     expect(validatePageSettingsTitle("Updated Title").value).toBe("Updated Title");

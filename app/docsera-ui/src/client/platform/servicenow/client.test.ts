@@ -84,6 +84,64 @@ describe("service now client page creation", () => {
     expect(result.items[0]?.draftSlug).toBe("overview");
   });
 
+  it("posts page moves with workspace authority and normalizes the refreshed Edit projection", async () => {
+    const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(path)).toBe("/api/x_82900_docsera/docsera_runtime/pages/move");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        expectedChangeSetId: "change-set-001",
+        expectedChangeSetRevision: 9,
+        pageSysId: "page-002",
+        parentPageSysId: null,
+        siblingOrder: "0",
+        workspaceLeaseToken: "workspace-lease-token",
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001"
+      });
+      return createJsonResponse(200, {
+        result: {
+          changeSetId: "change-set-001",
+          changeSetRevision: 10,
+          pages: [{
+            sysId: "page-002",
+            workspaceSysId: "workspace-001",
+            parentPageSysId: null,
+            siblingOrder: "0",
+            draftTitle: "Moved",
+            draftSlug: "moved",
+            draftSlugNormalized: "moved",
+            draftContentJson: { type: "doc", content: [] },
+            draftBodyText: "",
+            publishedTitle: "Moved",
+            publishedSlug: "moved",
+            publishedSlugNormalized: "moved",
+            publishedContentJson: { type: "doc", content: [] },
+            publishedBodyText: "",
+            publicationState: "published_with_unpublished_changes",
+            active: true
+          }]
+        }
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createServiceNowClient(createRuntime()).movePage!({
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001",
+      workspaceLeaseToken: "workspace-lease-token",
+      workspaceAuthority,
+      pageSysId: "page-002",
+      parentPageSysId: null,
+      siblingOrder: 0
+    });
+
+    expect(result.state).toBe("succeeded");
+    if (result.state === "succeeded") {
+      expect(result.changeSetRevision).toBe(10);
+      expect(result.pages[0]?.parentPageSysId).toBe(null);
+      expect(result.pages[0]?.siblingOrder).toBe(0);
+    }
+  });
+
   it("normalizes a double-wrapped live page list response", async () => {
     vi.stubGlobal(
       "fetch",

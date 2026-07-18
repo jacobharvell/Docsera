@@ -55,6 +55,7 @@ type WorkspaceShellProps = {
     status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
   }) => void;
   onSelectPage: (pageId: string) => void;
+  onMovePage?: (input: { pageSysId: string; parentPageSysId: string | null; siblingOrder: string | number }) => void;
   onShowChildPageCreate: (parentPageId: string, parentPageTitle: string) => void;
   onShowCreatePage: () => void;
   onTogglePageSettings: (pageId: string) => void;
@@ -156,6 +157,7 @@ export function WorkspaceShell({
   onSavePageDraft,
   onStatusChange,
   onSelectPage,
+  onMovePage,
   onShowChildPageCreate,
   onShowCreatePage,
   onTogglePageSettings,
@@ -289,6 +291,7 @@ export function WorkspaceShell({
               onCommitInlineCreate={onCommitInlineCreate}
               onInlineCreateTitleChange={onInlineCreateTitleChange}
               onSelectPage={onSelectPage}
+              onMovePage={onMovePage}
               onShowCreatePage={onShowCreatePage}
               onShowChildPageCreate={onShowChildPageCreate}
               onTogglePageSettings={onTogglePageSettings}
