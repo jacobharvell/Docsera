@@ -1,25 +1,74 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createServiceNowPageSettingsService } = vi.hoisted(() => ({
-  createServiceNowPageSettingsService: vi.fn()
+const { createServiceNowWorkspaceChangeSetPersistenceService } = vi.hoisted(() => ({
+  createServiceNowWorkspaceChangeSetPersistenceService: vi.fn()
 }));
 
-const { sendWorkspaceLeaseMutationFailure, verifyWorkspaceEditLease } = vi.hoisted(() => ({
+const { readWorkspaceMutationAuthority, sendWorkspaceLeaseMutationFailure, verifyWorkspaceEditLease } = vi.hoisted(() => ({
+  readWorkspaceMutationAuthority: vi.fn(() => ({
+    changeSetId: "change-set-001",
+    changeSetRevision: 9
+  })),
   sendWorkspaceLeaseMutationFailure: vi.fn(() => false),
-  verifyWorkspaceEditLease: vi.fn(async () => ({ kind: "held" }))
+  verifyWorkspaceEditLease: vi.fn(async () => ({ kind: "held", changeSetId: "change-set-001", changeSetRevision: 9 }))
 }));
 
 vi.mock("@servicenow/glide", () => ({
+  GlideRecord: vi.fn(() => ({
+    get: vi.fn((_field: string, value: string) => value === "workspace-001"),
+    getValue: vi.fn((field: string) => {
+      const values: Record<string, string> = {
+        sys_id: "workspace-001",
+        name: "Product Docs",
+        workspace_slug: "product-docs",
+        short_description: "Product documentation",
+        status: "active",
+        icon_type: "builtin",
+        icon_value: "docsera-workspace",
+        icon_label: "Docsera workspace icon",
+        admin_group_sys_id: "group-admin",
+        editor_group_sys_id: "group-editor",
+        creator_user_sys_id: "user-001",
+        layout_toc_visible_by_default: "true",
+        layout_page_width: "readable"
+      };
+      return values[field] ?? "";
+    }),
+    isValidField: vi.fn(() => true)
+  })),
   gs: {
     error: vi.fn()
   }
 }));
 
-vi.mock("../src/server/pages/serviceNowPageSettings.ts", () => ({
-  createServiceNowPageSettingsService
+vi.mock("../src/server/workspaces/serviceNowWorkspaceChangeSetPersistence.ts", () => ({
+  createServiceNowWorkspaceChangeSetPersistenceService
+}));
+
+vi.mock("../src/server/workspaces/serviceNowWorkspaceRecords.ts", () => ({
+  mapWorkspaceRecord: vi.fn(() => ({
+    sysId: "workspace-001",
+    name: "Product Docs",
+    slug: "product-docs",
+    shortDescription: "Product documentation",
+    icon: {
+      type: "builtin",
+      key: "docsera-workspace",
+      label: "Docsera workspace icon"
+    },
+    status: "active",
+    adminGroupSysId: "group-admin",
+    editorGroupSysId: "group-editor",
+    creatorUserSysId: "user-001",
+    layout: {
+      tocVisibleByDefault: true,
+      pageWidth: "readable"
+    }
+  }))
 }));
 
 vi.mock("../src/server/api/docsera-runtime-workspace-edit-lease.ts", () => ({
+  readWorkspaceMutationAuthority,
   sendWorkspaceLeaseMutationFailure,
   verifyWorkspaceEditLease
 }));
@@ -48,22 +97,31 @@ function createResponseRecorder(): ResponseRecorder {
 }
 
 beforeEach(() => {
-  vi.mocked(createServiceNowPageSettingsService).mockReset();
+  vi.mocked(createServiceNowWorkspaceChangeSetPersistenceService).mockReset();
+  vi.mocked(readWorkspaceMutationAuthority).mockReturnValue({
+    changeSetId: "change-set-001",
+    changeSetRevision: 9
+  } as never);
   vi.mocked(sendWorkspaceLeaseMutationFailure).mockReturnValue(false);
-  vi.mocked(verifyWorkspaceEditLease).mockResolvedValue({ kind: "held" } as never);
+  vi.mocked(verifyWorkspaceEditLease).mockResolvedValue({ kind: "held", changeSetId: "change-set-001", changeSetRevision: 9 } as never);
 });
 
 describe("page delete action route", () => {
   it("reads identifiers from the POST body and forwards them to the page settings service", async () => {
-    const deletePage = vi.fn(async () => ({
+    const deletePage = vi.fn(() => ({
+      authority: {
+        changeSetId: "change-set-001",
+        changeSetRevision: 10
+      },
       kind: "succeeded" as const,
-      deletedPageSysId: "page-001",
-      nextPageSysId: "page-002"
+      result: {
+        deletedPageSysId: "page-001",
+        nextPageSysId: "page-002"
+      }
     }));
-    vi.mocked(createServiceNowPageSettingsService).mockReturnValue({
+    vi.mocked(createServiceNowWorkspaceChangeSetPersistenceService).mockReturnValue({
       deletePage,
-      publishPage: vi.fn(),
-      savePageSettings: vi.fn()
+      listPages: vi.fn()
     } as never);
 
     const response = createResponseRecorder();
@@ -76,6 +134,8 @@ describe("page delete action route", () => {
             workspaceSysId: "workspace-001",
             pageSysId: "page-001",
             workspaceLeaseToken: "workspace-lease-token",
+            expectedChangeSetId: "change-set-001",
+            expectedChangeSetRevision: 9,
             lockToken: "ignored-page-token"
           }
         }
@@ -84,9 +144,15 @@ describe("page delete action route", () => {
     );
 
     expect(deletePage).toHaveBeenCalledWith({
-      workspaceSlug: "product-docs",
-      workspaceSysId: "workspace-001",
-      pageSysId: "page-001"
+      authority: {
+        changeSetId: "change-set-001",
+        changeSetRevision: 9
+      },
+      pageSysId: "page-001",
+      workspace: expect.objectContaining({
+        slug: "product-docs",
+        sysId: "workspace-001"
+      })
     });
     expect(verifyWorkspaceEditLease).toHaveBeenCalledWith(expect.objectContaining({
       workspaceLeaseToken: "workspace-lease-token",
@@ -96,6 +162,8 @@ describe("page delete action route", () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({
       result: {
+        changeSetId: "change-set-001",
+        changeSetRevision: 10,
         mode: "servicenow",
         deletedPageSysId: "page-001",
         nextPageSysId: "page-002"
@@ -104,14 +172,13 @@ describe("page delete action route", () => {
   });
 
   it("rejects missing identifiers safely", async () => {
-    vi.mocked(createServiceNowPageSettingsService).mockReturnValue({
+    vi.mocked(createServiceNowWorkspaceChangeSetPersistenceService).mockReturnValue({
       deletePage: vi.fn(async () => ({
         kind: "failed" as const,
         errorMessage: "A workspace reference is required.",
         status: 400 as const
       })),
-      publishPage: vi.fn(),
-      savePageSettings: vi.fn()
+      listPages: vi.fn()
     } as never);
 
     const response = createResponseRecorder();
@@ -123,7 +190,9 @@ describe("page delete action route", () => {
             workspaceSlug: "",
             workspaceSysId: "",
             pageSysId: "",
-            workspaceLeaseToken: "workspace-lease-token"
+            workspaceLeaseToken: "workspace-lease-token",
+            expectedChangeSetId: "change-set-001",
+            expectedChangeSetRevision: 9
           }
         }
       },
@@ -133,6 +202,7 @@ describe("page delete action route", () => {
     expect(response.status).toBe(400);
     expect(response.body).toEqual({
       error: {
+        code: "invalid",
         message: "A workspace reference is required."
       }
     });
@@ -140,10 +210,9 @@ describe("page delete action route", () => {
 
   it("returns the workspace lease failure before calling the delete service", async () => {
     const deletePage = vi.fn();
-    vi.mocked(createServiceNowPageSettingsService).mockReturnValue({
+    vi.mocked(createServiceNowWorkspaceChangeSetPersistenceService).mockReturnValue({
       deletePage,
-      publishPage: vi.fn(),
-      savePageSettings: vi.fn()
+      listPages: vi.fn()
     } as never);
     vi.mocked(sendWorkspaceLeaseMutationFailure).mockImplementation((_result, response) => {
       response.setStatus?.(409);

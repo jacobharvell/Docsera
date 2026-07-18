@@ -14,6 +14,7 @@ describe("workspace change-set metadata contract", () => {
       "docsera-workspace-snapshot-set.now.ts",
       "docsera-workspace-page-snapshot.now.ts",
       "docsera-workspace-change-entry.now.ts",
+      "docsera-workspace-mutation-claim.now.ts",
       "docsera-workspace-removal-batch.now.ts",
       "docsera-workspace-removal-member.now.ts"
     ]) {
@@ -41,6 +42,23 @@ describe("workspace change-set metadata contract", () => {
     expect(source("docsera-page.now.ts")).toContain('StringColumn({');
   });
 
+  it("keeps mutation claims bounded, owned, and phase-aware", () => {
+    const claim = source("docsera-workspace-mutation-claim.now.ts");
+    expect(claim).toContain('mutation_key: StringColumn({ label: "Mutation key", mandatory: true, maxLength: 64 })');
+    expect(claim).toContain("claim_owner_key");
+    expect(claim).toContain("owner_expires_on");
+    expect(claim).toContain("execution_phase");
+    expect(claim).toContain("target_page_sys_id");
+    expect(claim).toContain("target_next_page_sys_id");
+    expect(claim).toContain("target_removal_batch_key");
+    expect(claim).toContain("mutation_payload_json");
+    expect(claim).toContain("mutation_result_json");
+    expect(claim).toContain("result_change_set_revision");
+    expect(claim).toContain("change_set_advancing");
+    expect(claim).toContain("result_persisted");
+    expect(claim).toContain("finalized");
+  });
+
   it("keeps persisted sibling ordering as a string/rank value and protects server-owned page fields", () => {
     expect(source("docsera-page.now.ts")).toContain("draft_sibling_order: StringColumn");
     expect(source("docsera-workspace-page-snapshot.now.ts")).toContain("sibling_order: StringColumn");
@@ -59,13 +77,14 @@ describe("workspace change-set metadata contract", () => {
       "x_82900_docsera_workspace_snapshot_set",
       "x_82900_docsera_workspace_page_snapshot",
       "x_82900_docsera_workspace_change_entry",
+      "x_82900_docsera_workspace_mutation_claim",
       "x_82900_docsera_workspace_removal_batch",
       "x_82900_docsera_workspace_removal_member"
     ]) {
       expect(acl).toContain(table);
     }
-    expect(acl.match(/decisionType: "deny"/g)).toHaveLength(28);
-    expect(acl.match(/adminOverrides: false/g)).toHaveLength(28);
-    expect(acl.match(/script: "return false;"/g)).toHaveLength(28);
+    expect(acl.match(/decisionType: "deny"/g)).toHaveLength(32);
+    expect(acl.match(/adminOverrides: false/g)).toHaveLength(32);
+    expect(acl.match(/script: "return false;"/g)).toHaveLength(32);
   });
 });

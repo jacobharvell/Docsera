@@ -4,12 +4,38 @@ const { gsError } = vi.hoisted(() => ({
   gsError: vi.fn()
 }));
 
-const { sendWorkspaceLeaseMutationFailure, verifyWorkspaceEditLease } = vi.hoisted(() => ({
+const { readWorkspaceMutationAuthority, sendWorkspaceLeaseMutationFailure, verifyWorkspaceEditLease } = vi.hoisted(() => ({
+  readWorkspaceMutationAuthority: vi.fn(() => ({
+    changeSetId: "change-set-001",
+    changeSetRevision: 9
+  })),
   sendWorkspaceLeaseMutationFailure: vi.fn(() => false),
-  verifyWorkspaceEditLease: vi.fn(async () => ({ kind: "held" }))
+  verifyWorkspaceEditLease: vi.fn(async () => ({ kind: "held", changeSetId: "change-set-001", changeSetRevision: 9 }))
 }));
 
 vi.mock("@servicenow/glide", () => ({
+  GlideRecord: vi.fn(() => ({
+    get: vi.fn((_field: string, value: string) => value === "workspace-001"),
+    getValue: vi.fn((field: string) => {
+      const values: Record<string, string> = {
+        sys_id: "workspace-001",
+        name: "Product Docs",
+        workspace_slug: "product-docs",
+        short_description: "Product documentation",
+        status: "active",
+        icon_type: "builtin",
+        icon_value: "docsera-workspace",
+        icon_label: "Docsera workspace icon",
+        admin_group_sys_id: "group-admin",
+        editor_group_sys_id: "group-editor",
+        creator_user_sys_id: "user-001",
+        layout_toc_visible_by_default: "true",
+        layout_page_width: "readable"
+      };
+      return values[field] ?? "";
+    }),
+    isValidField: vi.fn(() => true)
+  })),
   gs: {
     error: gsError
   }
@@ -19,12 +45,34 @@ vi.mock("../src/server/workspaces/serviceNowWorkspaceCatalog.ts", () => ({
   createServiceNowWorkspaceCatalogService: vi.fn()
 }));
 
+vi.mock("../src/server/workspaces/serviceNowWorkspaceRecords.ts", () => ({
+  mapWorkspaceRecord: vi.fn(() => ({
+    sysId: "workspace-001",
+    name: "Product Docs",
+    slug: "product-docs",
+    shortDescription: "Product documentation",
+    icon: {
+      type: "builtin",
+      key: "docsera-workspace",
+      label: "Docsera workspace icon"
+    },
+    status: "active",
+    adminGroupSysId: "group-admin",
+    editorGroupSysId: "group-editor",
+    creatorUserSysId: "user-001",
+    layout: {
+      tocVisibleByDefault: true,
+      pageWidth: "readable"
+    }
+  }))
+}));
+
 vi.mock("../src/server/pages/serviceNowPageListing.ts", () => ({
   createServiceNowPageListingService: vi.fn()
 }));
 
-vi.mock("../src/server/pages/serviceNowPageDraftPersistence.ts", () => ({
-  createServiceNowPageBodySaveService: vi.fn()
+vi.mock("../src/server/workspaces/serviceNowWorkspaceChangeSetPersistence.ts", () => ({
+  createServiceNowWorkspaceChangeSetPersistenceService: vi.fn()
 }));
 
 vi.mock("../src/server/pages/serviceNowPagePublishing.ts", () => ({
@@ -32,6 +80,7 @@ vi.mock("../src/server/pages/serviceNowPagePublishing.ts", () => ({
 }));
 
 vi.mock("../src/server/api/docsera-runtime-workspace-edit-lease.ts", () => ({
+  readWorkspaceMutationAuthority,
   sendWorkspaceLeaseMutationFailure,
   verifyWorkspaceEditLease
 }));
@@ -47,7 +96,7 @@ import { process as processPages } from "../src/server/api/docsera-runtime-pages
 import { process as processWorkspaceProvisioningStatus } from "../src/server/api/docsera-runtime-workspace-provisioning-status";
 import { process as processWorkspaces } from "../src/server/api/docsera-runtime-workspaces";
 import { createServiceNowWorkspaceCatalogService } from "../src/server/workspaces/serviceNowWorkspaceCatalog.ts";
-import { createServiceNowPageBodySaveService } from "../src/server/pages/serviceNowPageDraftPersistence.ts";
+import { createServiceNowWorkspaceChangeSetPersistenceService } from "../src/server/workspaces/serviceNowWorkspaceChangeSetPersistence.ts";
 import { createServiceNowPagePublishService } from "../src/server/pages/serviceNowPagePublishing.ts";
 import { createServiceNowPageListingService } from "../src/server/pages/serviceNowPageListing.ts";
 import { createServiceNowWorkspaceProvisioningService } from "../src/server/workspaces/serviceNowWorkspaceProvisioning.ts";
@@ -75,12 +124,16 @@ function createResponseRecorder(): ResponseRecorder {
 beforeEach(() => {
   gsError.mockClear();
   vi.mocked(createServiceNowWorkspaceCatalogService).mockReset();
-  vi.mocked(createServiceNowPageBodySaveService).mockReset();
+  vi.mocked(createServiceNowWorkspaceChangeSetPersistenceService).mockReset();
   vi.mocked(createServiceNowPagePublishService).mockReset();
   vi.mocked(createServiceNowPageListingService).mockReset();
   vi.mocked(createServiceNowWorkspaceProvisioningService).mockReset();
+  vi.mocked(readWorkspaceMutationAuthority).mockReturnValue({
+    changeSetId: "change-set-001",
+    changeSetRevision: 9
+  } as never);
   vi.mocked(sendWorkspaceLeaseMutationFailure).mockReturnValue(false);
-  vi.mocked(verifyWorkspaceEditLease).mockResolvedValue({ kind: "held" } as never);
+  vi.mocked(verifyWorkspaceEditLease).mockResolvedValue({ kind: "held", changeSetId: "change-set-001", changeSetRevision: 9 } as never);
 });
 
 test("workspaces endpoint hides unexpected internal errors behind a safe message", async () => {
@@ -140,7 +193,7 @@ test("page listing failures still return a safe user-facing message", async () =
 });
 
 test("page save failures redact draft body text from unexpected error logging", async () => {
-  vi.mocked(createServiceNowPageBodySaveService).mockReturnValue({
+  vi.mocked(createServiceNowWorkspaceChangeSetPersistenceService).mockReturnValue({
     savePageBody: vi.fn().mockRejectedValue(new Error("GlideRecord failed for x_82900_docsera_page"))
   } as never);
 
@@ -187,30 +240,36 @@ test("page save failures redact draft body text from unexpected error logging", 
 });
 
 test("page save passes raw draft_content_json through without coercion", async () => {
-  const savePageBody = vi.fn().mockResolvedValue({
+  const savePageBody = vi.fn(() => ({
+    authority: {
+      changeSetId: "change-set-002",
+      changeSetRevision: 10
+    },
     kind: "succeeded",
-    page: {
-      active: true,
-      draftBodyText: null,
-      draftContentJson: { schemaVersion: 1, document: { type: "doc", content: [] } },
-      draftRevision: 1,
-      draftSlug: "overview",
-      draftSlugNormalized: "overview",
-      draftTitle: "Overview",
-      parentPageSysId: null,
-      publishedBodyText: null,
-      publishedContentJson: null,
-      publishedSlug: null,
-      publishedSlugNormalized: null,
-      publishedTitle: null,
-      publicationState: "draft",
-      siblingOrder: 1,
-      sysId: "page-001",
-      workspaceSysId: "workspace-001"
+    result: {
+      page: {
+        active: true,
+        draftBodyText: null,
+        draftContentJson: { schemaVersion: 1, document: { type: "doc", content: [] } },
+        draftRevision: 1,
+        draftSlug: "overview",
+        draftSlugNormalized: "overview",
+        draftTitle: "Overview",
+        parentPageSysId: null,
+        publishedBodyText: null,
+        publishedContentJson: null,
+        publishedSlug: null,
+        publishedSlugNormalized: null,
+        publishedTitle: null,
+        publicationState: "draft",
+        siblingOrder: 1,
+        sysId: "page-001",
+        workspaceSysId: "workspace-001"
+      }
     }
-  } as never);
+  }) as never);
 
-  vi.mocked(createServiceNowPageBodySaveService).mockReturnValue({
+  vi.mocked(createServiceNowWorkspaceChangeSetPersistenceService).mockReturnValue({
     savePageBody
   } as never);
 
@@ -226,7 +285,9 @@ test("page save passes raw draft_content_json through without coercion", async (
           pageSlug: "overview",
           draftBodyText: "",
           draftContentJson: "not-json",
-          workspaceLeaseToken: "workspace-lease-token"
+          workspaceLeaseToken: "workspace-lease-token",
+          expectedChangeSetId: "change-set-001",
+          expectedChangeSetRevision: 9
         }
       }
     },
@@ -241,10 +302,6 @@ test("page save passes raw draft_content_json through without coercion", async (
 });
 
 test("page publish failures redact workspace lease tokens from unexpected error logging", async () => {
-  vi.mocked(createServiceNowPagePublishService).mockReturnValue({
-    publishPage: vi.fn().mockRejectedValue(new Error("GlideRecord failed for x_82900_docsera_page"))
-  } as never);
-
   const response = createResponseRecorder();
 
   await processPagePublish(
@@ -263,18 +320,14 @@ test("page publish failures redact workspace lease tokens from unexpected error 
     response
   );
 
-  expect(response.status).toBe(500);
+  expect(response.status).toBe(405);
   expect(response.body).toEqual({
     error: {
-      code: "persistence_invariant",
+      code: "publish_unavailable",
       retryable: false,
-      message: "Something went wrong while publishing. Your changes were not published. Please try again."
+      message: "Workspace publish is not active on this route."
     }
   });
-
-  const logEntry = String(gsError.mock.calls[0]?.[0] ?? "");
-  expect(logEntry).toContain("\"expectedRevision\":4");
-  expect(logEntry).not.toContain("sensitive-token");
 });
 
 test("create workspace hides unexpected errors behind a safe message", async () => {

@@ -2,6 +2,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createServiceNowClient } from "./client";
 import type { DocseraRuntimeContext } from "../../shared/types/docsera";
 
+const workspaceAuthority = {
+  changeSetId: "change-set-001",
+  changeSetRevision: 9
+} as const;
+
 function createRuntime(): DocseraRuntimeContext {
   return {
     mountNode: document.createElement("div"),
@@ -130,12 +135,16 @@ describe("service now client page creation", () => {
     const fetchMock = vi.fn(async (_path: RequestInfo | URL, init?: RequestInit) => {
       expect(JSON.parse(String(init?.body))).toEqual({
         title: "Task 33 Page Smoke",
+        expectedChangeSetId: "change-set-001",
+        expectedChangeSetRevision: 9,
         workspaceLeaseToken: "workspace-lease-token",
         workspaceSlug: "product-docs"
       });
       expect(JSON.parse(String(init?.body))).not.toHaveProperty("lockToken");
       return createJsonResponse(201, {
           result: {
+            changeSetId: "change-set-002",
+            changeSetRevision: 10,
             page: {
               sysId: "page-003",
               workspaceSysId: "workspace-001",
@@ -165,6 +174,7 @@ describe("service now client page creation", () => {
     const client = createServiceNowClient(createRuntime());
     const result = await client.createPage({
       workspaceSlug: "product-docs",
+      workspaceAuthority,
       workspaceLeaseToken: "workspace-lease-token",
       title: "Task 33 Page Smoke"
     });
@@ -184,6 +194,8 @@ describe("service now client page creation", () => {
         createJsonResponse(201, {
           result: {
             result: {
+              changeSetId: "change-set-002",
+              changeSetRevision: 10,
               page: {
                 sysId: "page-004",
                 workspaceSysId: "workspace-001",
@@ -214,6 +226,7 @@ describe("service now client page creation", () => {
     const client = createServiceNowClient(createRuntime());
     const result = await client.createPage({
       workspaceSlug: "product-docs",
+      workspaceAuthority,
       workspaceLeaseToken: "workspace-lease-token",
       title: "Task 33 Browser Page Smoke"
     });
@@ -241,6 +254,7 @@ describe("service now client page creation", () => {
     const client = createServiceNowClient(createRuntime());
     const result = await client.createPage({
       workspaceSlug: "product-docs",
+      workspaceAuthority,
       workspaceLeaseToken: "workspace-lease-token",
       title: "Task 33 Page Smoke"
     });
@@ -262,11 +276,15 @@ describe("service now client page creation", () => {
         pageSlug: "",
         draftBodyText: "Saved draft body",
         expectedRevision: 7,
+        expectedChangeSetId: "change-set-001",
+        expectedChangeSetRevision: 9,
         workspaceLeaseToken: "workspace-lease-token"
       });
 
       return createJsonResponse(200, {
         result: {
+          changeSetId: "change-set-002",
+          changeSetRevision: 10,
           page: {
             sysId: "page-005",
             workspaceSysId: "workspace-001",
@@ -311,6 +329,7 @@ describe("service now client page creation", () => {
       pageSysId: "page-005",
       draftBodyText: "Saved draft body",
       expectedRevision: 7,
+      workspaceAuthority,
       workspaceLeaseToken: "workspace-lease-token"
     });
 
@@ -342,6 +361,7 @@ describe("service now client page creation", () => {
       pageSysId: "page-005",
       draftBodyText: "Stale draft body",
       expectedRevision: 8,
+      workspaceAuthority,
       workspaceLeaseToken: "workspace-lease-token"
     });
 
@@ -1221,6 +1241,7 @@ describe("service now client page creation", () => {
     const result = await client.savePageBody({
       workspaceSlug: "product-docs",
       pageSysId: "page-005",
+      workspaceAuthority,
       workspaceLeaseToken: "workspace-lease-token"
     });
 
@@ -1242,11 +1263,15 @@ describe("service now client page creation", () => {
         pageSysId: "page-007",
         title: "Updated title",
         slug: "updated-title",
+        expectedChangeSetId: "change-set-001",
+        expectedChangeSetRevision: 9,
         workspaceLeaseToken: "workspace-lease-token"
       });
 
       return createJsonResponse(200, {
         result: {
+          changeSetId: "change-set-002",
+          changeSetRevision: 10,
           page: {
             sysId: "page-007",
             workspaceSysId: "workspace-001",
@@ -1281,6 +1306,7 @@ describe("service now client page creation", () => {
       pageSysId: "page-007",
       title: "Updated title",
       slug: "updated-title",
+      workspaceAuthority,
       workspaceLeaseToken: "workspace-lease-token"
     });
 
@@ -1299,11 +1325,15 @@ describe("service now client page creation", () => {
         workspaceSlug: "product-docs",
         workspaceSysId: "workspace-001",
         pageSysId: "page-007",
+        expectedChangeSetId: "change-set-001",
+        expectedChangeSetRevision: 9,
         workspaceLeaseToken: "workspace-lease-token"
       });
 
       return createJsonResponse(200, {
         result: {
+          changeSetId: "change-set-002",
+          changeSetRevision: 10,
           deletedPageSysId: "page-007",
           nextPageSysId: "page-008"
         }
@@ -1317,6 +1347,7 @@ describe("service now client page creation", () => {
       workspaceSlug: "product-docs",
       workspaceSysId: "workspace-001",
       pageSysId: "page-007",
+      workspaceAuthority,
       workspaceLeaseToken: "workspace-lease-token"
     });
 

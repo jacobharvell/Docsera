@@ -26,6 +26,7 @@ type WorkspaceMainPaneProps = {
   showPendingState: boolean;
   onReturnToMyWorkspaces: () => void;
   onReturnToLive: () => void;
+  onRetryWorkspace?: () => void;
   onRetryEditor: () => void;
   onEditorReadyStateChange: (ready: boolean) => void;
   onOutlineChange: (pageSysId: string, outline: WorkspacePageView["tocItems"]) => void;
@@ -78,10 +79,12 @@ function EditorRecovery({
 
 function WorkspaceStateCard({
   copy,
+  onRetry,
   onReturnToMyWorkspaces,
   title
 }: {
   copy: string;
+  onRetry?: () => void;
   onReturnToMyWorkspaces: () => void;
   title: string;
 }) {
@@ -93,6 +96,11 @@ function WorkspaceStateCard({
       </h2>
       <p className="docsera-main__lede">{copy}</p>
       <div className="docsera-main__recovery-actions">
+        {onRetry ? (
+          <button type="button" className="docsera-main__empty-action" onClick={onRetry}>
+            Try again
+          </button>
+        ) : null}
         <button type="button" className="docsera-main__secondary-action" onClick={onReturnToMyWorkspaces}>
           Return to My Workspaces
         </button>
@@ -118,6 +126,7 @@ export function WorkspaceMainPane({
   showPendingState,
   onReturnToMyWorkspaces,
   onReturnToLive,
+  onRetryWorkspace,
   onRetryEditor,
   onEditorReadyStateChange,
   onOutlineChange,
@@ -136,7 +145,12 @@ export function WorkspaceMainPane({
       <main className="docsera-main" aria-label={stateType === "error" ? "Workspace unavailable" : "Loading workspace"}>
         <article className="docsera-main__surface docsera-main__surface--empty">
           {stateType === "error" ? (
-            <WorkspaceStateCard copy={stateCopy} onReturnToMyWorkspaces={onReturnToMyWorkspaces} title={stateTitle} />
+            <WorkspaceStateCard
+              copy={stateCopy}
+              onRetry={onRetryWorkspace}
+              onReturnToMyWorkspaces={onReturnToMyWorkspaces}
+              title={stateTitle}
+            />
           ) : showPendingState ? (
             <div className="docsera-main__pending" aria-hidden="true">
               <span className="docsera-main__pending-line" />

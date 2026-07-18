@@ -22,6 +22,7 @@ const defaults = {
   workspaceLeaseTable: "x_82900_docsera_workspace_edit_lease",
   workspaceChangeSetTable: "x_82900_docsera_workspace_change_set",
   workspaceSnapshotSetTable: "x_82900_docsera_workspace_snapshot_set",
+  workspacePageSnapshotTable: "x_82900_docsera_workspace_page_snapshot",
   pageTable: "x_82900_docsera_page"
 };
 
@@ -589,15 +590,52 @@ async function main() {
           return;
         }
 
-        var active = new GlideRecord('${defaults.workspaceChangeSetTable}');
-        active.initialize();
-        active.workspace = workspaceSysId;
-        active.generation_key = 'verify-active-' + stamp;
-        active.change_set_revision = 0;
-        active.next_pending_sequence = 1;
-        active.lifecycle_state = 'active';
-        active.recovery_state = 'none';
-        var activeId = active.insert();
+        var changeSetKey = workspaceSysId + ':change-set';
+        var snapshotKey = workspaceSysId + ':snapshot';
+        var activeId = '';
+        var snapshotId = '';
+        var workspaceStateRevision = String(workspace.getValue('workspace_state_revision') || '0');
+
+        var existingActive = new GlideRecord('${defaults.workspaceChangeSetTable}');
+        existingActive.addQuery('generation_key', changeSetKey);
+        existingActive.setLimit(1);
+        existingActive.query();
+        if (existingActive.next()) {
+          activeId = String(existingActive.getUniqueValue() || '');
+        } else {
+          var active = new GlideRecord('${defaults.workspaceChangeSetTable}');
+          active.initialize();
+          active.workspace = workspaceSysId;
+          active.generation_key = changeSetKey;
+          active.change_set_revision = 0;
+          active.next_pending_sequence = 1;
+          active.lifecycle_state = 'active';
+          active.recovery_state = 'none';
+          activeId = String(active.insert() || '');
+        }
+
+        var existingSnapshot = new GlideRecord('${defaults.workspaceSnapshotSetTable}');
+        existingSnapshot.addQuery('snapshot_key', snapshotKey);
+        existingSnapshot.setLimit(1);
+        existingSnapshot.query();
+        if (existingSnapshot.next()) {
+          snapshotId = String(existingSnapshot.getUniqueValue() || '');
+        } else {
+          var snapshot = new GlideRecord('${defaults.workspaceSnapshotSetTable}');
+          snapshot.initialize();
+          snapshot.workspace = workspaceSysId;
+          snapshot.snapshot_key = snapshotKey;
+          snapshot.readiness_state = 'ready';
+          snapshot.source_change_set = activeId;
+          snapshot.source_change_set_revision = 0;
+          snapshot.published_on = new GlideDateTime();
+          snapshotId = String(snapshot.insert() || '');
+        }
+
+        workspace.pending_change_set = activeId;
+        workspace.published_snapshot_set = snapshotId;
+        workspace.workspace_state_revision = workspaceStateRevision;
+        workspace.update();
 
         var alternate = new GlideRecord('${defaults.workspaceChangeSetTable}');
         alternate.initialize();
@@ -605,7 +643,7 @@ async function main() {
         alternate.generation_key = 'verify-alt-' + stamp;
         alternate.change_set_revision = 0;
         alternate.next_pending_sequence = 1;
-        alternate.lifecycle_state = 'active';
+        alternate.lifecycle_state = 'staged';
         alternate.recovery_state = 'none';
         var alternateId = alternate.insert();
 
@@ -618,21 +656,6 @@ async function main() {
         inactive.lifecycle_state = 'retired';
         inactive.recovery_state = 'none';
         var inactiveId = inactive.insert();
-
-        var snapshot = new GlideRecord('${defaults.workspaceSnapshotSetTable}');
-        snapshot.initialize();
-        snapshot.workspace = workspaceSysId;
-        snapshot.snapshot_key = 'verify-snapshot-' + stamp;
-        snapshot.readiness_state = 'ready';
-        snapshot.source_change_set = activeId;
-        snapshot.source_change_set_revision = 0;
-        snapshot.published_on = new GlideDateTime();
-        var snapshotId = snapshot.insert();
-
-        workspace.pending_change_set = activeId;
-        workspace.published_snapshot_set = snapshotId;
-        workspace.workspace_state_revision = 1;
-        workspace.update();
 
         function createUser(userName, firstName, lastName, password) {
           var user = new GlideRecord('sys_user');
@@ -658,7 +681,7 @@ async function main() {
         membership.insert();
 
         gs.info('DOCSERA_RESULT:' + JSON.stringify({
-          workspaceStateRevision: String(workspace.workspace_state_revision || ''),
+          workspaceStateRevision: workspaceStateRevision,
           activeChangeSetSysId: String(activeId || ''),
           alternateChangeSetSysId: String(alternateId || ''),
           inactiveChangeSetSysId: String(inactiveId || ''),
@@ -774,7 +797,9 @@ async function main() {
       leaseToken
     });
     addCheck(checks, heldStatus.status === 200 && cleanText(runtimeResult(heldStatus)?.state) === "held" && !cleanText(runtimeResult(heldStatus)?.leaseToken), "status returns held with the generation pair but without exposing the plaintext lease token", JSON.stringify(heldStatus.payload));
-    addCheck(checks, cleanText(runtimeResult(heldStatus)?.changeSetId) === cleanup.activeChangeSetSysId && Number(runtimeResult(heldStatus)?.changeSetRevision) === 0 && Number(runtimeResult(heldStatus)?.workspaceStateRevision) === 1, "acquire and status return the authoritative active generation pair", JSON.stringify(runtimeResult(heldStatus)));
+    addCheck(checks, cleanText(runtimeResult(heldStatus)?.changeSetId) === cleanup.activeChangeSetSysId && Number(runtimeResult(heldStatus)?.changeSetRevision) === 0, "acquire and status return the authoritative active generation pair", JSON.stringify(runtimeResult(heldStatus)));
+    let currentChangeSetId = cleanText(runtimeResult(heldStatus)?.changeSetId);
+    let currentChangeSetRevision = Number(runtimeResult(heldStatus)?.changeSetRevision);
 
     const resumeHeld = await callRuntime(instanceUrl, ownerSession, `${defaults.workspaceEditLeasePath}/resume`, {
       workspaceSlug: cleanup.workspaceSlug,
@@ -799,10 +824,16 @@ async function main() {
       title: "Workspace Lease Verification Page",
       workspaceSlug: cleanup.workspaceSlug,
       workspaceSysId: cleanup.workspaceSysId,
-      workspaceLeaseToken: leaseToken
+      workspaceLeaseToken: leaseToken,
+      expectedChangeSetId: currentChangeSetId,
+      expectedChangeSetRevision: currentChangeSetRevision
     });
     pageSysId = cleanText(runtimeResult(createPageResult)?.page?.sysId);
     pageSlug = cleanText(runtimeResult(createPageResult)?.page?.draftSlugNormalized ?? runtimeResult(createPageResult)?.page?.draftSlug);
+    if (createPageResult.status === 201) {
+      currentChangeSetId = cleanText(runtimeResult(createPageResult)?.changeSetId) || currentChangeSetId;
+      currentChangeSetRevision = Number(runtimeResult(createPageResult)?.changeSetRevision ?? currentChangeSetRevision);
+    }
     cleanup.pageSysIds.push(pageSysId);
     addCheck(checks, createPageResult.status === 201 && Boolean(pageSysId), "representative page creation succeeds with the current workspace lease", JSON.stringify(createPageResult.payload));
 
@@ -820,6 +851,8 @@ async function main() {
       workspaceLeaseToken: "wrong-token",
       pageSysId,
       pageSlug,
+      expectedChangeSetId: currentChangeSetId,
+      expectedChangeSetRevision: currentChangeSetRevision,
       expectedRevision: initialRevision,
       draftBodyText: "wrong token body",
       draftContentJson: createDraftEnvelope("wrong token body")
@@ -838,6 +871,8 @@ async function main() {
       workspaceLeaseToken: leaseToken,
       pageSysId,
       pageSlug,
+      expectedChangeSetId: currentChangeSetId,
+      expectedChangeSetRevision: currentChangeSetRevision,
       expectedRevision: initialRevision,
       draftBodyText: "held token body",
       draftContentJson: createDraftEnvelope("held token body")
@@ -847,6 +882,10 @@ async function main() {
       fields: "draft_revision,draft_body_text",
       limit: 1
     });
+    if (successfulSave.status === 200) {
+      currentChangeSetId = cleanText(runtimeResult(successfulSave)?.changeSetId) || currentChangeSetId;
+      currentChangeSetRevision = Number(runtimeResult(successfulSave)?.changeSetRevision ?? currentChangeSetRevision);
+    }
     const savedRevision = Number(pageAfterSave[0]?.draft_revision || 0);
     addCheck(checks, successfulSave.status === 200 && cleanText(pageAfterSave[0]?.draft_body_text) === "held token body" && savedRevision === initialRevision + 1, "body save succeeds only with the exact current workspace lease", JSON.stringify(successfulSave.payload));
 
@@ -855,6 +894,8 @@ async function main() {
       workspaceSysId: cleanup.workspaceSysId,
       workspaceLeaseToken: leaseToken,
       pageSysId,
+      expectedChangeSetId: currentChangeSetId,
+      expectedChangeSetRevision: currentChangeSetRevision,
       title: "Editor should not rename this page",
       slug: pageSlug
     }, "PUT");
@@ -870,7 +911,9 @@ async function main() {
       title: "Should Not Exist",
       workspaceSlug: cleanup.workspaceSlug,
       workspaceSysId: cleanup.workspaceSysId,
-      workspaceLeaseToken: "wrong-token"
+      workspaceLeaseToken: "wrong-token",
+      expectedChangeSetId: currentChangeSetId,
+      expectedChangeSetRevision: currentChangeSetRevision
     });
     const pagesAfterWrongCreate = await tableQuery(instanceUrl, ownerSession, defaults.pageTable, {
       query: `workspace=${cleanup.workspaceSysId}`,
@@ -886,13 +929,15 @@ async function main() {
       pageSlug,
       expectedRevision: savedRevision
     });
-    addCheck(checks, publishMissingLease.status === 400 && cleanText(runtimeError(publishMissingLease)?.code) === "workspace_lease_invalid", "missing workspace lease credentials cannot authorize publish", JSON.stringify(publishMissingLease.payload));
+    addCheck(checks, publishMissingLease.status === 405 && cleanText(runtimeError(publishMissingLease)?.code) === "publish_unavailable", "workspace publish remains fail-closed on the legacy route", JSON.stringify(publishMissingLease.payload));
 
     const deleteWrongToken = await callRuntime(instanceUrl, ownerSession, defaults.pageDeleteActionPath, {
       workspaceSlug: cleanup.workspaceSlug,
       workspaceSysId: cleanup.workspaceSysId,
       workspaceLeaseToken: "wrong-token",
-      pageSysId
+      pageSysId,
+      expectedChangeSetId: currentChangeSetId,
+      expectedChangeSetRevision: currentChangeSetRevision
     });
     addCheck(checks, deleteWrongToken.status === 409, "wrong-token delete attempts are rejected", JSON.stringify(deleteWrongToken.payload));
 
@@ -906,12 +951,14 @@ async function main() {
       workspaceSysId: cleanup.workspaceSysId,
       pageSysId,
       pageSlug,
+      expectedChangeSetId: currentChangeSetId,
+      expectedChangeSetRevision: currentChangeSetRevision,
       lockToken: pageLockToken,
       expectedRevision: savedRevision,
       draftBodyText: "page-lock token only",
       draftContentJson: createDraftEnvelope("page-lock token only")
     }, "PATCH");
-    addCheck(checks, pageLockAcquire.status === 200 && Boolean(pageLockToken), "legacy page-lock route still issues a token for comparison");
+    addCheck(checks, pageLockAcquire.status === 200 && Boolean(pageLockToken), "legacy page-lock route remains available for comparison while workspace authority stays separate");
     addCheck(checks, pageLockOnlySave.status === 400 && cleanText(runtimeError(pageLockOnlySave)?.code) === "workspace_lease_invalid", "no representative mutation accepts a page-lock token as workspace authority", JSON.stringify(pageLockOnlySave.payload));
 
     const oldLeaseRows = await inspectLeaseRows(instanceUrl, ownerSession, cleanup.workspaceSysId);
@@ -1228,6 +1275,16 @@ async function main() {
           gs.info('DOCSERA_RESULT:' + JSON.stringify({ error: 'Workspace missing before alternate generation restore.' }));
           return;
         }
+        var active = new GlideRecord('${defaults.workspaceChangeSetTable}');
+        if (active.get(${JSON.stringify(cleanup.activeChangeSetSysId)})) {
+          active.lifecycle_state = 'superseded';
+          active.update();
+        }
+        var alternate = new GlideRecord('${defaults.workspaceChangeSetTable}');
+        if (alternate.get(${JSON.stringify(cleanup.alternateChangeSetSysId)})) {
+          alternate.lifecycle_state = 'active';
+          alternate.update();
+        }
         workspace.pending_change_set = ${JSON.stringify(cleanup.alternateChangeSetSysId)};
         workspace.published_snapshot_set = ${JSON.stringify(cleanup.snapshotSetSysId)};
         workspace.workspace_state_revision = 3;
@@ -1277,6 +1334,16 @@ async function main() {
         if (!workspace.get(${JSON.stringify(cleanup.workspaceSysId)})) {
           gs.info('DOCSERA_RESULT:' + JSON.stringify({ error: 'Workspace missing before final active restore.' }));
           return;
+        }
+        var alternate = new GlideRecord('${defaults.workspaceChangeSetTable}');
+        if (alternate.get(${JSON.stringify(cleanup.alternateChangeSetSysId)})) {
+          alternate.lifecycle_state = 'superseded';
+          alternate.update();
+        }
+        var active = new GlideRecord('${defaults.workspaceChangeSetTable}');
+        if (active.get(${JSON.stringify(cleanup.activeChangeSetSysId)})) {
+          active.lifecycle_state = 'active';
+          active.update();
         }
         workspace.pending_change_set = ${JSON.stringify(cleanup.activeChangeSetSysId)};
         workspace.published_snapshot_set = ${JSON.stringify(cleanup.snapshotSetSysId)};

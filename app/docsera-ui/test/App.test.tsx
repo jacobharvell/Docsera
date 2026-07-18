@@ -148,18 +148,24 @@ function createClient(overrides: Partial<ServiceNowClient> = {}): ServiceNowClie
       throw new Error("createPage should not be called in these tests");
     }),
     acquireWorkspaceEditLease: vi.fn(async () => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 9,
       heartbeatIntervalMs: 60_000,
       leaseToken: "workspace-lease-token",
       staleAfterMs: 300_000,
       state: "held" as const
     })),
     resumeWorkspaceEditLease: vi.fn(async () => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 9,
       heartbeatIntervalMs: 60_000,
       leaseToken: "workspace-lease-token",
       staleAfterMs: 300_000,
       state: "held" as const
     })),
     renewWorkspaceEditLease: vi.fn(async () => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 9,
       heartbeatIntervalMs: 60_000,
       leaseToken: "workspace-lease-token",
       staleAfterMs: 300_000,
@@ -283,6 +289,10 @@ describe("workspace integration flows", () => {
     expect(await screen.findByRole("heading", { name: "Fresh Page" })).toBeInTheDocument();
     expect(createPage).toHaveBeenCalledWith({
       title: "Fresh Page",
+      workspaceAuthority: {
+        changeSetId: "change-set-001",
+        changeSetRevision: 9
+      },
       workspaceLeaseToken: "workspace-lease-token",
       workspaceSlug: "product-docs"
     });

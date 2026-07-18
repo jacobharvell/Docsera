@@ -70,6 +70,16 @@ type WorkspacePagesState =
   | { errorMessage: string; mode: WorkspaceMode; status: "error"; workspaceSlug: string }
   | { data: WorkspacePageRecord[]; mode: WorkspaceMode; status: "success"; totalCount: number; workspaceSlug: string };
 
+type StaleRefreshState =
+  | { status: "idle" }
+  | {
+      authority: { changeSetId: string; changeSetRevision: number };
+      errorMessage?: string;
+      mode: WorkspaceMode;
+      status: "refresh_required" | "refreshing";
+      workspaceSlug: string;
+    };
+
 type WorkspaceSwitcherState =
   | { status: "idle" }
   | { status: "loading" }
@@ -135,6 +145,7 @@ type ShellNoticeState = {
 const DEFAULT_PAGE_SIZE = 10;
 const TRANSITION_PROGRESS_DELAY_MS = 220;
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
+const STALE_REFRESH_BLOCKED_MESSAGE = "Reloading the latest draft projection. Saving is temporarily unavailable.";
 const DOCSERA_THEME_STORAGE_KEY = "docsera.theme";
 const DOCSERA_RECENT_WORKSPACES_STORAGE_KEY = "docsera.recent-workspaces";
 const DOCSERA_WORKSPACE_LEASE_STORAGE_PREFIX = "docsera.workspace-edit-lease.";
@@ -578,6 +589,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({ status: "idle" });
   const [pendingWorkspaceIdentity, setPendingWorkspaceIdentity] = useState<PendingWorkspaceIdentity | null>(null);
   const [workspacePagesState, setWorkspacePagesState] = useState<WorkspacePagesState>({ status: "idle" });
+  const [staleRefreshState, setStaleRefreshState] = useState<StaleRefreshState>({ status: "idle" });
   const [workspaceSettingsNotice, setWorkspaceSettingsNotice] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalPhase, setCreateModalPhase] = useState<"idle" | "submitting" | "polling">("idle");
@@ -588,6 +600,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [shellNotice, setShellNotice] = useState<ShellNoticeState | null>(null);
   const [workspaceLeaseState, setWorkspaceLeaseState] = useState<WorkspaceLeaseState>({ state: "idle" });
   const [editorRetryNonce, setEditorRetryNonce] = useState(0);
+  const [workspacePagesRetryNonce, setWorkspacePagesRetryNonce] = useState(0);
   const [editorTransitionState, setEditorTransitionState] = useState<EditorTransitionState>({ isDirty: false, isSaving: false, status: "Saved" });
   const editorFlushRef = useRef<(() => Promise<boolean>) | null>(null);
   const editorRecoverySnapshotRef = useRef<(() => PageEditorRecoverySnapshot | null) | null>(null);
@@ -604,6 +617,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     useState<WorkspaceHeaderPresentation | null>(null);
   const [lastReadyWorkspaceShell, setLastReadyWorkspaceShell] = useState<RetainedWorkspaceShellState | null>(null);
   const launcherRequestIdRef = useRef(0);
+  const staleRefreshRequestIdRef = useRef(0);
   const crossModeTargetPageSysIdRef = useRef("");
   const inlinePageCreateFocusTokenRef = useRef(0);
   const inlinePageCreateStateRef = useRef<InlinePageCreateState | null>(null);
@@ -1200,6 +1214,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     (workspacePagesState.status === "success" && workspacePagesState.mode !== activeWorkspaceMode) ||
     (workspacePagesState.status === "error" && workspacePagesState.workspaceSlug !== currentWorkspaceSlug) ||
     (workspacePagesState.status === "error" && workspacePagesState.mode !== activeWorkspaceMode);
+  const staleRefreshBlocksCurrentWorkspaceWrites =
+    route.mode === "workspace" &&
+    staleRefreshState.status !== "idle" &&
+    staleRefreshState.workspaceSlug === currentWorkspaceSlug &&
+    staleRefreshState.mode === activeWorkspaceMode;
   const currentWorkspacePages = workspacePagesLoaded ? workspacePagesState.data : [];
   const treePages = useMemo(
     () => buildWorkspacePageTree(currentWorkspacePages, activeWorkspaceMode),
@@ -1208,15 +1227,17 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const workspaceShellViewModel =
     workspaceState.status === "success" ? buildWorkspaceShellViewModel(workspaceState.data) : null;
   const showCreatePageControls = activeWorkspaceMode === "edit" && hasAuthoringCapability && !editAccessLost;
-  const canCreatePage = showCreatePageControls && workspacePagesLoaded;
+  const canCreatePage = showCreatePageControls && workspacePagesLoaded && !staleRefreshBlocksCurrentWorkspaceWrites;
   const isCreatingPage = Boolean(inlinePageCreateState?.showInput || inlinePageCreateState?.pending);
   const createPageDisabledReason =
-    showCreatePageControls &&
-    workspacePagesState.status === "error" &&
-    workspacePagesState.workspaceSlug === currentWorkspaceSlug &&
-    workspacePagesState.mode === activeWorkspaceMode
-      ? "New page is unavailable because the workspace page list failed to load."
-      : "";
+    staleRefreshBlocksCurrentWorkspaceWrites
+      ? staleRefreshState.errorMessage || STALE_REFRESH_BLOCKED_MESSAGE
+      : showCreatePageControls &&
+          workspacePagesState.status === "error" &&
+          workspacePagesState.workspaceSlug === currentWorkspaceSlug &&
+          workspacePagesState.mode === activeWorkspaceMode
+        ? "New page is unavailable because the workspace page list failed to load."
+        : "";
   const selectedWorkspacePage =
     workspacePagesLoaded && currentWorkspacePages.length > 0
       ? resolveWorkspacePageSelection(currentWorkspacePages, {
@@ -2254,7 +2275,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     return () => {
       canceled = true;
     };
-  }, [activeWorkspaceMode, currentWorkspaceSlug, loadedWorkspaceSlug, route.mode, serviceNowClient, workspaceEditLeasePending, workspaceState.status]);
+  }, [activeWorkspaceMode, currentWorkspaceSlug, loadedWorkspaceSlug, route.mode, serviceNowClient, workspaceEditLeasePending, workspacePagesRetryNonce, workspaceState.status]);
 
   useEffect(() => {
     if (route.mode !== "launcher") {
@@ -3042,6 +3063,14 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       noticeMessage: ""
     }));
 
+    if (staleRefreshBlocksCurrentWorkspaceWrites) {
+      setPageSettingsState((current) => ({
+        ...current,
+        generalError: blockedWriteMessage()
+      }));
+      return false;
+    }
+
     const isCurrentMutation = beginAuthoringMutation();
     try {
       const outcome = await workspaceLeaseRecoveryRef.current.runMutation<PageSettingsSaveResult>({
@@ -3050,12 +3079,13 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         invalidateLeaseRace: invalidateWorkspaceLeaseRace,
         isLeaseRace: (result) => result.state === "failed" && result.code === "lock_lost",
         mutate: (workspaceLeaseToken) => serviceNowClient.savePageSettings({
-        workspaceSlug: workspaceState.data.slug,
-        workspaceSysId: workspaceState.data.sysId ?? "",
-        pageSysId: page.sysId ?? currentPageSettingsState.pageSysId,
-        title: normalizedTitle,
-        slug: normalizedSlug,
-        workspaceLeaseToken
+          workspaceSlug: workspaceState.data.slug,
+          workspaceSysId: workspaceState.data.sysId ?? "",
+          pageSysId: page.sysId ?? currentPageSettingsState.pageSysId,
+          title: normalizedTitle,
+          slug: normalizedSlug,
+          workspaceLeaseToken,
+          workspaceAuthority: currentWorkspaceMutationAuthority()
         })
       });
       if (!isCurrentMutation()) return false;
@@ -3079,12 +3109,22 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }
 
       if (result.state === "failed") {
+        if (result.code === "conflict") {
+          requestStaleRefreshBlock({
+            changeSetId: result.currentChangeSetId,
+            changeSetRevision: result.currentChangeSetRevision
+          });
+        }
         setPageSettingsState((current) => ({
           ...current,
           generalError: result.errorMessage
         }));
         return false;
       }
+      installWorkspaceMutationAuthority({
+        changeSetId: result.changeSetId,
+        changeSetRevision: result.changeSetRevision
+      });
 
       setWorkspacePagesState((current) => {
         if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug || current.mode !== activeWorkspaceMode) {
@@ -3219,6 +3259,15 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       deleteError: ""
     }));
 
+    if (staleRefreshBlocksCurrentWorkspaceWrites) {
+      setPageSettingsState((current) => ({
+        ...current,
+        deletePending: false,
+        deleteError: blockedWriteMessage()
+      }));
+      return;
+    }
+
     const isCurrentMutation = beginAuthoringMutation();
     try {
       const outcome = await workspaceLeaseRecoveryRef.current.runMutation<PageDeleteResult>({
@@ -3227,10 +3276,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         invalidateLeaseRace: invalidateWorkspaceLeaseRace,
         isLeaseRace: (result) => result.state === "failed" && result.code === "lock_lost",
         mutate: (workspaceLeaseToken) => serviceNowClient.deletePage({
-        workspaceSlug: workspaceState.data.slug,
-        workspaceSysId: workspaceState.data.sysId ?? "",
-        pageSysId: deletedPageSysId,
-        workspaceLeaseToken
+          workspaceSlug: workspaceState.data.slug,
+          workspaceSysId: workspaceState.data.sysId ?? "",
+          pageSysId: deletedPageSysId,
+          workspaceLeaseToken,
+          workspaceAuthority: currentWorkspaceMutationAuthority()
         })
       });
       if (!isCurrentMutation()) return;
@@ -3254,6 +3304,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }
 
       if (result.state === "failed") {
+        if (result.code === "conflict") {
+          requestStaleRefreshBlock({
+            changeSetId: result.currentChangeSetId,
+            changeSetRevision: result.currentChangeSetRevision
+          });
+        }
         setPageSettingsState((current) => ({
           ...current,
           deletePending: false,
@@ -3261,6 +3317,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         }));
         return;
       }
+      installWorkspaceMutationAuthority({
+        changeSetId: result.changeSetId,
+        changeSetRevision: result.changeSetRevision
+      });
 
       setWorkspacePagesState((current) => {
         if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug || current.mode !== activeWorkspaceMode) {
@@ -3449,6 +3509,22 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       };
     });
 
+    if (staleRefreshBlocksCurrentWorkspaceWrites) {
+      setInlinePageCreateState((current) =>
+        current
+          ? {
+              ...current,
+              errorMessage: blockedWriteMessage(),
+              pending: false,
+              showInput: true,
+              title,
+              parentPageSysId
+            }
+          : current
+      );
+      return;
+    }
+
     const isCurrentMutation = beginAuthoringMutation();
     try {
       const outcome = await workspaceLeaseRecoveryRef.current.runMutation<PageCreateResult>({
@@ -3457,10 +3533,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         invalidateLeaseRace: invalidateWorkspaceLeaseRace,
         isLeaseRace: (result) => result.state === "failed" && result.code === "lock_lost",
         mutate: (workspaceLeaseToken) => serviceNowClient.createPage({
-        ...(parentPageSysId ? { parentPageSysId } : {}),
-        title,
-        workspaceSlug: workspaceState.data.slug,
-        workspaceLeaseToken
+          ...(parentPageSysId ? { parentPageSysId } : {}),
+          title,
+          workspaceSlug: workspaceState.data.slug,
+          workspaceLeaseToken,
+          workspaceAuthority: currentWorkspaceMutationAuthority()
         })
       });
       if (!isCurrentMutation()) return;
@@ -3484,6 +3561,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }
 
       if (result.state === "failed") {
+        if (result.code === "conflict") {
+          requestStaleRefreshBlock({
+            changeSetId: result.currentChangeSetId,
+            changeSetRevision: result.currentChangeSetRevision
+          });
+        }
         setInlinePageCreateState((current) =>
           current
             ? {
@@ -3498,6 +3581,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         );
         return;
       }
+      installWorkspaceMutationAuthority({
+        changeSetId: result.changeSetId,
+        changeSetRevision: result.changeSetRevision
+      });
 
       finalizePageCreation(result.page);
     } catch {
@@ -3676,6 +3763,146 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     });
   }
 
+  function currentWorkspaceMutationAuthority() {
+    const binding = workspaceLeaseBindingRef.current;
+    if (!binding) {
+      return undefined;
+    }
+    return {
+      changeSetId: binding.changeSetId,
+      changeSetRevision: binding.changeSetRevision,
+      ...(typeof binding.workspaceStateRevision === "number" ? { workspaceStateRevision: binding.workspaceStateRevision } : {})
+    };
+  }
+
+  function installWorkspaceMutationAuthority(input: { changeSetId?: string; changeSetRevision?: number }) {
+    const binding = workspaceLeaseBindingRef.current;
+    const changeSetId = cleanText(input.changeSetId);
+    const changeSetRevision =
+      typeof input.changeSetRevision === "number" && Number.isSafeInteger(input.changeSetRevision) && input.changeSetRevision >= 0
+        ? input.changeSetRevision
+        : null;
+    if (!binding || !changeSetId || changeSetRevision === null) {
+      return;
+    }
+    workspaceLeaseBindingRef.current = {
+      ...binding,
+      changeSetId,
+      changeSetRevision
+    };
+    if (workspaceLeaseStateRef.current.state === "held" && workspaceLeaseStateRef.current.leaseToken === binding.leaseToken) {
+      const nextState = {
+        ...workspaceLeaseStateRef.current,
+        changeSetId,
+        changeSetRevision
+      };
+      workspaceLeaseStateRef.current = nextState;
+      setWorkspaceLeaseState(nextState);
+    }
+  }
+
+  function requestStaleRefreshBlock(input: { changeSetId?: string; changeSetRevision?: number }) {
+    const changeSetId = cleanText(input.changeSetId);
+    const changeSetRevision =
+      typeof input.changeSetRevision === "number" && Number.isSafeInteger(input.changeSetRevision) && input.changeSetRevision >= 0
+        ? input.changeSetRevision
+        : null;
+    if (workspaceState.status !== "success" || !changeSetId || changeSetRevision === null) {
+      return;
+    }
+    const nextState: StaleRefreshState = {
+      authority: { changeSetId, changeSetRevision },
+      mode: activeWorkspaceMode,
+      status: "refresh_required",
+      workspaceSlug: workspaceState.data.slug
+    };
+    setStaleRefreshState(nextState);
+    void refreshWorkspacePagesAfterStaleGeneration(nextState.authority);
+  }
+
+  function blockedWriteMessage() {
+    if (
+      staleRefreshState.status !== "idle" &&
+      staleRefreshState.workspaceSlug === currentWorkspaceSlug &&
+      staleRefreshState.mode === activeWorkspaceMode
+    ) {
+      return staleRefreshState.errorMessage || STALE_REFRESH_BLOCKED_MESSAGE;
+    }
+    return STALE_REFRESH_BLOCKED_MESSAGE;
+  }
+
+  function retryWorkspaceProjectionLoad() {
+    if (
+      staleRefreshState.status !== "idle" &&
+      staleRefreshState.workspaceSlug === currentWorkspaceSlug &&
+      staleRefreshState.mode === activeWorkspaceMode
+    ) {
+      void refreshWorkspacePagesAfterStaleGeneration(staleRefreshState.authority);
+      return;
+    }
+    setWorkspacePagesRetryNonce((value) => value + 1);
+  }
+
+  async function refreshWorkspacePagesAfterStaleGeneration(input: { changeSetId?: string; changeSetRevision?: number }) {
+    if (workspaceState.status !== "success") {
+      return;
+    }
+    const changeSetId = cleanText(input.changeSetId);
+    const changeSetRevision =
+      typeof input.changeSetRevision === "number" && Number.isSafeInteger(input.changeSetRevision) && input.changeSetRevision >= 0
+        ? input.changeSetRevision
+        : null;
+    if (!changeSetId || changeSetRevision === null) {
+      return;
+    }
+    const workspaceSlug = workspaceState.data.slug;
+    const mode = activeWorkspaceMode;
+    const requestId = staleRefreshRequestIdRef.current + 1;
+    staleRefreshRequestIdRef.current = requestId;
+    setStaleRefreshState({
+      authority: { changeSetId, changeSetRevision },
+      mode,
+      status: "refreshing",
+      workspaceSlug
+    });
+    try {
+      const refreshedPages = await serviceNowClient.listPages({
+        mode,
+        workspaceSlug
+      });
+      if (staleRefreshRequestIdRef.current !== requestId) {
+        return;
+      }
+      setWorkspacePagesState({
+        data: refreshedPages.items,
+        mode,
+        status: "success",
+        totalCount: refreshedPages.totalCount,
+        workspaceSlug: refreshedPages.workspaceSlug || workspaceSlug
+      });
+      installWorkspaceMutationAuthority({ changeSetId, changeSetRevision });
+      setStaleRefreshState({ status: "idle" });
+    } catch (error) {
+      if (staleRefreshRequestIdRef.current !== requestId) {
+        return;
+      }
+      const errorMessage = getErrorMessage(error, "Unable to load pages.");
+      setWorkspacePagesState({
+        errorMessage,
+        mode,
+        status: "error",
+        workspaceSlug
+      });
+      setStaleRefreshState({
+        authority: { changeSetId, changeSetRevision },
+        errorMessage,
+        mode,
+        status: "refresh_required",
+        workspaceSlug
+      });
+    }
+  }
+
   async function savePageDraft(
     input: {
       pageSysId: string;
@@ -3689,10 +3916,19 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         state: "failed"
       };
     }
+    if (staleRefreshBlocksCurrentWorkspaceWrites) {
+      return {
+        errorMessage: blockedWriteMessage(),
+        state: "failed"
+      };
+    }
 
     const run = async (workspaceLeaseToken: string): Promise<PageBodySaveResult> => serviceNowClient.savePageBody({
       draftContentJson: input.draftContentJson, workspaceSlug: workspaceState.data.slug, workspaceSysId: workspaceState.data.sysId,
-      pageSysId: input.pageSysId, workspaceLeaseToken, expectedRevision: input.expectedRevision
+      pageSysId: input.pageSysId,
+      workspaceLeaseToken,
+      expectedRevision: input.expectedRevision,
+      workspaceAuthority: currentWorkspaceMutationAuthority()
     });
     try {
       const outcome = await workspaceLeaseRecoveryRef.current.runMutation({
@@ -3704,7 +3940,21 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       });
       if (outcome.state === "contention") return { errorMessage: "This workspace is currently being edited by another user.", state: "failed" };
       if (outcome.state === "forbidden" || outcome.state === "transient_failure") return { errorMessage: outcome.errorMessage, state: "failed" };
-      return outcome as PageBodySaveResult;
+      const result = outcome as PageBodySaveResult;
+      if (result.state === "failed" && result.code === "conflict") {
+        requestStaleRefreshBlock({
+          changeSetId: result.currentChangeSetId,
+          changeSetRevision: result.currentChangeSetRevision
+        });
+        return result;
+      }
+      if (result.state === "succeeded") {
+        installWorkspaceMutationAuthority({
+          changeSetId: result.changeSetId,
+          changeSetRevision: result.changeSetRevision
+        });
+      }
+      return result;
     } catch {
       return {
         errorMessage: SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE,
@@ -3866,6 +4116,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               onOutlineChange={handleOutlineChange}
               onReturnToMyWorkspaces={openLauncher}
               onReturnToLive={handleReturnToLive}
+              onRetryWorkspace={retryWorkspaceProjectionLoad}
               onRetryEditor={() => {
                 setEditorFailure(null);
                 setEditorRetryNonce((value) => value + 1);

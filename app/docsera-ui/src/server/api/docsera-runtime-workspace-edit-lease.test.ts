@@ -20,7 +20,7 @@ vi.mock("@servicenow/glide", () => ({
   }
 }));
 
-import { createWorkspaceEditLeaseProcessor } from "./docsera-runtime-workspace-edit-lease.ts";
+import { createWorkspaceEditLeaseProcessor, readWorkspaceMutationAuthority, sendWorkspaceGenerationFailure } from "./docsera-runtime-workspace-edit-lease.ts";
 
 function responseRecorder() {
   return {
@@ -113,5 +113,85 @@ describe("workspace edit lease route", () => {
         message: "Workspace editing is unavailable for this workspace."
       }
     });
+  });
+
+  it("fails closed when a mutation omits the required generation pair", () => {
+    const response = responseRecorder();
+    const blocked = sendWorkspaceGenerationFailure(
+      {
+        kind: "held",
+        leaseToken: "workspace-lease-token",
+        heartbeatIntervalMs: 60_000,
+        staleAfterMs: 300_000,
+        changeSetId: "change-set-001",
+        changeSetRevision: 9,
+        workspaceStateRevision: 4
+      },
+      {},
+      response
+    );
+
+    expect(blocked).toBe(true);
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({
+      error: {
+        code: "stale_generation",
+        retryable: false,
+        message: "The active draft generation changed. Reload before saving again.",
+        currentChangeSetId: "change-set-001",
+        currentChangeSetRevision: 9
+      }
+    });
+  });
+
+  it("accepts a well-formed generation pair even when it is not the newest active pair", () => {
+    const response = responseRecorder();
+    const blocked = sendWorkspaceGenerationFailure(
+      {
+        kind: "held",
+        leaseToken: "workspace-lease-token",
+        heartbeatIntervalMs: 60_000,
+        staleAfterMs: 300_000,
+        changeSetId: "change-set-001",
+        changeSetRevision: 9,
+        workspaceStateRevision: 4
+      },
+      {
+        expectedChangeSetId: "change-set-000",
+        expectedChangeSetRevision: 8
+      },
+      response
+    );
+
+    expect(blocked).toBe(false);
+    expect(response.status).toBeUndefined();
+    expect(response.body).toBeUndefined();
+  });
+
+  it("returns the caller supplied mutation authority for stale-generation replay handling", () => {
+    const response = responseRecorder();
+    const authority = readWorkspaceMutationAuthority(
+      {
+        kind: "held",
+        leaseToken: "workspace-lease-token",
+        heartbeatIntervalMs: 60_000,
+        staleAfterMs: 300_000,
+        changeSetId: "change-set-001",
+        changeSetRevision: 9,
+        workspaceStateRevision: 4
+      },
+      {
+        expectedChangeSetId: "change-set-000",
+        expectedChangeSetRevision: 8
+      },
+      response
+    );
+
+    expect(authority).toEqual({
+      changeSetId: "change-set-000",
+      changeSetRevision: 8
+    });
+    expect(response.status).toBeUndefined();
+    expect(response.body).toBeUndefined();
   });
 });

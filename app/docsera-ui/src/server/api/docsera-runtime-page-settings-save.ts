@@ -1,6 +1,9 @@
-import { gs } from "@servicenow/glide";
-import { createServiceNowPageSettingsService } from "../pages/serviceNowPageSettings.ts";
-import { sendWorkspaceLeaseMutationFailure, verifyWorkspaceEditLease } from "./docsera-runtime-workspace-edit-lease.ts";
+import { GlideRecord, gs } from "@servicenow/glide";
+import { DOCSERA_WORKSPACE_TABLE } from "../workspaces/serverWorkspaceDomain.ts";
+import { mapWorkspaceRecord } from "../workspaces/serviceNowWorkspaceRecords.ts";
+import { createServiceNowWorkspaceChangeSetPersistenceService } from "../workspaces/serviceNowWorkspaceChangeSetPersistence.ts";
+import { validatePageSettingsSlug, validatePageSettingsTitle } from "../pages/serverPageDomain.ts";
+import { readWorkspaceMutationAuthority, sendWorkspaceLeaseMutationFailure, verifyWorkspaceEditLease } from "./docsera-runtime-workspace-edit-lease.ts";
 
 type RequestLike = {
   body?: unknown;
@@ -38,17 +41,73 @@ function logUnexpectedPageSettingsError(error: unknown, context: Record<string, 
   );
 }
 
+function loadWorkspace(body: Record<string, unknown>) {
+  const workspaceSysId = cleanText(body.workspaceSysId);
+  const workspaceSlug = cleanText(body.workspaceSlug);
+  const row = new GlideRecord(DOCSERA_WORKSPACE_TABLE);
+  if (workspaceSysId) {
+    if (!row.get("sys_id", workspaceSysId)) {
+      return null;
+    }
+    const workspace = mapWorkspaceRecord(row);
+    return !workspaceSlug || workspace.slug === workspaceSlug ? workspace : null;
+  }
+  if (!workspaceSlug) {
+    return null;
+  }
+  row.addQuery("workspace_slug", workspaceSlug);
+  row.setLimit(1);
+  row.query();
+  if (!row.next()) {
+    return null;
+  }
+  return mapWorkspaceRecord(row);
+}
+
 export async function process(request: RequestLike, response: ResponseLike) {
   try {
-    const service = createServiceNowPageSettingsService();
+    const service = createServiceNowWorkspaceChangeSetPersistenceService();
     const body = readRequestBody(request);
-    if (sendWorkspaceLeaseMutationFailure(await verifyWorkspaceEditLease(body), response)) return;
-    const result = await service.savePageSettings({
-      workspaceSlug: cleanText(body.workspaceSlug),
-      workspaceSysId: cleanText(body.workspaceSysId),
+    const lease = await verifyWorkspaceEditLease(body);
+    if (sendWorkspaceLeaseMutationFailure(lease, response)) return;
+    if (lease.kind !== "held") return;
+    const authority = readWorkspaceMutationAuthority(lease, body, response);
+    if (!authority) return;
+    if (!cleanText(body.workspaceSlug) && !cleanText(body.workspaceSysId)) {
+      response.setStatus?.(400);
+      response.setBody({ error: { code: "invalid", message: "A workspace reference is required." } });
+      return;
+    }
+    const workspace = loadWorkspace(body);
+    if (!workspace) {
+      response.setStatus?.(404);
+      response.setBody({ error: { code: "invalid", message: "Workspace could not be found." } });
+      return;
+    }
+    const projection = service.listPages(workspace, "edit");
+    if (projection.kind !== "succeeded") {
+      response.setStatus?.(projection.status);
+      response.setBody({ error: { code: "invalid", message: projection.errorMessage } });
+      return;
+    }
+    const titleValidation = validatePageSettingsTitle(body.title);
+    if (!titleValidation.valid) {
+      response.setStatus?.(400);
+      response.setBody({ error: { code: "invalid", message: titleValidation.error } });
+      return;
+    }
+    const slugValidation = validatePageSettingsSlug(body.slug, projection.pages, cleanText(workspace.sysId), cleanText(body.pageSysId));
+    if (!slugValidation.valid) {
+      response.setStatus?.(400);
+      response.setBody({ error: { code: "invalid", message: slugValidation.error } });
+      return;
+    }
+    const result = service.savePageSettings({
+      authority,
       pageSysId: cleanText(body.pageSysId),
-      title: cleanText(body.title),
-      slug: cleanText(body.slug)
+      title: titleValidation.value,
+      slug: slugValidation.normalizedValue,
+      workspace
     });
 
     if (result.kind === "forbidden") {
@@ -65,7 +124,14 @@ export async function process(request: RequestLike, response: ResponseLike) {
       response.setStatus?.(result.status);
       response.setBody({
         error: {
-          message: result.errorMessage
+          code: result.code === "stale_generation" ? "stale_generation" : "invalid",
+          message: result.errorMessage,
+          ...(typeof result.currentChangeSetId === "string" && typeof result.currentChangeSetRevision === "number"
+            ? {
+                currentChangeSetId: result.currentChangeSetId,
+                currentChangeSetRevision: result.currentChangeSetRevision
+              }
+            : {})
         }
       });
       return;
@@ -75,7 +141,9 @@ export async function process(request: RequestLike, response: ResponseLike) {
     response.setBody({
       result: {
         mode: "servicenow",
-        page: result.page
+        page: result.result.page,
+        changeSetId: result.authority.changeSetId,
+        changeSetRevision: result.authority.changeSetRevision
       }
     });
   } catch (error) {

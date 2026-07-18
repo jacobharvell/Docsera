@@ -125,15 +125,22 @@ export type PageCreateInput = {
   title: string;
   parentPageSysId?: string | null;
   workspaceLeaseToken?: string;
+  workspaceAuthority?: WorkspaceEditLeaseGeneration;
+  expectedChangeSetId?: string;
+  expectedChangeSetRevision?: number;
 };
 
 export type PageCreateSucceeded = {
+  changeSetId?: string;
+  changeSetRevision?: number;
   page: WorkspacePageRecord;
   state: "succeeded";
 };
 
 export type PageCreateFailed = {
   code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "transient";
+  currentChangeSetId?: string;
+  currentChangeSetRevision?: number;
   errorMessage: string;
   state: "failed";
 };
@@ -148,20 +155,27 @@ export type PageBodySaveInput = {
   /** Workspace lease is the only persistence authority. Page-lock fields remain
    * on the editor transport temporarily, but are never sent to mutations. */
   workspaceLeaseToken?: string;
+  workspaceAuthority?: WorkspaceEditLeaseGeneration;
   /** @deprecated retained for editor-session compatibility; never sent as mutation authority. */
   lockToken?: string;
   draftBodyText?: string;
   draftContentJson?: PageContentInput;
   expectedRevision?: number;
+  expectedChangeSetId?: string;
+  expectedChangeSetRevision?: number;
 };
 
 export type PageBodySaveSucceeded = {
+  changeSetId?: string;
+  changeSetRevision?: number;
   page: WorkspacePageRecord;
   state: "succeeded";
 };
 
 export type PageBodySaveFailed = {
   code?: "capacity" | "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "network" | "persistence_invariant" | "transient";
+  currentChangeSetId?: string;
+  currentChangeSetRevision?: number;
   currentRevision?: number;
   errorMessage: string;
   retryable?: boolean;
@@ -203,15 +217,22 @@ export type PageSettingsSaveInput = {
   title: string;
   slug: string;
   workspaceLeaseToken?: string;
+  workspaceAuthority?: WorkspaceEditLeaseGeneration;
+  expectedChangeSetId?: string;
+  expectedChangeSetRevision?: number;
 };
 
 export type PageSettingsSaveSucceeded = {
+  changeSetId?: string;
+  changeSetRevision?: number;
   page: WorkspacePageRecord;
   state: "succeeded";
 };
 
 export type PageSettingsSaveFailed = {
   code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "transient";
+  currentChangeSetId?: string;
+  currentChangeSetRevision?: number;
   errorMessage: string;
   state: "failed";
 };
@@ -223,6 +244,9 @@ export type PageDeleteInput = {
   workspaceSysId: string;
   pageSysId: string;
   workspaceLeaseToken?: string;
+  workspaceAuthority?: WorkspaceEditLeaseGeneration;
+  expectedChangeSetId?: string;
+  expectedChangeSetRevision?: number;
 };
 
 export type WorkspaceEditLeaseReferenceInput = {
@@ -245,12 +269,16 @@ export type WorkspaceEditLeaseReleaseResult = WorkspaceEditLeaseReleased | Works
 export type WorkspaceEditLeaseStatusResult = WorkspaceEditLeaseStatusHeld | WorkspaceEditLeaseLocked | WorkspaceEditLeaseUnlocked | WorkspaceEditLeaseFailed;
 
 export type PageDeleteSucceeded = {
+  changeSetId?: string;
+  changeSetRevision?: number;
   nextPageSysId: string;
   state: "succeeded";
 };
 
 export type PageDeleteFailed = {
   code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "transient";
+  currentChangeSetId?: string;
+  currentChangeSetRevision?: number;
   errorMessage: string;
   state: "failed";
 };

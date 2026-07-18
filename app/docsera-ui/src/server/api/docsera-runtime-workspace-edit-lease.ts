@@ -1,10 +1,12 @@
 import { gs } from "@servicenow/glide";
 import { createServiceNowWorkspaceEditLeaseService } from "../workspace-leases/serviceNowWorkspaceEditLeases.ts";
 import { buildWorkspaceLockedMessage, cleanText, type WorkspaceEditLeaseResult } from "../workspace-leases/serverWorkspaceEditLeaseDomain.ts";
+import type { WorkspaceMutationAuthority } from "../workspaces/serviceNowWorkspaceChangeSetPersistence.ts";
 
 type RequestLike = { body?: unknown; data?: unknown };
 type ResponseLike = { setBody(payload: unknown): void; setStatus?(status: number): void };
 type Action = "acquire" | "resume" | "renew" | "release" | "status";
+type WorkspaceLeaseHeld = Extract<WorkspaceEditLeaseResult, { kind: "held" }>;
 function bodyOf(request: RequestLike): Record<string, unknown> {
   const raw = request?.body ?? request?.data;
   return raw && typeof raw === "object" && "data" in raw && raw.data && typeof raw.data === "object" ? raw.data as Record<string, unknown> : raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
@@ -53,6 +55,50 @@ export async function verifyWorkspaceEditLease(input: { workspaceSlug?: unknown;
     workspaceSysId: cleanText(input.workspaceSysId),
     leaseToken: cleanText(input.workspaceLeaseToken)
   });
+}
+
+function safeExpectedRevision(value: unknown): number | null {
+  if (typeof value === "number") return Number.isSafeInteger(value) && value >= 0 ? value : null;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+  }
+  return null;
+}
+
+export function sendWorkspaceGenerationFailure(
+  held: WorkspaceLeaseHeld,
+  input: { expectedChangeSetId?: unknown; expectedChangeSetRevision?: unknown },
+  response: ResponseLike
+): boolean {
+  const expectedChangeSetId = cleanText(input.expectedChangeSetId);
+  const expectedChangeSetRevision = safeExpectedRevision(input.expectedChangeSetRevision);
+  if (expectedChangeSetId && expectedChangeSetRevision !== null) return false;
+  response.setStatus?.(409);
+  response.setBody({
+    error: {
+      code: "stale_generation",
+      retryable: false,
+      message: "The active draft generation changed. Reload before saving again.",
+      currentChangeSetId: held.changeSetId,
+      currentChangeSetRevision: held.changeSetRevision
+    }
+  });
+  return true;
+}
+
+export function readWorkspaceMutationAuthority(
+  held: WorkspaceLeaseHeld,
+  input: { expectedChangeSetId?: unknown; expectedChangeSetRevision?: unknown },
+  response: ResponseLike
+): WorkspaceMutationAuthority | null {
+  if (sendWorkspaceGenerationFailure(held, input, response)) {
+    return null;
+  }
+  return {
+    changeSetId: cleanText(input.expectedChangeSetId),
+    changeSetRevision: safeExpectedRevision(input.expectedChangeSetRevision)!
+  };
 }
 
 export function sendWorkspaceLeaseMutationFailure(result: WorkspaceEditLeaseResult, response: ResponseLike): boolean {

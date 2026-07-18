@@ -1,12 +1,11 @@
 /* @vitest-environment node */
 
-import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { spawn } from "child_process";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
+import { existsSync } from "fs";
+import os from "os";
+import path from "path";
+import process from "process";
 import { describe, expect, it } from "vitest";
 import {
   acquireRunLock,
@@ -21,8 +20,8 @@ import {
   waitForProcessTreeToExit
 } from "./validation-process.mjs";
 
-const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const packageRoot = path.resolve(scriptDir, "..");
+const packageRoot = process.cwd();
+const scriptDir = path.join(packageRoot, "scripts");
 const fixtureScript = path.join(packageRoot, "scripts", "validation-fixture.mjs");
 const runManagedVitestScript = path.join(packageRoot, "scripts", "run-managed-vitest.mjs");
 const runManagedValidateScript = path.join(packageRoot, "scripts", "run-managed-validate.mjs");

@@ -1271,6 +1271,232 @@ describe("App live and edit routing", () => {
     expect(screen.queryByText(/currently being edited by another user/i)).toBeNull();
   });
 
+  it("blocks Page Settings, inline create, and delete persistence until stale refresh succeeds", async () => {
+    const refreshDeferred = createDeferred<PageListResult>();
+    let editListCount = 0;
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }): Promise<PageListResult> => {
+      if (mode === "edit") {
+        editListCount += 1;
+        if (editListCount === 1) {
+          return createPageListResult("edit", [
+            createPageRecord({
+              draftTitle: "Overview Draft",
+              publicationState: "published_with_unpublished_changes"
+            }),
+            createPageRecord({
+              sysId: "page-002",
+              parentPageSysId: "page-001",
+              siblingOrder: 2,
+              draftTitle: "Child Draft",
+              draftSlug: "child",
+              draftSlugNormalized: "child",
+              publishedTitle: "Child",
+              publishedSlug: "child",
+              publishedSlugNormalized: "child",
+              publicationState: "published_with_unpublished_changes"
+            })
+          ]);
+        }
+        return refreshDeferred.promise;
+      }
+
+      return createPageListResult("live", [
+        createPageRecord({
+          draftTitle: "Overview",
+          publishedTitle: "Overview"
+        })
+      ]);
+    });
+    const savePageSettings = vi
+      .fn()
+      .mockResolvedValueOnce({
+        code: "conflict" as const,
+        currentChangeSetId: "change-set-001",
+        currentChangeSetRevision: 8,
+        errorMessage: "The active draft generation changed. Reload before saving again.",
+        state: "failed" as const
+      })
+      .mockResolvedValueOnce({
+        changeSetId: "change-set-001",
+        changeSetRevision: 9,
+        page: createPageRecord({
+          draftTitle: "Overview Refreshed",
+          publicationState: "published_with_unpublished_changes"
+        }),
+        state: "succeeded" as const
+      });
+    const createPage = vi.fn(async (): Promise<PageCreateResult> => ({
+      code: "failed",
+      errorMessage: "createPage should stay blocked during stale refresh",
+      state: "failed"
+    }));
+    const deletePage = vi.fn(async () => ({
+      code: "failed" as const,
+      errorMessage: "deletePage should stay blocked during stale refresh",
+      state: "failed" as const
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      createPage,
+      deletePage,
+      listPages,
+      savePageSettings
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview Draft" }));
+    const titleInput = screen.getByDisplayValue("Overview Draft");
+    fireEvent.change(titleInput, { target: { value: "Overview Pending Refresh" } });
+    fireEvent.blur(titleInput);
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
+    expect(savePageSettings).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 7 }),
+      workspaceLeaseToken: "workspace-lease-token"
+    }));
+    expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
+    expect(within(pageSettingsPanel).getByRole("button", { name: "Overview Pending Refresh" })).toBeInTheDocument();
+
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+    expect(savePageSettings).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Reloading the latest draft projection. Saving is temporarily unavailable.");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]);
+    expect(createPage).toHaveBeenCalledTimes(0);
+    expect(screen.queryByRole("textbox", { name: "New page title" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete page" }));
+    const deleteDialog = await screen.findByRole("dialog", { name: "Confirm deletion" });
+    fireEvent.click(within(deleteDialog).getByRole("button", { name: "Delete page" }));
+    expect(deletePage).toHaveBeenCalledTimes(0);
+    expect(await within(deleteDialog).findByRole("alert")).toHaveTextContent("Reloading the latest draft projection. Saving is temporarily unavailable.");
+
+    await act(async () => {
+      refreshDeferred.resolve(createPageListResult("edit", [
+        createPageRecord({
+          draftTitle: "Overview Refreshed",
+          publicationState: "published_with_unpublished_changes"
+        }),
+        createPageRecord({
+          sysId: "page-002",
+          parentPageSysId: "page-001",
+          siblingOrder: 2,
+          draftTitle: "Child Draft",
+          draftSlug: "child",
+          draftSlugNormalized: "child",
+          publishedTitle: "Child",
+          publishedSlug: "child",
+          publishedSlugNormalized: "child",
+          publicationState: "published_with_unpublished_changes"
+        })
+      ]));
+      await Promise.resolve();
+    });
+
+    expect(savePageSettings).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("heading", { name: "Overview Refreshed" })).toBeInTheDocument();
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
+
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(2));
+    expect(savePageSettings).toHaveBeenLastCalledWith(expect.objectContaining({
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 8 }),
+      workspaceLeaseToken: "workspace-lease-token"
+    }));
+  });
+
+  it("surfaces stale-refresh reload failure through the existing retry flow without replaying the rejected Page Settings save", async () => {
+    const refreshRetryDeferred = createDeferred<PageListResult>();
+    let editListCount = 0;
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }): Promise<PageListResult> => {
+      if (mode === "edit") {
+        editListCount += 1;
+        if (editListCount === 1) {
+          return createPageListResult("edit", [
+            createPageRecord({
+              draftTitle: "Overview Draft",
+              publicationState: "published_with_unpublished_changes"
+            })
+          ]);
+        }
+        if (editListCount === 2) {
+          throw new Error("Refresh failed.");
+        }
+        return refreshRetryDeferred.promise;
+      }
+
+      return createPageListResult("live", [
+        createPageRecord({
+          draftTitle: "Overview",
+          publishedTitle: "Overview"
+        })
+      ]);
+    });
+    const savePageSettings = vi
+      .fn()
+      .mockResolvedValueOnce({
+        code: "conflict" as const,
+        currentChangeSetId: "change-set-001",
+        currentChangeSetRevision: 8,
+        errorMessage: "The active draft generation changed. Reload before saving again.",
+        state: "failed" as const
+      })
+      .mockResolvedValueOnce({
+        changeSetId: "change-set-001",
+        changeSetRevision: 9,
+        page: createPageRecord({
+          draftTitle: "Overview After Retry",
+          publicationState: "published_with_unpublished_changes"
+        }),
+        state: "succeeded" as const
+      });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      listPages,
+      savePageSettings
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview Draft" }));
+    const titleInput = screen.getByDisplayValue("Overview Draft");
+    fireEvent.change(titleInput, { target: { value: "Overview Retry Pending" } });
+    fireEvent.blur(titleInput);
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("heading", { name: "Pages unavailable" })).toBeInTheDocument();
+
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+    expect(savePageSettings).toHaveBeenCalledTimes(1);
+    expect(listPages).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(listPages).toHaveBeenCalledTimes(3));
+
+    await act(async () => {
+      refreshRetryDeferred.resolve(createPageListResult("edit", [
+        createPageRecord({
+          draftTitle: "Overview After Retry",
+          publicationState: "published_with_unpublished_changes"
+        })
+      ]));
+      await Promise.resolve();
+    });
+
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(2));
+    expect(savePageSettings).toHaveBeenLastCalledWith(expect.objectContaining({
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 8 }),
+      workspaceLeaseToken: "workspace-lease-token"
+    }));
+  });
+
   it("captures Page Settings before forced Live and restores them only after deliberate Edit re-entry", async () => {
     const savePageSettings = vi
       .fn()

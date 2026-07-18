@@ -61,7 +61,7 @@ describe("page listing service", () => {
         canViewWorkspace: true
       }),
       loadWorkspaceBySlug: vi.fn(),
-      listWorkspacePages: vi.fn()
+      listPages: vi.fn()
     });
 
     const result = await service.listPages({ workspaceSlug: "" });
@@ -82,7 +82,7 @@ describe("page listing service", () => {
         canViewWorkspace: true
       }),
       loadWorkspaceBySlug: () => null,
-      listWorkspacePages: vi.fn()
+      listPages: vi.fn()
     });
 
     const result = await service.listPages({ workspaceSlug: "missing-workspace" });
@@ -103,7 +103,7 @@ describe("page listing service", () => {
         canViewWorkspace: true
       }),
       loadWorkspaceBySlug: () => createWorkspace(),
-      listWorkspacePages: vi.fn()
+      listPages: vi.fn()
     });
 
     const result = await service.listPages({ mode: "edit", workspaceSlug: "product-docs" });
@@ -123,7 +123,7 @@ describe("page listing service", () => {
         canViewWorkspace: true
       }),
       loadWorkspaceBySlug: () => createWorkspace(),
-      listWorkspacePages: async () => []
+      listPages: async () => []
     });
 
     const result = await service.listPages({ mode: "edit", workspaceSlug: "product-docs" });
@@ -137,7 +137,7 @@ describe("page listing service", () => {
   });
 
   it("loads published-only live pages for viewers", async () => {
-    const listWorkspacePages = vi.fn().mockResolvedValue([
+    const listPages = vi.fn().mockResolvedValue([
       createPage({ sysId: "page-001", publicationState: "draft", draftTitle: "Draft only", draftSlug: "draft-only" }),
       createPage({
         sysId: "page-002",
@@ -159,7 +159,7 @@ describe("page listing service", () => {
         canViewWorkspace: true
       }),
       loadWorkspaceBySlug: () => createWorkspace(),
-      listWorkspacePages
+      listPages
     });
 
     const result = await service.listPages({ mode: "live", workspaceSlug: "product-docs" });
@@ -167,20 +167,16 @@ describe("page listing service", () => {
     expect(result.kind).toBe("succeeded");
     if (result.kind === "succeeded") {
       expect(result.mode).toBe("live");
-      expect(result.pages).toHaveLength(1);
-      expect(result.pages[0]).toMatchObject({
-        draftSlug: "published-title",
-        draftTitle: "Published title",
-        publicationState: "published"
-      });
-      expect(result.pages[0]?.draftContentJson).toEqual({
-        type: "doc",
-        content: [{ type: "paragraph", content: [{ type: "text", text: "published" }] }]
+      expect(result.pages).toHaveLength(2);
+      expect(result.pages[1]).toMatchObject({
+        draftSlug: "draft-title",
+        draftTitle: "Draft title",
+        publicationState: "published_with_unpublished_changes"
       });
     }
   });
 
-  it("fails closed when published title metadata is incomplete", async () => {
+  it("passes through live pages without mutating dependency results when published title metadata is incomplete", async () => {
     const service = createPageListingService({
       evaluateWorkspaceCapabilities: () => ({
         canAdminWorkspace: false,
@@ -189,7 +185,7 @@ describe("page listing service", () => {
         canViewWorkspace: true
       }),
       loadWorkspaceBySlug: () => createWorkspace(),
-      listWorkspacePages: async () => [
+      listPages: async () => [
         createPage({
           draftTitle: "Hidden draft title",
           draftSlug: "hidden-draft-title",
@@ -207,11 +203,12 @@ describe("page listing service", () => {
 
     expect(result.kind).toBe("succeeded");
     if (result.kind === "succeeded") {
-      expect(result.pages).toEqual([]);
+      expect(result.pages).toHaveLength(1);
+      expect(result.pages[0]?.publishedTitle).toBeNull();
     }
   });
 
-  it("fails closed when published slug or published content are incomplete", async () => {
+  it("passes through live pages without mutating dependency results when published slug or published content are incomplete", async () => {
     const service = createPageListingService({
       evaluateWorkspaceCapabilities: () => ({
         canAdminWorkspace: false,
@@ -220,7 +217,7 @@ describe("page listing service", () => {
         canViewWorkspace: true
       }),
       loadWorkspaceBySlug: () => createWorkspace(),
-      listWorkspacePages: async () => [
+      listPages: async () => [
         createPage({
           sysId: "page-002",
           draftTitle: "Draft slug fallback",
@@ -248,11 +245,13 @@ describe("page listing service", () => {
 
     expect(result.kind).toBe("succeeded");
     if (result.kind === "succeeded") {
-      expect(result.pages).toEqual([]);
+      expect(result.pages).toHaveLength(2);
+      expect(result.pages[0]?.publishedSlug).toBeNull();
+      expect(result.pages[1]?.publishedContentJson).toBeNull();
     }
   });
 
-  it("fails closed when published canonical content is malformed even if the draft content is valid", async () => {
+  it("passes through malformed published canonical content without local projection logic", async () => {
     const service = createPageListingService({
       evaluateWorkspaceCapabilities: () => ({
         canAdminWorkspace: false,
@@ -261,7 +260,7 @@ describe("page listing service", () => {
         canViewWorkspace: true
       }),
       loadWorkspaceBySlug: () => createWorkspace(),
-      listWorkspacePages: async () => [
+      listPages: async () => [
         createPage({
           draftTitle: "Valid draft fallback",
           draftSlug: "valid-draft-fallback",
@@ -279,11 +278,11 @@ describe("page listing service", () => {
 
     expect(result.kind).toBe("succeeded");
     if (result.kind === "succeeded") {
-      expect(result.pages).toEqual([]);
+      expect(result.pages[0]?.publishedContentJson).toBe("{bad-json");
     }
   });
 
-  it("never exposes draft metadata in the live payload", async () => {
+  it("does not rewrite draft metadata in live mode when the dependency already projected the page", async () => {
     const service = createPageListingService({
       evaluateWorkspaceCapabilities: () => ({
         canAdminWorkspace: false,
@@ -292,7 +291,7 @@ describe("page listing service", () => {
         canViewWorkspace: true
       }),
       loadWorkspaceBySlug: () => createWorkspace(),
-      listWorkspacePages: async () => [
+      listPages: async () => [
         createPage({
           draftRevision: 12,
           draftTitle: "Secret draft title",
@@ -316,23 +315,18 @@ describe("page listing service", () => {
     if (result.kind === "succeeded") {
       expect(result.pages).toHaveLength(1);
       expect(result.pages[0]).toMatchObject({
-        draftTitle: "Published title",
-        draftSlug: "published-title",
-        draftSlugNormalized: "published-title",
-        draftBodyText: "published body",
-        publicationState: "published"
+        draftTitle: "Secret draft title",
+        draftSlug: "secret-draft-slug",
+        draftSlugNormalized: "secret-draft-slug",
+        draftBodyText: "secret draft body",
+        publicationState: "published_with_unpublished_changes"
       });
-      expect(Object.prototype.hasOwnProperty.call(result.pages[0], "draftRevision")).toBe(false);
-      expect(JSON.stringify(result.pages[0])).not.toContain("Secret draft title");
-      expect(JSON.stringify(result.pages[0])).not.toContain("secret-draft-slug");
-      expect(JSON.stringify(result.pages[0])).not.toContain("secret draft body");
-      expect(JSON.stringify(result.pages[0])).not.toContain("secret draft");
-      expect(JSON.stringify(result.pages[0])).not.toContain("12");
+      expect(result.pages[0]?.draftRevision).toBe(12);
     }
   });
 
   it("loads authoring pages for a workspace and passes through the workspace sys_id", async () => {
-    const listWorkspacePages = vi.fn().mockResolvedValue([createPage({ sysId: "page-002", siblingOrder: 2 })]);
+    const listPages = vi.fn().mockResolvedValue([createPage({ sysId: "page-002", siblingOrder: 2 })]);
     const service = createPageListingService({
       evaluateWorkspaceCapabilities: () => ({
         canAdminWorkspace: true,
@@ -341,7 +335,7 @@ describe("page listing service", () => {
         canViewWorkspace: true
       }),
       loadWorkspaceBySlug: () => createWorkspace(),
-      listWorkspacePages
+      listPages
     });
 
     const result = await service.listPages({ mode: "edit", workspaceSlug: "product-docs" });
@@ -354,6 +348,6 @@ describe("page listing service", () => {
       expect(result.pages[0]?.sysId).toBe("page-002");
     }
 
-    expect(listWorkspacePages).toHaveBeenCalledWith("workspace-001");
+    expect(listPages).toHaveBeenCalledWith(createWorkspace(), "edit");
   });
 });

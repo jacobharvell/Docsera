@@ -39,6 +39,7 @@ type WorkspaceShellProps = {
   onOutlineChange: (pageSysId: string, outline: WorkspacePageOutlineItem[]) => void;
   onReturnToMyWorkspaces: () => void;
   onReturnToLive: () => void;
+  onRetryWorkspace?: () => void;
   onRetryEditor: () => void;
   onSavePageDraft: (input: {
     draftContentJson: DocseraDocumentEnvelope;
@@ -150,6 +151,7 @@ export function WorkspaceShell({
   onOutlineChange,
   onReturnToMyWorkspaces,
   onReturnToLive,
+  onRetryWorkspace,
   onRetryEditor,
   onSavePageDraft,
   onStatusChange,
@@ -324,6 +326,7 @@ export function WorkspaceShell({
           onOutlineChange={onOutlineChange}
           onReturnToMyWorkspaces={onReturnToMyWorkspaces}
           onReturnToLive={onReturnToLive}
+          onRetryWorkspace={onRetryWorkspace}
           onRetryEditor={onRetryEditor}
           onSavePageDraft={onSavePageDraft}
           onStatusChange={onStatusChange}

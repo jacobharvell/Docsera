@@ -1015,6 +1015,104 @@ describe("App editor-host session boundary", () => {
     expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
   });
 
+  it("blocks repeat body persistence until a stale-generation refresh installs the refreshed workspace authority", async () => {
+    const refreshDeferred = createDeferred<PageListResult>();
+    let editListCount = 0;
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) => {
+      if (mode === "edit") {
+        editListCount += 1;
+        if (editListCount === 1) {
+          return createPageListResult("edit", [
+            createPageRecord({
+              draftTitle: "Overview Draft",
+              publicationState: "published_with_unpublished_changes"
+            })
+          ]);
+        }
+        return refreshDeferred.promise;
+      }
+
+      return createPageListResult("live", [
+        createPageRecord({
+          draftTitle: "Overview",
+          publishedTitle: "Overview"
+        })
+      ]);
+    });
+    const savePageBody = vi
+      .fn()
+      .mockResolvedValueOnce({
+        code: "conflict" as const,
+        currentChangeSetId: "change-set-001",
+        currentChangeSetRevision: 8,
+        errorMessage: "The active draft generation changed. Reload before saving again.",
+        state: "failed" as const
+      })
+      .mockResolvedValueOnce({
+        changeSetId: "change-set-001",
+        changeSetRevision: 9,
+        page: createPageRecord({
+          draftRevision: 1,
+          draftTitle: "Overview Refreshed",
+          publicationState: "published_with_unpublished_changes"
+        }),
+        state: "succeeded" as const
+      });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      listPages,
+      savePageBody
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await screen.findByRole("button", { name: "Register successful flush" });
+    await waitForHostControl();
+
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    await act(async () => {
+      await latestHostControl?.status?.flush?.();
+    });
+
+    await waitFor(() => expect(savePageBody).toHaveBeenCalledTimes(1));
+    expect(savePageBody.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 7 }),
+      workspaceLeaseToken: "workspace-lease-token"
+    }));
+    expect(listPages).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await latestHostControl?.status?.flush?.();
+    });
+
+    expect(savePageBody).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Status Changes not saved")).toBeInTheDocument();
+
+    await act(async () => {
+      refreshDeferred.resolve(createPageListResult("edit", [
+        createPageRecord({
+          draftTitle: "Overview Refreshed",
+          publicationState: "published_with_unpublished_changes"
+        })
+      ]));
+      await Promise.resolve();
+    });
+
+    expect(savePageBody).toHaveBeenCalledTimes(1);
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
+    expect(await screen.findByRole("heading", { name: "Overview Refreshed" })).toBeInTheDocument();
+
+    await act(async () => {
+      await latestHostControl?.status?.flush?.();
+    });
+
+    await waitFor(() => expect(savePageBody).toHaveBeenCalledTimes(2));
+    expect(savePageBody.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 8 }),
+      workspaceLeaseToken: "workspace-lease-token"
+    }));
+    expect(await screen.findByText("Status Saved")).toBeInTheDocument();
+  });
+
   it.each([
     {
       expectedAlert: "This workspace is currently being edited by Priya Writer.",

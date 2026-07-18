@@ -1,34 +1,15 @@
 import { evaluateCurrentUserWorkspaceCapabilities } from "../workspaces/serviceNowWorkspaceCapabilities.ts";
 import { type WorkspaceRecord } from "../workspaces/serverWorkspaceDomain.ts";
-import { listWorkspacePages, loadWorkspaceBySlug } from "./serviceNowPageQueries.ts";
+import { loadWorkspaceBySlug } from "./serviceNowPageQueries.ts";
 import type { PageRecord } from "./serverPageDomain.ts";
-import { parseServerDocument } from "./serverEditorDocument.ts";
+import { createServiceNowWorkspaceChangeSetPersistenceService } from "../workspaces/serviceNowWorkspaceChangeSetPersistence.ts";
 
 type PageListingInput = {
   mode?: "edit" | "live";
   workspaceSlug: string;
 };
 
-type ProjectedLivePageRecord = {
-  active: boolean;
-  draftBodyText: PageRecord["publishedBodyText"];
-  draftContentJson: PageRecord["publishedContentJson"];
-  draftSlug: string;
-  draftSlugNormalized: string;
-  draftTitle: string;
-  parentPageSysId: string | null;
-  publicationState: "published";
-  publishedBodyText: PageRecord["publishedBodyText"];
-  publishedContentJson: PageRecord["publishedContentJson"];
-  publishedSlug: string;
-  publishedSlugNormalized: string;
-  publishedTitle: string;
-  siblingOrder: number;
-  sysId?: string;
-  workspaceSysId: string;
-};
-
-type PageListingRecord = PageRecord | ProjectedLivePageRecord;
+type PageListingRecord = PageRecord;
 
 type Awaitable<T> = T | Promise<T>;
 
@@ -40,7 +21,7 @@ type PageListingDependencies = {
     canViewWorkspace: boolean;
   };
   loadWorkspaceBySlug: (workspaceSlug: string) => Awaitable<WorkspaceRecord | null>;
-  listWorkspacePages: (workspaceSysId: string) => Promise<PageRecord[]>;
+  listPages: (workspace: WorkspaceRecord, mode: "edit" | "live") => Awaitable<PageRecord[]>;
 };
 
 type PageListingOutcome =
@@ -66,45 +47,6 @@ function cleanText(value: unknown): string {
 
 function resolveListingMode(value: unknown): "edit" | "live" {
   return cleanText(value).toLowerCase() === "edit" ? "edit" : "live";
-}
-
-function projectPublishedPage(page: PageRecord): ProjectedLivePageRecord | null {
-  if (page.publicationState === "draft") {
-    return null;
-  }
-
-  const projectedTitle = cleanText(page.publishedTitle);
-  const projectedSlug = cleanText(page.publishedSlug);
-  const projectedSlugNormalized = cleanText(page.publishedSlugNormalized || projectedSlug).toLowerCase();
-
-  if (!projectedTitle || !projectedSlug || !projectedSlugNormalized || !page.publishedContentJson) {
-    return null;
-  }
-
-  try {
-    parseServerDocument(page.publishedContentJson);
-  } catch {
-    return null;
-  }
-
-  return {
-    active: page.active,
-    draftBodyText: page.publishedBodyText,
-    draftContentJson: page.publishedContentJson,
-    draftSlug: projectedSlug,
-    draftSlugNormalized: projectedSlugNormalized,
-    draftTitle: projectedTitle,
-    parentPageSysId: page.parentPageSysId,
-    publicationState: "published",
-    publishedBodyText: page.publishedBodyText,
-    publishedContentJson: page.publishedContentJson,
-    publishedSlug: projectedSlug,
-    publishedSlugNormalized: projectedSlugNormalized,
-    publishedTitle: projectedTitle,
-    siblingOrder: page.siblingOrder,
-    sysId: page.sysId,
-    workspaceSysId: page.workspaceSysId
-  };
 }
 
 export function createPageListingService(dependencies: PageListingDependencies) {
@@ -144,29 +86,28 @@ export function createPageListingService(dependencies: PageListingDependencies) 
         };
       }
 
-      const pages = await dependencies.listWorkspacePages(workspace.sysId);
-      const visiblePages: PageListingRecord[] =
-        mode === "edit"
-          ? pages
-          : pages
-              .map((page) => projectPublishedPage(page))
-              .filter((page): page is ProjectedLivePageRecord => page !== null);
-
       return {
         kind: "succeeded",
         mode,
         workspace,
-        pages: visiblePages
+        pages: await dependencies.listPages(workspace, mode)
       };
     }
   };
 }
 
 export function createServiceNowPageListingService() {
+  const changeSetPersistence = createServiceNowWorkspaceChangeSetPersistenceService();
   const service = createPageListingService({
     evaluateWorkspaceCapabilities: evaluateCurrentUserWorkspaceCapabilities,
     loadWorkspaceBySlug,
-    listWorkspacePages: (workspaceSysId: string) => listWorkspacePages(workspaceSysId)
+    listPages: async (workspace, mode) => {
+      const result = changeSetPersistence.listPages(workspace, mode);
+      if (result.kind !== "succeeded") {
+        throw new Error(result.errorMessage);
+      }
+      return result.pages;
+    }
   });
 
   return {

@@ -440,7 +440,9 @@ function normalizePageCreateSucceededResult(body: unknown): PageCreateSucceeded 
 
   return {
     state: "succeeded",
-    page: normalizePageRecord(result.page)
+    page: normalizePageRecord(result.page),
+    changeSetId: cleanText(result.changeSetId) || undefined,
+    changeSetRevision: readSafeInteger(result.changeSetRevision) ?? undefined
   };
 }
 
@@ -492,12 +494,41 @@ function isWorkspaceEditLeaseStateAllowed(action: "acquire" | "resume" | "renew"
   }
 }
 
+function resolveMutationAuthority(input: {
+  workspaceAuthority?: { changeSetId: string; changeSetRevision: number };
+  expectedChangeSetId?: string;
+  expectedChangeSetRevision?: number;
+  workspaceLeaseToken?: string;
+}) {
+  const authorityId = cleanText(input.workspaceAuthority?.changeSetId) || cleanText(input.expectedChangeSetId);
+  const authorityRevision =
+    readSafeInteger(input.workspaceAuthority?.changeSetRevision) ?? readSafeInteger(input.expectedChangeSetRevision);
+  if (cleanText(input.workspaceLeaseToken) && (!authorityId || authorityRevision === null)) {
+    throw new Error("A workspace mutation authority is required for persisted mutations.");
+  }
+  return authorityId && authorityRevision !== null
+    ? { expectedChangeSetId: authorityId, expectedChangeSetRevision: authorityRevision }
+    : null;
+}
+
 function normalizePageCreateFailedResult(body: unknown, fallback: string): PageCreateFailed {
   const error = unwrapServiceNowEnvelope(body);
-  const code = isPlainObject(error) && isPlainObject(error.error) ? cleanText(error.error.code) : "";
+  const errorObject = isPlainObject(error) && isPlainObject(error.error) ? error.error : null;
+  const code = cleanText(errorObject?.code);
   return {
     state: "failed",
-    code: code === "workspace_lease_lost" || code === "workspace_locked" ? "lock_lost" : code === "forbidden" ? "forbidden" : code === "conflict" ? "conflict" : code === "invalid" || code === "validation" ? "invalid" : undefined,
+    code:
+      code === "workspace_lease_lost" || code === "workspace_locked"
+        ? "lock_lost"
+        : code === "forbidden"
+          ? "forbidden"
+          : code === "conflict" || code === "stale_generation"
+            ? "conflict"
+            : code === "invalid" || code === "validation"
+              ? "invalid"
+              : undefined,
+    currentChangeSetId: cleanText(errorObject?.currentChangeSetId) || undefined,
+    currentChangeSetRevision: readSafeInteger(errorObject?.currentChangeSetRevision) ?? undefined,
     errorMessage: extractErrorMessage(body, fallback)
   };
 }
@@ -510,7 +541,9 @@ function normalizePageBodySaveSucceededResult(body: unknown): PageBodySaveSuccee
 
   return {
     state: "succeeded",
-    page: normalizePageRecord(result.page)
+    page: normalizePageRecord(result.page),
+    changeSetId: cleanText(result.changeSetId) || undefined,
+    changeSetRevision: readSafeInteger(result.changeSetRevision) ?? undefined
   };
 }
 
@@ -631,6 +664,8 @@ function normalizePageBodySaveFailedResult(
 
   return {
     code: normalizedCode,
+    currentChangeSetId: cleanText(errorObject?.currentChangeSetId) || undefined,
+    currentChangeSetRevision: readSafeInteger(errorObject?.currentChangeSetRevision) ?? undefined,
     currentRevision: Number.isSafeInteger(currentRevision) && currentRevision >= 0 ? currentRevision : undefined,
     retryable: normalizedCode === "transient" ? true : fallbackRetryable,
     state: "failed",
@@ -683,16 +718,30 @@ function normalizePageSettingsSaveSucceededResult(body: unknown): PageSettingsSa
 
   return {
     state: "succeeded",
-    page: normalizePageRecord(result.page)
+    page: normalizePageRecord(result.page),
+    changeSetId: cleanText(result.changeSetId) || undefined,
+    changeSetRevision: readSafeInteger(result.changeSetRevision) ?? undefined
   };
 }
 
 function normalizePageSettingsSaveFailedResult(body: unknown, fallback: string): PageSettingsSaveFailed {
   const error = unwrapServiceNowEnvelope(body);
-  const code = isPlainObject(error) && isPlainObject(error.error) ? cleanText(error.error.code) : "";
+  const errorObject = isPlainObject(error) && isPlainObject(error.error) ? error.error : null;
+  const code = cleanText(errorObject?.code);
   return {
     state: "failed",
-    code: code === "workspace_lease_lost" || code === "workspace_locked" ? "lock_lost" : code === "forbidden" ? "forbidden" : code === "conflict" ? "conflict" : code === "invalid" || code === "validation" ? "invalid" : undefined,
+    code:
+      code === "workspace_lease_lost" || code === "workspace_locked"
+        ? "lock_lost"
+        : code === "forbidden"
+          ? "forbidden"
+          : code === "conflict" || code === "stale_generation"
+            ? "conflict"
+            : code === "invalid" || code === "validation"
+              ? "invalid"
+              : undefined,
+    currentChangeSetId: cleanText(errorObject?.currentChangeSetId) || undefined,
+    currentChangeSetRevision: readSafeInteger(errorObject?.currentChangeSetRevision) ?? undefined,
     errorMessage: extractErrorMessage(body, fallback)
   };
 }
@@ -705,16 +754,30 @@ function normalizePageDeleteSucceededResult(body: unknown): PageDeleteSucceeded 
 
   return {
     state: "succeeded",
-    nextPageSysId: cleanText(result.nextPageSysId)
+    nextPageSysId: cleanText(result.nextPageSysId),
+    changeSetId: cleanText(result.changeSetId) || undefined,
+    changeSetRevision: readSafeInteger(result.changeSetRevision) ?? undefined
   };
 }
 
 function normalizePageDeleteFailedResult(body: unknown, fallback: string): PageDeleteFailed {
   const error = unwrapServiceNowEnvelope(body);
-  const code = isPlainObject(error) && isPlainObject(error.error) ? cleanText(error.error.code) : "";
+  const errorObject = isPlainObject(error) && isPlainObject(error.error) ? error.error : null;
+  const code = cleanText(errorObject?.code);
   return {
     state: "failed",
-    code: code === "workspace_lease_lost" || code === "workspace_locked" ? "lock_lost" : code === "forbidden" ? "forbidden" : code === "conflict" ? "conflict" : code === "invalid" || code === "validation" ? "invalid" : undefined,
+    code:
+      code === "workspace_lease_lost" || code === "workspace_locked"
+        ? "lock_lost"
+        : code === "forbidden"
+          ? "forbidden"
+          : code === "conflict" || code === "stale_generation"
+            ? "conflict"
+            : code === "invalid" || code === "validation"
+              ? "invalid"
+              : undefined,
+    currentChangeSetId: cleanText(errorObject?.currentChangeSetId) || undefined,
+    currentChangeSetRevision: readSafeInteger(errorObject?.currentChangeSetRevision) ?? undefined,
     errorMessage: extractErrorMessage(body, fallback)
   };
 }
@@ -801,10 +864,12 @@ async function resolveWorkspaceProvisioningStatus(path: string): Promise<Workspa
 }
 
 async function resolvePageCreateResult(path: string, input: PageCreateInput): Promise<PageCreateResult> {
+  const authority = resolveMutationAuthority(input);
   const payload = {
     title: cleanText(input.title),
     workspaceSlug: cleanText(input.workspaceSlug),
     ...(cleanText(input.workspaceLeaseToken) ? { workspaceLeaseToken: cleanText(input.workspaceLeaseToken) } : {}),
+    ...(authority ?? {}),
     ...(input.parentPageSysId ? { parentPageSysId: cleanText(input.parentPageSysId) } : {})
   };
 
@@ -828,12 +893,14 @@ async function resolvePageCreateResult(path: string, input: PageCreateInput): Pr
 }
 
 async function resolvePageBodySaveResult(path: string, input: PageBodySaveInput): Promise<PageBodySaveResult> {
+  const authority = resolveMutationAuthority(input);
   const payload = {
     workspaceSlug: cleanText(input.workspaceSlug),
     workspaceSysId: cleanText(input.workspaceSysId),
     pageSysId: cleanText(input.pageSysId),
     pageSlug: cleanText(input.pageSlug),
     ...(cleanText(input.workspaceLeaseToken) ? { workspaceLeaseToken: cleanText(input.workspaceLeaseToken) } : {}),
+    ...(authority ?? {}),
     draftBodyText: input.draftBodyText,
     draftContentJson: input.draftContentJson,
     expectedRevision: Number.isSafeInteger(input.expectedRevision) ? input.expectedRevision : undefined
@@ -1251,13 +1318,15 @@ async function resolvePageEditLockReleaseResult(
 }
 
 async function resolvePageSettingsSaveResult(path: string, input: PageSettingsSaveInput): Promise<PageSettingsSaveResult> {
+  const authority = resolveMutationAuthority(input);
   const payload = {
     workspaceSlug: cleanText(input.workspaceSlug),
     workspaceSysId: cleanText(input.workspaceSysId),
     pageSysId: cleanText(input.pageSysId),
     title: cleanText(input.title),
     slug: cleanText(input.slug),
-    ...(cleanText(input.workspaceLeaseToken) ? { workspaceLeaseToken: cleanText(input.workspaceLeaseToken) } : {})
+    ...(cleanText(input.workspaceLeaseToken) ? { workspaceLeaseToken: cleanText(input.workspaceLeaseToken) } : {}),
+    ...(authority ?? {})
   };
 
   try {
@@ -1273,7 +1342,7 @@ async function resolvePageSettingsSaveResult(path: string, input: PageSettingsSa
       return normalizePageSettingsSaveSucceededResult(response.body);
     }
 
-    if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 500) {
+    if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 409 || response.status === 500) {
       return normalizePageSettingsSaveFailedResult(response.body, "Something went wrong while saving page settings. Your changes were not saved. Please try again.");
     }
 
@@ -1290,11 +1359,13 @@ async function resolvePageSettingsSaveResult(path: string, input: PageSettingsSa
 }
 
 async function resolvePageDeleteResult(path: string, input: PageDeleteInput): Promise<PageDeleteResult> {
+  const authority = resolveMutationAuthority(input);
   const payload = {
     workspaceSlug: cleanText(input.workspaceSlug),
     workspaceSysId: cleanText(input.workspaceSysId),
     pageSysId: cleanText(input.pageSysId),
-    ...(cleanText(input.workspaceLeaseToken) ? { workspaceLeaseToken: cleanText(input.workspaceLeaseToken) } : {})
+    ...(cleanText(input.workspaceLeaseToken) ? { workspaceLeaseToken: cleanText(input.workspaceLeaseToken) } : {}),
+    ...(authority ?? {})
   };
 
   try {
