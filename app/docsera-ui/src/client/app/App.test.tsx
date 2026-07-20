@@ -12,6 +12,7 @@ import type {
   PageMoveResult,
   PageSettingsSaveResult,
   ServiceNowClient,
+  WorkspacePendingChangesResult,
   WorkspaceMode,
   WorkspacePageRecord,
   WorkspaceViewRecord
@@ -157,6 +158,17 @@ function createPageListResult(mode: WorkspaceMode, items: WorkspacePageRecord[])
     workspaceSlug: "product-docs",
     workspaceSysId: "workspace-001",
     totalCount: items.length
+  };
+}
+
+function createPendingChangesResult(rows: Extract<WorkspacePendingChangesResult, { state: "succeeded" }>["rows"]): WorkspacePendingChangesResult {
+  return {
+    affectedPageCount: rows.length,
+    changeSetId: "change-set-001",
+    changeSetRevision: 7,
+    rows,
+    state: "succeeded",
+    workspaceSysId: "workspace-001"
   };
 }
 
@@ -843,6 +855,9 @@ describe("App live and edit routing", () => {
     expect(within(breadcrumbs).getByRole("button", { name: "Overview" })).toBeInTheDocument();
     expect(breadcrumbs).toHaveTextContent("Overview");
     expect(breadcrumbs).toHaveTextContent("Child");
+    const main = screen.getByRole("main", { name: "Child Draft" });
+    expect(within(main).getByRole("heading", { level: 1, name: "Child Draft" })).toBeInTheDocument();
+    expect(within(main).queryByText("Overview")).not.toBeInTheDocument();
 
     fireEvent.click(within(breadcrumbs).getByRole("button", { name: "Overview" }));
 
@@ -1758,7 +1773,7 @@ describe("App live and edit routing", () => {
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: "draft" } });
-    fireEvent.click(screen.getByRole("button", { name: "Details Draft Unpublished" }));
+    fireEvent.click(screen.getByRole("button", { name: "Details Draft" }));
 
     await waitFor(() => {
       expectWorkspaceSearch({
@@ -1805,7 +1820,7 @@ describe("App live and edit routing", () => {
     renderApp("/?workspace=product-docs&mode=edit&page=published-overview", { listPages });
 
     expect(await screen.findByRole("heading", { name: "Published Overview" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Draft Only Draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Draft Only" }));
 
     expect(await screen.findByRole("heading", { name: "Draft Only" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Live" }));
@@ -1884,6 +1899,87 @@ describe("App live and edit routing", () => {
     expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
     expect(document.querySelector("[data-docsera-page-editor-host='true']")).not.toBeNull();
     expect(screen.queryByText(/currently being edited by another user/i)).toBeNull();
+  });
+
+  it("keeps Publish visually active while Page Settings save refreshes pending changes", async () => {
+    const pendingRow = {
+      attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+      category: "Modified" as const,
+      firstPendingSequence: 1,
+      lastChangedOn: "2026-07-18 00:00:00",
+      navigable: true,
+      pageSysId: "page-001",
+      title: "Overview"
+    };
+    const pendingRefresh = createDeferred<WorkspacePendingChangesResult>();
+    let pendingChangesResponse: Promise<WorkspacePendingChangesResult> = Promise.resolve(createPendingChangesResult([pendingRow]));
+    const getWorkspacePendingChanges = vi.fn(() => pendingChangesResponse);
+    const savePageSettings = vi
+      .fn()
+      .mockResolvedValueOnce({
+        changeSetId: "change-set-001",
+        changeSetRevision: 8,
+        page: createPageRecord({
+          draftRevision: 1,
+          draftTitle: "Overview Updated",
+          draftSlug: "overview-updated",
+          draftSlugNormalized: "overview-updated",
+          publicationState: "published_with_unpublished_changes"
+        }),
+        state: "succeeded" as const
+      })
+      .mockResolvedValueOnce({
+        changeSetId: "change-set-001",
+        changeSetRevision: 9,
+        page: createPageRecord({
+          draftRevision: 2,
+          draftTitle: "Overview Clean",
+          draftSlug: "overview-clean",
+          draftSlugNormalized: "overview-clean",
+          publicationState: "published_with_unpublished_changes"
+        }),
+        state: "succeeded" as const
+      });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      getWorkspacePendingChanges,
+      savePageSettings
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => expect(getWorkspacePendingChanges).toHaveBeenCalledTimes(1));
+    let publish = screen.getByRole("button", { name: "Open Changes Center" });
+    expect(publish).toBeEnabled();
+    expect(publish).toHaveClass("docsera-header__publish-button--active");
+
+    pendingChangesResponse = pendingRefresh.promise;
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
+    fireEvent.change(screen.getByDisplayValue("Overview"), { target: { value: "Overview Updated" } });
+    fireEvent.blur(screen.getByDisplayValue("Overview Updated"));
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getWorkspacePendingChanges.mock.calls.length).toBeGreaterThanOrEqual(2));
+    publish = screen.getByRole("button", { name: "Open Changes Center" });
+    expect(publish).toHaveClass("docsera-header__publish-button--active");
+
+    pendingRefresh.resolve(createPendingChangesResult([pendingRow]));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Open Changes Center" })).toBeEnabled());
+    publish = screen.getByRole("button", { name: "Open Changes Center" });
+    expect(publish).toHaveClass("docsera-header__publish-button--active");
+
+    pendingChangesResponse = Promise.resolve(createPendingChangesResult([]));
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Updated" }));
+    const updatedSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(updatedSettingsPanel).getByRole("button", { name: "Overview Updated" }));
+    fireEvent.change(screen.getByDisplayValue("Overview Updated"), { target: { value: "Overview Clean" } });
+    fireEvent.blur(screen.getByDisplayValue("Overview Clean"));
+    fireEvent.click(within(updatedSettingsPanel).getByRole("button", { name: "Close page settings" }));
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole("button", { name: "No pending changes to publish" })).toBeDisabled());
+    expect(screen.getByRole("button", { name: "No pending changes to publish" })).not.toHaveClass("docsera-header__publish-button--active");
   });
 
   it("blocks Page Settings, inline create, and delete persistence until stale refresh succeeds", async () => {
@@ -3076,8 +3172,8 @@ describe("App live and edit routing", () => {
     }));
     expect(await within(deleteDialog).findByRole("alert")).toHaveTextContent("Workspace editing is temporarily unavailable. Please try again.");
     expect(confirmDelete).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Overview Draft" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Child Draft Unpublished" })).toBeInTheDocument();
+    expect(treeRow("Overview Draft")).toBeInTheDocument();
+    expect(treeRow("Child Draft")).toBeInTheDocument();
     expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
   });
 

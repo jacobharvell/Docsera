@@ -195,10 +195,6 @@ function InlineCreateRow({
   onTitleChange: (value: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const rowStyle = {
-    "--docsera-page-tree-depth": String(depth)
-  } as CSSProperties;
-
   useEffect(() => {
     if (pending || !showInput) {
       return;
@@ -214,7 +210,7 @@ function InlineCreateRow({
   }, [focusToken, pending]);
 
   return (
-    <li className="docsera-page-tree__item docsera-page-tree__item--inline-create" style={rowStyle}>
+    <li className="docsera-page-tree__item docsera-page-tree__item--inline-create">
       {showInput ? (
         <div className="docsera-page-tree__row docsera-page-tree__row--selected docsera-page-tree__row--inline-create">
           <div className="docsera-page-tree__row-main">
@@ -299,8 +295,7 @@ function PageTreeNode({
   const actionCount = [showChildCreateButton, showSettingsButton].filter(Boolean).length;
   const canMovePage = Boolean(onMovePage && canManagePageSettings);
   const rowStyle = {
-    "--docsera-page-tree-action-count": String(actionCount),
-    "--docsera-page-tree-depth": String(depth)
+    "--docsera-page-tree-action-count": String(actionCount)
   } as CSSProperties;
 
   return (
@@ -353,7 +348,6 @@ function PageTreeNode({
             title={page.title}
           >
             <span className="docsera-page-tree__title">{page.title}</span>
-            {page.statusIndicator ? <span className="docsera-page-tree__status-indicator">{page.statusIndicator}</span> : null}
           </button>
         </div>
 

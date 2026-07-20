@@ -1467,7 +1467,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       pendingChangesRequestIdRef.current += 1;
       return;
     }
-    void refreshPendingChanges({ keepPrevious: false });
+    void refreshPendingChanges({ keepPrevious: true });
   }, [
     activeWorkspaceMode,
     route.mode,
@@ -4704,7 +4704,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
             <WorkspaceShell
               bodyNotice={visibleShellNotice ? { eyebrow: visibleShellNotice.eyebrow, kind: visibleShellNotice.kind, message: visibleShellNotice.message } : null}
               bodyState={workspaceMainPaneBodyState}
-              breadcrumbs={displayedSelectedPagePath}
               canCreatePage={canCreatePage}
               createPageDisabledReason={createPageDisabledReason}
               canEditPageBody={hasAuthoringCapability && !editAccessLost}

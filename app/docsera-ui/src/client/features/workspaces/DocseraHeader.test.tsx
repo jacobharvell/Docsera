@@ -92,6 +92,34 @@ describe("DocseraHeader Changes Center", () => {
     expect(screen.queryByRole("dialog", { name: "Changes Center" })).not.toBeInTheDocument();
   });
 
+  it("keeps active Publish presentation while workspace controls are temporarily locked", () => {
+    render(
+      <DocseraHeader
+        {...baseProps}
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          }
+        ])}
+        pendingChangesReadinessMessage="Current page is saving. Publish and discard actions stay disabled until local changes are saved."
+        pendingChangesRefreshing
+        workspaceControlsLocked
+      />
+    );
+
+    const publish = screen.getByRole("button", { name: "Open Changes Center" });
+    expect(publish).toBeDisabled();
+    expect(publish).toHaveClass("docsera-header__publish-button--active");
+    expect(publish).toHaveTextContent("Publish");
+    expect(publish.querySelector(".docsera-header__publish-chevron")).toBeInTheDocument();
+  });
+
   it("returns focus on Escape and exposes a retryable error state", () => {
     const onRetryPendingChanges = vi.fn();
     render(

@@ -14,7 +14,6 @@ type WorkspaceMainPaneProps = {
   bodyState: "loading" | "ready";
   editorInitialSavedEnvelope?: DocseraDocumentEnvelope;
   page: WorkspacePageView | null;
-  pagePath: WorkspacePageView[];
   workspaceMode: WorkspaceMode;
   canCreatePage: boolean;
   canEditPageBody: boolean;
@@ -116,7 +115,6 @@ export function WorkspaceMainPane({
   bodyState,
   editorInitialSavedEnvelope,
   page,
-  pagePath,
   workspaceMode,
   canCreatePage,
   canEditPageBody,
@@ -196,7 +194,6 @@ export function WorkspaceMainPane({
     );
   }
 
-  const introEyebrow = pagePath.length > 1 ? pagePath[0]?.title : "";
   const showBodyPending = bodyState === "loading";
   const showEditorRecovery =
     workspaceMode === "edit" &&
@@ -207,7 +204,6 @@ export function WorkspaceMainPane({
     <main className="docsera-main" aria-labelledby="docsera-page-title">
       <article className={`docsera-main__surface${workspaceMode === "edit" ? " docsera-main__surface--editor" : ""}`}>
         <div className="docsera-main__intro">
-          {introEyebrow ? <p className="docsera-main__eyebrow">{introEyebrow}</p> : null}
           <div className="docsera-main__page-header">
             <h1 id="docsera-page-title" className="docsera-main__title">
               {page.title}

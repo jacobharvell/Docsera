@@ -16,6 +16,7 @@ import type {
   PageSettingsSaveResult,
   ServiceNowClient,
   WorkspaceEditLeaseRenewResult,
+  WorkspacePendingChangesResult,
   WorkspaceMode,
   WorkspacePageRecord,
   WorkspaceViewRecord
@@ -438,6 +439,17 @@ function createPageListResult(mode: WorkspaceMode, items: WorkspacePageRecord[])
   };
 }
 
+function createPendingChangesResult(rows: Extract<WorkspacePendingChangesResult, { state: "succeeded" }>["rows"]): WorkspacePendingChangesResult {
+  return {
+    affectedPageCount: rows.length,
+    changeSetId: "change-set-001",
+    changeSetRevision: 7,
+    rows,
+    state: "succeeded",
+    workspaceSysId: "workspace-001"
+  };
+}
+
 function createClient(overrides: Partial<ServiceNowClient> = {}): ServiceNowClient {
   const workspace = createWorkspace();
   const editPages = [
@@ -683,6 +695,67 @@ describe("App editor-host session boundary", () => {
     expect(screen.queryByText("The active draft generation changed. Reload before saving again.")).toBeNull();
   });
 
+  it("keeps Publish visually active while body autosave and pending changes refresh run", async () => {
+    const pendingRow = {
+      attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+      category: "Modified" as const,
+      firstPendingSequence: 1,
+      lastChangedOn: "2026-07-18 00:00:00",
+      navigable: true,
+      pageSysId: "page-001",
+      title: "Overview Draft"
+    };
+    const saveDeferred = createDeferred<PageBodySaveResult>();
+    const pendingRefresh = createDeferred<WorkspacePendingChangesResult>();
+    let pendingChangesResponse: Promise<WorkspacePendingChangesResult> = Promise.resolve(createPendingChangesResult([pendingRow]));
+    const getWorkspacePendingChanges = vi.fn(() => pendingChangesResponse);
+    const savePageBody = vi.fn(() => saveDeferred.promise);
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      getWorkspacePendingChanges,
+      savePageBody
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await waitForHostControl();
+    await waitFor(() => expect(getWorkspacePendingChanges).toHaveBeenCalledTimes(1));
+    let publish = screen.getByRole("button", { name: "Open Changes Center" });
+    expect(publish).toBeEnabled();
+    expect(publish).toHaveClass("docsera-header__publish-button--active");
+
+    pendingChangesResponse = pendingRefresh.promise;
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Mark saving" }));
+    const flushPromise = latestHostControl?.status?.flush?.();
+    await waitFor(() => expect(savePageBody).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText(/Status Saving/)).toBeInTheDocument();
+    publish = screen.getByRole("button", { name: "Open Changes Center" });
+    expect(publish).toHaveClass("docsera-header__publish-button--active");
+    expect(publish).toHaveTextContent("Publish");
+
+    await act(async () => {
+      saveDeferred.resolve({
+        changeSetId: "change-set-001",
+        changeSetRevision: 8,
+        page: createPageRecord({ draftRevision: 1, publicationState: "published_with_unpublished_changes" }),
+        state: "succeeded"
+      });
+      await flushPromise;
+    });
+
+    await waitFor(() => expect(getWorkspacePendingChanges.mock.calls.length).toBeGreaterThanOrEqual(2));
+    publish = screen.getByRole("button", { name: "Open Changes Center" });
+    expect(publish).toHaveClass("docsera-header__publish-button--active");
+
+    await act(async () => {
+      pendingRefresh.resolve(createPendingChangesResult([pendingRow]));
+    });
+    await waitFor(() => expect(screen.getByText("Status Saved")).toBeInTheDocument());
+    publish = screen.getByRole("button", { name: "Open Changes Center" });
+    expect(publish).toBeEnabled();
+    expect(publish).toHaveClass("docsera-header__publish-button--active");
+  });
+
   it("retains the active editor generation across repeated rerenders of the same page", async () => {
     renderApp("/?workspace=product-docs&mode=edit&page=overview");
 
@@ -711,7 +784,7 @@ describe("App editor-host session boundary", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
     fireEvent.click(screen.getByRole("button", { name: "Register successful flush" }));
-    fireEvent.click(screen.getByRole("button", { name: "Child Draft Unpublished" }));
+    fireEvent.click(screen.getByRole("button", { name: "Child Draft" }));
 
     expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
@@ -795,7 +868,7 @@ describe("App editor-host session boundary", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
     fireEvent.click(screen.getByRole("button", { name: "Register successful flush" }));
-    fireEvent.click(screen.getByRole("button", { name: "Child Draft Unpublished" }));
+    fireEvent.click(screen.getByRole("button", { name: "Child Draft" }));
 
     expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
 
@@ -905,7 +978,7 @@ describe("App editor-host session boundary", () => {
     const priorSessionKey = latestHostControl?.sessionKey;
     fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
     fireEvent.click(screen.getByRole("button", { name: "Register successful flush" }));
-    fireEvent.click(screen.getByRole("button", { name: "Child Draft Unpublished" }));
+    fireEvent.click(screen.getByRole("button", { name: "Child Draft" }));
 
     expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
     expect(latestHostControl?.sessionKey).not.toBe(priorSessionKey);

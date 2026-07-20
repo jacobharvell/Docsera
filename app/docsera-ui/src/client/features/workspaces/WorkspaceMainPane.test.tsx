@@ -71,7 +71,6 @@ describe("WorkspaceMainPane", () => {
       <WorkspaceMainPane
         bodyState="ready"
         page={page}
-        pagePath={[]}
         workspaceMode="live"
         canCreatePage={false}
         canEditPageBody={false}
@@ -119,7 +118,6 @@ describe("WorkspaceMainPane", () => {
         <WorkspaceMainPane
           bodyState="ready"
           page={page}
-          pagePath={[]}
           workspaceMode="edit"
           canCreatePage={false}
           canEditPageBody={true}
@@ -194,7 +192,6 @@ describe("WorkspaceMainPane", () => {
     const baseProps = {
       bodyState: "ready" as const,
       page,
-      pagePath: [],
       canCreatePage: false,
       canEditPageBody: true,
       editAccessLost: false,
@@ -227,6 +224,57 @@ describe("WorkspaceMainPane", () => {
     rerender(<WorkspaceMainPane {...baseProps} workspaceMode="live" saveStatus="Saving…" />);
     expect(screen.queryByRole("status", { name: /saving/i })).not.toBeInTheDocument();
     expect(document.querySelector(".docsera-main__save-status")).toBeNull();
+
+    unmount();
+  });
+
+  it("renders a nested page title without an ancestor label above the title", () => {
+    const rootPage = createPageView();
+    rootPage.id = "page-root";
+    rootPage.sysId = "page-root";
+    rootPage.title = "Overview";
+    const nestedPage = createPageView();
+    nestedPage.id = "page-child";
+    nestedPage.sysId = "page-child";
+    nestedPage.parentPageSysId = "page-root";
+    nestedPage.title = "Install Guide";
+
+    const { unmount } = render(
+      <WorkspaceMainPane
+        bodyState="ready"
+        page={nestedPage}
+        workspaceMode="live"
+        canCreatePage={false}
+        canEditPageBody={false}
+        editAccessLost={false}
+        stateCopy=""
+        stateTitle=""
+        stateType="ready"
+        showPendingState={false}
+        onReturnToMyWorkspaces={vi.fn()}
+        onReturnToLive={vi.fn()}
+        onRetryEditor={vi.fn()}
+        onEditorReadyStateChange={vi.fn()}
+        onOutlineChange={vi.fn()}
+        onSavePageDraft={vi.fn(async () => ({
+          state: "succeeded" as const,
+          page: nestedPage.page
+        }))}
+        onStatusChange={vi.fn()}
+        onShowCreatePage={vi.fn()}
+        onAccessLost={vi.fn()}
+        sessionKey="session-001"
+        theme="light"
+        editorFailure={null}
+        onEditorFailureChange={vi.fn()}
+      />
+    );
+
+    const main = screen.getByRole("main", { name: "Install Guide" });
+    const pageHeader = document.querySelector(".docsera-main__page-header");
+    expect(within(pageHeader as HTMLElement).getByRole("heading", { level: 1, name: "Install Guide" })).toBeInTheDocument();
+    expect(within(main).queryByText("Overview")).not.toBeInTheDocument();
+    expect(document.querySelector(".docsera-main__intro > .docsera-main__eyebrow")).toBeNull();
 
     unmount();
   });

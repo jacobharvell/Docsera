@@ -15,7 +15,6 @@ type WorkspaceShellProps = {
     message: string;
   } | null;
   bodyState: "loading" | "ready";
-  breadcrumbs: WorkspacePageView[];
   canCreatePage: boolean;
   createPageDisabledReason: string;
   canEditPageBody: boolean;
@@ -130,7 +129,6 @@ function readStoredWorkspaceTocCollapsed(workspaceSlug: string): boolean {
 export function WorkspaceShell({
   bodyNotice,
   bodyState,
-  breadcrumbs,
   canCreatePage,
   createPageDisabledReason,
   canEditPageBody,
@@ -339,7 +337,6 @@ export function WorkspaceShell({
           saveStatus={saveStatus}
           onShowCreatePage={onShowCreatePage}
           page={selectedPageViewForShell}
-          pagePath={breadcrumbs}
           stateCopy={shellCopy}
           stateTitle={shellTitle}
           stateType={shellStatus}

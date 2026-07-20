@@ -68,6 +68,16 @@ function renderTree(pages: WorkspacePageView[], overrides: Partial<Parameters<ty
   );
 }
 
+describe("PageTree presentation", () => {
+  it("renders status-bearing pages with title-only row text and accessible names", () => {
+    renderTree([page({ id: "draft-page", title: "Draft Only", statusIndicator: "Draft" })]);
+
+    expect(screen.getByRole("button", { name: "Draft Only" })).toBeInTheDocument();
+    expect(screen.queryByText("Draft")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Draft Only Draft" })).not.toBeInTheDocument();
+  });
+});
+
 function row(title: string): HTMLElement {
   const button = screen.getByRole("button", { name: title });
   const element = button.closest(".docsera-page-tree__row");

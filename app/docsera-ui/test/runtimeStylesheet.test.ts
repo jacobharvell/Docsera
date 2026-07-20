@@ -43,6 +43,7 @@ test("centers workspace mode control and moves save status into the page title r
 
   expect(css).toMatch(/\.docsera-header__action-slot--mode\s*{[^}]*position:\s*absolute;[^}]*left:\s*50%;[^}]*transform:\s*translate\(-50%, -50%\);/s);
   expect(css).toMatch(/\.docsera-main__save-status\s*{[^}]*white-space:\s*nowrap;/s);
+  expect(css).toMatch(/\.docsera-main__page-header \.docsera-main__title\s*{[^}]*font-size:\s*clamp\(2\.1rem, 3vw, 2\.5rem\);[^}]*line-height:\s*1\.1;/s);
   expect(css).toContain(".docsera-header__publish-button");
   expect(css).toContain(".docsera-changes-center__list");
 });
