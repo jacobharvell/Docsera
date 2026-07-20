@@ -33,6 +33,7 @@ type MockHostProps = {
     draftContentJson: DocseraDocumentEnvelope;
     expectedRevision: number;
     pageSysId: string;
+    readLatestDraftContentJson?: () => DocseraDocumentEnvelope | null;
   }) => Promise<PageBodySaveResult>;
   onStatusChange: (state: {
     flush?: () => Promise<boolean>;
@@ -92,6 +93,8 @@ afterEach(() => {
   latestHostControl = null;
   mountSequence = 0;
   window.localStorage.clear();
+  window.sessionStorage.clear();
+  window.name = "";
   vi.useRealTimers();
 });
 
@@ -235,7 +238,8 @@ vi.mock("../editor/PageEditorHost", () => {
         const result = await propsRef.current.onSaveDraft({
           draftContentJson: createEnvelopeForMockText(textRef.current),
           expectedRevision: revisionRef.current,
-          pageSysId: propsRef.current.pageSysId
+          pageSysId: propsRef.current.pageSysId,
+          readLatestDraftContentJson: () => createEnvelopeForMockText(textRef.current)
         });
         if (result.state !== "succeeded") {
           setLastFailure(true);
@@ -622,6 +626,63 @@ async function waitForHostControl() {
 }
 
 describe("App editor-host session boundary", () => {
+  it("serializes pending body autosave before child creation and advances mutation authority", async () => {
+    const saveDeferred = createDeferred<PageBodySaveResult>();
+    const createdChild = createPageRecord({
+      sysId: "page-created-child",
+      draftTitle: "Queued Child",
+      draftSlug: "queued-child",
+      draftSlugNormalized: "queued-child",
+      parentPageSysId: "page-001",
+      siblingOrder: 4,
+      publicationState: "draft"
+    });
+    const savePageBody = vi.fn(() => saveDeferred.promise);
+    const createPage = vi.fn(async (): Promise<PageCreateResult> => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 9,
+      page: createdChild,
+      state: "succeeded"
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      createPage,
+      savePageBody
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await waitForHostControl();
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    const flushPromise = latestHostControl?.status?.flush?.();
+    await waitFor(() => expect(savePageBody).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Add child page to Overview Draft" }));
+    const titleInput = await screen.findByRole("textbox", { name: "New page title" });
+    fireEvent.change(titleInput, { target: { value: "Queued Child" } });
+    fireEvent.keyDown(titleInput, { key: "Enter" });
+
+    expect(createPage).not.toHaveBeenCalled();
+    await act(async () => {
+      saveDeferred.resolve({
+        changeSetId: "change-set-001",
+        changeSetRevision: 8,
+        page: createPageRecord({ draftRevision: 1 }),
+        state: "succeeded"
+      });
+      await flushPromise;
+    });
+
+    await waitFor(() => expect(createPage).toHaveBeenCalledTimes(1));
+    expect(savePageBody).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 7 })
+    }));
+    expect(createPage).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Queued Child",
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 8 })
+    }));
+    expect(screen.queryByText("The active draft generation changed. Reload before saving again.")).toBeNull();
+  });
+
   it("retains the active editor generation across repeated rerenders of the same page", async () => {
     renderApp("/?workspace=product-docs&mode=edit&page=overview");
 
@@ -1069,9 +1130,7 @@ describe("App editor-host session boundary", () => {
     await waitForHostControl();
 
     fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
-    await act(async () => {
-      await latestHostControl?.status?.flush?.();
-    });
+    const staleFlushPromise = latestHostControl?.status?.flush?.();
 
     await waitFor(() => expect(savePageBody).toHaveBeenCalledTimes(1));
     expect(savePageBody.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
@@ -1081,11 +1140,11 @@ describe("App editor-host session boundary", () => {
     expect(listPages).toHaveBeenCalledTimes(2);
 
     await act(async () => {
-      await latestHostControl?.status?.flush?.();
+      void latestHostControl?.status?.flush?.();
+      await Promise.resolve();
     });
 
     expect(savePageBody).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText("Status Changes not saved")).toBeInTheDocument();
 
     await act(async () => {
       refreshDeferred.resolve(createPageListResult("edit", [
@@ -1094,10 +1153,12 @@ describe("App editor-host session boundary", () => {
           publicationState: "published_with_unpublished_changes"
         })
       ]));
+      await staleFlushPromise;
       await Promise.resolve();
     });
 
     expect(savePageBody).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Status Changes not saved")).toBeInTheDocument();
     expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
     expect(await screen.findByRole("heading", { name: "Overview Refreshed" })).toBeInTheDocument();
 

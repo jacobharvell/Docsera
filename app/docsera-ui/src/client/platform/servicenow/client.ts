@@ -31,6 +31,8 @@ import type {
   WorkspaceEditLeaseReleaseResult,
   WorkspaceEditLeaseRenewResult,
   WorkspaceEditLeaseStatusResult,
+  WorkspacePendingChangeCategory,
+  WorkspacePendingChangesResult,
   PageDeleteFailed,
   PageDeleteInput,
   PageDeleteResult,
@@ -57,6 +59,7 @@ import type {
   WorkspaceMode,
   WorkspaceViewRecord
 } from "../../shared/types/docsera";
+import { fingerprintDiagnosticSecret, recordDocseraDiagnosticEvent } from "../../diagnostics";
 import { normalizeNumericSiblingOrder } from "../../../shared/pages/siblingOrder";
 
 type TokenBearingWindow = Window & {
@@ -183,6 +186,11 @@ function resolvePagePublishPath(pageCollectionPath: string): string {
 function resolveWorkspaceEditLeasePath(pageCollectionPath: string, action: "acquire" | "resume" | "renew" | "release" | "status"): string {
   const normalizedPath = cleanText(pageCollectionPath).replace(/\/pages$/i, "").replace(/\/+$/g, "");
   return `${normalizedPath}/workspaces/edit-lease/${action}`;
+}
+
+function resolveWorkspacePendingChangesPath(pageCollectionPath: string): string {
+  const normalizedPath = cleanText(pageCollectionPath).replace(/\/pages$/i, "").replace(/\/+$/g, "");
+  return `${normalizedPath}/workspaces/pending-changes`;
 }
 
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<JsonResponse<T>> {
@@ -488,6 +496,57 @@ function normalizeWorkspaceLeaseFailedResult(candidate: unknown): WorkspaceEditL
     errorMessage: cleanText(result.errorMessage) || cleanText(result.message) || nestedErrorMessage || "Workspace editing is unavailable.",
     failure: "terminal",
     retryable: false
+  };
+}
+
+function normalizePendingChangeCategory(value: unknown): WorkspacePendingChangeCategory | null {
+  const category = cleanText(value);
+  return category === "Added" || category === "Modified" || category === "Moved" || category === "Modified · Moved" || category === "Removed"
+    ? category
+    : null;
+}
+
+function normalizeWorkspacePendingChangesSucceededResult(body: unknown): WorkspacePendingChangesResult {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || !Array.isArray(result.rows)) {
+    throw new Error("Pending changes payload was invalid.");
+  }
+  const rows = result.rows.map((candidate) => {
+    if (!isPlainObject(candidate)) {
+      throw new Error("Pending changes row was invalid.");
+    }
+    const category = normalizePendingChangeCategory(candidate.category);
+    const pageSysId = cleanText(candidate.pageSysId);
+    if (!category || !pageSysId) {
+      throw new Error("Pending changes row was invalid.");
+    }
+    const attribution = isPlainObject(candidate.attribution) ? candidate.attribution : {};
+    return {
+      attribution: {
+        accessibleLabel: cleanText(attribution.accessibleLabel) || "Last changed by Unknown user",
+        displayName: cleanText(attribution.displayName) || "Unknown user",
+        fullDisplayName: cleanText(attribution.fullDisplayName) || cleanText(attribution.displayName) || "Unknown user"
+      },
+      category,
+      firstPendingSequence: readSafeInteger(candidate.firstPendingSequence) ?? 0,
+      lastChangedOn: cleanText(candidate.lastChangedOn),
+      navigable: Boolean(candidate.navigable) && category !== "Removed",
+      pageSysId,
+      title: cleanText(candidate.title) || "Untitled page"
+    };
+  });
+  const changeSetId = cleanText(result.changeSetId);
+  const changeSetRevision = readSafeInteger(result.changeSetRevision);
+  if (!changeSetId || changeSetRevision === null) {
+    throw new Error("Pending changes generation pair was invalid.");
+  }
+  return {
+    affectedPageCount: readSafeInteger(result.affectedPageCount) ?? rows.length,
+    changeSetId,
+    changeSetRevision,
+    rows,
+    state: "succeeded",
+    workspaceSysId: cleanText(result.workspaceSysId)
   };
 }
 
@@ -1478,6 +1537,39 @@ async function resolveWorkspaceEditLeaseResult(
   input: WorkspaceEditLeaseReferenceInput,
   action: "acquire" | "resume" | "renew" | "release" | "status"
 ): Promise<WorkspaceEditLeaseAcquireResult | WorkspaceEditLeaseRenewResult | WorkspaceEditLeaseReleaseResult | WorkspaceEditLeaseStatusResult> {
+  const correlationId = createClientCorrelationId();
+  const startedAt = new Date().toISOString();
+  recordDocseraDiagnosticEvent("lease.network.start", {
+    action,
+    correlationId,
+    startedAt,
+    tokenFingerprint: fingerprintDiagnosticSecret(input.leaseToken),
+    tokenPresent: Boolean(cleanText(input.leaseToken)),
+    workspaceSlug: cleanText(input.workspaceSlug),
+    workspaceSysId: cleanText(input.workspaceSysId)
+  });
+  const finish = (
+    responseStatus: number | null,
+    result: WorkspaceEditLeaseAcquireResult | WorkspaceEditLeaseRenewResult | WorkspaceEditLeaseReleaseResult | WorkspaceEditLeaseStatusResult,
+    accepted = true
+  ) => {
+    recordDocseraDiagnosticEvent("lease.network.finish", {
+      accepted,
+      action,
+      completedAt: new Date().toISOString(),
+      correlationId,
+      failure: result.state === "failed" ? result.failure : "",
+      httpStatus: responseStatus,
+      normalizedResultState: result.state,
+      sameUserDifferentSession: result.state === "locked" || result.state === "lost" ? result.sameUserDifferentSession : false,
+      startedAt,
+      tokenFingerprint: fingerprintDiagnosticSecret(input.leaseToken),
+      tokenPresent: Boolean(cleanText(input.leaseToken)),
+      workspaceSlug: cleanText(input.workspaceSlug),
+      workspaceSysId: cleanText(input.workspaceSysId)
+    });
+    return result;
+  };
   try {
     const response = await requestJson<unknown>(path, { method: "POST", body: JSON.stringify({ workspaceSlug: cleanText(input.workspaceSlug), workspaceSysId: cleanText(input.workspaceSysId), ...(cleanText(input.leaseToken) ? { leaseToken: cleanText(input.leaseToken) } : {}) }), headers: { "Content-Type": "application/json" }, keepalive: action === "release" });
     const result = unwrapServiceNowEnvelope(response.body);
@@ -1485,46 +1577,84 @@ async function resolveWorkspaceEditLeaseResult(
     const resultState = isPlainObject(result) ? cleanText(result.state) : "";
     if (response.status === 200 && resultState) {
       if (!isWorkspaceEditLeaseStateAllowed(action, resultState)) {
-        return normalizeWorkspaceLeaseFailedResult(result);
+        return finish(response.status, normalizeWorkspaceLeaseFailedResult(result));
       }
       if (resultState === "held") {
-        return normalizeWorkspaceLeaseHeldResult(response.body, action === "status" ? "status" : action === "acquire" || action === "resume" || action === "renew" ? action : "renew");
+        return finish(response.status, normalizeWorkspaceLeaseHeldResult(response.body, action === "status" ? "status" : action === "acquire" || action === "resume" || action === "renew" ? action : "renew"));
       }
       if (resultState === "locked") {
-        return normalizeWorkspaceLeaseLockedResult(result);
+        return finish(response.status, normalizeWorkspaceLeaseLockedResult(result));
       }
       if (resultState === "lost") {
-        return normalizeWorkspaceLeaseLostResult(result);
+        return finish(response.status, normalizeWorkspaceLeaseLostResult(result));
       }
-      if (resultState === "released") return { state: "released" };
-      if (resultState === "unlocked") return { state: "unlocked" };
-      if (resultState === "failed") return normalizeWorkspaceLeaseFailedResult(result);
-      return normalizeWorkspaceLeaseFailedResult(result);
+      if (resultState === "released") return finish(response.status, { state: "released" });
+      if (resultState === "unlocked") return finish(response.status, { state: "unlocked" });
+      if (resultState === "failed") return finish(response.status, normalizeWorkspaceLeaseFailedResult(result));
+      return finish(response.status, normalizeWorkspaceLeaseFailedResult(result));
     }
-    if (response.status === 409 && error && cleanText(error.code) === "workspace_locked") return { state: "locked", holderDisplayName: cleanText(error.holderDisplayName) || null, sameUserDifferentSession: Boolean(error.sameUserDifferentSession) } satisfies WorkspaceEditLeaseLocked;
+    if (response.status === 409 && error && cleanText(error.code) === "workspace_locked") return finish(response.status, { state: "locked", holderDisplayName: cleanText(error.holderDisplayName) || null, sameUserDifferentSession: Boolean(error.sameUserDifferentSession) } satisfies WorkspaceEditLeaseLocked);
     if (response.status === 409 && error && cleanText(error.code) === "workspace_lease_lost") {
-      return {
+      return finish(response.status, {
         state: "lost",
         errorMessage: cleanText(error.message) || "This workspace edit session ended and unsaved changes were not saved.",
         holderDisplayName: cleanText(error.holderDisplayName) || null,
         sameUserDifferentSession: Boolean(error.sameUserDifferentSession)
-      } satisfies WorkspaceEditLeaseLost;
+      } satisfies WorkspaceEditLeaseLost);
     }
     if (response.status === 409) {
-      return {
+      return finish(response.status, {
         state: "failed",
         errorMessage: cleanText(error?.message) || "Workspace editing is unavailable.",
         failure: "terminal",
         retryable: false
-      } satisfies WorkspaceEditLeaseFailed;
+      } satisfies WorkspaceEditLeaseFailed);
     }
     const failure = response.status === 403 ? "forbidden" : response.status >= 500 ? "transient" : "terminal";
     const fallback = failure === "transient"
       ? "Workspace editing is temporarily unavailable. Please try again."
       : "Workspace editing is unavailable.";
-    return { state: "failed", errorMessage: cleanText(error?.message) || fallback, failure, retryable: failure === "transient" } satisfies WorkspaceEditLeaseFailed;
+    return finish(response.status, { state: "failed", errorMessage: cleanText(error?.message) || fallback, failure, retryable: failure === "transient" } satisfies WorkspaceEditLeaseFailed);
   } catch {
-    return { state: "failed", errorMessage: "Workspace editing is temporarily unavailable. Please try again.", failure: "transient", retryable: true } satisfies WorkspaceEditLeaseFailed;
+    return finish(null, { state: "failed", errorMessage: "Workspace editing is temporarily unavailable. Please try again.", failure: "transient", retryable: true } satisfies WorkspaceEditLeaseFailed);
+  }
+}
+
+function createClientCorrelationId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+async function resolveWorkspacePendingChangesResult(path: string, input: WorkspaceEditLeaseReferenceInput): Promise<WorkspacePendingChangesResult> {
+  try {
+    const response = await requestJson<unknown>(path, {
+      method: "POST",
+      body: JSON.stringify({
+        workspaceSlug: cleanText(input.workspaceSlug),
+        workspaceSysId: cleanText(input.workspaceSysId),
+        leaseToken: cleanText(input.leaseToken),
+        workspaceLeaseToken: cleanText(input.leaseToken)
+      }),
+      headers: { "Content-Type": "application/json" }
+    });
+    if (response.status === 200) {
+      return normalizeWorkspacePendingChangesSucceededResult(response.body);
+    }
+    const error = unwrapServiceNowEnvelope(response.body);
+    const errorObject = isPlainObject(error) && isPlainObject(error.error) ? error.error : {};
+    const code = cleanText(errorObject.code);
+    return {
+      code: response.status === 403 ? "forbidden" : code === "workspace_lease_lost" || response.status === 409 ? "lock_lost" : response.status === 404 ? "not_found" : "transient",
+      errorMessage: extractErrorMessage(response.body, "Unable to load pending changes. Please try again."),
+      retryable: response.status >= 500,
+      state: "failed"
+    };
+  } catch {
+    return {
+      code: "transient",
+      errorMessage: "Unable to load pending changes. Please try again.",
+      retryable: true,
+      state: "failed"
+    };
   }
 }
 
@@ -1543,6 +1673,7 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
   const workspaceEditLeaseRenewPath = resolveWorkspaceEditLeasePath(pageCollectionPath, "renew");
   const workspaceEditLeaseReleasePath = resolveWorkspaceEditLeasePath(pageCollectionPath, "release");
   const workspaceEditLeaseStatusPath = resolveWorkspaceEditLeasePath(pageCollectionPath, "status");
+  const workspacePendingChangesPath = resolveWorkspacePendingChangesPath(pageCollectionPath);
   const provisioningStatusPath = resolvePath(
     runtime.config.workspaceProvisioningStatusPath,
     "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status"
@@ -1627,6 +1758,7 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
     async renewWorkspaceEditLease(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspaceEditLeaseRenewResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseRenewPath, input, "renew") as Promise<WorkspaceEditLeaseRenewResult>; },
     async releaseWorkspaceEditLease(input: WorkspaceEditLeaseReferenceInput & { keepalive?: boolean }): Promise<WorkspaceEditLeaseReleaseResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseReleasePath, input, "release") as Promise<WorkspaceEditLeaseReleaseResult>; },
     async getWorkspaceEditLeaseStatus(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspaceEditLeaseStatusResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseStatusPath, input, "status") as Promise<WorkspaceEditLeaseStatusResult>; },
+    async getWorkspacePendingChanges(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspacePendingChangesResult> { return resolveWorkspacePendingChangesResult(workspacePendingChangesPath, input); },
 
     async getPageEditLockStatus(input: PageEditLockReferenceInput): Promise<PageEditLockStatusResult> {
       return resolvePageEditLockStatusResult(pageEditLockStatusPath, input);

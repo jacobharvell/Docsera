@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   lease: {
     readWorkspaceMutationAuthority: vi.fn(),
     sendWorkspaceLeaseMutationFailure: vi.fn(),
+    validateWorkspaceEditLeaseForRead: vi.fn(),
     verifyWorkspaceEditLease: vi.fn()
   },
   persistence: {
@@ -11,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     deletePage: vi.fn(),
     listPages: vi.fn(),
     movePage: vi.fn(),
+    pendingChanges: vi.fn(),
     savePageBody: vi.fn(),
     savePageSettings: vi.fn()
   },
@@ -63,6 +65,7 @@ vi.mock("@servicenow/glide", () => ({
 
 import { process as processCreatePage } from "./docsera-runtime-create-page.ts";
 import { process as processMovePage } from "./docsera-runtime-page-move.ts";
+import { process as processPendingChanges } from "./docsera-runtime-workspace-pending-changes.ts";
 import { process as processSavePageBody } from "./docsera-runtime-page-save.ts";
 
 function responseRecorder() {
@@ -82,11 +85,13 @@ describe("docsera runtime mutation routes", () => {
   beforeEach(() => {
     mocks.lease.readWorkspaceMutationAuthority.mockReset();
     mocks.lease.sendWorkspaceLeaseMutationFailure.mockReset();
+    mocks.lease.validateWorkspaceEditLeaseForRead.mockReset();
     mocks.lease.verifyWorkspaceEditLease.mockReset();
     mocks.persistence.createPage.mockReset();
     mocks.persistence.deletePage.mockReset();
     mocks.persistence.listPages.mockReset();
     mocks.persistence.movePage.mockReset();
+    mocks.persistence.pendingChanges.mockReset();
     mocks.persistence.savePageBody.mockReset();
     mocks.persistence.savePageSettings.mockReset();
     mocks.glide.gs.error.mockReset();
@@ -312,6 +317,69 @@ describe("docsera runtime mutation routes", () => {
         code: "workspace_lease_lost",
         retryable: false,
         message: "This workspace edit session was replaced by another editor."
+      }
+    });
+  });
+
+  it("returns pending changes through a held workspace edit lease without mutation authority", async () => {
+    mocks.lease.validateWorkspaceEditLeaseForRead.mockResolvedValue({
+      kind: "held",
+      leaseToken: "workspace-lease-token",
+      heartbeatIntervalMs: 60_000,
+      staleAfterMs: 300_000,
+      changeSetId: "change-set-002",
+      changeSetRevision: 3,
+      workspaceStateRevision: 7
+    });
+    mocks.persistence.pendingChanges.mockReturnValue({
+      kind: "succeeded",
+      pending: {
+        affectedPageCount: 1,
+        changeSetId: "change-set-002",
+        changeSetRevision: 3,
+        rows: [{
+          attribution: {
+            accessibleLabel: "Last changed by Priya Writer",
+            displayName: "P. Writer",
+            fullDisplayName: "Priya Writer"
+          },
+          category: "Modified",
+          firstPendingSequence: 1,
+          lastChangedOn: "2026-07-18 00:00:00",
+          navigable: true,
+          pageSysId: "page-001",
+          title: "Overview"
+        }],
+        workspaceSysId: "workspace-001"
+      }
+    });
+    const response = responseRecorder();
+
+    await processPendingChanges({
+      body: {
+        workspaceSysId: "workspace-001",
+        workspaceSlug: "product-docs",
+        workspaceLeaseToken: "workspace-lease-token"
+      }
+    }, response);
+
+    expect(mocks.lease.readWorkspaceMutationAuthority).not.toHaveBeenCalled();
+    expect(mocks.lease.verifyWorkspaceEditLease).not.toHaveBeenCalled();
+    expect(mocks.lease.validateWorkspaceEditLeaseForRead).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceLeaseToken: "workspace-lease-token",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+    expect(mocks.persistence.pendingChanges).toHaveBeenCalledWith(expect.objectContaining({ sysId: "workspace-001" }));
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      result: {
+        mode: "servicenow",
+        affectedPageCount: 1,
+        changeSetId: "change-set-002",
+        changeSetRevision: 3,
+        rows: [expect.objectContaining({ category: "Modified", pageSysId: "page-001", title: "Overview" })],
+        workspaceSysId: "workspace-001"
       }
     });
   });

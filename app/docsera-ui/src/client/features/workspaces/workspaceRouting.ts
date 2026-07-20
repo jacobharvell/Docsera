@@ -1,4 +1,5 @@
 import { createMyWorkspacesRouteQuery, createWorkspaceRouteQuery } from "../../../shared/workspaces/domain";
+import { recordDocseraDiagnosticEvent } from "../../diagnostics";
 import type { WorkspaceMode } from "../../shared/types/docsera";
 
 export type DocseraAppRoute =
@@ -28,21 +29,44 @@ export function readAppRoute(location: Pick<Location, "search"> | URL): DocseraA
   const view = readParam(params, "view");
 
   if (workspaceSlug) {
-    return {
+    const route = {
       mode: "workspace",
       legacyPageId: readParam(params, "page_id"),
       pageSlug: readParam(params, "page"),
       settingsIntent: readParam(params, "settings") === "1",
       workspaceMode: readParam(params, "mode") === "edit" ? "edit" : "live",
       workspaceSlug,
-    };
+    } satisfies DocseraAppRoute;
+    recordRouteParse(location.search, route, true, false);
+    return route;
   }
 
   if (view === "my-workspaces") {
-    return { mode: "launcher" };
+    const route = { mode: "launcher" } satisfies DocseraAppRoute;
+    recordRouteParse(location.search, route, false, true);
+    return route;
   }
 
-  return { mode: "launcher" };
+  const route = { mode: "launcher" } satisfies DocseraAppRoute;
+  recordRouteParse(location.search, route, false, true);
+  return route;
+}
+
+function recordRouteParse(
+  rawSearch: string,
+  route: DocseraAppRoute,
+  workspacePresent: boolean,
+  defaultedToLauncher: boolean
+): void {
+  recordDocseraDiagnosticEvent("route.parse", {
+    defaultedToLauncher,
+    pageSlug: route.mode === "workspace" ? route.pageSlug : "",
+    parsedRoute: route,
+    rawSearch,
+    requestedMode: route.mode === "workspace" ? route.workspaceMode : "",
+    workspacePresent,
+    workspaceSlug: route.mode === "workspace" ? route.workspaceSlug : ""
+  });
 }
 
 export function buildLauncherHref(): string {

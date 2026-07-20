@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { useEffect } from "react";
+import { StrictMode, useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { createEmptyDocseraDocumentEnvelope } from "../../shared/editor/document";
@@ -20,6 +20,37 @@ import type {
 let deferHostReady = false;
 let hostReadyResolvers: Array<() => void> = [];
 
+type BroadcastMessage = Record<string, unknown>;
+
+class FakeBroadcastChannel {
+  static peers = new Map<string, Set<FakeBroadcastChannel>>();
+  closed = false;
+  onmessage: ((event: MessageEvent<BroadcastMessage>) => void) | null = null;
+
+  constructor(readonly name: string) {
+    const peers = FakeBroadcastChannel.peers.get(name) ?? new Set<FakeBroadcastChannel>();
+    peers.add(this);
+    FakeBroadcastChannel.peers.set(name, peers);
+  }
+
+  postMessage(message: BroadcastMessage) {
+    for (const peer of FakeBroadcastChannel.peers.get(this.name) ?? []) {
+      if (peer !== this && !peer.closed) {
+        peer.onmessage?.({ data: message } as MessageEvent<BroadcastMessage>);
+      }
+    }
+  }
+
+  close() {
+    this.closed = true;
+    const peers = FakeBroadcastChannel.peers.get(this.name);
+    peers?.delete(this);
+    if (peers?.size === 0) {
+      FakeBroadcastChannel.peers.delete(this.name);
+    }
+  }
+}
+
 function resolveDeferredHostReady() {
   const resolvers = [...hostReadyResolvers];
   hostReadyResolvers = [];
@@ -28,6 +59,8 @@ function resolveDeferredHostReady() {
 }
 
 afterEach(() => {
+  FakeBroadcastChannel.peers.clear();
+  Reflect.deleteProperty(window, "BroadcastChannel");
   window.localStorage.clear();
   deferHostReady = false;
   hostReadyResolvers = [];
@@ -310,6 +343,23 @@ function heldLease(leaseToken: string) {
     workspaceStateRevision: 3,
     state: "held" as const
   };
+}
+
+function installFakeBroadcastChannel() {
+  Object.defineProperty(window, "BroadcastChannel", {
+    configurable: true,
+    value: FakeBroadcastChannel
+  });
+}
+
+function workspaceLeaseStorageKey(workspaceSysId = "workspace-001"): string {
+  return `docsera.workspace-edit-lease.${workspaceSysId}`;
+}
+
+function readStoredWorkspaceLease(workspaceSysId = "workspace-001"): { tabSessionId: string; token: string } {
+  const raw = window.sessionStorage.getItem(workspaceLeaseStorageKey(workspaceSysId));
+  expect(raw).toBeTruthy();
+  return JSON.parse(raw ?? "{}") as { tabSessionId: string; token: string };
 }
 
 function treeRow(title: string): HTMLElement {
@@ -983,6 +1033,111 @@ describe("App live and edit routing", () => {
     expect(await screen.findByRole("button", { name: "Child Moved" })).toBeInTheDocument();
   });
 
+  it("lets an earlier Page Settings save complete before a later queued move uses its authority", async () => {
+    const initialPages = createBreadcrumbPages();
+    const savedOverview = createPageRecord({
+      ...initialPages[0],
+      draftTitle: "Overview Saved",
+      publicationState: "published_with_unpublished_changes"
+    });
+    const movedPages = [
+      savedOverview,
+      createPageRecord({
+        ...initialPages[1],
+        parentPageSysId: null,
+        siblingOrder: 2,
+        draftTitle: "Child Moved"
+      })
+    ];
+    const settingsDeferred = createDeferred<PageSettingsSaveResult>();
+    const savePageSettings = vi.fn(() => settingsDeferred.promise);
+    const movePage = vi.fn(async (): Promise<PageMoveResult> => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 9,
+      pages: movedPages,
+      state: "succeeded"
+    }));
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? initialPages : [initialPages[0]])
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { listPages, movePage, savePageSettings });
+    expect(await screen.findByRole("button", { name: "Child Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
+    const titleInput = screen.getByDisplayValue("Overview");
+    fireEvent.change(titleInput, { target: { value: "Overview Saved" } });
+    fireEvent.blur(titleInput);
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
+
+    dragTreePage("Child Draft", "Overview", 89);
+    expect(movePage).not.toHaveBeenCalled();
+
+    await act(async () => {
+      settingsDeferred.resolve({
+        changeSetId: "change-set-001",
+        changeSetRevision: 8,
+        page: savedOverview,
+        state: "succeeded"
+      });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(movePage).toHaveBeenCalledTimes(1));
+    expect(movePage).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 8 })
+    }));
+    expect((await screen.findAllByText("Overview Saved")).length).toBeGreaterThan(0);
+    expect(await screen.findByRole("button", { name: "Child Moved" })).toBeInTheDocument();
+  });
+
+  it("keeps a workspace-level page creation valid when the selected page changes before it completes", async () => {
+    const pages = createBreadcrumbPages();
+    const createdPage = createPageRecord({
+      sysId: "page-new",
+      parentPageSysId: null,
+      siblingOrder: 3,
+      draftTitle: "Queued workspace page",
+      draftSlug: "queued-workspace-page",
+      draftSlugNormalized: "queued-workspace-page",
+      publishedTitle: null,
+      publishedSlug: null,
+      publishedSlugNormalized: null,
+      publicationState: "draft"
+    });
+    const createDeferredResult = createDeferred<PageCreateResult>();
+    const createPage = vi.fn(() => createDeferredResult.promise);
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? pages : [pages[0]])
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { createPage, listPages });
+    expect(await screen.findByRole("button", { name: "Child Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]);
+    const titleInput = await screen.findByRole("textbox", { name: "New page title" });
+    fireEvent.change(titleInput, { target: { value: "Queued workspace page" } });
+    fireEvent.keyDown(titleInput, { key: "Enter" });
+    await waitFor(() => expect(createPage).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Child Draft" }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "child" }));
+
+    await act(async () => {
+      createDeferredResult.resolve({
+        changeSetId: "change-set-001",
+        changeSetRevision: 8,
+        page: createdPage,
+        state: "succeeded"
+      });
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByRole("heading", { name: "Queued workspace page" })).toBeInTheDocument();
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "queued-workspace-page" });
+  });
+
   it("preserves rank zero when moving the second root page before the first in Edit while Live stays published", async () => {
     const returnedMove = createDeferred<PageMoveResult>();
     const editPages = [
@@ -1123,20 +1278,306 @@ describe("App live and edit routing", () => {
     await waitFor(() => expect(document.querySelector("[data-docsera-page-editor-host='true']")).not.toBeNull());
   });
 
-  it("releases the workspace lease when leaving edit mode and when unmounted", async () => {
+  it("preserves the workspace lease token and resumes after a same-tab hard refresh", async () => {
+    installFakeBroadcastChannel();
+    const acquireWorkspaceEditLease = vi.fn(async () => heldLease("workspace-lease-token"));
+    const resumeWorkspaceEditLease = vi.fn(async () => heldLease("workspace-lease-token"));
     const releaseWorkspaceEditLease = vi.fn(async () => ({ state: "released" as const }));
-    const view = renderApp("/?workspace=product-docs&mode=edit&page=overview", { releaseWorkspaceEditLease });
+    const pages = [
+      createPageRecord(),
+      createPageRecord({
+        draftTitle: "Refresh Target",
+        draftSlug: "refresh-target",
+        draftSlugNormalized: "refresh-target",
+        publishedTitle: "Refresh Target",
+        publishedSlug: "refresh-target",
+        publishedSlugNormalized: "refresh-target",
+        sysId: "page-refresh"
+      })
+    ];
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", pages)
+    );
+
+    const firstView = renderApp("/?workspace=product-docs&mode=edit&page=refresh-target", {
+      acquireWorkspaceEditLease,
+      listPages,
+      releaseWorkspaceEditLease,
+      resumeWorkspaceEditLease
+    });
+
+    expect(await screen.findByRole("heading", { name: "Refresh Target" })).toBeInTheDocument();
+    await waitFor(() => expect(acquireWorkspaceEditLease).toHaveBeenCalledTimes(1));
+    const originalStoredLease = readStoredWorkspaceLease();
+    expect(originalStoredLease.token).toBe("workspace-lease-token");
+    expect(originalStoredLease.tabSessionId).toBeTruthy();
+    expect(window.name).toBe(`docsera.workspace-edit-lease-tab:${originalStoredLease.tabSessionId}`);
+    expect(FakeBroadcastChannel.peers.get("docsera.workspace-edit-lease.v1")?.size).toBe(1);
+
+    firstView.unmount();
+
+    await waitFor(() => expect(FakeBroadcastChannel.peers.get("docsera.workspace-edit-lease.v1")?.size ?? 0).toBe(0));
+    expect(window.sessionStorage.getItem(workspaceLeaseStorageKey())).toBe(JSON.stringify(originalStoredLease));
+    expect(releaseWorkspaceEditLease).not.toHaveBeenCalled();
+
+    renderApp("/?workspace=product-docs&mode=edit&page=refresh-target", {
+      acquireWorkspaceEditLease,
+      listPages,
+      releaseWorkspaceEditLease,
+      resumeWorkspaceEditLease
+    });
+
+    expect(await screen.findByRole("heading", { name: "Refresh Target" })).toBeInTheDocument();
+    await waitFor(() => expect(resumeWorkspaceEditLease).toHaveBeenCalledTimes(1));
+    expect(resumeWorkspaceEditLease).toHaveBeenCalledWith({
+      leaseToken: "workspace-lease-token",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    });
+    expect(acquireWorkspaceEditLease).toHaveBeenCalledTimes(1);
+    expect(releaseWorkspaceEditLease).not.toHaveBeenCalled();
+    expect(screen.queryByText("This workspace is already being edited in another tab or window for your account.")).toBeNull();
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).not.toBeNull();
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "refresh-target" });
+    expect(readStoredWorkspaceLease()).toEqual(originalStoredLease);
+  });
+
+  it("releases and clears the workspace lease when leaving edit mode", async () => {
+    const releaseWorkspaceEditLease = vi.fn(async () => ({ state: "released" as const }));
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { releaseWorkspaceEditLease });
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     await waitFor(() => expect(releaseWorkspaceEditLease).not.toHaveBeenCalled());
+    expect(readStoredWorkspaceLease().token).toBe("workspace-lease-token");
+
     fireEvent.click(screen.getByRole("button", { name: "Live" }));
+
     await waitFor(() => expect(releaseWorkspaceEditLease).toHaveBeenCalledTimes(1));
     expect(releaseWorkspaceEditLease).toHaveBeenLastCalledWith(expect.objectContaining({ keepalive: true, workspaceSysId: "workspace-001" }));
+    expect(window.sessionStorage.getItem(workspaceLeaseStorageKey())).toBeNull();
+  });
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Live" })).toBeInTheDocument());
-    view.unmount();
-    await waitFor(() => expect(releaseWorkspaceEditLease).toHaveBeenCalledTimes(2));
+  it("releases and clears the original workspace lease when switching workspaces", async () => {
+    const releaseWorkspaceEditLease = vi.fn(async () => ({ state: "released" as const }));
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { releaseWorkspaceEditLease });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(readStoredWorkspaceLease("workspace-001").token).toBe("workspace-lease-token");
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "API Docs" }));
+
+    await waitFor(() => expect(releaseWorkspaceEditLease).toHaveBeenCalledTimes(1));
+    expect(releaseWorkspaceEditLease).toHaveBeenLastCalledWith(expect.objectContaining({
+      keepalive: true,
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+    expect(window.sessionStorage.getItem(workspaceLeaseStorageKey("workspace-001"))).toBeNull();
+  });
+
+  it("blocks resume while another active runtime responds with the copied tab identity", async () => {
+    installFakeBroadcastChannel();
+    const firstAcquireWorkspaceEditLease = vi.fn(async () => heldLease("workspace-lease-token"));
+    const secondAcquireWorkspaceEditLease = vi.fn(async () => ({
+      holderDisplayName: "Ignored Name",
+      sameUserDifferentSession: true,
+      state: "locked" as const
+    }));
+    const secondResumeWorkspaceEditLease = vi.fn(async () => heldLease("workspace-lease-token"));
+
+    const firstView = renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease: firstAcquireWorkspaceEditLease
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => expect(FakeBroadcastChannel.peers.get("docsera.workspace-edit-lease.v1")?.size).toBe(1));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease: secondAcquireWorkspaceEditLease,
+      resumeWorkspaceEditLease: secondResumeWorkspaceEditLease
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is already being edited in another tab or window for your account.");
+    expect(secondResumeWorkspaceEditLease).not.toHaveBeenCalled();
+    expect(secondAcquireWorkspaceEditLease).toHaveBeenCalledTimes(1);
+    expect(firstAcquireWorkspaceEditLease).toHaveBeenCalledTimes(1);
+
+    firstView.unmount();
+  });
+
+  it("clears an invalid stored lease token and fails safely after resume rejection", async () => {
+    installFakeBroadcastChannel();
+    window.name = "docsera.workspace-edit-lease-tab:tab-a";
+    window.sessionStorage.setItem(workspaceLeaseStorageKey(), JSON.stringify({ tabSessionId: "tab-a", token: "replaced-token" }));
+    const acquireWorkspaceEditLease = vi.fn(async () => heldLease("should-not-acquire"));
+    const resumeWorkspaceEditLease = vi.fn(async () => ({
+      errorMessage: "Workspace lease lost.",
+      holderDisplayName: null,
+      sameUserDifferentSession: true,
+      state: "lost" as const
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      resumeWorkspaceEditLease
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is already being edited in another tab or window for your account.");
+    expect(resumeWorkspaceEditLease).toHaveBeenCalledWith({
+      leaseToken: "replaced-token",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    });
+    expect(acquireWorkspaceEditLease).not.toHaveBeenCalled();
+    expect(window.sessionStorage.getItem(workspaceLeaseStorageKey())).toBeNull();
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+  });
+
+  it("does not release or duplicate the workspace lease during StrictMode effect cleanup replay", async () => {
+    installFakeBroadcastChannel();
+    const acquireWorkspaceEditLease = vi.fn(async () => heldLease("workspace-lease-token"));
+    const releaseWorkspaceEditLease = vi.fn(async () => ({ state: "released" as const }));
+    window.history.replaceState({}, "", "/?workspace=product-docs&mode=edit&page=overview");
+    const runtime: DocseraRuntimeContext = {
+      mountNode: document.createElement("div"),
+      mountNodeId: "docsera-runtime",
+      config: {}
+    };
+    const serviceNowClient = createClient({ acquireWorkspaceEditLease, releaseWorkspaceEditLease });
+
+    render(
+      <StrictMode>
+        <App runtime={runtime} serviceNowClient={serviceNowClient} />
+      </StrictMode>
+    );
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => expect(acquireWorkspaceEditLease).toHaveBeenCalledTimes(1));
+    expect(releaseWorkspaceEditLease).not.toHaveBeenCalled();
+    expect(readStoredWorkspaceLease().token).toBe("workspace-lease-token");
+  });
+
+  it("keeps a resumed binding when an obsolete acquisition responds late", async () => {
+    installFakeBroadcastChannel();
+    const deferredAcquire = createDeferred<ReturnType<typeof heldLease>>();
+    const acquireWorkspaceEditLease = vi.fn(() => deferredAcquire.promise);
+    const resumeWorkspaceEditLease = vi.fn(async () => heldLease("resumed-token"));
+    const renewWorkspaceEditLease = vi.fn(async () => heldLease("resumed-token"));
+    const releaseWorkspaceEditLease = vi.fn(async () => ({ state: "released" as const }));
+
+    const firstView = renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      releaseWorkspaceEditLease,
+      renewWorkspaceEditLease,
+      resumeWorkspaceEditLease
+    });
+
+    await waitFor(() => expect(acquireWorkspaceEditLease).toHaveBeenCalledTimes(1));
+    window.name = "docsera.workspace-edit-lease-tab:tab-a";
+    window.sessionStorage.setItem(workspaceLeaseStorageKey(), JSON.stringify({ tabSessionId: "tab-a", token: "resumed-token" }));
+    firstView.unmount();
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      releaseWorkspaceEditLease,
+      renewWorkspaceEditLease,
+      resumeWorkspaceEditLease
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => expect(resumeWorkspaceEditLease).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      deferredAcquire.resolve(heldLease("late-token"));
+    });
+
+    await waitFor(() => expect(releaseWorkspaceEditLease).toHaveBeenCalledTimes(1));
+    expect(releaseWorkspaceEditLease).toHaveBeenCalledWith(expect.objectContaining({ leaseToken: "late-token" }));
+    expect(releaseWorkspaceEditLease).not.toHaveBeenCalledWith(expect.objectContaining({ leaseToken: "resumed-token" }));
+    expect(readStoredWorkspaceLease()).toEqual({ tabSessionId: "tab-a", token: "resumed-token" });
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).not.toBeNull();
+    expect(screen.queryByText("This workspace is already being edited in another tab or window for your account.")).toBeNull();
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await waitFor(() => expect(renewWorkspaceEditLease).toHaveBeenCalledWith(expect.objectContaining({ leaseToken: "resumed-token" })));
+  });
+
+  it("keeps a replacement resume when an obsolete resume returns the shared token late", async () => {
+    installFakeBroadcastChannel();
+    window.name = "docsera.workspace-edit-lease-tab:tab-a";
+    window.sessionStorage.setItem(workspaceLeaseStorageKey(), JSON.stringify({ tabSessionId: "tab-a", token: "resumed-token" }));
+    const deferredResume = createDeferred<ReturnType<typeof heldLease>>();
+    const acquireWorkspaceEditLease = vi.fn(async () => heldLease("should-not-acquire"));
+    const resumeWorkspaceEditLease = vi.fn()
+      .mockReturnValueOnce(deferredResume.promise)
+      .mockResolvedValueOnce(heldLease("resumed-token"));
+    const renewWorkspaceEditLease = vi.fn(async () => heldLease("resumed-token"));
+    const releaseWorkspaceEditLease = vi.fn(async () => ({ state: "released" as const }));
+    const pages = [
+      createPageRecord(),
+      createPageRecord({
+        draftTitle: "Resume Target",
+        draftSlug: "resume-target",
+        draftSlugNormalized: "resume-target",
+        publishedTitle: "Resume Target",
+        publishedSlug: "resume-target",
+        publishedSlugNormalized: "resume-target",
+        sysId: "page-resume"
+      })
+    ];
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", pages)
+    );
+
+    const firstView = renderApp("/?workspace=product-docs&mode=edit&page=resume-target", {
+      acquireWorkspaceEditLease,
+      listPages,
+      releaseWorkspaceEditLease,
+      renewWorkspaceEditLease,
+      resumeWorkspaceEditLease
+    });
+
+    await waitFor(() => expect(resumeWorkspaceEditLease).toHaveBeenCalledTimes(1));
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+
+    firstView.unmount();
+
+    renderApp("/?workspace=product-docs&mode=edit&page=resume-target", {
+      acquireWorkspaceEditLease,
+      listPages,
+      releaseWorkspaceEditLease,
+      renewWorkspaceEditLease,
+      resumeWorkspaceEditLease
+    });
+
+    expect(await screen.findByRole("heading", { name: "Resume Target" })).toBeInTheDocument();
+    await waitFor(() => expect(resumeWorkspaceEditLease).toHaveBeenCalledTimes(2));
+    expect(readStoredWorkspaceLease()).toEqual({ tabSessionId: "tab-a", token: "resumed-token" });
+    expect(FakeBroadcastChannel.peers.get("docsera.workspace-edit-lease.v1")?.size).toBe(1);
+
+    await act(async () => {
+      deferredResume.resolve(heldLease("resumed-token"));
+    });
+
+    await waitFor(() => expect(releaseWorkspaceEditLease).not.toHaveBeenCalled());
+    expect(readStoredWorkspaceLease()).toEqual({ tabSessionId: "tab-a", token: "resumed-token" });
+    expect(FakeBroadcastChannel.peers.get("docsera.workspace-edit-lease.v1")?.size).toBe(1);
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Resume Target" })).toBeInTheDocument();
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "resume-target" });
+    expect(screen.queryByText("This workspace is already being edited in another tab or window for your account.")).toBeNull();
+    expect(screen.queryByText("Workspace editing is no longer available.")).toBeNull();
+    expect(acquireWorkspaceEditLease).not.toHaveBeenCalled();
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+
+    await waitFor(() => expect(renewWorkspaceEditLease).toHaveBeenCalledWith(expect.objectContaining({ leaseToken: "resumed-token" })));
   });
 
   it("returns to Live and retains another holder's display name after blocked Edit entry", async () => {
@@ -1669,6 +2110,158 @@ describe("App live and edit routing", () => {
       workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 8 }),
       workspaceLeaseToken: "workspace-lease-token"
     }));
+  });
+
+  it("ignores stale projection recovery success after the same workspace gets a replacement lease", async () => {
+    const staleRefreshDeferred = createDeferred<PageListResult>();
+    let editListCount = 0;
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }): Promise<PageListResult> => {
+      if (mode !== "edit") {
+        return createPageListResult("live", [createPageRecord({ publishedTitle: "Overview", draftTitle: "Overview" })]);
+      }
+      editListCount += 1;
+      if (editListCount === 1) {
+        return createPageListResult("edit", [createPageRecord({ draftTitle: "Overview A" })]);
+      }
+      if (editListCount === 2) {
+        return staleRefreshDeferred.promise;
+      }
+      return createPageListResult("edit", [createPageRecord({ draftTitle: "Overview B" })]);
+    });
+    const acquireWorkspaceEditLease = vi
+      .fn()
+      .mockResolvedValueOnce(heldLease("workspace-lease-token"))
+      .mockResolvedValueOnce({ ...heldLease("replacement-lease-token"), changeSetRevision: 20 });
+    const releaseWorkspaceEditLease = vi.fn(async () => ({ state: "released" as const }));
+    const savePageSettings = vi
+      .fn()
+      .mockResolvedValueOnce({
+        code: "conflict" as const,
+        currentChangeSetId: "change-set-001",
+        currentChangeSetRevision: 8,
+        errorMessage: "The active draft generation changed. Reload before saving again.",
+        state: "failed" as const
+      })
+      .mockResolvedValueOnce({
+        changeSetId: "change-set-001",
+        changeSetRevision: 21,
+        page: createPageRecord({ draftTitle: "Overview B Saved" }),
+        state: "succeeded" as const
+      });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      listPages,
+      releaseWorkspaceEditLease,
+      savePageSettings
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview A" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview A" }));
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview A" }));
+    fireEvent.change(screen.getByDisplayValue("Overview A"), { target: { value: "Overview A Pending" } });
+    fireEvent.blur(screen.getByDisplayValue("Overview A Pending"));
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(await screen.findByRole("heading", { name: "Overview B" })).toBeInTheDocument();
+
+    await act(async () => {
+      staleRefreshDeferred.resolve(createPageListResult("edit", [createPageRecord({ draftTitle: "Old Recovery Projection" })]));
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole("heading", { name: "Old Recovery Projection" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Overview B" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview B" }));
+    const replacementPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(replacementPanel).getByRole("button", { name: "Overview B" }));
+    fireEvent.change(screen.getByDisplayValue("Overview B"), { target: { value: "Overview B Saved" } });
+    fireEvent.blur(screen.getByDisplayValue("Overview B Saved"));
+    fireEvent.click(within(replacementPanel).getByRole("button", { name: "Close page settings" }));
+
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(2));
+    expect(savePageSettings).toHaveBeenLastCalledWith(expect.objectContaining({
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 20 }),
+      workspaceLeaseToken: "replacement-lease-token"
+    }));
+  });
+
+  it("ignores stale projection recovery failure after the same workspace gets a replacement lease", async () => {
+    const staleRefreshDeferred = createDeferred<PageListResult>();
+    let editListCount = 0;
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }): Promise<PageListResult> => {
+      if (mode !== "edit") {
+        return createPageListResult("live", [createPageRecord({ publishedTitle: "Overview", draftTitle: "Overview" })]);
+      }
+      editListCount += 1;
+      if (editListCount === 1) {
+        return createPageListResult("edit", [createPageRecord({ draftTitle: "Overview A" })]);
+      }
+      if (editListCount === 2) {
+        return staleRefreshDeferred.promise;
+      }
+      return createPageListResult("edit", [createPageRecord({ draftTitle: "Overview B" })]);
+    });
+    const acquireWorkspaceEditLease = vi
+      .fn()
+      .mockResolvedValueOnce(heldLease("workspace-lease-token"))
+      .mockResolvedValueOnce({ ...heldLease("replacement-lease-token"), changeSetRevision: 20 });
+    const savePageSettings = vi.fn(async (): Promise<PageSettingsSaveResult> => ({
+      code: "conflict",
+      currentChangeSetId: "change-set-001",
+      currentChangeSetRevision: 8,
+      errorMessage: "The active draft generation changed. Reload before saving again.",
+      state: "failed"
+    }));
+    const createPage = vi.fn(async (): Promise<PageCreateResult> => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 21,
+      page: createPageRecord({ draftSlug: "replacement-page", draftTitle: "Replacement page" }),
+      state: "succeeded"
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      createPage,
+      listPages,
+      savePageSettings
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview A" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview A" }));
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview A" }));
+    fireEvent.change(screen.getByDisplayValue("Overview A"), { target: { value: "Overview A Pending" } });
+    fireEvent.blur(screen.getByDisplayValue("Overview A Pending"));
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(await screen.findByRole("heading", { name: "Overview B" })).toBeInTheDocument();
+
+    await act(async () => {
+      staleRefreshDeferred.reject(new Error("Old recovery failed."));
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByRole("heading", { name: "Pages unavailable" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Overview B" })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]);
+    const titleInput = await screen.findByRole("textbox", { name: "New page title" });
+    fireEvent.change(titleInput, { target: { value: "Replacement page" } });
+    fireEvent.keyDown(titleInput, { key: "Enter" });
+    await waitFor(() => expect(createPage).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 20 }),
+      workspaceLeaseToken: "replacement-lease-token"
+    })));
   });
 
   it("captures Page Settings before forced Live and restores them only after deliberate Edit re-entry", async () => {

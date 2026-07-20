@@ -57,6 +57,16 @@ export async function verifyWorkspaceEditLease(input: { workspaceSlug?: unknown;
   });
 }
 
+/** Shared read boundary. Pending-set reads validate the held lease and active
+ * generation without renewing the lease or creating mutation authority. */
+export async function validateWorkspaceEditLeaseForRead(input: { workspaceSlug?: unknown; workspaceSysId?: unknown; workspaceLeaseToken?: unknown }) {
+  return createServiceNowWorkspaceEditLeaseService().validateHeld({
+    workspaceSlug: cleanText(input.workspaceSlug),
+    workspaceSysId: cleanText(input.workspaceSysId),
+    leaseToken: cleanText(input.workspaceLeaseToken)
+  });
+}
+
 function safeExpectedRevision(value: unknown): number | null {
   if (typeof value === "number") return Number.isSafeInteger(value) && value >= 0 ? value : null;
   if (typeof value === "string" && value.trim()) {

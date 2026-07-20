@@ -42,6 +42,7 @@ type PageEditorHostRuntimeProps = {
     draftContentJson: DocseraDocumentEnvelope;
     expectedRevision: number;
     pageSysId: string;
+    readLatestDraftContentJson?: () => DocseraDocumentEnvelope | null;
   }) => Promise<PageBodySaveResult>;
   onEditorReady?: (editor: Editor) => void;
   onStatusChange: (state: {
@@ -1151,7 +1152,8 @@ export function PageEditorHostRuntime({
       return false;
     }
 
-    const pendingDocumentKey = serializeDocument(envelope.document);
+    let submittedDocumentKey = serializeDocument(envelope.document);
+    const pendingDocumentKey = submittedDocumentKey;
     if (pendingDocumentKey === savedDocumentKeyRef.current) {
       setStatus("saved");
       setErrorMessage("");
@@ -1164,11 +1166,31 @@ export function PageEditorHostRuntime({
     saveGenerationRef.current = saveGeneration;
     saveInFlightRef.current = true;
     try {
-      const result = await onSaveDraft({
+      const saveInput: {
+        draftContentJson: DocseraDocumentEnvelope;
+        expectedRevision: number;
+        pageSysId: string;
+        readLatestDraftContentJson?: () => DocseraDocumentEnvelope | null;
+      } = {
         draftContentJson: cloneEnvelope(envelope),
         expectedRevision: savedRevisionRef.current,
         pageSysId
+      };
+      Object.defineProperty(saveInput, "readLatestDraftContentJson", {
+        configurable: true,
+        enumerable: false,
+        value: () => {
+          if (!editor || disposedRef.current) return null;
+          try {
+            const latestEnvelope = createEnvelope(editor.getJSON() as DocseraTiptapDocument);
+            submittedDocumentKey = serializeDocument(latestEnvelope.document);
+            return cloneEnvelope(latestEnvelope);
+          } catch {
+            return null;
+          }
+        }
       });
+      const result = await onSaveDraft(saveInput);
 
       if (disposedRef.current || saveGenerationRef.current !== saveGeneration) {
         return false;
@@ -1188,7 +1210,7 @@ export function PageEditorHostRuntime({
         return false;
       }
 
-      const nextSavedKey = pendingDocumentKey;
+      const nextSavedKey = submittedDocumentKey;
       savedDocumentKeyRef.current = nextSavedKey;
       setSavedDocumentKey(nextSavedKey);
       const acceptedRevision = result.page.draftRevision ?? savedRevisionRef.current + 1;

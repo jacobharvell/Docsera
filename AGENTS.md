@@ -48,6 +48,23 @@ If sources conflict, do not silently choose. Preserve accepted product intent wh
 
 Prototypes are visual and interaction references, especially for layout, spacing, interaction feel, design-system application, modal/overlay behavior, and navigation patterns. They are not exact implementation requirements unless a requirement note or implementation brief explicitly elevates a prototype detail into scope.
 
+### Requirements Placement and Duplication
+
+- Accepted Docsera product requirements belong in `C:\Users\jacob\OneDrive\Documents\Obsidian Vault\Docsera\Requirements`.
+- Do not create accepted requirement notes in the Docsera vault root. The Docsera root may contain planning material, but it must not duplicate canonical accepted requirement content.
+- If a root-level Docsera note and a `Docsera\Requirements` note conflict, treat the `Requirements` copy as authoritative unless Jacob explicitly says otherwise.
+- Do not leave renamed, archived, backup, or superseded copies of accepted requirements elsewhere in the Obsidian vault.
+- When updating accepted requirements, edit the canonical note in `Docsera\Requirements` and update `00 Requirements Overview.md` if the requirements map changes.
+
+### State Authority and Client Complexity
+
+- ServiceNow is authoritative for published state, persisted draft state, workspace pending changes, page hierarchy, server-issued concurrency generations, and workflow state.
+- The client may hold transient unsaved editor/UI input, but it must not become a second durable authority for Docsera state.
+- Server-issued concurrency generations are mutation-control metadata, not product data. Do not predict, manufacture, increment, or repair generations on the client.
+- Do not automatically replay non-idempotent create, move, delete, publish, discard, or undo commands.
+- Do not add complex client recovery, synchronization, state-machine, merge, CRDT, operational-transformation, shared-cursor, or collaborative-editing machinery unless an accepted requirement or demonstrated failure requires it.
+- Prefer the simplest client behavior that preserves server authority, protects recoverable unsaved input, and reloads authoritative projections after stale-generation or obsolete-context failures.
+
 ## Security and Secrets
 
 - Never commit credentials, passwords, API keys, OAuth secrets, personal access tokens, `.env` files, private certificates, exported credential records, or ServiceNow authentication material.

@@ -267,6 +267,33 @@ export type WorkspaceEditLeaseAcquireResult = WorkspaceEditLeaseHeld | Workspace
 export type WorkspaceEditLeaseRenewResult = WorkspaceEditLeaseHeld | WorkspaceEditLeaseLost | WorkspaceEditLeaseFailed;
 export type WorkspaceEditLeaseReleaseResult = WorkspaceEditLeaseReleased | WorkspaceEditLeaseLost | WorkspaceEditLeaseFailed;
 export type WorkspaceEditLeaseStatusResult = WorkspaceEditLeaseStatusHeld | WorkspaceEditLeaseLocked | WorkspaceEditLeaseUnlocked | WorkspaceEditLeaseFailed;
+export type WorkspacePendingChangeCategory = "Added" | "Modified" | "Moved" | "Modified · Moved" | "Removed";
+export type WorkspacePendingChangeRow = {
+  attribution: {
+    accessibleLabel: string;
+    displayName: string;
+    fullDisplayName: string;
+  };
+  category: WorkspacePendingChangeCategory;
+  firstPendingSequence: number;
+  lastChangedOn: string;
+  navigable: boolean;
+  pageSysId: string;
+  title: string;
+};
+export type WorkspacePendingChangesSucceeded = WorkspaceEditLeaseGeneration & {
+  affectedPageCount: number;
+  rows: WorkspacePendingChangeRow[];
+  state: "succeeded";
+  workspaceSysId: string;
+};
+export type WorkspacePendingChangesFailed = {
+  code?: "forbidden" | "lock_lost" | "not_found" | "transient";
+  errorMessage: string;
+  retryable?: boolean;
+  state: "failed";
+};
+export type WorkspacePendingChangesResult = WorkspacePendingChangesSucceeded | WorkspacePendingChangesFailed;
 
 export type PageDeleteSucceeded = {
   changeSetId?: string;
@@ -398,6 +425,7 @@ export type ServiceNowClient = {
   renewWorkspaceEditLease?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspaceEditLeaseRenewResult>;
   releaseWorkspaceEditLease?: (input: WorkspaceEditLeaseReferenceInput & { keepalive?: boolean }) => Promise<WorkspaceEditLeaseReleaseResult>;
   getWorkspaceEditLeaseStatus?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspaceEditLeaseStatusResult>;
+  getWorkspacePendingChanges?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspacePendingChangesResult>;
   getPageEditLockStatus: (input: PageEditLockReferenceInput) => Promise<PageEditLockStatusResult>;
   acquirePageEditLock: (input: PageEditLockReferenceInput) => Promise<PageEditLockAcquireResult>;
   heartbeatPageEditLock: (input: PageEditLockReferenceInput) => Promise<PageEditLockHeartbeatResult>;

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import type { WorkspaceMode, WorkspaceViewRecord } from "../../shared/types/docsera";
+import type { WorkspaceMode, WorkspacePendingChangesResult, WorkspaceViewRecord } from "../../shared/types/docsera";
 import {
   DocseraBrandIcon,
   DoubleChevronIcon,
@@ -31,7 +31,13 @@ type DocseraHeaderProps = {
   onSelectBreadcrumb?: (pageId: string) => void;
   onToggleSidebar?: () => void;
   recentWorkspaces: RecentWorkspaceItem[];
-  saveStatus?: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
+  pendingChanges?: WorkspacePendingChangesResult | null;
+  pendingChangesLoading?: boolean;
+  pendingChangesReadinessMessage?: string;
+  pendingChangesRefreshing?: boolean;
+  pendingChangesErrorMessage?: string;
+  onOpenPendingPage?: (pageSysId: string) => void;
+  onRetryPendingChanges?: () => void;
   showEditModeToggle?: boolean;
   showWorkspaceMode?: WorkspaceMode;
   onWorkspaceModeChange?: (mode: WorkspaceMode) => void;
@@ -43,6 +49,16 @@ type DocseraHeaderProps = {
   onToggleTheme: () => void;
   workspaceNavWidth?: number;
 };
+
+function PublishChevron({ open }: { open: boolean }) {
+  return (
+    <span className={`docsera-header__publish-chevron${open ? " docsera-header__publish-chevron--open" : ""}`} aria-hidden="true">
+      <svg viewBox="0 0 16 16" width="14" height="14" focusable="false">
+        <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      </svg>
+    </span>
+  );
+}
 
 function HeaderIdentityIcon({ identity }: { identity: HeaderIdentity }) {
   if (identity.kind === "workspace-loading") {
@@ -68,10 +84,16 @@ export function DocseraHeader({
   onOpenMyWorkspaces,
   onOpenWorkspace,
   onOpenWorkspaceSettings,
+  onOpenPendingPage,
   onSelectBreadcrumb,
   onToggleSidebar,
+  onRetryPendingChanges,
+  pendingChanges = null,
+  pendingChangesErrorMessage = "",
+  pendingChangesLoading = false,
+  pendingChangesReadinessMessage = "",
+  pendingChangesRefreshing = false,
   recentWorkspaces,
-  saveStatus,
   showEditModeToggle = false,
   showWorkspaceMode = "live",
   onWorkspaceModeChange,
@@ -84,7 +106,10 @@ export function DocseraHeader({
   workspaceNavWidth
 }: DocseraHeaderProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [changesOpen, setChangesOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const changesRef = useRef<HTMLDivElement>(null);
+  const publishButtonRef = useRef<HTMLButtonElement>(null);
   const canSwitchWorkspaces = showWorkspaceSwitcher;
   const workspaceButtonLabel =
     identity.kind === "workspace-loading"
@@ -98,6 +123,13 @@ export function DocseraHeader({
           : identity.name;
   const currentPage = breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1] : null;
   const parentPages = currentPage ? breadcrumbs.slice(0, -1) : [];
+  const pendingRows = pendingChanges?.state === "succeeded" ? pendingChanges.rows : [];
+  const pendingCount = pendingChanges?.state === "succeeded" ? pendingChanges.affectedPageCount : pendingRows.length;
+  const hasPendingChanges = pendingChanges?.state === "succeeded" && pendingCount > 0;
+  const showPublishControl = mode === "workspace" && showWorkspaceMode === "edit" && showEditModeToggle;
+  const countText = `${pendingCount} ${pendingCount === 1 ? "page" : "pages"}`;
+  const hasPendingError = Boolean(pendingChangesErrorMessage) || pendingChanges?.state === "failed";
+  const canOpenChanges = (hasPendingChanges || hasPendingError) && !workspaceControlsLocked;
 
   useEffect(() => {
     if (!menuOpen) {
@@ -125,6 +157,39 @@ export function DocseraHeader({
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [menuOpen]);
+
+  useEffect(() => {
+    if (!changesOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (changesRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      setChangesOpen(false);
+      publishButtonRef.current?.focus();
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setChangesOpen(false);
+        publishButtonRef.current?.focus();
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [changesOpen]);
+
+  useEffect(() => {
+    setChangesOpen(false);
+  }, [currentWorkspaceSlug, showWorkspaceMode]);
 
   return (
     <header
@@ -215,16 +280,7 @@ export function DocseraHeader({
         <div className="docsera-header__actions" aria-label="Header controls">
           <div className="docsera-header__action-slot docsera-header__action-slot--mode">
             {mode === "workspace" && showEditModeToggle && onWorkspaceModeChange ? (
-              <>
-                <span
-                  className={`docsera-header__save-status${saveStatus ? "" : " docsera-header__save-status--empty"}`}
-                  aria-live={saveStatus ? "polite" : undefined}
-                  aria-hidden={saveStatus ? undefined : "true"}
-                  role={saveStatus ? "status" : undefined}
-                >
-                  {saveStatus || "Saved"}
-                </span>
-                <div className="docsera-header__mode-toggle" role="group" aria-label="Workspace mode">
+              <div className="docsera-header__mode-toggle" role="group" aria-label="Workspace mode">
                   <button
                     type="button"
                     className={`docsera-header__mode-segment${showWorkspaceMode === "live" ? " docsera-header__mode-segment--active" : ""}`}
@@ -244,11 +300,98 @@ export function DocseraHeader({
                     Edit
                   </button>
                 </div>
-              </>
             ) : (
               <span className="docsera-header__action-slot-placeholder" aria-hidden="true" />
             )}
           </div>
+          {showPublishControl ? (
+            <div className="docsera-header__publish-panel" ref={changesRef}>
+              <button
+                ref={publishButtonRef}
+                type="button"
+                className={`docsera-header__publish-button${hasPendingChanges ? " docsera-header__publish-button--active" : ""}`}
+                aria-expanded={changesOpen}
+                aria-haspopup="dialog"
+                aria-label={hasPendingChanges || hasPendingError ? "Open Changes Center" : "No pending changes to publish"}
+                disabled={!canOpenChanges}
+                onClick={() => {
+                  if (canOpenChanges) {
+                    setChangesOpen((current) => !current);
+                  }
+                }}
+              >
+                Publish
+                <PublishChevron open={changesOpen} />
+              </button>
+              {changesOpen ? (
+                <section className="docsera-changes-center" role="dialog" aria-label="Changes Center">
+                  <header className="docsera-changes-center__header">
+                    <div>
+                      <strong>Changes</strong> <span>{countText}</span>
+                    </div>
+                    {pendingChangesRefreshing ? <span className="docsera-changes-center__refreshing" role="status">Refreshing</span> : null}
+                  </header>
+                  {pendingChangesErrorMessage || pendingChanges?.state === "failed" ? (
+                    <div className="docsera-changes-center__state" role="alert">
+                      <p>{pendingChangesErrorMessage || (pendingChanges?.state === "failed" ? pendingChanges.errorMessage : "Unable to load pending changes.")}</p>
+                      {onRetryPendingChanges ? (
+                        <button type="button" className="docsera-changes-center__retry" onClick={onRetryPendingChanges}>
+                          Retry
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : pendingChangesLoading ? (
+                    <div className="docsera-changes-center__state" role="status">Loading changes</div>
+                  ) : (
+                    <div className="docsera-changes-center__list" role="list" aria-label="Pending pages">
+                      {pendingRows.map((row) => {
+                        const content = (
+                          <>
+                            <span className="docsera-changes-center__row-title">{row.title}</span>
+                            <span className="docsera-changes-center__row-meta" title={row.attribution.fullDisplayName} aria-label={row.attribution.accessibleLabel}>
+                              {row.attribution.displayName}
+                            </span>
+                            <span className="docsera-changes-center__row-category">{row.category}</span>
+                          </>
+                        );
+                        return row.navigable ? (
+                          <div key={row.pageSysId} className="docsera-changes-center__row-item" role="listitem">
+                            <button
+                              type="button"
+                              className="docsera-changes-center__row"
+                              onClick={() => {
+                                setChangesOpen(false);
+                                onOpenPendingPage?.(row.pageSysId);
+                              }}
+                            >
+                              {content}
+                            </button>
+                          </div>
+                        ) : (
+                          <div key={row.pageSysId} className="docsera-changes-center__row-item" role="listitem">
+                            <div className="docsera-changes-center__row docsera-changes-center__row--static" aria-disabled="true">
+                              {content}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {pendingChangesReadinessMessage ? (
+                    <div className="docsera-changes-center__blocked" role="status">{pendingChangesReadinessMessage}</div>
+                  ) : null}
+                  <footer className="docsera-changes-center__footer">
+                    <button type="button" className="docsera-changes-center__footer-link" disabled>
+                      Discard all
+                    </button>
+                    <button type="button" className="docsera-changes-center__footer-primary" disabled>
+                      Publish
+                    </button>
+                  </footer>
+                </section>
+              ) : null}
+            </div>
+          ) : null}
           <button
             type="button"
             className="docsera-header__ghost-button docsera-header__ghost-button--theme"

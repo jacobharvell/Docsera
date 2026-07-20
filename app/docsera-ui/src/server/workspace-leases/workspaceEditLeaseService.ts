@@ -80,6 +80,14 @@ export function createWorkspaceEditLeaseService(dependencies: Dependencies) {
     const winner = await dependencies.loadLeaseByWorkspaceKey(key);
     return winner ? { kind: "locked", currentHolder: buildWorkspaceLeaseHolder(winner, resolved.currentUser.sysId)! } : { kind: "failed", errorMessage: "Something went wrong while starting Edit mode. Please try again.", retryable: true, status: 500 };
   }
+  async function validateHeld(input: Reference): Promise<WorkspaceEditLeaseResult> {
+    const token = cleanText(input.leaseToken); if (!token) return { kind: "failed", errorMessage: "A workspace edit lease token is required.", retryable: false, status: 400 };
+    const resolved = await context(input); if ("error" in resolved) return failed(resolved);
+    const active = await dependencies.loadActiveGeneration(resolved.workspace); if (active.kind === "failed") return active;
+    const key = cleanText(resolved.workspace.sysId); const existing = await dependencies.loadLeaseByWorkspaceKey(key); const digest = dependencies.digestToken(token); const now = dependencies.currentTimestamp();
+    if (!matches(existing, resolved.currentUser.sysId, digest) || expired(existing, now)) return { kind: "lost", currentHolder: expired(existing, now) ? null : buildWorkspaceLeaseHolder(existing, resolved.currentUser.sysId), errorMessage: "This workspace edit session ended and unsaved changes were not saved." };
+    return held(token, active.generation);
+  }
   async function renew(input: Reference): Promise<WorkspaceEditLeaseResult> {
     const token = cleanText(input.leaseToken); if (!token) return { kind: "failed", errorMessage: "A workspace edit lease token is required.", retryable: false, status: 400 };
     const resolved = await context(input); if ("error" in resolved) return failed(resolved);
@@ -98,6 +106,7 @@ export function createWorkspaceEditLeaseService(dependencies: Dependencies) {
   }
   return {
     acquire,
+    validateHeld,
     renew,
     release,
     resume: renew,

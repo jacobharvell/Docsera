@@ -9,8 +9,10 @@ import type { RecentWorkspaceItem } from "../features/workspaces/RecentWorkspace
 import { DEFAULT_WORKSPACE_NAV_WIDTH, readStoredWorkspaceNavWidth, WorkspaceShell } from "../features/workspaces/WorkspaceShell";
 import type { PageEditorHostFailure, PageEditorRecoverySnapshot } from "../editor/PageEditorHost";
 import { EditorSessionGeneration, type EditorSessionToken } from "../editor/session/editorSessionGeneration";
+import { fingerprintDiagnosticSecret, recordDocseraDiagnosticEvent } from "../diagnostics";
 import { WorkspaceLeaseCoordination, type StoredWorkspaceLease } from "./workspaceLeaseCoordination";
-import { WorkspaceLeaseRecoveryCoordinator, type WorkspaceLeaseRecoveryResult } from "./workspaceLeaseRecovery";
+import { WorkspaceLeaseRecoveryCoordinator, type WorkspaceLeaseMutationRecoveryResult, type WorkspaceLeaseRecoveryResult } from "./workspaceLeaseRecovery";
+import { isWorkspaceMutationCanceled, WorkspaceMutationQueue, type WorkspaceMutationType } from "./workspaceMutationQueue";
 import {
   AuthoringRecoveryStore,
   type AuthoringRecoveryReason,
@@ -49,6 +51,7 @@ import type {
   WorkspaceCreateResult,
   WorkspaceListResult,
   WorkspaceEditLeaseHeld,
+  WorkspacePendingChangesResult,
   WorkspacePageRecord,
   WorkspaceViewRecord
 } from "../shared/types/docsera";
@@ -76,11 +79,18 @@ type StaleRefreshState =
   | { status: "idle" }
   | {
       authority: { changeSetId: string; changeSetRevision: number };
+      contextKey: string;
       errorMessage?: string;
       mode: WorkspaceMode;
       status: "refresh_required" | "refreshing";
       workspaceSlug: string;
     };
+
+type PendingChangesState =
+  | { status: "idle" }
+  | { status: "loading"; workspaceSlug: string; workspaceSysId: string; leaseToken: string }
+  | { data: Extract<WorkspacePendingChangesResult, { state: "succeeded" }>; status: "success" | "refreshing"; workspaceSlug: string; workspaceSysId: string; leaseToken: string }
+  | { errorMessage: string; previous?: Extract<WorkspacePendingChangesResult, { state: "succeeded" }>; status: "error"; workspaceSlug: string; workspaceSysId: string; leaseToken: string };
 
 type WorkspaceSwitcherState =
   | { status: "idle" }
@@ -132,6 +142,7 @@ type RequestedRouteTransition = {
   } | null;
   href: string;
   replace: boolean;
+  reason?: string;
   beforeCommit?: () => void;
 };
 
@@ -192,31 +203,121 @@ function workspaceLeaseStorageKey(workspaceSysId: string): string { return `${DO
 function getOrCreateWorkspaceLeaseTabSessionId(): string {
   const prefix = DOCSERA_WORKSPACE_LEASE_TAB_SESSION_PREFIX;
   try {
-    if (window.name.startsWith(prefix) && cleanText(window.name.slice(prefix.length))) return cleanText(window.name.slice(prefix.length));
+    const before = typeof window.name === "string" ? window.name : "";
+    const beforeHadPrefix = before.startsWith(prefix);
+    const beforeIdentity = beforeHadPrefix ? cleanText(before.slice(prefix.length)) : "";
+    if (beforeHadPrefix && beforeIdentity) {
+      recordDocseraDiagnosticEvent("lease.tabSessionIdentity", {
+        afterFingerprint: fingerprintDiagnosticSecret(beforeIdentity),
+        beforeFingerprint: fingerprintDiagnosticSecret(beforeIdentity),
+        beforeHadDocseraPrefix: true,
+        generated: false,
+        identitiesMatch: true
+      });
+      return beforeIdentity;
+    }
     const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
     window.name = `${prefix}${id}`;
+    recordDocseraDiagnosticEvent("lease.tabSessionIdentity", {
+      afterFingerprint: fingerprintDiagnosticSecret(id),
+      beforeFingerprint: fingerprintDiagnosticSecret(beforeIdentity),
+      beforeHadDocseraPrefix: beforeHadPrefix,
+      generated: true,
+      identitiesMatch: false
+    });
     return id;
   } catch {
+    recordDocseraDiagnosticEvent("lease.tabSessionIdentity", {
+      beforeHadDocseraPrefix: false,
+      error: "window_name_unavailable",
+      generated: false,
+      identitiesMatch: false
+    });
     return "";
   }
 }
 function readStoredWorkspaceLease(workspaceSysId: string): StoredWorkspaceLease {
+  const key = workspaceLeaseStorageKey(workspaceSysId);
   try {
-    const raw = cleanText(window.sessionStorage.getItem(workspaceLeaseStorageKey(workspaceSysId)));
-    if (!raw) return { tabSessionId: "", token: "" };
+    const raw = cleanText(window.sessionStorage.getItem(key));
+    if (!raw) {
+      recordDocseraDiagnosticEvent("lease.storage.read", {
+        parseSucceeded: false,
+        storageOrigin: window.location.origin,
+        storageRecordExists: false,
+        workspaceSysId
+      });
+      return { tabSessionId: "", token: "" };
+    }
     try {
       const parsed = JSON.parse(raw) as { tabSessionId?: unknown; token?: unknown };
-      return { tabSessionId: cleanText(parsed.tabSessionId), token: cleanText(parsed.token) };
+      const stored = { tabSessionId: cleanText(parsed.tabSessionId), token: cleanText(parsed.token) };
+      recordDocseraDiagnosticEvent("lease.storage.read", {
+        parseSucceeded: true,
+        storageOrigin: window.location.origin,
+        storageRecordExists: true,
+        storedTabSessionFingerprint: fingerprintDiagnosticSecret(stored.tabSessionId),
+        tokenExists: Boolean(stored.token),
+        tokenFingerprint: fingerprintDiagnosticSecret(stored.token),
+        workspaceSysId
+      });
+      return stored;
     } catch {
+      recordDocseraDiagnosticEvent("lease.storage.read", {
+        parseSucceeded: false,
+        storageOrigin: window.location.origin,
+        storageRecordExists: true,
+        tokenExists: Boolean(raw),
+        tokenFingerprint: fingerprintDiagnosticSecret(raw),
+        workspaceSysId
+      });
       return { tabSessionId: "", token: raw };
     }
-  } catch { return { tabSessionId: "", token: "" }; }
+  } catch {
+    recordDocseraDiagnosticEvent("lease.storage.read", {
+      storageInaccessible: true,
+      storageRecordExists: false,
+      workspaceSysId
+    });
+    return { tabSessionId: "", token: "" };
+  }
 }
 function storeWorkspaceLease(workspaceSysId: string, token: string, tabSessionId: string) {
-  try { window.sessionStorage.setItem(workspaceLeaseStorageKey(workspaceSysId), JSON.stringify({ tabSessionId, token })); } catch { /* storage is advisory only */ }
+  try {
+    window.sessionStorage.setItem(workspaceLeaseStorageKey(workspaceSysId), JSON.stringify({ tabSessionId, token }));
+    recordDocseraDiagnosticEvent("lease.storage.write", {
+      storageOrigin: window.location.origin,
+      storedTabSessionFingerprint: fingerprintDiagnosticSecret(tabSessionId),
+      tokenExists: Boolean(token),
+      tokenFingerprint: fingerprintDiagnosticSecret(token),
+      workspaceSysId
+    });
+  } catch {
+    recordDocseraDiagnosticEvent("lease.storage.write", {
+      storageInaccessible: true,
+      workspaceSysId
+    });
+  }
 }
-function clearStoredWorkspaceLease(workspaceSysId: string) {
-  try { window.sessionStorage.removeItem(workspaceLeaseStorageKey(workspaceSysId)); } catch { /* storage is advisory only */ }
+function clearStoredWorkspaceLease(workspaceSysId: string, reason: string) {
+  const prior = readStoredWorkspaceLease(workspaceSysId);
+  try {
+    window.sessionStorage.removeItem(workspaceLeaseStorageKey(workspaceSysId));
+    recordDocseraDiagnosticEvent("lease.storage.clear", {
+      reason,
+      storageOrigin: window.location.origin,
+      storedTabSessionFingerprint: fingerprintDiagnosticSecret(prior.tabSessionId),
+      storedTokenCleared: Boolean(prior.token),
+      tokenFingerprint: fingerprintDiagnosticSecret(prior.token),
+      workspaceSysId
+    });
+  } catch {
+    recordDocseraDiagnosticEvent("lease.storage.clear", {
+      reason,
+      storageInaccessible: true,
+      workspaceSysId
+    });
+  }
 }
 
 function createWorkspaceLeaseHolderNotice(result: { holderDisplayName: string | null; sameUserDifferentSession: boolean }, failure: "locked" | "lost"): WorkspaceLeaseState {
@@ -339,6 +440,10 @@ function createWorkspaceModeUiState(): WorkspaceModeUiState {
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function isObsoleteWorkspaceMutationOutcome(outcome: { errorMessage?: string; state: string }): boolean {
+  return outcome.state === "transient_failure" && cleanText(outcome.errorMessage) === "The editing session changed.";
 }
 
 function readStoredTheme(): "dark" | "light" {
@@ -554,12 +659,32 @@ function delay(ms: number): Promise<void> {
   });
 }
 
-function navigateTo(href: string, replace = false): void {
+function navigateTo(href: string, replace = false, reason = "application_route_change"): void {
+  const before = `${window.location.pathname}${window.location.search}${window.location.hash}`;
   if (replace) {
     window.history.replaceState({}, "", href);
   } else {
     window.history.pushState({}, "", href);
   }
+  const after = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+  recordDocseraDiagnosticEvent("route.historyChange", {
+    after,
+    before,
+    method: replace ? "replaceState" : "pushState",
+    reason,
+    routeChangeType: classifyRouteChangeReason(reason)
+  });
+}
+
+function classifyRouteChangeReason(reason: string): string {
+  if (reason === "settings_intent_cleanup") return "settings-intent cleanup";
+  if (reason === "route_canonicalization") return "canonicalization";
+  if (reason === "access_loss_fallback") return "access-loss fallback";
+  if (reason === "deliberate_edit_exit") return "deliberate Edit exit";
+  if (reason === "workspace_switch") return "workspace switch";
+  if (reason === "open_launcher") return "launcher navigation";
+  if (reason === "popstate_guard_restore") return "startup fallback";
+  return "user navigation";
 }
 
 function buildHrefFromRoute(route: DocseraAppRoute): string {
@@ -572,6 +697,24 @@ function buildHrefFromRoute(route: DocseraAppRoute): string {
   }
 
   return buildLauncherHref();
+}
+
+function resolveWorkspaceLeaseReleaseReason(
+  route: DocseraAppRoute,
+  requestedWorkspaceMode: WorkspaceMode,
+  currentWorkspaceSlug: string,
+  binding: WorkspaceLeaseBinding
+): string {
+  if (route.mode !== "workspace") {
+    return "open_launcher";
+  }
+  if (cleanText(currentWorkspaceSlug) !== cleanText(binding.workspaceSlug)) {
+    return "workspace_switch";
+  }
+  if (requestedWorkspaceMode !== "edit") {
+    return "edit_to_live";
+  }
+  return "deliberate_release";
 }
 
 export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeContext; serviceNowClient: ServiceNowClient }) {
@@ -591,6 +734,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({ status: "idle" });
   const [pendingWorkspaceIdentity, setPendingWorkspaceIdentity] = useState<PendingWorkspaceIdentity | null>(null);
   const [workspacePagesState, setWorkspacePagesState] = useState<WorkspacePagesState>({ status: "idle" });
+  const [pendingChangesState, setPendingChangesState] = useState<PendingChangesState>({ status: "idle" });
   const [staleRefreshState, setStaleRefreshState] = useState<StaleRefreshState>({ status: "idle" });
   const [workspaceSettingsNotice, setWorkspaceSettingsNotice] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -620,6 +764,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [lastReadyWorkspaceShell, setLastReadyWorkspaceShell] = useState<RetainedWorkspaceShellState | null>(null);
   const launcherRequestIdRef = useRef(0);
   const staleRefreshRequestIdRef = useRef(0);
+  const pendingChangesRequestIdRef = useRef(0);
   const crossModeTargetPageSysIdRef = useRef("");
   const inlinePageCreateFocusTokenRef = useRef(0);
   const inlinePageCreateStateRef = useRef<InlinePageCreateState | null>(null);
@@ -640,10 +785,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const activeEditorSessionRef = useRef<EditorSessionToken | null>(null);
   const workspaceLeaseBindingRef = useRef<WorkspaceLeaseBinding | null>(null);
   const workspaceLeaseOperationGenerationRef = useRef(0);
-  // Every persisted authoring operation gets an identity independent from the
-  // lease generation (which intentionally changes during recovery).
-  const authoringMutationOperationRef = useRef(0);
   const workspaceLeaseRecoveryRef = useRef(new WorkspaceLeaseRecoveryCoordinator());
+  const workspaceMutationQueueRef = useRef<WorkspaceMutationQueue | null>(null);
   const authoringRecoveryRef = useRef(new AuthoringRecoveryStore());
   const workspaceLeaseStateRef = useRef<WorkspaceLeaseState>({ state: "idle" });
   const workspaceLeaseCoordinationRef = useRef(new WorkspaceLeaseCoordination({
@@ -674,6 +817,37 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   useEffect(() => {
     serviceNowClientRef.current = serviceNowClient;
   }, [serviceNowClient]);
+
+  const workspaceMutationQueueOptions = {
+    getAuthority: () => currentWorkspaceMutationAuthority(),
+    installAuthority: (authority: { changeSetId?: string; changeSetRevision?: number }, source: "mutation" | "refresh") => installWorkspaceMutationAuthority(authority, source),
+    isCurrentContext: isCurrentWorkspaceMutationContext,
+    onStaleGeneration: requestStaleRefreshBlock
+  };
+  if (!workspaceMutationQueueRef.current) {
+    workspaceMutationQueueRef.current = new WorkspaceMutationQueue(workspaceMutationQueueOptions);
+  } else {
+    workspaceMutationQueueRef.current.setOptions(workspaceMutationQueueOptions);
+  }
+
+  useEffect(() => {
+    recordDocseraDiagnosticEvent("app.mount", {
+      initialRoute,
+      locationHref: window.location.href,
+      locationSearch: window.location.search
+    });
+    return () => {
+      recordDocseraDiagnosticEvent("app.unmount", {
+        route
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    recordDocseraDiagnosticEvent("route.state", {
+      route
+    });
+  }, [route]);
 
   function bumpRecoveryVersion(): void {
     setRecoveryVersion((current) => current + 1);
@@ -948,13 +1122,41 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
   }
 
-  function releaseWorkspaceLeaseBinding(binding: WorkspaceLeaseBinding, keepalive = true): void {
-    if (workspaceLeaseBindingRef.current?.leaseToken === binding.leaseToken) {
+  function releaseWorkspaceLeaseBinding(binding: WorkspaceLeaseBinding, keepalive = true, reason = "deliberate_release"): void {
+    const isCurrentBinding = workspaceLeaseBindingRef.current?.bindingId === binding.bindingId;
+    if (isCurrentBinding) {
       workspaceLeaseBindingRef.current = null;
+      workspaceLeaseCoordinationRef.current.stopResponder(binding.bindingId, reason);
+      clearStoredWorkspaceLease(binding.workspaceSysId, reason);
     }
-    workspaceLeaseCoordinationRef.current.stopResponder(binding.bindingId);
-    clearStoredWorkspaceLease(binding.workspaceSysId);
+    recordDocseraDiagnosticEvent("lease.release.request", {
+      reason,
+      tokenFingerprint: fingerprintDiagnosticSecret(binding.leaseToken),
+      tokenPresent: Boolean(binding.leaseToken),
+      workspaceSlug: binding.workspaceSlug,
+      workspaceSysId: binding.workspaceSysId
+    });
     void serviceNowClientRef.current.releaseWorkspaceEditLease?.({ ...binding, keepalive });
+  }
+
+  function releaseObsoleteWorkspaceLeaseBinding(binding: WorkspaceLeaseBinding): void {
+    const stored = readStoredWorkspaceLease(binding.workspaceSysId);
+    if (stored.token && stored.token === binding.leaseToken) {
+      return;
+    }
+    releaseWorkspaceLeaseBinding(binding, true, "obsolete_distinct_token");
+  }
+
+  function detachWorkspaceLeaseBindingForDocumentTeardown(): void {
+    const binding = workspaceLeaseBindingRef.current;
+    if (!binding) return;
+    workspaceLeaseBindingRef.current = null;
+    workspaceLeaseCoordinationRef.current.stopResponder(binding.bindingId, "document_teardown");
+    recordDocseraDiagnosticEvent("lease.documentTeardownDetach", {
+      tokenFingerprint: fingerprintDiagnosticSecret(binding.leaseToken),
+      workspaceSlug: binding.workspaceSlug,
+      workspaceSysId: binding.workspaceSysId
+    });
   }
 
   function workspaceLeaseRecoveryScope(): string {
@@ -962,12 +1164,70 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     return `${route.mode}:${requestedWorkspaceMode}:${currentWorkspaceSlug}:${cleanText(workspace?.sysId)}:${workspaceLeaseOperationGenerationRef.current}`;
   }
 
-  function beginAuthoringMutation(): () => boolean {
-    const operation = authoringMutationOperationRef.current + 1;
-    authoringMutationOperationRef.current = operation;
-    const routeTransition = routeTransitionGenerationRef.current;
-    return () => authoringMutationOperationRef.current === operation
-      && routeTransitionGenerationRef.current === routeTransition;
+  function currentWorkspaceMutationContextKey(input: { scope: "workspace" } | { scope: "body"; sessionToken: EditorSessionToken | null; pageSysId: string }): string {
+    const workspace = workspaceState.status === "success" ? workspaceState.data : null;
+    const base = [
+      route.mode,
+      requestedWorkspaceMode,
+      currentWorkspaceSlug,
+      cleanText(workspace?.sysId),
+      workspaceLeaseOperationGenerationRef.current
+    ];
+    if (input.scope === "workspace") {
+      return [...base, "workspace"].join(":");
+    }
+    return [
+      ...base,
+      "body",
+      routeTransitionGenerationRef.current,
+      cleanText(input.pageSysId),
+      input.sessionToken?.generation ?? 0
+    ].join(":");
+  }
+
+  function isCurrentWorkspaceMutationContext(contextKey: string): boolean {
+    if (contextKey === currentWorkspaceMutationContextKey({ scope: "workspace" })) {
+      return true;
+    }
+    const editorSession = activeEditorSessionRef.current;
+    return contextKey === currentWorkspaceMutationContextKey({
+      pageSysId: cleanText(editorSession?.pageSysId),
+      scope: "body",
+      sessionToken: editorSession
+    });
+  }
+
+  async function runWorkspaceMutation<T extends { state: string; code?: string }>(input: {
+    contextKey: string;
+    dispatch: (workspaceLeaseToken: string, authority: ReturnType<typeof currentWorkspaceMutationAuthority>) => Promise<T>;
+    safeRetry?: boolean;
+    type: WorkspaceMutationType;
+  }): Promise<T | WorkspaceLeaseMutationRecoveryResult> {
+    const queue = workspaceMutationQueueRef.current;
+    if (!queue) {
+      return { state: "transient_failure", errorMessage: "Workspace editing is not ready." };
+    }
+    try {
+      return await queue.enqueue<T | WorkspaceLeaseMutationRecoveryResult>({
+        contextKey: input.contextKey,
+        type: input.type,
+        dispatch: async (authority) => {
+          const outcome = await workspaceLeaseRecoveryRef.current.runMutation<T>({
+            scope: workspaceLeaseRecoveryScope,
+            ensure: ensureWorkspaceLeaseForMutation,
+            invalidateLeaseRace: invalidateWorkspaceLeaseRace,
+            isLeaseRace: (result) => result.state === "failed" && result.code === "lock_lost",
+            mutate: (workspaceLeaseToken) => input.dispatch(workspaceLeaseToken, authority)
+          });
+          return outcome;
+        }
+      });
+    } catch (error) {
+      if (isWorkspaceMutationCanceled(error)) {
+        return { state: "transient_failure", errorMessage: "The editing session changed." };
+      }
+      throw error;
+    }
   }
 
   function invalidateWorkspaceLeaseRace(): void {
@@ -975,11 +1235,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     if (!binding) return;
     // A mutation response authoritatively rejected this token. Do not release it
     // again; remove all local authority before acquiring a replacement.
-    workspaceLeaseCoordinationRef.current.stopResponder(binding.bindingId);
+    workspaceLeaseCoordinationRef.current.stopResponder(binding.bindingId, "confirmed_lease_loss");
     workspaceLeaseBindingRef.current = null;
-    clearStoredWorkspaceLease(binding.workspaceSysId);
+    clearStoredWorkspaceLease(binding.workspaceSysId, "confirmed_lease_loss");
     workspaceLeaseOperationGenerationRef.current += 1;
     workspaceLeaseRecoveryRef.current.reset();
+    workspaceMutationQueueRef.current?.cancelObsolete("lease_generation_invalidated");
     setWorkspaceLeaseState({ state: "recovery_required" });
   }
 
@@ -1058,24 +1319,22 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
     const binding = workspaceLeaseBindingRef.current;
     if (binding && (!input.expectedBinding || binding === input.expectedBinding)) {
-      workspaceLeaseCoordinationRef.current.stopResponder(binding.bindingId);
+      workspaceLeaseCoordinationRef.current.stopResponder(binding.bindingId, input.reason);
       workspaceLeaseBindingRef.current = null;
-      clearStoredWorkspaceLease(binding.workspaceSysId);
+      clearStoredWorkspaceLease(binding.workspaceSysId, input.reason);
     }
 
     workspaceLeaseOperationGenerationRef.current += 1;
     workspaceLeaseRecoveryRef.current.reset();
-    authoringMutationOperationRef.current += 1;
     clearActiveAuthoringUi();
     setWorkspaceLeaseState(input.nextLeaseState);
     setEditAccessLost(true);
-    commitRoute(buildWorkspaceHref(input.workspaceSlug, { mode: "live" }), true);
+    commitRoute(buildWorkspaceHref(input.workspaceSlug, { mode: "live" }), true, "access_loss_fallback");
     return true;
   }
 
   useEffect(() => () => {
-    const binding = workspaceLeaseBindingRef.current;
-    if (binding) releaseWorkspaceLeaseBinding(binding);
+    detachWorkspaceLeaseBindingForDocumentTeardown();
   }, []);
 
   useEffect(() => {
@@ -1161,6 +1420,62 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const leaseKeepsAuthoringAvailable = ["held", "uncertain", "recovery_required", "recovering", "transient_failure"].includes(workspaceLeaseState.state);
   const activeWorkspaceMode: WorkspaceMode =
     route.mode === "workspace" && requestedWorkspaceMode === "edit" && hasAuthoringCapability && leaseKeepsAuthoringAvailable ? "edit" : "live";
+  useEffect(() => {
+    recordDocseraDiagnosticEvent("workspace.loadState", {
+      status: workspaceState.status,
+      workspaceSlug: workspaceState.status === "success" ? workspaceState.data.slug : currentWorkspaceSlug,
+      workspaceSysId: workspaceState.status === "success" ? cleanText(workspaceState.data.sysId) : ""
+    });
+  }, [currentWorkspaceSlug, workspaceState]);
+
+  useEffect(() => {
+    recordDocseraDiagnosticEvent("workspace.modeState", {
+      activeWorkspaceMode,
+      requestedWorkspaceMode,
+      workspaceSlug: currentWorkspaceSlug
+    });
+  }, [activeWorkspaceMode, currentWorkspaceSlug, requestedWorkspaceMode]);
+
+  useEffect(() => {
+    recordDocseraDiagnosticEvent("workspace.leaseState", {
+      sameUserDifferentSession: workspaceLeaseState.state === "blocked" ? workspaceLeaseState.sameUserDifferentSession : false,
+      state: workspaceLeaseState.state,
+      tokenFingerprint: workspaceLeaseState.state === "held" ? fingerprintDiagnosticSecret(workspaceLeaseState.leaseToken) : "",
+      workspaceSlug: currentWorkspaceSlug
+    });
+  }, [currentWorkspaceSlug, workspaceLeaseState]);
+
+  useEffect(() => {
+    recordDocseraDiagnosticEvent("workspace.editAccessLost", {
+      editAccessLost,
+      workspaceSlug: currentWorkspaceSlug
+    });
+  }, [currentWorkspaceSlug, editAccessLost]);
+
+  useEffect(() => {
+    recordDocseraDiagnosticEvent(route.mode === "launcher" ? "render.launcher" : "render.workspaceShell", {
+      activeWorkspaceMode,
+      requestedWorkspaceMode,
+      route,
+      workspaceSlug: currentWorkspaceSlug
+    });
+  }, [activeWorkspaceMode, currentWorkspaceSlug, requestedWorkspaceMode, route]);
+
+  useEffect(() => {
+    if (route.mode !== "workspace" || activeWorkspaceMode !== "edit" || workspaceLeaseState.state !== "held") {
+      setPendingChangesState({ status: "idle" });
+      pendingChangesRequestIdRef.current += 1;
+      return;
+    }
+    void refreshPendingChanges({ keepPrevious: false });
+  }, [
+    activeWorkspaceMode,
+    route.mode,
+    workspaceLeaseState.state,
+    workspaceLeaseState.state === "held" ? workspaceLeaseState.leaseToken : "",
+    workspaceLeaseState.state === "held" ? workspaceLeaseState.changeSetId : "",
+    workspaceLeaseState.state === "held" ? workspaceLeaseState.changeSetRevision : -1
+  ]);
   const currentModeStateKey = buildModeStateKey(currentWorkspaceSlug, activeWorkspaceMode);
   const currentModeUiState = modeUiState[currentModeStateKey] ?? createWorkspaceModeUiState();
   const workspaceHeaderIdentity = useMemo(
@@ -1220,7 +1535,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     route.mode === "workspace" &&
     staleRefreshState.status !== "idle" &&
     staleRefreshState.workspaceSlug === currentWorkspaceSlug &&
-    staleRefreshState.mode === activeWorkspaceMode;
+    staleRefreshState.mode === activeWorkspaceMode &&
+    isCurrentWorkspaceMutationContext(staleRefreshState.contextKey);
   const currentWorkspacePages = workspacePagesLoaded ? workspacePagesState.data : [];
   const treePages = useMemo(
     () => buildWorkspacePageTree(currentWorkspacePages, activeWorkspaceMode),
@@ -1882,7 +2198,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     const handlePopState = () => {
       const targetHref = `${window.location.pathname}${window.location.search}${window.location.hash}`;
       if (shouldGuardTransition(targetHref)) {
-        navigateTo(buildHrefFromRoute(route), true);
+        navigateTo(buildHrefFromRoute(route), true, "popstate_guard_restore");
         requestRouteTransition({ href: targetHref, replace: false });
         return;
       }
@@ -1972,7 +2288,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
             mode: requestedWorkspaceMode,
             pageSlug: currentWorkspacePageSlug
           }),
-          true
+          true,
+          "settings_intent_cleanup"
         );
         setRoute(readAppRoute(window.location));
       }
@@ -2017,7 +2334,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               mode: requestedWorkspaceMode,
               pageSlug: currentWorkspacePageSlug
             }),
-            true
+            true,
+            "settings_intent_cleanup"
           );
           setRoute(readAppRoute(window.location));
         }
@@ -2051,7 +2369,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     const stillEditingBoundWorkspace = route.mode === "workspace" && requestedWorkspaceMode === "edit" && binding && binding.workspaceSlug === currentWorkspaceSlug && binding.workspaceSysId === expectedWorkspaceSysId;
     if (binding && !stillEditingBoundWorkspace) {
       workspaceLeaseOperationGenerationRef.current += 1;
-      releaseWorkspaceLeaseBinding(binding);
+      releaseWorkspaceLeaseBinding(binding, true, resolveWorkspaceLeaseReleaseReason(route, requestedWorkspaceMode, currentWorkspaceSlug, binding));
       setWorkspaceLeaseState({ state: "idle" });
     } else if (!binding && workspaceLeaseState.state === "acquiring" && (route.mode !== "workspace" || requestedWorkspaceMode !== "edit")) {
       setWorkspaceLeaseState({ state: "idle" });
@@ -2062,11 +2380,25 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }, [currentWorkspaceSlug, requestedWorkspaceMode, route.mode, workspaceLeaseState.state, workspaceState]);
 
   useEffect(() => {
+    recordDocseraDiagnosticEvent("lease.acquireEffect.start", {
+      hasAuthoringCapability,
+      requestedWorkspaceMode,
+      routeMode: route.mode,
+      workspaceLoaded: workspaceState.status === "success",
+      workspaceSlug: currentWorkspaceSlug
+    });
     if (route.mode !== "workspace" || requestedWorkspaceMode !== "edit" || workspaceState.status !== "success" || workspaceState.data.slug !== currentWorkspaceSlug || !hasAuthoringCapability) return;
     const workspace = workspaceState.data;
     const workspaceSysId = cleanText(workspace.sysId);
     const existingBinding = workspaceLeaseBindingRef.current;
-    if (existingBinding?.workspaceSysId === workspaceSysId || workspaceLeaseState.state === "acquiring") return;
+    if (existingBinding?.workspaceSysId === workspaceSysId || workspaceLeaseState.state === "acquiring") {
+      recordDocseraDiagnosticEvent("lease.acquireEffect.skip", {
+        reason: existingBinding?.workspaceSysId === workspaceSysId ? "binding_already_current" : "already_acquiring",
+        workspaceSlug: workspace.slug,
+        workspaceSysId
+      });
+      return;
+    }
     let current = true;
     const operationGeneration = workspaceLeaseOperationGenerationRef.current + 1;
     workspaceLeaseOperationGenerationRef.current = operationGeneration;
@@ -2074,15 +2406,42 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     setWorkspaceLeaseState({ state: "acquiring" });
     void (async () => {
       const stored = readStoredWorkspaceLease(workspaceSysId);
+      recordDocseraDiagnosticEvent("lease.resume.considered", {
+        currentTabSessionFingerprint: fingerprintDiagnosticSecret(tabSessionId),
+        storedAndCurrentTabMatch: Boolean(stored.tabSessionId && stored.tabSessionId === tabSessionId),
+        storedTabSessionFingerprint: fingerprintDiagnosticSecret(stored.tabSessionId),
+        tokenExists: Boolean(stored.token),
+        tokenFingerprint: fingerprintDiagnosticSecret(stored.token),
+        workspaceSlug: workspace.slug,
+        workspaceSysId
+      });
       const canResume = Boolean(stored.token) && await workspaceLeaseCoordinationRef.current.canResume({ stored, tabSessionId, workspaceSysId });
-      if (stored.token && !canResume) clearStoredWorkspaceLease(workspaceSysId);
+      if (stored.token && !canResume) {
+        clearStoredWorkspaceLease(
+          workspaceSysId,
+          stored.tabSessionId !== tabSessionId ? "identity_mismatch" : "duplicate_runtime_probe_denial"
+        );
+      }
+      recordDocseraDiagnosticEvent(canResume && stored.token ? "lease.resume.request" : "lease.acquire.request", {
+        canResume,
+        tokenFingerprint: fingerprintDiagnosticSecret(stored.token),
+        tokenPresent: Boolean(stored.token),
+        workspaceSlug: workspace.slug,
+        workspaceSysId
+      });
       const result = canResume && stored.token && serviceNowClient.resumeWorkspaceEditLease
         ? await serviceNowClient.resumeWorkspaceEditLease({ workspaceSlug: workspace.slug, workspaceSysId, leaseToken: stored.token })
         : serviceNowClient.acquireWorkspaceEditLease
           ? await serviceNowClient.acquireWorkspaceEditLease({ workspaceSlug: workspace.slug, workspaceSysId })
           : { state: "failed" as const, errorMessage: "Workspace editing is unavailable.", failure: "terminal" as const, retryable: false };
       if (!current || workspaceLeaseOperationGenerationRef.current !== operationGeneration) {
-        if (result.state === "held") releaseWorkspaceLeaseBinding({ bindingId: `${operationGeneration}-${result.leaseToken}`, workspaceSlug: workspace.slug, workspaceSysId, ...result });
+        recordDocseraDiagnosticEvent("lease.acquireResult.ignored", {
+          cleanup: result.state === "held",
+          resultState: result.state,
+          workspaceSlug: workspace.slug,
+          workspaceSysId
+        });
+        if (result.state === "held") releaseObsoleteWorkspaceLeaseBinding({ bindingId: `${operationGeneration}-${result.leaseToken}`, workspaceSlug: workspace.slug, workspaceSysId, ...result });
         return;
       }
       if (result.state === "held") {
@@ -2091,11 +2450,17 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         storeWorkspaceLease(workspaceSysId, result.leaseToken, tabSessionId);
         workspaceLeaseCoordinationRef.current.startResponder({ bindingId: binding.bindingId, tabSessionId, workspaceSysId });
         editReentryRequestedRef.current = false;
+        recordDocseraDiagnosticEvent("lease.acquireResult.accepted", {
+          resultState: "held",
+          tokenFingerprint: fingerprintDiagnosticSecret(result.leaseToken),
+          workspaceSlug: workspace.slug,
+          workspaceSysId
+        });
         setWorkspaceLeaseState(result);
         setEditAccessLost(false);
         return;
       }
-      clearStoredWorkspaceLease(workspaceSysId);
+      clearStoredWorkspaceLease(workspaceSysId, result.state === "locked" || result.state === "lost" ? "resume_rejection" : "acquire_rejection");
       if (result.state === "failed" && result.failure === "forbidden") {
         clearWorkspaceRecoveryState({
           workspaceSlug: workspace.slug,
@@ -2103,19 +2468,33 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         });
       }
       editReentryRequestedRef.current = false;
+      recordDocseraDiagnosticEvent("lease.acquireResult.accepted", {
+        failure: result.state === "failed" ? result.failure : "",
+        resultState: result.state,
+        sameUserDifferentSession: result.state === "locked" || result.state === "lost" ? result.sameUserDifferentSession : false,
+        workspaceSlug: workspace.slug,
+        workspaceSysId
+      });
       setWorkspaceLeaseState(result.state === "locked" || result.state === "lost"
         ? createWorkspaceLeaseHolderNotice(result, result.state)
         : createWorkspaceLeaseFailureNotice(result));
       setEditAccessLost(true);
     })().catch(() => {
       if (current && workspaceLeaseOperationGenerationRef.current === operationGeneration) {
-        clearStoredWorkspaceLease(workspaceSysId);
+        clearStoredWorkspaceLease(workspaceSysId, "acquire_exception");
         editReentryRequestedRef.current = false;
         setWorkspaceLeaseState(createWorkspaceLeaseFailureNotice({ errorMessage: "Workspace editing is temporarily unavailable. Please try again.", failure: "transient" }));
         setEditAccessLost(true);
       }
     });
-    return () => { current = false; };
+    return () => {
+      current = false;
+      recordDocseraDiagnosticEvent("lease.acquireEffect.cleanup", {
+        reason: "effect_replaced",
+        workspaceSlug: workspace.slug,
+        workspaceSysId
+      });
+    };
   }, [currentWorkspaceSlug, hasAuthoringCapability, requestedWorkspaceMode, route.mode, serviceNowClient, workspaceState]);
 
   useEffect(() => {
@@ -2128,11 +2507,29 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     const heartbeatGeneration = workspaceLeaseOperationGenerationRef.current;
     const renew = () => {
       if (!serviceNowClient.renewWorkspaceEditLease) return;
+      recordDocseraDiagnosticEvent("lease.renew.request", {
+        tokenFingerprint: fingerprintDiagnosticSecret(binding.leaseToken),
+        workspaceSlug: workspace.slug,
+        workspaceSysId
+      });
       void serviceNowClient.renewWorkspaceEditLease({ workspaceSlug: workspace.slug, workspaceSysId, leaseToken: binding.leaseToken }).then((result) => {
-        if (workspaceLeaseBindingRef.current !== binding || workspaceLeaseOperationGenerationRef.current !== heartbeatGeneration) return;
+        if (workspaceLeaseBindingRef.current !== binding || workspaceLeaseOperationGenerationRef.current !== heartbeatGeneration) {
+          recordDocseraDiagnosticEvent("lease.renewResult.ignored", {
+            resultState: result.state,
+            workspaceSlug: workspace.slug,
+            workspaceSysId
+          });
+          return;
+        }
       if (result.state === "held") {
         workspaceLeaseBindingRef.current = { ...(workspaceLeaseBindingRef.current ?? binding), workspaceSlug: workspace.slug, workspaceSysId, bindingId: binding.bindingId, ...result };
         storeWorkspaceLease(workspaceSysId, result.leaseToken, getOrCreateWorkspaceLeaseTabSessionId());
+        recordDocseraDiagnosticEvent("lease.renewResult.accepted", {
+          resultState: "held",
+          tokenFingerprint: fingerprintDiagnosticSecret(result.leaseToken),
+          workspaceSlug: workspace.slug,
+          workspaceSysId
+        });
         setWorkspaceLeaseState(result);
         return;
       }
@@ -2142,7 +2539,15 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           setWorkspaceLeaseState({ state: "uncertain" });
           return;
         }
-        if (result.state === "lost") { setWorkspaceLeaseState({ state: "recovery_required" }); return; }
+        if (result.state === "lost") {
+          recordDocseraDiagnosticEvent("lease.renewResult.accepted", {
+            resultState: "lost",
+            sameUserDifferentSession: result.sameUserDifferentSession,
+            workspaceSlug: workspace.slug,
+            workspaceSysId
+          });
+          setWorkspaceLeaseState({ state: "recovery_required" }); return;
+        }
         if (
           result.failure === "forbidden" &&
           forceLiveAfterAuthoringAccessLoss({
@@ -2157,7 +2562,13 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         ) {
           return;
         }
-        workspaceLeaseCoordinationRef.current.stopResponder(binding.bindingId); workspaceLeaseBindingRef.current = null; clearStoredWorkspaceLease(workspaceSysId);
+        workspaceLeaseCoordinationRef.current.stopResponder(binding.bindingId, "renew_rejection"); workspaceLeaseBindingRef.current = null; clearStoredWorkspaceLease(workspaceSysId, "renew_rejection");
+        recordDocseraDiagnosticEvent("lease.renewResult.accepted", {
+          failure: result.state === "failed" ? result.failure : "",
+          resultState: result.state,
+          workspaceSlug: workspace.slug,
+          workspaceSysId
+        });
         setWorkspaceLeaseState(createWorkspaceLeaseFailureNotice(result)); setEditAccessLost(true);
       });
     };
@@ -2183,22 +2594,46 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       if (!isCurrent()) return { state: "transient_failure", errorMessage: "The editing session changed." };
       setWorkspaceLeaseState({ state: "recovering" });
       const prior = workspaceLeaseBindingRef.current;
+      recordDocseraDiagnosticEvent(prior ? "lease.recovery.renew.request" : "lease.recovery.acquire.request", {
+        priorTokenFingerprint: fingerprintDiagnosticSecret(prior?.leaseToken),
+        workspaceSlug: workspace.slug,
+        workspaceSysId
+      });
       const result = prior && serviceNowClientRef.current.renewWorkspaceEditLease
         ? await serviceNowClientRef.current.renewWorkspaceEditLease({ workspaceSlug: workspace.slug, workspaceSysId, leaseToken: prior.leaseToken })
         : serviceNowClientRef.current.acquireWorkspaceEditLease
           ? await serviceNowClientRef.current.acquireWorkspaceEditLease({ workspaceSlug: workspace.slug, workspaceSysId })
           : { state: "failed" as const, failure: "terminal" as const, errorMessage: "Workspace editing is unavailable." };
       if (!isCurrent()) {
+        recordDocseraDiagnosticEvent("lease.recoveryResult.ignored", {
+          cleanup: result.state === "held",
+          resultState: result.state,
+          workspaceSlug: workspace.slug,
+          workspaceSysId
+        });
         if (result.state === "held") {
+          recordDocseraDiagnosticEvent("lease.release.request", {
+            reason: "obsolete_result_cleanup",
+            tokenFingerprint: fingerprintDiagnosticSecret(result.leaseToken),
+            tokenPresent: true,
+            workspaceSlug: workspace.slug,
+            workspaceSysId
+          });
           void serviceNowClientRef.current.releaseWorkspaceEditLease?.({ workspaceSlug: workspace.slug, workspaceSysId, leaseToken: result.leaseToken, keepalive: true });
         }
         return { state: "transient_failure", errorMessage: "The editing session changed." };
       }
       if (result.state === "held") {
         const nextBinding = { bindingId: `${operationGeneration}-${result.leaseToken}`, workspaceSlug: workspace.slug, workspaceSysId, ...result };
-        if (prior) workspaceLeaseCoordinationRef.current.stopResponder(prior.bindingId);
+        if (prior) workspaceLeaseCoordinationRef.current.stopResponder(prior.bindingId, "lease_recovery_replaced_binding");
         workspaceLeaseBindingRef.current = nextBinding; storeWorkspaceLease(workspaceSysId, result.leaseToken, getOrCreateWorkspaceLeaseTabSessionId());
         workspaceLeaseCoordinationRef.current.startResponder({ bindingId: nextBinding.bindingId, tabSessionId: getOrCreateWorkspaceLeaseTabSessionId(), workspaceSysId }); setWorkspaceLeaseState(result); setEditAccessLost(false);
+        recordDocseraDiagnosticEvent("lease.recoveryResult.accepted", {
+          resultState: "held",
+          tokenFingerprint: fingerprintDiagnosticSecret(result.leaseToken),
+          workspaceSlug: workspace.slug,
+          workspaceSysId
+        });
         return { state: "held", lease: result };
       }
       if (result.state === "locked" || result.state === "lost") {
@@ -2230,7 +2665,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         }
         return { state: "transient_failure", errorMessage: "The editing session changed." };
       }
-      if (prior) { workspaceLeaseCoordinationRef.current.stopResponder(prior.bindingId); workspaceLeaseBindingRef.current = null; clearStoredWorkspaceLease(workspaceSysId); }
+      if (prior) { workspaceLeaseCoordinationRef.current.stopResponder(prior.bindingId, "recovery_failure"); workspaceLeaseBindingRef.current = null; clearStoredWorkspaceLease(workspaceSysId, "recovery_failure"); }
       setWorkspaceLeaseState(createWorkspaceLeaseTransientRecoveryState(result.errorMessage));
       return { state: "transient_failure", errorMessage: result.errorMessage };
     });
@@ -2432,12 +2867,13 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
-    commitRoute(
-      buildWorkspaceHref(currentWorkspaceSlug, {
-        settingsIntent: currentWorkspaceSettingsIntent
-      }),
-      true
-    );
+        commitRoute(
+          buildWorkspaceHref(currentWorkspaceSlug, {
+            settingsIntent: currentWorkspaceSettingsIntent
+          }),
+          true,
+          "deliberate_edit_exit"
+        );
   }, [activeWorkspaceMode, currentWorkspaceSettingsIntent, currentWorkspaceSlug, requestedWorkspaceMode, route.mode, workspaceEditLeasePending, workspaceState]);
 
   useEffect(() => {
@@ -2463,7 +2899,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           buildWorkspaceHref(currentWorkspaceSlug, {
             mode: activeWorkspaceMode
           }),
-          true
+          true,
+          "route_canonicalization"
         );
       }
       return;
@@ -2478,7 +2915,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         mode: activeWorkspaceMode,
         pageSlug: canonicalPageSlug || undefined
       }),
-      true
+      true,
+      "route_canonicalization"
     );
   }, [
     activeWorkspaceMode,
@@ -2527,9 +2965,17 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     setPendingRouteTransition(null);
   }, [activeWorkspaceMode, editorSessionKey, selectedWorkspacePageId]);
 
-  function commitRoute(href: string, replace = false) {
-    navigateTo(href, replace);
-    setRoute(readAppRoute(window.location));
+  function commitRoute(href: string, replace = false, reason = "application_route_change") {
+    const beforeRoute = route;
+    navigateTo(href, replace, reason);
+    const nextRoute = readAppRoute(window.location);
+    recordDocseraDiagnosticEvent("route.commit", {
+      afterRoute: nextRoute,
+      beforeRoute,
+      reason,
+      routeChangeType: classifyRouteChangeReason(reason)
+    });
+    setRoute(nextRoute);
   }
 
   function isCurrentEditorSession(token: EditorSessionToken | null): token is EditorSessionToken {
@@ -2620,7 +3066,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         if (release) {
           await release().catch(() => undefined);
         }
-        commitRoute(guardedTransition.href, guardedTransition.replace);
+        commitRoute(guardedTransition.href, guardedTransition.replace, guardedTransition.reason ?? "user_navigation");
       });
       return;
     }
@@ -2631,12 +3077,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       : null;
     if (release) {
       void release().finally(() => {
-        commitRoute(transition.href, transition.replace);
+        commitRoute(transition.href, transition.replace, transition.reason ?? "user_navigation");
       });
       return;
     }
 
-    commitRoute(transition.href, transition.replace);
+    commitRoute(transition.href, transition.replace, transition.reason ?? "user_navigation");
   }
 
   function updateCurrentModeUiState(updater: (state: WorkspaceModeUiState) => WorkspaceModeUiState) {
@@ -2661,6 +3107,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   function openLauncher() {
     requestRouteTransition({
       href: buildLauncherHref(),
+      reason: "open_launcher",
       replace: false,
       beforeCommit: () => {
         setWorkspaceSettingsNotice(false);
@@ -2682,6 +3129,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       href: buildWorkspaceHref(workspaceSlug, {
         settingsIntent
       }),
+      reason: currentWorkspaceSlug && currentWorkspaceSlug !== workspaceSlug ? "workspace_switch" : "user_navigation",
       replace: false,
       beforeCommit: () => {
         rememberRecentWorkspaceSlug(workspaceSlug);
@@ -2717,6 +3165,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         mode: activeWorkspaceMode,
         pageSlug: nextPageSlug
       }),
+      reason: "user_navigation",
       replace: false
     });
   }
@@ -2758,6 +3207,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         mode: nextMode,
         pageSlug: nextPageSlug || undefined
       }),
+      reason: nextMode === "live" ? "deliberate_edit_exit" : "user_navigation",
       replace: false,
       beforeCommit: () => {
         editReentryRequestedRef.current = isDeliberateBlockedReentry;
@@ -3073,28 +3523,27 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return false;
     }
 
-    const isCurrentMutation = beginAuthoringMutation();
+    const mutationContextKey = currentWorkspaceMutationContextKey({ scope: "workspace" });
     try {
-      const outcome = await workspaceLeaseRecoveryRef.current.runMutation<PageSettingsSaveResult>({
-        scope: workspaceLeaseRecoveryScope,
-        ensure: ensureWorkspaceLeaseForMutation,
-        invalidateLeaseRace: invalidateWorkspaceLeaseRace,
-        isLeaseRace: (result) => result.state === "failed" && result.code === "lock_lost",
-        mutate: (workspaceLeaseToken) => serviceNowClient.savePageSettings({
+      const outcome = await runWorkspaceMutation<PageSettingsSaveResult>({
+        contextKey: mutationContextKey,
+        type: "page_settings",
+        dispatch: (workspaceLeaseToken, workspaceAuthority) => serviceNowClient.savePageSettings({
           workspaceSlug: workspaceState.data.slug,
           workspaceSysId: workspaceState.data.sysId ?? "",
           pageSysId: page.sysId ?? currentPageSettingsState.pageSysId,
           title: normalizedTitle,
           slug: normalizedSlug,
           workspaceLeaseToken,
-          workspaceAuthority: currentWorkspaceMutationAuthority()
+          workspaceAuthority
         })
       });
-      if (!isCurrentMutation()) return false;
+      if (isObsoleteWorkspaceMutationOutcome(outcome) && !isCurrentWorkspaceMutationContext(mutationContextKey)) return false;
       if (outcome.state === "contention" || outcome.state === "forbidden" || outcome.state === "transient_failure") {
         setPageSettingsState((current) => ({ ...current, generalError: outcome.state === "contention" ? "This workspace is currently being edited by another user." : outcome.errorMessage }));
         return false;
       }
+      if (!isCurrentWorkspaceMutationContext(mutationContextKey)) return false;
       const result = outcome;
 
       if (result.state === "failed" && result.code === "forbidden") {
@@ -3111,22 +3560,13 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }
 
       if (result.state === "failed") {
-        if (result.code === "conflict") {
-          requestStaleRefreshBlock({
-            changeSetId: result.currentChangeSetId,
-            changeSetRevision: result.currentChangeSetRevision
-          });
-        }
         setPageSettingsState((current) => ({
           ...current,
           generalError: result.errorMessage
         }));
         return false;
       }
-      installWorkspaceMutationAuthority({
-        changeSetId: result.changeSetId,
-        changeSetRevision: result.changeSetRevision
-      });
+      requestPendingChangesRefresh();
 
       setWorkspacePagesState((current) => {
         if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug || current.mode !== activeWorkspaceMode) {
@@ -3168,7 +3608,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }
       return true;
     } catch {
-      if (!isCurrentMutation()) return false;
+      if (!isCurrentWorkspaceMutationContext(mutationContextKey)) return false;
       setPageSettingsState((current) => ({
         ...current,
         generalError: "Something went wrong while saving page settings. Your changes were not saved. Please try again."
@@ -3270,26 +3710,25 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
-    const isCurrentMutation = beginAuthoringMutation();
+    const mutationContextKey = currentWorkspaceMutationContextKey({ scope: "workspace" });
     try {
-      const outcome = await workspaceLeaseRecoveryRef.current.runMutation<PageDeleteResult>({
-        scope: workspaceLeaseRecoveryScope,
-        ensure: ensureWorkspaceLeaseForMutation,
-        invalidateLeaseRace: invalidateWorkspaceLeaseRace,
-        isLeaseRace: (result) => result.state === "failed" && result.code === "lock_lost",
-        mutate: (workspaceLeaseToken) => serviceNowClient.deletePage({
+      const outcome = await runWorkspaceMutation<PageDeleteResult>({
+        contextKey: mutationContextKey,
+        type: "page_delete",
+        dispatch: (workspaceLeaseToken, workspaceAuthority) => serviceNowClient.deletePage({
           workspaceSlug: workspaceState.data.slug,
           workspaceSysId: workspaceState.data.sysId ?? "",
           pageSysId: deletedPageSysId,
           workspaceLeaseToken,
-          workspaceAuthority: currentWorkspaceMutationAuthority()
+          workspaceAuthority
         })
       });
-      if (!isCurrentMutation()) return;
+      if (isObsoleteWorkspaceMutationOutcome(outcome) && !isCurrentWorkspaceMutationContext(mutationContextKey)) return;
       if (outcome.state === "contention" || outcome.state === "forbidden" || outcome.state === "transient_failure") {
         setPageSettingsState((current) => ({ ...current, deletePending: false, deleteError: outcome.state === "contention" ? "This workspace is currently being edited by another user." : outcome.errorMessage }));
         return;
       }
+      if (!isCurrentWorkspaceMutationContext(mutationContextKey)) return;
       const result = outcome;
 
       if (result.state === "failed" && result.code === "forbidden") {
@@ -3306,12 +3745,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }
 
       if (result.state === "failed") {
-        if (result.code === "conflict") {
-          requestStaleRefreshBlock({
-            changeSetId: result.currentChangeSetId,
-            changeSetRevision: result.currentChangeSetRevision
-          });
-        }
         setPageSettingsState((current) => ({
           ...current,
           deletePending: false,
@@ -3319,10 +3752,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         }));
         return;
       }
-      installWorkspaceMutationAuthority({
-        changeSetId: result.changeSetId,
-        changeSetRevision: result.changeSetRevision
-      });
+      requestPendingChangesRefresh();
 
       setWorkspacePagesState((current) => {
         if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug || current.mode !== activeWorkspaceMode) {
@@ -3346,7 +3776,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           workspaceSlug: workspaceState.data.slug
         });
 
-        if (!isCurrentMutation()) return;
+        if (!isCurrentWorkspaceMutationContext(mutationContextKey)) return;
         setWorkspacePagesState((current) => {
           if (current.status !== "success" || current.workspaceSlug !== workspaceState.data.slug || current.mode !== activeWorkspaceMode) {
             return current;
@@ -3370,10 +3800,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         buildWorkspaceHref(currentWorkspaceSlug, {
           mode: activeWorkspaceMode,
           pageSlug: cleanText(nextSelection.pageSlug) || undefined
-        })
+        }),
+        false,
+        "user_navigation"
       );
     } catch {
-      if (!isCurrentMutation()) return;
+      if (!isCurrentWorkspaceMutationContext(mutationContextKey)) return;
       setPageSettingsState((current) => ({
         ...current,
         deletePending: false,
@@ -3527,26 +3959,25 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
-    const isCurrentMutation = beginAuthoringMutation();
+    const mutationContextKey = currentWorkspaceMutationContextKey({ scope: "workspace" });
     try {
-      const outcome = await workspaceLeaseRecoveryRef.current.runMutation<PageCreateResult>({
-        scope: workspaceLeaseRecoveryScope,
-        ensure: ensureWorkspaceLeaseForMutation,
-        invalidateLeaseRace: invalidateWorkspaceLeaseRace,
-        isLeaseRace: (result) => result.state === "failed" && result.code === "lock_lost",
-        mutate: (workspaceLeaseToken) => serviceNowClient.createPage({
+      const outcome = await runWorkspaceMutation<PageCreateResult>({
+        contextKey: mutationContextKey,
+        type: "page_create",
+        dispatch: (workspaceLeaseToken, workspaceAuthority) => serviceNowClient.createPage({
           ...(parentPageSysId ? { parentPageSysId } : {}),
           title,
           workspaceSlug: workspaceState.data.slug,
           workspaceLeaseToken,
-          workspaceAuthority: currentWorkspaceMutationAuthority()
+          workspaceAuthority
         })
       });
-      if (!isCurrentMutation()) return;
+      if (isObsoleteWorkspaceMutationOutcome(outcome) && !isCurrentWorkspaceMutationContext(mutationContextKey)) return;
       if (outcome.state === "contention" || outcome.state === "forbidden" || outcome.state === "transient_failure") {
         setInlinePageCreateState((current) => current ? { ...current, errorMessage: outcome.state === "contention" ? "This workspace is currently being edited by another user." : outcome.errorMessage, pending: false, showInput: true, title, parentPageSysId } : current);
         return;
       }
+      if (!isCurrentWorkspaceMutationContext(mutationContextKey)) return;
       const result = outcome;
 
       if (result.state === "failed" && result.code === "forbidden") {
@@ -3563,12 +3994,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }
 
       if (result.state === "failed") {
-        if (result.code === "conflict") {
-          requestStaleRefreshBlock({
-            changeSetId: result.currentChangeSetId,
-            changeSetRevision: result.currentChangeSetRevision
-          });
-        }
         setInlinePageCreateState((current) =>
           current
             ? {
@@ -3583,14 +4008,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         );
         return;
       }
-      installWorkspaceMutationAuthority({
-        changeSetId: result.changeSetId,
-        changeSetRevision: result.changeSetRevision
-      });
+      requestPendingChangesRefresh();
 
       finalizePageCreation(result.page);
     } catch {
-        if (!isCurrentMutation()) return;
+        if (!isCurrentWorkspaceMutationContext(mutationContextKey)) return;
         setInlinePageCreateState((current) =>
           current
             ? {
@@ -3669,24 +4091,22 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         ? { ...current, data: optimisticPages }
         : current
     );
-    const isCurrentMutation = beginAuthoringMutation();
+    const mutationContextKey = currentWorkspaceMutationContextKey({ scope: "workspace" });
     try {
-      const outcome = await workspaceLeaseRecoveryRef.current.runMutation<PageMoveResult>({
-        scope: workspaceLeaseRecoveryScope,
-        ensure: ensureWorkspaceLeaseForMutation,
-        invalidateLeaseRace: invalidateWorkspaceLeaseRace,
-        isLeaseRace: (result) => result.state === "failed" && result.code === "lock_lost",
-        mutate: (workspaceLeaseToken) => serviceNowClient.movePage!({
+      const outcome = await runWorkspaceMutation<PageMoveResult>({
+        contextKey: mutationContextKey,
+        type: "page_move",
+        dispatch: (workspaceLeaseToken, workspaceAuthority) => serviceNowClient.movePage!({
           workspaceSlug: workspaceState.data.slug,
           workspaceSysId: workspaceState.data.sysId ?? "",
           pageSysId,
           parentPageSysId,
           siblingOrder,
           workspaceLeaseToken,
-          workspaceAuthority: currentWorkspaceMutationAuthority()
+          workspaceAuthority
         })
       });
-      if (!isCurrentMutation()) return;
+      if (isObsoleteWorkspaceMutationOutcome(outcome) && !isCurrentWorkspaceMutationContext(mutationContextKey)) return;
       if (outcome.state === "contention" || outcome.state === "forbidden" || outcome.state === "transient_failure") {
         setWorkspacePagesState((current) =>
           current.status === "success" && current.workspaceSlug === workspaceState.data.slug && current.mode === activeWorkspaceMode
@@ -3695,6 +4115,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         );
         return;
       }
+      if (!isCurrentWorkspaceMutationContext(mutationContextKey)) return;
       const result = outcome;
       if (result.state === "failed" && result.code === "forbidden") {
         setWorkspacePagesState((current) =>
@@ -3719,19 +4140,16 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
             ? { ...current, data: previousPages }
             : current
         );
-        if (result.code === "conflict") {
-          requestStaleRefreshBlock({ changeSetId: result.currentChangeSetId, changeSetRevision: result.currentChangeSetRevision });
-        }
         return;
       }
-      installWorkspaceMutationAuthority({ changeSetId: result.changeSetId, changeSetRevision: result.changeSetRevision });
+      requestPendingChangesRefresh();
       setWorkspacePagesState((current) =>
         current.status === "success" && current.workspaceSlug === workspaceState.data.slug && current.mode === activeWorkspaceMode
           ? { ...current, data: result.pages, totalCount: result.pages.length }
           : current
       );
     } catch {
-      if (!isCurrentMutation()) return;
+      if (!isCurrentWorkspaceMutationContext(mutationContextKey)) return;
       setWorkspacePagesState((current) =>
         current.status === "success" && current.workspaceSlug === workspaceState.data.slug && current.mode === activeWorkspaceMode
           ? { ...current, data: previousPages }
@@ -3761,12 +4179,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     const release = editorReleaseRef.current;
     if (release) {
       void release().finally(() => {
-        commitRoute(transition.href, transition.replace);
+        commitRoute(transition.href, transition.replace, transition.reason ?? "user_navigation");
       });
       return;
     }
 
-    commitRoute(transition.href, transition.replace);
+    commitRoute(transition.href, transition.replace, transition.reason ?? "user_navigation");
   }
 
   function handleOutlineChange(pageSysId: string, outline: WorkspacePageOutlineItem[]) {
@@ -3874,7 +4292,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     };
   }
 
-  function installWorkspaceMutationAuthority(input: { changeSetId?: string; changeSetRevision?: number }) {
+  function installWorkspaceMutationAuthority(input: { changeSetId?: string; changeSetRevision?: number }, source: "mutation" | "refresh" = "refresh"): boolean {
     const binding = workspaceLeaseBindingRef.current;
     const changeSetId = cleanText(input.changeSetId);
     const changeSetRevision =
@@ -3882,7 +4300,15 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         ? input.changeSetRevision
         : null;
     if (!binding || !changeSetId || changeSetRevision === null) {
-      return;
+      return false;
+    }
+    if (binding.changeSetId === changeSetId && binding.changeSetRevision > changeSetRevision) {
+      recordDocseraDiagnosticEvent("workspaceMutation.authorityIgnored", {
+        currentAuthority: currentWorkspaceMutationAuthority(),
+        returnedAuthority: { changeSetId, changeSetRevision },
+        source
+      });
+      return false;
     }
     workspaceLeaseBindingRef.current = {
       ...binding,
@@ -3898,32 +4324,87 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       workspaceLeaseStateRef.current = nextState;
       setWorkspaceLeaseState(nextState);
     }
+    recordDocseraDiagnosticEvent("workspaceMutation.authorityInstalled", {
+      currentAuthority: currentWorkspaceMutationAuthority(),
+      source
+    });
+    return true;
   }
 
-  function requestStaleRefreshBlock(input: { changeSetId?: string; changeSetRevision?: number }) {
+  async function refreshPendingChanges(options: { keepPrevious?: boolean } = {}) {
+    const binding = workspaceLeaseBindingRef.current;
+    if (!serviceNowClientRef.current.getWorkspacePendingChanges || !binding || activeWorkspaceMode !== "edit") {
+      setPendingChangesState({ status: "idle" });
+      return;
+    }
+    const requestId = pendingChangesRequestIdRef.current + 1;
+    pendingChangesRequestIdRef.current = requestId;
+    const previous = pendingChangesState.status === "success" || pendingChangesState.status === "refreshing" ? pendingChangesState.data : pendingChangesState.status === "error" ? pendingChangesState.previous : undefined;
+    const workspaceSlug = binding.workspaceSlug;
+    const workspaceSysId = binding.workspaceSysId;
+    const leaseToken = binding.leaseToken;
+    if (options.keepPrevious && previous) {
+      setPendingChangesState({ data: previous, leaseToken, status: "refreshing", workspaceSlug, workspaceSysId });
+    } else {
+      setPendingChangesState({ leaseToken, status: "loading", workspaceSlug, workspaceSysId });
+    }
+    const result = await serviceNowClientRef.current.getWorkspacePendingChanges({
+      workspaceSlug,
+      workspaceSysId,
+      leaseToken
+    });
+    const currentBinding = workspaceLeaseBindingRef.current;
+    if (
+      pendingChangesRequestIdRef.current !== requestId ||
+      activeWorkspaceMode !== "edit" ||
+      !currentBinding ||
+      currentBinding.workspaceSlug !== workspaceSlug ||
+      currentBinding.workspaceSysId !== workspaceSysId ||
+      currentBinding.leaseToken !== leaseToken
+    ) {
+      return;
+    }
+    if (result.state === "succeeded") {
+      installWorkspaceMutationAuthority({
+        changeSetId: result.changeSetId,
+        changeSetRevision: result.changeSetRevision
+      }, "refresh");
+      setPendingChangesState({ data: result, leaseToken, status: "success", workspaceSlug, workspaceSysId });
+      return;
+    }
+    setPendingChangesState({ errorMessage: result.errorMessage, previous, leaseToken, status: "error", workspaceSlug, workspaceSysId });
+  }
+
+  function requestPendingChangesRefresh() {
+    void refreshPendingChanges({ keepPrevious: true });
+  }
+
+  async function requestStaleRefreshBlock(input: { changeSetId?: string; changeSetRevision?: number }, contextKey = currentWorkspaceMutationContextKey({ scope: "workspace" })): Promise<boolean> {
     const changeSetId = cleanText(input.changeSetId);
     const changeSetRevision =
       typeof input.changeSetRevision === "number" && Number.isSafeInteger(input.changeSetRevision) && input.changeSetRevision >= 0
         ? input.changeSetRevision
         : null;
-    if (workspaceState.status !== "success" || !changeSetId || changeSetRevision === null) {
-      return;
+    if (workspaceState.status !== "success" || !changeSetId || changeSetRevision === null || !isCurrentWorkspaceMutationContext(contextKey)) {
+      return false;
     }
     const nextState: StaleRefreshState = {
       authority: { changeSetId, changeSetRevision },
+      contextKey,
       mode: activeWorkspaceMode,
       status: "refresh_required",
       workspaceSlug: workspaceState.data.slug
     };
     setStaleRefreshState(nextState);
-    void refreshWorkspacePagesAfterStaleGeneration(nextState.authority);
+    return refreshWorkspacePagesAfterStaleGeneration(nextState.authority, contextKey);
   }
 
   function blockedWriteMessage() {
     if (
       staleRefreshState.status !== "idle" &&
       staleRefreshState.workspaceSlug === currentWorkspaceSlug &&
-      staleRefreshState.mode === activeWorkspaceMode
+      staleRefreshState.mode === activeWorkspaceMode &&
+      isCurrentWorkspaceMutationContext(staleRefreshState.contextKey)
     ) {
       return staleRefreshState.errorMessage || STALE_REFRESH_BLOCKED_MESSAGE;
     }
@@ -3934,17 +4415,21 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     if (
       staleRefreshState.status !== "idle" &&
       staleRefreshState.workspaceSlug === currentWorkspaceSlug &&
-      staleRefreshState.mode === activeWorkspaceMode
+      staleRefreshState.mode === activeWorkspaceMode &&
+      isCurrentWorkspaceMutationContext(staleRefreshState.contextKey)
     ) {
-      void refreshWorkspacePagesAfterStaleGeneration(staleRefreshState.authority);
+      void refreshWorkspacePagesAfterStaleGeneration(staleRefreshState.authority, staleRefreshState.contextKey);
       return;
     }
     setWorkspacePagesRetryNonce((value) => value + 1);
   }
 
-  async function refreshWorkspacePagesAfterStaleGeneration(input: { changeSetId?: string; changeSetRevision?: number }) {
+  async function refreshWorkspacePagesAfterStaleGeneration(input: { changeSetId?: string; changeSetRevision?: number }, contextKey = currentWorkspaceMutationContextKey({ scope: "workspace" })) {
     if (workspaceState.status !== "success") {
-      return;
+      return false;
+    }
+    if (!isCurrentWorkspaceMutationContext(contextKey)) {
+      return false;
     }
     const changeSetId = cleanText(input.changeSetId);
     const changeSetRevision =
@@ -3952,7 +4437,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         ? input.changeSetRevision
         : null;
     if (!changeSetId || changeSetRevision === null) {
-      return;
+      return false;
     }
     const workspaceSlug = workspaceState.data.slug;
     const mode = activeWorkspaceMode;
@@ -3960,6 +4445,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     staleRefreshRequestIdRef.current = requestId;
     setStaleRefreshState({
       authority: { changeSetId, changeSetRevision },
+      contextKey,
       mode,
       status: "refreshing",
       workspaceSlug
@@ -3970,7 +4456,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         workspaceSlug
       });
       if (staleRefreshRequestIdRef.current !== requestId) {
-        return;
+        return false;
+      }
+      if (!isCurrentWorkspaceMutationContext(contextKey)) {
+        return false;
       }
       setWorkspacePagesState({
         data: refreshedPages.items,
@@ -3979,11 +4468,16 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         totalCount: refreshedPages.totalCount,
         workspaceSlug: refreshedPages.workspaceSlug || workspaceSlug
       });
-      installWorkspaceMutationAuthority({ changeSetId, changeSetRevision });
+      installWorkspaceMutationAuthority({ changeSetId, changeSetRevision }, "refresh");
+      requestPendingChangesRefresh();
       setStaleRefreshState({ status: "idle" });
+      return true;
     } catch (error) {
       if (staleRefreshRequestIdRef.current !== requestId) {
-        return;
+        return false;
+      }
+      if (!isCurrentWorkspaceMutationContext(contextKey)) {
+        return false;
       }
       const errorMessage = getErrorMessage(error, "Unable to load pages.");
       setWorkspacePagesState({
@@ -3994,11 +4488,13 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       });
       setStaleRefreshState({
         authority: { changeSetId, changeSetRevision },
+        contextKey,
         errorMessage,
         mode,
         status: "refresh_required",
         workspaceSlug
       });
+      return false;
     }
   }
 
@@ -4007,7 +4503,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       pageSysId: string;
       draftContentJson: DocseraDocumentEnvelope;
       expectedRevision: number;
-    }
+      readLatestDraftContentJson?: () => DocseraDocumentEnvelope | null;
+    },
+    sessionToken: EditorSessionToken | null
   ): Promise<PageBodySaveResult> {
     if (workspaceState.status !== "success") {
       return {
@@ -4022,36 +4520,30 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       };
     }
 
-    const run = async (workspaceLeaseToken: string): Promise<PageBodySaveResult> => serviceNowClient.savePageBody({
-      draftContentJson: input.draftContentJson, workspaceSlug: workspaceState.data.slug, workspaceSysId: workspaceState.data.sysId,
-      pageSysId: input.pageSysId,
-      workspaceLeaseToken,
-      expectedRevision: input.expectedRevision,
-      workspaceAuthority: currentWorkspaceMutationAuthority()
-    });
     try {
-      const outcome = await workspaceLeaseRecoveryRef.current.runMutation({
-        scope: workspaceLeaseRecoveryScope,
-        ensure: ensureWorkspaceLeaseForMutation,
-        invalidateLeaseRace: invalidateWorkspaceLeaseRace,
-        mutate: run,
-        isLeaseRace: (result) => result.state === "failed" && result.code === "lock_lost"
+      const mutationContextKey = currentWorkspaceMutationContextKey({
+        pageSysId: input.pageSysId,
+        scope: "body",
+        sessionToken
+      });
+      const outcome = await runWorkspaceMutation<PageBodySaveResult>({
+        contextKey: mutationContextKey,
+        type: "body_save",
+        dispatch: (workspaceLeaseToken, workspaceAuthority) => serviceNowClient.savePageBody({
+          draftContentJson: input.readLatestDraftContentJson?.() ?? input.draftContentJson,
+          workspaceSlug: workspaceState.data.slug,
+          workspaceSysId: workspaceState.data.sysId,
+          pageSysId: input.pageSysId,
+          workspaceLeaseToken,
+          expectedRevision: input.expectedRevision,
+          workspaceAuthority
+        })
       });
       if (outcome.state === "contention") return { errorMessage: "This workspace is currently being edited by another user.", state: "failed" };
       if (outcome.state === "forbidden" || outcome.state === "transient_failure") return { errorMessage: outcome.errorMessage, state: "failed" };
       const result = outcome as PageBodySaveResult;
       if (result.state === "failed" && result.code === "conflict") {
-        requestStaleRefreshBlock({
-          changeSetId: result.currentChangeSetId,
-          changeSetRevision: result.currentChangeSetRevision
-        });
         return result;
-      }
-      if (result.state === "succeeded") {
-        installWorkspaceMutationAuthority({
-          changeSetId: result.changeSetId,
-          changeSetRevision: result.changeSetRevision
-        });
       }
       return result;
     } catch {
@@ -4069,11 +4561,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       pageSysId: string;
       draftContentJson: DocseraDocumentEnvelope;
       expectedRevision: number;
+      readLatestDraftContentJson?: () => DocseraDocumentEnvelope | null;
     }
   ): Promise<PageBodySaveResult> {
     const workspaceSysId = workspaceState.status === "success" ? cleanText(workspaceState.data.sysId) : "";
     const workspaceSlug = workspaceState.status === "success" ? workspaceState.data.slug : "";
-    const result = await savePageDraft(input);
+    const result = await savePageDraft(input, sessionToken);
 
     if (
       result.state === "failed" &&
@@ -4102,6 +4595,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
 
     applySavedPage(result.page);
+    requestPendingChangesRefresh();
     const activeRestore = restoredBodyCaptureRef.current;
     if (activeRestore && activeRestore.sessionKey === sessionToken.pageSysId + ":" + sessionToken.generation) {
       if (authoringRecoveryRef.current.clearBody({ pageSysId: input.pageSysId, workspaceSlug, workspaceSysId }, activeRestore.captureGeneration)) {
@@ -4152,6 +4646,25 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       ? Boolean(workspaceHeaderPresentation?.showWorkspaceSwitcher)
       : recentWorkspaceItems.length > 0;
   const appHeaderWorkspaceControlsLocked = isRetainingWorkspaceHeaderPresentation;
+  const pendingChangesResult =
+    pendingChangesState.status === "success" || pendingChangesState.status === "refreshing"
+      ? pendingChangesState.data
+      : pendingChangesState.status === "error" && pendingChangesState.previous
+        ? pendingChangesState.previous
+        : null;
+  const editorStatusLabel = cleanText(editorTransitionState.status) || "Saved";
+  const pendingChangesSaveBlockedMessage =
+    appHeaderWorkspaceMode === "edit" && renderedEditorSession && editorStatusLabel !== "Saved"
+      ? `Current page is ${editorStatusLabel.toLowerCase()}. Publish and discard actions stay disabled until local changes are saved.`
+      : pageSettingsState.open && (
+          cleanText(pageSettingsState.title) !== cleanText(pageSettingsState.titleSnapshot) ||
+          cleanText(pageSettingsState.slug).toLowerCase() !== cleanText(pageSettingsState.slugSnapshot).toLowerCase() ||
+          Boolean(pageSettingsState.generalError) ||
+          Boolean(pageSettingsState.titleError) ||
+          Boolean(pageSettingsState.slugError)
+        )
+        ? "Page Settings has unsaved or blocked changes. Publish and discard actions stay disabled until settings are saved."
+        : "";
 
   return (
     <div className={`docsera-app${route.mode === "launcher" ? " docsera-app--launcher" : ""}`}>
@@ -4163,11 +4676,17 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         onOpenMyWorkspaces={openLauncher}
         onOpenWorkspace={openWorkspace}
         onOpenWorkspaceSettings={route.mode === "workspace" ? () => openWorkspace(route.workspaceSlug, true) : undefined}
+        onOpenPendingPage={route.mode === "workspace" ? openWorkspacePage : undefined}
         onSelectBreadcrumb={route.mode === "workspace" ? openWorkspacePage : undefined}
         onToggleSidebar={route.mode === "workspace" ? () => setSidebarCollapsed((collapsed) => !collapsed) : undefined}
         recentWorkspaces={recentWorkspaceItems}
+        pendingChanges={pendingChangesResult}
+        pendingChangesErrorMessage={pendingChangesState.status === "error" ? pendingChangesState.errorMessage : ""}
+        pendingChangesLoading={pendingChangesState.status === "loading"}
+        pendingChangesReadinessMessage={pendingChangesSaveBlockedMessage}
+        pendingChangesRefreshing={pendingChangesState.status === "refreshing"}
+        onRetryPendingChanges={requestPendingChangesRefresh}
         showEditModeToggle={appHeaderShowEditToggle}
-        saveStatus={appHeaderWorkspaceMode === "edit" && renderedEditorSession ? editorTransitionState.status : undefined}
         showWorkspaceMode={appHeaderWorkspaceMode}
         workspaceControlsLocked={appHeaderWorkspaceControlsLocked}
         onWorkspaceModeChange={route.mode === "workspace" ? changeWorkspaceMode : undefined}
@@ -4222,6 +4741,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               }}
               onSavePageDraft={(input) => savePageDraftForSession(renderedEditorSession, input)}
               onStatusChange={(state) => handleEditorStatusChange(selectedWorkspacePageId, state)}
+              saveStatus={activeWorkspaceMode === "edit" && renderedEditorSession ? editorStatusLabel as EditorTransitionState["status"] : undefined}
               onSelectPage={openWorkspacePage}
               onMovePage={moveWorkspacePage}
               onShowChildPageCreate={openCreatePageModal}

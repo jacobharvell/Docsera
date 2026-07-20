@@ -1,3 +1,5 @@
+import { fingerprintDiagnosticSecret, recordDocseraDiagnosticEvent } from "../diagnostics";
+
 export type StoredWorkspaceLease = { tabSessionId: string; token: string };
 
 type CoordinationMessage = {
@@ -34,16 +36,52 @@ export class WorkspaceLeaseCoordination {
   }
 
   async canResume(input: { stored: StoredWorkspaceLease; tabSessionId: string; workspaceSysId: string }): Promise<boolean> {
+    recordDocseraDiagnosticEvent("lease.broadcast.canResume.start", {
+      runtimeId: this.runtimeId,
+      storedTabSessionFingerprint: fingerprintDiagnosticSecret(input.stored.tabSessionId),
+      tabSessionFingerprint: fingerprintDiagnosticSecret(input.tabSessionId),
+      tokenPresent: Boolean(input.stored.token),
+      workspaceSysId: input.workspaceSysId
+    });
     if (!input.stored.token || !input.stored.tabSessionId || !input.tabSessionId || input.stored.tabSessionId !== input.tabSessionId) {
+      recordDocseraDiagnosticEvent("lease.broadcast.canResume.finish", {
+        canResume: false,
+        reason: "identity_or_token_missing",
+        runtimeId: this.runtimeId,
+        workspaceSysId: input.workspaceSysId
+      });
       return false;
     }
     const BroadcastChannelCtor = this.options.getBroadcastChannel ? this.options.getBroadcastChannel() : getBrowserBroadcastChannel();
-    if (!BroadcastChannelCtor) return false;
+    recordDocseraDiagnosticEvent("lease.broadcast.available", {
+      exists: Boolean(BroadcastChannelCtor),
+      runtimeId: this.runtimeId,
+      workspaceSysId: input.workspaceSysId
+    });
+    if (!BroadcastChannelCtor) {
+      recordDocseraDiagnosticEvent("lease.broadcast.canResume.finish", {
+        canResume: false,
+        reason: "broadcast_channel_unavailable",
+        runtimeId: this.runtimeId,
+        workspaceSysId: input.workspaceSysId
+      });
+      return false;
+    }
 
     let channel: BroadcastChannelLike;
     try {
       channel = new BroadcastChannelCtor(this.options.channelName);
+      recordDocseraDiagnosticEvent("lease.broadcast.channel.constructed", {
+        channelName: this.options.channelName,
+        runtimeId: this.runtimeId,
+        workspaceSysId: input.workspaceSysId
+      });
     } catch {
+      recordDocseraDiagnosticEvent("lease.broadcast.channel.error", {
+        action: "construct",
+        runtimeId: this.runtimeId,
+        workspaceSysId: input.workspaceSysId
+      });
       return false;
     }
     const probeId = createRuntimeId();
@@ -54,9 +92,31 @@ export class WorkspaceLeaseCoordination {
           if (settled) return;
           settled = true;
           window.clearTimeout(timeout);
+          recordDocseraDiagnosticEvent("lease.broadcast.canResume.finish", {
+            canResume: value,
+            probeId,
+            runtimeId: this.runtimeId,
+            workspaceSysId: input.workspaceSysId
+          });
           resolve(value);
         };
-        const timeout = window.setTimeout(() => settle(true), this.options.probeTimeoutMs);
+        const probeStartTime = new Date().toISOString();
+        recordDocseraDiagnosticEvent("lease.broadcast.probe.start", {
+          probeId,
+          probeStartTime,
+          probeTimeoutMs: this.options.probeTimeoutMs,
+          runtimeId: this.runtimeId,
+          tabSessionFingerprint: fingerprintDiagnosticSecret(input.tabSessionId),
+          workspaceSysId: input.workspaceSysId
+        });
+        const timeout = window.setTimeout(() => {
+          recordDocseraDiagnosticEvent("lease.broadcast.probe.timeout", {
+            probeId,
+            runtimeId: this.runtimeId,
+            workspaceSysId: input.workspaceSysId
+          });
+          settle(true);
+        }, this.options.probeTimeoutMs);
         channel.onmessage = (event) => {
           try {
             const message = event.data;
@@ -67,32 +127,83 @@ export class WorkspaceLeaseCoordination {
               message.tabSessionId === input.tabSessionId &&
               message.runtimeId !== this.runtimeId
             ) {
+              recordDocseraDiagnosticEvent("lease.broadcast.activeResponse", {
+                probeId,
+                responseRuntimeId: message.runtimeId,
+                runtimeId: this.runtimeId,
+                tabSessionFingerprint: fingerprintDiagnosticSecret(message.tabSessionId),
+                workspaceSysId: input.workspaceSysId
+              });
               settle(false);
             }
           } catch {
+            recordDocseraDiagnosticEvent("lease.broadcast.channel.error", {
+              action: "message",
+              probeId,
+              runtimeId: this.runtimeId,
+              workspaceSysId: input.workspaceSysId
+            });
             settle(false);
           }
         };
         try {
           channel.postMessage({ kind: "probe", probeId, runtimeId: this.runtimeId, tabSessionId: input.tabSessionId, workspaceSysId: input.workspaceSysId });
         } catch {
+          recordDocseraDiagnosticEvent("lease.broadcast.channel.error", {
+            action: "post_probe",
+            probeId,
+            runtimeId: this.runtimeId,
+            workspaceSysId: input.workspaceSysId
+          });
           settle(false);
         }
       });
     } catch {
+      recordDocseraDiagnosticEvent("lease.broadcast.canResume.finish", {
+        canResume: false,
+        reason: "probe_exception",
+        runtimeId: this.runtimeId,
+        workspaceSysId: input.workspaceSysId
+      });
       return false;
     } finally {
-      channel.close();
+      try {
+        channel.close();
+        recordDocseraDiagnosticEvent("lease.broadcast.channel.close", {
+          reason: "probe_complete",
+          runtimeId: this.runtimeId,
+          workspaceSysId: input.workspaceSysId
+        });
+      } catch {
+        recordDocseraDiagnosticEvent("lease.broadcast.channel.error", {
+          action: "close_probe",
+          runtimeId: this.runtimeId,
+          workspaceSysId: input.workspaceSysId
+        });
+      }
     }
   }
 
   startResponder(input: { bindingId: string; tabSessionId: string; workspaceSysId: string }): void {
-    this.stopResponder();
+    this.stopResponder(undefined, "responder_replaced");
     if (!input.bindingId || !input.tabSessionId || !input.workspaceSysId) return;
     const BroadcastChannelCtor = this.options.getBroadcastChannel ? this.options.getBroadcastChannel() : getBrowserBroadcastChannel();
-    if (!BroadcastChannelCtor) return;
+    if (!BroadcastChannelCtor) {
+      recordDocseraDiagnosticEvent("lease.broadcast.responder.skip", {
+        reason: "broadcast_channel_unavailable",
+        runtimeId: this.runtimeId,
+        workspaceSysId: input.workspaceSysId
+      });
+      return;
+    }
     try {
       const responder = new BroadcastChannelCtor(this.options.channelName);
+      recordDocseraDiagnosticEvent("lease.broadcast.responder.start", {
+        bindingId: fingerprintDiagnosticSecret(input.bindingId),
+        runtimeId: this.runtimeId,
+        tabSessionFingerprint: fingerprintDiagnosticSecret(input.tabSessionId),
+        workspaceSysId: input.workspaceSysId
+      });
       responder.onmessage = (event) => {
         try {
           const message = event.data;
@@ -103,25 +214,54 @@ export class WorkspaceLeaseCoordination {
             message.tabSessionId === input.tabSessionId &&
             message.probeId
           ) {
+            recordDocseraDiagnosticEvent("lease.broadcast.responder.respond", {
+              probeId: message.probeId,
+              requesterRuntimeId: message.runtimeId,
+              runtimeId: this.runtimeId,
+              workspaceSysId: input.workspaceSysId
+            });
             responder.postMessage({ kind: "active", bindingId: input.bindingId, probeId: message.probeId, runtimeId: this.runtimeId, tabSessionId: input.tabSessionId, workspaceSysId: input.workspaceSysId });
           }
         } catch {
-          // Coordination is advisory. A broken responder must never authorize resume.
+          recordDocseraDiagnosticEvent("lease.broadcast.channel.error", {
+            action: "responder_message",
+            runtimeId: this.runtimeId,
+            workspaceSysId: input.workspaceSysId
+          });
         }
       };
       this.responder = responder;
       this.responderBindingId = input.bindingId;
     } catch {
-      this.stopResponder();
+      recordDocseraDiagnosticEvent("lease.broadcast.channel.error", {
+        action: "construct_responder",
+        runtimeId: this.runtimeId,
+        workspaceSysId: input.workspaceSysId
+      });
+      this.stopResponder(undefined, "responder_construct_error");
     }
   }
 
-  stopResponder(bindingId?: string): void {
+  stopResponder(bindingId?: string, reason = "stop_requested"): void {
     if (bindingId && bindingId !== this.responderBindingId) return;
     const responder = this.responder;
     this.responder = null;
     this.responderBindingId = "";
-    try { responder?.close(); } catch { /* no-op */ }
+    try {
+      responder?.close();
+      if (responder) {
+        recordDocseraDiagnosticEvent("lease.broadcast.responder.stop", {
+          reason,
+          runtimeId: this.runtimeId
+        });
+      }
+    } catch {
+      recordDocseraDiagnosticEvent("lease.broadcast.channel.error", {
+        action: "close_responder",
+        reason,
+        runtimeId: this.runtimeId
+      });
+    }
   }
 }
 

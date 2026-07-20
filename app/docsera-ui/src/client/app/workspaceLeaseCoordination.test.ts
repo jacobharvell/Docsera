@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { initializeDocseraDiagnostics } from "../diagnostics";
 import { WorkspaceLeaseCoordination } from "./workspaceLeaseCoordination";
 
 type Message = Record<string, unknown>;
@@ -39,6 +40,9 @@ let runtimeId = 0;
 afterEach(() => {
   FakeBroadcastChannel.peers.clear();
   runtimeId = 0;
+  window.__DOCSERA_DIAGNOSTICS__?.disable();
+  window.localStorage.clear();
+  window.sessionStorage.clear();
   vi.useRealTimers();
 });
 
@@ -79,5 +83,18 @@ describe("WorkspaceLeaseCoordination", () => {
     class ThrowingChannel extends FakeBroadcastChannel { postMessage() { throw new Error("broken"); } }
     const broken = new WorkspaceLeaseCoordination({ channelName: "x", getBroadcastChannel: () => ThrowingChannel as never, probeTimeoutMs: 1 });
     await expect(broken.canResume({ stored: { tabSessionId: "tab-a", token: "token" }, tabSessionId: "tab-a", workspaceSysId: "workspace-a" })).resolves.toBe(false);
+  });
+
+  it("keeps the same canResume decision when diagnostics are enabled", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "debug").mockImplementation(() => undefined);
+    window.localStorage.setItem("docsera.diagnostics.enabled", "true");
+    initializeDocseraDiagnostics();
+
+    const result = coordinator().canResume({ stored: { tabSessionId: "tab-a", token: "token" }, tabSessionId: "tab-a", workspaceSysId: "workspace-a" });
+    await vi.advanceTimersByTimeAsync(10);
+
+    await expect(result).resolves.toBe(true);
+    expect(window.__DOCSERA_DIAGNOSTICS__?.exportTrace().events.some((event) => event.event === "lease.broadcast.canResume.finish")).toBe(true);
   });
 });

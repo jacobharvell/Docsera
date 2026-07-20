@@ -23,6 +23,7 @@
     "verify:sdk-runtime": "node ./scripts/verify-sdk-runtime.mjs",
     "verify:e3-t9-mutation-conversion": "node ./scripts/verify-e3-t9-mutation-conversion.mjs",
     "verify:e3-t10-page-movement": "node ./scripts/verify-e3-t10-page-movement.mjs",
+    "verify:e3-t11-changes-center": "node ./scripts/verify-e3-t11-changes-center.mjs",
     "verify:workspace-edit-lease": "node ./scripts/verify-workspace-edit-lease.mjs",
     "verify:workspace-edit-lease-browser": "node ./scripts/workspace-edit-lease-browser-smoke.mjs",
     "verify:workspace-foundation": "node ./scripts/verify-workspace-foundation.mjs",

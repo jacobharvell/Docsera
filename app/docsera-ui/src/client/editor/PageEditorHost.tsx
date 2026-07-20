@@ -29,6 +29,7 @@ type PageEditorHostProps = {
     draftContentJson: DocseraDocumentEnvelope;
     expectedRevision: number;
     pageSysId: string;
+    readLatestDraftContentJson?: () => DocseraDocumentEnvelope | null;
   }) => Promise<PageBodySaveResult>;
   onStatusChange: (state: {
     flush?: () => Promise<boolean>;
@@ -48,6 +49,20 @@ type HostRuntimeEntry = {
   overlayRoot: HTMLElement;
   runtimeRoot: HTMLElement;
 };
+
+function detachOwnedNode(node: HTMLElement): void {
+  const parent = node.parentNode;
+  if (!parent) {
+    return;
+  }
+
+  try {
+    parent.removeChild(node);
+  } catch {
+    // Prototype.js can patch element methods in ServiceNow. Cleanup must never
+    // make editor teardown observable to the workspace shell.
+  }
+}
 
 export function PageEditorHost(props: PageEditorHostProps) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -130,14 +145,17 @@ export function PageEditorHost(props: PageEditorHostProps) {
     return () => {
       active = false;
       const runtimeHandle = runtimeHandleRef.current;
+      const mountedEntry = runtimeRef.current;
       runtimeHandleRef.current = null;
       runtimeModuleRef.current = null;
-      runtimeRef.current = null;
+      if (mountedEntry === entry) {
+        runtimeRef.current = null;
+      }
       props.onReadyStateChange?.(false);
       queueMicrotask(() => {
         runtimeHandle?.destroy();
-        runtimeRoot.remove();
-        overlayRoot.remove();
+        detachOwnedNode(runtimeRoot);
+        detachOwnedNode(overlayRoot);
       });
     };
   }, [runtimeSessionKey]);

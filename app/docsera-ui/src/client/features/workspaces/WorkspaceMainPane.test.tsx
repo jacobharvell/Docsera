@@ -188,4 +188,46 @@ describe("WorkspaceMainPane", () => {
 
     view.unmount();
   });
+
+  it("shows current-page save status in the Edit-mode page title row only", async () => {
+    const page = createPageView();
+    const baseProps = {
+      bodyState: "ready" as const,
+      page,
+      pagePath: [],
+      canCreatePage: false,
+      canEditPageBody: true,
+      editAccessLost: false,
+      stateCopy: "",
+      stateTitle: "",
+      stateType: "ready" as const,
+      showPendingState: false,
+      onReturnToMyWorkspaces: vi.fn(),
+      onReturnToLive: vi.fn(),
+      onRetryEditor: vi.fn(),
+      onEditorReadyStateChange: vi.fn(),
+      onOutlineChange: vi.fn(),
+      onSavePageDraft: vi.fn(async () => ({
+        state: "succeeded" as const,
+        page: page.page
+      })),
+      onStatusChange: vi.fn(),
+      onShowCreatePage: vi.fn(),
+      onAccessLost: vi.fn(),
+      sessionKey: "session-001",
+      theme: "light" as const,
+      editorFailure: null,
+      onEditorFailureChange: vi.fn()
+    };
+
+    const { rerender, unmount } = render(<WorkspaceMainPane {...baseProps} workspaceMode="edit" saveStatus="Saving…" />);
+    const pageHeader = document.querySelector(".docsera-main__page-header");
+    expect(within(pageHeader as HTMLElement).getByRole("status")).toHaveTextContent("Saving…");
+
+    rerender(<WorkspaceMainPane {...baseProps} workspaceMode="live" saveStatus="Saving…" />);
+    expect(screen.queryByRole("status", { name: /saving/i })).not.toBeInTheDocument();
+    expect(document.querySelector(".docsera-main__save-status")).toBeNull();
+
+    unmount();
+  });
 });

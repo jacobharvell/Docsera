@@ -15,6 +15,7 @@ import { process as createWorkspace } from "../../server/api/docsera-runtime-cre
 import { process as listPages } from "../../server/api/docsera-runtime-pages";
 import { process as workspaces } from "../../server/api/docsera-runtime-workspaces";
 import { process as workspaceProvisioningStatus } from "../../server/api/docsera-runtime-workspace-provisioning-status";
+import { process as workspacePendingChanges } from "../../server/api/docsera-runtime-workspace-pending-changes";
 import { process as acquireWorkspaceEditLease } from "../../server/api/docsera-runtime-workspace-edit-lease-acquire";
 import { process as resumeWorkspaceEditLease } from "../../server/api/docsera-runtime-workspace-edit-lease-resume";
 import { process as renewWorkspaceEditLease } from "../../server/api/docsera-runtime-workspace-edit-lease-renew";
@@ -66,6 +67,9 @@ RestApi({
       produces: "application/json",
       shortDescription: "Return the current status of a workspace provisioning request.",
       script: workspaceProvisioningStatus
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-pending-changes-post"], name: "workspace_pending_changes", path: "/workspaces/pending-changes", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Read the active workspace pending changes through the held Edit lease.", script: workspacePendingChanges
     },
     {
       $id: Now.ID["docsera-runtime-workspace-edit-lease-acquire-post"], name: "workspace_edit_lease_acquire", path: "/workspaces/edit-lease/acquire", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Acquire the exclusive workspace authoring lease.", script: acquireWorkspaceEditLease

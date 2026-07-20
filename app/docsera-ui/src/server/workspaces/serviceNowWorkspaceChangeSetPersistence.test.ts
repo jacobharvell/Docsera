@@ -8,7 +8,9 @@ type TableRow = {
 
 const glideMock = vi.hoisted(() => {
   const tables = new Map<string, TableRow[]>();
+  const fieldReadAccess = new Map<string, boolean>();
   const insertHooks = new Map<string, (row: TableRow) => void>();
+  const recordReadAccess = new Map<string, boolean>();
   const updateHooks = new Map<string, (row: TableRow) => boolean>();
   let nextSysId = 1;
   let nextRandom = 1;
@@ -38,6 +40,10 @@ const glideMock = vi.hoisted(() => {
 
   function cloneRow(row: TableRow): TableRow {
     return { sysId: row.sysId, fields: { ...row.fields } };
+  }
+
+  function accessKey(tableName: string, sysId: string, fieldName = "") {
+    return `${tableName}:${sysId}:${fieldName}`;
   }
 
   class MockGlideRecord {
@@ -113,6 +119,22 @@ const glideMock = vi.hoisted(() => {
 
     getDisplayValue(fieldName: string) {
       return this.getValue(fieldName);
+    }
+
+    canRead(fieldName?: string) {
+      if (!this.currentRow) {
+        return false;
+      }
+      if (fieldName) {
+        return fieldReadAccess.get(accessKey(this.tableName, this.currentRow.sysId, fieldName)) ?? true;
+      }
+      return recordReadAccess.get(accessKey(this.tableName, this.currentRow.sysId)) ?? true;
+    }
+
+    getElement(fieldName: string) {
+      return {
+        canRead: () => this.canRead(fieldName)
+      };
     }
 
     getUniqueValue() {
@@ -224,12 +246,18 @@ const glideMock = vi.hoisted(() => {
       }
       insertHooks.set(tableName, hook);
     },
+    setFieldReadable(tableName: string, sysId: string, fieldName: string, readable: boolean) {
+      fieldReadAccess.set(accessKey(tableName, sysId, fieldName), readable);
+    },
     setUpdateHook(tableName: string, hook: ((row: TableRow) => boolean) | null) {
       if (!hook) {
         updateHooks.delete(tableName);
         return;
       }
       updateHooks.set(tableName, hook);
+    },
+    setRecordReadable(tableName: string, sysId: string, readable: boolean) {
+      recordReadAccess.set(accessKey(tableName, sysId), readable);
     },
     updateRow(tableName: string, sysId: string, fields: Record<string, unknown>) {
       const row = tables.get(tableName)?.find((candidate) => candidate.sysId === sysId);
@@ -240,7 +268,9 @@ const glideMock = vi.hoisted(() => {
     },
     reset() {
       tables.clear();
+      fieldReadAccess.clear();
       insertHooks.clear();
+      recordReadAccess.clear();
       updateHooks.clear();
       nextSysId = 1;
       nextRandom = 1;
@@ -267,6 +297,11 @@ const changeEntryTable = "x_82900_docsera_workspace_change_entry";
 const mutationClaimTable = "x_82900_docsera_workspace_mutation_claim";
 const removalBatchTable = "x_82900_docsera_workspace_removal_batch";
 const removalMemberTable = "x_82900_docsera_workspace_removal_member";
+const UNKNOWN_USER_ATTRIBUTION_FOR_TEST = {
+  accessibleLabel: "Last changed by Unknown user",
+  displayName: "Unknown user",
+  fullDisplayName: "Unknown user"
+};
 
 type FailurePhase = Parameters<Parameters<typeof createServiceNowWorkspaceChangeSetPersistenceService>[0]["afterDurablePhase"]>[0];
 type DurablePhaseHandler = NonNullable<Parameters<typeof createServiceNowWorkspaceChangeSetPersistenceService>[0]["afterDurablePhase"]>;
@@ -338,6 +373,12 @@ function workspaceRef(
     publishedSnapshotSetSysId: overrides.publishedSnapshotSetSysId ?? "snapshot-set-001",
     workspaceStateRevision: overrides.workspaceStateRevision ?? 0
   } as never;
+}
+
+function pendingRows(service = createService()) {
+  const result = service.pendingChanges(workspaceRef());
+  expect(result.kind).toBe("succeeded");
+  return result.kind === "succeeded" ? result.pending.rows : [];
 }
 
 function seedWorkspaceFoundation(options: {
@@ -1425,10 +1466,10 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
       pageSysId: "page-001",
       workspace: workspaceRef()
     }));
-    expect(service.pendingChanges(workspaceRef())).toMatchObject([{
+    expect(pendingRows(service)).toMatchObject([{
       category: "Modified",
       firstPendingSequence: 1,
-      pageId: "page-001"
+      pageSysId: "page-001"
     }]);
     expect(getRows(changeEntryTable)[0]?.fields.first_pending_sequence).toBe(1);
 
@@ -1440,14 +1481,14 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
       title: "Renamed page",
       workspace: workspaceRef()
     }));
-    const secondEntries = service.pendingChanges(workspaceRef());
+    const secondEntries = pendingRows(service);
     expect(secondEntries).toHaveLength(1);
     expect(secondEntries[0]).toMatchObject({
       category: "Modified",
       firstPendingSequence: 1,
-      lastChangedBy: "user-1",
+      attribution: expect.objectContaining({ displayName: "Unknown user" }),
       lastChangedOn: "2026-07-18 00:01:00",
-      pageId: "page-001"
+      pageSysId: "page-001"
     });
     expect(getRows(changeEntryTable)).toHaveLength(1);
     expect(getRows(changeEntryTable)[0]?.fields.first_pending_sequence).toBe(1);
@@ -1460,7 +1501,7 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
       pageSysId: "page-001",
       workspace: workspaceRef()
     }));
-    expect(service.pendingChanges(workspaceRef())).toHaveLength(1);
+    expect(pendingRows(service)).toHaveLength(1);
 
     now = "2026-07-18 00:03:00";
     const fourth = expectSucceeded(service.savePageSettings({
@@ -1470,7 +1511,7 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
       title: "Snapshot title",
       workspace: workspaceRef()
     }));
-    expect(service.pendingChanges(workspaceRef())).toEqual([]);
+    expect(pendingRows(service)).toEqual([]);
     expect(getRows(changeEntryTable)).toHaveLength(0);
 
     now = "2026-07-18 00:04:00";
@@ -1481,15 +1522,235 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
       pageSysId: "page-001",
       workspace: workspaceRef()
     }));
-    const finalEntries = service.pendingChanges(workspaceRef());
+    const finalEntries = pendingRows(service);
     expect(finalEntries).toHaveLength(1);
     expect(finalEntries[0]).toMatchObject({
       firstPendingSequence: 2,
       lastChangedOn: "2026-07-18 00:04:00",
-      pageId: "page-001"
+      pageSysId: "page-001"
     });
     expect(getRows(changeEntryTable)).toHaveLength(1);
     expect(getRows(changeEntryTable)[0]?.fields.first_pending_sequence).toBe(2);
+  });
+
+  it("returns authoritative pending titles, counts, generation pair, and privacy-safe attribution", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({
+          pageId: "page-001",
+          draftTitle: "Draft Overview",
+          publishedTitle: "Published Overview"
+        })
+      ]
+    });
+    glideMock.insertRow("sys_user", "user-1", {
+      first_name: "Priya",
+      last_name: "Writer",
+      name: "Priya Writer",
+      user_name: "priya.writer@example.com",
+      email: "priya.writer@example.com"
+    });
+    const service = createService();
+
+    expectSucceeded(service.savePageSettings({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-001",
+      slug: "draft-overview",
+      title: "Draft Overview",
+      workspace: workspaceRef()
+    }));
+    const beforeRead = {
+      changeSet: JSON.stringify(getRows(changeSetTable)),
+      claims: JSON.stringify(getRows(mutationClaimTable)),
+      entries: JSON.stringify(getRows(changeEntryTable)),
+      pages: JSON.stringify(getRows(pageTable)),
+      removalBatches: JSON.stringify(getRows(removalBatchTable)),
+      removalMembers: JSON.stringify(getRows(removalMemberTable)),
+      snapshotPages: JSON.stringify(getRows(pageSnapshotTable)),
+      snapshotSets: JSON.stringify(getRows(snapshotSetTable)),
+      workspace: JSON.stringify(getRows(workspaceTable))
+    };
+
+    const result = service.pendingChanges(workspaceRef());
+    const repeatedResult = service.pendingChanges(workspaceRef());
+
+    expect(result.kind).toBe("succeeded");
+    expect(repeatedResult.kind).toBe("succeeded");
+    if (result.kind !== "succeeded") {
+      throw new Error("expected pending changes");
+    }
+    expect({
+      changeSet: JSON.stringify(getRows(changeSetTable)),
+      claims: JSON.stringify(getRows(mutationClaimTable)),
+      entries: JSON.stringify(getRows(changeEntryTable)),
+      pages: JSON.stringify(getRows(pageTable)),
+      removalBatches: JSON.stringify(getRows(removalBatchTable)),
+      removalMembers: JSON.stringify(getRows(removalMemberTable)),
+      snapshotPages: JSON.stringify(getRows(pageSnapshotTable)),
+      snapshotSets: JSON.stringify(getRows(snapshotSetTable)),
+      workspace: JSON.stringify(getRows(workspaceTable))
+    }).toEqual(beforeRead);
+    expect(result.pending).toMatchObject({
+      affectedPageCount: 1,
+      changeSetId: "change-set-001",
+      changeSetRevision: 1,
+      workspaceSysId: "workspace-001"
+    });
+    expect(result.pending.rows).toEqual([
+      expect.objectContaining({
+        attribution: {
+          accessibleLabel: "Last changed by Priya Writer",
+          displayName: "P. Writer",
+          fullDisplayName: "Priya Writer"
+        },
+        category: "Modified",
+        navigable: true,
+        pageSysId: "page-001",
+        title: "Draft Overview"
+      })
+    ]);
+    expect(JSON.stringify(result.pending)).not.toContain("priya.writer@example.com");
+
+    glideMock.updateRow("sys_user", "user-1", {
+      first_name: "",
+      last_name: "",
+      name: "",
+      user_name: "pwriter",
+      email: "priya.writer@example.com"
+    });
+    const unknownResult = service.pendingChanges(workspaceRef());
+    expect(unknownResult.kind).toBe("succeeded");
+    if (unknownResult.kind !== "succeeded") {
+      throw new Error("expected pending changes");
+    }
+    expect(unknownResult.pending.rows[0]?.attribution).toEqual({
+      accessibleLabel: "Last changed by Unknown user",
+      displayName: "Unknown user",
+      fullDisplayName: "Unknown user"
+    });
+    expect(JSON.stringify(unknownResult.pending)).not.toContain("pwriter");
+    expect(JSON.stringify(unknownResult.pending)).not.toContain("priya.writer@example.com");
+  });
+
+  it("resolves pending attribution through record and field read access without leaking identifiers", () => {
+    const cases = [
+      {
+        expected: {
+          accessibleLabel: "Last changed by Priya Writer",
+          displayName: "P. Writer",
+          fullDisplayName: "Priya Writer"
+        },
+        fields: { first_name: "Priya", last_name: "Writer", name: "Priya Writer", user_name: "pwriter", email: "priya@example.com" },
+        name: "readable first and last name"
+      },
+      {
+        expected: {
+          accessibleLabel: "Last changed by Priya Writer",
+          displayName: "P. Writer",
+          fullDisplayName: "Priya Writer"
+        },
+        fields: { first_name: "Priya", last_name: "Writer", name: "Priya Writer", user_name: "pwriter", email: "priya@example.com" },
+        fieldAccess: { first_name: false, last_name: false },
+        name: "readable safe display value with unavailable component fields"
+      },
+      {
+        expected: UNKNOWN_USER_ATTRIBUTION_FOR_TEST,
+        fields: null,
+        name: "missing user"
+      },
+      {
+        expected: UNKNOWN_USER_ATTRIBUTION_FOR_TEST,
+        fields: { first_name: "Priya", last_name: "Writer", name: "Priya Writer", user_name: "pwriter", email: "priya@example.com" },
+        name: "record not readable",
+        recordReadable: false
+      },
+      {
+        expected: UNKNOWN_USER_ATTRIBUTION_FOR_TEST,
+        fields: { first_name: "Priya", last_name: "Writer", name: "Priya Writer", user_name: "pwriter", email: "priya@example.com" },
+        fieldAccess: { first_name: false, last_name: false, name: false },
+        name: "name fields not readable"
+      },
+      {
+        expected: UNKNOWN_USER_ATTRIBUTION_FOR_TEST,
+        fields: { first_name: "", last_name: "", name: "priya@example.com", user_name: "pwriter", email: "priya@example.com" },
+        name: "display value equal to email",
+        rejectedValues: ["priya@example.com"]
+      },
+      {
+        expected: UNKNOWN_USER_ATTRIBUTION_FOR_TEST,
+        fields: { first_name: "", last_name: "", name: "user@internal", user_name: "pwriter", email: "priya@example.com" },
+        name: "display value containing at-sign without dotted email",
+        rejectedValues: ["user@internal", "pwriter", "priya@example.com"]
+      },
+      {
+        expected: UNKNOWN_USER_ATTRIBUTION_FOR_TEST,
+        fields: { first_name: "", last_name: "", name: "Priya @ Internal", user_name: "pwriter", email: "priya@example.com" },
+        name: "unsafe display value is not reintroduced after abbreviation rejects it",
+        rejectedValues: ["Priya @ Internal", "pwriter", "priya@example.com"]
+      },
+      {
+        expected: UNKNOWN_USER_ATTRIBUTION_FOR_TEST,
+        fields: { first_name: "", last_name: "", name: "pwriter", user_name: "pwriter", email: "priya@example.com" },
+        name: "display value equal to login ID without at-sign",
+        rejectedValues: ["pwriter", "priya@example.com"]
+      },
+      {
+        expected: UNKNOWN_USER_ATTRIBUTION_FOR_TEST,
+        fields: { first_name: "", last_name: "", name: "pwriter", user_name: "pwriter", email: "priya@example.com" },
+        fieldAccess: { user_name: false },
+        name: "single-token display value with unreadable login ID",
+        rejectedValues: ["pwriter", "priya@example.com"]
+      },
+      {
+        expected: UNKNOWN_USER_ATTRIBUTION_FOR_TEST,
+        fields: { first_name: "", last_name: "", name: "internal-id", user_name: "internal-id", email: "internal-id@example.com" },
+        fieldAccess: { email: false, user_name: false },
+        name: "inaccessible privacy comparison fields cannot expose an internal identifier",
+        rejectedValues: ["internal-id", "internal-id@example.com"]
+      },
+      {
+        expected: UNKNOWN_USER_ATTRIBUTION_FOR_TEST,
+        fields: { first_name: "", last_name: "", name: "Priya <priya@example.com>", user_name: "pwriter", email: "priya@example.com" },
+        name: "display value containing an email",
+        rejectedValues: ["Priya <priya@example.com>", "pwriter", "priya@example.com"]
+      }
+    ];
+
+    for (const testCase of cases) {
+      glideMock.reset();
+      seedWorkspaceFoundation({
+        pages: [
+          createSeedPage({
+            pageId: "page-001",
+            draftTitle: "Draft Overview",
+            publishedTitle: "Published Overview"
+          })
+        ]
+      });
+      if (testCase.fields) {
+        glideMock.insertRow("sys_user", "user-1", testCase.fields);
+        if (testCase.recordReadable === false) {
+          glideMock.setRecordReadable("sys_user", "user-1", false);
+        }
+        for (const [fieldName, readable] of Object.entries(testCase.fieldAccess ?? {})) {
+          glideMock.setFieldReadable("sys_user", "user-1", fieldName, Boolean(readable));
+        }
+      }
+      expectSucceeded(createService().savePageSettings({
+        authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+        pageSysId: "page-001",
+        slug: "draft-overview",
+        title: "Draft Overview",
+        workspace: workspaceRef()
+      }));
+
+      const result = expectSucceeded(createService().pendingChanges(workspaceRef()));
+      const serialized = JSON.stringify(result.pending);
+      expect(result.pending.rows[0]?.attribution, testCase.name).toEqual(testCase.expected);
+      for (const rejectedValue of testCase.rejectedValues ?? ["priya@example.com", "pwriter"]) {
+        expect(serialized, testCase.name).not.toContain(rejectedValue);
+      }
+    }
   });
 
   it("does not alter effective pending-entry lifecycle until an interrupted body mutation is recovered", () => {
@@ -1506,7 +1767,7 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
 
     expect(failingService.savePageBody(input).kind).toBe("failed");
     expect(getRows(changeEntryTable)).toHaveLength(0);
-    expect(createService({ currentTimestamp: () => now }).pendingChanges(workspaceRef())).toEqual([]);
+    expect(pendingRows(createService({ currentTimestamp: () => now }))).toEqual([]);
 
     now = "2026-07-18 00:01:00";
     const recovered = expectSucceeded(createService({ currentTimestamp: () => now }).savePageBody(input));
@@ -1747,9 +2008,9 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     expect(getRows(changeEntryTable)).toHaveLength(1);
     expect(getRows(changeEntryTable)[0]?.fields.page).toBe("page-002");
     expect(changeSetRow()?.fields.change_set_revision).toBe(1);
-    expect(service.pendingChanges(workspaceRef())).toEqual([expect.objectContaining({ pageId: "page-002" })]);
-    expect(service.pendingChanges(workspaceRef())[0]?.category).toContain("Modified");
-    expect(service.pendingChanges(workspaceRef())[0]?.category).toContain("Moved");
+    expect(pendingRows(service)).toEqual([expect.objectContaining({ pageSysId: "page-002" })]);
+    expect(pendingRows(service)[0]?.category).toContain("Modified");
+    expect(pendingRows(service)[0]?.category).toContain("Moved");
     expect(expectSucceeded(service.listPages(workspaceRef(), "edit")).pages.find((page) => page.sysId === "page-002")?.parentPageSysId).toBe(null);
     expect(expectSucceeded(service.listPages(workspaceRef(), "live")).pages.find((page) => page.sysId === "page-002")?.parentPageSysId).toBe("page-001");
   });
@@ -2063,7 +2324,7 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
       siblingOrder: "3",
       workspace: workspaceRef()
     }));
-    expect(service.pendingChanges(workspaceRef())).toEqual([expect.objectContaining({ category: "Moved", pageId: "page-child" })]);
+    expect(pendingRows(service)).toEqual([expect.objectContaining({ category: "Moved", pageSysId: "page-child" })]);
     expect(getRows(changeEntryTable).map((row) => row.fields.page)).toEqual(["page-child"]);
 
     const modifiedMoved = expectSucceeded(service.savePageSettings({
@@ -2073,9 +2334,9 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
       title: "Child renamed",
       workspace: workspaceRef()
     }));
-    expect(service.pendingChanges(workspaceRef())).toEqual([expect.objectContaining({ pageId: "page-child" })]);
-    expect(service.pendingChanges(workspaceRef())[0]?.category).toContain("Modified");
-    expect(service.pendingChanges(workspaceRef())[0]?.category).toContain("Moved");
+    expect(pendingRows(service)).toEqual([expect.objectContaining({ pageSysId: "page-child" })]);
+    expect(pendingRows(service)[0]?.category).toContain("Modified");
+    expect(pendingRows(service)[0]?.category).toContain("Moved");
 
     const restoredModified = expectSucceeded(service.movePage({
       authority: modifiedMoved.authority,
@@ -2084,7 +2345,7 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
       siblingOrder: "1",
       workspace: workspaceRef()
     }));
-    expect(service.pendingChanges(workspaceRef())).toEqual([expect.objectContaining({ category: "Modified", pageId: "page-child" })]);
+    expect(pendingRows(service)).toEqual([expect.objectContaining({ category: "Modified", pageSysId: "page-child" })]);
     expect(getRows(changeEntryTable)).toHaveLength(1);
 
     glideMock.reset();
@@ -2103,7 +2364,7 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
       siblingOrder: "1",
       workspace: workspaceRef()
     }));
-    expect(createService().pendingChanges(workspaceRef())).toEqual([]);
+    expect(pendingRows(createService())).toEqual([]);
     expect(getRows(changeEntryTable)).toHaveLength(0);
 
     glideMock.reset();
@@ -2121,7 +2382,7 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
       siblingOrder: "2",
       workspace: workspaceRef()
     }));
-    expect(createService().pendingChanges(workspaceRef())).toEqual([expect.objectContaining({ category: "Added", pageId: added.result.page.sysId })]);
+    expect(pendingRows(createService())).toEqual([expect.objectContaining({ category: "Added", pageSysId: added.result.page.sysId })]);
 
     expect(restoredModified.authority.changeSetRevision).toBe(3);
   });

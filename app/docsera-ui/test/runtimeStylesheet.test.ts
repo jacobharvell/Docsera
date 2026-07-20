@@ -38,9 +38,11 @@ test("hides the complete ToC rail at the responsive breakpoint instead of stacki
   expect(responsive).not.toContain(".docsera-toc-rail__body");
 });
 
-test("reserves a right-aligned save-status area with an explicit gap before the mode toggle", () => {
+test("centers workspace mode control and moves save status into the page title row", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
 
-  expect(css).toMatch(/\.docsera-header__action-slot--mode\s*{[^}]*gap:\s*12px;[^}]*min-width:\s*calc\(7\.5rem \+ 98px \+ 12px\);/s);
-  expect(css).toMatch(/\.docsera-header__save-status\s*{[^}]*width:\s*7\.5rem;[^}]*text-align:\s*right;/s);
+  expect(css).toMatch(/\.docsera-header__action-slot--mode\s*{[^}]*position:\s*absolute;[^}]*left:\s*50%;[^}]*transform:\s*translate\(-50%, -50%\);/s);
+  expect(css).toMatch(/\.docsera-main__save-status\s*{[^}]*white-space:\s*nowrap;/s);
+  expect(css).toContain(".docsera-header__publish-button");
+  expect(css).toContain(".docsera-changes-center__list");
 });

@@ -27,6 +27,8 @@ import {
 import { mapPageRecord } from "../pages/serviceNowPageRecords.ts";
 import { createEmptyServerDocumentEnvelope, extractPlainTextFromServerDocument, parseServerDocument } from "../pages/serverEditorDocument.ts";
 
+declare const GlideRecordSecure: (new (tableName: string) => AclReadableRecord) | undefined;
+
 const DOCSERA_WORKSPACE_CHANGE_SET_TABLE = "x_82900_docsera_workspace_change_set";
 const DOCSERA_WORKSPACE_SNAPSHOT_SET_TABLE = "x_82900_docsera_workspace_snapshot_set";
 const DOCSERA_WORKSPACE_PAGE_SNAPSHOT_TABLE = "x_82900_docsera_workspace_page_snapshot";
@@ -179,6 +181,38 @@ export type WorkspaceSettingsSaveResult = WorkspaceMutationSuccess<{ page: PageR
 export type WorkspaceCreateResult = WorkspaceMutationSuccess<{ page: PageRecord }> | WorkspaceMutationFailure;
 export type WorkspaceDeleteResult = WorkspaceMutationSuccess<{ deletedPageSysId: string; nextPageSysId: string }> | WorkspaceMutationFailure;
 export type WorkspaceMoveResult = WorkspaceMutationSuccess<{ pages: PageRecord[] }> | WorkspaceMutationFailure;
+export type WorkspacePendingChangeCategory = "Added" | "Modified" | "Moved" | "Modified · Moved" | "Removed";
+export type WorkspacePendingChangeRow = {
+  attribution: {
+    accessibleLabel: string;
+    displayName: string;
+    fullDisplayName: string;
+  };
+  category: WorkspacePendingChangeCategory;
+  firstPendingSequence: number;
+  lastChangedOn: string;
+  navigable: boolean;
+  pageSysId: string;
+  title: string;
+};
+
+type AclReadableRecord = {
+  canRead?: (fieldName?: string) => boolean;
+  get: (fieldName: string, value: unknown) => boolean;
+  getDisplayValue: (fieldName?: string) => unknown;
+  getElement?: (fieldName: string) => { canRead?: () => boolean } | null;
+  getValue: (fieldName: string) => unknown;
+};
+export type WorkspacePendingChangesReadModel = {
+  affectedPageCount: number;
+  changeSetId: string;
+  changeSetRevision: number;
+  rows: WorkspacePendingChangeRow[];
+  workspaceSysId: string;
+};
+export type WorkspacePendingChangesResult =
+  | { kind: "succeeded"; pending: WorkspacePendingChangesReadModel }
+  | { kind: "failed"; errorMessage: string; status: 404 | 409 | 500 };
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -1475,6 +1509,151 @@ function loadPageRecordBySysId(pageSysId: string): PageRecord | null {
   return mapPageRecord(row);
 }
 
+function abbreviateDisplayName(displayName: string): string {
+  const safe = cleanText(displayName).replace(/[<>\r\n\t]/g, " ").replace(/\s+/g, " ");
+  if (!safe || /@/.test(safe)) {
+    return "";
+  }
+  const parts = safe.split(" ").filter(Boolean);
+  if (parts.length < 2) {
+    return safe;
+  }
+  const surname = parts[parts.length - 1] ?? "";
+  const initial = parts[0]?.slice(0, 1) ?? "";
+  return initial && surname ? `${initial}. ${surname}` : safe;
+}
+
+const UNKNOWN_USER_ATTRIBUTION = { accessibleLabel: "Last changed by Unknown user", displayName: "Unknown user", fullDisplayName: "Unknown user" };
+
+function createAclUserRecord(): AclReadableRecord {
+  try {
+    if (typeof GlideRecordSecure !== "undefined") {
+      return new GlideRecordSecure("sys_user");
+    }
+  } catch {
+    // Fall through to the typed GlideRecord used by local tests.
+  }
+  return new GlideRecord("sys_user") as unknown as AclReadableRecord;
+}
+
+function canReadRecord(record: AclReadableRecord): boolean {
+  return typeof record.canRead === "function" ? record.canRead() : false;
+}
+
+function canReadField(record: AclReadableRecord, fieldName: string): boolean {
+  const element = typeof record.getElement === "function" ? record.getElement(fieldName) : null;
+  if (element && typeof element.canRead === "function") {
+    return element.canRead();
+  }
+  if (typeof record.canRead === "function" && record.canRead.length > 0) {
+    return record.canRead(fieldName);
+  }
+  return false;
+}
+
+function readUserField(record: AclReadableRecord, fieldName: string): { readable: boolean; value: string } {
+  const readable = canReadField(record, fieldName);
+  return { readable, value: readable ? cleanText(record.getValue(fieldName)) : "" };
+}
+
+function readUserDisplayValue(record: AclReadableRecord): { readable: boolean; value: string } {
+  const readable = canReadField(record, "name");
+  return { readable, value: readable ? cleanText(record.getDisplayValue("name")) : "" };
+}
+
+function containsEmailAddress(value: string): boolean {
+  return /[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+/.test(value);
+}
+
+function sameFolded(left: string, right: string): boolean {
+  return Boolean(cleanText(left) && cleanText(right) && cleanText(left).toLowerCase() === cleanText(right).toLowerCase());
+}
+
+function isUnsafeUserDisplayValue(value: string, identifiers: { email?: string; login?: string; sysId?: string }): boolean {
+  const candidate = cleanText(value);
+  if (!candidate || /@/.test(candidate) || containsEmailAddress(candidate)) {
+    return true;
+  }
+  return sameFolded(candidate, identifiers.email ?? "") || sameFolded(candidate, identifiers.login ?? "") || sameFolded(candidate, identifiers.sysId ?? "");
+}
+
+function isAmbiguousFallbackDisplayValue(value: string, readable: { email: boolean; login: boolean }): boolean {
+  const candidate = cleanText(value);
+  if (!candidate) {
+    return true;
+  }
+  const parts = candidate.split(/\s+/).filter(Boolean);
+  return parts.length < 2 && (!readable.login || !readable.email);
+}
+
+function buildAttribution(displayName: string, fullDisplayName: string) {
+  const safeDisplayName = cleanText(displayName);
+  const safeFullDisplayName = cleanText(fullDisplayName);
+  if (!safeDisplayName || !safeFullDisplayName) {
+    return UNKNOWN_USER_ATTRIBUTION;
+  }
+  return {
+    accessibleLabel: `Last changed by ${safeFullDisplayName}`,
+    displayName: safeDisplayName,
+    fullDisplayName: safeFullDisplayName
+  };
+}
+
+function readAttribution(userSysId: string) {
+  const sysId = cleanText(userSysId);
+  if (!sysId) {
+    return UNKNOWN_USER_ATTRIBUTION;
+  }
+  const user = createAclUserRecord();
+  if (!user.get("sys_id", sysId)) {
+    return UNKNOWN_USER_ATTRIBUTION;
+  }
+  if (!canReadRecord(user)) {
+    return UNKNOWN_USER_ATTRIBUTION;
+  }
+  const email = readUserField(user, "email");
+  const login = readUserField(user, "user_name");
+  const firstName = readUserField(user, "first_name");
+  const lastName = readUserField(user, "last_name");
+  if (firstName.value && lastName.value) {
+    const fullDisplayName = cleanText(`${firstName.value} ${lastName.value}`);
+    if (!isUnsafeUserDisplayValue(fullDisplayName, { email: email.value, login: login.value, sysId })) {
+      return buildAttribution(`${firstName.value.slice(0, 1)}. ${lastName.value}`, fullDisplayName);
+    }
+  }
+  const displayValue = readUserDisplayValue(user);
+  if (!displayValue.readable || isUnsafeUserDisplayValue(displayValue.value, { email: email.value, login: login.value, sysId })) {
+    return UNKNOWN_USER_ATTRIBUTION;
+  }
+  const abbreviatedDisplayName = abbreviateDisplayName(displayValue.value);
+  if (!abbreviatedDisplayName || isAmbiguousFallbackDisplayValue(displayValue.value, { email: email.readable, login: login.readable })) {
+    return UNKNOWN_USER_ATTRIBUTION;
+  }
+  return buildAttribution(abbreviatedDisplayName, displayValue.value);
+}
+
+function titleForPendingRow(state: WorkspaceChangeSetState, pageRecords: PageRecord[], row: ReturnType<typeof pendingEntries>[number]): string {
+  const safeFallback = "Untitled page";
+  if (row.category === "Removed") {
+    const published = state.snapshotSets
+      .find((snapshot) => snapshot.id === state.selectors.publishedSnapshotSetId && snapshot.workspaceId === state.selectors.workspaceId)
+      ?.pages.find((page) => page.pageId === row.pageId);
+    return cleanText(published?.title) || safeFallback;
+  }
+  const editPage = projectEdit(state).find((page) => page.pageId === row.pageId);
+  if (editPage) {
+    return cleanText(editPage.title) || safeFallback;
+  }
+  const page = pageRecords.find((candidate) => cleanText(candidate.sysId) === row.pageId);
+  return cleanText(page?.draftTitle || page?.publishedTitle) || safeFallback;
+}
+
+function normalizePendingCategory(category: string | null): WorkspacePendingChangeCategory | null {
+  return category === "Added" || category === "Modified" || category === "Moved" || category === "Modified · Moved" || category === "Removed"
+    ? category
+    : null;
+}
+
 function isExpectedNextAuthority(current: WorkspaceMutationAuthority, prior: WorkspaceMutationAuthority): boolean {
   return current.changeSetId === prior.changeSetId && current.changeSetRevision === prior.changeSetRevision + 1;
 }
@@ -2631,9 +2810,43 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
       }
     },
 
-    pendingChanges(workspace: WorkspaceRecord) {
-      const loaded = loadWorkspaceState(workspace, dependencies);
-      return pendingEntries(loaded.state);
+    pendingChanges(workspace: WorkspaceRecord): WorkspacePendingChangesResult {
+      try {
+        const loaded = loadWorkspaceState(workspace, dependencies);
+        const authority = nextAuthority(loaded.state);
+        const rows = pendingEntries(loaded.state).map((entry) => {
+          const category = normalizePendingCategory(entry.category);
+          if (!category) {
+            throw new Error("Workspace pending category is invalid.");
+          }
+          return {
+            attribution: readAttribution(entry.lastChangedBy),
+            category,
+            firstPendingSequence: entry.firstPendingSequence,
+            lastChangedOn: entry.lastChangedOn,
+            navigable: category !== "Removed",
+            pageSysId: entry.pageId,
+            title: titleForPendingRow(loaded.state, loaded.pageRecords, entry)
+          };
+        });
+
+        return {
+          kind: "succeeded",
+          pending: {
+            affectedPageCount: rows.length,
+            changeSetId: authority.changeSetId,
+            changeSetRevision: authority.changeSetRevision,
+            rows,
+            workspaceSysId: cleanText(loaded.workspace.sysId)
+          }
+        };
+      } catch (error) {
+        return {
+          kind: "failed",
+          errorMessage: cleanText(error instanceof Error ? error.message : error) || "Unable to load pending changes. Please try again.",
+          status: 500
+        };
+      }
     }
   };
 }

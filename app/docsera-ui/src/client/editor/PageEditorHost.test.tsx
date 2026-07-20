@@ -238,6 +238,43 @@ describe("PageEditorHost runtime containment", () => {
     expect(onError).toHaveBeenCalledWith(null);
   });
 
+  it("does not throw when cleanup runs after nodes are detached and Element.remove is patched", async () => {
+    const originalRemove = Element.prototype.remove;
+    Element.prototype.remove = function patchedRemove() {
+      throw new Error("Prototype remove should not be called.");
+    };
+    try {
+      const view = render(
+        <PageEditorHost
+          canEdit={true}
+          initialEnvelope={createEmptyDocseraDocumentEnvelope()}
+          initialRevision={0}
+          onAccessLost={vi.fn()}
+          onError={vi.fn()}
+          onOutlineChange={vi.fn()}
+          onSaveDraft={vi.fn()}
+          onStatusChange={vi.fn()}
+          pageSysId="page-001"
+          sessionKey="page-001:1"
+          theme="light"
+        />
+      );
+
+      await waitFor(() => {
+        expect(view.container.querySelector("[data-docsera-page-editor-host='true']")?.shadowRoot?.textContent).toContain("Mock runtime ready");
+      });
+      const host = view.container.querySelector("[data-docsera-page-editor-host='true']") as HTMLElement;
+      host.shadowRoot?.replaceChildren();
+
+      await expect(act(async () => {
+        view.unmount();
+        await Promise.resolve();
+      })).resolves.toBeUndefined();
+    } finally {
+      Element.prototype.remove = originalRemove;
+    }
+  });
+
   it("mounts the lazy runtime once and reuses it for same-session prop updates", async () => {
     const view = render(
       <PageEditorHost

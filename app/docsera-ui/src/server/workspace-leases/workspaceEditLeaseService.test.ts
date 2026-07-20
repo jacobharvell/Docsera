@@ -43,8 +43,10 @@ function createHarness() {
   });
   return {
     service,
+    getLease: () => lease ? { ...lease } : null,
     setActiveGeneration: (value: typeof activeGeneration | null) => { activeGeneration = value as typeof activeGeneration; },
     setAllowed: (value: boolean) => { allowed = value; },
+    setLease: (value: WorkspaceEditLeaseRecord | null) => { lease = value; },
     setSimulateDeleteMiss: (value: boolean) => { simulateDeleteMiss = value; },
     setNow: (value: string) => { now = value; },
     setUser: (value: typeof currentUser) => { currentUser = value; }
@@ -113,5 +115,64 @@ describe("workspace edit lease service", () => {
       retryable: false,
       status: 409
     });
+  });
+
+  it("validates a held lease for read without renewing last-seen or mutating the active generation", async () => {
+    const { getLease, service, setNow } = createHarness();
+    const acquired = await service.acquire({ workspaceSlug: "product-docs" });
+    expect(acquired.kind).toBe("held");
+    if (acquired.kind !== "held") return;
+    const before = getLease();
+
+    setNow("2026-07-16 12:02:00");
+    const firstRead = await service.validateHeld({ workspaceSlug: "product-docs", workspaceSysId: "workspace-1", leaseToken: acquired.leaseToken });
+    setNow("2026-07-16 12:04:00");
+    const secondRead = await service.validateHeld({ workspaceSlug: "product-docs", workspaceSysId: "workspace-1", leaseToken: acquired.leaseToken });
+
+    expect(firstRead).toMatchObject({ kind: "held", changeSetId: "change-set-1", changeSetRevision: 7, workspaceStateRevision: 3 });
+    expect(secondRead).toMatchObject({ kind: "held", changeSetId: "change-set-1", changeSetRevision: 7, workspaceStateRevision: 3 });
+    expect(getLease()?.lastSeenAt).toBe(before?.lastSeenAt);
+    expect(getLease()).toEqual(before);
+  });
+
+  it("denies missing, expired, replaced, wrong-user, wrong-workspace, and invalid read tokens", async () => {
+    const { service, setLease, setNow, setUser } = createHarness();
+    const acquired = await service.acquire({ workspaceSlug: "product-docs" });
+    expect(acquired.kind).toBe("held");
+    if (acquired.kind !== "held") return;
+
+    await expect(service.validateHeld({ workspaceSlug: "product-docs" })).resolves.toMatchObject({ kind: "failed", status: 400 });
+    await expect(service.validateHeld({ workspaceSlug: "product-docs", leaseToken: "invalid-token" })).resolves.toMatchObject({ kind: "lost" });
+
+    setUser({ displayName: "Editor Two", sysId: "user-2" });
+    await expect(service.validateHeld({ workspaceSlug: "product-docs", leaseToken: acquired.leaseToken })).resolves.toMatchObject({ kind: "lost" });
+
+    setUser({ displayName: "Editor One", sysId: "user-1" });
+    await expect(service.validateHeld({ workspaceSlug: "wrong-workspace", leaseToken: acquired.leaseToken })).resolves.toMatchObject({ kind: "failed", status: 404 });
+
+    setLease({
+      acquiredAt: "2026-07-16 12:00:00",
+      holderDisplayName: "Editor One",
+      holderUserSysId: "user-1",
+      lastSeenAt: "2026-07-16 12:00:00",
+      sysId: "lease-1",
+      verifierDigest: "digest:replacement-token",
+      workspaceSysId: "workspace-1"
+    });
+    await expect(service.validateHeld({ workspaceSlug: "product-docs", leaseToken: acquired.leaseToken })).resolves.toMatchObject({ kind: "lost" });
+
+    setNow("2026-07-16 12:06:00");
+    await expect(service.validateHeld({ workspaceSlug: "product-docs", leaseToken: "replacement-token" })).resolves.toMatchObject({ kind: "lost", currentHolder: null });
+  });
+
+  it("continues to renew mutation authority through the existing touch boundary", async () => {
+    const { getLease, service, setNow } = createHarness();
+    const acquired = await service.acquire({ workspaceSlug: "product-docs" });
+    expect(acquired.kind).toBe("held");
+    if (acquired.kind !== "held") return;
+
+    setNow("2026-07-16 12:01:00");
+    await expect(service.renew({ workspaceSlug: "product-docs", leaseToken: acquired.leaseToken })).resolves.toMatchObject({ kind: "held" });
+    expect(getLease()?.lastSeenAt).toBe("2026-07-16 12:01:00");
   });
 });
