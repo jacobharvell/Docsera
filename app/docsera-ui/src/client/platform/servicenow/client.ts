@@ -33,6 +33,10 @@ import type {
   WorkspaceEditLeaseStatusResult,
   WorkspacePendingChangeCategory,
   WorkspacePendingChangesResult,
+  WorkspacePublishFailed,
+  WorkspacePublishInput,
+  WorkspacePublishResult,
+  WorkspacePublishSucceeded,
   PageDeleteFailed,
   PageDeleteInput,
   PageDeleteResult,
@@ -81,6 +85,7 @@ const DEFAULT_PAGE_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/pages
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
 const SAFE_PAGE_DELETE_ERROR_MESSAGE = "Something went wrong while deleting the page. The page was not deleted. Please try again.";
 const SAFE_PAGE_MOVE_ERROR_MESSAGE = "Something went wrong while moving the page. The page was not moved. Please try again.";
+const SAFE_WORKSPACE_PUBLISH_ERROR_MESSAGE = "Something went wrong while publishing. No changes were published. Please try again.";
 
 function readWindowUserToken(candidate: Window | null | undefined): string | undefined {
   const tokenWindow = candidate as TokenBearingWindow | null | undefined;
@@ -191,6 +196,11 @@ function resolveWorkspaceEditLeasePath(pageCollectionPath: string, action: "acqu
 function resolveWorkspacePendingChangesPath(pageCollectionPath: string): string {
   const normalizedPath = cleanText(pageCollectionPath).replace(/\/pages$/i, "").replace(/\/+$/g, "");
   return `${normalizedPath}/workspaces/pending-changes`;
+}
+
+function resolveWorkspacePublishPath(workspaceCollectionPath: string): string {
+  const normalizedPath = cleanText(workspaceCollectionPath).replace(/\/+$/g, "");
+  return `${normalizedPath}/publish`;
 }
 
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<JsonResponse<T>> {
@@ -547,6 +557,57 @@ function normalizeWorkspacePendingChangesSucceededResult(body: unknown): Workspa
     rows,
     state: "succeeded",
     workspaceSysId: cleanText(result.workspaceSysId)
+  };
+}
+
+function normalizeWorkspacePublishSucceededResult(body: unknown): WorkspacePublishSucceeded {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || !Array.isArray(result.pages) || !isPlainObject(result.pendingChanges)) {
+    throw new Error("Workspace publish payload was invalid.");
+  }
+  const changeSetId = cleanText(result.changeSetId);
+  const changeSetRevision = readSafeInteger(result.changeSetRevision);
+  const workspaceStateRevision = readSafeInteger(result.workspaceStateRevision);
+  if (!changeSetId || changeSetRevision === null || workspaceStateRevision === null) {
+    throw new Error("Workspace publish authority payload was invalid.");
+  }
+  const pendingChanges = normalizeWorkspacePendingChangesSucceededResult({ result: result.pendingChanges });
+  if (pendingChanges.state !== "succeeded") {
+    throw new Error("Workspace publish pending payload was invalid.");
+  }
+  return {
+    state: "succeeded",
+    changeSetId,
+    changeSetRevision,
+    pages: result.pages.map((page) => normalizePageRecord(page)),
+    pendingChanges,
+    publishedSnapshotSetId: cleanText(result.publishedSnapshotSetId),
+    workspaceStateRevision
+  };
+}
+
+function normalizeWorkspacePublishFailedResult(body: unknown, fallback: string): WorkspacePublishFailed {
+  const error = unwrapServiceNowEnvelope(body);
+  const errorObject = isPlainObject(error) && isPlainObject(error.error) ? error.error : null;
+  const code = cleanText(errorObject?.code);
+  return {
+    state: "failed",
+    code:
+      code === "workspace_lease_lost" || code === "workspace_locked"
+        ? "lock_lost"
+        : code === "forbidden"
+          ? "forbidden"
+          : code === "conflict" || code === "stale_generation"
+            ? "conflict"
+            : code === "invalid" || code === "validation"
+              ? "invalid"
+              : code === "publish_failed"
+                ? "failed"
+                : undefined,
+    currentChangeSetId: cleanText(errorObject?.currentChangeSetId) || undefined,
+    currentChangeSetRevision: readSafeInteger(errorObject?.currentChangeSetRevision) ?? undefined,
+    errorMessage: extractErrorMessage(body, fallback),
+    retryable: code === "publish_failed"
   };
 }
 
@@ -1658,6 +1719,43 @@ async function resolveWorkspacePendingChangesResult(path: string, input: Workspa
   }
 }
 
+async function resolveWorkspacePublishResult(path: string, input: WorkspacePublishInput): Promise<WorkspacePublishResult> {
+  const authority = resolveMutationAuthority(input);
+  const payload = {
+    workspaceSlug: cleanText(input.workspaceSlug),
+    workspaceSysId: cleanText(input.workspaceSysId),
+    commandId: cleanText(input.commandId),
+    workspaceLeaseToken: cleanText(input.workspaceLeaseToken),
+    ...(authority ?? {})
+  };
+  try {
+    const response = await requestJson<unknown>(path, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" }
+    });
+    if (response.status === 200) {
+      return normalizeWorkspacePublishSucceededResult(response.body);
+    }
+    if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 409 || response.status === 500) {
+      return normalizeWorkspacePublishFailedResult(response.body, SAFE_WORKSPACE_PUBLISH_ERROR_MESSAGE);
+    }
+    return {
+      state: "failed",
+      code: "transient",
+      errorMessage: SAFE_WORKSPACE_PUBLISH_ERROR_MESSAGE,
+      retryable: true
+    };
+  } catch {
+    return {
+      state: "failed",
+      code: "transient",
+      errorMessage: SAFE_WORKSPACE_PUBLISH_ERROR_MESSAGE,
+      retryable: true
+    };
+  }
+}
+
 export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceNowClient {
   const collectionPath = resolvePath(runtime.config.workspaceCollectionPath, DEFAULT_WORKSPACE_COLLECTION_PATH);
   const pageCollectionPath = resolvePath(runtime.config.pageCollectionPath, DEFAULT_PAGE_COLLECTION_PATH);
@@ -1674,6 +1772,7 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
   const workspaceEditLeaseReleasePath = resolveWorkspaceEditLeasePath(pageCollectionPath, "release");
   const workspaceEditLeaseStatusPath = resolveWorkspaceEditLeasePath(pageCollectionPath, "status");
   const workspacePendingChangesPath = resolveWorkspacePendingChangesPath(pageCollectionPath);
+  const workspacePublishPath = resolveWorkspacePublishPath(collectionPath);
   const provisioningStatusPath = resolvePath(
     runtime.config.workspaceProvisioningStatusPath,
     "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status"
@@ -1759,6 +1858,7 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
     async releaseWorkspaceEditLease(input: WorkspaceEditLeaseReferenceInput & { keepalive?: boolean }): Promise<WorkspaceEditLeaseReleaseResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseReleasePath, input, "release") as Promise<WorkspaceEditLeaseReleaseResult>; },
     async getWorkspaceEditLeaseStatus(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspaceEditLeaseStatusResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseStatusPath, input, "status") as Promise<WorkspaceEditLeaseStatusResult>; },
     async getWorkspacePendingChanges(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspacePendingChangesResult> { return resolveWorkspacePendingChangesResult(workspacePendingChangesPath, input); },
+    async publishWorkspace(input: WorkspacePublishInput): Promise<WorkspacePublishResult> { return resolveWorkspacePublishResult(workspacePublishPath, input); },
 
     async getPageEditLockStatus(input: PageEditLockReferenceInput): Promise<PageEditLockStatusResult> {
       return resolvePageEditLockStatusResult(pageEditLockStatusPath, input);

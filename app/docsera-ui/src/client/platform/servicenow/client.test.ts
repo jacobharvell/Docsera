@@ -142,6 +142,71 @@ describe("service now client page creation", () => {
     }
   });
 
+  it("posts workspace publish commands with exact authority and normalizes successor state", async () => {
+    const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(path)).toBe("/api/x_82900_docsera/docsera_runtime/workspaces/publish");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        commandId: "publish-001",
+        expectedChangeSetId: "change-set-001",
+        expectedChangeSetRevision: 9,
+        workspaceLeaseToken: "workspace-lease-token",
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001"
+      });
+      return createJsonResponse(200, {
+        result: {
+          changeSetId: "change-set-successor",
+          changeSetRevision: 0,
+          workspaceStateRevision: 5,
+          publishedSnapshotSetId: "snapshot-published",
+          pendingChanges: {
+            affectedPageCount: 0,
+            changeSetId: "change-set-successor",
+            changeSetRevision: 0,
+            rows: [],
+            workspaceSysId: "workspace-001"
+          },
+          pages: [{
+            sysId: "page-001",
+            workspaceSysId: "workspace-001",
+            parentPageSysId: null,
+            siblingOrder: "1",
+            draftTitle: "Published Overview",
+            draftSlug: "published-overview",
+            draftSlugNormalized: "published-overview",
+            draftContentJson: { type: "doc", content: [] },
+            draftBodyText: "",
+            publishedTitle: "Published Overview",
+            publishedSlug: "published-overview",
+            publishedSlugNormalized: "published-overview",
+            publishedContentJson: { type: "doc", content: [] },
+            publishedBodyText: "",
+            publicationState: "published",
+            active: true
+          }]
+        }
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createServiceNowClient(createRuntime()).publishWorkspace!({
+      commandId: "publish-001",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001",
+      workspaceLeaseToken: "workspace-lease-token",
+      workspaceAuthority
+    });
+
+    expect(result.state).toBe("succeeded");
+    if (result.state === "succeeded") {
+      expect(result.changeSetId).toBe("change-set-successor");
+      expect(result.changeSetRevision).toBe(0);
+      expect(result.workspaceStateRevision).toBe(5);
+      expect(result.pendingChanges.affectedPageCount).toBe(0);
+      expect(result.pages[0]?.draftTitle).toBe("Published Overview");
+    }
+  });
+
   it("normalizes a double-wrapped live page list response", async () => {
     vi.stubGlobal(
       "fetch",

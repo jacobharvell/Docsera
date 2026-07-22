@@ -39,12 +39,14 @@ describe("DocseraHeader Changes Center", () => {
     expect(container.querySelector(".docsera-header__action-slot--mode")).toBeInTheDocument();
   });
 
-  it("opens a compact dropdown with singular/plural count, rows, disabled footer commands, and navigation only for non-removed rows", () => {
+  it("opens a compact dropdown with singular/plural count, rows, footer publish, and navigation only for non-removed rows", () => {
     const onOpenPendingPage = vi.fn();
+    const onPublishPendingChanges = vi.fn();
     render(
       <DocseraHeader
         {...baseProps}
         onOpenPendingPage={onOpenPendingPage}
+        onPublishPendingChanges={onPublishPendingChanges}
         pendingChanges={pending([
           {
             attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
@@ -85,10 +87,145 @@ describe("DocseraHeader Changes Center", () => {
     expect(within(dialog).getByText("Archived API")).toBeInTheDocument();
     expect(within(dialog).getByText("Removed")).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Discard all" })).toBeDisabled();
-    expect(within(dialog).getByRole("button", { name: "Publish" })).toBeDisabled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Publish" }));
+    expect(onPublishPendingChanges).toHaveBeenCalledTimes(1);
 
     fireEvent.click(within(dialog).getByRole("button", { name: /Overview/ }));
     expect(onOpenPendingPage).toHaveBeenCalledWith("page-001");
+    expect(screen.queryByRole("dialog", { name: "Changes Center" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the Changes Center open with a spinner and disabled controls while publishing", () => {
+    const onOpenPendingPage = vi.fn();
+    const onWorkspaceModeChange = vi.fn();
+    render(
+      <DocseraHeader
+        {...baseProps}
+        onOpenPendingPage={onOpenPendingPage}
+        onWorkspaceModeChange={onWorkspaceModeChange}
+        pendingChangesPublishing
+        workspaceControlsLocked
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          }
+        ])}
+      />
+    );
+
+    const publish = screen.getByRole("button", { name: "Open Changes Center" });
+    fireEvent.click(publish);
+    const dialog = screen.getByRole("dialog", { name: "Changes Center" });
+    const footerPublish = within(dialog).getByRole("button", { name: "Publish" });
+    expect(footerPublish).toBeDisabled();
+    expect(footerPublish).toHaveAttribute("aria-busy", "true");
+    expect(footerPublish).toHaveTextContent("Publish");
+    expect(footerPublish.querySelector(".docsera-changes-center__spinner")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Discard all" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Live" })).toBeDisabled();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: /Overview/ }));
+    expect(onOpenPendingPage).toHaveBeenCalledWith("page-001");
+    expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
+  });
+
+  it("keeps the Changes Center open after publish failure, shows the header toast, and closes on zero-pending success", () => {
+    const onPublishPendingChanges = vi.fn();
+    const onDismissPendingChangesPublishToast = vi.fn();
+    const { rerender } = render(
+      <DocseraHeader
+        {...baseProps}
+        onDismissPendingChangesPublishToast={onDismissPendingChangesPublishToast}
+        onPublishPendingChanges={onPublishPendingChanges}
+        pendingChangesPublishing
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          }
+        ])}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
+
+    rerender(
+      <DocseraHeader
+        {...baseProps}
+        onDismissPendingChangesPublishToast={onDismissPendingChangesPublishToast}
+        onPublishPendingChanges={onPublishPendingChanges}
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          }
+        ])}
+        pendingChangesPublishErrorMessage="Unable to publish this workspace right now. Please try again."
+        pendingChangesPublishRetryable
+      />
+    );
+
+    expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Unable to publish this workspace right now. Please try again.");
+    expect(within(screen.getByRole("dialog", { name: "Changes Center" })).getByRole("button", { name: "Publish" })).toBeEnabled();
+    expect(screen.queryByRole("status", { name: "Workspace changes published." })).not.toBeInTheDocument();
+
+    rerender(
+      <DocseraHeader
+        {...baseProps}
+        onDismissPendingChangesPublishToast={onDismissPendingChangesPublishToast}
+        onPublishPendingChanges={onPublishPendingChanges}
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          }
+        ])}
+        pendingChangesPublishErrorMessage="Unable to publish this workspace right now. Please try again."
+      />
+    );
+
+    expect(within(screen.getByRole("dialog", { name: "Changes Center" })).getByRole("button", { name: "Publish" })).toBeDisabled();
+
+    rerender(
+      <DocseraHeader
+        {...baseProps}
+        onDismissPendingChangesPublishToast={onDismissPendingChangesPublishToast}
+        onPublishPendingChanges={onPublishPendingChanges}
+        pendingChanges={pending([])}
+        pendingChangesPublishToastMessage="Workspace changes published."
+      />
+    );
+
+    const toast = screen.getByRole("status");
+    expect(toast).toHaveAttribute("aria-live", "polite");
+    expect(toast).toHaveTextContent("Workspace changes published.");
+    expect(toast.querySelector(".docsera-header__publish-toast-icon")).toBeInTheDocument();
+    fireEvent.click(within(toast).getByRole("button", { name: "Dismiss publish success" }));
+    expect(onDismissPendingChangesPublishToast).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole("dialog", { name: "Changes Center" })).not.toBeInTheDocument();
   });
 

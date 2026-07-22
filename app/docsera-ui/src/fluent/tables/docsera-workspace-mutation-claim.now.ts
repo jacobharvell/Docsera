@@ -17,7 +17,7 @@ export const x_82900_docsera_workspace_mutation_claim = Table({
     mutation_kind: ChoiceColumn({
       label: "Mutation kind",
       mandatory: true,
-      choices: { body: "Body", create: "Create", delete: "Delete", settings: "Settings" }
+      choices: { body: "Body", create: "Create", delete: "Delete", move: "Move", publish: "Publish", settings: "Settings" }
     }),
     mutation_state: ChoiceColumn({
       label: "Mutation state",

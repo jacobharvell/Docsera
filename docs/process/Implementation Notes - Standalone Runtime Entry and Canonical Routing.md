@@ -57,6 +57,17 @@ Workspace and page slugs are URL-encoded path segments. Nested parent slugs are 
 
 Fragment routing is used because it preserves ordered workspace/page slug segments while keeping hard refresh on the same scoped UI Page endpoint. It does not require global URL rewriting, Scripted Processors, Service Portal, UI Builder, Next Experience routing, or baseline platform configuration.
 
+## Shell Height Contract
+
+The standalone shell owns height in a single place:
+
+- `.docsera-app` owns the viewport-height application frame.
+- The header consumes its fixed height.
+- `.docsera-app__body` and the nested workspace shell fill the remaining post-header height.
+- Nested shells must not independently add another full viewport height.
+- Short pages must not create false root document overflow or an unexplained band beneath the workspace.
+- Legitimate document or pane overflow remains scrollable inside the intended shell surface.
+
 ## Route Authority and History
 
 `workspaceRouting.ts` is the single client parser/builder for Docsera app routes. It is used by launcher navigation, workspace opening, page selection, breadcrumbs, Live/Edit switching, Recent Workspaces, direct links, hard refresh, and Back/Forward restoration.

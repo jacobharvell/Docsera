@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     listPages: vi.fn(),
     movePage: vi.fn(),
     pendingChanges: vi.fn(),
+    publishWorkspace: vi.fn(),
     savePageBody: vi.fn(),
     savePageSettings: vi.fn()
   },
@@ -67,6 +68,7 @@ import { process as processCreatePage } from "./docsera-runtime-create-page.ts";
 import { process as processMovePage } from "./docsera-runtime-page-move.ts";
 import { process as processPendingChanges } from "./docsera-runtime-workspace-pending-changes.ts";
 import { process as processSavePageBody } from "./docsera-runtime-page-save.ts";
+import { process as processWorkspacePublish } from "./docsera-runtime-workspace-publish.ts";
 
 function responseRecorder() {
   return {
@@ -92,6 +94,7 @@ describe("docsera runtime mutation routes", () => {
     mocks.persistence.listPages.mockReset();
     mocks.persistence.movePage.mockReset();
     mocks.persistence.pendingChanges.mockReset();
+    mocks.persistence.publishWorkspace.mockReset();
     mocks.persistence.savePageBody.mockReset();
     mocks.persistence.savePageSettings.mockReset();
     mocks.glide.gs.error.mockReset();
@@ -382,5 +385,120 @@ describe("docsera runtime mutation routes", () => {
         workspaceSysId: "workspace-001"
       }
     });
+  });
+
+  it("publishes a workspace only after lease and exact mutation authority verification", async () => {
+    mocks.lease.verifyWorkspaceEditLease.mockResolvedValue({
+      kind: "held",
+      leaseToken: "workspace-lease-token",
+      heartbeatIntervalMs: 60_000,
+      staleAfterMs: 300_000,
+      changeSetId: "change-set-002",
+      changeSetRevision: 3,
+      workspaceStateRevision: 7
+    });
+    mocks.lease.readWorkspaceMutationAuthority.mockReturnValue({
+      changeSetId: "change-set-001",
+      changeSetRevision: 2
+    });
+    mocks.persistence.publishWorkspace.mockReturnValue({
+      kind: "succeeded",
+      authority: {
+        changeSetId: "change-set-successor",
+        changeSetRevision: 0
+      },
+      result: {
+        pages: [{ sysId: "page-001", draftTitle: "Published Overview" }],
+        pendingChanges: {
+          affectedPageCount: 0,
+          changeSetId: "change-set-successor",
+          changeSetRevision: 0,
+          rows: [],
+          state: "succeeded",
+          workspaceSysId: "workspace-001"
+        },
+        publishedSnapshotSetId: "snapshot-published",
+        workspaceStateRevision: 8
+      }
+    });
+    const response = responseRecorder();
+
+    await processWorkspacePublish({
+      body: {
+        commandId: "publish-001",
+        workspaceSysId: "workspace-001",
+        workspaceSlug: "product-docs",
+        workspaceLeaseToken: "workspace-lease-token",
+        expectedChangeSetId: "change-set-001",
+        expectedChangeSetRevision: 2
+      }
+    }, response);
+
+    expect(mocks.lease.verifyWorkspaceEditLease).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceLeaseToken: "workspace-lease-token",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+    expect(mocks.lease.readWorkspaceMutationAuthority).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "held" }),
+      expect.objectContaining({
+        expectedChangeSetId: "change-set-001",
+        expectedChangeSetRevision: 2
+      }),
+      response
+    );
+    expect(mocks.persistence.publishWorkspace).toHaveBeenCalledWith({
+      authority: {
+        changeSetId: "change-set-001",
+        changeSetRevision: 2
+      },
+      commandId: "publish-001",
+      workspace: expect.objectContaining({ sysId: "workspace-001" })
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      result: {
+        mode: "servicenow",
+        pages: [{ sysId: "page-001", draftTitle: "Published Overview" }],
+        pendingChanges: {
+          affectedPageCount: 0,
+          changeSetId: "change-set-successor",
+          changeSetRevision: 0,
+          rows: [],
+          state: "succeeded",
+          workspaceSysId: "workspace-001"
+        },
+        publishedSnapshotSetId: "snapshot-published",
+        workspaceStateRevision: 8,
+        changeSetId: "change-set-successor",
+        changeSetRevision: 0
+      }
+    });
+  });
+
+  it("does not publish when mutation authority validation rejects the request", async () => {
+    mocks.lease.verifyWorkspaceEditLease.mockResolvedValue({
+      kind: "held",
+      leaseToken: "workspace-lease-token",
+      heartbeatIntervalMs: 60_000,
+      staleAfterMs: 300_000,
+      changeSetId: "change-set-002",
+      changeSetRevision: 3
+    });
+    mocks.lease.readWorkspaceMutationAuthority.mockReturnValue(null);
+    const response = responseRecorder();
+
+    await processWorkspacePublish({
+      body: {
+        commandId: "publish-001",
+        workspaceSysId: "workspace-001",
+        workspaceSlug: "product-docs",
+        workspaceLeaseToken: "workspace-lease-token",
+        expectedChangeSetId: "stale-change-set",
+        expectedChangeSetRevision: 1
+      }
+    }, response);
+
+    expect(mocks.persistence.publishWorkspace).not.toHaveBeenCalled();
   });
 });

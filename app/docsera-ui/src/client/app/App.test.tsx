@@ -61,6 +61,7 @@ function resolveDeferredHostReady() {
 }
 
 afterEach(() => {
+  vi.useRealTimers();
   restoreNavigationEntries();
   restoreNavigationEntries = () => {};
   FakeBroadcastChannel.peers.clear();
@@ -178,7 +179,7 @@ function createPageListResult(mode: WorkspaceMode, items: WorkspacePageRecord[])
   };
 }
 
-function createPendingChangesResult(rows: Extract<WorkspacePendingChangesResult, { state: "succeeded" }>["rows"]): WorkspacePendingChangesResult {
+function createPendingChangesResult(rows: Extract<WorkspacePendingChangesResult, { state: "succeeded" }>["rows"]): Extract<WorkspacePendingChangesResult, { state: "succeeded" }> {
   return {
     affectedPageCount: rows.length,
     changeSetId: "change-set-001",
@@ -2060,7 +2061,339 @@ describe("App live and edit routing", () => {
     await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByRole("button", { name: "No pending changes to publish" })).toBeDisabled());
     expect(screen.getByRole("button", { name: "No pending changes to publish" })).not.toHaveClass("docsera-header__publish-button--active");
-  });
+  }, 15000);
+
+  it("reuses the publish command ID for a retryable failure and resets it for an independent later publish", async () => {
+    const flushMicrotasks = async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    };
+    const firstPublishDeferred = createDeferred<void>();
+    const pendingChanges = createPendingChangesResult([
+      {
+        attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+        category: "Modified",
+        firstPendingSequence: 1,
+        lastChangedOn: "2026-07-18 00:00:00",
+        navigable: true,
+        pageSysId: "page-001",
+        title: "Overview"
+      }
+    ]);
+    const publishSuccess = {
+      changeSetId: "change-set-002",
+      changeSetRevision: 8,
+      pages: [
+        createPageRecord({
+          draftTitle: "Overview Published",
+          draftSlug: "overview-published",
+          draftSlugNormalized: "overview-published",
+          publishedTitle: "Overview Published",
+          publishedSlug: "overview-published",
+          publishedSlugNormalized: "overview-published"
+        })
+      ],
+      pendingChanges: createPendingChangesResult([]),
+      publishedSnapshotSetId: "snapshot-set-002",
+      state: "succeeded" as const,
+      workspaceStateRevision: 4
+    };
+    const retryableFailure = {
+      errorMessage: "This publish can be retried.",
+      retryable: true,
+      state: "failed" as const
+    };
+    const publishWorkspace = vi
+      .fn()
+      .mockImplementationOnce(() => firstPublishDeferred.promise as Promise<unknown>)
+      .mockResolvedValueOnce(retryableFailure)
+      .mockResolvedValueOnce(publishSuccess)
+      .mockResolvedValueOnce(publishSuccess);
+    const getWorkspacePendingChanges = vi.fn(async () => pendingChanges);
+    const renewWorkspaceEditLease = vi.fn(async () => heldLease("workspace-lease-token-2"));
+
+    const firstView = renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      getWorkspacePendingChanges,
+      publishWorkspace,
+      renewWorkspaceEditLease
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    const dialog = screen.getByRole("dialog", { name: "Changes Center" });
+    const publishButton = within(dialog).getByRole("button", { name: "Publish" });
+    expect(publishButton).toBeEnabled();
+    fireEvent.click(publishButton);
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(publishWorkspace).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "New page" })).toBeDisabled();
+    expect(screen.queryByText("Publishing is in progress. Authoring actions are temporarily unavailable.")).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Publish" })).toHaveAttribute("aria-busy", "true");
+    expect(within(dialog).getByRole("button", { name: "Publish" }).querySelector(".docsera-changes-center__spinner")).toBeInTheDocument();
+
+    await act(async () => {
+      firstPublishDeferred.reject(new Error("Transient transport failure."));
+      await flushMicrotasks();
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent("Unable to publish this workspace right now. Please try again.");
+    expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
+    expect(screen.queryByText("Workspace changes published.")).not.toBeInTheDocument();
+    expect(document.querySelector(".docsera-shell__notice")).toBeNull();
+    expect(publishWorkspace).toHaveBeenCalledTimes(1);
+    const firstCall = publishWorkspace.mock.calls[0][0];
+    expect(firstCall).toEqual(expect.objectContaining({
+      commandId: expect.any(String),
+      workspaceLeaseToken: "workspace-lease-token",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(renewWorkspaceEditLease).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Publish" }));
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(publishWorkspace).toHaveBeenCalledTimes(2);
+    const secondCall = publishWorkspace.mock.calls[1][0];
+    expect(secondCall).toEqual(expect.objectContaining({
+      commandId: firstCall.commandId,
+      workspaceLeaseToken: "workspace-lease-token-2",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+    expect(screen.getByRole("alert")).toHaveTextContent("This publish can be retried.");
+    expect(within(dialog).getByRole("button", { name: "Publish" })).toBeEnabled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Publish" }));
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(publishWorkspace).toHaveBeenCalledTimes(3);
+    const thirdCall = publishWorkspace.mock.calls[2][0];
+    expect(thirdCall).toEqual(expect.objectContaining({
+      commandId: firstCall.commandId,
+      workspaceLeaseToken: "workspace-lease-token-2",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+
+    const toast = document.querySelector(".docsera-header__publish-toast") as HTMLElement | null;
+    expect(toast).not.toBeNull();
+    expect(toast).toHaveAttribute("aria-live", "polite");
+    expect(toast).toHaveTextContent("Workspace changes published.");
+    expect(within(toast as HTMLElement).getByRole("button", { name: "Dismiss publish success" })).toBeInTheDocument();
+    expect(toast?.querySelector(".docsera-header__publish-toast-icon")).toBeInTheDocument();
+    expect(document.querySelector(".docsera-shell__notice")).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Changes Center" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Workspace changes published.")).toBeInTheDocument();
+
+    firstView.unmount();
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      getWorkspacePendingChanges,
+      publishWorkspace,
+      renewWorkspaceEditLease
+    });
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+
+    await act(async () => {
+      await flushMicrotasks();
+    });
+    expect(publishWorkspace).toHaveBeenCalledTimes(4);
+    const fourthCall = publishWorkspace.mock.calls[3][0];
+    expect(fourthCall.commandId).not.toBe(firstCall.commandId);
+  }, 15000);
+
+  it("keeps publish success toast dismissal and timers scoped to the active toast", async () => {
+    const readToast = () => document.querySelector(".docsera-header__publish-toast");
+    const settle = async () => {
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    };
+    const realSetTimeout = window.setTimeout.bind(window);
+    const realClearTimeout = window.clearTimeout.bind(window);
+    let nextToastTimerId = 1;
+    const toastTimerCallbacks = new Map<number, () => void>();
+    const capturedToastTimerIds: number[] = [];
+
+    const setTimeoutSpy = vi.spyOn(window, "setTimeout").mockImplementation(((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+      if (timeout === 3000 && typeof handler === "function") {
+        const timerId = nextToastTimerId++;
+        capturedToastTimerIds.push(timerId);
+        toastTimerCallbacks.set(timerId, () => handler(...args));
+        return timerId;
+      }
+
+      return realSetTimeout(handler, timeout, ...args);
+    }) as typeof window.setTimeout);
+
+    const clearTimeoutSpy = vi.spyOn(window, "clearTimeout").mockImplementation(((timeoutId?: number) => {
+      if (typeof timeoutId === "number") {
+        toastTimerCallbacks.delete(timeoutId);
+      }
+
+      return realClearTimeout(timeoutId);
+    }) as typeof window.clearTimeout);
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      getWorkspacePendingChanges: vi.fn(async () => createPendingChangesResult([{
+        attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+        category: "Modified",
+        firstPendingSequence: 1,
+        lastChangedOn: "2026-07-21 10:00:00",
+        navigable: true,
+        pageSysId: "page-001",
+        title: "Overview"
+      }])),
+      publishWorkspace: vi.fn(async () => ({
+        changeSetId: "change-set-001-published",
+        changeSetRevision: 8,
+        pages: [createPageRecord()],
+        pendingChanges: createPendingChangesResult([]),
+        publishedSnapshotSetId: "workspace-001-snapshot",
+        state: "succeeded" as const,
+        workspaceStateRevision: 5
+      }))
+    });
+
+    await settle();
+    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await settle();
+
+    let toast = readToast() as HTMLElement | null;
+    expect(toast).not.toBeNull();
+    const firstToastTimerId = capturedToastTimerIds[capturedToastTimerIds.length - 1];
+    expect(firstToastTimerId).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+    await settle();
+    expect(readToast()).toBeNull();
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(firstToastTimerId);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await settle();
+
+    toast = readToast() as HTMLElement | null;
+    expect(toast).not.toBeNull();
+    const secondToastTimerId = capturedToastTimerIds[capturedToastTimerIds.length - 1];
+    expect(secondToastTimerId).toBeDefined();
+    expect(secondToastTimerId).not.toBe(firstToastTimerId);
+
+    await act(async () => {
+      toastTimerCallbacks.get(firstToastTimerId!)?.();
+    });
+    expect(readToast()).not.toBeNull();
+
+    fireEvent.click(within(toast as HTMLElement).getByRole("button", { name: "Dismiss publish success" }));
+    expect(readToast()).toBeNull();
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(secondToastTimerId);
+    await act(async () => {
+      toastTimerCallbacks.get(secondToastTimerId!)?.();
+    });
+    expect(readToast()).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await settle();
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+    await settle();
+    const thirdToastTimerId = capturedToastTimerIds[capturedToastTimerIds.length - 1];
+    expect(thirdToastTimerId).toBeDefined();
+
+    await act(async () => {
+      toastTimerCallbacks.get(thirdToastTimerId!)?.();
+    });
+    expect(readToast()).toBeNull();
+
+    setTimeoutSpy.mockRestore();
+    clearTimeoutSpy.mockRestore();
+  }, 15000);
+
+  it("clears the publish success toast when the active workspace changes", async () => {
+    const getWorkspace = vi.fn(async (workspaceSlug: string) => ({
+      workspace: workspaceSlug === "api-docs"
+        ? createWorkspace({ slug: "api-docs", sysId: "workspace-002", name: "API Docs" })
+        : createWorkspace({ slug: "product-docs", sysId: "workspace-001", name: "Product Docs" })
+    }));
+    const listPages = vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }): Promise<PageListResult> => ({
+      items: [
+        workspaceSlug === "api-docs"
+          ? createPageRecord({
+              sysId: "page-101",
+              workspaceSysId: "workspace-002",
+              draftTitle: "API Overview",
+              publishedTitle: "API Overview"
+            })
+          : createPageRecord()
+      ],
+      mode: (mode === "edit" ? "edit" : "live") as WorkspaceMode,
+      totalCount: 1,
+      workspaceSlug,
+      workspaceSysId: workspaceSlug === "api-docs" ? "workspace-002" : "workspace-001"
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      getWorkspace,
+      getWorkspacePendingChanges: vi.fn(async () => createPendingChangesResult([{
+        attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+        category: "Modified",
+        firstPendingSequence: 1,
+        lastChangedOn: "2026-07-21 10:00:00",
+        navigable: true,
+        pageSysId: "page-001",
+        title: "Overview"
+      }])),
+      listPages,
+      publishWorkspace: vi.fn(async () => ({
+        changeSetId: "change-set-001-published",
+        changeSetRevision: 8,
+        pages: [createPageRecord()],
+        pendingChanges: createPendingChangesResult([]),
+        publishedSnapshotSetId: "workspace-001-snapshot",
+        state: "succeeded" as const,
+        workspaceStateRevision: 5
+      }))
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(screen.getByRole("button", { name: "Publish" }));
+    expect(await screen.findByText("Workspace changes published.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "API Docs" }));
+
+    expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+    expect(document.querySelector(".docsera-header__publish-toast")).toBeNull();
+  }, 15000);
 
   it("blocks Page Settings, inline create, and delete persistence until stale refresh succeeds", async () => {
     const refreshDeferred = createDeferred<PageListResult>();

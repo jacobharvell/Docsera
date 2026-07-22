@@ -263,6 +263,10 @@ declare global {
                         table: 'sys_ws_operation'
                         id: 'd6b8cefeabf34dab9fa3bd1f9a92d97f'
                     }
+                    'docsera-runtime-workspace-publish-post': {
+                        table: 'sys_ws_operation'
+                        id: '49d50db5280b4234b7780e5009a47cce'
+                    }
                     'docsera-runtime-workspaces-get': {
                         table: 'sys_ws_operation'
                         id: 'fcc3ff0a938442a2921579852f5aebea'
@@ -366,6 +370,10 @@ declare global {
                     'src_server_api_docsera-runtime-workspace-provisioning-status_ts': {
                         table: 'sys_module'
                         id: '7ef70560cca4454b8456cd9e5635225a'
+                    }
+                    'src_server_api_docsera-runtime-workspace-publish_ts': {
+                        table: 'sys_module'
+                        id: '9490f88cf5394d2889ea8d160b26423d'
                     }
                     'src_server_api_docsera-runtime-workspaces_ts': {
                         table: 'sys_module'
@@ -1585,6 +1593,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_choice'
+                        id: '56641d5147714479a5228859536740f5'
+                        key: {
+                            name: 'x_82900_docsera_workspace_mutation_claim'
+                            element: 'mutation_kind'
+                            value: 'move'
+                        }
+                    },
+                    {
                         table: 'sys_ux_lib_asset'
                         id: '56a7d664df6a442ab56734faddecc0d1'
                         key: {
@@ -2616,6 +2633,15 @@ declare global {
                             name: 'x_82900_docsera_workspace_mutation_claim'
                             element: 'execution_phase'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'a250b3e684124edc88ac2b609a91e5bf'
+                        key: {
+                            name: 'x_82900_docsera_workspace_mutation_claim'
+                            element: 'mutation_kind'
+                            value: 'publish'
                         }
                     },
                     {

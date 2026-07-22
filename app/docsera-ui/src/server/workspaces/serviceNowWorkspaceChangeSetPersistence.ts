@@ -2,11 +2,14 @@ import { GlideDateTime, GlideDigest, GlideRecord, GlideSecureRandomUtil, gs } fr
 import {
   createRemovalBatch,
   deriveChangeCategory,
+  completeSnapshotStaging,
   movePage,
   pendingEntries,
   projectEdit,
   projectLive,
   recordPendingChange,
+  stageSnapshotSet,
+  switchSelectors,
   backfillWorkspaceFoundation,
   type ChangeSetToken,
   type DraftPage,
@@ -42,7 +45,7 @@ export type WorkspaceMutationAuthority = {
   changeSetRevision: number;
 };
 
-type WorkspaceMutationKind = "body" | "create" | "delete" | "move" | "settings";
+type WorkspaceMutationKind = "body" | "create" | "delete" | "move" | "publish" | "settings";
 type WorkspaceMutationState = "claimed" | "applied" | "finalized" | "rolled_back";
 type WorkspaceMutationPhase =
   | "claimed"
@@ -85,6 +88,14 @@ type WorkspaceMutationClaimPayload =
       pageSysId: string;
       parentPageSysId: string | null;
       siblingOrder: string;
+    }
+  | {
+      kind: "publish";
+      commandId: string;
+      snapshotSetSysId: string;
+      snapshotKey: string;
+      successorChangeSetSysId: string;
+      successorGenerationKey: string;
     };
 
 type WorkspaceMutationClaimRecord = {
@@ -125,7 +136,12 @@ export type WorkspaceChangeSetPersistenceFailurePhase =
   | "mutation_change_set_row_updated"
   | "mutation_change_set_persisted"
   | "mutation_result_persisted"
-  | "mutation_finalized";
+  | "mutation_finalized"
+  | "publish_snapshot_set_created"
+  | "publish_snapshot_page_inserted"
+  | "publish_snapshot_ready"
+  | "publish_selector_switched"
+  | "publish_page_rows_reconciled";
 
 type WorkspaceChangeSetPersistenceDependencies = {
   afterDurablePhase?: (
@@ -210,6 +226,12 @@ export type WorkspacePendingChangesReadModel = {
   rows: WorkspacePendingChangeRow[];
   workspaceSysId: string;
 };
+export type WorkspacePublishResult = WorkspaceMutationSuccess<{
+  pages: PageRecord[];
+  pendingChanges: WorkspacePendingChangesReadModel;
+  publishedSnapshotSetId: string;
+  workspaceStateRevision: number;
+}> | WorkspaceMutationFailure;
 export type WorkspacePendingChangesResult =
   | { kind: "succeeded"; pending: WorkspacePendingChangesReadModel }
   | { kind: "failed"; errorMessage: string; status: 404 | 409 | 500 };
@@ -1499,6 +1521,298 @@ function persistMutatedState(state: WorkspaceChangeSetState, touchedPageIds: str
   }
   replaceRemovalBatches(state);
   updateChangeSetRow(state);
+}
+
+function publishCommandToken(commandId: string, dependencies: WorkspaceChangeSetPersistenceDependencies): string {
+  return dependencies.digest(cleanText(commandId)).slice(0, 24).toLowerCase();
+}
+
+function buildPublishPayload(
+  workspaceSysId: string,
+  commandId: string,
+  authority: WorkspaceMutationAuthority,
+  dependencies: WorkspaceChangeSetPersistenceDependencies
+): Extract<WorkspaceMutationClaimPayload, { kind: "publish" }> {
+  const token = publishCommandToken(commandId, dependencies);
+  const snapshotKey = `${workspaceSysId}:publish:${token}:snapshot`;
+  const successorGenerationKey = `${workspaceSysId}:publish:${token}:change-set`;
+  return {
+    kind: "publish",
+    commandId,
+    snapshotKey,
+    snapshotSetSysId: dependencies.createDeterministicSysId(`${snapshotKey}:sys_id`),
+    successorChangeSetSysId: dependencies.createDeterministicSysId(`${successorGenerationKey}:sys_id`),
+    successorGenerationKey
+  };
+}
+
+function snapshotPageKey(snapshotSetSysId: string, pageSysId: string): string {
+  return `${cleanText(snapshotSetSysId)}:${cleanText(pageSysId)}`;
+}
+
+function persistPublishSnapshot(
+  dependencies: WorkspaceChangeSetPersistenceDependencies,
+  loaded: { state: WorkspaceChangeSetState; workspace: WorkspaceRecord },
+  payload: Extract<WorkspaceMutationClaimPayload, { kind: "publish" }>,
+  authority: WorkspaceMutationAuthority,
+  publishedOn: string,
+  publishedBy: string
+): SnapshotPage[] {
+  const staged = completeSnapshotStaging(
+    stageSnapshotSet(loaded.state, {
+      commandId: payload.commandId,
+      kind: "publish",
+      snapshotSetId: payload.snapshotSetSysId
+    }),
+    payload.snapshotSetSysId
+  );
+  const stagedSnapshot = staged.snapshotSets.find((snapshot) => snapshot.id === payload.snapshotSetSysId);
+  if (!stagedSnapshot || stagedSnapshot.readiness !== "ready") {
+    throw new Error("Workspace publish could not stage the published snapshot.");
+  }
+
+  const snapshotRow = new GlideRecord(DOCSERA_WORKSPACE_SNAPSHOT_SET_TABLE);
+  if (!snapshotRow.get("snapshot_key", payload.snapshotKey)) {
+    snapshotRow.initialize();
+    snapshotRow.setNewGuidValue(payload.snapshotSetSysId);
+    snapshotRow.setValue("workspace", cleanText(loaded.workspace.sysId));
+    snapshotRow.setValue("snapshot_key", payload.snapshotKey);
+    snapshotRow.setValue("readiness_state", "staging");
+    snapshotRow.setValue("command_correlation_id", payload.commandId);
+    snapshotRow.setValue("command_kind", "publish");
+    snapshotRow.setValue("source_change_set", authority.changeSetId);
+    snapshotRow.setValue("source_change_set_revision", authority.changeSetRevision);
+    snapshotRow.setValue("published_on", "");
+    if (!snapshotRow.insert()) {
+      throw new Error("Workspace publish could not create the staged snapshot.");
+    }
+    triggerDurablePhase(dependencies, "publish_snapshot_set_created", {
+      generationKey: buildMutationGenerationKey(authority),
+      kind: "publish",
+      snapshotPageKey: payload.snapshotKey
+    });
+  }
+
+  const snapshotSysId = cleanText(snapshotRow.getUniqueValue()) || payload.snapshotSetSysId;
+  if (
+    snapshotSysId !== payload.snapshotSetSysId ||
+    cleanText(snapshotRow.getValue("workspace")) !== cleanText(loaded.workspace.sysId) ||
+    cleanText(snapshotRow.getValue("command_correlation_id")) !== payload.commandId ||
+    cleanText(snapshotRow.getValue("command_kind")) !== "publish" ||
+    cleanText(snapshotRow.getValue("source_change_set")) !== authority.changeSetId ||
+    safeInteger(snapshotRow.getValue("source_change_set_revision")) !== authority.changeSetRevision
+  ) {
+    throw new Error("Workspace publish snapshot identity is invalid.");
+  }
+
+  const existingKeys = new Set<string>();
+  const existingPageIds = new Set<string>();
+  const existingRows = new GlideRecord(DOCSERA_WORKSPACE_PAGE_SNAPSHOT_TABLE);
+  existingRows.addQuery("snapshot_set", payload.snapshotSetSysId);
+  existingRows.query();
+  while (existingRows.next()) {
+    const key = cleanText(existingRows.getValue("snapshot_page_key"));
+    const pageId = cleanText(existingRows.getValue("page"));
+    if (!key || existingKeys.has(key) || existingPageIds.has(pageId)) {
+      throw new Error("Workspace publish snapshot pages are ambiguous.");
+    }
+    existingKeys.add(key);
+    existingPageIds.add(pageId);
+  }
+
+  for (const page of stagedSnapshot.pages) {
+    const key = snapshotPageKey(payload.snapshotSetSysId, page.pageId);
+    const pageRow = new GlideRecord(DOCSERA_WORKSPACE_PAGE_SNAPSHOT_TABLE);
+    if (!pageRow.get("snapshot_page_key", key)) {
+      pageRow.initialize();
+      pageRow.setValue("snapshot_set", payload.snapshotSetSysId);
+      pageRow.setValue("page", page.pageId);
+      pageRow.setValue("snapshot_page_key", key);
+      pageRow.setValue("parent_page", page.parentPageId ?? "");
+      pageRow.setValue("sibling_order", page.siblingOrder);
+      pageRow.setValue("title", page.title);
+      pageRow.setValue("slug", page.slug);
+      pageRow.setValue("slug_normalized", page.slug);
+      pageRow.setValue("content_json", page.contentJson);
+      pageRow.setValue("body_text", page.bodyText ?? "");
+      pageRow.setValue("active", page.active);
+      pageRow.setValue("published_on", publishedOn);
+      pageRow.setValue("published_by", publishedBy);
+      if (!pageRow.insert()) {
+        throw new Error("Workspace publish could not create snapshot pages.");
+      }
+      triggerDurablePhase(dependencies, "publish_snapshot_page_inserted", {
+        generationKey: buildMutationGenerationKey(authority),
+        kind: "publish",
+        pageSysId: page.pageId,
+        snapshotPageKey: key
+      });
+      continue;
+    }
+    if (cleanText(pageRow.getValue("snapshot_set")) !== payload.snapshotSetSysId || cleanText(pageRow.getValue("page")) !== page.pageId) {
+      throw new Error("Workspace publish snapshot page identity is invalid.");
+    }
+  }
+
+  const expectedKeys = new Set(stagedSnapshot.pages.map((page) => snapshotPageKey(payload.snapshotSetSysId, page.pageId)));
+  const validatedRows = new GlideRecord(DOCSERA_WORKSPACE_PAGE_SNAPSHOT_TABLE);
+  validatedRows.addQuery("snapshot_set", payload.snapshotSetSysId);
+  validatedRows.query();
+  while (validatedRows.next()) {
+    if (!expectedKeys.has(cleanText(validatedRows.getValue("snapshot_page_key")))) {
+      throw new Error("Workspace publish snapshot pages are invalid.");
+    }
+  }
+
+  if (cleanText(snapshotRow.getValue("readiness_state")) !== "ready") {
+    snapshotRow.setValue("readiness_state", "ready");
+    snapshotRow.setValue("published_on", publishedOn);
+    if (!snapshotRow.update()) {
+      throw new Error("Workspace publish could not finalize the staged snapshot.");
+    }
+    triggerDurablePhase(dependencies, "publish_snapshot_ready", {
+      generationKey: buildMutationGenerationKey(authority),
+      kind: "publish",
+      snapshotPageKey: payload.snapshotKey
+    });
+  }
+
+  return stagedSnapshot.pages.map((page) => ({ ...page }));
+}
+
+function ensurePublishSuccessorChangeSet(
+  workspaceSysId: string,
+  payload: Extract<WorkspaceMutationClaimPayload, { kind: "publish" }>
+) {
+  const row = new GlideRecord(DOCSERA_WORKSPACE_CHANGE_SET_TABLE);
+  if (row.get("generation_key", payload.successorGenerationKey)) {
+    if (
+      cleanText(row.getUniqueValue()) !== payload.successorChangeSetSysId ||
+      cleanText(row.getValue("workspace")) !== workspaceSysId ||
+      safeInteger(row.getValue("change_set_revision")) !== 0 ||
+      safeInteger(row.getValue("next_pending_sequence")) !== 1
+    ) {
+      throw new Error("Workspace publish successor generation is invalid.");
+    }
+    return;
+  }
+  row.initialize();
+  row.setNewGuidValue(payload.successorChangeSetSysId);
+  row.setValue("workspace", workspaceSysId);
+  row.setValue("generation_key", payload.successorGenerationKey);
+  row.setValue("change_set_revision", 0);
+  row.setValue("next_pending_sequence", 1);
+  row.setValue("lifecycle_state", "active");
+  row.setValue("command_correlation_id", payload.commandId);
+  row.setValue("recovery_state", "none");
+  if (!row.insert()) {
+    throw new Error("Workspace publish could not create the successor change set.");
+  }
+}
+
+function markPublishedChangeSetSuperseded(changeSetSysId: string, commandId: string, finalizedOn: string) {
+  const row = new GlideRecord(DOCSERA_WORKSPACE_CHANGE_SET_TABLE);
+  if (!row.get("sys_id", cleanText(changeSetSysId))) {
+    return;
+  }
+  if (cleanText(row.getValue("lifecycle_state")) !== "superseded") {
+    row.setValue("lifecycle_state", "superseded");
+  }
+  row.setValue("command_correlation_id", commandId);
+  row.setValue("finalized_on", finalizedOn);
+  row.update();
+}
+
+function switchWorkspacePublishSelectors(input: {
+  authority: WorkspaceMutationAuthority;
+  dependencies: WorkspaceChangeSetPersistenceDependencies;
+  payload: Extract<WorkspaceMutationClaimPayload, { kind: "publish" }>;
+  snapshotSetSysId: string;
+  workspace: WorkspaceRecord;
+}): WorkspaceRecord {
+  const workspaceSysId = cleanText(input.workspace.sysId);
+  const priorSnapshotSetSysId = cleanText(input.workspace.publishedSnapshotSetSysId);
+  const priorRevision = typeof input.workspace.workspaceStateRevision === "number" ? input.workspace.workspaceStateRevision : 0;
+  const row = new GlideRecord(DOCSERA_WORKSPACE_TABLE);
+  row.addQuery("pending_change_set", input.authority.changeSetId);
+  row.addQuery("published_snapshot_set", priorSnapshotSetSysId);
+  row.addQuery("workspace_state_revision", priorRevision);
+  row.query();
+  let found = false;
+  while (row.next()) {
+    if (cleanText(row.getUniqueValue()) === workspaceSysId) {
+      found = true;
+      break;
+    }
+  }
+  if (!found) {
+    throw new Error("The active draft generation changed. Reload before publishing again.");
+  }
+  row.setValue("pending_change_set", input.payload.successorChangeSetSysId);
+  row.setValue("published_snapshot_set", input.snapshotSetSysId);
+  row.setValue("workspace_state_revision", priorRevision + 1);
+  if (!row.update()) {
+    throw new Error("Workspace publish could not update the workspace snapshot selectors.");
+  }
+  triggerDurablePhase(input.dependencies, "publish_selector_switched", {
+    generationKey: buildMutationGenerationKey(input.authority),
+    kind: "publish",
+    snapshotPageKey: input.payload.snapshotKey
+  });
+  const reloaded = loadWorkspaceBySysId(workspaceSysId);
+  if (!reloaded) {
+    throw new Error("Workspace could not be reloaded after publishing.");
+  }
+  return reloaded;
+}
+
+function reconcilePublishedPageRows(input: {
+  dependencies: WorkspaceChangeSetPersistenceDependencies;
+  pages: SnapshotPage[];
+  publishedBy: string;
+  publishedOn: string;
+  workspaceSysId: string;
+}) {
+  const byPageId = new Map(input.pages.map((page) => [page.pageId, page]));
+  const rows = new GlideRecord(DOCSERA_PAGE_TABLE);
+  rows.addQuery("workspace", input.workspaceSysId);
+  rows.query();
+  while (rows.next()) {
+    const pageId = cleanText(rows.getUniqueValue());
+    const page = byPageId.get(pageId);
+    if (page) {
+      rows.setValue("parent_page", page.parentPageId ?? "");
+      rows.setValue("sibling_order", page.siblingOrder);
+      rows.setValue("draft_title", page.title);
+      rows.setValue("draft_slug", page.slug);
+      rows.setValue("draft_slug_normalized", page.slug);
+      rows.setValue("draft_content_json", page.contentJson);
+      rows.setValue("draft_body_text", page.bodyText ?? "");
+      rows.setValue("published_title", page.title);
+      rows.setValue("published_slug", page.slug);
+      rows.setValue("published_slug_normalized", page.slug);
+      rows.setValue("published_content_json", page.contentJson);
+      rows.setValue("published_body_text", page.bodyText ?? "");
+      rows.setValue("published_on", input.publishedOn);
+      rows.setValue("published_by", input.publishedBy);
+      rows.setValue("publication_state", "published");
+      rows.setValue("active", page.active);
+    } else {
+      rows.setValue("published_title", "");
+      rows.setValue("published_slug", "");
+      rows.setValue("published_slug_normalized", "");
+      rows.setValue("published_content_json", "");
+      rows.setValue("published_body_text", "");
+      rows.setValue("publication_state", "draft");
+      rows.setValue("active", false);
+    }
+    if (!rows.update()) {
+      throw new Error("Workspace publish could not reconcile page records.");
+    }
+  }
+  triggerDurablePhase(input.dependencies, "publish_page_rows_reconciled", {
+    kind: "publish"
+  });
 }
 
 function loadPageRecordBySysId(pageSysId: string): PageRecord | null {
@@ -2805,6 +3119,287 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
         return {
           kind: "failed",
           errorMessage: cleanText(error instanceof Error ? error.message : error) || "Something went wrong while moving the page. The page was not moved. Please try again.",
+          status: 500
+        };
+      }
+    },
+
+    publishWorkspace(input: {
+      authority: WorkspaceMutationAuthority;
+      commandId: string;
+      workspace: WorkspaceRecord;
+    }): WorkspacePublishResult {
+      try {
+        const loaded = loadWorkspaceState(input.workspace, dependencies);
+        const workspaceSysId = cleanText(loaded.workspace.sysId);
+        const commandId = cleanText(input.commandId);
+        if (!workspaceSysId) {
+          return { kind: "failed", errorMessage: "Workspace could not be found.", status: 404 };
+        }
+        if (!commandId || commandId.length > 64 || !/^[a-zA-Z0-9._:-]+$/.test(commandId)) {
+          return { kind: "failed", code: "invalid", errorMessage: "A valid publish command identity is required.", status: 400 };
+        }
+        const generationKey = buildMutationGenerationKey(input.authority);
+        const payload = buildPublishPayload(workspaceSysId, commandId, input.authority, dependencies);
+        const existingClaim = loadMutationClaimByGeneration(generationKey);
+        if (
+          existingClaim &&
+          (
+            existingClaim.kind !== "publish" ||
+            existingClaim.payload.kind !== "publish" ||
+            existingClaim.payload.commandId !== payload.commandId ||
+            existingClaim.payload.snapshotSetSysId !== payload.snapshotSetSysId ||
+            existingClaim.payload.snapshotKey !== payload.snapshotKey ||
+            existingClaim.payload.successorChangeSetSysId !== payload.successorChangeSetSysId ||
+            existingClaim.payload.successorGenerationKey !== payload.successorGenerationKey
+          )
+        ) {
+          return staleFailure(nextAuthority(loaded.state));
+        }
+        if (!existingClaim) {
+          const tokenValidation = switchSelectors(
+            completeSnapshotStaging(
+              stageSnapshotSet(loaded.state, {
+                commandId,
+                kind: "publish",
+                snapshotSetId: payload.snapshotSetSysId
+              }),
+              payload.snapshotSetSysId
+            ),
+            {
+              expectedChangeSetId: input.authority.changeSetId,
+              expectedChangeSetRevision: input.authority.changeSetRevision
+            },
+            {
+              commandId,
+              kind: "publish",
+              snapshotSetId: payload.snapshotSetSysId,
+              successorChangeSetId: payload.successorChangeSetSysId
+            }
+          );
+          if (tokenValidation.kind === "stale") {
+            return staleFailure(tokenValidation.current);
+          }
+          if (pendingEntries(loaded.state).length === 0) {
+            return { kind: "failed", code: "invalid", errorMessage: "There are no pending changes to publish.", status: 400 };
+          }
+        }
+
+        let claim = existingClaim ?? {
+          sysId: "",
+          workspaceId: workspaceSysId,
+          changeSetId: input.authority.changeSetId,
+          generationKey,
+          mutationKey: buildMutationKey(dependencies, input.authority, "publish", payload),
+          kind: "publish" as const,
+          state: "claimed" as const,
+          ownerKey: dependencies.randomKey("mutation-owner"),
+          ownerExpiresOn: plusDuration(dependencies.currentTimestamp(), dependencies.ownerTimeoutMs),
+          claimedOn: dependencies.currentTimestamp(),
+          phase: "claimed" as const,
+          payload
+        };
+        const acquired = acquireMutationClaim(dependencies, loaded.state, claim);
+        if (acquired.kind === "failed") {
+          return acquired.failure;
+        }
+        if (acquired.kind === "replay") {
+          return {
+            kind: "succeeded",
+            authority: acquired.resultAuthority,
+            result: parseReplayResult<{
+              pages: PageRecord[];
+              pendingChanges: WorkspacePendingChangesReadModel;
+              publishedSnapshotSetId: string;
+              workspaceStateRevision: number;
+            }>(acquired.resultJson)
+          };
+        }
+
+        claim = acquired.claim;
+        const executorKey = acquired.executorKey;
+        const publishedOn = claim.appliedOn ?? dependencies.currentTimestamp();
+        const publishedBy = dependencies.currentUserSysId();
+        let snapshotPages: SnapshotPage[] = [];
+
+        if (claim.phase === "claimed") {
+          claim = requireClaimOwner(claim, executorKey);
+          snapshotPages = persistPublishSnapshot(dependencies, loaded, payload, input.authority, publishedOn, publishedBy);
+          claim = persistClaimProgress(dependencies, claim, {
+            appliedOn: publishedOn,
+            phase: "page_persisted"
+          }, executorKey);
+        } else {
+          const snapshot = loadFoundationSnapshot(workspaceSysId, payload.snapshotSetSysId);
+          if (!snapshot || snapshot.readiness !== "ready") {
+            throw new Error("Workspace publish snapshot could not be recovered.");
+          }
+          snapshotPages = snapshot.pages;
+        }
+
+        let resultAuthority = claim.resultAuthority;
+        let switchedWorkspace = loadWorkspaceBySysId(workspaceSysId) ?? loaded.workspace;
+        const alreadySwitched =
+          cleanText(switchedWorkspace.pendingChangeSetSysId) === payload.successorChangeSetSysId &&
+          cleanText(switchedWorkspace.publishedSnapshotSetSysId) === payload.snapshotSetSysId;
+        if (!resultAuthority && alreadySwitched) {
+          resultAuthority = {
+            changeSetId: payload.successorChangeSetSysId,
+            changeSetRevision: 0
+          };
+          claim = persistClaimProgress(dependencies, claim, {
+            appliedOn: claim.appliedOn ?? publishedOn,
+            phase: "change_set_persisted",
+            resultAuthority,
+            state: "applied"
+          }, null);
+        }
+
+        if (!resultAuthority) {
+          claim = requireClaimOwner(claim, executorKey);
+          const validationState = completeSnapshotStaging(
+            stageSnapshotSet(loaded.state, {
+              commandId,
+              kind: "publish",
+              snapshotSetId: payload.snapshotSetSysId
+            }),
+            payload.snapshotSetSysId
+          );
+          const validatedSwitch = switchSelectors(validationState, {
+            expectedChangeSetId: input.authority.changeSetId,
+            expectedChangeSetRevision: input.authority.changeSetRevision
+          }, {
+            commandId,
+            kind: "publish",
+            snapshotSetId: payload.snapshotSetSysId,
+            successorChangeSetId: payload.successorChangeSetSysId
+          });
+          if (validatedSwitch.kind === "stale") {
+            return staleFailure(validatedSwitch.current);
+          }
+          const preparedResult = {
+            pages: [] as PageRecord[],
+            pendingChanges: {
+              affectedPageCount: 0,
+              changeSetId: payload.successorChangeSetSysId,
+              changeSetRevision: 0,
+              rows: [] as WorkspacePendingChangeRow[],
+              workspaceSysId
+            },
+            publishedSnapshotSetId: payload.snapshotSetSysId,
+            workspaceStateRevision: validatedSwitch.result.workspaceStateRevision
+          };
+          claim = persistClaimProgress(dependencies, claim, {
+            appliedOn: claim.appliedOn ?? publishedOn,
+            phase: "change_set_advancing",
+            resultJson: stableSerialize(preparedResult)
+          }, executorKey);
+          claim = requireDurableChangeSetAdvancingMarker(claim, executorKey, stableSerialize(preparedResult));
+          ensurePublishSuccessorChangeSet(workspaceSysId, payload);
+          switchedWorkspace = switchWorkspacePublishSelectors({
+            authority: input.authority,
+            dependencies,
+            payload,
+            snapshotSetSysId: payload.snapshotSetSysId,
+            workspace: loaded.workspace
+          });
+          markPublishedChangeSetSuperseded(input.authority.changeSetId, commandId, publishedOn);
+          resultAuthority = {
+            changeSetId: payload.successorChangeSetSysId,
+            changeSetRevision: 0
+          };
+          claim = persistClaimProgress(dependencies, claim, {
+            appliedOn: claim.appliedOn ?? publishedOn,
+            phase: "change_set_persisted",
+            resultAuthority,
+            state: "applied"
+          }, null);
+        }
+
+        if (claim.phase === "change_set_persisted" && resultAuthority) {
+          try {
+            reconcilePublishedPageRows({
+              dependencies,
+              pages: snapshotPages.length > 0 ? snapshotPages : loadSnapshotPages(payload.snapshotSetSysId),
+              publishedBy,
+              publishedOn: claim.appliedOn ?? publishedOn,
+              workspaceSysId
+            });
+          } catch (error) {
+            gs.error(`[Docsera workspace publish] Published selector advanced but page row reconciliation needs retry: ${cleanText(error instanceof Error ? error.message : error) || "unknown failure"}`);
+          }
+          switchedWorkspace = loadWorkspaceBySysId(workspaceSysId) ?? switchedWorkspace;
+          const refreshed = this.listPages(switchedWorkspace, "edit");
+          if (refreshed.kind !== "succeeded") {
+            return refreshed;
+          }
+          const workspaceStateRevision = typeof refreshed.workspace.workspaceStateRevision === "number" ? refreshed.workspace.workspaceStateRevision : 0;
+          const result = {
+            pages: refreshed.pages,
+            pendingChanges: {
+              affectedPageCount: 0,
+              changeSetId: resultAuthority.changeSetId,
+              changeSetRevision: resultAuthority.changeSetRevision,
+              rows: [] as WorkspacePendingChangeRow[],
+              workspaceSysId
+            },
+            publishedSnapshotSetId: payload.snapshotSetSysId,
+            workspaceStateRevision
+          };
+          try {
+            claim = persistClaimProgress(dependencies, claim, {
+              appliedOn: claim.appliedOn ?? publishedOn,
+              phase: "result_persisted",
+              resultAuthority,
+              resultJson: stableSerialize(result),
+              state: "applied"
+            }, null);
+          } catch (error) {
+            gs.error(`[Docsera workspace publish] Published selector advanced but result persistence needs retry: ${cleanText(error instanceof Error ? error.message : error) || "unknown failure"}`);
+            return {
+              kind: "succeeded",
+              authority: resultAuthority,
+              result
+            };
+          }
+        }
+        if (!claim.resultAuthority || !claim.resultJson) {
+          throw new Error("Recovered publish result could not be persisted.");
+        }
+        const replayed = parseReplayResult<{
+          pages: PageRecord[];
+          pendingChanges: WorkspacePendingChangesReadModel;
+          publishedSnapshotSetId: string;
+          workspaceStateRevision: number;
+        }>(claim.resultJson);
+        try {
+          claim = finalizeMutationClaim(dependencies, claim, claim.resultAuthority, replayed, null);
+        } catch (error) {
+          gs.error(`[Docsera workspace publish] Published selector advanced but claim finalization needs retry: ${cleanText(error instanceof Error ? error.message : error) || "unknown failure"}`);
+        }
+        return {
+          kind: "succeeded",
+          authority: claim.resultAuthority,
+          result: replayed
+        };
+      } catch (error) {
+        const errorMessage = cleanText(error instanceof Error ? error.message : error);
+        if (errorMessage === "The active draft generation changed. Reload before publishing again.") {
+          try {
+            const reloadedWorkspace = loadWorkspaceBySysId(cleanText(input.workspace.sysId)) ?? input.workspace;
+            return staleFailure(nextAuthority(loadWorkspaceState(reloadedWorkspace, dependencies).state));
+          } catch {
+            return {
+              kind: "failed",
+              code: "stale_generation",
+              errorMessage,
+              status: 409
+            };
+          }
+        }
+        return {
+          kind: "failed",
+          errorMessage: errorMessage || "Something went wrong while publishing. No changes were published. Please try again.",
           status: 500
         };
       }

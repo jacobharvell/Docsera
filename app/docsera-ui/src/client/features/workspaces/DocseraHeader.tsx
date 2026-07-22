@@ -33,10 +33,16 @@ type DocseraHeaderProps = {
   recentWorkspaces: RecentWorkspaceItem[];
   pendingChanges?: WorkspacePendingChangesResult | null;
   pendingChangesLoading?: boolean;
+  pendingChangesPublishErrorMessage?: string;
+  pendingChangesPublishRetryable?: boolean;
+  pendingChangesPublishToastMessage?: string;
+  pendingChangesPublishing?: boolean;
   pendingChangesReadinessMessage?: string;
   pendingChangesRefreshing?: boolean;
   pendingChangesErrorMessage?: string;
+  onDismissPendingChangesPublishToast?: () => void;
   onOpenPendingPage?: (pageSysId: string) => void;
+  onPublishPendingChanges?: () => void;
   onRetryPendingChanges?: () => void;
   showEditModeToggle?: boolean;
   showWorkspaceMode?: WorkspaceMode;
@@ -55,6 +61,17 @@ function PublishChevron({ open }: { open: boolean }) {
     <span className={`docsera-header__publish-chevron${open ? " docsera-header__publish-chevron--open" : ""}`} aria-hidden="true">
       <svg viewBox="0 0 16 16" width="14" height="14" focusable="false">
         <path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      </svg>
+    </span>
+  );
+}
+
+function PublishSuccessIcon() {
+  return (
+    <span className="docsera-header__publish-toast-icon" aria-hidden="true">
+      <svg viewBox="0 0 20 20" focusable="false">
+        <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="1.8" />
+        <path d="M6.5 10.2l2.2 2.3 4.8-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
       </svg>
     </span>
   );
@@ -84,6 +101,7 @@ export function DocseraHeader({
   onOpenMyWorkspaces,
   onOpenWorkspace,
   onOpenWorkspaceSettings,
+  onDismissPendingChangesPublishToast,
   onOpenPendingPage,
   onSelectBreadcrumb,
   onToggleSidebar,
@@ -91,9 +109,14 @@ export function DocseraHeader({
   pendingChanges = null,
   pendingChangesErrorMessage = "",
   pendingChangesLoading = false,
+  pendingChangesPublishErrorMessage = "",
+  pendingChangesPublishRetryable = false,
+  pendingChangesPublishToastMessage = "",
+  pendingChangesPublishing = false,
   pendingChangesReadinessMessage = "",
   pendingChangesRefreshing = false,
   recentWorkspaces,
+  onPublishPendingChanges,
   showEditModeToggle = false,
   showWorkspaceMode = "live",
   onWorkspaceModeChange,
@@ -129,7 +152,17 @@ export function DocseraHeader({
   const showPublishControl = mode === "workspace" && showWorkspaceMode === "edit" && showEditModeToggle;
   const countText = `${pendingCount} ${pendingCount === 1 ? "page" : "pages"}`;
   const hasPendingError = Boolean(pendingChangesErrorMessage) || pendingChanges?.state === "failed";
-  const canOpenChanges = (hasPendingChanges || hasPendingError) && !workspaceControlsLocked;
+  const hasPublishError = Boolean(pendingChangesPublishErrorMessage);
+  const canOpenChanges = (hasPendingChanges || hasPendingError || hasPublishError || pendingChangesPublishing) && (!workspaceControlsLocked || pendingChangesPublishing);
+  const canPublishChanges =
+    hasPendingChanges &&
+    !hasPendingError &&
+    !pendingChangesLoading &&
+    !pendingChangesRefreshing &&
+    !pendingChangesPublishing &&
+    (!hasPublishError || pendingChangesPublishRetryable) &&
+    !pendingChangesReadinessMessage &&
+    Boolean(onPublishPendingChanges);
 
   useEffect(() => {
     if (!menuOpen) {
@@ -167,6 +200,9 @@ export function DocseraHeader({
       if (changesRef.current?.contains(event.target as Node)) {
         return;
       }
+      if (pendingChangesPublishing) {
+        return;
+      }
 
       setChangesOpen(false);
       publishButtonRef.current?.focus();
@@ -174,6 +210,9 @@ export function DocseraHeader({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (pendingChangesPublishing) {
+          return;
+        }
         setChangesOpen(false);
         publishButtonRef.current?.focus();
       }
@@ -185,11 +224,21 @@ export function DocseraHeader({
       document.removeEventListener("pointerdown", handlePointerDown, true);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [changesOpen]);
+  }, [changesOpen, pendingChangesPublishing]);
 
   useEffect(() => {
     setChangesOpen(false);
   }, [currentWorkspaceSlug, showWorkspaceMode]);
+
+  useEffect(() => {
+    if (!changesOpen || pendingChangesPublishing || pendingChangesLoading || pendingChangesRefreshing || hasPendingError || hasPublishError) {
+      return;
+    }
+    if (pendingChanges?.state === "succeeded" && pendingChanges.affectedPageCount === 0) {
+      setChangesOpen(false);
+      publishButtonRef.current?.focus();
+    }
+  }, [changesOpen, hasPendingError, hasPublishError, pendingChanges, pendingChangesLoading, pendingChangesPublishing, pendingChangesRefreshing]);
 
   return (
     <header
@@ -306,6 +355,22 @@ export function DocseraHeader({
           </div>
           {showPublishControl ? (
             <div className="docsera-header__publish-panel" ref={changesRef}>
+              {pendingChangesPublishToastMessage ? (
+                <div className="docsera-header__publish-toast" role="status" aria-atomic="true" aria-live="polite">
+                  <PublishSuccessIcon />
+                  <span className="docsera-header__publish-toast-message">{pendingChangesPublishToastMessage}</span>
+                  <button
+                    type="button"
+                    className="docsera-header__publish-toast-dismiss"
+                    aria-label="Dismiss publish success"
+                    onClick={onDismissPendingChangesPublishToast}
+                  >
+                    <svg viewBox="0 0 16 16" width="12" height="12" focusable="false" aria-hidden="true">
+                      <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
+                    </svg>
+                  </button>
+                </div>
+              ) : null}
               <button
                 ref={publishButtonRef}
                 type="button"
@@ -315,9 +380,14 @@ export function DocseraHeader({
                 aria-label={hasPendingChanges || hasPendingError ? "Open Changes Center" : "No pending changes to publish"}
                 disabled={!canOpenChanges}
                 onClick={() => {
-                  if (canOpenChanges) {
-                    setChangesOpen((current) => !current);
+                  if (!canOpenChanges) {
+                    return;
                   }
+                  if (pendingChangesPublishing) {
+                    setChangesOpen(true);
+                    return;
+                  }
+                  setChangesOpen((current) => !current);
                 }}
               >
                 Publish
@@ -360,7 +430,9 @@ export function DocseraHeader({
                               type="button"
                               className="docsera-changes-center__row"
                               onClick={() => {
-                                setChangesOpen(false);
+                                if (!pendingChangesPublishing) {
+                                  setChangesOpen(false);
+                                }
                                 onOpenPendingPage?.(row.pageSysId);
                               }}
                             >
@@ -377,6 +449,9 @@ export function DocseraHeader({
                       })}
                     </div>
                   )}
+                  {pendingChangesPublishErrorMessage ? (
+                    <div className="docsera-changes-center__publish-error" role="alert">{pendingChangesPublishErrorMessage}</div>
+                  ) : null}
                   {pendingChangesReadinessMessage ? (
                     <div className="docsera-changes-center__blocked" role="status">{pendingChangesReadinessMessage}</div>
                   ) : null}
@@ -384,8 +459,19 @@ export function DocseraHeader({
                     <button type="button" className="docsera-changes-center__footer-link" disabled>
                       Discard all
                     </button>
-                    <button type="button" className="docsera-changes-center__footer-primary" disabled>
-                      Publish
+                    <button
+                      type="button"
+                      className="docsera-changes-center__footer-primary"
+                      aria-busy={pendingChangesPublishing}
+                      disabled={!canPublishChanges}
+                      onClick={onPublishPendingChanges}
+                    >
+                      <span className="docsera-changes-center__footer-primary-label">
+                        {pendingChangesPublishing ? (
+                          <span className="docsera-changes-center__spinner" aria-hidden="true" />
+                        ) : null}
+                        <span>Publish</span>
+                      </span>
                     </button>
                   </footer>
                 </section>

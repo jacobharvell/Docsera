@@ -295,6 +295,35 @@ export type WorkspacePendingChangesFailed = {
 };
 export type WorkspacePendingChangesResult = WorkspacePendingChangesSucceeded | WorkspacePendingChangesFailed;
 
+export type WorkspacePublishInput = {
+  commandId: string;
+  workspaceSlug: string;
+  workspaceSysId: string;
+  workspaceLeaseToken?: string;
+  workspaceAuthority?: WorkspaceEditLeaseGeneration;
+  expectedChangeSetId?: string;
+  expectedChangeSetRevision?: number;
+};
+
+export type WorkspacePublishSucceeded = WorkspaceEditLeaseGeneration & {
+  pages: WorkspacePageRecord[];
+  pendingChanges: WorkspacePendingChangesSucceeded;
+  publishedSnapshotSetId: string;
+  state: "succeeded";
+  workspaceStateRevision: number;
+};
+
+export type WorkspacePublishFailed = {
+  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "transient";
+  currentChangeSetId?: string;
+  currentChangeSetRevision?: number;
+  errorMessage: string;
+  retryable?: boolean;
+  state: "failed";
+};
+
+export type WorkspacePublishResult = WorkspacePublishSucceeded | WorkspacePublishFailed;
+
 export type PageDeleteSucceeded = {
   changeSetId?: string;
   changeSetRevision?: number;
@@ -426,6 +455,7 @@ export type ServiceNowClient = {
   releaseWorkspaceEditLease?: (input: WorkspaceEditLeaseReferenceInput & { keepalive?: boolean }) => Promise<WorkspaceEditLeaseReleaseResult>;
   getWorkspaceEditLeaseStatus?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspaceEditLeaseStatusResult>;
   getWorkspacePendingChanges?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspacePendingChangesResult>;
+  publishWorkspace?: (input: WorkspacePublishInput) => Promise<WorkspacePublishResult>;
   getPageEditLockStatus: (input: PageEditLockReferenceInput) => Promise<PageEditLockStatusResult>;
   acquirePageEditLock: (input: PageEditLockReferenceInput) => Promise<PageEditLockAcquireResult>;
   heartbeatPageEditLock: (input: PageEditLockReferenceInput) => Promise<PageEditLockHeartbeatResult>;

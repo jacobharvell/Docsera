@@ -25,6 +25,9 @@ test("keeps launcher background ownership explicit without changing workspace ba
   expect(css).toContain("background: var(--docsera-surface);");
   expect(css).toContain("html[data-docsera-theme=\"dark\"] .docsera-app--launcher {");
   expect(css).toContain("background: var(--docsera-bg);");
+  expect(css).toContain(".app-shell,");
+  expect(css).toContain(".docsera-app {");
+  expect(css).not.toMatch(/\.docsera-shell\s*\{[^}]*min-height:\s*100vh;/s);
   expect(css).toContain(".docsera-workspace {");
   expect(css).toContain("background: var(--docsera-workspace-bg, var(--docsera-surface));");
 });
@@ -46,4 +49,16 @@ test("centers workspace mode control and moves save status into the page title r
   expect(css).toMatch(/\.docsera-main__page-header \.docsera-main__title\s*{[^}]*font-size:\s*clamp\(2\.1rem, 3vw, 2\.5rem\);[^}]*line-height:\s*1\.1;/s);
   expect(css).toContain(".docsera-header__publish-button");
   expect(css).toContain(".docsera-changes-center__list");
+});
+
+test("keeps the publish success toast as a layered header card with viewport-safe width and interactive dismissal", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+
+  expect(css).toMatch(/\.docsera-header__publish-panel\s*{[^}]*position:\s*relative;/s);
+  expect(css).toMatch(/\.docsera-header__publish-toast\s*{[^}]*position:\s*absolute;[^}]*right:\s*0;[^}]*top:\s*calc\(100% \+ 8px\);[^}]*z-index:\s*35;/s);
+  expect(css).toMatch(/\.docsera-header__publish-toast\s*{[^}]*grid-template-columns:\s*auto minmax\(0, 1fr\) auto;[^}]*align-items:\s*center;/s);
+  expect(css).toMatch(/\.docsera-header__publish-toast\s*{[^}]*width:\s*clamp\(300px, 24vw, 320px\);[^}]*max-width:\s*min\(320px, calc\(100vw - 24px\)\);/s);
+  expect(css).toMatch(/\.docsera-header__publish-toast-dismiss\s*{[^}]*width:\s*26px;[^}]*height:\s*26px;[^}]*background:\s*transparent;/s);
+  expect(css).toMatch(/\.docsera-header__publish-toast-dismiss:hover\s*{[^}]*background:/s);
+  expect(css).toMatch(/\.docsera-header__publish-toast-dismiss:focus-visible\s*{[^}]*box-shadow:/s);
 });

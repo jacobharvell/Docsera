@@ -375,8 +375,20 @@ function workspaceRef(
   } as never;
 }
 
-function pendingRows(service = createService()) {
-  const result = service.pendingChanges(workspaceRef());
+function currentWorkspaceRef() {
+  const row = getRows(workspaceTable)[0];
+  if (!row) {
+    throw new Error("Missing workspace row.");
+  }
+  return workspaceRef({
+    pendingChangeSetSysId: String(row.fields.pending_change_set ?? ""),
+    publishedSnapshotSetSysId: String(row.fields.published_snapshot_set ?? ""),
+    workspaceStateRevision: Number(row.fields.workspace_state_revision ?? 0)
+  });
+}
+
+function pendingRows(service = createService(), workspace = workspaceRef()) {
+  const result = service.pendingChanges(workspace);
   expect(result.kind).toBe("succeeded");
   return result.kind === "succeeded" ? result.pending.rows : [];
 }
@@ -1630,6 +1642,213 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     });
     expect(JSON.stringify(unknownResult.pending)).not.toContain("pwriter");
     expect(JSON.stringify(unknownResult.pending)).not.toContain("priya.writer@example.com");
+  });
+
+  it("publishes a mixed pending set as one workspace transition and replaces the active change set", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({
+          pageId: "page-001",
+          draftBodyText: "Overview body",
+          draftContentJson: createDocument("Overview body"),
+          draftSlug: "overview",
+          draftTitle: "Overview",
+          publishedBodyText: "Overview body",
+          publishedContentJson: createDocument("Overview body"),
+          publishedSlug: "overview",
+          publishedTitle: "Overview",
+          siblingOrder: "1"
+        }),
+        createSeedPage({
+          pageId: "page-002",
+          draftBodyText: "Child body",
+          draftContentJson: createDocument("Child body"),
+          draftSlug: "child",
+          draftTitle: "Child",
+          parentPageId: "page-001",
+          publishedBodyText: "Child body",
+          publishedContentJson: createDocument("Child body"),
+          publishedSlug: "child",
+          publishedTitle: "Child",
+          siblingOrder: "1"
+        }),
+        createSeedPage({
+          pageId: "page-003",
+          draftBodyText: "Deprecated body",
+          draftContentJson: createDocument("Deprecated body"),
+          draftSlug: "deprecated",
+          draftTitle: "Deprecated",
+          publishedBodyText: "Deprecated body",
+          publishedContentJson: createDocument("Deprecated body"),
+          publishedSlug: "deprecated",
+          publishedTitle: "Deprecated",
+          siblingOrder: "2"
+        })
+      ]
+    });
+    const service = createService();
+    const beforeLive = expectSucceeded(service.listPages(workspaceRef(), "live"));
+    expect(beforeLive.pages.map((page) => page.draftTitle)).toEqual(["Overview", "Child", "Deprecated"]);
+
+    let authority = expectSucceeded(service.savePageSettings({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-001",
+      slug: "overview-renamed",
+      title: "Overview Renamed",
+      workspace: workspaceRef()
+    })).authority;
+    const created = expectSucceeded(service.createPage({
+      authority,
+      parentPageSysId: "page-001",
+      title: "New Guide",
+      workspace: workspaceRef()
+    }));
+    authority = created.authority;
+    const addedPageId = created.result.page.sysId;
+    authority = expectSucceeded(service.movePage({
+      authority,
+      pageSysId: "page-002",
+      parentPageSysId: null,
+      siblingOrder: "9",
+      workspace: workspaceRef()
+    })).authority;
+    authority = expectSucceeded(service.deletePage({
+      authority,
+      pageSysId: "page-003",
+      workspace: workspaceRef()
+    })).authority;
+
+    const editBeforePublish = expectSucceeded(service.listPages(workspaceRef(), "edit"));
+    const pendingBeforePublish = expectSucceeded(service.pendingChanges(workspaceRef()));
+    expect(pendingBeforePublish.pending.rows.map((row) => row.category).sort()).toEqual(["Added", "Modified", "Modified · Moved", "Removed"]);
+    expect(expectSucceeded(service.listPages(workspaceRef(), "live")).pages.map((page) => page.draftTitle)).toEqual(["Overview", "Child", "Deprecated"]);
+
+    const published = expectSucceeded(service.publishWorkspace({
+      authority,
+      commandId: "publish-mixed-001",
+      workspace: workspaceRef()
+    }));
+
+    expect(published.authority).toEqual({
+      changeSetId: expect.any(String),
+      changeSetRevision: 0
+    });
+    expect(published.authority.changeSetId).not.toBe("change-set-001");
+    expect(published.result.pendingChanges).toMatchObject({
+      affectedPageCount: 0,
+      changeSetId: published.authority.changeSetId,
+      changeSetRevision: 0,
+      rows: [],
+      workspaceSysId: "workspace-001"
+    });
+    expectActiveSelectors(published.authority.changeSetId, published.result.publishedSnapshotSetId);
+    expect(getRows(workspaceTable)[0]?.fields.workspace_state_revision).toBe(1);
+    expect(changeSetRow("change-set-001")?.fields.lifecycle_state).toBe("superseded");
+    expect(pendingRows(createService(), currentWorkspaceRef())).toEqual([]);
+
+    const liveAfterPublish = expectSucceeded(service.listPages(currentWorkspaceRef(), "live"));
+    expect(liveAfterPublish.pages.map((page) => ({
+      parentPageSysId: page.parentPageSysId,
+      slug: page.draftSlug,
+      sysId: page.sysId,
+      title: page.draftTitle
+    }))).toEqual(editBeforePublish.pages.map((page) => ({
+      parentPageSysId: page.parentPageSysId,
+      slug: page.draftSlug,
+      sysId: page.sysId,
+      title: page.draftTitle
+    })));
+    expect(liveAfterPublish.pages.map((page) => page.sysId).sort()).toEqual([addedPageId, "page-001", "page-002"].sort());
+    expect(pageRow(addedPageId)?.fields.publication_state).toBe("published");
+    expect(pageRow("page-001")?.fields.published_title).toBe("Overview Renamed");
+    expect(pageRow("page-002")?.fields.parent_page).toBe("");
+    expect(pageRow("page-003")?.fields.publication_state).toBe("draft");
+    expect(pageRow("page-003")?.fields.active).toBe(false);
+  });
+
+  it("preserves Live selectors and pending changes when publish fails before the selector switch", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({
+          pageId: "page-001",
+          draftTitle: "Overview",
+          publishedTitle: "Overview"
+        })
+      ]
+    });
+    const authority = expectSucceeded(createService().savePageSettings({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-001",
+      slug: "overview-renamed",
+      title: "Overview Renamed",
+      workspace: workspaceRef()
+    })).authority;
+    const beforeWorkspace = JSON.stringify(getRows(workspaceTable));
+    const beforePending = pendingRows(createService());
+
+    const failed = createService({ failPhase: "publish_snapshot_page_inserted" }).publishWorkspace({
+      authority,
+      commandId: "publish-fails-before-switch",
+      workspace: workspaceRef()
+    });
+
+    expect(failed.kind).toBe("failed");
+    expect(JSON.stringify(getRows(workspaceTable))).toBe(beforeWorkspace);
+    expect(pendingRows(createService())).toEqual(beforePending);
+    expect(expectSucceeded(createService().listPages(workspaceRef(), "live")).pages[0]?.draftTitle).toBe("Overview");
+
+    const recovered = expectSucceeded(createService({ currentTimestamp: () => "2026-07-18 00:01:00" }).publishWorkspace({
+      authority,
+      commandId: "publish-fails-before-switch",
+      workspace: workspaceRef()
+    }));
+    expect(recovered.result.pendingChanges.affectedPageCount).toBe(0);
+    expect(expectSucceeded(createService().listPages(currentWorkspaceRef(), "live")).pages[0]?.draftTitle).toBe("Overview Renamed");
+  });
+
+  it("allows only one competing publish request to win a pending generation", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({
+          pageId: "page-001",
+          draftTitle: "Overview",
+          publishedTitle: "Overview"
+        })
+      ]
+    });
+    const authority = expectSucceeded(createService().savePageSettings({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-001",
+      slug: "overview-renamed",
+      title: "Overview Renamed",
+      workspace: workspaceRef()
+    })).authority;
+
+    const winner = expectSucceeded(createService().publishWorkspace({
+      authority,
+      commandId: "publish-winner",
+      workspace: workspaceRef()
+    }));
+    const repeatedWinner = expectSucceeded(createService().publishWorkspace({
+      authority,
+      commandId: "publish-winner",
+      workspace: currentWorkspaceRef()
+    }));
+    const loser = createService().publishWorkspace({
+      authority,
+      commandId: "publish-loser",
+      workspace: currentWorkspaceRef()
+    });
+
+    expect(repeatedWinner.authority).toEqual(winner.authority);
+    expect(loser.kind).toBe("failed");
+    if (loser.kind !== "failed") {
+      throw new Error("expected stale loser");
+    }
+    expect(loser.code).toBe("stale_generation");
+    expect(loser.currentChangeSetId).toBe(winner.authority.changeSetId);
+    expect(loser.currentChangeSetRevision).toBe(0);
+    expect(getRows(snapshotSetTable).filter((row) => row.fields.command_kind === "publish")).toHaveLength(1);
   });
 
   it("resolves pending attribution through record and field read access without leaking identifiers", () => {
