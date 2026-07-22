@@ -162,10 +162,18 @@ declare global {
                         table: 'sys_security_acl'
                         id: 'd7f33f5f7a3b4570ab316ff20e18800e'
                     }
+                    'docsera-application-menu': {
+                        table: 'sys_app_application'
+                        id: 'e2cd229c013f4b10bfcd04d39ea4cacb'
+                    }
                     'docsera-global-workspace-provisioning-bridge-execute': {
                         table: 'sys_scope_privilege'
                         id: 'b523541000134b7ba376fb9302a1857f'
                         deleted: true
+                    }
+                    'docsera-my-workspaces-module': {
+                        table: 'sys_app_module'
+                        id: '1c9eda581c43423ea49aca42455c9bd1'
                     }
                     'docsera-page-edit-lock-cleanup': {
                         table: 'sysauto_script'

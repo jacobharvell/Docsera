@@ -204,29 +204,69 @@ async function main() {
   });
 
   const checks = [];
+  const liveUrl = new URL(pageEndpoint, instanceUrl);
+  liveUrl.hash = `/${encodeURIComponent(workspaceSlug)}/${encodeURIComponent(pageSlug)}`;
   const targetUrl = new URL(pageEndpoint, instanceUrl);
-  targetUrl.searchParams.set("workspace", workspaceSlug);
-  targetUrl.searchParams.set("page", pageSlug);
-  targetUrl.searchParams.set("mode", "edit");
+  targetUrl.hash = `/${encodeURIComponent(workspaceSlug)}/${encodeURIComponent(pageSlug)}?mode=edit`;
+
+  await page.goto(liveUrl.toString(), { waitUntil: "domcontentloaded" });
+  await page.waitForLoadState("networkidle");
+  await page.waitForSelector(".docsera-workspace", { timeout: 20000 });
+  checks.push({
+    ok:
+      page.url().includes(`${pageEndpoint}#/${encodeURIComponent(workspaceSlug)}/${encodeURIComponent(pageSlug)}`) &&
+      !page.url().includes("/now/nav/ui/classic/params/target/"),
+    label: "direct canonical page link loads outside the native Classic shell",
+    detail: page.url()
+  });
+  checks.push({
+    ok:
+      (await page.locator(".sn-polaris-layout, now-app-shell, sn-canvas-appshell-root, .navbar, #gsft_nav").count()) === 0,
+    label: "standalone runtime has no native ServiceNow header"
+  });
 
   await page.goto(targetUrl.toString(), { waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   await page.waitForSelector(".docsera-workspace", { timeout: 20000 });
+  checks.push({
+    ok: page.url().endsWith(`#/${encodeURIComponent(workspaceSlug)}/${encodeURIComponent(pageSlug)}?mode=edit`),
+    label: "direct Edit route startup preserves canonical mode URL",
+    detail: page.url()
+  });
 
   const editButton = page.getByRole("button", { name: /edit/i }).first();
   if (await editButton.isVisible().catch(() => false)) {
     await editButton.click();
     await page.waitForLoadState("networkidle");
   }
+  await page.waitForFunction(() =>
+    Object.entries(window.sessionStorage).some(([key, value]) =>
+      key.startsWith("docsera.workspace-edit-lease.") &&
+      !key.startsWith("docsera.workspace-edit-lease-reload.") &&
+      String(value).includes("\"token\"")
+    ),
+    { timeout: 20000 }
+  );
 
   const refreshBefore = await page.locator("body").textContent();
   await page.reload({ waitUntil: "domcontentloaded" });
   await page.waitForLoadState("networkidle");
   const refreshAfter = await page.locator("body").textContent();
+  const refreshUrl = page.url();
+  const refreshBody = cleanText(refreshAfter || "");
   checks.push({
-    ok: /edit/i.test(refreshAfter || ""),
-    label: "same-tab refresh resumed the owner edit session",
-    detail: cleanText(refreshBefore || "").slice(0, 120)
+    ok:
+      refreshUrl.includes(`${pageEndpoint}#/${encodeURIComponent(workspaceSlug)}/${encodeURIComponent(pageSlug)}`) &&
+      refreshUrl.includes("mode=edit") &&
+      /liveedit/i.test(refreshBody.replace(/\s+/g, "")) &&
+      !/already being edited in another tab or window/i.test(refreshBody) &&
+      !/authoring access is no longer available/i.test(refreshBody),
+    label: "hard refresh preserves the canonical Edit route and resumes the owner edit session",
+    detail: safeDetail({
+      before: cleanText(refreshBefore || "").slice(0, 120),
+      after: refreshBody.slice(0, 180),
+      url: refreshUrl
+    })
   });
 
   const clonedState = await page.evaluate(() => ({

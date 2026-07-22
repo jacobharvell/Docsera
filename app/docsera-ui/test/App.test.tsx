@@ -198,10 +198,23 @@ function renderApp(path: string, clientOverrides: Partial<ServiceNowClient> = {}
   };
 }
 
+function readRouteValues(): Record<string, string | null> {
+  const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
+  const [rawPath = "", rawQuery = ""] = hash.split("?", 2);
+  const path = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath;
+  const segments = path.split("/").filter(Boolean).map((segment) => decodeURIComponent(segment));
+  const params = new URLSearchParams(rawQuery || window.location.search);
+  return {
+    mode: params.get("mode"),
+    page: segments[1] ?? params.get("page"),
+    workspace: segments[0] ?? params.get("workspace")
+  };
+}
+
 function expectSearchValues(expected: Record<string, string | null>) {
-  const params = new URLSearchParams(window.location.search);
+  const values = readRouteValues();
   for (const [key, value] of Object.entries(expected)) {
-    expect(params.get(key)).toBe(value);
+    expect(values[key]).toBe(value);
   }
 }
 

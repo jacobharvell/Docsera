@@ -21,6 +21,7 @@
     "verify:editor-runtime-boundary": "node ./scripts/verify-editor-runtime-boundary.mjs",
     "verify:inline-runtime-css-build": "node ./scripts/verify-inline-runtime-css-build.mjs",
     "verify:sdk-runtime": "node ./scripts/verify-sdk-runtime.mjs",
+    "verify:standalone-layout": "node ./scripts/verify-standalone-layout.mjs",
     "verify:e3-t9-mutation-conversion": "node ./scripts/verify-e3-t9-mutation-conversion.mjs",
     "verify:e3-t10-page-movement": "node ./scripts/verify-e3-t10-page-movement.mjs",
     "verify:e3-t11-changes-center": "node ./scripts/verify-e3-t11-changes-center.mjs",

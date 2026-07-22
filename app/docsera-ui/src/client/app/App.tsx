@@ -162,9 +162,11 @@ const STALE_REFRESH_BLOCKED_MESSAGE = "Reloading the latest draft projection. Sa
 const DOCSERA_THEME_STORAGE_KEY = "docsera.theme";
 const DOCSERA_RECENT_WORKSPACES_STORAGE_KEY = "docsera.recent-workspaces";
 const DOCSERA_WORKSPACE_LEASE_STORAGE_PREFIX = "docsera.workspace-edit-lease.";
+const DOCSERA_WORKSPACE_LEASE_RELOAD_MARKER_PREFIX = "docsera.workspace-edit-lease-reload.";
 const DOCSERA_WORKSPACE_LEASE_TAB_SESSION_PREFIX = "docsera.workspace-edit-lease-tab:";
 const DOCSERA_WORKSPACE_LEASE_CHANNEL_NAME = "docsera.workspace-edit-lease.v1";
 const DOCSERA_WORKSPACE_LEASE_PROBE_TIMEOUT_MS = 250;
+const DOCSERA_WORKSPACE_LEASE_RELOAD_MARKER_MAX_AGE_MS = 10_000;
 const RESTORED_BODY_NOTICE = "Your unsaved changes were restored. Review them before saving.";
 const RESTORED_BODY_MISMATCH_NOTICE = "Your earlier unsaved changes could not be restored because the shared draft changed.";
 const RESTORED_PAGE_SETTINGS_NOTICE = "Your unsaved Page Settings changes were restored. Review them before saving.";
@@ -200,6 +202,7 @@ type WorkspaceLeaseState =
 type WorkspaceLeaseBinding = WorkspaceEditLeaseHeld & { bindingId: string; workspaceSlug: string; workspaceSysId: string };
 
 function workspaceLeaseStorageKey(workspaceSysId: string): string { return `${DOCSERA_WORKSPACE_LEASE_STORAGE_PREFIX}${cleanText(workspaceSysId)}`; }
+function workspaceLeaseReloadMarkerKey(workspaceSysId: string): string { return `${DOCSERA_WORKSPACE_LEASE_RELOAD_MARKER_PREFIX}${cleanText(workspaceSysId)}`; }
 function getOrCreateWorkspaceLeaseTabSessionId(): string {
   const prefix = DOCSERA_WORKSPACE_LEASE_TAB_SESSION_PREFIX;
   try {
@@ -303,6 +306,7 @@ function clearStoredWorkspaceLease(workspaceSysId: string, reason: string) {
   const prior = readStoredWorkspaceLease(workspaceSysId);
   try {
     window.sessionStorage.removeItem(workspaceLeaseStorageKey(workspaceSysId));
+    window.sessionStorage.removeItem(workspaceLeaseReloadMarkerKey(workspaceSysId));
     recordDocseraDiagnosticEvent("lease.storage.clear", {
       reason,
       storageOrigin: window.location.origin,
@@ -318,6 +322,83 @@ function clearStoredWorkspaceLease(workspaceSysId: string, reason: string) {
       workspaceSysId
     });
   }
+}
+
+function markWorkspaceLeaseReloadIntent(binding: WorkspaceLeaseBinding): void {
+  const tabSessionId = getOrCreateWorkspaceLeaseTabSessionId();
+  if (!tabSessionId || !binding.workspaceSysId) {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(workspaceLeaseReloadMarkerKey(binding.workspaceSysId), JSON.stringify({
+      tabSessionId,
+      timestamp: Date.now()
+    }));
+    recordDocseraDiagnosticEvent("lease.reloadMarker.write", {
+      storedTabSessionFingerprint: fingerprintDiagnosticSecret(tabSessionId),
+      workspaceSlug: binding.workspaceSlug,
+      workspaceSysId: binding.workspaceSysId
+    });
+  } catch {
+    recordDocseraDiagnosticEvent("lease.reloadMarker.write", {
+      storageInaccessible: true,
+      workspaceSlug: binding.workspaceSlug,
+      workspaceSysId: binding.workspaceSysId
+    });
+  }
+}
+
+function consumeWorkspaceLeaseReloadIntent(workspaceSysId: string, tabSessionId: string): boolean {
+  const key = workspaceLeaseReloadMarkerKey(workspaceSysId);
+  try {
+    const raw = cleanText(window.sessionStorage.getItem(key));
+    if (raw) {
+      window.sessionStorage.removeItem(key);
+    }
+    if (!raw || !tabSessionId) {
+      return false;
+    }
+
+    const parsed = JSON.parse(raw) as { tabSessionId?: unknown; timestamp?: unknown };
+    const markerTabSessionId = cleanText(parsed.tabSessionId);
+    const timestamp = typeof parsed.timestamp === "number" ? parsed.timestamp : 0;
+    const ageMs = Date.now() - timestamp;
+    const canUse = markerTabSessionId === tabSessionId && ageMs >= 0 && ageMs <= DOCSERA_WORKSPACE_LEASE_RELOAD_MARKER_MAX_AGE_MS;
+    recordDocseraDiagnosticEvent("lease.reloadMarker.consume", {
+      ageMs,
+      canUse,
+      markerTabSessionFingerprint: fingerprintDiagnosticSecret(markerTabSessionId),
+      tabSessionFingerprint: fingerprintDiagnosticSecret(tabSessionId),
+      workspaceSysId
+    });
+    return canUse;
+  } catch {
+    try {
+      window.sessionStorage.removeItem(key);
+    } catch {
+      // Ignore cleanup failure; the diagnostic below is the actionable signal.
+    }
+    recordDocseraDiagnosticEvent("lease.reloadMarker.consume", {
+      parseSucceeded: false,
+      workspaceSysId
+    });
+    return false;
+  }
+}
+
+function isCurrentDocumentReloadNavigation(): boolean {
+  try {
+    const entries = window.performance?.getEntriesByType?.("navigation") ?? [];
+    const navigation = entries[0] as PerformanceNavigationTiming | undefined;
+    if (navigation?.type) {
+      return navigation.type === "reload";
+    }
+  } catch {
+    return false;
+  }
+
+  return false;
 }
 
 function createWorkspaceLeaseHolderNotice(result: { holderDisplayName: string | null; sameUserDifferentSession: boolean }, failure: "locked" | "lost"): WorkspaceLeaseState {
@@ -1150,6 +1231,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   function detachWorkspaceLeaseBindingForDocumentTeardown(): void {
     const binding = workspaceLeaseBindingRef.current;
     if (!binding) return;
+    markWorkspaceLeaseReloadIntent(binding);
     workspaceLeaseBindingRef.current = null;
     workspaceLeaseCoordinationRef.current.stopResponder(binding.bindingId, "document_teardown");
     recordDocseraDiagnosticEvent("lease.documentTeardownDetach", {
@@ -1335,6 +1417,19 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
   useEffect(() => () => {
     detachWorkspaceLeaseBindingForDocumentTeardown();
+  }, []);
+
+  useEffect(() => {
+    const detachForPageExit = () => {
+      detachWorkspaceLeaseBindingForDocumentTeardown();
+    };
+
+    window.addEventListener("pagehide", detachForPageExit);
+    window.addEventListener("beforeunload", detachForPageExit);
+    return () => {
+      window.removeEventListener("pagehide", detachForPageExit);
+      window.removeEventListener("beforeunload", detachForPageExit);
+    };
   }, []);
 
   useEffect(() => {
@@ -2406,8 +2501,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     setWorkspaceLeaseState({ state: "acquiring" });
     void (async () => {
       const stored = readStoredWorkspaceLease(workspaceSysId);
+      const reloadResumeIntent = consumeWorkspaceLeaseReloadIntent(workspaceSysId, tabSessionId);
+      const sameTabReloadNavigation = isCurrentDocumentReloadNavigation() && Boolean(stored.tabSessionId && stored.tabSessionId === tabSessionId);
       recordDocseraDiagnosticEvent("lease.resume.considered", {
         currentTabSessionFingerprint: fingerprintDiagnosticSecret(tabSessionId),
+        reloadResumeIntent,
+        sameTabReloadNavigation,
         storedAndCurrentTabMatch: Boolean(stored.tabSessionId && stored.tabSessionId === tabSessionId),
         storedTabSessionFingerprint: fingerprintDiagnosticSecret(stored.tabSessionId),
         tokenExists: Boolean(stored.token),
@@ -2415,7 +2514,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         workspaceSlug: workspace.slug,
         workspaceSysId
       });
-      const canResume = Boolean(stored.token) && await workspaceLeaseCoordinationRef.current.canResume({ stored, tabSessionId, workspaceSysId });
+      const canResume = Boolean(stored.token) && (
+        reloadResumeIntent ||
+        sameTabReloadNavigation ||
+        await workspaceLeaseCoordinationRef.current.canResume({ stored, tabSessionId, workspaceSysId })
+      );
       if (stored.token && !canResume) {
         clearStoredWorkspaceLease(
           workspaceSysId,

@@ -623,10 +623,23 @@ function heldLease(leaseToken: string) {
   };
 }
 
-function expectWorkspaceSearch(expected: Record<string, string>) {
-  const params = new URLSearchParams(window.location.search);
+function readRouteValues(): Record<string, string | null> {
+  const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
+  const [rawPath = "", rawQuery = ""] = hash.split("?", 2);
+  const path = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath;
+  const segments = path.split("/").filter(Boolean).map((segment) => decodeURIComponent(segment));
+  const params = new URLSearchParams(rawQuery || window.location.search);
+  return {
+    mode: params.get("mode"),
+    page: segments[1] ?? params.get("page"),
+    workspace: segments[0] ?? params.get("workspace")
+  };
+}
+
+function expectWorkspaceSearch(expected: Record<string, string | null>) {
+  const values = readRouteValues();
   for (const [key, value] of Object.entries(expected)) {
-    expect(params.get(key)).toBe(value);
+    expect(values[key]).toBe(value);
   }
 }
 
@@ -822,7 +835,7 @@ describe("App editor-host session boundary", () => {
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
-    expect(window.location.search).toBe("?workspace=product-docs&page=overview");
+    expectWorkspaceSearch({ workspace: "product-docs", page: "overview", mode: null });
   });
 
   it("commits workspace switch transitions after a successful flush", async () => {
@@ -839,7 +852,7 @@ describe("App editor-host session boundary", () => {
 
     expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
-    expect(window.location.search).toContain("workspace=api-docs");
+    expectWorkspaceSearch({ workspace: "api-docs", page: "api-overview" });
   });
 
   it("commits launcher transitions after a successful flush", async () => {
@@ -856,7 +869,7 @@ describe("App editor-host session boundary", () => {
 
     expect(await screen.findByRole("heading", { name: "My Workspaces" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
-    expect(window.location.search).toBe("?view=my-workspaces");
+    expect(readRouteValues()).toMatchObject({ workspace: null, page: null, mode: null });
   });
 
   it("uses the same flush boundary for browser back and forward navigation", async () => {
@@ -938,11 +951,11 @@ describe("App editor-host session boundary", () => {
     staleControl?.emitAccessLost();
     expect(await screen.findByRole("heading", { name: "Authoring access is no longer available" })).toBeInTheDocument();
 
-    const searchBeforeResolve = window.location.search;
+    const routeBeforeResolve = `${window.location.pathname}${window.location.search}${window.location.hash}`;
     staleControl?.resolveDeferredFlushes();
 
     await waitFor(() => {
-      expect(window.location.search).toBe(searchBeforeResolve);
+      expect(`${window.location.pathname}${window.location.search}${window.location.hash}`).toBe(routeBeforeResolve);
     });
     expect(screen.getByRole("heading", { name: "Authoring access is no longer available" })).toBeInTheDocument();
     expect(latestHostControl).toBeNull();
@@ -965,7 +978,7 @@ describe("App editor-host session boundary", () => {
 
     expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
     expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
-    expect(window.location.search).toContain("workspace=api-docs");
+    expectWorkspaceSearch({ workspace: "api-docs", page: "api-overview" });
   });
 
   it("clears flush registration when the page changes", async () => {
@@ -1001,7 +1014,7 @@ describe("App editor-host session boundary", () => {
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     expect(latestHostControl).toBeNull();
     expect(priorSessionKey ? hostControls.has(priorSessionKey) : false).toBe(false);
-    expect(window.location.search).toBe("?workspace=product-docs&page=overview");
+    expectWorkspaceSearch({ workspace: "product-docs", page: "overview", mode: null });
   });
 
   it("clears flush registration after access loss", async () => {
@@ -1333,7 +1346,7 @@ describe("App editor-host session boundary", () => {
     });
 
     expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
-    await waitFor(() => expect(window.location.search).toBe("?workspace=product-docs&page=overview"));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview", mode: null }));
     expect(savePageBody).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));

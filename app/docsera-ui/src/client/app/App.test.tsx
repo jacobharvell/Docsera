@@ -20,6 +20,7 @@ import type {
 
 let deferHostReady = false;
 let hostReadyResolvers: Array<() => void> = [];
+let restoreNavigationEntries = () => {};
 
 type BroadcastMessage = Record<string, unknown>;
 
@@ -60,6 +61,8 @@ function resolveDeferredHostReady() {
 }
 
 afterEach(() => {
+  restoreNavigationEntries();
+  restoreNavigationEntries = () => {};
   FakeBroadcastChannel.peers.clear();
   Reflect.deleteProperty(window, "BroadcastChannel");
   window.localStorage.clear();
@@ -68,6 +71,20 @@ afterEach(() => {
   window.sessionStorage.clear();
   window.name = "";
 });
+
+function mockNavigationType(type: PerformanceNavigationTiming["type"]) {
+  const original = window.performance.getEntriesByType.bind(window.performance);
+  vi.spyOn(window.performance, "getEntriesByType").mockImplementation((entryType: string) => {
+    if (entryType === "navigation") {
+      return [{ type } as PerformanceNavigationTiming];
+    }
+
+    return original(entryType);
+  });
+  restoreNavigationEntries = () => {
+    vi.restoreAllMocks();
+  };
+}
 
 vi.mock("../editor/PageEditorHost", () => ({
   PageEditorHost: function MockPageEditorHost({
@@ -338,10 +355,23 @@ function renderApp(search: string, clientOverrides: Partial<ServiceNowClient> = 
   };
 }
 
-function expectWorkspaceSearch(expected: Record<string, string>) {
-  const params = new URLSearchParams(window.location.search);
+function readRouteValues(): Record<string, string | null> {
+  const hash = window.location.hash.startsWith("#") ? window.location.hash.slice(1) : window.location.hash;
+  const [rawPath = "", rawQuery = ""] = hash.split("?", 2);
+  const path = rawPath.startsWith("/") ? rawPath.slice(1) : rawPath;
+  const segments = path.split("/").filter(Boolean).map((segment) => decodeURIComponent(segment));
+  const params = new URLSearchParams(rawQuery || window.location.search);
+  return {
+    mode: params.get("mode"),
+    page: segments[1] ?? params.get("page"),
+    workspace: segments[0] ?? params.get("workspace")
+  };
+}
+
+function expectWorkspaceSearch(expected: Record<string, string | null>) {
+  const values = readRouteValues();
   for (const [key, value] of Object.entries(expected)) {
-    expect(params.get(key)).toBe(value);
+    expect(values[key]).toBe(value);
   }
 }
 
@@ -423,7 +453,7 @@ describe("App live and edit routing", () => {
     });
     expect(screen.queryByRole("button", { name: "New page" })).not.toBeInTheDocument();
     expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
-    expect(window.location.search).toBe("?workspace=product-docs&page=overview");
+    expectWorkspaceSearch({ workspace: "product-docs", page: "overview" });
   });
 
   it("keeps the workspace shell mounted during initial workspace loading and delays contained loading lines", async () => {
@@ -1329,6 +1359,11 @@ describe("App live and edit routing", () => {
     expect(window.name).toBe(`docsera.workspace-edit-lease-tab:${originalStoredLease.tabSessionId}`);
     expect(FakeBroadcastChannel.peers.get("docsera.workspace-edit-lease.v1")?.size).toBe(1);
 
+    window.dispatchEvent(new Event("pagehide"));
+    await waitFor(() => expect(FakeBroadcastChannel.peers.get("docsera.workspace-edit-lease.v1")?.size ?? 0).toBe(0));
+    expect(window.sessionStorage.getItem(workspaceLeaseStorageKey())).toBe(JSON.stringify(originalStoredLease));
+    expect(releaseWorkspaceEditLease).not.toHaveBeenCalled();
+
     firstView.unmount();
 
     await waitFor(() => expect(FakeBroadcastChannel.peers.get("docsera.workspace-edit-lease.v1")?.size ?? 0).toBe(0));
@@ -1355,6 +1390,51 @@ describe("App live and edit routing", () => {
     expect(document.querySelector("[data-docsera-page-editor-host='true']")).not.toBeNull();
     expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "refresh-target" });
     expect(readStoredWorkspaceLease()).toEqual(originalStoredLease);
+  });
+
+  it("resumes a same-tab hard reload from the browser navigation type even when the previous document still answers probes", async () => {
+    installFakeBroadcastChannel();
+    mockNavigationType("reload");
+    const tabSessionId = "tab-reload";
+    window.name = `docsera.workspace-edit-lease-tab:${tabSessionId}`;
+    window.sessionStorage.setItem(workspaceLeaseStorageKey(), JSON.stringify({ tabSessionId, token: "workspace-lease-token" }));
+
+    const lingeringPreviousDocument = new FakeBroadcastChannel("docsera.workspace-edit-lease.v1");
+    lingeringPreviousDocument.onmessage = (event) => {
+      const message = event.data;
+      if (message?.kind === "probe" && message.probeId) {
+        lingeringPreviousDocument.postMessage({
+          kind: "active",
+          bindingId: "previous-binding",
+          probeId: message.probeId,
+          runtimeId: "previous-runtime",
+          tabSessionId,
+          workspaceSysId: "workspace-001"
+        });
+      }
+    };
+
+    const acquireWorkspaceEditLease = vi.fn(async () => heldLease("unexpected-acquire"));
+    const resumeWorkspaceEditLease = vi.fn(async () => heldLease("workspace-lease-token"));
+    const releaseWorkspaceEditLease = vi.fn(async () => ({ state: "released" as const }));
+
+    renderApp("/#/product-docs/overview?mode=edit", {
+      acquireWorkspaceEditLease,
+      releaseWorkspaceEditLease,
+      resumeWorkspaceEditLease
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => expect(resumeWorkspaceEditLease).toHaveBeenCalledTimes(1));
+    expect(resumeWorkspaceEditLease).toHaveBeenCalledWith({
+      leaseToken: "workspace-lease-token",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    });
+    expect(acquireWorkspaceEditLease).not.toHaveBeenCalled();
+    expect(releaseWorkspaceEditLease).not.toHaveBeenCalled();
+    expect(screen.queryByText("This workspace is already being edited in another tab or window for your account.")).toBeNull();
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
   });
 
   it("releases and clears the workspace lease when leaving edit mode", async () => {
@@ -1604,7 +1684,7 @@ describe("App live and edit routing", () => {
     renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease });
 
     expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
-    await waitFor(() => expect(new URLSearchParams(window.location.search).get("mode")).toBeNull());
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview", mode: null }));
     expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
   });
 
@@ -1630,7 +1710,7 @@ describe("App live and edit routing", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("You do not have permission to edit this workspace.");
     expect(screen.getByRole("alert")).not.toHaveTextContent("another user is editing");
-    await waitFor(() => expect(new URLSearchParams(window.location.search).get("mode")).toBeNull());
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview", mode: null }));
     expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
   });
 
@@ -1645,7 +1725,7 @@ describe("App live and edit routing", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Workspace editing is temporarily unavailable. Please try again.");
     expect(screen.getByRole("alert")).not.toHaveTextContent("another user is editing");
-    await waitFor(() => expect(new URLSearchParams(window.location.search).get("mode")).toBeNull());
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview", mode: null }));
     expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
   });
 
@@ -1660,7 +1740,7 @@ describe("App live and edit routing", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Workspace editing is unavailable for this workspace.");
     expect(screen.getByRole("alert")).not.toHaveTextContent("another user is editing");
-    await waitFor(() => expect(new URLSearchParams(window.location.search).get("mode")).toBeNull());
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview", mode: null }));
     expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
   });
 
@@ -1721,7 +1801,7 @@ describe("App live and edit routing", () => {
 
     expect(await screen.findByRole("heading", { name: "Published Overview" })).toBeInTheDocument();
     await waitFor(() => {
-      expect(window.location.search).toBe("?workspace=product-docs&page=published-overview");
+      expectWorkspaceSearch({ workspace: "product-docs", page: "published-overview", mode: null });
     });
     expect(screen.queryByRole("button", { name: "New page" })).not.toBeInTheDocument();
     expect(listPages).toHaveBeenCalledWith({
@@ -1788,7 +1868,7 @@ describe("App live and edit routing", () => {
 
     expect(await screen.findByRole("heading", { name: "Details" })).toBeInTheDocument();
     await waitFor(() => {
-      expect(window.location.search).toBe("?workspace=product-docs&page=details");
+      expectWorkspaceSearch({ workspace: "product-docs", page: "details", mode: null });
     });
     expect(screen.getByRole("searchbox")).toHaveValue("");
   });
@@ -3375,7 +3455,7 @@ describe("App live and edit routing", () => {
       await Promise.resolve();
     });
 
-    expect(window.location.search).toContain("workspace=api-docs");
+    expectWorkspaceSearch({ workspace: "api-docs", page: "api-overview" });
     expect(screen.getByRole("heading", { name: "API Overview" })).toBeInTheDocument();
     expect(screen.queryByText("You do not have permission to edit this workspace.")).toBeNull();
   });
