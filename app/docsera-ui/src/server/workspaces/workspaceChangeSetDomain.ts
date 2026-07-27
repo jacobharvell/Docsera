@@ -21,6 +21,7 @@ export type TokenSuccess = { kind: "current"; changeSet: ChangeSet };
 export type TokenValidation = TokenFailure | TokenSuccess;
 export type BackfillResult = { kind: "ready"; state: WorkspaceChangeSetState; recovered: boolean } | { kind: "recovery_required"; state: WorkspaceChangeSetState; reason: string };
 export type MovePageFailure = TokenFailure | { kind: "invalid"; reason: string };
+export type DiscardPageFailure = TokenFailure | { kind: "invalid"; reason: string };
 
 function cleanText(value: unknown): string { return typeof value === "string" ? value.trim() : ""; }
 function activeChangeSet(state: WorkspaceChangeSetState): ChangeSet { const result = state.changeSets.find((set) => set.id === state.selectors.activeChangeSetId && set.workspaceId === state.selectors.workspaceId && set.state === "active"); if (!result) throw new Error("Workspace has no active change-set generation."); return result; }
@@ -42,8 +43,143 @@ export function deriveChangeCategory(state: WorkspaceChangeSetState, pageId: str
 function isRemovedInActiveChangeSet(state: WorkspaceChangeSetState, pageId: string): boolean { const set = activeChangeSet(state); return state.removalBatches.some((batch) => batch.changeSetId === set.id && batch.state === "active" && batch.members.some((member) => member.pageId === pageId)); }
 function upsertDraftPage(next: WorkspaceChangeSetState, draft: DraftPage) { const index = next.draftPages.findIndex((candidate) => candidate.pageId === draft.pageId); if (index >= 0) next.draftPages[index] = draft; else next.draftPages.push(draft); }
 function pruneCleanPublishedDraft(next: WorkspaceChangeSetState, pageId: string) { if (deriveChangeCategory(next, pageId) === null) next.draftPages = next.draftPages.filter((draft) => !(draft.pageId === pageId && draft.hasPublishedIdentity)); }
+function collectProjectionSubtreePageIds(pages: SnapshotPage[], rootPageId: string): string[] {
+  const normalizedRootPageId = cleanText(rootPageId);
+  if (!normalizedRootPageId || !pages.some((page) => page.pageId === normalizedRootPageId)) {
+    return [];
+  }
+  const childIdsByParentId = new Map<string, string[]>();
+  for (const page of pages) {
+    const parentPageId = cleanText(page.parentPageId);
+    if (!parentPageId) {
+      continue;
+    }
+    const siblings = childIdsByParentId.get(parentPageId);
+    if (siblings) siblings.push(page.pageId);
+    else childIdsByParentId.set(parentPageId, [page.pageId]);
+  }
+  const subtreePageIds: string[] = [];
+  const pendingPageIds = [normalizedRootPageId];
+  while (pendingPageIds.length > 0) {
+    const pageId = pendingPageIds.shift()!;
+    subtreePageIds.push(pageId);
+    for (const childPageId of childIdsByParentId.get(pageId) ?? []) pendingPageIds.push(childPageId);
+  }
+  return subtreePageIds;
+}
 function maxTreeDepth(pages: SnapshotPage[]): number { const byId = new Map(pages.map((page) => [page.pageId, page])); let max = 0; for (const page of pages) { let depth = 1; let parentId = page.parentPageId; const seen = new Set([page.pageId]); while (parentId) { if (seen.has(parentId)) throw new Error("Edit projection cannot contain circular page relationships."); seen.add(parentId); const parent = byId.get(parentId); if (!parent) break; depth += 1; parentId = parent.parentPageId; } max = Math.max(max, depth); } return max; }
 export function movePage(state: WorkspaceChangeSetState, token: ChangeSetToken, input: { pageId: string; parentPageId: string | null; siblingOrder: string; actorId: string; changedOn: string; maxDepth?: number }): { kind: "applied"; state: WorkspaceChangeSetState; token: ReturnType<typeof currentPair> } | { kind: "noop"; state: WorkspaceChangeSetState; token: ReturnType<typeof currentPair> } | MovePageFailure { const valid = validateChangeSetToken(state, token); if (valid.kind === "stale") return valid; const pageId = cleanText(input.pageId); const parentPageId = cleanText(input.parentPageId) || null; const siblingOrder = cleanText(input.siblingOrder); if (!pageId || !siblingOrder) return { kind: "invalid", reason: "A page and sibling placement are required." }; const beforeProjection = projectEdit(state); const target = beforeProjection.find((page) => page.pageId === pageId); if (!target) return { kind: "invalid", reason: "Page could not be found." }; if (isRemovedInActiveChangeSet(state, pageId)) return { kind: "invalid", reason: "Removed pages cannot be moved." }; if (parentPageId) { const parent = beforeProjection.find((page) => page.pageId === parentPageId); if (!parent) return { kind: "invalid", reason: "A valid parent page is required." }; if (isRemovedInActiveChangeSet(state, parentPageId)) return { kind: "invalid", reason: "Removed parents cannot receive moved pages." }; } if (target.parentPageId === parentPageId && target.siblingOrder === siblingOrder) return { kind: "noop", state, token: currentPair(state) }; const base = selectedSnapshotPage(state, pageId); const existingDraft = state.draftPages.find((draft) => draft.pageId === pageId); const effective = beforeProjection.map((page) => page.pageId === pageId ? { ...page, parentPageId, siblingOrder } : { ...page }); try { validateProjection(effective); if (maxTreeDepth(effective) > (input.maxDepth ?? 6)) return { kind: "invalid", reason: "Page hierarchy is too deep." }; } catch (error) { return { kind: "invalid", reason: cleanText(error instanceof Error ? error.message : error) || "The requested page hierarchy is invalid." }; } const next = cloneState(state); const draft: DraftPage = existingDraft && !existingDraft.hasPublishedIdentity ? { ...existingDraft, parentPageId, siblingOrder } : { ...(existingDraft ?? {}), pageId, hasPublishedIdentity: Boolean(base), parentPageId, siblingOrder }; upsertDraftPage(next, draft); pruneCleanPublishedDraft(next, pageId); const set = activeChangeSet(next); const category = deriveChangeCategory(next, pageId); let entry = next.entries.find((candidate) => candidate.changeSetId === set.id && candidate.pageId === pageId); if (category === null) next.entries = next.entries.filter((candidate) => !(candidate.changeSetId === set.id && candidate.pageId === pageId)); else if (!entry) { entry = { changeSetId: set.id, pageId, firstPendingSequence: set.nextPendingSequence++, firstPendingOn: input.changedOn, lastChangedOn: input.changedOn, lastChangedBy: input.actorId }; next.entries.push(entry); } else { entry.lastChangedOn = input.changedOn; entry.lastChangedBy = input.actorId; } set.revision++; return { kind: "applied", state: next, token: currentPair(next) }; }
+export function discardPageChanges(
+  state: WorkspaceChangeSetState,
+  token: ChangeSetToken,
+  input: {
+    actorId: string;
+    changedOn: string;
+    pageId: string;
+    targetAffectedPageIds?: string[] | null;
+    targetCategory?: ChangeCategory | null;
+    targetRemovalBatchId?: string | null;
+  }
+): { kind: "applied"; affectedPageIds: string[]; state: WorkspaceChangeSetState; token: ReturnType<typeof currentPair> } | DiscardPageFailure {
+  const valid = validateChangeSetToken(state, token);
+  if (valid.kind === "stale") return valid;
+  const pageId = cleanText(input.pageId);
+  if (!pageId) return { kind: "invalid", reason: "A target page is required." };
+  const targetCategory = input.targetCategory ?? deriveChangeCategory(state, pageId);
+  if (!targetCategory) return { kind: "invalid", reason: "This page no longer has pending changes to undo." };
+
+  const next = cloneState(state);
+  const set = activeChangeSet(next);
+  const effective = projectEdit(state).find((page) => page.pageId === pageId) ?? null;
+  const base = selectedSnapshotPage(state, pageId);
+  const existingDraft = next.draftPages.find((draft) => draft.pageId === pageId);
+  const existingEntry = next.entries.find((candidate) => candidate.changeSetId === set.id && candidate.pageId === pageId);
+  const touchEntry = (affectedPageId: string) => {
+    const entry = next.entries.find((candidate) => candidate.changeSetId === set.id && candidate.pageId === affectedPageId);
+    if (entry) {
+      entry.lastChangedOn = input.changedOn;
+      entry.lastChangedBy = input.actorId;
+    }
+  };
+
+  if (targetCategory === "Added") {
+    const editProjection = projectEdit(state);
+    const explicitAffectedPageIds =
+      input.targetAffectedPageIds?.map((affectedPageId) => cleanText(affectedPageId)).filter(Boolean) ?? [];
+    const subtreePageIds = collectProjectionSubtreePageIds(editProjection, pageId);
+    const candidatePageIds = subtreePageIds.length > 0 ? subtreePageIds : explicitAffectedPageIds;
+    if (candidatePageIds.length === 0) {
+      return { kind: "invalid", reason: "This page no longer has pending changes to undo." };
+    }
+    const discardedPageIds: string[] = [];
+    for (const subtreePageId of candidatePageIds) {
+      const subtreeCategory = deriveChangeCategory(state, subtreePageId);
+      if (subtreeCategory === "Added" || (subtreeCategory === null && !selectedSnapshotPage(state, subtreePageId))) {
+        discardedPageIds.push(subtreePageId);
+        continue;
+      }
+      if (subtreePageId !== pageId) {
+        return { kind: "invalid", reason: "This Added page cannot be undone while other pages still depend on it. Undo or move those dependent changes first." };
+      }
+    }
+    next.draftPages = next.draftPages.filter((draft) => !discardedPageIds.includes(draft.pageId));
+    next.entries = next.entries.filter((entry) => !(entry.changeSetId === set.id && discardedPageIds.includes(entry.pageId)));
+    set.revision++;
+    return { kind: "applied", affectedPageIds: discardedPageIds, state: next, token: currentPair(next) };
+  }
+
+  if (targetCategory === "Removed") {
+    const batchId =
+      cleanText(input.targetRemovalBatchId) ||
+      next.removalBatches.find((candidate) => candidate.changeSetId === set.id && candidate.state === "active" && candidate.members.some((member) => member.pageId === pageId))?.id;
+    if (!batchId) return { kind: "invalid", reason: "This page no longer has pending changes to undo." };
+
+    const batch = next.removalBatches.find((candidate) => candidate.id === batchId && candidate.changeSetId === set.id && candidate.state === "active");
+    const explicitAffectedPageIds =
+      input.targetAffectedPageIds?.map((affectedPageId) => cleanText(affectedPageId)).filter(Boolean) ?? [];
+    const affectedPageIds = batch?.members.map((member) => member.pageId) ?? explicitAffectedPageIds;
+    if (affectedPageIds.length === 0) {
+      return { kind: "invalid", reason: "This page no longer has pending changes to undo." };
+    }
+    if (batch) {
+      batch.state = "retired";
+    }
+    for (const affectedPageId of affectedPageIds) touchEntry(affectedPageId);
+    set.revision++;
+    return { kind: "applied", affectedPageIds, state: next, token: currentPair(next) };
+  }
+
+  if (!base || !effective || !existingDraft?.hasPublishedIdentity) {
+    if (input.targetCategory && base && effective && existingEntry && !existingDraft?.hasPublishedIdentity) {
+      next.entries = next.entries.filter((entry) => !(entry.changeSetId === set.id && entry.pageId === pageId));
+      set.revision++;
+      return { kind: "applied", affectedPageIds: [pageId], state: next, token: currentPair(next) };
+    }
+    return { kind: "invalid", reason: "This page no longer has pending changes to undo." };
+  }
+
+  const restoredDraft: DraftPage = {
+    ...existingDraft,
+    active: targetCategory === "Moved" ? effective.active : base.active,
+    bodyText: targetCategory === "Moved" ? effective.bodyText : base.bodyText,
+    contentJson: targetCategory === "Moved" ? effective.contentJson : base.contentJson,
+    hasPublishedIdentity: true,
+    pageId,
+    parentPageId: targetCategory === "Modified" ? effective.parentPageId : base.parentPageId,
+    siblingOrder: targetCategory === "Modified" ? effective.siblingOrder : base.siblingOrder,
+    slug: targetCategory === "Moved" ? effective.slug : base.slug,
+    title: targetCategory === "Moved" ? effective.title : base.title
+  };
+  upsertDraftPage(next, restoredDraft);
+  pruneCleanPublishedDraft(next, pageId);
+  if (deriveChangeCategory(next, pageId) === null) {
+    next.entries = next.entries.filter((entry) => !(entry.changeSetId === set.id && entry.pageId === pageId));
+  } else {
+    touchEntry(pageId);
+  }
+  set.revision++;
+  return { kind: "applied", affectedPageIds: [pageId], state: next, token: currentPair(next) };
+}
 export function pendingEntries(state: WorkspaceChangeSetState) { const set = activeChangeSet(state); const snapshot = selectedSnapshot(state); if (!snapshot) throw new Error("Pending entries require a selected ready snapshot in this workspace."); const removal = new Map<string, RemovalBatch>(); const removalOrder = new Map<string, number>(); for (const batch of activeRemovalBatches(state, snapshot)) for (const member of batch.members) { removal.set(member.pageId, batch); removalOrder.set(member.pageId, member.firstPendingSequence); } const ids = new Set([...state.entries.filter((entry) => entry.changeSetId === set.id).map((entry) => entry.pageId), ...removal.keys()]); return [...ids].map((pageId) => { const entry = state.entries.find((candidate) => candidate.changeSetId === set.id && candidate.pageId === pageId); const batch = removal.get(pageId); return { pageId, category: deriveChangeCategory(state, pageId), firstPendingSequence: entry?.firstPendingSequence ?? removalOrder.get(pageId)!, lastChangedOn: batch?.removedOn ?? entry?.lastChangedOn ?? "", lastChangedBy: batch?.removedBy ?? entry?.lastChangedBy ?? "" }; }).filter((entry) => entry.category !== null).sort((a, b) => a.firstPendingSequence - b.firstPendingSequence || a.pageId.localeCompare(b.pageId)); }
 export function createRemovalBatch(state: WorkspaceChangeSetState, token: ChangeSetToken, input: { batchId: string; rootPageId: string; memberPageIds: string[]; actorId: string; changedOn: string }): { kind: "applied"; state: WorkspaceChangeSetState; token: ReturnType<typeof currentPair> } | TokenFailure { const valid = validateChangeSetToken(state, token); if (valid.kind === "stale") return valid; const snapshot = selectedSnapshot(state); if (!snapshot) throw new Error("Removal batches require a selected ready published snapshot in this workspace."); const addedIds = new Set(state.draftPages.filter((page) => !page.hasPublishedIdentity).map((page) => page.pageId)); if (addedIds.has(input.rootPageId) || input.memberPageIds.some((pageId) => addedIds.has(pageId))) throw new Error("Removal batches may contain published identities only."); const memberIds = [...new Set(input.memberPageIds)]; const publishedIds = new Set(snapshot.pages.map((page) => page.pageId)); if (!publishedIds.has(input.rootPageId) || memberIds.some((pageId) => !publishedIds.has(pageId))) throw new Error("Removal batches must reference identities in the selected published snapshot."); if (memberIds.length === 0) throw new Error("Removal batches require a non-empty member identity set."); if (!memberIds.includes(input.rootPageId)) throw new Error("Removal batch members must include the root identity."); if (state.removalBatches.some((batch) => batch.id === input.batchId)) throw new Error("Duplicate removal batch identity."); const next = cloneState(state); const set = activeChangeSet(next); const members = memberIds.map((pageId) => ({ pageId, firstPendingSequence: next.entries.find((entry) => entry.changeSetId === set.id && entry.pageId === pageId)?.firstPendingSequence ?? set.nextPendingSequence++ })); next.removalBatches.push({ id: input.batchId, changeSetId: set.id, rootPageId: input.rootPageId, members, state: "active", removedOn: input.changedOn, removedBy: input.actorId }); set.revision++; return { kind: "applied", state: next, token: currentPair(next) }; }
 export function retireRemovalBatch(state: WorkspaceChangeSetState, token: ChangeSetToken, batchId: string): { kind: "applied"; state: WorkspaceChangeSetState; affectedPageIds: string[]; token: ReturnType<typeof currentPair> } | TokenFailure { const valid = validateChangeSetToken(state, token); if (valid.kind === "stale") return valid; const next = cloneState(state); const batch = next.removalBatches.find((candidate) => candidate.id === batchId && candidate.changeSetId === next.selectors.activeChangeSetId && candidate.state === "active"); if (!batch) throw new Error("Removal batch is not active for this generation."); batch.state = "retired"; activeChangeSet(next).revision++; return { kind: "applied", state: next, affectedPageIds: batch.members.map((member) => member.pageId), token: currentPair(next) }; }

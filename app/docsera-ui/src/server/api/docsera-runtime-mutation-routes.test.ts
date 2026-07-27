@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
     createPage: vi.fn(),
     deletePage: vi.fn(),
     discardAllWorkspace: vi.fn(),
+    discardPage: vi.fn(),
     listPages: vi.fn(),
     movePage: vi.fn(),
     pendingChanges: vi.fn(),
@@ -70,6 +71,7 @@ import { process as processMovePage } from "./docsera-runtime-page-move.ts";
 import { process as processPendingChanges } from "./docsera-runtime-workspace-pending-changes.ts";
 import { process as processSavePageBody } from "./docsera-runtime-page-save.ts";
 import { process as processWorkspaceDiscardAll } from "./docsera-runtime-workspace-discard-all.ts";
+import { process as processWorkspaceDiscardPage } from "./docsera-runtime-workspace-discard-page.ts";
 import { process as processWorkspacePublish } from "./docsera-runtime-workspace-publish.ts";
 
 function responseRecorder() {
@@ -94,6 +96,7 @@ describe("docsera runtime mutation routes", () => {
     mocks.persistence.createPage.mockReset();
     mocks.persistence.deletePage.mockReset();
     mocks.persistence.discardAllWorkspace.mockReset();
+    mocks.persistence.discardPage.mockReset();
     mocks.persistence.listPages.mockReset();
     mocks.persistence.movePage.mockReset();
     mocks.persistence.pendingChanges.mockReset();
@@ -323,6 +326,83 @@ describe("docsera runtime mutation routes", () => {
         code: "workspace_lease_lost",
         retryable: false,
         message: "This workspace edit session was replaced by another editor."
+      }
+    });
+  });
+
+  it("passes the caller's claimed generation pair to workspace discard-page persistence and returns refreshed state", async () => {
+    mocks.lease.verifyWorkspaceEditLease.mockResolvedValue({
+      kind: "held",
+      leaseToken: "workspace-lease-token",
+      heartbeatIntervalMs: 60_000,
+      staleAfterMs: 300_000,
+      changeSetId: "change-set-009",
+      changeSetRevision: 12,
+      workspaceStateRevision: 18
+    });
+    mocks.lease.readWorkspaceMutationAuthority.mockReturnValue({
+      changeSetId: "change-set-008",
+      changeSetRevision: 11
+    });
+    mocks.persistence.discardPage.mockReturnValue({
+      kind: "succeeded",
+      authority: { changeSetId: "change-set-009", changeSetRevision: 12 },
+      result: {
+        discardedPageSysId: "page-101",
+        pages: [{ sysId: "page-102" }],
+        pendingChanges: {
+          affectedPageCount: 1,
+          changeSetId: "change-set-009",
+          changeSetRevision: 12,
+          rows: [{
+            attribution: {
+              accessibleLabel: "Last changed by Priya Writer",
+              displayName: "P. Writer",
+              fullDisplayName: "Priya Writer"
+            },
+            category: "Modified",
+            firstPendingSequence: 2,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-102",
+            title: "Overview"
+          }],
+          workspaceSysId: "workspace-001"
+        },
+        workspaceStateRevision: 19
+      }
+    });
+    const response = responseRecorder();
+
+    await processWorkspaceDiscardPage({
+      body: {
+        workspaceSysId: "workspace-001",
+        workspaceSlug: "product-docs",
+        workspaceLeaseToken: "workspace-lease-token",
+        expectedChangeSetId: "change-set-008",
+        expectedChangeSetRevision: 11,
+        pageSysId: "page-101"
+      }
+    }, response);
+
+    expect(mocks.persistence.discardPage).toHaveBeenCalledWith(expect.objectContaining({
+      authority: { changeSetId: "change-set-008", changeSetRevision: 11 },
+      pageSysId: "page-101"
+    }));
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      result: {
+        mode: "servicenow",
+        discardedPageSysId: "page-101",
+        pages: [{ sysId: "page-102" }],
+        pendingChanges: expect.objectContaining({
+          affectedPageCount: 1,
+          changeSetId: "change-set-009",
+          changeSetRevision: 12
+        }),
+        workspaceStateRevision: 19,
+        changeSetId: "change-set-009",
+        changeSetRevision: 12
       }
     });
   });

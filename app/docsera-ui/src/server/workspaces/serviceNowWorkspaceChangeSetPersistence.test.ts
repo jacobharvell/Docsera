@@ -3317,6 +3317,279 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     expect(restoredModified.authority.changeSetRevision).toBe(3);
   });
 
+  it("discards a modified page row and returns the refreshed Edit projection without changing Live", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({
+          pageId: "page-001",
+          draftBodyText: "Published body",
+          draftContentJson: createDocument("Published body"),
+          draftTitle: "Overview",
+          publishedBodyText: "Published body",
+          publishedContentJson: createDocument("Published body"),
+          publishedTitle: "Overview"
+        })
+      ]
+    });
+    const service = createService();
+    const liveBefore = expectSucceeded(service.listPages(workspaceRef(), "live"));
+    const modified = expectSucceeded(service.savePageBody({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      draftContentJson: createDocument("Changed body"),
+      expectedRevision: 0,
+      pageSysId: "page-001",
+      workspace: workspaceRef()
+    }));
+
+    const discarded = service.discardPage({
+      authority: modified.authority,
+      pageSysId: "page-001",
+      workspace: workspaceRef()
+    });
+
+    if (discarded.kind !== "succeeded") {
+      throw new Error(`expected discard page success: ${discarded.errorMessage}`);
+    }
+    expect(discarded.result.discardedPageSysId).toBe("page-001");
+    expect(discarded.result.pendingChanges.rows).toEqual([]);
+    expect(discarded.result.pages[0]?.draftBodyText).toBe("Published body");
+    expect(expectSucceeded(service.listPages(workspaceRef(), "live")).pages[0]).toMatchObject({
+      draftBodyText: liveBefore.pages[0]?.draftBodyText,
+      draftSlug: liveBefore.pages[0]?.draftSlug,
+      draftTitle: liveBefore.pages[0]?.draftTitle,
+      publishedBodyText: liveBefore.pages[0]?.publishedBodyText,
+      publishedSlug: liveBefore.pages[0]?.publishedSlug,
+      publishedTitle: liveBefore.pages[0]?.publishedTitle,
+      sysId: "page-001"
+    });
+  });
+
+  it("discards an Added subtree with nested Added descendants and removes every corresponding pending row without changing Live", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({
+          pageId: "page-root",
+          draftBodyText: "Root body",
+          draftContentJson: createDocument("Root body"),
+          draftSlug: "root",
+          draftTitle: "Root",
+          publishedBodyText: "Root body",
+          publishedContentJson: createDocument("Root body"),
+          publishedSlug: "root",
+          publishedTitle: "Root",
+          siblingOrder: "1"
+        }),
+        createSeedPage({
+          pageId: "page-sibling",
+          draftBodyText: "Sibling body",
+          draftContentJson: createDocument("Sibling body"),
+          draftSlug: "sibling",
+          draftTitle: "Sibling",
+          publishedBodyText: "Sibling body",
+          publishedContentJson: createDocument("Sibling body"),
+          publishedSlug: "sibling",
+          publishedTitle: "Sibling",
+          siblingOrder: "2"
+        })
+      ]
+    });
+    const service = createService();
+    const liveBefore = expectSucceeded(service.listPages(workspaceRef(), "live"));
+    let authority = expectSucceeded(service.createPage({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      parentPageSysId: "page-root",
+      title: "Added Parent",
+      workspace: workspaceRef()
+    })).authority;
+    const addedParentId = pendingRows(service).find((row) => row.title === "Added Parent")?.pageSysId ?? "";
+    authority = expectSucceeded(service.createPage({
+      authority,
+      parentPageSysId: addedParentId,
+      title: "Added Child",
+      workspace: workspaceRef()
+    })).authority;
+    const addedChildId = pendingRows(service).find((row) => row.title === "Added Child")?.pageSysId ?? "";
+    authority = expectSucceeded(service.createPage({
+      authority,
+      parentPageSysId: addedChildId,
+      title: "Added Grandchild",
+      workspace: workspaceRef()
+    })).authority;
+    const addedGrandchildId = pendingRows(service).find((row) => row.title === "Added Grandchild")?.pageSysId ?? "";
+
+    const discarded = service.discardPage({
+      authority,
+      pageSysId: addedParentId,
+      workspace: workspaceRef()
+    });
+
+    if (discarded.kind !== "succeeded") {
+      throw new Error(`expected discard page success: ${discarded.errorMessage}`);
+    }
+    expect(discarded.result.discardedPageSysId).toBe(addedParentId);
+    expect(discarded.result.pendingChanges.rows).toEqual([]);
+    expect(discarded.result.pages.map((page) => page.sysId)).toEqual(["page-root", "page-sibling"]);
+    expect(pageRow(addedParentId)).toBeUndefined();
+    expect(pageRow(addedChildId)).toBeUndefined();
+    expect(pageRow(addedGrandchildId)).toBeUndefined();
+    expect(expectSucceeded(service.listPages(currentWorkspaceRef(), "live")).pages).toEqual(liveBefore.pages);
+  });
+
+  it("does not silently delete a published identity that still depends on an Added parent during individual undo", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({
+          pageId: "page-root",
+          draftSlug: "root",
+          draftTitle: "Root",
+          publishedSlug: "root",
+          publishedTitle: "Root",
+          siblingOrder: "1"
+        }),
+        createSeedPage({
+          pageId: "page-child",
+          draftSlug: "child",
+          draftTitle: "Child",
+          parentPageId: "page-root",
+          publishedSlug: "child",
+          publishedTitle: "Child",
+          siblingOrder: "1"
+        })
+      ]
+    });
+    const service = createService();
+    let authority = expectSucceeded(service.createPage({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      parentPageSysId: "page-root",
+      title: "Added Parent",
+      workspace: workspaceRef()
+    })).authority;
+    const addedParentId = pendingRows(service).find((row) => row.title === "Added Parent")?.pageSysId ?? "";
+    authority = expectSucceeded(service.movePage({
+      authority,
+      pageSysId: "page-child",
+      parentPageSysId: addedParentId,
+      siblingOrder: "1",
+      workspace: workspaceRef()
+    })).authority;
+    const editBeforeUndo = expectSucceeded(service.listPages(workspaceRef(), "edit")).pages.map((page) => page.sysId);
+    const pendingBeforeUndo = pendingRows(service).map((row) => row.pageSysId);
+
+    const discarded = service.discardPage({
+      authority,
+      pageSysId: addedParentId,
+      workspace: workspaceRef()
+    });
+
+    expect(discarded).toMatchObject({
+      kind: "failed",
+      code: "invalid",
+      errorMessage: "This Added page cannot be undone while other pages still depend on it. Undo or move those dependent changes first.",
+      status: 400
+    });
+    expect(expectSucceeded(service.listPages(workspaceRef(), "edit")).pages.map((page) => page.sysId)).toEqual(editBeforeUndo);
+    expect(pendingRows(service).map((row) => row.pageSysId)).toEqual(pendingBeforeUndo);
+    expect(pageRow("page-child")).toBeDefined();
+  });
+
+  it("discards a removed subtree from a descendant row and restores the Edit projection without changing Live", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({
+          pageId: "page-root",
+          draftBodyText: "Root body",
+          draftContentJson: createDocument("Root body"),
+          draftSlug: "root",
+          draftTitle: "Root",
+          publishedBodyText: "Root body",
+          publishedContentJson: createDocument("Root body"),
+          publishedSlug: "root",
+          publishedTitle: "Root",
+          siblingOrder: "1"
+        }),
+        createSeedPage({
+          pageId: "page-child",
+          draftBodyText: "Child body",
+          draftContentJson: createDocument("Child body"),
+          draftSlug: "child",
+          draftTitle: "Child",
+          parentPageId: "page-root",
+          publishedBodyText: "Child body",
+          publishedContentJson: createDocument("Child body"),
+          publishedTitle: "Child",
+          publishedSlug: "child",
+          siblingOrder: "1"
+        }),
+        createSeedPage({
+          pageId: "page-grandchild",
+          draftBodyText: "Grandchild body",
+          draftContentJson: createDocument("Grandchild body"),
+          draftSlug: "grandchild",
+          draftTitle: "Grandchild",
+          parentPageId: "page-child",
+          publishedBodyText: "Grandchild body",
+          publishedContentJson: createDocument("Grandchild body"),
+          publishedTitle: "Grandchild",
+          publishedSlug: "grandchild",
+          siblingOrder: "1"
+        }),
+        createSeedPage({
+          pageId: "page-sibling",
+          draftBodyText: "Sibling body",
+          draftContentJson: createDocument("Sibling body"),
+          draftSlug: "sibling",
+          draftTitle: "Sibling",
+          publishedBodyText: "Sibling body",
+          publishedContentJson: createDocument("Sibling body"),
+          publishedSlug: "sibling",
+          publishedTitle: "Sibling",
+          siblingOrder: "2"
+        })
+      ]
+    });
+    const service = createService();
+    const liveBefore = expectSucceeded(service.listPages(workspaceRef(), "live"));
+    const removed = expectSucceeded(service.deletePage({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-child",
+      workspace: workspaceRef()
+    }));
+
+    expect(expectSucceeded(service.listPages(workspaceRef(), "edit")).pages.map((page) => page.sysId)).toEqual(["page-root", "page-sibling"]);
+    expect(pendingRows(service).map((row) => row.pageSysId).sort()).toEqual(["page-child", "page-grandchild"]);
+
+    const discarded = service.discardPage({
+      authority: removed.authority,
+      pageSysId: "page-grandchild",
+      workspace: workspaceRef()
+    });
+
+    if (discarded.kind !== "succeeded") {
+      throw new Error(`expected discard page success: ${discarded.errorMessage}`);
+    }
+    expect(discarded.result.discardedPageSysId).toBe("page-grandchild");
+    expect(discarded.result.pendingChanges.rows).toEqual([]);
+    expect(discarded.result.pages.map((page) => page.sysId)).toEqual(["page-root", "page-child", "page-grandchild", "page-sibling"]);
+    expect(discarded.result.pages.find((page) => page.sysId === "page-child")).toMatchObject({
+      parentPageSysId: "page-root",
+      publicationState: "published",
+      sysId: "page-child"
+    });
+    expect(discarded.result.pages.find((page) => page.sysId === "page-grandchild")).toMatchObject({
+      parentPageSysId: "page-child",
+      publicationState: "published",
+      sysId: "page-grandchild"
+    });
+    expect(getRows(removalBatchTable)).toEqual([
+      expect.objectContaining({
+        fields: expect.objectContaining({
+          lifecycle_state: "retired"
+        })
+      })
+    ]);
+    expect(expectSucceeded(service.listPages(workspaceRef(), "live")).pages).toEqual(liveBefore.pages);
+  });
+
   it("does not proceed to entry persistence when an earlier body owner-scoped claim update fails", () => {
     seedWorkspaceFoundation();
     failNextClaimUpdateToPhase("page_persisted");

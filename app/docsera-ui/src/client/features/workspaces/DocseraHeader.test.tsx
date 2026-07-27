@@ -81,13 +81,24 @@ describe("DocseraHeader Changes Center", () => {
     const listItems = within(list).getAllByRole("listitem");
     expect(dialog).toHaveTextContent("Changes 2 pages");
     expect(listItems).toHaveLength(2);
-    expect(within(listItems[0]).getByRole("button", { name: /Overview/ })).toBeEnabled();
-    expect(within(listItems[1]).queryByRole("button")).not.toBeInTheDocument();
+    expect(within(listItems[0]).getByRole("button", { name: /^Overview/ })).toBeEnabled();
+    expect(within(listItems[0]).getByRole("button", { name: "Undo changes to Overview" })).toBeDisabled();
+    expect(within(listItems[1]).queryByRole("button", { name: /^Archived API/ })).not.toBeInTheDocument();
+    expect(within(listItems[1]).getByRole("button", { name: "Undo changes to Archived API" })).toBeDisabled();
     expect(within(dialog).getByText("Overview")).toBeInTheDocument();
     expect(within(dialog).getByText("P. Writer")).toHaveAttribute("aria-label", "Last changed by Priya Writer");
     expect(within(dialog).getByText("Modified")).toBeInTheDocument();
     expect(within(dialog).getByText("Archived API")).toBeInTheDocument();
     expect(within(dialog).getByText("Removed")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/^Undo$/)).toBeNull();
+    const overviewUndoButton = within(listItems[0]!).getByRole("button", { name: "Undo changes to Overview" });
+    expect(overviewUndoButton).not.toHaveTextContent("Undo");
+    expect(overviewUndoButton).toHaveAccessibleName("Undo changes to Overview");
+    expect(overviewUndoButton).toHaveClass("docsera-changes-center__row-undo");
+    expect(overviewUndoButton.parentElement).toHaveClass("docsera-changes-center__row-action");
+    expect(listItems[0]!.querySelector(".docsera-changes-center__row-action .docsera-changes-center__row-undo")).toBe(overviewUndoButton);
+    expect(listItems[0]!.querySelector(".docsera-changes-center__row-action .docsera-changes-center__row-undo-icon")).toBeInTheDocument();
+    expect(listItems[0]!.querySelector(".docsera-changes-center__row-action .docsera-changes-center__row-category")).toHaveTextContent("Modified");
     const discardButton = within(dialog).getByRole("button", { name: "Discard all" });
     expect(discardButton).toBeEnabled();
     expect(discardButton).toHaveClass("docsera-changes-center__header-action");
@@ -97,7 +108,7 @@ describe("DocseraHeader Changes Center", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Publish" }));
     expect(onPublishPendingChanges).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(within(dialog).getByRole("button", { name: /Overview/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Overview/ }));
     expect(onOpenPendingPage).toHaveBeenCalledWith("page-001");
     expect(screen.queryByRole("dialog", { name: "Changes Center" })).not.toBeInTheDocument();
   });
@@ -138,9 +149,95 @@ describe("DocseraHeader Changes Center", () => {
     expect(screen.getByRole("button", { name: "Live" })).toBeDisabled();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: /Overview/ }));
-    expect(onOpenPendingPage).toHaveBeenCalledWith("page-001");
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Overview/ }));
+    expect(onOpenPendingPage).toHaveBeenCalledTimes(0);
     expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
+  });
+
+  it("opens the individual undo confirmation modal without triggering row navigation and keeps Removed rows non-navigable", () => {
+    const onOpenPendingPage = vi.fn();
+    const onDiscardPendingPage = vi.fn();
+    render(
+      <DocseraHeader
+        {...baseProps}
+        onDiscardPendingPage={onDiscardPendingPage}
+        onOpenPendingPage={onOpenPendingPage}
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          },
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Removed",
+            firstPendingSequence: 2,
+            lastChangedOn: "2026-07-18 00:01:00",
+            navigable: false,
+            pageSysId: "page-002",
+            title: "Archived API"
+          }
+        ])}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    const dialog = screen.getByRole("dialog", { name: "Changes Center" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Undo changes to Overview" }));
+
+    expect(onOpenPendingPage).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog", { name: "Undo page changes" })).toHaveTextContent("Are you sure you want to discard changes to “Overview”? This action cannot be undone.");
+    expect(within(dialog).getByText("Removed")).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /^Archived API/ })).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Undo changes to Archived API" })).toBeEnabled();
+    expect(within(dialog).getByRole("button", { name: "Undo changes to Archived API" }).parentElement).toHaveClass("docsera-changes-center__row-action");
+    expect(within(dialog).queryByText(/^Undo$/)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo changes" }));
+    expect(onDiscardPendingPage).toHaveBeenCalledWith("page-001");
+  });
+
+  it("disables individual undo for the blocked current page and leaves other rows available", () => {
+    render(
+      <DocseraHeader
+        {...baseProps}
+        onDiscardPendingPage={vi.fn()}
+        pendingChangesReadinessMessage="Current page is unsaved. Publish and discard actions stay disabled until local changes are saved."
+        pendingChangesUndoBlockedPageSysId="page-001"
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          },
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Moved",
+            firstPendingSequence: 2,
+            lastChangedOn: "2026-07-18 00:01:00",
+            navigable: true,
+            pageSysId: "page-002",
+            title: "API"
+          }
+        ])}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    const blockedUndoButton = screen.getByRole("button", { name: "Undo changes to Overview" });
+    expect(blockedUndoButton).toBeDisabled();
+    expect(blockedUndoButton).toHaveAccessibleName("Undo changes to Overview");
+    expect(blockedUndoButton.querySelector(".docsera-changes-center__row-undo-icon")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Undo changes to API" })).toBeEnabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Current page is unsaved. Publish and discard actions stay disabled until local changes are saved.");
   });
 
   it("opens the discard-all confirmation modal with singular and plural copy and keeps the changes center open on cancel", () => {

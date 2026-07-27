@@ -50,6 +50,10 @@ type DocseraHeaderProps = {
   pendingChangesDiscardAllErrorMessage?: string;
   pendingChangesDiscardAllRetryable?: boolean;
   pendingChangesDiscarding?: boolean;
+  pendingChangesDiscardPageErrorMessage?: string;
+  pendingChangesDiscardPagePendingPageSysId?: string;
+  pendingChangesDiscardPageRetryable?: boolean;
+  pendingChangesDiscardPageTargetPageSysId?: string;
   pendingChangesPublishErrorMessage?: string;
   pendingChangesPublishRetryable?: boolean;
   pendingChangesPublishToastMessage?: string;
@@ -60,8 +64,10 @@ type DocseraHeaderProps = {
   onDismissPendingChangesPublishToast?: () => void;
   onOpenPendingPage?: (pageSysId: string) => void;
   onDiscardAllPendingChanges?: () => void;
+  onDiscardPendingPage?: (pageSysId: string) => void;
   onPublishPendingChanges?: () => void;
   onRetryPendingChanges?: () => void;
+  pendingChangesUndoBlockedPageSysId?: string;
   showEditModeToggle?: boolean;
   showWorkspaceMode?: WorkspaceMode;
   onWorkspaceModeChange?: (mode: WorkspaceMode) => void;
@@ -130,6 +136,10 @@ export function DocseraHeader({
   pendingChangesDiscardAllErrorMessage = "",
   pendingChangesDiscardAllRetryable = false,
   pendingChangesDiscarding = false,
+  pendingChangesDiscardPageErrorMessage = "",
+  pendingChangesDiscardPagePendingPageSysId = "",
+  pendingChangesDiscardPageRetryable = false,
+  pendingChangesDiscardPageTargetPageSysId = "",
   pendingChangesErrorMessage = "",
   pendingChangesLoading = false,
   pendingChangesPublishErrorMessage = "",
@@ -139,7 +149,9 @@ export function DocseraHeader({
   pendingChangesReadinessMessage = "",
   pendingChangesRefreshing = false,
   recentWorkspaces,
+  onDiscardPendingPage,
   onPublishPendingChanges,
+  pendingChangesUndoBlockedPageSysId = "",
   showEditModeToggle = false,
   showWorkspaceMode = "live",
   onWorkspaceModeChange,
@@ -154,12 +166,14 @@ export function DocseraHeader({
   const [menuOpen, setMenuOpen] = useState(false);
   const [changesOpen, setChangesOpen] = useState(false);
   const [discardAllModalOpen, setDiscardAllModalOpen] = useState(false);
+  const [discardPageTarget, setDiscardPageTarget] = useState<{ pageSysId: string; title: string } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const changesRef = useRef<HTMLDivElement>(null);
   const publishButtonRef = useRef<HTMLButtonElement>(null);
   const discardActionRef = useRef<HTMLButtonElement>(null);
   const discardPrimaryButtonRef = useRef<HTMLButtonElement>(null);
   const discardModalPanelRef = useRef<HTMLDivElement>(null);
+  const discardModalOriginRef = useRef<HTMLElement | null>(null);
   const discardModalReturnFocusRef = useRef(false);
   const canSwitchWorkspaces = showWorkspaceSwitcher;
   const workspaceButtonLabel =
@@ -178,22 +192,26 @@ export function DocseraHeader({
   const pendingCount = pendingChanges?.state === "succeeded"
     ? pendingChanges.affectedPageCount
     : pendingChangesDiscardAllAffectedPageCount ?? pendingRows.length;
+  const discardModalOpen = discardAllModalOpen || discardPageTarget !== null;
+  const pendingChangesDiscardPagePending = Boolean(pendingChangesDiscardPagePendingPageSysId);
+  const pendingChangesAnyDiscarding = pendingChangesDiscarding || pendingChangesDiscardPagePending;
   const hasPendingChanges = pendingChanges?.state === "succeeded" && pendingCount > 0;
   const showPublishControl = mode === "workspace" && showWorkspaceMode === "edit" && showEditModeToggle;
   const countText = `${pendingCount} ${pendingCount === 1 ? "page" : "pages"}`;
   const hasPendingError = Boolean(pendingChangesErrorMessage) || pendingChanges?.state === "failed";
   const hasDiscardAllError = Boolean(pendingChangesDiscardAllErrorMessage);
+  const hasDiscardPageError = Boolean(pendingChangesDiscardPageErrorMessage);
   const hasPublishError = Boolean(pendingChangesPublishErrorMessage);
   const canOpenChanges =
-    (hasPendingChanges || hasPendingError || hasDiscardAllError || hasPublishError || pendingChangesPublishing || pendingChangesDiscarding) &&
-    (!workspaceControlsLocked || pendingChangesPublishing || pendingChangesDiscarding || pendingChangesDiscardAllRetryable);
+    (hasPendingChanges || hasPendingError || hasDiscardAllError || hasDiscardPageError || hasPublishError || pendingChangesPublishing || pendingChangesAnyDiscarding) &&
+    (!workspaceControlsLocked || pendingChangesPublishing || pendingChangesAnyDiscarding || pendingChangesDiscardAllRetryable || pendingChangesDiscardPageRetryable);
   const canPublishChanges =
     hasPendingChanges &&
     !hasPendingError &&
     !pendingChangesLoading &&
     !pendingChangesRefreshing &&
     !pendingChangesPublishing &&
-    !pendingChangesDiscarding &&
+    !pendingChangesAnyDiscarding &&
     (!hasPublishError || pendingChangesPublishRetryable) &&
     !pendingChangesReadinessMessage &&
     Boolean(onPublishPendingChanges);
@@ -203,14 +221,16 @@ export function DocseraHeader({
     !pendingChangesLoading &&
     !pendingChangesRefreshing &&
     !pendingChangesPublishing &&
-    !pendingChangesDiscarding &&
+    !pendingChangesAnyDiscarding &&
     !pendingChangesReadinessMessage &&
     Boolean(onDiscardAllPendingChanges);
   const canOpenDiscardAllModal =
     !pendingChangesPublishing &&
-    !pendingChangesDiscarding &&
+    !pendingChangesAnyDiscarding &&
     Boolean(onDiscardAllPendingChanges) &&
     (canDiscardChanges || pendingChangesDiscardAllRetryable);
+  const discardPageModalTitle = discardPageTarget?.title || "this page";
+  const discardPageBody = `Are you sure you want to discard changes to “${discardPageModalTitle}”? This action cannot be undone.`;
   const discardAllBody = pendingCount === 1
     ? "Are you sure you want to discard 1 change? This action cannot be undone."
     : `Are you sure you want to discard ${pendingCount} changes? This action cannot be undone.`;
@@ -251,7 +271,7 @@ export function DocseraHeader({
       if (changesRef.current?.contains(event.target as Node)) {
         return;
       }
-      if (pendingChangesPublishing || pendingChangesDiscarding || discardAllModalOpen) {
+      if (pendingChangesPublishing || pendingChangesAnyDiscarding || discardModalOpen) {
         return;
       }
 
@@ -261,10 +281,10 @@ export function DocseraHeader({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        if (pendingChangesPublishing || pendingChangesDiscarding) {
+        if (pendingChangesPublishing || pendingChangesAnyDiscarding) {
           return;
         }
-        if (discardAllModalOpen) {
+        if (discardModalOpen) {
           return;
         }
         setChangesOpen(false);
@@ -278,37 +298,43 @@ export function DocseraHeader({
       document.removeEventListener("pointerdown", handlePointerDown, true);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [changesOpen, discardAllModalOpen, pendingChangesDiscarding, pendingChangesPublishing]);
+  }, [changesOpen, discardModalOpen, pendingChangesAnyDiscarding, pendingChangesPublishing]);
 
   useEffect(() => {
     setChangesOpen(false);
     setDiscardAllModalOpen(false);
+    setDiscardPageTarget(null);
   }, [currentWorkspaceSlug, showWorkspaceMode]);
 
   useEffect(() => {
-    if (!changesOpen || pendingChangesPublishing || pendingChangesDiscarding || pendingChangesLoading || pendingChangesRefreshing || hasPendingError || hasPublishError) {
+    if (!changesOpen || pendingChangesPublishing || pendingChangesAnyDiscarding || pendingChangesLoading || pendingChangesRefreshing || hasPendingError || hasPublishError) {
       return;
     }
     if (pendingChanges?.state === "succeeded" && pendingChanges.affectedPageCount === 0) {
       setDiscardAllModalOpen(false);
+      setDiscardPageTarget(null);
       setChangesOpen(false);
       publishButtonRef.current?.focus();
     }
-  }, [changesOpen, hasPendingError, hasPublishError, pendingChanges, pendingChangesDiscarding, pendingChangesLoading, pendingChangesPublishing, pendingChangesRefreshing]);
+  }, [changesOpen, hasPendingError, hasPublishError, pendingChanges, pendingChangesAnyDiscarding, pendingChangesLoading, pendingChangesPublishing, pendingChangesRefreshing]);
 
   useEffect(() => {
-    if (!discardAllModalOpen) {
+    if (!discardModalOpen) {
       if (discardModalReturnFocusRef.current) {
         discardModalReturnFocusRef.current = false;
-        discardActionRef.current?.focus();
+        if (discardModalOriginRef.current?.isConnected) {
+          discardModalOriginRef.current.focus();
+        } else {
+          discardActionRef.current?.focus();
+        }
       }
       return;
     }
     discardPrimaryButtonRef.current?.focus();
-  }, [discardAllModalOpen]);
+  }, [discardModalOpen]);
 
   useEffect(() => {
-    if (!discardAllModalOpen) {
+    if (!discardModalOpen) {
       return;
     }
 
@@ -319,13 +345,14 @@ export function DocseraHeader({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        if (pendingChangesDiscarding) {
+        if (pendingChangesAnyDiscarding) {
           event.preventDefault();
           return;
         }
         event.preventDefault();
         discardModalReturnFocusRef.current = true;
         setDiscardAllModalOpen(false);
+        setDiscardPageTarget(null);
         return;
       }
       if (event.key !== "Tab") {
@@ -366,7 +393,18 @@ export function DocseraHeader({
       document.removeEventListener("keydown", handleKeyDown, true);
       document.removeEventListener("focusin", handleFocusIn, true);
     };
-  }, [discardAllModalOpen, pendingChangesDiscarding]);
+  }, [discardModalOpen, pendingChangesAnyDiscarding]);
+
+  useEffect(() => {
+    if (!discardPageTarget || pendingChangesDiscardPagePending || pendingChangesDiscardPageErrorMessage) {
+      return;
+    }
+    if (pendingRows.some((row) => row.pageSysId === discardPageTarget.pageSysId)) {
+      return;
+    }
+    discardModalReturnFocusRef.current = true;
+    setDiscardPageTarget(null);
+  }, [discardPageTarget, pendingChangesDiscardPageErrorMessage, pendingChangesDiscardPagePending, pendingRows]);
 
   return (
     <header
@@ -502,6 +540,7 @@ export function DocseraHeader({
               <button
                 ref={publishButtonRef}
                 type="button"
+                data-docsera-changes-center-trigger="true"
                 className={`docsera-header__publish-button${hasPendingChanges ? " docsera-header__publish-button--active" : ""}`}
                 aria-expanded={changesOpen}
                 aria-haspopup="dialog"
@@ -511,7 +550,7 @@ export function DocseraHeader({
                   if (!canOpenChanges) {
                     return;
                   }
-                  if (pendingChangesPublishing || pendingChangesDiscarding) {
+                  if (pendingChangesPublishing || pendingChangesAnyDiscarding) {
                     setChangesOpen(true);
                     return;
                   }
@@ -522,7 +561,7 @@ export function DocseraHeader({
                 <PublishChevron open={changesOpen} />
               </button>
               {changesOpen ? (
-                <section className="docsera-changes-center" role="dialog" aria-label="Changes Center">
+                <section className="docsera-changes-center" data-docsera-changes-center="true" role="dialog" aria-label="Changes Center">
                   <header className="docsera-changes-center__header">
                     <div>
                       <strong>Changes</strong> <span>{countText}</span>
@@ -534,10 +573,12 @@ export function DocseraHeader({
                         type="button"
                         className="docsera-changes-center__header-action"
                         disabled={!canOpenDiscardAllModal}
-                        onClick={() => {
+                        onClick={(event) => {
                           if (!canOpenDiscardAllModal) {
                             return;
                           }
+                          discardModalOriginRef.current = event.currentTarget;
+                          setDiscardPageTarget(null);
                           setDiscardAllModalOpen(true);
                         }}
                       >
@@ -560,34 +601,72 @@ export function DocseraHeader({
                   ) : (
                     <div className="docsera-changes-center__list" role="list" aria-label="Pending pages">
                       {pendingRows.map((row) => {
-                        const content = (
-                          <>
-                            <span className="docsera-changes-center__row-title">{row.title}</span>
-                            <span className="docsera-changes-center__row-meta" title={row.attribution.fullDisplayName} aria-label={row.attribution.accessibleLabel}>
-                              {row.attribution.displayName}
-                            </span>
-                            <span className="docsera-changes-center__row-category">{row.category}</span>
-                          </>
-                        );
-                        return row.navigable ? (
+                        const rowReadinessBlocked = Boolean(pendingChangesReadinessMessage) && pendingChangesUndoBlockedPageSysId === row.pageSysId;
+                        const canUndoRow =
+                          Boolean(onDiscardPendingPage) &&
+                          !pendingChangesPublishing &&
+                          !pendingChangesAnyDiscarding &&
+                          !rowReadinessBlocked;
+                        const canNavigateRow =
+                          row.navigable &&
+                          !pendingChangesPublishing &&
+                          !pendingChangesAnyDiscarding &&
+                          Boolean(onOpenPendingPage);
+
+                        return (
                           <div key={row.pageSysId} className="docsera-changes-center__row-item" role="listitem">
-                            <button
-                              type="button"
-                              className="docsera-changes-center__row"
-                              onClick={() => {
-                                if (!pendingChangesPublishing) {
+                            {row.navigable ? (
+                              <button
+                                type="button"
+                                className="docsera-changes-center__row"
+                                disabled={!canNavigateRow}
+                                onClick={() => {
+                                  if (!canNavigateRow) {
+                                    return;
+                                  }
                                   setChangesOpen(false);
-                                }
-                                onOpenPendingPage?.(row.pageSysId);
-                              }}
-                            >
-                              {content}
-                            </button>
-                          </div>
-                        ) : (
-                          <div key={row.pageSysId} className="docsera-changes-center__row-item" role="listitem">
-                            <div className="docsera-changes-center__row docsera-changes-center__row--static" aria-disabled="true">
-                              {content}
+                                  onOpenPendingPage?.(row.pageSysId);
+                                }}
+                              >
+                                <span className="docsera-changes-center__row-copy">
+                                  <span className="docsera-changes-center__row-title">{row.title}</span>
+                                  <span className="docsera-changes-center__row-meta" title={row.attribution.fullDisplayName} aria-label={row.attribution.accessibleLabel}>
+                                    {row.attribution.displayName}
+                                  </span>
+                                </span>
+                              </button>
+                            ) : (
+                              <div className="docsera-changes-center__row docsera-changes-center__row--static" aria-disabled="true">
+                                <span className="docsera-changes-center__row-copy">
+                                  <span className="docsera-changes-center__row-title">{row.title}</span>
+                                  <span className="docsera-changes-center__row-meta" title={row.attribution.fullDisplayName} aria-label={row.attribution.accessibleLabel}>
+                                    {row.attribution.displayName}
+                                  </span>
+                                </span>
+                              </div>
+                            )}
+                            <div className="docsera-changes-center__row-action">
+                              <span className="docsera-changes-center__row-category" aria-hidden={canUndoRow ? "true" : undefined}>{row.category}</span>
+                              <button
+                                type="button"
+                                className="docsera-changes-center__row-undo"
+                                aria-label={`Undo changes to ${row.title}`}
+                                disabled={!canUndoRow}
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  if (!canUndoRow) {
+                                    return;
+                                  }
+                                  discardModalOriginRef.current = event.currentTarget;
+                                  setDiscardAllModalOpen(false);
+                                  setDiscardPageTarget({ pageSysId: row.pageSysId, title: row.title });
+                                }}
+                              >
+                                <span className="docsera-changes-center__row-undo-icon" aria-hidden="true">
+                                  <UndoIcon />
+                                </span>
+                              </button>
                             </div>
                           </div>
                         );
@@ -597,8 +676,11 @@ export function DocseraHeader({
                   {pendingChangesPublishErrorMessage ? (
                     <div className="docsera-changes-center__publish-error" role="alert">{pendingChangesPublishErrorMessage}</div>
                   ) : null}
-                  {pendingChangesDiscardAllErrorMessage && !discardAllModalOpen ? (
+                  {pendingChangesDiscardAllErrorMessage && !discardModalOpen ? (
                     <div className="docsera-changes-center__publish-error" role="alert">{pendingChangesDiscardAllErrorMessage}</div>
+                  ) : null}
+                  {pendingChangesDiscardPageErrorMessage && !discardModalOpen ? (
+                    <div className="docsera-changes-center__publish-error" role="alert">{pendingChangesDiscardPageErrorMessage}</div>
                   ) : null}
                   {pendingChangesReadinessMessage ? (
                     <div className="docsera-changes-center__blocked" role="status">{pendingChangesReadinessMessage}</div>
@@ -607,7 +689,7 @@ export function DocseraHeader({
                     <button
                       type="button"
                       className="docsera-modal__primary docsera-changes-center__footer-primary"
-                      aria-busy={pendingChangesPublishing || pendingChangesDiscarding}
+                      aria-busy={pendingChangesPublishing || pendingChangesAnyDiscarding}
                       disabled={!canPublishChanges}
                       onClick={onPublishPendingChanges}
                     >
@@ -653,17 +735,25 @@ export function DocseraHeader({
       </div>
       {typeof document !== "undefined"
         ? createPortal(
-            discardAllModalOpen ? (
-              <div className="docsera-modal docsera-modal--top-biased" role="presentation">
-                <div ref={discardModalPanelRef} className="docsera-modal__panel" role="dialog" aria-modal="true" aria-labelledby="docsera-discard-all-title">
+            discardModalOpen ? (
+              <div className="docsera-modal docsera-modal--top-biased" data-docsera-pending-change-dialog="true" role="presentation">
+                <div
+                  ref={discardModalPanelRef}
+                  className="docsera-modal__panel"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby={discardPageTarget ? "docsera-discard-page-title" : "docsera-discard-all-title"}
+                >
                   <div className="docsera-modal__form">
                     <div className="docsera-modal__header">
-                      <h2 id="docsera-discard-all-title" className="docsera-modal__title">Discard all changes</h2>
+                      <h2 id={discardPageTarget ? "docsera-discard-page-title" : "docsera-discard-all-title"} className="docsera-modal__title">
+                        {discardPageTarget ? "Undo page changes" : "Discard all changes"}
+                      </h2>
                     </div>
                     <div className="docsera-modal__body">
-                      <p className="docsera-modal__copy docsera-modal__copy--warning">{discardAllBody}</p>
-                      {pendingChangesDiscardAllErrorMessage ? (
-                        <div className="docsera-modal__alert" role="alert">{pendingChangesDiscardAllErrorMessage}</div>
+                      <p className="docsera-modal__copy docsera-modal__copy--warning">{discardPageTarget ? discardPageBody : discardAllBody}</p>
+                      {(discardPageTarget ? pendingChangesDiscardPageErrorMessage : pendingChangesDiscardAllErrorMessage) ? (
+                        <div className="docsera-modal__alert" role="alert">{discardPageTarget ? pendingChangesDiscardPageErrorMessage : pendingChangesDiscardAllErrorMessage}</div>
                       ) : null}
                     </div>
                     <div className="docsera-modal__footer">
@@ -671,13 +761,14 @@ export function DocseraHeader({
                         <button
                           type="button"
                           className="docsera-modal__secondary"
-                          disabled={pendingChangesDiscarding}
+                          disabled={pendingChangesAnyDiscarding}
                           onClick={() => {
-                            if (pendingChangesDiscarding) {
+                            if (pendingChangesAnyDiscarding) {
                               return;
                             }
                             discardModalReturnFocusRef.current = true;
                             setDiscardAllModalOpen(false);
+                            setDiscardPageTarget(null);
                           }}
                         >
                           Cancel
@@ -686,15 +777,34 @@ export function DocseraHeader({
                           ref={discardPrimaryButtonRef}
                           type="button"
                           className="docsera-modal__primary docsera-modal__primary--destructive"
-                          aria-busy={pendingChangesDiscarding}
-                          disabled={pendingChangesDiscarding || (!canDiscardChanges && !pendingChangesDiscardAllRetryable)}
-                          onClick={onDiscardAllPendingChanges}
+                          aria-busy={pendingChangesAnyDiscarding}
+                          disabled={
+                            pendingChangesAnyDiscarding ||
+                            (discardPageTarget
+                              ? !onDiscardPendingPage || (!pendingChangesDiscardPageRetryable && pendingChangesUndoBlockedPageSysId === discardPageTarget.pageSysId)
+                              : (!canDiscardChanges && !pendingChangesDiscardAllRetryable))
+                          }
+                          onClick={() => {
+                            if (discardPageTarget) {
+                              onDiscardPendingPage?.(discardPageTarget.pageSysId);
+                              return;
+                            }
+                            onDiscardAllPendingChanges?.();
+                          }}
                         >
                           <span className="docsera-changes-center__footer-primary-label">
-                            {pendingChangesDiscarding ? (
+                            {pendingChangesAnyDiscarding ? (
                               <span className="docsera-changes-center__spinner" aria-hidden="true" />
                             ) : null}
-                            <span>{pendingChangesDiscardAllErrorMessage ? "Retry discard all" : "Discard all"}</span>
+                            <span>
+                              {discardPageTarget
+                                ? pendingChangesDiscardPageErrorMessage
+                                  ? "Retry"
+                                  : "Undo changes"
+                                : pendingChangesDiscardAllErrorMessage
+                                  ? "Retry discard all"
+                                  : "Discard all"}
+                            </span>
                           </span>
                         </button>
                       </div>

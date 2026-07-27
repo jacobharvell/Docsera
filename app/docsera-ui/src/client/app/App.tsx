@@ -49,6 +49,7 @@ import type {
   WorkspaceMode,
   WorkspaceCreatePending,
   WorkspaceCreateResult,
+  WorkspaceDiscardPageResult,
   WorkspaceListResult,
   WorkspaceEditLeaseHeld,
   WorkspaceDiscardAllResult,
@@ -134,6 +135,29 @@ type WorkspaceDiscardAllState =
       contextKey: string;
       errorMessage: string;
       recoveryRequired: boolean;
+      retryable: boolean;
+      sourceChangeSetId: string;
+      sourceChangeSetRevision: number;
+      status: "error";
+      workspaceSlug: string;
+      workspaceSysId: string;
+    };
+
+type WorkspaceDiscardPageState =
+  | { status: "idle" }
+  | {
+      contextKey: string;
+      pageSysId: string;
+      sourceChangeSetId: string;
+      sourceChangeSetRevision: number;
+      status: "discarding";
+      workspaceSlug: string;
+      workspaceSysId: string;
+    }
+  | {
+      contextKey: string;
+      errorMessage: string;
+      pageSysId: string;
       retryable: boolean;
       sourceChangeSetId: string;
       sourceChangeSetRevision: number;
@@ -879,6 +903,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [pendingChangesState, setPendingChangesState] = useState<PendingChangesState>({ status: "idle" });
   const [workspacePublishState, setWorkspacePublishState] = useState<WorkspacePublishState>({ status: "idle" });
   const [workspaceDiscardAllState, setWorkspaceDiscardAllState] = useState<WorkspaceDiscardAllState>({ status: "idle" });
+  const [workspaceDiscardPageState, setWorkspaceDiscardPageState] = useState<WorkspaceDiscardPageState>({ status: "idle" });
   const [workspacePublishToastState, setWorkspacePublishToastState] = useState<WorkspacePublishToastState | null>(null);
   const [staleRefreshState, setStaleRefreshState] = useState<StaleRefreshState>({ status: "idle" });
   const [workspaceSettingsNotice, setWorkspaceSettingsNotice] = useState(false);
@@ -1296,6 +1321,63 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
   }
 
+  function clearPageOutlineOverrides(pageIds: Iterable<string>): void {
+    const normalizedPageIds = [...new Set([...pageIds].map((pageId) => cleanText(pageId)).filter(Boolean))];
+    if (normalizedPageIds.length === 0) {
+      return;
+    }
+    setPageOutlineOverrides((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const pageId of normalizedPageIds) {
+        if (!(pageId in next)) {
+          continue;
+        }
+        delete next[pageId];
+        changed = true;
+      }
+      return changed ? next : current;
+    });
+  }
+
+  function clearPageSettingsRecoverySnapshot(pageSysId: string): void {
+    const pageIdentity = getPageRecoveryIdentity(pageSysId);
+    if (!pageIdentity) {
+      return;
+    }
+    let cleared = false;
+    const restoredCapture = restoredPageSettingsCaptureRef.current;
+    if (
+      restoredCapture &&
+      restoredCapture.pageSysId === pageIdentity.pageSysId &&
+      restoredCapture.workspaceSlug === pageIdentity.workspaceSlug &&
+      restoredCapture.workspaceSysId === pageIdentity.workspaceSysId &&
+      authoringRecoveryRef.current.clearPageSettings(pageIdentity, restoredCapture.captureGeneration)
+    ) {
+      restoredPageSettingsCaptureRef.current = null;
+      cleared = true;
+    }
+    if (cleared) {
+      bumpRecoveryVersion();
+    }
+  }
+
+  function invalidateEditorSessionForAuthoritativeRebind(): void {
+    editorSessionGenerationRef.current.invalidate();
+    editorSessionSeedRef.current = "";
+    activeEditorSessionRef.current = null;
+    editorFlushRef.current = null;
+    editorRecoverySnapshotRef.current = null;
+    editorReleaseRef.current = null;
+    setEditorFailure(null);
+    setEditorSessionState({
+      sessionKey: "",
+      token: null
+    });
+    setEditorTransitionState({ isDirty: false, isSaving: false, status: "Saved" });
+    setPendingRouteTransition(null);
+  }
+
   function releaseWorkspaceLeaseBinding(binding: WorkspaceLeaseBinding, keepalive = true, reason = "deliberate_release"): void {
     const isCurrentBinding = workspaceLeaseBindingRef.current?.bindingId === binding.bindingId;
     if (isCurrentBinding) {
@@ -1568,6 +1650,18 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         return;
       }
 
+      if (target instanceof Element && target.closest("[data-docsera-changes-center='true']")) {
+        return;
+      }
+
+      if (target instanceof Element && target.closest("[data-docsera-changes-center-trigger='true']")) {
+        return;
+      }
+
+      if (target instanceof Element && target.closest("[data-docsera-pending-change-dialog='true']")) {
+        return;
+      }
+
       if (target instanceof Node && panel.contains(target)) {
         return;
       }
@@ -1765,8 +1859,13 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     workspaceDiscardAllState.status === "discarding" &&
     workspaceDiscardAllState.workspaceSlug === currentWorkspaceSlug &&
     workspaceDiscardAllState.workspaceSysId === cleanText(workspaceStateData?.sysId);
+  const workspaceDiscardPageInProgress =
+    route.mode === "workspace" &&
+    workspaceDiscardPageState.status === "discarding" &&
+    workspaceDiscardPageState.workspaceSlug === currentWorkspaceSlug &&
+    workspaceDiscardPageState.workspaceSysId === cleanText(workspaceStateData?.sysId);
   const workspaceCommandBlocksCurrentWorkspaceWrites =
-    workspacePublishInProgress || workspaceDiscardAllInProgress || workspaceDiscardAllRecoveryRequired;
+    workspacePublishInProgress || workspaceDiscardAllInProgress || workspaceDiscardPageInProgress || workspaceDiscardAllRecoveryRequired;
   useEffect(() => {
     if (workspacePublishState.status === "idle") {
       return;
@@ -1817,6 +1916,32 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     currentWorkspaceSlug,
     route.mode,
     workspaceDiscardAllState,
+    workspaceStateData?.sysId
+  ]);
+  useEffect(() => {
+    if (workspaceDiscardPageState.status === "idle") {
+      return;
+    }
+    if (
+      route.mode === "workspace" &&
+      activeWorkspaceMode === "edit" &&
+      workspaceDiscardPageState.workspaceSlug === currentWorkspaceSlug &&
+      workspaceDiscardPageState.workspaceSysId === cleanText(workspaceStateData?.sysId) &&
+      workspaceDiscardPageState.contextKey === currentWorkspaceCommandContextKey &&
+      currentWorkspaceCommandSourceChangeSetId === workspaceDiscardPageState.sourceChangeSetId &&
+      currentWorkspaceCommandSourceChangeSetRevision === workspaceDiscardPageState.sourceChangeSetRevision
+    ) {
+      return;
+    }
+    setWorkspaceDiscardPageState({ status: "idle" });
+  }, [
+    activeWorkspaceMode,
+    currentWorkspaceCommandContextKey,
+    currentWorkspaceCommandSourceChangeSetId,
+    currentWorkspaceCommandSourceChangeSetRevision,
+    currentWorkspaceSlug,
+    route.mode,
+    workspaceDiscardPageState,
     workspaceStateData?.sysId
   ]);
   useEffect(() => {
@@ -3094,6 +3219,14 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
+    const pendingPageId = cleanText(pageSettingsPendingOpenPageIdRef.current);
+    if (pendingPageId && pendingPageId === pageSettingsState.pageSysId) {
+      if (pendingPageId === selectedWorkspacePageId) {
+        pageSettingsPendingOpenPageIdRef.current = "";
+      }
+      return;
+    }
+
     if (pageSettingsState.pageSysId && pageSettingsState.pageSysId !== selectedWorkspacePageId) {
       setPageSettingsState((current) => {
         if (isPageSettingsStateEmpty(current)) {
@@ -3399,7 +3532,15 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }
 
   function buildWorkspaceRouteForPage(pageSysId: string, mode = activeWorkspaceMode): string {
-    const page = findWorkspacePageBySysId(currentWorkspacePages, pageSysId);
+    return buildWorkspaceRouteForPageFromPages(currentWorkspacePages, pageSysId, mode);
+  }
+
+  function buildWorkspaceRouteForPageFromPages(
+    pages: WorkspacePageRecord[],
+    pageSysId: string,
+    mode = activeWorkspaceMode
+  ): string {
+    const page = findWorkspacePageBySysId(pages, pageSysId);
     const pageSlug = cleanText(page?.draftSlug);
     return buildWorkspaceHref(currentWorkspaceSlug, {
       mode,
@@ -4958,6 +5099,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     },
     sessionToken: EditorSessionToken | null
   ): Promise<PageBodySaveResult> {
+    if (sessionToken && !isCurrentEditorSession(sessionToken)) {
+      return {
+        errorMessage: "The editing session changed.",
+        state: "failed"
+      };
+    }
     if (workspaceState.status !== "success") {
       return {
         errorMessage: SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE,
@@ -5123,6 +5270,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         )
         ? "Page Settings has unsaved or blocked changes. Publish and discard actions stay disabled until settings are saved."
         : "";
+  const pendingChangesUndoBlockedPageSysId = pendingChangesSaveBlockedMessage ? selectedWorkspacePageId : "";
   const workspacePublishErrorMessage =
     workspacePublishState.status === "error" &&
     workspacePublishState.workspaceSlug === currentWorkspaceSlug &&
@@ -5168,6 +5316,32 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     workspaceDiscardAllState.sourceChangeSetRevision === currentWorkspaceCommandSourceChangeSetRevision
       ? workspaceDiscardAllState.affectedPageCount
       : undefined;
+  const workspaceDiscardPageErrorMessage =
+    workspaceDiscardPageState.status === "error" &&
+    workspaceDiscardPageState.workspaceSlug === currentWorkspaceSlug &&
+    workspaceDiscardPageState.workspaceSysId === cleanText(workspaceStateData?.sysId) &&
+    workspaceDiscardPageState.contextKey === currentWorkspaceCommandContextKey &&
+    workspaceDiscardPageState.sourceChangeSetId === currentWorkspaceCommandSourceChangeSetId &&
+    workspaceDiscardPageState.sourceChangeSetRevision === currentWorkspaceCommandSourceChangeSetRevision
+      ? workspaceDiscardPageState.errorMessage
+      : "";
+  const workspaceDiscardPageRetryable =
+    workspaceDiscardPageState.status === "error" &&
+    workspaceDiscardPageState.workspaceSlug === currentWorkspaceSlug &&
+    workspaceDiscardPageState.workspaceSysId === cleanText(workspaceStateData?.sysId) &&
+    workspaceDiscardPageState.contextKey === currentWorkspaceCommandContextKey &&
+    workspaceDiscardPageState.sourceChangeSetId === currentWorkspaceCommandSourceChangeSetId &&
+    workspaceDiscardPageState.sourceChangeSetRevision === currentWorkspaceCommandSourceChangeSetRevision &&
+    workspaceDiscardPageState.retryable;
+  const workspaceDiscardPageTargetPageSysId =
+    workspaceDiscardPageState.status !== "idle" &&
+    workspaceDiscardPageState.workspaceSlug === currentWorkspaceSlug &&
+    workspaceDiscardPageState.workspaceSysId === cleanText(workspaceStateData?.sysId) &&
+    workspaceDiscardPageState.contextKey === currentWorkspaceCommandContextKey &&
+    workspaceDiscardPageState.sourceChangeSetId === currentWorkspaceCommandSourceChangeSetId &&
+    workspaceDiscardPageState.sourceChangeSetRevision === currentWorkspaceCommandSourceChangeSetRevision
+      ? workspaceDiscardPageState.pageSysId
+      : "";
   const workspacePublishToastMessage =
     workspacePublishToastState &&
     route.mode === "workspace" &&
@@ -5529,6 +5703,212 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
   }
 
+  async function discardPendingWorkspacePage(pageSysId: string) {
+    if (
+      !serviceNowClient.discardPageWorkspace ||
+      route.mode !== "workspace" ||
+      workspaceState.status !== "success" ||
+      workspaceState.data.slug !== currentWorkspaceSlug ||
+      activeWorkspaceMode !== "edit" ||
+      workspaceCommandBlocksCurrentWorkspaceWrites ||
+      pendingChangesResult?.state !== "succeeded"
+    ) {
+      return;
+    }
+
+    const normalizedPageSysId = cleanText(pageSysId);
+    const workspaceSysId = cleanText(workspaceState.data.sysId);
+    const workspaceSlug = workspaceState.data.slug;
+    const mutationContextKey = currentWorkspaceCommandContextKey;
+    const sourceChangeSetId = currentWorkspaceCommandSourceChangeSetId;
+    const sourceChangeSetRevision = currentWorkspaceCommandSourceChangeSetRevision;
+    const pageSettingsWasOpenForUndoTarget =
+      pageSettingsStateRef.current.open && pageSettingsStateRef.current.pageSysId === normalizedPageSysId;
+    const pendingRow = pendingChangesResult.rows.find((row) => row.pageSysId === normalizedPageSysId);
+    if (!normalizedPageSysId || !workspaceSysId || !pendingRow) {
+      return;
+    }
+    if (pendingChangesUndoBlockedPageSysId && pendingChangesUndoBlockedPageSysId === normalizedPageSysId) {
+      return;
+    }
+    if (staleRefreshBlocksCurrentWorkspaceWrites) {
+      await requestStaleRefreshBlock(currentWorkspaceMutationAuthority() ?? {});
+      return;
+    }
+
+    setWorkspaceDiscardPageState({
+      contextKey: mutationContextKey,
+      pageSysId: normalizedPageSysId,
+      sourceChangeSetId,
+      sourceChangeSetRevision,
+      status: "discarding",
+      workspaceSlug,
+      workspaceSysId
+    });
+    try {
+      const outcome = await runWorkspaceMutation<WorkspaceDiscardPageResult>({
+        contextKey: mutationContextKey,
+        safeRetry: false,
+        type: "workspace_discard_page",
+        dispatch: (workspaceLeaseToken, workspaceAuthority) => serviceNowClient.discardPageWorkspace!({
+          pageSysId: normalizedPageSysId,
+          workspaceAuthority,
+          workspaceLeaseToken,
+          workspaceSlug,
+          workspaceSysId
+        })
+      });
+      if (isObsoleteWorkspaceMutationOutcome(outcome) && !isCurrentWorkspaceMutationContext(mutationContextKey)) {
+        return;
+      }
+      if (!isCurrentWorkspaceMutationContext(mutationContextKey)) {
+        return;
+      }
+      if (outcome.state === "contention" || outcome.state === "forbidden" || outcome.state === "transient_failure") {
+        setWorkspaceDiscardPageState({
+          contextKey: mutationContextKey,
+          errorMessage: outcome.state === "contention" ? "This workspace is currently being edited by another user." : outcome.errorMessage,
+          pageSysId: normalizedPageSysId,
+          retryable: false,
+          sourceChangeSetId,
+          sourceChangeSetRevision,
+          status: "error",
+          workspaceSlug,
+          workspaceSysId
+        });
+        return;
+      }
+
+      const result = outcome as WorkspaceDiscardPageResult;
+      if (result.state === "failed") {
+        setWorkspaceDiscardPageState({
+          contextKey: mutationContextKey,
+          errorMessage: result.errorMessage,
+          pageSysId: normalizedPageSysId,
+          retryable: Boolean(result.retryable),
+          sourceChangeSetId,
+          sourceChangeSetRevision,
+          status: "error",
+          workspaceSlug,
+          workspaceSysId
+        });
+        return;
+      }
+
+      installWorkspaceMutationAuthority({
+        changeSetId: result.changeSetId,
+        changeSetRevision: result.changeSetRevision,
+        workspaceStateRevision: result.workspaceStateRevision
+      }, "mutation");
+      const selectedPageIdBeforeDiscard = cleanText(selectedWorkspacePageId);
+      const discardedAddedPageIds =
+        pendingRow.category === "Added"
+          ? new Set(collectPageSubtreeSysIds(currentWorkspacePages, normalizedPageSysId).map((pageId) => cleanText(pageId)).filter(Boolean))
+          : new Set<string>();
+      const selectedPageIsDiscardedAddedDescendant =
+        discardedAddedPageIds.size > 0 && discardedAddedPageIds.has(selectedPageIdBeforeDiscard);
+      const restoredUndoTargetPage = findWorkspacePageBySysId(result.pages, normalizedPageSysId);
+      const selectedUndoTargetWasReplaced =
+        Boolean(restoredUndoTargetPage) && selectedPageIdBeforeDiscard === normalizedPageSysId;
+      if (selectedUndoTargetWasReplaced || selectedPageIsDiscardedAddedDescendant) {
+        invalidateEditorSessionForAuthoritativeRebind();
+      }
+      clearPageOutlineOverrides(
+        discardedAddedPageIds.size > 0 ? discardedAddedPageIds : [normalizedPageSysId]
+      );
+      if (
+        pageSettingsWasOpenForUndoTarget &&
+        restoredUndoTargetPage
+      ) {
+        clearPageSettingsRecoverySnapshot(normalizedPageSysId);
+        const nextState = createPageSettingsStateFromPage(restoredUndoTargetPage);
+        pageSettingsPendingOpenPageIdRef.current = normalizedPageSysId;
+        pageSettingsStateRef.current = nextState;
+        setPageSettingsState(nextState);
+      } else if (
+        pageSettingsStateRef.current.open &&
+        discardedAddedPageIds.has(pageSettingsStateRef.current.pageSysId)
+      ) {
+        pageSettingsPendingOpenPageIdRef.current = "";
+        const nextState = createEmptyPageSettingsState();
+        pageSettingsStateRef.current = nextState;
+        setPageSettingsState(nextState);
+      }
+      if (workspaceState.status === "success" && discardedAddedPageIds.size > 0) {
+        clearDeletedPageRecoverySnapshots({
+          workspaceSlug,
+          workspaceSysId
+        }, discardedAddedPageIds);
+      }
+      setWorkspacePagesState({
+        data: result.pages,
+        mode: "edit",
+        status: "success",
+        totalCount: result.pages.length,
+        workspaceSlug
+      });
+      const binding = workspaceLeaseBindingRef.current;
+      if (binding && binding.workspaceSlug === workspaceSlug && binding.workspaceSysId === workspaceSysId) {
+        setPendingChangesState({
+          data: result.pendingChanges,
+          leaseToken: binding.leaseToken,
+          status: "success",
+          workspaceSlug,
+          workspaceSysId
+        });
+      } else {
+        setPendingChangesState({
+          data: result.pendingChanges,
+          leaseToken: "",
+          status: "success",
+          workspaceSlug,
+          workspaceSysId
+        });
+      }
+      if (selectedUndoTargetWasReplaced && restoredUndoTargetPage) {
+        const restoredRouteSlug = cleanText(restoredUndoTargetPage.draftSlug);
+        if (cleanText(currentWorkspacePageSlug) !== restoredRouteSlug) {
+          commitRoute(
+            buildWorkspaceHref(workspaceSlug, {
+              mode: "edit",
+              pageSlug: restoredRouteSlug || undefined
+            }),
+            true,
+            "workspace_discard_page_route_normalization"
+          );
+        }
+      } else if (selectedPageIsDiscardedAddedDescendant) {
+        const fallbackSelection = resolveWorkspacePageSelection(result.pages, {
+          mode: "edit"
+        });
+        commitRoute(
+          buildWorkspaceHref(workspaceSlug, {
+            mode: "edit",
+            pageSlug: cleanText(fallbackSelection.pageSlug) || undefined
+          }),
+          true,
+          "workspace_discard_page_selection_fallback"
+        );
+      }
+      setWorkspaceDiscardPageState({ status: "idle" });
+    } catch {
+      if (!isCurrentWorkspaceMutationContext(mutationContextKey)) {
+        return;
+      }
+      setWorkspaceDiscardPageState({
+        contextKey: mutationContextKey,
+        errorMessage: "Something went wrong while discarding changes to this page. No changes were discarded. Please try again.",
+        pageSysId: normalizedPageSysId,
+        retryable: true,
+        sourceChangeSetId,
+        sourceChangeSetRevision,
+        status: "error",
+        workspaceSlug,
+        workspaceSysId
+      });
+    }
+  }
+
   return (
     <div className={`docsera-app${route.mode === "launcher" ? " docsera-app--launcher" : ""}`}>
       <DocseraHeader
@@ -5549,6 +5929,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         pendingChangesDiscardAllAffectedPageCount={workspaceDiscardAllAffectedPageCount}
         pendingChangesDiscardAllRetryable={workspaceDiscardAllRetryable}
         pendingChangesDiscarding={workspaceDiscardAllInProgress}
+        pendingChangesDiscardPageErrorMessage={workspaceDiscardPageErrorMessage}
+        pendingChangesDiscardPagePendingPageSysId={workspaceDiscardPageInProgress ? workspaceDiscardPageTargetPageSysId : ""}
+        pendingChangesDiscardPageRetryable={workspaceDiscardPageRetryable}
+        pendingChangesDiscardPageTargetPageSysId={workspaceDiscardPageTargetPageSysId}
         pendingChangesErrorMessage={pendingChangesState.status === "error" ? pendingChangesState.errorMessage : ""}
         pendingChangesLoading={pendingChangesState.status === "loading"}
         pendingChangesPublishErrorMessage={workspacePublishErrorMessage}
@@ -5557,9 +5941,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         pendingChangesReadinessMessage={pendingChangesSaveBlockedMessage}
         pendingChangesRefreshing={pendingChangesState.status === "refreshing"}
         onDiscardAllPendingChanges={discardAllWorkspacePendingChanges}
+        onDiscardPendingPage={discardPendingWorkspacePage}
         onPublishPendingChanges={publishWorkspacePendingChanges}
         onRetryPendingChanges={requestPendingChangesRefresh}
         pendingChangesPublishToastMessage={workspacePublishToastMessage}
+        pendingChangesUndoBlockedPageSysId={pendingChangesUndoBlockedPageSysId}
         showEditModeToggle={appHeaderShowEditToggle}
         showWorkspaceMode={appHeaderWorkspaceMode}
         workspaceControlsLocked={appHeaderWorkspaceControlsLocked}

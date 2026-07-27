@@ -21,6 +21,19 @@ import type {
 let deferHostReady = false;
 let hostReadyResolvers: Array<() => void> = [];
 let restoreNavigationEntries = () => {};
+let mockEditorHostMounts: Array<{ pageSysId: string; sessionKey: string }> = [];
+let mockEditorHostHandles = new Map<string, {
+  onOutlineChange?: (outline: Array<{ depth: number; id: string; text: string }>) => void;
+  onSaveDraft?: (input: {
+    draftContentJson: ReturnType<typeof createEmptyDocseraDocumentEnvelope>;
+    expectedRevision: number;
+    pageSysId: string;
+    readLatestDraftContentJson?: () => ReturnType<typeof createEmptyDocseraDocumentEnvelope> | null;
+  }) => Promise<PageBodySaveResult>;
+  onStatusChange?: (state: { isDirty: boolean; isSaving: boolean }) => void;
+  pageSysId: string;
+  sessionKey: string;
+}>();
 
 type BroadcastMessage = Record<string, unknown>;
 
@@ -71,6 +84,8 @@ afterEach(() => {
   hostReadyResolvers = [];
   window.sessionStorage.clear();
   window.name = "";
+  mockEditorHostMounts = [];
+  mockEditorHostHandles = new Map();
 });
 
 function mockNavigationType(type: PerformanceNavigationTiming["type"]) {
@@ -91,28 +106,51 @@ vi.mock("../editor/PageEditorHost", () => ({
   PageEditorHost: function MockPageEditorHost({
     canEdit,
     onError,
+    onOutlineChange,
     onReadyStateChange,
+    onSaveDraft,
     pageSysId,
     sessionKey,
     onStatusChange
   }: {
     canEdit: boolean;
     onError?: (failure: null) => void;
+    onOutlineChange?: (outline: Array<{ depth: number; id: string; text: string }>) => void;
     onReadyStateChange?: (ready: boolean) => void;
+    onSaveDraft?: (input: {
+      draftContentJson: ReturnType<typeof createEmptyDocseraDocumentEnvelope>;
+      expectedRevision: number;
+      pageSysId: string;
+      readLatestDraftContentJson?: () => ReturnType<typeof createEmptyDocseraDocumentEnvelope> | null;
+    }) => Promise<PageBodySaveResult>;
     pageSysId?: string;
     sessionKey?: string;
     onStatusChange?: (state: { isDirty: boolean; isSaving: boolean }) => void;
   }) {
     useEffect(() => {
+      const normalizedPageSysId = pageSysId ?? "";
+      const normalizedSessionKey = sessionKey ?? "";
+      mockEditorHostMounts.push({ pageSysId: normalizedPageSysId, sessionKey: normalizedSessionKey });
+      mockEditorHostHandles.set(normalizedSessionKey, {
+        onOutlineChange,
+        onSaveDraft,
+        onStatusChange,
+        pageSysId: normalizedPageSysId,
+        sessionKey: normalizedSessionKey
+      });
       onError?.(null);
       onStatusChange?.({ isDirty: false, isSaving: false });
       if (!onReadyStateChange) {
-        return;
+        return () => {
+          mockEditorHostHandles.delete(normalizedSessionKey);
+        };
       }
 
       if (!deferHostReady) {
         onReadyStateChange(true);
-        return;
+        return () => {
+          mockEditorHostHandles.delete(normalizedSessionKey);
+        };
       }
 
       const resolveReady = () => {
@@ -120,13 +158,26 @@ vi.mock("../editor/PageEditorHost", () => ({
       };
       hostReadyResolvers.push(resolveReady);
       return () => {
+        mockEditorHostHandles.delete(normalizedSessionKey);
         hostReadyResolvers = hostReadyResolvers.filter((resolver) => resolver !== resolveReady);
       };
-    }, [onError, onReadyStateChange, onStatusChange, pageSysId, sessionKey]);
+    }, [onError, onOutlineChange, onReadyStateChange, onSaveDraft, onStatusChange, pageSysId, sessionKey]);
 
-    return canEdit ? <div data-docsera-page-editor-host="true" /> : null;
+    return canEdit ? <div data-docsera-page-editor-host="true" data-page-sys-id={pageSysId ?? ""} data-session-key={sessionKey ?? ""} /> : null;
   }
 }));
+
+function latestMockEditorHost() {
+  const latest = mockEditorHostMounts[mockEditorHostMounts.length - 1];
+  if (!latest) {
+    throw new Error("Expected a mounted mock editor host.");
+  }
+  const handle = mockEditorHostHandles.get(latest.sessionKey);
+  if (!handle) {
+    throw new Error(`Expected mock editor host handle for session ${latest.sessionKey}.`);
+  }
+  return handle;
+}
 
 function createWorkspace(overrides: Partial<WorkspaceViewRecord> = {}): WorkspaceViewRecord {
   return {
@@ -2490,6 +2541,447 @@ describe("App live and edit routing", () => {
     expect(screen.queryByRole("dialog", { name: "Changes Center" })).toBeNull();
     expect(screen.queryByText("Workspace changes published.")).toBeNull();
     expect(document.querySelector(".docsera-header__publish-toast")).toBeNull();
+  }, 15000);
+
+  it("rebinds the selected editor, Page Settings, and route to the authoritative undo result without pushing history", async () => {
+    const initialPages = [
+      createPageRecord({
+        sysId: "page-001",
+        draftRevision: 3,
+        draftSlug: "overview-draft",
+        draftSlugNormalized: "overview-draft",
+        draftTitle: "Overview Draft",
+        publicationState: "published_with_unpublished_changes"
+      }),
+      createPageRecord({
+        sysId: "page-002",
+        parentPageSysId: "page-001",
+        siblingOrder: 2,
+        draftRevision: 1,
+        draftSlug: "api",
+        draftSlugNormalized: "api",
+        draftTitle: "API Draft",
+        publishedSlug: "api",
+        publishedSlugNormalized: "api",
+        publishedTitle: "API",
+        publicationState: "published_with_unpublished_changes"
+      })
+    ];
+    const restoredPages = [
+      createPageRecord({
+        sysId: "page-001",
+        draftRevision: 4,
+        draftSlug: "overview-restored",
+        draftSlugNormalized: "overview-restored",
+        draftTitle: "Overview Restored",
+        publicationState: "published"
+      }),
+      initialPages[1]
+    ];
+    const initialPendingChanges = createPendingChangesResult([
+      {
+        attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+        category: "Modified",
+        firstPendingSequence: 1,
+        lastChangedOn: "2026-07-27 09:00:00",
+        navigable: true,
+        pageSysId: "page-001",
+        title: "Overview Draft"
+      },
+      {
+        attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+        category: "Modified",
+        firstPendingSequence: 2,
+        lastChangedOn: "2026-07-27 09:05:00",
+        navigable: true,
+        pageSysId: "page-002",
+        title: "API Draft"
+      }
+    ]);
+    const discardDeferred = createDeferred<{
+      changeSetId: string;
+      changeSetRevision: number;
+      discardedPageSysId: string;
+      pages: WorkspacePageRecord[];
+      pendingChanges: Extract<WorkspacePendingChangesResult, { state: "succeeded" }>;
+      state: "succeeded";
+      workspaceStateRevision: number;
+    }>();
+    const discardPageWorkspace = vi.fn(() => discardDeferred.promise);
+    const savePageBody = vi.fn(async (): Promise<PageBodySaveResult> => ({
+      errorMessage: "stale session should not save",
+      state: "failed"
+    }));
+    renderApp("/?workspace=product-docs&mode=edit&page=overview-draft", {
+      discardPageWorkspace,
+      getWorkspacePendingChanges: vi.fn(async () => initialPendingChanges),
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+        createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? initialPages : [createPageRecord()])
+      ),
+      savePageBody
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
+    const initialEditorHost = latestMockEditorHost();
+    const supersededSave = initialEditorHost.onSaveDraft;
+    expect(supersededSave).toBeDefined();
+    const initialSessionKey = initialEditorHost.sessionKey;
+    const replaceSpy = vi.spyOn(window.history, "replaceState");
+    const pushSpy = vi.spyOn(window.history, "pushState");
+    const replaceCallsBeforeUndo = replaceSpy.mock.calls.length;
+    const pushCallsBeforeUndo = pushSpy.mock.calls.length;
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo changes to Overview Draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo changes" }));
+
+    await waitFor(() => expect(discardPageWorkspace).toHaveBeenCalledTimes(1));
+    expect(discardPageWorkspace).toHaveBeenCalledWith(expect.objectContaining({
+      pageSysId: "page-001",
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 7 }),
+      workspaceLeaseToken: "workspace-lease-token",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+
+    await act(async () => {
+      discardDeferred.resolve({
+        changeSetId: "change-set-001",
+        changeSetRevision: 8,
+        discardedPageSysId: "page-001",
+        pages: restoredPages,
+        pendingChanges: {
+          ...createPendingChangesResult([initialPendingChanges.rows[1]!]),
+          changeSetRevision: 8
+        },
+        state: "succeeded",
+        workspaceStateRevision: 5
+      });
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Restored" })).toBeInTheDocument();
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview-restored" });
+    expect(mockEditorHostMounts[mockEditorHostMounts.length - 1]?.sessionKey).not.toBe(initialSessionKey);
+    const pageSettings = screen.getByRole("complementary", { name: "Page Settings" });
+    expect(within(pageSettings).getByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
+    expect(within(pageSettings).getByRole("button", { name: "Overview Restored" })).toBeInTheDocument();
+    expect(within(pageSettings).getByRole("button", { name: "overview-restored" })).toBeInTheDocument();
+    expect(replaceSpy.mock.calls.length).toBeGreaterThan(replaceCallsBeforeUndo);
+    expect(pushSpy.mock.calls.length).toBe(pushCallsBeforeUndo);
+
+    await act(async () => {
+      const staleResult = await supersededSave?.({
+        draftContentJson: createEmptyDocseraDocumentEnvelope(),
+        expectedRevision: 3,
+        pageSysId: "page-001"
+      });
+      expect(staleResult).toEqual({
+        errorMessage: "The editing session changed.",
+        state: "failed"
+      });
+    });
+    expect(savePageBody).not.toHaveBeenCalled();
+  }, 15000);
+
+  it("does not remount the selected editor when individual undo targets another page", async () => {
+    const editPages = createBreadcrumbPages().map((page) =>
+      page.sysId === "page-root"
+        ? createPageRecord({ ...page, draftRevision: 2, publicationState: "published_with_unpublished_changes" })
+        : createPageRecord({ ...page, draftRevision: 1, publicationState: "published_with_unpublished_changes" })
+    );
+    const restoredPages = [
+      editPages[0]!,
+      createPageRecord({
+        ...editPages[1]!,
+        draftRevision: 2,
+        draftTitle: "Child Restored",
+        publicationState: "published"
+      })
+    ];
+    const discardPageWorkspace = vi.fn(async () => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 8,
+      discardedPageSysId: "page-child",
+      pages: restoredPages,
+      pendingChanges: {
+        ...createPendingChangesResult([]),
+        changeSetRevision: 8
+      },
+      state: "succeeded" as const,
+      workspaceStateRevision: 5
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      discardPageWorkspace,
+      getWorkspacePendingChanges: vi.fn(async () => createPendingChangesResult([
+        {
+          attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+          category: "Modified",
+          firstPendingSequence: 1,
+          lastChangedOn: "2026-07-27 09:05:00",
+          navigable: true,
+          pageSysId: "page-child",
+          title: "Child Draft"
+        }
+      ])),
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+        createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? editPages : [editPages[0]!])
+      )
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    const initialSessionKey = latestMockEditorHost().sessionKey;
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo changes to Child Draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo changes" }));
+
+    await waitFor(() => expect(discardPageWorkspace).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
+    expect((document.querySelector("[data-docsera-page-editor-host='true']") as HTMLElement | null)?.dataset.pageSysId).toBe("page-root");
+    expect(latestMockEditorHost().sessionKey).toBe(initialSessionKey);
+  }, 15000);
+
+  it("falls back to a valid page and closes Page Settings when selected Added subtree undo removes the current selection", async () => {
+    const editPages = [
+      createPageRecord({
+        sysId: "page-root",
+        draftSlug: "overview",
+        draftSlugNormalized: "overview",
+        draftTitle: "Overview",
+        publicationState: "published"
+      }),
+      createPageRecord({
+        sysId: "page-added-parent",
+        parentPageSysId: "page-root",
+        siblingOrder: 2,
+        draftSlug: "new-guide",
+        draftSlugNormalized: "new-guide",
+        draftTitle: "New Guide",
+        publishedSlug: null,
+        publishedSlugNormalized: null,
+        publishedTitle: null,
+        publicationState: "draft"
+      }),
+      createPageRecord({
+        sysId: "page-added-child",
+        parentPageSysId: "page-added-parent",
+        siblingOrder: 1,
+        draftSlug: "new-guide-child",
+        draftSlugNormalized: "new-guide-child",
+        draftTitle: "New Guide Child",
+        publishedSlug: null,
+        publishedSlugNormalized: null,
+        publishedTitle: null,
+        publicationState: "draft"
+      })
+    ];
+    const discardPageWorkspace = vi.fn(async () => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 8,
+      discardedPageSysId: "page-added-parent",
+      pages: [editPages[0]!],
+      pendingChanges: {
+        ...createPendingChangesResult([]),
+        changeSetRevision: 8
+      },
+      state: "succeeded" as const,
+      workspaceStateRevision: 5
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=new-guide-child", {
+      discardPageWorkspace,
+      getWorkspacePendingChanges: vi.fn(async () => createPendingChangesResult([
+        {
+          attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+          category: "Added",
+          firstPendingSequence: 1,
+          lastChangedOn: "2026-07-27 09:00:00",
+          navigable: true,
+          pageSysId: "page-added-parent",
+          title: "New Guide"
+        },
+        {
+          attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+          category: "Added",
+          firstPendingSequence: 2,
+          lastChangedOn: "2026-07-27 09:05:00",
+          navigable: true,
+          pageSysId: "page-added-child",
+          title: "New Guide Child"
+        }
+      ])),
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+        createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? editPages : [editPages[0]!])
+      )
+    });
+
+    expect(await screen.findByRole("heading", { name: "New Guide Child" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for New Guide Child" }));
+    expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo changes to New Guide" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo changes" }));
+
+    await waitFor(() => expect(discardPageWorkspace).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
+    expect(screen.queryByRole("heading", { name: "Page Settings" })).toBeNull();
+    expect((document.querySelector("[data-docsera-page-editor-host='true']") as HTMLElement | null)?.dataset.pageSysId).toBe("page-root");
+  }, 15000);
+
+  it("replaces the route with the empty Edit workspace route when the final Added subtree is undone", async () => {
+    const onlyDraftPage = createPageRecord({
+      sysId: "page-added-parent",
+      draftSlug: "new-guide",
+      draftSlugNormalized: "new-guide",
+      draftTitle: "New Guide",
+      publishedSlug: null,
+      publishedSlugNormalized: null,
+      publishedTitle: null,
+      publicationState: "draft"
+    });
+    const discardPageWorkspace = vi.fn(async () => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 8,
+      discardedPageSysId: "page-added-parent",
+      pages: [],
+      pendingChanges: {
+        ...createPendingChangesResult([]),
+        changeSetRevision: 8
+      },
+      state: "succeeded" as const,
+      workspaceStateRevision: 5
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=new-guide", {
+      discardPageWorkspace,
+      getWorkspacePendingChanges: vi.fn(async () => createPendingChangesResult([
+        {
+          attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+          category: "Added",
+          firstPendingSequence: 1,
+          lastChangedOn: "2026-07-27 09:00:00",
+          navigable: true,
+          pageSysId: "page-added-parent",
+          title: "New Guide"
+        }
+      ])),
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+        createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? [onlyDraftPage] : [])
+      )
+    });
+
+    expect(await screen.findByRole("heading", { name: "New Guide" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo changes to New Guide" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo changes" }));
+
+    await waitFor(() => expect(discardPageWorkspace).toHaveBeenCalledTimes(1));
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: null });
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+  }, 15000);
+
+  it("ignores an obsolete discard-page success after the user has already navigated to another workspace", async () => {
+    const productPages = createBreadcrumbPages();
+    const apiPages = [
+      createPageRecord({
+        sysId: "page-api",
+        workspaceSysId: "workspace-002",
+        draftSlug: "api-overview",
+        draftSlugNormalized: "api-overview",
+        draftTitle: "API Overview",
+        publishedSlug: "api-overview",
+        publishedSlugNormalized: "api-overview",
+        publishedTitle: "API Overview"
+      })
+    ];
+    const discardDeferred = createDeferred<{
+      changeSetId: string;
+      changeSetRevision: number;
+      discardedPageSysId: string;
+      pages: WorkspacePageRecord[];
+      pendingChanges: Extract<WorkspacePendingChangesResult, { state: "succeeded" }>;
+      state: "succeeded";
+      workspaceStateRevision: number;
+    }>();
+    const listPages = vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }) => {
+      if (workspaceSlug === "api-docs") {
+        return {
+          ...createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? apiPages : [apiPages[0]!]),
+          workspaceSlug,
+          workspaceSysId: "workspace-002"
+        };
+      }
+      return createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? productPages : [productPages[0]!]);
+    });
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      discardPageWorkspace: vi.fn(() => discardDeferred.promise),
+      getWorkspace: vi.fn(async (workspaceSlug: string) => ({
+        workspace: workspaceSlug === "api-docs"
+          ? createWorkspace({ slug: "api-docs", sysId: "workspace-002", name: "API Docs" })
+          : createWorkspace()
+      })),
+      getWorkspacePendingChanges: vi.fn(async () => createPendingChangesResult([
+        {
+          attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+          category: "Modified",
+          firstPendingSequence: 1,
+          lastChangedOn: "2026-07-27 09:00:00",
+          navigable: true,
+          pageSysId: "page-child",
+          title: "Child Draft"
+        }
+      ])),
+      listPages,
+      listWorkspaces: vi.fn(async () => ({
+        items: [createWorkspace(), createWorkspace({ slug: "api-docs", sysId: "workspace-002", name: "API Docs" })],
+        page: 1,
+        pageSize: 10,
+        totalCount: 2,
+        hasNextPage: false,
+        searchText: ""
+      }))
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo changes to Child Draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo changes" }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "API Docs" }));
+    expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+
+    await act(async () => {
+      discardDeferred.resolve({
+        changeSetId: "change-set-001",
+        changeSetRevision: 8,
+        discardedPageSysId: "page-child",
+        pages: [
+          createPageRecord({
+            ...productPages[0]!,
+            draftTitle: "Obsolete Product Result"
+          })
+        ],
+        pendingChanges: {
+          ...createPendingChangesResult([]),
+          changeSetRevision: 8
+        },
+        state: "succeeded",
+        workspaceStateRevision: 5
+      });
+      await Promise.resolve();
+    });
+
+    expectWorkspaceSearch({ workspace: "api-docs", mode: null, page: "api-overview" });
+    expect(screen.getByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Obsolete Product Result" })).toBeNull();
   }, 15000);
 
   it("keeps discard recovery blocking writes after cancel or reload and reuses the recovery command on explicit retry", async () => {

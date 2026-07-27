@@ -47,6 +47,27 @@ Response contract:
 - stale change-set authority returns `409 stale_generation`
 - successful discard-all retains the Edit lease and leaves the user in Edit mode
 
+## Workspace Individual Undo Contract
+
+Workspace individual Undo is an explicit server-backed action exposed at `POST /api/x_82900_docsera/docsera_runtime/workspaces/discard-page`.
+
+Request contract:
+
+- the client may identify the target workspace by `workspaceSysId` or `workspaceSlug`
+- the client must provide the active workspace Edit lease token
+- the client must provide the exact current server-issued change-set authority as `expectedChangeSetId` and `expectedChangeSetRevision`
+- the client must provide the stable target page identity as `pageSysId`
+- the client does not provide row category, row title, removal membership, generation repair, actor, timestamp, or restored projection values
+
+Response contract:
+
+- success returns the authoritative refreshed Edit projection, refreshed pending-change model, workspace state revision, the discarded target page id, and the advanced active change-set authority for the same workspace draft generation
+- missing, invalid, expired, or mismatched Edit lease authority fails without discarding
+- stale change-set authority returns `409 stale_generation`
+- Added-page Undo cascades only across the complete draft-only Added descendant subtree derived from the authoritative Edit projection
+- Added-page Undo still fails safely when a published identity or other non-Added pending change depends on that Added subtree
+- successful individual Undo retains the Edit lease, leaves Live projection unchanged, and leaves the user in Edit mode
+
 ## Workspace Snapshot Transition
 
 Workspace publish promotes the complete persisted pending set as one workspace transition.
@@ -98,6 +119,60 @@ Repo-side behavior:
 - the client installs only the returned successor authority; it does not predict, increment, repair, or manufacture generations
 
 The guarded workspace selector update is the observable discard point. Until the user explicitly retries a retryable ambiguous discard, the client never replays discard-all automatically.
+
+## Workspace Individual Undo Transition
+
+Workspace individual Undo restores one pending page row back to the currently selected published baseline inside the same active change set.
+
+Repo-side behavior:
+
+- the discard-page route validates authoring capability, Edit lease authority, and exact mutation authority before entering the persistence boundary
+- the persistence service derives the authoritative current pending category for the target page from durable draft, entry, snapshot, and removal-batch state at execution time; client row snapshots are never authoritative
+- Added restores derive the authoritative Edit subtree rooted at the target page, discard every descendant whose category is also `Added`, and remove the corresponding draft rows and pending entries atomically
+- Added restore recovery and replay persist the authoritative affected page id set so partially deleted Added subtrees can still finish clearing their change-set entries without inventing replacement draft rows
+- Added restores still fail atomically with the safe actionable dependency error when a published identity or other non-Added pending change remains under that target
+- Modified restores published content, title, slug, active state, and other publishable settings while preserving any still-pending move
+- Moved restores published parent and sibling order while preserving any still-pending content/settings change
+- Modified + Moved restores both content/settings and hierarchy from the published snapshot
+- Removed retires the complete active removal batch for the targeted subtree, even when the user clicked a descendant row, and removes every related Removed row together
+- recovery and replay persist the authoritative affected page id set with the durable mutation claim so Removed restoration cannot lose subtree membership after the active batch row has already been retired
+- no client path replays individual Undo automatically; retry remains explicit user intent after a failure
+- failures are atomic: unsupported targets, stale authority, missing rows, invalid lease, and durable-phase failures leave draft rows, entries, removal batches, and selectors unchanged
+
+## Workspace Individual Undo Client Workflow
+
+Changes Center row Undo reuses the existing workspace mutation queue and modal presentation instead of creating a second command system.
+
+Client behavior:
+
+- each pending row keeps its current compact row presentation, but the row action area now owns a distinct icon-only Undo button with an accessible page-specific label
+- the row hover and focus treatment is unified across the full row width, including the right-side action area, instead of splitting into separate hover blocks
+- the right side shows the row category label at rest and swaps that label for the right-aligned Undo icon on row hover or focus-within without moving the hit target
+- Added, Modified, Moved, and Modified + Moved rows remain navigable through the row body; Removed rows remain non-navigable through the row body
+- clicking Undo never triggers row navigation; it keeps the Changes Center open and opens the shared top-biased destructive modal
+- the modal copy is `Are you sure you want to discard changes to “[page title]”? This action cannot be undone.`
+- while Publish, Discard all, or individual Undo is running, conflicting row navigation and additional discard actions stay blocked
+- if the current selected page still has unsaved or blocked editor or Page Settings state, only that affected row's Undo stays disabled and the existing readiness message remains visible; transient client state is not flushed
+- success installs only the returned server authority, refreshes the Edit projection and pending list from the server response, closes the modal, and keeps the Changes Center open unless the refreshed pending set is empty
+- when the currently selected page remains present in the returned Edit projection, Undo invalidates the superseded editor session, remounts the replacement editor from the returned document and revision, clears the stale outline override, and blocks stale callbacks from the superseded session from saving into the restored page
+- when Page Settings was open for the Undo target, the panel remains open and is rebound from the authoritative returned title and slug in a clean saved state with obsolete validation and save errors cleared
+- if the authoritative restored slug differs from the current Edit route slug, the client replaces the route with the authoritative slug without pushing browser history or triggering dirty-navigation prompts
+- if the target Added subtree removes the selected page, authoritative route canonicalization and page-selection fallback choose the next valid page or the empty Edit workspace route rather than leaving a discarded id or slug selected
+- if the target Added subtree does not include the current selection, the existing editor session and route remain in place without a forced remount
+- failure keeps the modal open, preserves the pending set, surfaces the safe actionable error, and allows explicit Retry or Cancel
+
+## Workspace Individual Undo Verification
+
+The E3-T14 live verifier exercises:
+
+- Modified Undo
+- Moved Undo
+- Added Undo
+- Added-parent Undo with nested Added descendants
+- Removed-subtree Undo from a descendant Removed row
+- stale-authority rejection with no mutation
+- unchanged Live projection
+- refreshed Edit projection, pending-count, and returned authority after each successful Undo
 
 ## Workspace Discard Recovery Invariant
 

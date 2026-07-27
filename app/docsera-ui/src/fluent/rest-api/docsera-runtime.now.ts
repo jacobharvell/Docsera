@@ -16,6 +16,7 @@ import { process as listPages } from "../../server/api/docsera-runtime-pages";
 import { process as workspaces } from "../../server/api/docsera-runtime-workspaces";
 import { process as workspaceProvisioningStatus } from "../../server/api/docsera-runtime-workspace-provisioning-status";
 import { process as workspaceDiscardAll } from "../../server/api/docsera-runtime-workspace-discard-all";
+import { process as workspaceDiscardPage } from "../../server/api/docsera-runtime-workspace-discard-page";
 import { process as workspacePendingChanges } from "../../server/api/docsera-runtime-workspace-pending-changes";
 import { process as workspacePublish } from "../../server/api/docsera-runtime-workspace-publish";
 import { process as acquireWorkspaceEditLease } from "../../server/api/docsera-runtime-workspace-edit-lease-acquire";
@@ -75,6 +76,9 @@ RestApi({
     },
     {
       $id: Now.ID["docsera-runtime-workspace-publish-post"], name: "workspace_publish", path: "/workspaces/publish", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Publish the complete workspace pending change set through the held Edit lease.", script: workspacePublish
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-discard-page-post"], name: "workspace_discard_page", path: "/workspaces/discard-page", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Discard the current pending change represented by a specific workspace page row through the held Edit lease.", script: workspaceDiscardPage
     },
     {
       $id: Now.ID["docsera-runtime-workspace-discard-all-post"], name: "workspace_discard_all", path: "/workspaces/discard-all", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Discard the complete workspace pending change set through the held Edit lease.", script: workspaceDiscardAll

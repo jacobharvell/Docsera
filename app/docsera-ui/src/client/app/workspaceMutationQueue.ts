@@ -1,7 +1,15 @@
 import { recordDocseraDiagnosticEvent } from "../diagnostics";
 import type { WorkspaceEditLeaseGeneration } from "../shared/types/docsera";
 
-export type WorkspaceMutationType = "body_save" | "page_create" | "page_delete" | "page_move" | "page_settings" | "workspace_discard_all" | "workspace_publish";
+export type WorkspaceMutationType =
+  | "body_save"
+  | "page_create"
+  | "page_delete"
+  | "page_move"
+  | "page_settings"
+  | "workspace_discard_all"
+  | "workspace_discard_page"
+  | "workspace_publish";
 
 export type WorkspaceMutationResultAuthority = {
   changeSetId?: string;

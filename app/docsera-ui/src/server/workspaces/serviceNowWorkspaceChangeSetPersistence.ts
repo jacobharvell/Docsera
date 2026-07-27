@@ -1,6 +1,7 @@
 import { GlideDateTime, GlideDigest, GlideRecord, GlideSecureRandomUtil, gs } from "@servicenow/glide";
 import {
   createRemovalBatch,
+  discardPageChanges,
   deriveChangeCategory,
   completeSnapshotStaging,
   movePage,
@@ -45,7 +46,7 @@ export type WorkspaceMutationAuthority = {
   changeSetRevision: number;
 };
 
-type WorkspaceMutationKind = "body" | "create" | "delete" | "discard_all" | "move" | "publish" | "settings";
+type WorkspaceMutationKind = "body" | "create" | "delete" | "discard_all" | "discard_page" | "move" | "publish" | "settings";
 type WorkspaceMutationState = "claimed" | "applied" | "finalized" | "rolled_back";
 type WorkspaceMutationPhase =
   | "claimed"
@@ -103,6 +104,13 @@ type WorkspaceMutationClaimPayload =
       affectedPageCount: number;
       successorChangeSetSysId: string;
       successorGenerationKey: string;
+    }
+  | {
+      kind: "discard_page";
+      category: WorkspacePendingChangeCategory;
+      pageSysId: string;
+      affectedPageIds: string[];
+      removalBatchId?: string;
     };
 
 type WorkspaceMutationClaimRecord = {
@@ -245,6 +253,12 @@ export type WorkspacePublishResult = WorkspaceMutationSuccess<{
   workspaceStateRevision: number;
 }> | WorkspaceMutationFailure;
 export type WorkspaceDiscardAllResult = WorkspaceMutationSuccess<{
+  pages: PageRecord[];
+  pendingChanges: WorkspacePendingChangesReadModel;
+  workspaceStateRevision: number;
+}> | WorkspaceMutationFailure;
+export type WorkspaceDiscardPageResult = WorkspaceMutationSuccess<{
+  discardedPageSysId: string;
   pages: PageRecord[];
   pendingChanges: WorkspacePendingChangesReadModel;
   workspaceStateRevision: number;
@@ -1144,6 +1158,9 @@ function retainedDraftPageIdsForClaim(claim: WorkspaceMutationClaimRecord | null
   if (claim.kind === "delete" && claim.payload.kind === "delete") {
     return new Set([cleanText(claim.targetPageSysId), ...claim.payload.memberPageIds.map((pageId) => cleanText(pageId))].filter(Boolean));
   }
+  if (claim.kind === "discard_page" && claim.payload.kind === "discard_page") {
+    return new Set([cleanText(claim.targetPageSysId), ...claim.payload.affectedPageIds.map((pageId) => cleanText(pageId))].filter(Boolean));
+  }
   if (claim.kind === "publish" || claim.kind === "discard_all") {
     return new Set();
   }
@@ -1531,9 +1548,18 @@ function upsertChangeEntry(state: WorkspaceChangeSetState, pageId: string) {
 
 function replaceRemovalBatches(state: WorkspaceChangeSetState) {
   const changeSetId = cleanText(state.selectors.activeChangeSetId);
-  for (const batch of state.removalBatches.filter((candidate) => candidate.changeSetId === changeSetId && candidate.state === "active")) {
+  for (const batch of state.removalBatches.filter((candidate) => candidate.changeSetId === changeSetId)) {
     const batchRow = new GlideRecord(DOCSERA_WORKSPACE_REMOVAL_BATCH_TABLE);
-    if (!batchRow.get("batch_key", batch.id)) {
+    const exists = batchRow.get("batch_key", batch.id);
+    const needsBatchUpdate =
+      !exists ||
+      cleanText(batchRow.getValue("change_set")) !== changeSetId ||
+      cleanText(batchRow.getValue("root_page")) !== cleanText(batch.rootPageId) ||
+      cleanText(batchRow.getValue("batch_key")) !== cleanText(batch.id) ||
+      cleanText(batchRow.getValue("lifecycle_state")) !== cleanText(batch.state) ||
+      cleanText(batchRow.getValue("removed_on")) !== cleanText(batch.removedOn) ||
+      cleanText(batchRow.getValue("removed_by")) !== cleanText(batch.removedBy);
+    if (!exists) {
       batchRow.initialize();
     }
     batchRow.setValue("change_set", changeSetId);
@@ -1542,21 +1568,31 @@ function replaceRemovalBatches(state: WorkspaceChangeSetState) {
     batchRow.setValue("lifecycle_state", batch.state);
     batchRow.setValue("removed_on", batch.removedOn);
     batchRow.setValue("removed_by", batch.removedBy);
-    const batchSysId = cleanText(batchRow.getUniqueValue() || batchRow.insert());
+    const batchSysId = cleanText(!exists ? batchRow.insert() : needsBatchUpdate ? batchRow.update() : batchRow.getUniqueValue());
     if (!batchSysId) {
       throw new Error("Workspace removal batch could not be persisted.");
     }
     const expectedMemberIds = new Set(batch.members.map((member) => member.pageId));
     for (const member of batch.members) {
       const memberRow = new GlideRecord(DOCSERA_WORKSPACE_REMOVAL_MEMBER_TABLE);
-      if (!memberRow.get("batch_page_key", `${batch.id}:${member.pageId}`)) {
+      memberRow.addQuery("removal_batch", batchSysId);
+      memberRow.addQuery("page", member.pageId);
+      memberRow.setLimit(1);
+      memberRow.query();
+      const memberExists = memberRow.next();
+      const needsMemberUpdate =
+        !memberExists ||
+        cleanText(memberRow.getValue("removal_batch")) !== batchSysId ||
+        cleanText(memberRow.getValue("page")) !== cleanText(member.pageId) ||
+        safeInteger(memberRow.getValue("first_pending_sequence")) !== member.firstPendingSequence;
+      if (!memberExists) {
         memberRow.initialize();
       }
       memberRow.setValue("removal_batch", batchSysId);
       memberRow.setValue("page", member.pageId);
       memberRow.setValue("batch_page_key", `${batch.id}:${member.pageId}`);
       memberRow.setValue("first_pending_sequence", member.firstPendingSequence);
-      if (!(memberRow.getUniqueValue() ? memberRow.update() : memberRow.insert())) {
+      if (!(!memberExists ? memberRow.insert() : needsMemberUpdate ? memberRow.update() : memberRow.getUniqueValue())) {
         throw new Error("Workspace removal batch member could not be persisted.");
       }
     }
@@ -1591,6 +1627,61 @@ function updateDraftPageRecord(page: PageRecord) {
   }
 }
 
+function deleteDraftPageRecord(pageSysId: string) {
+  const row = new GlideRecord(DOCSERA_PAGE_TABLE);
+  if (!row.get("sys_id", cleanText(pageSysId))) {
+    return false;
+  }
+  if (!row.deleteRecord()) {
+    throw new Error("Page could not be deleted.");
+  }
+  return true;
+}
+
+function deleteDraftPageRecords(pageSysIds: string[]) {
+  for (const pageSysId of [...new Set(pageSysIds.map((value) => cleanText(value)).filter(Boolean))]) {
+    deleteDraftPageRecord(pageSysId);
+  }
+}
+
+function writePagePublicationState(pageSysId: string, publicationState: PageRecord["publicationState"]) {
+  const row = new GlideRecord(DOCSERA_PAGE_TABLE);
+  if (!row.get("sys_id", cleanText(pageSysId))) {
+    throw new Error("Page could not be found.");
+  }
+  row.setValue("publication_state", publicationState);
+  if (!row.update()) {
+    throw new Error("Page publication state could not be updated.");
+  }
+}
+
+function restoreDraftPageFromSnapshot(
+  pageSysId: string,
+  snapshotPage: SnapshotPage,
+  options: { restoreContent: boolean; restoreHierarchy: boolean; publicationState: PageRecord["publicationState"] }
+) {
+  const row = new GlideRecord(DOCSERA_PAGE_TABLE);
+  if (!row.get("sys_id", cleanText(pageSysId))) {
+    throw new Error("Page could not be found.");
+  }
+  if (options.restoreHierarchy) {
+    row.setValue("parent_page", snapshotPage.parentPageId ?? "");
+    row.setValue("sibling_order", snapshotPage.siblingOrder);
+  }
+  if (options.restoreContent) {
+    row.setValue("draft_title", snapshotPage.title);
+    row.setValue("draft_slug", snapshotPage.slug);
+    row.setValue("draft_slug_normalized", snapshotPage.slug);
+    row.setValue("draft_content_json", snapshotPage.contentJson);
+    row.setValue("draft_body_text", snapshotPage.bodyText ?? "");
+    row.setValue("active", snapshotPage.active);
+  }
+  row.setValue("publication_state", options.publicationState);
+  if (!row.update()) {
+    throw new Error("Page could not be updated.");
+  }
+}
+
 function updateDraftPageHierarchy(pageSysId: string, parentPageSysId: string | null, siblingOrder: string) {
   const row = new GlideRecord(DOCSERA_PAGE_TABLE);
   if (!row.get("sys_id", cleanText(pageSysId))) {
@@ -1609,6 +1700,20 @@ function pageHierarchyMatches(pageSysId: string, parentPageSysId: string | null,
     return false;
   }
   return cleanText(row.getValue("parent_page")) === cleanText(parentPageSysId) && cleanText(row.getValue("sibling_order")) === cleanText(siblingOrder);
+}
+
+function pageContentAndSettingsMatchSnapshot(pageSysId: string, snapshotPage: SnapshotPage): boolean {
+  const row = new GlideRecord(DOCSERA_PAGE_TABLE);
+  if (!row.get("sys_id", cleanText(pageSysId))) {
+    return false;
+  }
+  return (
+    cleanText(row.getValue("draft_title")) === cleanText(snapshotPage.title) &&
+    cleanText(row.getValue("draft_slug_normalized") || row.getValue("draft_slug")) === cleanText(snapshotPage.slug) &&
+    cleanText(row.getValue("draft_content_json")) === cleanText(snapshotPage.contentJson) &&
+    cleanText(row.getValue("draft_body_text")) === cleanText(snapshotPage.bodyText) &&
+    readBoolean(row.getValue("active"), true) === snapshotPage.active
+  );
 }
 
 function insertPageRecord(page: PageRecord, targetSysId: string): PageRecord {
@@ -1756,6 +1861,25 @@ function buildDiscardAllPayload(
     successorChangeSetSysId: dependencies.createDeterministicSysId(`${successorGenerationKey}:sys_id`),
     successorGenerationKey
   };
+}
+
+function buildDiscardPagePayload(input: {
+  affectedPageIds: string[];
+  category: WorkspacePendingChangeCategory;
+  pageSysId: string;
+  removalBatchId?: string;
+}): Extract<WorkspaceMutationClaimPayload, { kind: "discard_page" }> {
+  return {
+    affectedPageIds: [...new Set(input.affectedPageIds.map((pageId) => cleanText(pageId)).filter(Boolean))],
+    category: input.category,
+    kind: "discard_page",
+    pageSysId: cleanText(input.pageSysId),
+    removalBatchId: cleanText(input.removalBatchId) || undefined
+  };
+}
+
+function publicationStateForPendingCategory(category: WorkspacePendingChangeCategory | null): PageRecord["publicationState"] {
+  return category === null ? "published" : "published_with_unpublished_changes";
 }
 
 function snapshotPageKey(snapshotSetSysId: string, pageSysId: string): string {
@@ -3525,6 +3649,357 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
         return {
           kind: "failed",
           errorMessage: cleanText(error instanceof Error ? error.message : error) || "Something went wrong while moving the page. The page was not moved. Please try again.",
+          status: 500
+        };
+      }
+    },
+
+    discardPage(input: {
+      authority: WorkspaceMutationAuthority;
+      pageSysId: string;
+      workspace: WorkspaceRecord;
+    }): WorkspaceDiscardPageResult {
+      try {
+        const loaded = loadWorkspaceState(input.workspace, dependencies);
+        const recoveryFailure = blockOnActiveDiscardRecovery(loaded);
+        if (recoveryFailure) {
+          return recoveryFailure;
+        }
+        const pageId = cleanText(input.pageSysId);
+        if (!pageId) {
+          return { kind: "failed", code: "invalid", errorMessage: "A target page is required.", status: 400 };
+        }
+        const generationKey = buildMutationGenerationKey(input.authority);
+        const existingClaim = loadMutationClaimByGeneration(generationKey);
+        let payload: Extract<WorkspaceMutationClaimPayload, { kind: "discard_page" }>;
+        if (existingClaim) {
+          if (existingClaim.kind !== "discard_page" || existingClaim.payload.kind !== "discard_page" || cleanText(existingClaim.payload.pageSysId) !== pageId) {
+            return staleFailure(nextAuthority(loaded.state));
+          }
+          payload = existingClaim.payload;
+        } else {
+          const category = deriveChangeCategory(loaded.state, pageId);
+          if (!category) {
+            return { kind: "failed", code: "invalid", errorMessage: "This page no longer has pending changes to undo.", status: 409 };
+          }
+          const removalBatchId =
+            category === "Removed"
+              ? loaded.state.removalBatches.find((candidate) =>
+                  candidate.changeSetId === cleanText(loaded.state.selectors.activeChangeSetId) &&
+                  candidate.state === "active" &&
+                  candidate.members.some((member) => member.pageId === pageId)
+                )?.id
+              : undefined;
+          if (category === "Removed" && !removalBatchId) {
+            return { kind: "failed", code: "invalid", errorMessage: "This page no longer has pending changes to undo.", status: 409 };
+          }
+          const prepared = discardPageChanges(loaded.state, {
+            expectedChangeSetId: input.authority.changeSetId,
+            expectedChangeSetRevision: input.authority.changeSetRevision
+          }, {
+            pageId,
+            actorId: dependencies.currentUserSysId(),
+            changedOn: dependencies.currentTimestamp(),
+            targetCategory: category,
+            targetRemovalBatchId: removalBatchId ?? null
+          });
+          if (prepared.kind === "stale") {
+            return staleFailure(prepared.current);
+          }
+          if (prepared.kind === "invalid") {
+            return { kind: "failed", code: "invalid", errorMessage: prepared.reason, status: 400 };
+          }
+          payload = buildDiscardPagePayload({
+            affectedPageIds: prepared.affectedPageIds,
+            category,
+            pageSysId: pageId,
+            removalBatchId
+          });
+        }
+
+        let claim = existingClaim ?? {
+          sysId: "",
+          workspaceId: cleanText(loaded.workspace.sysId),
+          changeSetId: input.authority.changeSetId,
+          generationKey,
+          mutationKey: buildMutationKey(dependencies, input.authority, "discard_page", payload),
+          kind: "discard_page" as const,
+          state: "claimed" as const,
+          ownerKey: dependencies.randomKey("mutation-owner"),
+          ownerExpiresOn: plusDuration(dependencies.currentTimestamp(), dependencies.ownerTimeoutMs),
+          claimedOn: dependencies.currentTimestamp(),
+          phase: "claimed" as const,
+          payload,
+          targetPageSysId: pageId,
+          targetRemovalBatchKey: payload.removalBatchId
+        };
+        const acquired = acquireMutationClaim(dependencies, loaded.state, claim);
+        if (acquired.kind === "failed") {
+          return acquired.failure;
+        }
+        if (acquired.kind === "replay") {
+          return {
+            kind: "succeeded",
+            authority: acquired.resultAuthority,
+            result: parseReplayResult<{
+              discardedPageSysId: string;
+              pages: PageRecord[];
+              pendingChanges: WorkspacePendingChangesReadModel;
+              workspaceStateRevision: number;
+            }>(acquired.resultJson)
+          };
+        }
+
+        claim = acquired.claim;
+        const currentPayload = claim.payload.kind === "discard_page" ? claim.payload : payload;
+        const executorKey = acquired.executorKey;
+        const restoreContent = currentPayload.category === "Modified" || currentPayload.category === "Modified · Moved";
+        const restoreHierarchy = currentPayload.category === "Moved" || currentPayload.category === "Modified · Moved";
+        if (claim.phase === "claimed") {
+          const prepared = discardPageChanges(loaded.state, {
+            expectedChangeSetId: input.authority.changeSetId,
+            expectedChangeSetRevision: input.authority.changeSetRevision
+          }, {
+            pageId,
+            actorId: dependencies.currentUserSysId(),
+            changedOn: dependencies.currentTimestamp(),
+            targetAffectedPageIds: currentPayload.affectedPageIds,
+            targetCategory: currentPayload.category,
+            targetRemovalBatchId: currentPayload.removalBatchId ?? null
+          });
+          if (prepared.kind === "stale") {
+            return staleFailure(prepared.current);
+          }
+          if (prepared.kind === "invalid") {
+            return { kind: "failed", code: "invalid", errorMessage: prepared.reason, status: 400 };
+          }
+          claim = requireClaimOwner(claim, executorKey);
+          const workspaceSnapshotPages = loadSnapshotPages(cleanText(loaded.workspace.publishedSnapshotSetSysId));
+          const snapshotPage = workspaceSnapshotPages.find((candidate) => candidate.pageId === pageId) ?? null;
+          if (currentPayload.category === "Added") {
+            deleteDraftPageRecords(currentPayload.affectedPageIds);
+            claim = persistClaimProgress(dependencies, claim, {
+              appliedOn: dependencies.currentTimestamp(),
+              phase: "page_persisted"
+            }, executorKey);
+            triggerDurablePhase(dependencies, "mutation_page_persisted", { generationKey, kind: "discard_page", pageSysId: pageId });
+          } else if (currentPayload.category === "Removed") {
+            replaceRemovalBatches(prepared.state);
+            claim = persistClaimProgress(dependencies, claim, {
+              appliedOn: dependencies.currentTimestamp(),
+              phase: "removal_persisted"
+            }, executorKey);
+            triggerDurablePhase(dependencies, "mutation_removal_persisted", {
+              batchKey: currentPayload.removalBatchId,
+              generationKey,
+              kind: "discard_page",
+              pageSysId: pageId
+            });
+          } else {
+            if (!snapshotPage) {
+              return { kind: "failed", code: "invalid", errorMessage: "This page no longer has pending changes to undo.", status: 409 };
+            }
+            restoreDraftPageFromSnapshot(pageId, snapshotPage, {
+              restoreContent,
+              restoreHierarchy,
+              publicationState: publicationStateForPendingCategory(deriveChangeCategory(prepared.state, pageId))
+            });
+            claim = persistClaimProgress(dependencies, claim, {
+              appliedOn: dependencies.currentTimestamp(),
+              phase: "page_persisted"
+            }, executorKey);
+            triggerDurablePhase(dependencies, "mutation_page_persisted", { generationKey, kind: "discard_page", pageSysId: pageId });
+          }
+        }
+
+        const recovered = loadWorkspaceState(input.workspace, dependencies);
+        let resultAuthority = claim.resultAuthority;
+        const recoveredAuthority = nextAuthority(recovered.state);
+        const preparedAuthority = preparedResultAuthority(claim);
+        if (!resultAuthority && claim.phase === "change_set_advancing" && authorityMatchesOrExceeds(recoveredAuthority, preparedAuthority)) {
+          resultAuthority = preparedAuthority;
+          claim = persistClaimProgress(dependencies, claim, {
+            appliedOn: claim.appliedOn ?? dependencies.currentTimestamp(),
+            phase: "change_set_persisted",
+            resultAuthority,
+            state: "applied"
+          }, null);
+        } else if (!resultAuthority && isExpectedNextAuthority(recoveredAuthority, input.authority)) {
+          resultAuthority = recoveredAuthority;
+          claim = persistClaimProgress(dependencies, claim, {
+            appliedOn: claim.appliedOn ?? dependencies.currentTimestamp(),
+            phase: "change_set_persisted",
+            resultAuthority,
+            state: "applied"
+          }, null);
+        }
+        if (!resultAuthority) {
+          claim = requireClaimOwner(claim, executorKey);
+          const changedOn = claim.appliedOn ?? dependencies.currentTimestamp();
+          const changed = discardPageChanges(recovered.state, {
+            expectedChangeSetId: input.authority.changeSetId,
+            expectedChangeSetRevision: input.authority.changeSetRevision
+          }, {
+            pageId,
+            actorId: dependencies.currentUserSysId(),
+            changedOn,
+            targetAffectedPageIds: currentPayload.affectedPageIds,
+            targetCategory: currentPayload.category,
+            targetRemovalBatchId: currentPayload.removalBatchId ?? null
+          });
+          if (changed.kind === "stale") {
+            return staleFailure(changed.current);
+          }
+          if (changed.kind === "invalid") {
+            return { kind: "failed", code: "invalid", errorMessage: changed.reason, status: 400 };
+          }
+          const touchedPageIds = currentPayload.affectedPageIds.length > 0 ? currentPayload.affectedPageIds : changed.affectedPageIds;
+          for (const affectedPageId of touchedPageIds) {
+            refreshEntriesForPage(changed.state, affectedPageId);
+          }
+          persistMutatedState(changed.state, touchedPageIds);
+          if (currentPayload.category === "Removed") {
+            const publicationPageIds = new Set(
+              touchedPageIds.filter((affectedPageId) => changed.state.snapshotSets[0]?.pages.some((candidate) => candidate.pageId === affectedPageId))
+            );
+            for (const affectedPageId of publicationPageIds) {
+              writePagePublicationState(affectedPageId, publicationStateForPendingCategory(deriveChangeCategory(changed.state, affectedPageId)));
+            }
+          } else if (currentPayload.category !== "Added") {
+            writePagePublicationState(pageId, publicationStateForPendingCategory(deriveChangeCategory(changed.state, pageId)));
+          }
+          claim = persistClaimProgress(dependencies, claim, {
+            appliedOn: changedOn,
+            phase: "entry_persisted"
+          }, executorKey);
+          triggerDurablePhase(dependencies, "mutation_entry_persisted", { generationKey, kind: "discard_page", pageSysId: pageId });
+          const refreshedWorkspace = loadWorkspaceBySysId(cleanText(input.workspace.sysId)) ?? input.workspace;
+          const refreshedPages = this.listPages(refreshedWorkspace, "edit");
+          if (refreshedPages.kind !== "succeeded") {
+            return refreshedPages;
+          }
+          const refreshedPending = this.pendingChanges(refreshedWorkspace);
+          if (refreshedPending.kind !== "succeeded") {
+            return {
+              kind: "failed",
+              code: refreshedPending.code === "recovery_required" ? "recovery_required" : undefined,
+              currentChangeSetId: refreshedPending.currentChangeSetId,
+              currentChangeSetRevision: refreshedPending.currentChangeSetRevision,
+              errorMessage: refreshedPending.errorMessage,
+              recoveryCommandId: refreshedPending.recoveryCommandId,
+              status: refreshedPending.status
+            };
+          }
+          const persistedResult = {
+            discardedPageSysId: pageId,
+            pages: refreshedPages.pages,
+            pendingChanges: refreshedPending.pending,
+            workspaceStateRevision: typeof refreshedWorkspace.workspaceStateRevision === "number" ? refreshedWorkspace.workspaceStateRevision : 0
+          };
+          const persistedResultJson = stableSerialize(persistedResult);
+          claim = persistClaimProgress(dependencies, claim, {
+            appliedOn: changedOn,
+            phase: "change_set_advancing",
+            resultJson: persistedResultJson
+          }, executorKey);
+          claim = requireDurableChangeSetAdvancingMarker(claim, executorKey, persistedResultJson);
+          triggerDurablePhase(dependencies, "mutation_change_set_row_updated", {
+            batchKey: currentPayload.removalBatchId,
+            generationKey,
+            kind: "discard_page",
+            pageSysId: pageId
+          });
+          resultAuthority = preparedResultAuthority(claim);
+          claim = persistClaimProgress(dependencies, claim, {
+            appliedOn: changedOn,
+            phase: "change_set_persisted",
+            resultAuthority,
+            state: "applied"
+          }, null);
+          triggerDurablePhase(dependencies, "mutation_change_set_persisted", {
+            batchKey: currentPayload.removalBatchId,
+            generationKey,
+            kind: "discard_page",
+            pageSysId: pageId
+          });
+        }
+        if (claim.phase === "change_set_persisted" && resultAuthority) {
+          if (!claim.resultJson) {
+            const refreshedWorkspace = loadWorkspaceBySysId(cleanText(input.workspace.sysId)) ?? input.workspace;
+            const refreshedPages = this.listPages(refreshedWorkspace, "edit");
+            if (refreshedPages.kind !== "succeeded") {
+              return refreshedPages;
+            }
+            const refreshedPending = this.pendingChanges(refreshedWorkspace);
+            if (refreshedPending.kind !== "succeeded") {
+              return {
+                kind: "failed",
+                code: refreshedPending.code === "recovery_required" ? "recovery_required" : undefined,
+                currentChangeSetId: refreshedPending.currentChangeSetId,
+                currentChangeSetRevision: refreshedPending.currentChangeSetRevision,
+                errorMessage: refreshedPending.errorMessage,
+                recoveryCommandId: refreshedPending.recoveryCommandId,
+                status: refreshedPending.status
+              };
+            }
+            claim = {
+              ...claim,
+              resultJson: stableSerialize({
+                discardedPageSysId: pageId,
+                pages: refreshedPages.pages,
+                pendingChanges: refreshedPending.pending,
+                workspaceStateRevision: typeof refreshedWorkspace.workspaceStateRevision === "number" ? refreshedWorkspace.workspaceStateRevision : 0
+              })
+            };
+          }
+          claim = persistClaimProgress(dependencies, claim, {
+            appliedOn: claim.appliedOn ?? dependencies.currentTimestamp(),
+            phase: "result_persisted",
+            resultAuthority,
+            resultJson: claim.resultJson,
+            state: "applied"
+          }, null);
+          triggerDurablePhase(dependencies, "mutation_result_persisted", { generationKey, kind: "discard_page", pageSysId: pageId });
+        }
+        if (!claim.resultAuthority || !claim.resultJson) {
+          throw new Error("Recovered discard-page result could not be persisted.");
+        }
+        const replayed = parseReplayResult<{
+          discardedPageSysId: string;
+          pages: PageRecord[];
+          pendingChanges: WorkspacePendingChangesReadModel;
+          workspaceStateRevision: number;
+        }>(claim.resultJson);
+        claim = finalizeMutationClaim(dependencies, claim, claim.resultAuthority, replayed, null);
+        triggerDurablePhase(dependencies, "mutation_finalized", {
+          batchKey: currentPayload.removalBatchId,
+          generationKey,
+          kind: "discard_page",
+          pageSysId: pageId
+        });
+        return {
+          kind: "succeeded",
+          authority: claim.resultAuthority,
+          result: replayed
+        };
+      } catch (error) {
+        const errorMessage = cleanText(error instanceof Error ? error.message : error);
+        if (errorMessage === "The active draft generation changed. Reload before discarding again.") {
+          try {
+            const reloadedWorkspace = loadWorkspaceBySysId(cleanText(input.workspace.sysId)) ?? input.workspace;
+            return staleFailure(nextAuthority(loadWorkspaceState(reloadedWorkspace, dependencies).state));
+          } catch {
+            return {
+              kind: "failed",
+              code: "stale_generation",
+              errorMessage,
+              status: 409
+            };
+          }
+        }
+        return {
+          kind: "failed",
+          errorMessage: errorMessage || "Something went wrong while discarding changes to this page. No changes were discarded. Please try again.",
           status: 500
         };
       }

@@ -325,6 +325,16 @@ export type WorkspaceDiscardAllInput = {
   expectedChangeSetRevision?: number;
 };
 
+export type WorkspaceDiscardPageInput = {
+  workspaceSlug: string;
+  workspaceSysId: string;
+  pageSysId: string;
+  workspaceLeaseToken?: string;
+  workspaceAuthority?: WorkspaceEditLeaseGeneration;
+  expectedChangeSetId?: string;
+  expectedChangeSetRevision?: number;
+};
+
 export type WorkspacePublishSucceeded = WorkspaceEditLeaseGeneration & {
   pages: WorkspacePageRecord[];
   pendingChanges: WorkspacePendingChangesSucceeded;
@@ -365,6 +375,26 @@ export type WorkspaceDiscardAllFailed = {
 };
 
 export type WorkspaceDiscardAllResult = WorkspaceDiscardAllSucceeded | WorkspaceDiscardAllFailed;
+
+export type WorkspaceDiscardPageSucceeded = WorkspaceEditLeaseGeneration & {
+  discardedPageSysId: string;
+  pages: WorkspacePageRecord[];
+  pendingChanges: WorkspacePendingChangesSucceeded;
+  state: "succeeded";
+  workspaceStateRevision: number;
+};
+
+export type WorkspaceDiscardPageFailed = {
+  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "recovery_required" | "transient";
+  currentChangeSetId?: string;
+  currentChangeSetRevision?: number;
+  errorMessage: string;
+  recoveryCommandId?: string;
+  retryable?: boolean;
+  state: "failed";
+};
+
+export type WorkspaceDiscardPageResult = WorkspaceDiscardPageSucceeded | WorkspaceDiscardPageFailed;
 
 export type PageDeleteSucceeded = {
   changeSetId?: string;
@@ -501,6 +531,7 @@ export type ServiceNowClient = {
   releaseWorkspaceEditLease?: (input: WorkspaceEditLeaseReferenceInput & { keepalive?: boolean }) => Promise<WorkspaceEditLeaseReleaseResult>;
   getWorkspaceEditLeaseStatus?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspaceEditLeaseStatusResult>;
   getWorkspacePendingChanges?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspacePendingChangesResult>;
+  discardPageWorkspace?: (input: WorkspaceDiscardPageInput) => Promise<WorkspaceDiscardPageResult>;
   discardAllWorkspace?: (input: WorkspaceDiscardAllInput) => Promise<WorkspaceDiscardAllResult>;
   publishWorkspace?: (input: WorkspacePublishInput) => Promise<WorkspacePublishResult>;
   getPageEditLockStatus: (input: PageEditLockReferenceInput) => Promise<PageEditLockStatusResult>;
