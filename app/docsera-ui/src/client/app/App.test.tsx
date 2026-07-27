@@ -2395,6 +2395,193 @@ describe("App live and edit routing", () => {
     expect(document.querySelector(".docsera-header__publish-toast")).toBeNull();
   }, 15000);
 
+  it("discards all pending changes, installs the returned authority, and falls back from a discarded added page", async () => {
+    const settle = async () => {
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    };
+    const editPages = [
+      createPageRecord({
+        draftTitle: "Overview Draft",
+        publicationState: "published_with_unpublished_changes"
+      }),
+      createPageRecord({
+        sysId: "page-002",
+        draftTitle: "New Guide",
+        draftSlug: "new-guide",
+        draftSlugNormalized: "new-guide",
+        publishedTitle: null,
+        publishedSlug: null,
+        publishedSlugNormalized: null,
+        publicationState: "draft"
+      })
+    ];
+    const restoredPages = [
+      createPageRecord({
+        draftTitle: "Overview",
+        publicationState: "published"
+      })
+    ];
+    const discardAllWorkspace = vi.fn(async () => ({
+      changeSetId: "change-set-successor",
+      changeSetRevision: 0,
+      pages: restoredPages,
+      pendingChanges: {
+        affectedPageCount: 0,
+        changeSetId: "change-set-successor",
+        changeSetRevision: 0,
+        rows: [],
+        state: "succeeded" as const,
+        workspaceSysId: "workspace-001"
+      },
+      state: "succeeded" as const,
+      workspaceStateRevision: 5
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=new-guide", {
+      discardAllWorkspace,
+      getWorkspacePendingChanges: vi.fn(async () => createPendingChangesResult([
+        {
+          attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+          category: "Added",
+          firstPendingSequence: 2,
+          lastChangedOn: "2026-07-21 10:05:00",
+          navigable: true,
+          pageSysId: "page-002",
+          title: "New Guide"
+        },
+        {
+          attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+          category: "Modified",
+          firstPendingSequence: 1,
+          lastChangedOn: "2026-07-21 10:00:00",
+          navigable: true,
+          pageSysId: "page-001",
+          title: "Overview"
+        }
+      ])),
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+        createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? editPages : restoredPages)
+      )
+    });
+
+    expect(await screen.findByRole("heading", { name: "New Guide" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Changes Center" })).getByRole("button", { name: "Discard all" }));
+    const discardModal = await screen.findByRole("dialog", { name: "Discard all changes" });
+    expect(discardModal.closest(".docsera-header")).toBeNull();
+    expect(discardModal.closest(".docsera-modal")).toHaveClass("docsera-modal--top-biased");
+    fireEvent.click(within(discardModal).getByRole("button", { name: "Discard all" }));
+
+    await settle();
+    expect(discardAllWorkspace).toHaveBeenCalledTimes(1);
+    expect(discardAllWorkspace).toHaveBeenCalledWith(expect.objectContaining({
+      commandId: expect.any(String),
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 7 }),
+      workspaceLeaseToken: "workspace-lease-token",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
+    expect(screen.queryByRole("dialog", { name: "Discard all changes" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Changes Center" })).toBeNull();
+    expect(screen.queryByText("Workspace changes published.")).toBeNull();
+    expect(document.querySelector(".docsera-header__publish-toast")).toBeNull();
+  }, 15000);
+
+  it("keeps discard recovery blocking writes after cancel or reload and reuses the recovery command on explicit retry", async () => {
+    const settle = async () => {
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+    };
+    const createPage = vi.fn(async (): Promise<PageCreateResult> => ({
+      code: "failed",
+      errorMessage: "createPage should stay blocked during discard recovery",
+      state: "failed"
+    }));
+    const getWorkspacePendingChanges = vi.fn(async (): Promise<WorkspacePendingChangesResult> => ({
+      affectedPageCount: 2,
+      code: "recovery_required",
+      currentChangeSetId: "change-set-successor",
+      currentChangeSetRevision: 0,
+      errorMessage: "Discard recovery is incomplete. Retry discard all to finish restoring this workspace before making other changes.",
+      recoveryCommandId: "discard-001",
+      state: "failed"
+    }));
+    const discardAllWorkspace = vi.fn(async () => ({
+      changeSetId: "change-set-successor-2",
+      changeSetRevision: 0,
+      pages: [createPageRecord()],
+      pendingChanges: {
+        affectedPageCount: 0,
+        changeSetId: "change-set-successor-2",
+        changeSetRevision: 0,
+        rows: [],
+        state: "succeeded" as const,
+        workspaceSysId: "workspace-001"
+      },
+      state: "succeeded" as const,
+      workspaceStateRevision: 6
+    }));
+
+    const firstView = renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      createPage,
+      discardAllWorkspace,
+      getWorkspacePendingChanges
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await settle();
+    expect(discardAllWorkspace).toHaveBeenCalledTimes(0);
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Changes Center" })).getByRole("button", { name: "Discard all" }));
+    const firstDiscardModal = await screen.findByRole("dialog", { name: "Discard all changes" });
+    expect(firstDiscardModal.closest(".docsera-header")).toBeNull();
+    expect(firstDiscardModal.closest(".docsera-modal")).toHaveClass("docsera-modal--top-biased");
+    expect(firstDiscardModal).toHaveTextContent("Are you sure you want to discard 2 changes? This action cannot be undone.");
+    fireEvent.click(within(firstDiscardModal).getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog", { name: "Discard all changes" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "New page" })[0]).toBeDisabled();
+    firstView.unmount();
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      createPage,
+      discardAllWorkspace,
+      getWorkspacePendingChanges
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await settle();
+    expect(discardAllWorkspace).toHaveBeenCalledTimes(0);
+    expect(getWorkspacePendingChanges.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByRole("button", { name: "New page" })[0]).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Changes Center" })).getByRole("button", { name: "Discard all" }));
+    const secondDiscardModal = await screen.findByRole("dialog", { name: "Discard all changes" });
+    expect(secondDiscardModal.closest(".docsera-header")).toBeNull();
+    expect(secondDiscardModal).toHaveTextContent("Are you sure you want to discard 2 changes? This action cannot be undone.");
+    fireEvent.click(within(secondDiscardModal).getByRole("button", { name: "Retry discard all" }));
+
+    await settle();
+    expect(discardAllWorkspace).toHaveBeenCalledTimes(1);
+    expect(discardAllWorkspace).toHaveBeenCalledWith(expect.objectContaining({
+      commandId: "discard-001",
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-successor", changeSetRevision: 0 }),
+      workspaceLeaseToken: "workspace-lease-token",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
+    expect(screen.queryByRole("dialog", { name: "Changes Center" })).toBeNull();
+  }, 15000);
+
   it("blocks Page Settings, inline create, and delete persistence until stale refresh succeeds", async () => {
     const refreshDeferred = createDeferred<PageListResult>();
     let editListCount = 0;

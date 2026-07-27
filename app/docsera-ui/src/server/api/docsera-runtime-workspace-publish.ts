@@ -79,10 +79,23 @@ export async function process(request: RequestLike, response: ResponseLike) {
       response.setStatus?.(result.status);
       response.setBody({
         error: {
-          code: result.code === "stale_generation" ? "stale_generation" : result.code === "invalid" ? "invalid" : "publish_failed",
+          code:
+            result.code === "stale_generation"
+              ? "stale_generation"
+              : result.code === "invalid"
+                ? "invalid"
+                : result.code === "recovery_required"
+                  ? "recovery_required"
+                  : "publish_failed",
           message: result.errorMessage,
           ...(typeof result.currentChangeSetId === "string" && typeof result.currentChangeSetRevision === "number"
             ? { currentChangeSetId: result.currentChangeSetId, currentChangeSetRevision: result.currentChangeSetRevision }
+            : {}),
+          ...(typeof result.affectedPageCount === "number"
+            ? { affectedPageCount: result.affectedPageCount }
+            : {}),
+          ...(typeof result.recoveryCommandId === "string" && result.recoveryCommandId
+            ? { recoveryCommandId: result.recoveryCommandId }
             : {})
         }
       });

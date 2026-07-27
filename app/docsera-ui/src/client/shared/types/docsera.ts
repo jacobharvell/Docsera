@@ -138,10 +138,12 @@ export type PageCreateSucceeded = {
 };
 
 export type PageCreateFailed = {
-  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "transient";
+  affectedPageCount?: number;
+  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "recovery_required" | "transient";
   currentChangeSetId?: string;
   currentChangeSetRevision?: number;
   errorMessage: string;
+  recoveryCommandId?: string;
   state: "failed";
 };
 
@@ -173,11 +175,13 @@ export type PageBodySaveSucceeded = {
 };
 
 export type PageBodySaveFailed = {
-  code?: "capacity" | "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "network" | "persistence_invariant" | "transient";
+  affectedPageCount?: number;
+  code?: "capacity" | "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "network" | "persistence_invariant" | "recovery_required" | "transient";
   currentChangeSetId?: string;
   currentChangeSetRevision?: number;
   currentRevision?: number;
   errorMessage: string;
+  recoveryCommandId?: string;
   retryable?: boolean;
   state: "failed";
 };
@@ -230,10 +234,12 @@ export type PageSettingsSaveSucceeded = {
 };
 
 export type PageSettingsSaveFailed = {
-  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "transient";
+  affectedPageCount?: number;
+  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "recovery_required" | "transient";
   currentChangeSetId?: string;
   currentChangeSetRevision?: number;
   errorMessage: string;
+  recoveryCommandId?: string;
   state: "failed";
 };
 
@@ -288,14 +294,28 @@ export type WorkspacePendingChangesSucceeded = WorkspaceEditLeaseGeneration & {
   workspaceSysId: string;
 };
 export type WorkspacePendingChangesFailed = {
-  code?: "forbidden" | "lock_lost" | "not_found" | "transient";
+  affectedPageCount?: number;
+  code?: "forbidden" | "lock_lost" | "not_found" | "recovery_required" | "transient";
+  currentChangeSetId?: string;
+  currentChangeSetRevision?: number;
   errorMessage: string;
+  recoveryCommandId?: string;
   retryable?: boolean;
   state: "failed";
 };
 export type WorkspacePendingChangesResult = WorkspacePendingChangesSucceeded | WorkspacePendingChangesFailed;
 
 export type WorkspacePublishInput = {
+  commandId: string;
+  workspaceSlug: string;
+  workspaceSysId: string;
+  workspaceLeaseToken?: string;
+  workspaceAuthority?: WorkspaceEditLeaseGeneration;
+  expectedChangeSetId?: string;
+  expectedChangeSetRevision?: number;
+};
+
+export type WorkspaceDiscardAllInput = {
   commandId: string;
   workspaceSlug: string;
   workspaceSysId: string;
@@ -314,15 +334,37 @@ export type WorkspacePublishSucceeded = WorkspaceEditLeaseGeneration & {
 };
 
 export type WorkspacePublishFailed = {
-  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "transient";
+  affectedPageCount?: number;
+  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "recovery_required" | "transient";
   currentChangeSetId?: string;
   currentChangeSetRevision?: number;
   errorMessage: string;
+  recoveryCommandId?: string;
   retryable?: boolean;
   state: "failed";
 };
 
 export type WorkspacePublishResult = WorkspacePublishSucceeded | WorkspacePublishFailed;
+
+export type WorkspaceDiscardAllSucceeded = WorkspaceEditLeaseGeneration & {
+  pages: WorkspacePageRecord[];
+  pendingChanges: WorkspacePendingChangesSucceeded;
+  state: "succeeded";
+  workspaceStateRevision: number;
+};
+
+export type WorkspaceDiscardAllFailed = {
+  affectedPageCount?: number;
+  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "recovery_required" | "transient";
+  currentChangeSetId?: string;
+  currentChangeSetRevision?: number;
+  errorMessage: string;
+  recoveryCommandId?: string;
+  retryable?: boolean;
+  state: "failed";
+};
+
+export type WorkspaceDiscardAllResult = WorkspaceDiscardAllSucceeded | WorkspaceDiscardAllFailed;
 
 export type PageDeleteSucceeded = {
   changeSetId?: string;
@@ -332,10 +374,12 @@ export type PageDeleteSucceeded = {
 };
 
 export type PageDeleteFailed = {
-  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "transient";
+  affectedPageCount?: number;
+  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "recovery_required" | "transient";
   currentChangeSetId?: string;
   currentChangeSetRevision?: number;
   errorMessage: string;
+  recoveryCommandId?: string;
   state: "failed";
 };
 
@@ -361,10 +405,12 @@ export type PageMoveSucceeded = {
 };
 
 export type PageMoveFailed = {
-  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "transient";
+  affectedPageCount?: number;
+  code?: "conflict" | "failed" | "forbidden" | "invalid" | "lock_lost" | "recovery_required" | "transient";
   currentChangeSetId?: string;
   currentChangeSetRevision?: number;
   errorMessage: string;
+  recoveryCommandId?: string;
   state: "failed";
 };
 
@@ -455,6 +501,7 @@ export type ServiceNowClient = {
   releaseWorkspaceEditLease?: (input: WorkspaceEditLeaseReferenceInput & { keepalive?: boolean }) => Promise<WorkspaceEditLeaseReleaseResult>;
   getWorkspaceEditLeaseStatus?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspaceEditLeaseStatusResult>;
   getWorkspacePendingChanges?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspacePendingChangesResult>;
+  discardAllWorkspace?: (input: WorkspaceDiscardAllInput) => Promise<WorkspaceDiscardAllResult>;
   publishWorkspace?: (input: WorkspacePublishInput) => Promise<WorkspacePublishResult>;
   getPageEditLockStatus: (input: PageEditLockReferenceInput) => Promise<PageEditLockStatusResult>;
   acquirePageEditLock: (input: PageEditLockReferenceInput) => Promise<PageEditLockAcquireResult>;

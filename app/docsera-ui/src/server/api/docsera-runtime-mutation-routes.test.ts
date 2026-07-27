@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   persistence: {
     createPage: vi.fn(),
     deletePage: vi.fn(),
+    discardAllWorkspace: vi.fn(),
     listPages: vi.fn(),
     movePage: vi.fn(),
     pendingChanges: vi.fn(),
@@ -68,6 +69,7 @@ import { process as processCreatePage } from "./docsera-runtime-create-page.ts";
 import { process as processMovePage } from "./docsera-runtime-page-move.ts";
 import { process as processPendingChanges } from "./docsera-runtime-workspace-pending-changes.ts";
 import { process as processSavePageBody } from "./docsera-runtime-page-save.ts";
+import { process as processWorkspaceDiscardAll } from "./docsera-runtime-workspace-discard-all.ts";
 import { process as processWorkspacePublish } from "./docsera-runtime-workspace-publish.ts";
 
 function responseRecorder() {
@@ -91,6 +93,7 @@ describe("docsera runtime mutation routes", () => {
     mocks.lease.verifyWorkspaceEditLease.mockReset();
     mocks.persistence.createPage.mockReset();
     mocks.persistence.deletePage.mockReset();
+    mocks.persistence.discardAllWorkspace.mockReset();
     mocks.persistence.listPages.mockReset();
     mocks.persistence.movePage.mockReset();
     mocks.persistence.pendingChanges.mockReset();
@@ -387,6 +390,47 @@ describe("docsera runtime mutation routes", () => {
     });
   });
 
+  it("returns recovery-required pending changes with successor authority and the persisted recovery command", async () => {
+    mocks.lease.validateWorkspaceEditLeaseForRead.mockResolvedValue({
+      kind: "held",
+      leaseToken: "workspace-lease-token",
+      heartbeatIntervalMs: 60_000,
+      staleAfterMs: 300_000,
+      changeSetId: "change-set-successor",
+      changeSetRevision: 0,
+      workspaceStateRevision: 7
+    });
+    mocks.persistence.pendingChanges.mockReturnValue({
+      code: "recovery_required",
+      currentChangeSetId: "change-set-successor",
+      currentChangeSetRevision: 0,
+      errorMessage: "Discard recovery is incomplete.",
+      kind: "failed",
+      recoveryCommandId: "discard-001",
+      status: 409
+    });
+    const response = responseRecorder();
+
+    await processPendingChanges({
+      body: {
+        workspaceSysId: "workspace-001",
+        workspaceSlug: "product-docs",
+        workspaceLeaseToken: "workspace-lease-token"
+      }
+    }, response);
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({
+      error: {
+        code: "recovery_required",
+        currentChangeSetId: "change-set-successor",
+        currentChangeSetRevision: 0,
+        message: "Discard recovery is incomplete.",
+        recoveryCommandId: "discard-001"
+      }
+    });
+  });
+
   it("publishes a workspace only after lease and exact mutation authority verification", async () => {
     mocks.lease.verifyWorkspaceEditLease.mockResolvedValue({
       kind: "held",
@@ -472,6 +516,130 @@ describe("docsera runtime mutation routes", () => {
         workspaceStateRevision: 8,
         changeSetId: "change-set-successor",
         changeSetRevision: 0
+      }
+    });
+  });
+
+  it("discards a workspace change set only after lease and exact mutation authority verification", async () => {
+    mocks.lease.verifyWorkspaceEditLease.mockResolvedValue({
+      kind: "held",
+      leaseToken: "workspace-lease-token",
+      heartbeatIntervalMs: 60_000,
+      staleAfterMs: 300_000,
+      changeSetId: "change-set-002",
+      changeSetRevision: 3,
+      workspaceStateRevision: 7
+    });
+    mocks.lease.readWorkspaceMutationAuthority.mockReturnValue({
+      changeSetId: "change-set-001",
+      changeSetRevision: 2
+    });
+    mocks.persistence.discardAllWorkspace.mockReturnValue({
+      kind: "succeeded",
+      authority: {
+        changeSetId: "change-set-successor",
+        changeSetRevision: 0
+      },
+      result: {
+        pages: [{ sysId: "page-001", draftTitle: "Published Overview" }],
+        pendingChanges: {
+          affectedPageCount: 0,
+          changeSetId: "change-set-successor",
+          changeSetRevision: 0,
+          rows: [],
+          state: "succeeded",
+          workspaceSysId: "workspace-001"
+        },
+        workspaceStateRevision: 8
+      }
+    });
+    const response = responseRecorder();
+
+    await processWorkspaceDiscardAll({
+      body: {
+        commandId: "discard-001",
+        workspaceSysId: "workspace-001",
+        workspaceSlug: "product-docs",
+        workspaceLeaseToken: "workspace-lease-token",
+        expectedChangeSetId: "change-set-001",
+        expectedChangeSetRevision: 2
+      }
+    }, response);
+
+    expect(mocks.persistence.discardAllWorkspace).toHaveBeenCalledWith({
+      authority: {
+        changeSetId: "change-set-001",
+        changeSetRevision: 2
+      },
+      commandId: "discard-001",
+      workspace: expect.objectContaining({ sysId: "workspace-001" })
+    });
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      result: {
+        mode: "servicenow",
+        pages: [{ sysId: "page-001", draftTitle: "Published Overview" }],
+        pendingChanges: {
+          affectedPageCount: 0,
+          changeSetId: "change-set-successor",
+          changeSetRevision: 0,
+          rows: [],
+          state: "succeeded",
+          workspaceSysId: "workspace-001"
+        },
+        workspaceStateRevision: 8,
+        changeSetId: "change-set-successor",
+        changeSetRevision: 0
+      }
+    });
+  });
+
+  it("surfaces recovery-required discard-all failures with the active successor authority", async () => {
+    mocks.lease.verifyWorkspaceEditLease.mockResolvedValue({
+      kind: "held",
+      leaseToken: "workspace-lease-token",
+      heartbeatIntervalMs: 60_000,
+      staleAfterMs: 300_000,
+      changeSetId: "change-set-002",
+      changeSetRevision: 3,
+      workspaceStateRevision: 7
+    });
+    mocks.lease.readWorkspaceMutationAuthority.mockReturnValue({
+      changeSetId: "change-set-001",
+      changeSetRevision: 2
+    });
+    mocks.persistence.discardAllWorkspace.mockReturnValue({
+      affectedPageCount: 4,
+      code: "recovery_required",
+      currentChangeSetId: "change-set-successor",
+      currentChangeSetRevision: 0,
+      errorMessage: "Discard recovery is incomplete.",
+      kind: "failed",
+      recoveryCommandId: "discard-001",
+      status: 409
+    });
+    const response = responseRecorder();
+
+    await processWorkspaceDiscardAll({
+      body: {
+        commandId: "discard-001",
+        workspaceSysId: "workspace-001",
+        workspaceSlug: "product-docs",
+        workspaceLeaseToken: "workspace-lease-token",
+        expectedChangeSetId: "change-set-001",
+        expectedChangeSetRevision: 2
+      }
+    }, response);
+
+    expect(response.status).toBe(409);
+    expect(response.body).toEqual({
+      error: {
+        affectedPageCount: 4,
+        code: "recovery_required",
+        currentChangeSetId: "change-set-successor",
+        currentChangeSetRevision: 0,
+        message: "Discard recovery is incomplete.",
+        recoveryCommandId: "discard-001"
       }
     });
   });

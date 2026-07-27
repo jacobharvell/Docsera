@@ -207,6 +207,109 @@ describe("service now client page creation", () => {
     }
   });
 
+  it("posts workspace discard-all commands with exact authority and normalizes restored state", async () => {
+    const workspaceAuthority = {
+      changeSetId: "change-set-001",
+      changeSetRevision: 9
+    };
+    const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/workspaces/discard-all");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        commandId: "discard-001",
+        expectedChangeSetId: "change-set-001",
+        expectedChangeSetRevision: 9,
+        workspaceLeaseToken: "workspace-lease-token",
+        workspaceSlug: "product-docs",
+        workspaceSysId: "workspace-001"
+      });
+      return createJsonResponse(200, {
+        result: {
+          changeSetId: "change-set-successor",
+          changeSetRevision: 0,
+          workspaceStateRevision: 5,
+          pendingChanges: {
+            affectedPageCount: 0,
+            changeSetId: "change-set-successor",
+            changeSetRevision: 0,
+            rows: [],
+            workspaceSysId: "workspace-001"
+          },
+          pages: [{
+            sysId: "page-001",
+            workspaceSysId: "workspace-001",
+            parentPageSysId: null,
+            siblingOrder: "1",
+            draftTitle: "Published Overview",
+            draftSlug: "published-overview",
+            draftSlugNormalized: "published-overview",
+            draftContentJson: { type: "doc", content: [] },
+            draftBodyText: "",
+            publishedTitle: "Published Overview",
+            publishedSlug: "published-overview",
+            publishedSlugNormalized: "published-overview",
+            publishedContentJson: { type: "doc", content: [] },
+            publishedBodyText: "",
+            publicationState: "published",
+            active: true
+          }]
+        }
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createServiceNowClient(createRuntime()).discardAllWorkspace!({
+      commandId: "discard-001",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001",
+      workspaceLeaseToken: "workspace-lease-token",
+      workspaceAuthority
+    });
+
+    expect(result.state).toBe("succeeded");
+    if (result.state === "succeeded") {
+      expect(result.changeSetId).toBe("change-set-successor");
+      expect(result.changeSetRevision).toBe(0);
+      expect(result.workspaceStateRevision).toBe(5);
+      expect(result.pendingChanges.affectedPageCount).toBe(0);
+      expect(result.pages[0]?.draftTitle).toBe("Published Overview");
+    }
+  });
+
+  it("normalizes recovery-required discard-all failures with successor authority and the persisted recovery command", async () => {
+    const fetchMock = vi.fn(async () =>
+      createJsonResponse(409, {
+        error: {
+          affectedPageCount: 4,
+          code: "recovery_required",
+          currentChangeSetId: "change-set-successor",
+          currentChangeSetRevision: 0,
+          message: "Discard recovery is incomplete.",
+          recoveryCommandId: "discard-001"
+        }
+      })
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createServiceNowClient(createRuntime()).discardAllWorkspace!({
+      commandId: "discard-001",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001",
+      workspaceLeaseToken: "workspace-lease-token",
+      workspaceAuthority
+    });
+
+    expect(result.state).toBe("failed");
+    if (result.state === "failed") {
+      expect(result.affectedPageCount).toBe(4);
+      expect(result.code).toBe("recovery_required");
+      expect(result.currentChangeSetId).toBe("change-set-successor");
+      expect(result.currentChangeSetRevision).toBe(0);
+      expect(result.recoveryCommandId).toBe("discard-001");
+      expect(result.retryable).toBe(true);
+      expect(result.errorMessage).toBe("Discard recovery is incomplete.");
+    }
+  });
+
   it("normalizes a double-wrapped live page list response", async () => {
     vi.stubGlobal(
       "fetch",

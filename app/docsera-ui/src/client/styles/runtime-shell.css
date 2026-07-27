@@ -372,7 +372,7 @@ html[data-docsera-theme="dark"] .docsera-launcher-screen {
 
 .docsera-launcher__header-action:hover,
 .docsera-launcher-state__primary:hover,
-.docsera-modal__primary:hover {
+.docsera-modal__primary:not(:disabled):hover {
   background: color-mix(in srgb, var(--docsera-primary) 95%, #ffffff 5%);
 }
 
@@ -749,6 +749,12 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
   backdrop-filter: blur(4px);
 }
 
+.docsera-modal--top-biased {
+  align-items: flex-start;
+  overflow-y: auto;
+  padding: clamp(40px, 8vh, 96px) 24px 24px;
+}
+
 .docsera-modal__panel {
   width: min(100%, 448px);
   border: 1px solid var(--docsera-border);
@@ -1120,7 +1126,7 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
   box-shadow: none;
 }
 
-.docsera-modal__primary--destructive:hover {
+.docsera-modal__primary--destructive:not(:disabled):hover {
   background: rgba(186, 26, 26, 0.14);
   border-color: rgba(186, 26, 26, 0.28);
 }
@@ -1766,7 +1772,51 @@ html[data-docsera-theme="dark"] .docsera-header__publish-toast {
   color: var(--docsera-text);
 }
 
-.docsera-changes-center__header span,
+.docsera-changes-center__header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.docsera-changes-center__header-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--docsera-text-soft);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  line-height: 1.2;
+  transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, opacity 0.16s ease;
+}
+
+.docsera-changes-center__header-action svg {
+  width: 16px;
+  height: 16px;
+}
+
+.docsera-changes-center__header-action:hover:not(:disabled),
+.docsera-changes-center__header-action:focus-visible {
+  border-color: color-mix(in srgb, var(--docsera-primary) 18%, var(--docsera-border) 82%);
+  background: var(--docsera-surface-muted);
+  color: var(--docsera-primary);
+}
+
+.docsera-changes-center__header-action:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--docsera-primary) 32%, transparent);
+  outline-offset: 2px;
+}
+
+.docsera-changes-center__header-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .docsera-changes-center__refreshing {
   color: var(--docsera-text-soft);
   font-weight: 500;
@@ -1848,7 +1898,7 @@ html[data-docsera-theme="dark"] .docsera-header__publish-toast {
 }
 
 .docsera-changes-center__retry,
-.docsera-changes-center__footer-link,
+.docsera-changes-center__header-action,
 .docsera-changes-center__footer-primary {
   display: inline-flex;
   align-items: center;
@@ -1866,6 +1916,25 @@ html[data-docsera-theme="dark"] .docsera-header__publish-toast {
   color: var(--docsera-primary);
 }
 
+.docsera-changes-center__header-action {
+  gap: 6px;
+  min-height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--docsera-text-soft);
+  font-weight: 650;
+}
+
+.docsera-changes-center__header-action svg {
+  width: 14px;
+  height: 14px;
+}
+
+.docsera-changes-center__header-action:not(:disabled):hover {
+  color: var(--docsera-primary);
+}
+
 .docsera-changes-center__blocked {
   border-top: 1px solid var(--docsera-border);
   background: color-mix(in srgb, var(--docsera-warning, #f59e0b) 8%, transparent);
@@ -1880,16 +1949,8 @@ html[data-docsera-theme="dark"] .docsera-header__publish-toast {
   border-top: 1px solid var(--docsera-border);
 }
 
-.docsera-changes-center__footer-link {
-  min-height: 32px;
-  padding: 0 4px;
-  border: 0;
-  background: transparent;
-  color: var(--docsera-text-soft);
-}
-
 .docsera-changes-center__footer-primary {
-  min-width: 132px;
+  width: 100%;
   min-height: 32px;
   padding: 0 14px;
   border: 1px solid transparent;
@@ -1897,7 +1958,7 @@ html[data-docsera-theme="dark"] .docsera-header__publish-toast {
   color: white;
 }
 
-.docsera-changes-center__footer-link:disabled,
+.docsera-changes-center__header-action:disabled,
 .docsera-changes-center__footer-primary:disabled {
   cursor: not-allowed;
   opacity: 0.5;

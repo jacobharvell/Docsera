@@ -28,6 +28,25 @@ Response contract:
 - validation, authorization, malformed-content, and persistence failures return safe non-success responses without exposing internal table names, sys_ids, ACL internals, or stacks
 - successful publish retains the Edit lease and leaves the user in Edit mode
 
+## Workspace Discard-All Contract
+
+Workspace discard-all is an explicit server-backed action exposed at `POST /api/x_82900_docsera/docsera_runtime/workspaces/discard-all`.
+
+Request contract:
+
+- the client may identify the target workspace by `workspaceSysId` or `workspaceSlug`
+- the client must provide the active workspace Edit lease token
+- the client must provide the exact current server-issued change-set authority as `expectedChangeSetId` and `expectedChangeSetRevision`
+- the client must provide a command id for durable discard-claim ownership
+- the client does not provide page rows, pending entries, removal membership, actor, timestamp, generation, or successor authority values
+
+Response contract:
+
+- success returns the restored Edit projection, empty pending-change model, workspace state revision, and successor active change-set authority
+- missing, invalid, expired, or mismatched Edit lease authority fails without discarding
+- stale change-set authority returns `409 stale_generation`
+- successful discard-all retains the Edit lease and leaves the user in Edit mode
+
 ## Workspace Snapshot Transition
 
 Workspace publish promotes the complete persisted pending set as one workspace transition.
@@ -59,6 +78,46 @@ Repo-side behavior:
 
 The guarded workspace selector update is the observable publication point. If a platform failure occurs after that point, the service treats the publish as committed, completes or recovers post-switch reconciliation where possible, and returns the authoritative published result instead of reporting a false retryable failure for a transition that is already visible.
 
+## Workspace Discard-All Transition
+
+Workspace discard-all restores the entire persisted pending Edit workspace back to the currently selected published snapshot as one workspace transition.
+
+Repo-side behavior:
+
+- the discard-all route validates authoring capability, Edit lease authority, and mutation authority before entering the discard persistence boundary
+- the persistence service validates the complete persisted pending set before any selector switch and creates or reuses one durable discard claim for the exact `{workspace, source change-set id, source change-set revision, command id}`
+- the successor active change set is created with revision `0` and `recovery_state = staged`, not ready-for-authoring
+- before the guarded selector switch, the original pending change set, removal rows, and Edit projection remain authoritative; a failure leaves that source generation intact
+- the guarded workspace selector switch changes only the active pending change set, preserving the current published snapshot selector and Live projection
+- immediately after the selector switch, the successor change set is marked with a durable discard recovery state and ordinary persisted mutations are rejected until recovery completes
+- every post-switch recovery path idempotently converges the source change set to `superseded`, with the discard command correlation id and finalized timestamp persisted before recovery can become ready
+- post-switch reconciliation restores draft page title, slug, content, hierarchy, sibling order, publication state, and active state from the selected published snapshot
+- draft-only Added pages are deleted, pending change-entry rows are cleared, and removal overlays are removed for the discarded generation with checked update/delete outcomes at each step
+- the replay-safe discard result is durably persisted after source supersession and reconciliation but before the successor recovery marker can clear, so the successor never becomes writable while the claim could still rerun destructive cleanup
+- if replay-safe result persistence fails, or if clearing the final successor recovery marker fails, the workspace remains recovery-blocked and only an explicit retry of the same command may continue
+- the client installs only the returned successor authority; it does not predict, increment, repair, or manufacture generations
+
+The guarded workspace selector update is the observable discard point. Until the user explicitly retries a retryable ambiguous discard, the client never replays discard-all automatically.
+
+## Workspace Discard Recovery Invariant
+
+Discard-all now has one durable post-commit recovery state instead of an ambiguous empty successor generation.
+
+Repo-side behavior:
+
+- once the authoritative selector switch has occurred, the selected published snapshot remains unchanged and the successor generation is not writable while discard recovery is incomplete
+- pending-changes reads return one stable `recovery_required` result with the active successor authority, the persisted discard command identity, and the original affected-page count instead of fabricating a stale-generation error
+- page body saves, page settings saves, page create, page move, page delete, workspace publish, and another discard-all all reject against that incomplete recovery state
+- explicit Retry may resume only the same discard command id against the same workspace and source generation; competing command ids or stale source authority lose
+- Cancel may close the modal, but it does not clear the durable recovery marker or reopen ordinary authoring
+- page load, pending refresh, lease heartbeat, and other background activity do not automatically replay discard-all
+- the durable recovery marker clears only after published-row restoration, draft-only Added-page deletion, pending-entry deletion, removal cleanup, and replay-safe result persistence have all completed successfully
+- once replay-safe result persistence has succeeded, same-command retry may only clear the remaining recovery marker, finalize the durable claim, and return the stored result; it must not restore page rows, delete pages, or clean overlays again
+- completed-command replay cannot overwrite later authoring because later writes advance newer change-set claims while the completed discard command can only return its stored result for the original source generation
+- the original affected-page count is stored with the discard claim and reused through recovery-required responses, hard-reload reconstruction, and modal reopen flows; it is not recalculated from partially cleaned recovery state
+
+Discarded row data cannot reappear because the server does not merely hide old rows in the current projection. Before the successor becomes writable, reconciliation restores the published draft fields onto surviving page rows, deletes draft-only Added rows, and clears the discarded generation's pending/removal overlays. Later body-only, settings-only, move, create, delete, publish, or discard commands therefore start from a fully restored published baseline instead of from stale pre-discard row state.
+
 ## Workspace Client Workflow
 
 Workspace publish begins only from the Changes Center footer. The header Publish control opens the Changes Center and does not submit the command.
@@ -67,11 +126,14 @@ Client behavior:
 
 - while publish is in flight, the Changes Center remains open
 - the footer Publish action is disabled, retains the visible `Publish` label, and shows a spinner to the left of that label
-- discard actions, new authoring mutations, and Live/Edit switching are disabled while publishing
+- the Changes Center header owns the `Discard all` text/icon action while the footer owns only the full-width `Publish` action
+- discard actions, new authoring mutations, and Live/Edit switching are disabled while publish or discard-all is in flight
 - ordinary page navigation remains available where it does not close the publishing Changes Center
 - success installs the returned server authority, refreshes the Edit projection and pending model, keeps the Edit lease, keeps the workspace in Edit mode, closes the Changes Center, and shows a compact header-adjacent toast instead of a page-content notice
 - failure keeps the Changes Center open, preserves pending changes, preserves the previous published snapshot, shows a concise error, and allows retry for retryable failures
 - ambiguous or retryable publish recovery reuses the same command identity only after an explicit user retry action, and the client never automatically replays Publish
+- discard-all opens the shared destructive modal, keeps the Changes Center open behind the modal, blocks workspace interaction while in flight, replaces the Edit projection with the returned restored projection on success, and closes without showing a success toast
+- ambiguous or retryable discard-all recovery reuses the same command identity only after an explicit user retry action, and the client never automatically replays discard-all
 
 ## PDI and Platform Notes
 

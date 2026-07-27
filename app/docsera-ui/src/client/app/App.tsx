@@ -51,6 +51,7 @@ import type {
   WorkspaceCreateResult,
   WorkspaceListResult,
   WorkspaceEditLeaseHeld,
+  WorkspaceDiscardAllResult,
   WorkspacePendingChangesResult,
   WorkspacePublishResult,
   WorkspacePageRecord,
@@ -108,6 +109,31 @@ type WorkspacePublishState =
       commandId?: string;
       contextKey: string;
       errorMessage: string;
+      retryable: boolean;
+      sourceChangeSetId: string;
+      sourceChangeSetRevision: number;
+      status: "error";
+      workspaceSlug: string;
+      workspaceSysId: string;
+    };
+
+type WorkspaceDiscardAllState =
+  | { status: "idle" }
+  | {
+      commandId: string;
+      contextKey: string;
+      sourceChangeSetId: string;
+      sourceChangeSetRevision: number;
+      status: "discarding";
+      workspaceSlug: string;
+      workspaceSysId: string;
+    }
+  | {
+      commandId?: string;
+      affectedPageCount?: number;
+      contextKey: string;
+      errorMessage: string;
+      recoveryRequired: boolean;
       retryable: boolean;
       sourceChangeSetId: string;
       sourceChangeSetRevision: number;
@@ -852,6 +878,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [workspacePagesState, setWorkspacePagesState] = useState<WorkspacePagesState>({ status: "idle" });
   const [pendingChangesState, setPendingChangesState] = useState<PendingChangesState>({ status: "idle" });
   const [workspacePublishState, setWorkspacePublishState] = useState<WorkspacePublishState>({ status: "idle" });
+  const [workspaceDiscardAllState, setWorkspaceDiscardAllState] = useState<WorkspaceDiscardAllState>({ status: "idle" });
   const [workspacePublishToastState, setWorkspacePublishToastState] = useState<WorkspacePublishToastState | null>(null);
   const [staleRefreshState, setStaleRefreshState] = useState<StaleRefreshState>({ status: "idle" });
   const [workspaceSettingsNotice, setWorkspaceSettingsNotice] = useState(false);
@@ -1713,18 +1740,33 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       : pendingChangesState.status === "error" && pendingChangesState.previous
         ? pendingChangesState.previous
         : null;
+  const currentWorkspaceCommandAuthority = currentWorkspaceMutationAuthority();
+  const currentWorkspaceCommandSourceChangeSetId =
+    currentWorkspaceCommandAuthority?.changeSetId ?? (pendingChangesResult?.state === "succeeded" ? pendingChangesResult.changeSetId : "");
+  const currentWorkspaceCommandSourceChangeSetRevision =
+    currentWorkspaceCommandAuthority?.changeSetRevision ?? (pendingChangesResult?.state === "succeeded" ? pendingChangesResult.changeSetRevision : -1);
+  const currentWorkspaceCommandContextKey = currentWorkspaceMutationContextKey({ scope: "workspace" });
+  const workspaceDiscardAllRecoveryRequired =
+    route.mode === "workspace" &&
+    workspaceDiscardAllState.status === "error" &&
+    workspaceDiscardAllState.recoveryRequired &&
+    workspaceDiscardAllState.workspaceSlug === currentWorkspaceSlug &&
+    workspaceDiscardAllState.workspaceSysId === cleanText(workspaceStateData?.sysId) &&
+    workspaceDiscardAllState.contextKey === currentWorkspaceCommandContextKey &&
+    workspaceDiscardAllState.sourceChangeSetId === currentWorkspaceCommandSourceChangeSetId &&
+    workspaceDiscardAllState.sourceChangeSetRevision === currentWorkspaceCommandSourceChangeSetRevision;
   const workspacePublishInProgress =
     route.mode === "workspace" &&
     workspacePublishState.status === "publishing" &&
     workspacePublishState.workspaceSlug === currentWorkspaceSlug &&
     workspacePublishState.workspaceSysId === cleanText(workspaceStateData?.sysId);
-  const currentWorkspacePublishAuthority = currentWorkspaceMutationAuthority();
-  const currentWorkspacePublishSourceChangeSetId =
-    currentWorkspacePublishAuthority?.changeSetId ?? (pendingChangesResult?.state === "succeeded" ? pendingChangesResult.changeSetId : "");
-  const currentWorkspacePublishSourceChangeSetRevision =
-    currentWorkspacePublishAuthority?.changeSetRevision ?? (pendingChangesResult?.state === "succeeded" ? pendingChangesResult.changeSetRevision : -1);
-  const currentWorkspacePublishContextKey = currentWorkspaceMutationContextKey({ scope: "workspace" });
-  const workspaceCommandBlocksCurrentWorkspaceWrites = workspacePublishInProgress;
+  const workspaceDiscardAllInProgress =
+    route.mode === "workspace" &&
+    workspaceDiscardAllState.status === "discarding" &&
+    workspaceDiscardAllState.workspaceSlug === currentWorkspaceSlug &&
+    workspaceDiscardAllState.workspaceSysId === cleanText(workspaceStateData?.sysId);
+  const workspaceCommandBlocksCurrentWorkspaceWrites =
+    workspacePublishInProgress || workspaceDiscardAllInProgress || workspaceDiscardAllRecoveryRequired;
   useEffect(() => {
     if (workspacePublishState.status === "idle") {
       return;
@@ -1734,21 +1776,47 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       activeWorkspaceMode === "edit" &&
       workspacePublishState.workspaceSlug === currentWorkspaceSlug &&
       workspacePublishState.workspaceSysId === cleanText(workspaceStateData?.sysId) &&
-      workspacePublishState.contextKey === currentWorkspacePublishContextKey &&
-      currentWorkspacePublishSourceChangeSetId === workspacePublishState.sourceChangeSetId &&
-      currentWorkspacePublishSourceChangeSetRevision === workspacePublishState.sourceChangeSetRevision
+      workspacePublishState.contextKey === currentWorkspaceCommandContextKey &&
+      currentWorkspaceCommandSourceChangeSetId === workspacePublishState.sourceChangeSetId &&
+      currentWorkspaceCommandSourceChangeSetRevision === workspacePublishState.sourceChangeSetRevision
     ) {
       return;
     }
     setWorkspacePublishState({ status: "idle" });
   }, [
     activeWorkspaceMode,
-    currentWorkspacePublishContextKey,
-    currentWorkspacePublishSourceChangeSetId,
-    currentWorkspacePublishSourceChangeSetRevision,
+    currentWorkspaceCommandContextKey,
+    currentWorkspaceCommandSourceChangeSetId,
+    currentWorkspaceCommandSourceChangeSetRevision,
     currentWorkspaceSlug,
     route.mode,
     workspacePublishState,
+    workspaceStateData?.sysId
+  ]);
+  useEffect(() => {
+    if (workspaceDiscardAllState.status === "idle") {
+      return;
+    }
+    if (
+      route.mode === "workspace" &&
+      activeWorkspaceMode === "edit" &&
+      workspaceDiscardAllState.workspaceSlug === currentWorkspaceSlug &&
+      workspaceDiscardAllState.workspaceSysId === cleanText(workspaceStateData?.sysId) &&
+      workspaceDiscardAllState.contextKey === currentWorkspaceCommandContextKey &&
+      currentWorkspaceCommandSourceChangeSetId === workspaceDiscardAllState.sourceChangeSetId &&
+      currentWorkspaceCommandSourceChangeSetRevision === workspaceDiscardAllState.sourceChangeSetRevision
+    ) {
+      return;
+    }
+    setWorkspaceDiscardAllState({ status: "idle" });
+  }, [
+    activeWorkspaceMode,
+    currentWorkspaceCommandContextKey,
+    currentWorkspaceCommandSourceChangeSetId,
+    currentWorkspaceCommandSourceChangeSetRevision,
+    currentWorkspaceSlug,
+    route.mode,
+    workspaceDiscardAllState,
     workspaceStateData?.sysId
   ]);
   useEffect(() => {
@@ -3801,6 +3869,19 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }
 
       if (result.state === "failed") {
+        if (result.code === "recovery_required") {
+          enterDiscardRecoveryRequiredState({
+            affectedPageCount: result.affectedPageCount,
+            commandId: result.recoveryCommandId,
+            contextKey: currentWorkspaceMutationContextKey({ scope: "workspace" }),
+            errorMessage: result.errorMessage,
+            source: "mutation",
+            workspaceSlug: workspaceState.data.slug,
+            workspaceSysId: cleanText(workspaceState.data.sysId),
+            changeSetId: result.currentChangeSetId,
+            changeSetRevision: result.currentChangeSetRevision
+          });
+        }
         setPageSettingsState((current) => ({
           ...current,
           generalError: result.errorMessage
@@ -3986,6 +4067,19 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }
 
       if (result.state === "failed") {
+        if (result.code === "recovery_required") {
+          enterDiscardRecoveryRequiredState({
+            affectedPageCount: result.affectedPageCount,
+            commandId: result.recoveryCommandId,
+            contextKey: currentWorkspaceMutationContextKey({ scope: "workspace" }),
+            errorMessage: result.errorMessage,
+            source: "mutation",
+            workspaceSlug: workspaceState.data.slug,
+            workspaceSysId: cleanText(workspaceState.data.sysId),
+            changeSetId: result.currentChangeSetId,
+            changeSetRevision: result.currentChangeSetRevision
+          });
+        }
         setPageSettingsState((current) => ({
           ...current,
           deletePending: false,
@@ -4235,6 +4329,19 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }
 
       if (result.state === "failed") {
+        if (result.code === "recovery_required") {
+          enterDiscardRecoveryRequiredState({
+            affectedPageCount: result.affectedPageCount,
+            commandId: result.recoveryCommandId,
+            contextKey: currentWorkspaceMutationContextKey({ scope: "workspace" }),
+            errorMessage: result.errorMessage,
+            source: "mutation",
+            workspaceSlug: workspaceState.data.slug,
+            workspaceSysId: cleanText(workspaceState.data.sysId),
+            changeSetId: result.currentChangeSetId,
+            changeSetRevision: result.currentChangeSetRevision
+          });
+        }
         setInlinePageCreateState((current) =>
           current
             ? {
@@ -4379,6 +4486,19 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         return;
       }
       if (result.state === "failed") {
+        if (result.code === "recovery_required") {
+          enterDiscardRecoveryRequiredState({
+            affectedPageCount: result.affectedPageCount,
+            commandId: result.recoveryCommandId,
+            contextKey: currentWorkspaceMutationContextKey({ scope: "workspace" }),
+            errorMessage: result.errorMessage,
+            source: "mutation",
+            workspaceSlug: workspaceState.data.slug,
+            workspaceSysId: cleanText(workspaceState.data.sysId),
+            changeSetId: result.currentChangeSetId,
+            changeSetRevision: result.currentChangeSetRevision
+          });
+        }
         setWorkspacePagesState((current) =>
           current.status === "success" && current.workspaceSlug === workspaceState.data.slug && current.mode === activeWorkspaceMode
             ? { ...current, data: previousPages }
@@ -4577,6 +4697,63 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     return true;
   }
 
+  function enterDiscardRecoveryRequiredState(input: {
+    affectedPageCount?: number;
+    commandId?: string;
+    contextKey?: string;
+    errorMessage: string;
+    source: "mutation" | "refresh";
+    workspaceSlug: string;
+    workspaceSysId: string;
+    changeSetId?: string;
+    changeSetRevision?: number;
+  }) {
+    const returnedChangeSetId = cleanText(input.changeSetId);
+    const returnedChangeSetRevision =
+      typeof input.changeSetRevision === "number" && Number.isSafeInteger(input.changeSetRevision) && input.changeSetRevision >= 0
+        ? input.changeSetRevision
+        : null;
+    if (returnedChangeSetId && returnedChangeSetRevision !== null) {
+      installWorkspaceMutationAuthority({
+        changeSetId: returnedChangeSetId,
+        changeSetRevision: returnedChangeSetRevision
+      }, input.source);
+    }
+    const currentAuthority = currentWorkspaceMutationAuthority();
+    const sourceChangeSetId = cleanText(currentAuthority?.changeSetId) || returnedChangeSetId;
+    const sourceChangeSetRevision =
+      typeof currentAuthority?.changeSetRevision === "number" && Number.isSafeInteger(currentAuthority.changeSetRevision) && currentAuthority.changeSetRevision >= 0
+        ? currentAuthority.changeSetRevision
+        : returnedChangeSetRevision ?? -1;
+    const binding = workspaceLeaseBindingRef.current;
+    setPendingChangesState({
+      errorMessage: input.errorMessage,
+      leaseToken:
+        binding && binding.workspaceSlug === input.workspaceSlug && binding.workspaceSysId === input.workspaceSysId
+          ? binding.leaseToken
+          : "",
+      status: "error",
+      workspaceSlug: input.workspaceSlug,
+      workspaceSysId: input.workspaceSysId
+    });
+    setWorkspaceDiscardAllState({
+      affectedPageCount:
+        typeof input.affectedPageCount === "number" && Number.isSafeInteger(input.affectedPageCount) && input.affectedPageCount > 0
+          ? input.affectedPageCount
+          : undefined,
+      commandId: cleanText(input.commandId) || undefined,
+      contextKey: input.contextKey ?? currentWorkspaceMutationContextKey({ scope: "workspace" }),
+      errorMessage: input.errorMessage,
+      recoveryRequired: true,
+      retryable: Boolean(cleanText(input.commandId)),
+      sourceChangeSetId,
+      sourceChangeSetRevision,
+      status: "error",
+      workspaceSlug: input.workspaceSlug,
+      workspaceSysId: input.workspaceSysId
+    });
+  }
+
   async function refreshPendingChanges(options: { keepPrevious?: boolean } = {}) {
     const binding = workspaceLeaseBindingRef.current;
     if (!serviceNowClientRef.current.getWorkspacePendingChanges || !binding || activeWorkspaceMode !== "edit") {
@@ -4615,7 +4792,29 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         changeSetId: result.changeSetId,
         changeSetRevision: result.changeSetRevision
       }, "refresh");
+      setWorkspaceDiscardAllState((current) =>
+        current.status === "error" &&
+        current.recoveryRequired &&
+        current.workspaceSlug === workspaceSlug &&
+        current.workspaceSysId === workspaceSysId
+          ? { status: "idle" }
+          : current
+      );
       setPendingChangesState({ data: result, leaseToken, status: "success", workspaceSlug, workspaceSysId });
+      return;
+    }
+    if (result.code === "recovery_required") {
+      enterDiscardRecoveryRequiredState({
+        affectedPageCount: result.affectedPageCount,
+        commandId: result.recoveryCommandId,
+        contextKey: currentWorkspaceMutationContextKey({ scope: "workspace" }),
+        errorMessage: result.errorMessage,
+        source: "refresh",
+        workspaceSlug,
+        workspaceSysId,
+        changeSetId: result.currentChangeSetId,
+        changeSetRevision: result.currentChangeSetRevision
+      });
       return;
     }
     setPendingChangesState({ errorMessage: result.errorMessage, previous, leaseToken, status: "error", workspaceSlug, workspaceSysId });
@@ -4646,6 +4845,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }
 
   function blockedWriteMessage() {
+    if (workspaceDiscardAllRecoveryRequired) {
+      return workspaceDiscardAllState.errorMessage || "Discard recovery is incomplete. Retry discard all before making other changes.";
+    }
     if (workspaceCommandBlocksCurrentWorkspaceWrites) {
       return "Publishing is in progress. Authoring actions are temporarily unavailable.";
     }
@@ -4791,6 +4993,19 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       if (outcome.state === "contention") return { errorMessage: "This workspace is currently being edited by another user.", state: "failed" };
       if (outcome.state === "forbidden" || outcome.state === "transient_failure") return { errorMessage: outcome.errorMessage, state: "failed" };
       const result = outcome as PageBodySaveResult;
+      if (result.state === "failed" && result.code === "recovery_required") {
+        enterDiscardRecoveryRequiredState({
+          affectedPageCount: result.affectedPageCount,
+          commandId: result.recoveryCommandId,
+          contextKey: currentWorkspaceMutationContextKey({ scope: "workspace" }),
+          errorMessage: result.errorMessage,
+          source: "mutation",
+          workspaceSlug: workspaceState.data.slug,
+          workspaceSysId: cleanText(workspaceState.data.sysId),
+          changeSetId: result.currentChangeSetId,
+          changeSetRevision: result.currentChangeSetRevision
+        });
+      }
       if (result.state === "failed" && result.code === "conflict") {
         return result;
       }
@@ -4894,7 +5109,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     route.mode === "workspace"
       ? Boolean(workspaceHeaderPresentation?.showWorkspaceSwitcher)
       : recentWorkspaceItems.length > 0;
-  const appHeaderWorkspaceControlsLocked = isRetainingWorkspaceHeaderPresentation || workspacePublishInProgress;
+  const appHeaderWorkspaceControlsLocked = isRetainingWorkspaceHeaderPresentation || workspaceCommandBlocksCurrentWorkspaceWrites;
   const editorStatusLabel = cleanText(editorTransitionState.status) || "Saved";
   const pendingChangesSaveBlockedMessage =
     appHeaderWorkspaceMode === "edit" && renderedEditorSession && editorStatusLabel !== "Saved"
@@ -4912,20 +5127,47 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     workspacePublishState.status === "error" &&
     workspacePublishState.workspaceSlug === currentWorkspaceSlug &&
     workspacePublishState.workspaceSysId === cleanText(workspaceStateData?.sysId) &&
-    workspacePublishState.contextKey === currentWorkspacePublishContextKey &&
-    workspacePublishState.sourceChangeSetId === currentWorkspacePublishSourceChangeSetId &&
-    workspacePublishState.sourceChangeSetRevision === currentWorkspacePublishSourceChangeSetRevision
+    workspacePublishState.contextKey === currentWorkspaceCommandContextKey &&
+    workspacePublishState.sourceChangeSetId === currentWorkspaceCommandSourceChangeSetId &&
+    workspacePublishState.sourceChangeSetRevision === currentWorkspaceCommandSourceChangeSetRevision
       ? workspacePublishState.errorMessage
       : "";
   const workspacePublishRetryable =
     workspacePublishState.status === "error" &&
     workspacePublishState.workspaceSlug === currentWorkspaceSlug &&
     workspacePublishState.workspaceSysId === cleanText(workspaceStateData?.sysId) &&
-    workspacePublishState.contextKey === currentWorkspacePublishContextKey &&
-    workspacePublishState.sourceChangeSetId === currentWorkspacePublishSourceChangeSetId &&
-    workspacePublishState.sourceChangeSetRevision === currentWorkspacePublishSourceChangeSetRevision &&
+    workspacePublishState.contextKey === currentWorkspaceCommandContextKey &&
+    workspacePublishState.sourceChangeSetId === currentWorkspaceCommandSourceChangeSetId &&
+    workspacePublishState.sourceChangeSetRevision === currentWorkspaceCommandSourceChangeSetRevision &&
     workspacePublishState.retryable &&
     Boolean(workspacePublishState.commandId);
+  const workspaceDiscardAllErrorMessage =
+    workspaceDiscardAllState.status === "error" &&
+    workspaceDiscardAllState.workspaceSlug === currentWorkspaceSlug &&
+    workspaceDiscardAllState.workspaceSysId === cleanText(workspaceStateData?.sysId) &&
+    workspaceDiscardAllState.contextKey === currentWorkspaceCommandContextKey &&
+    workspaceDiscardAllState.sourceChangeSetId === currentWorkspaceCommandSourceChangeSetId &&
+    workspaceDiscardAllState.sourceChangeSetRevision === currentWorkspaceCommandSourceChangeSetRevision
+      ? workspaceDiscardAllState.errorMessage
+      : "";
+  const workspaceDiscardAllRetryable =
+    workspaceDiscardAllState.status === "error" &&
+    workspaceDiscardAllState.workspaceSlug === currentWorkspaceSlug &&
+    workspaceDiscardAllState.workspaceSysId === cleanText(workspaceStateData?.sysId) &&
+    workspaceDiscardAllState.contextKey === currentWorkspaceCommandContextKey &&
+    workspaceDiscardAllState.sourceChangeSetId === currentWorkspaceCommandSourceChangeSetId &&
+    workspaceDiscardAllState.sourceChangeSetRevision === currentWorkspaceCommandSourceChangeSetRevision &&
+    workspaceDiscardAllState.retryable &&
+    Boolean(workspaceDiscardAllState.commandId);
+  const workspaceDiscardAllAffectedPageCount =
+    workspaceDiscardAllState.status === "error" &&
+    workspaceDiscardAllState.workspaceSlug === currentWorkspaceSlug &&
+    workspaceDiscardAllState.workspaceSysId === cleanText(workspaceStateData?.sysId) &&
+    workspaceDiscardAllState.contextKey === currentWorkspaceCommandContextKey &&
+    workspaceDiscardAllState.sourceChangeSetId === currentWorkspaceCommandSourceChangeSetId &&
+    workspaceDiscardAllState.sourceChangeSetRevision === currentWorkspaceCommandSourceChangeSetRevision
+      ? workspaceDiscardAllState.affectedPageCount
+      : undefined;
   const workspacePublishToastMessage =
     workspacePublishToastState &&
     route.mode === "workspace" &&
@@ -4942,7 +5184,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       workspaceState.status !== "success" ||
       workspaceState.data.slug !== currentWorkspaceSlug ||
       activeWorkspaceMode !== "edit" ||
-      workspacePublishInProgress ||
+      workspaceCommandBlocksCurrentWorkspaceWrites ||
       pendingChangesSaveBlockedMessage ||
       pendingChangesResult?.state !== "succeeded" ||
       pendingChangesResult.affectedPageCount <= 0
@@ -4971,9 +5213,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
 
     const workspaceSlug = workspaceState.data.slug;
-    const mutationContextKey = currentWorkspaceMutationContextKey({ scope: "workspace" });
-    const sourceChangeSetId = currentWorkspacePublishSourceChangeSetId;
-    const sourceChangeSetRevision = currentWorkspacePublishSourceChangeSetRevision;
+    const mutationContextKey = currentWorkspaceCommandContextKey;
+    const sourceChangeSetId = currentWorkspaceCommandSourceChangeSetId;
+    const sourceChangeSetRevision = currentWorkspaceCommandSourceChangeSetRevision;
     const canReuseCommandId =
       workspacePublishState.status === "error" &&
       workspacePublishState.retryable &&
@@ -5032,6 +5274,21 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
       const result = outcome as WorkspacePublishResult;
       if (result.state === "failed") {
+        if (result.code === "recovery_required") {
+          enterDiscardRecoveryRequiredState({
+            affectedPageCount: result.affectedPageCount,
+            commandId: result.recoveryCommandId,
+            contextKey: mutationContextKey,
+            errorMessage: result.errorMessage,
+            source: "mutation",
+            workspaceSlug,
+            workspaceSysId,
+            changeSetId: result.currentChangeSetId,
+            changeSetRevision: result.currentChangeSetRevision
+          });
+          setWorkspacePublishState({ status: "idle" });
+          return;
+        }
         setWorkspacePublishState({
           commandId: result.retryable ? commandId : undefined,
           contextKey: mutationContextKey,
@@ -5096,6 +5353,182 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
   }
 
+  async function discardAllWorkspacePendingChanges() {
+    if (
+      !serviceNowClient.discardAllWorkspace ||
+      route.mode !== "workspace" ||
+      workspaceState.status !== "success" ||
+      workspaceState.data.slug !== currentWorkspaceSlug ||
+      activeWorkspaceMode !== "edit" ||
+      (workspaceCommandBlocksCurrentWorkspaceWrites && !workspaceDiscardAllRetryable) ||
+      pendingChangesSaveBlockedMessage ||
+      ((pendingChangesResult?.state !== "succeeded" || pendingChangesResult.affectedPageCount <= 0) && !workspaceDiscardAllRetryable)
+    ) {
+      return;
+    }
+
+    const workspaceSysId = cleanText(workspaceState.data.sysId);
+    if (!workspaceSysId) {
+      setWorkspaceDiscardAllState({
+        contextKey: currentWorkspaceCommandContextKey,
+        errorMessage: "Unable to discard changes for this workspace right now. Reload and try again.",
+        recoveryRequired: false,
+        retryable: false,
+        sourceChangeSetId: "",
+        sourceChangeSetRevision: -1,
+        status: "error",
+        workspaceSlug: workspaceState.data.slug,
+        workspaceSysId: ""
+      });
+      return;
+    }
+
+    if (staleRefreshBlocksCurrentWorkspaceWrites) {
+      await requestStaleRefreshBlock(currentWorkspaceMutationAuthority() ?? {});
+      return;
+    }
+
+    const workspaceSlug = workspaceState.data.slug;
+    const mutationContextKey = currentWorkspaceCommandContextKey;
+    const sourceChangeSetId = currentWorkspaceCommandSourceChangeSetId;
+    const sourceChangeSetRevision = currentWorkspaceCommandSourceChangeSetRevision;
+    const canReuseCommandId =
+      workspaceDiscardAllState.status === "error" &&
+      workspaceDiscardAllState.retryable &&
+      Boolean(workspaceDiscardAllState.commandId) &&
+      workspaceDiscardAllState.workspaceSlug === workspaceSlug &&
+      workspaceDiscardAllState.workspaceSysId === workspaceSysId &&
+      workspaceDiscardAllState.contextKey === mutationContextKey &&
+      workspaceDiscardAllState.sourceChangeSetId === sourceChangeSetId &&
+      workspaceDiscardAllState.sourceChangeSetRevision === sourceChangeSetRevision;
+    let commandId = createWorkspaceCommandId();
+    if (canReuseCommandId && workspaceDiscardAllState.commandId) {
+      commandId = workspaceDiscardAllState.commandId;
+    }
+    setWorkspaceDiscardAllState({
+      commandId,
+      contextKey: mutationContextKey,
+      sourceChangeSetId,
+      sourceChangeSetRevision,
+      status: "discarding",
+      workspaceSlug,
+      workspaceSysId
+    });
+    try {
+      const outcome = await runWorkspaceMutation<WorkspaceDiscardAllResult>({
+        contextKey: mutationContextKey,
+        safeRetry: false,
+        type: "workspace_discard_all",
+        dispatch: (workspaceLeaseToken, workspaceAuthority) => serviceNowClient.discardAllWorkspace!({
+          commandId,
+          workspaceAuthority,
+          workspaceLeaseToken,
+          workspaceSlug,
+          workspaceSysId
+        })
+      });
+      if (isObsoleteWorkspaceMutationOutcome(outcome) && !isCurrentWorkspaceMutationContext(mutationContextKey)) {
+        return;
+      }
+      if (!isCurrentWorkspaceMutationContext(mutationContextKey)) {
+        return;
+      }
+      if (outcome.state === "contention" || outcome.state === "forbidden" || outcome.state === "transient_failure") {
+        setWorkspaceDiscardAllState({
+          contextKey: mutationContextKey,
+          errorMessage: outcome.state === "contention" ? "This workspace is currently being edited by another user." : outcome.errorMessage,
+          recoveryRequired: false,
+          retryable: false,
+          sourceChangeSetId,
+          sourceChangeSetRevision,
+          status: "error",
+          workspaceSlug,
+          workspaceSysId
+        });
+        return;
+      }
+
+      const result = outcome as WorkspaceDiscardAllResult;
+      if (result.state === "failed") {
+        if (result.code === "recovery_required") {
+          enterDiscardRecoveryRequiredState({
+            affectedPageCount: result.affectedPageCount,
+            commandId: result.recoveryCommandId ?? commandId,
+            contextKey: mutationContextKey,
+            errorMessage: result.errorMessage,
+            source: "mutation",
+            workspaceSlug,
+            workspaceSysId,
+            changeSetId: result.currentChangeSetId,
+            changeSetRevision: result.currentChangeSetRevision
+          });
+          return;
+        }
+        setWorkspaceDiscardAllState({
+          commandId: result.retryable ? commandId : undefined,
+          contextKey: mutationContextKey,
+          errorMessage: result.errorMessage,
+          recoveryRequired: false,
+          retryable: Boolean(result.retryable),
+          sourceChangeSetId,
+          sourceChangeSetRevision,
+          status: "error",
+          workspaceSlug,
+          workspaceSysId
+        });
+        return;
+      }
+
+      installWorkspaceMutationAuthority({
+        changeSetId: result.changeSetId,
+        changeSetRevision: result.changeSetRevision,
+        workspaceStateRevision: result.workspaceStateRevision
+      }, "mutation");
+      setWorkspacePagesState({
+        data: result.pages,
+        mode: "edit",
+        status: "success",
+        totalCount: result.pages.length,
+        workspaceSlug
+      });
+      const binding = workspaceLeaseBindingRef.current;
+      if (binding && binding.workspaceSlug === workspaceSlug && binding.workspaceSysId === workspaceSysId) {
+        setPendingChangesState({
+          data: result.pendingChanges,
+          leaseToken: binding.leaseToken,
+          status: "success",
+          workspaceSlug,
+          workspaceSysId
+        });
+      } else {
+        setPendingChangesState({
+          data: result.pendingChanges,
+          leaseToken: "",
+          status: "success",
+          workspaceSlug,
+          workspaceSysId
+        });
+      }
+      setWorkspaceDiscardAllState({ status: "idle" });
+    } catch {
+      if (!isCurrentWorkspaceMutationContext(mutationContextKey)) {
+        return;
+      }
+      setWorkspaceDiscardAllState({
+        commandId,
+        contextKey: mutationContextKey,
+        errorMessage: "Unable to discard changes for this workspace right now. Please try again.",
+        recoveryRequired: false,
+        retryable: true,
+        sourceChangeSetId,
+        sourceChangeSetRevision,
+        status: "error",
+        workspaceSlug,
+        workspaceSysId
+      });
+    }
+  }
+
   return (
     <div className={`docsera-app${route.mode === "launcher" ? " docsera-app--launcher" : ""}`}>
       <DocseraHeader
@@ -5112,6 +5545,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         onToggleSidebar={route.mode === "workspace" ? () => setSidebarCollapsed((collapsed) => !collapsed) : undefined}
         recentWorkspaces={recentWorkspaceItems}
         pendingChanges={pendingChangesResult}
+        pendingChangesDiscardAllErrorMessage={workspaceDiscardAllErrorMessage}
+        pendingChangesDiscardAllAffectedPageCount={workspaceDiscardAllAffectedPageCount}
+        pendingChangesDiscardAllRetryable={workspaceDiscardAllRetryable}
+        pendingChangesDiscarding={workspaceDiscardAllInProgress}
         pendingChangesErrorMessage={pendingChangesState.status === "error" ? pendingChangesState.errorMessage : ""}
         pendingChangesLoading={pendingChangesState.status === "loading"}
         pendingChangesPublishErrorMessage={workspacePublishErrorMessage}
@@ -5119,6 +5556,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         pendingChangesPublishing={workspacePublishInProgress}
         pendingChangesReadinessMessage={pendingChangesSaveBlockedMessage}
         pendingChangesRefreshing={pendingChangesState.status === "refreshing"}
+        onDiscardAllPendingChanges={discardAllWorkspacePendingChanges}
         onPublishPendingChanges={publishWorkspacePendingChanges}
         onRetryPendingChanges={requestPendingChangesRefresh}
         pendingChangesPublishToastMessage={workspacePublishToastMessage}

@@ -41,6 +41,10 @@ export function GearIcon() {
   return <DocseraIcon className="docsera-header__action-icon" icon={docseraIcons.settings} size={20} />;
 }
 
+export function UndoIcon() {
+  return <DocseraIcon className="docsera-header__action-icon" icon={docseraIcons.undo} size={16} />;
+}
+
 export function WorkspaceListIcon() {
   return <DocseraIcon icon={docseraIcons.list} size={16} />;
 }

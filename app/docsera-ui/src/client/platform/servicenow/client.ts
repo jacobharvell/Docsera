@@ -33,6 +33,10 @@ import type {
   WorkspaceEditLeaseStatusResult,
   WorkspacePendingChangeCategory,
   WorkspacePendingChangesResult,
+  WorkspaceDiscardAllFailed,
+  WorkspaceDiscardAllInput,
+  WorkspaceDiscardAllResult,
+  WorkspaceDiscardAllSucceeded,
   WorkspacePublishFailed,
   WorkspacePublishInput,
   WorkspacePublishResult,
@@ -85,6 +89,7 @@ const DEFAULT_PAGE_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/pages
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
 const SAFE_PAGE_DELETE_ERROR_MESSAGE = "Something went wrong while deleting the page. The page was not deleted. Please try again.";
 const SAFE_PAGE_MOVE_ERROR_MESSAGE = "Something went wrong while moving the page. The page was not moved. Please try again.";
+const SAFE_WORKSPACE_DISCARD_ALL_ERROR_MESSAGE = "Something went wrong while discarding changes. No changes were discarded. Please try again.";
 const SAFE_WORKSPACE_PUBLISH_ERROR_MESSAGE = "Something went wrong while publishing. No changes were published. Please try again.";
 
 function readWindowUserToken(candidate: Window | null | undefined): string | undefined {
@@ -201,6 +206,11 @@ function resolveWorkspacePendingChangesPath(pageCollectionPath: string): string 
 function resolveWorkspacePublishPath(workspaceCollectionPath: string): string {
   const normalizedPath = cleanText(workspaceCollectionPath).replace(/\/+$/g, "");
   return `${normalizedPath}/publish`;
+}
+
+function resolveWorkspaceDiscardAllPath(workspaceCollectionPath: string): string {
+  const normalizedPath = cleanText(workspaceCollectionPath).replace(/\/+$/g, "");
+  return `${normalizedPath}/discard-all`;
 }
 
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<JsonResponse<T>> {
@@ -586,6 +596,31 @@ function normalizeWorkspacePublishSucceededResult(body: unknown): WorkspacePubli
   };
 }
 
+function normalizeWorkspaceDiscardAllSucceededResult(body: unknown): WorkspaceDiscardAllSucceeded {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || !Array.isArray(result.pages) || !isPlainObject(result.pendingChanges)) {
+    throw new Error("Workspace discard-all payload was invalid.");
+  }
+  const changeSetId = cleanText(result.changeSetId);
+  const changeSetRevision = readSafeInteger(result.changeSetRevision);
+  const workspaceStateRevision = readSafeInteger(result.workspaceStateRevision);
+  if (!changeSetId || changeSetRevision === null || workspaceStateRevision === null) {
+    throw new Error("Workspace discard-all authority payload was invalid.");
+  }
+  const pendingChanges = normalizeWorkspacePendingChangesSucceededResult({ result: result.pendingChanges });
+  if (pendingChanges.state !== "succeeded") {
+    throw new Error("Workspace discard-all pending payload was invalid.");
+  }
+  return {
+    state: "succeeded",
+    changeSetId,
+    changeSetRevision,
+    pages: result.pages.map((page) => normalizePageRecord(page)),
+    pendingChanges,
+    workspaceStateRevision
+  };
+}
+
 function normalizeWorkspacePublishFailedResult(body: unknown, fallback: string): WorkspacePublishFailed {
   const error = unwrapServiceNowEnvelope(body);
   const errorObject = isPlainObject(error) && isPlainObject(error.error) ? error.error : null;
@@ -597,6 +632,8 @@ function normalizeWorkspacePublishFailedResult(body: unknown, fallback: string):
         ? "lock_lost"
         : code === "forbidden"
           ? "forbidden"
+          : code === "recovery_required"
+            ? "recovery_required"
           : code === "conflict" || code === "stale_generation"
             ? "conflict"
             : code === "invalid" || code === "validation"
@@ -607,7 +644,37 @@ function normalizeWorkspacePublishFailedResult(body: unknown, fallback: string):
     currentChangeSetId: cleanText(errorObject?.currentChangeSetId) || undefined,
     currentChangeSetRevision: readSafeInteger(errorObject?.currentChangeSetRevision) ?? undefined,
     errorMessage: extractErrorMessage(body, fallback),
+    recoveryCommandId: cleanText(errorObject?.recoveryCommandId) || undefined,
     retryable: code === "publish_failed"
+  };
+}
+
+function normalizeWorkspaceDiscardAllFailedResult(body: unknown, fallback: string): WorkspaceDiscardAllFailed {
+  const error = unwrapServiceNowEnvelope(body);
+  const errorObject = isPlainObject(error) && isPlainObject(error.error) ? error.error : null;
+  const code = cleanText(errorObject?.code);
+  return {
+    affectedPageCount: readSafeInteger(errorObject?.affectedPageCount) ?? undefined,
+    state: "failed",
+    code:
+      code === "workspace_lease_lost" || code === "workspace_locked"
+        ? "lock_lost"
+        : code === "forbidden"
+          ? "forbidden"
+          : code === "recovery_required"
+            ? "recovery_required"
+          : code === "conflict" || code === "stale_generation"
+            ? "conflict"
+            : code === "invalid" || code === "validation"
+              ? "invalid"
+              : code === "discard_all_failed"
+                ? "failed"
+                : undefined,
+    currentChangeSetId: cleanText(errorObject?.currentChangeSetId) || undefined,
+    currentChangeSetRevision: readSafeInteger(errorObject?.currentChangeSetRevision) ?? undefined,
+    errorMessage: extractErrorMessage(body, fallback),
+    recoveryCommandId: cleanText(errorObject?.recoveryCommandId) || undefined,
+    retryable: code === "discard_all_failed" || code === "recovery_required"
   };
 }
 
@@ -647,12 +714,15 @@ function normalizePageCreateFailedResult(body: unknown, fallback: string): PageC
   const errorObject = isPlainObject(error) && isPlainObject(error.error) ? error.error : null;
   const code = cleanText(errorObject?.code);
   return {
+    affectedPageCount: readSafeInteger(errorObject?.affectedPageCount) ?? undefined,
     state: "failed",
     code:
       code === "workspace_lease_lost" || code === "workspace_locked"
         ? "lock_lost"
         : code === "forbidden"
           ? "forbidden"
+          : code === "recovery_required"
+            ? "recovery_required"
           : code === "conflict" || code === "stale_generation"
             ? "conflict"
             : code === "invalid" || code === "validation"
@@ -660,7 +730,8 @@ function normalizePageCreateFailedResult(body: unknown, fallback: string): PageC
               : undefined,
     currentChangeSetId: cleanText(errorObject?.currentChangeSetId) || undefined,
     currentChangeSetRevision: readSafeInteger(errorObject?.currentChangeSetRevision) ?? undefined,
-    errorMessage: extractErrorMessage(body, fallback)
+    errorMessage: extractErrorMessage(body, fallback),
+    recoveryCommandId: cleanText(errorObject?.recoveryCommandId) || undefined
   };
 }
 
@@ -787,17 +858,21 @@ function normalizePageBodySaveFailedResult(
             ? "capacity"
             : errorCode === "persistence_invariant"
               ? "persistence_invariant"
-              : errorCode === "workspace_lease_lost" || errorCode === "workspace_locked"
-                ? "lock_lost"
+      : errorCode === "workspace_lease_lost" || errorCode === "workspace_locked"
+        ? "lock_lost"
+              : errorCode === "recovery_required"
+                ? "recovery_required"
               : errorCode === "persistence_transient"
                 ? "transient"
                 : fallbackCode;
 
   return {
+    affectedPageCount: readSafeInteger(errorObject?.affectedPageCount) ?? undefined,
     code: normalizedCode,
     currentChangeSetId: cleanText(errorObject?.currentChangeSetId) || undefined,
     currentChangeSetRevision: readSafeInteger(errorObject?.currentChangeSetRevision) ?? undefined,
     currentRevision: Number.isSafeInteger(currentRevision) && currentRevision >= 0 ? currentRevision : undefined,
+    recoveryCommandId: cleanText(errorObject?.recoveryCommandId) || undefined,
     retryable: normalizedCode === "transient" ? true : fallbackRetryable,
     state: "failed",
     errorMessage: extractErrorMessage(body, fallback)
@@ -860,12 +935,15 @@ function normalizePageSettingsSaveFailedResult(body: unknown, fallback: string):
   const errorObject = isPlainObject(error) && isPlainObject(error.error) ? error.error : null;
   const code = cleanText(errorObject?.code);
   return {
+    affectedPageCount: readSafeInteger(errorObject?.affectedPageCount) ?? undefined,
     state: "failed",
     code:
       code === "workspace_lease_lost" || code === "workspace_locked"
         ? "lock_lost"
         : code === "forbidden"
           ? "forbidden"
+          : code === "recovery_required"
+            ? "recovery_required"
           : code === "conflict" || code === "stale_generation"
             ? "conflict"
             : code === "invalid" || code === "validation"
@@ -873,7 +951,8 @@ function normalizePageSettingsSaveFailedResult(body: unknown, fallback: string):
               : undefined,
     currentChangeSetId: cleanText(errorObject?.currentChangeSetId) || undefined,
     currentChangeSetRevision: readSafeInteger(errorObject?.currentChangeSetRevision) ?? undefined,
-    errorMessage: extractErrorMessage(body, fallback)
+    errorMessage: extractErrorMessage(body, fallback),
+    recoveryCommandId: cleanText(errorObject?.recoveryCommandId) || undefined
   };
 }
 
@@ -896,12 +975,15 @@ function normalizePageDeleteFailedResult(body: unknown, fallback: string): PageD
   const errorObject = isPlainObject(error) && isPlainObject(error.error) ? error.error : null;
   const code = cleanText(errorObject?.code);
   return {
+    affectedPageCount: readSafeInteger(errorObject?.affectedPageCount) ?? undefined,
     state: "failed",
     code:
       code === "workspace_lease_lost" || code === "workspace_locked"
         ? "lock_lost"
         : code === "forbidden"
           ? "forbidden"
+          : code === "recovery_required"
+            ? "recovery_required"
           : code === "conflict" || code === "stale_generation"
             ? "conflict"
             : code === "invalid" || code === "validation"
@@ -909,7 +991,8 @@ function normalizePageDeleteFailedResult(body: unknown, fallback: string): PageD
               : undefined,
     currentChangeSetId: cleanText(errorObject?.currentChangeSetId) || undefined,
     currentChangeSetRevision: readSafeInteger(errorObject?.currentChangeSetRevision) ?? undefined,
-    errorMessage: extractErrorMessage(body, fallback)
+    errorMessage: extractErrorMessage(body, fallback),
+    recoveryCommandId: cleanText(errorObject?.recoveryCommandId) || undefined
   };
 }
 
@@ -931,12 +1014,15 @@ function normalizePageMoveFailedResult(body: unknown, fallback: string): PageMov
   const errorObject = isPlainObject(error) && isPlainObject(error.error) ? error.error : null;
   const code = cleanText(errorObject?.code);
   return {
+    affectedPageCount: readSafeInteger(errorObject?.affectedPageCount) ?? undefined,
     state: "failed",
     code:
       code === "workspace_lease_lost" || code === "workspace_locked"
         ? "lock_lost"
         : code === "forbidden"
           ? "forbidden"
+          : code === "recovery_required"
+            ? "recovery_required"
           : code === "conflict" || code === "stale_generation"
             ? "conflict"
             : code === "invalid" || code === "validation"
@@ -944,7 +1030,8 @@ function normalizePageMoveFailedResult(body: unknown, fallback: string): PageMov
               : undefined,
     currentChangeSetId: cleanText(errorObject?.currentChangeSetId) || undefined,
     currentChangeSetRevision: readSafeInteger(errorObject?.currentChangeSetRevision) ?? undefined,
-    errorMessage: extractErrorMessage(body, fallback)
+    errorMessage: extractErrorMessage(body, fallback),
+    recoveryCommandId: cleanText(errorObject?.recoveryCommandId) || undefined
   };
 }
 
@@ -1704,8 +1791,21 @@ async function resolveWorkspacePendingChangesResult(path: string, input: Workspa
     const errorObject = isPlainObject(error) && isPlainObject(error.error) ? error.error : {};
     const code = cleanText(errorObject.code);
     return {
-      code: response.status === 403 ? "forbidden" : code === "workspace_lease_lost" || response.status === 409 ? "lock_lost" : response.status === 404 ? "not_found" : "transient",
+      affectedPageCount: readSafeInteger(errorObject.affectedPageCount) ?? undefined,
+      code:
+        response.status === 403
+          ? "forbidden"
+          : code === "recovery_required"
+            ? "recovery_required"
+            : code === "workspace_lease_lost" || response.status === 409
+              ? "lock_lost"
+              : response.status === 404
+                ? "not_found"
+                : "transient",
+      currentChangeSetId: cleanText(errorObject.currentChangeSetId) || undefined,
+      currentChangeSetRevision: readSafeInteger(errorObject.currentChangeSetRevision) ?? undefined,
       errorMessage: extractErrorMessage(response.body, "Unable to load pending changes. Please try again."),
+      recoveryCommandId: cleanText(errorObject.recoveryCommandId) || undefined,
       retryable: response.status >= 500,
       state: "failed"
     };
@@ -1756,6 +1856,43 @@ async function resolveWorkspacePublishResult(path: string, input: WorkspacePubli
   }
 }
 
+async function resolveWorkspaceDiscardAllResult(path: string, input: WorkspaceDiscardAllInput): Promise<WorkspaceDiscardAllResult> {
+  const authority = resolveMutationAuthority(input);
+  const payload = {
+    workspaceSlug: cleanText(input.workspaceSlug),
+    workspaceSysId: cleanText(input.workspaceSysId),
+    commandId: cleanText(input.commandId),
+    workspaceLeaseToken: cleanText(input.workspaceLeaseToken),
+    ...(authority ?? {})
+  };
+  try {
+    const response = await requestJson<unknown>(path, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" }
+    });
+    if (response.status === 200) {
+      return normalizeWorkspaceDiscardAllSucceededResult(response.body);
+    }
+    if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 409 || response.status === 500) {
+      return normalizeWorkspaceDiscardAllFailedResult(response.body, SAFE_WORKSPACE_DISCARD_ALL_ERROR_MESSAGE);
+    }
+    return {
+      state: "failed",
+      code: "transient",
+      errorMessage: SAFE_WORKSPACE_DISCARD_ALL_ERROR_MESSAGE,
+      retryable: true
+    };
+  } catch {
+    return {
+      state: "failed",
+      code: "transient",
+      errorMessage: SAFE_WORKSPACE_DISCARD_ALL_ERROR_MESSAGE,
+      retryable: true
+    };
+  }
+}
+
 export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceNowClient {
   const collectionPath = resolvePath(runtime.config.workspaceCollectionPath, DEFAULT_WORKSPACE_COLLECTION_PATH);
   const pageCollectionPath = resolvePath(runtime.config.pageCollectionPath, DEFAULT_PAGE_COLLECTION_PATH);
@@ -1772,6 +1909,7 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
   const workspaceEditLeaseReleasePath = resolveWorkspaceEditLeasePath(pageCollectionPath, "release");
   const workspaceEditLeaseStatusPath = resolveWorkspaceEditLeasePath(pageCollectionPath, "status");
   const workspacePendingChangesPath = resolveWorkspacePendingChangesPath(pageCollectionPath);
+  const workspaceDiscardAllPath = resolveWorkspaceDiscardAllPath(collectionPath);
   const workspacePublishPath = resolveWorkspacePublishPath(collectionPath);
   const provisioningStatusPath = resolvePath(
     runtime.config.workspaceProvisioningStatusPath,
@@ -1858,6 +1996,7 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
     async releaseWorkspaceEditLease(input: WorkspaceEditLeaseReferenceInput & { keepalive?: boolean }): Promise<WorkspaceEditLeaseReleaseResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseReleasePath, input, "release") as Promise<WorkspaceEditLeaseReleaseResult>; },
     async getWorkspaceEditLeaseStatus(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspaceEditLeaseStatusResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseStatusPath, input, "status") as Promise<WorkspaceEditLeaseStatusResult>; },
     async getWorkspacePendingChanges(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspacePendingChangesResult> { return resolveWorkspacePendingChangesResult(workspacePendingChangesPath, input); },
+    async discardAllWorkspace(input: WorkspaceDiscardAllInput): Promise<WorkspaceDiscardAllResult> { return resolveWorkspaceDiscardAllResult(workspaceDiscardAllPath, input); },
     async publishWorkspace(input: WorkspacePublishInput): Promise<WorkspacePublishResult> { return resolveWorkspacePublishResult(workspacePublishPath, input); },
 
     async getPageEditLockStatus(input: PageEditLockReferenceInput): Promise<PageEditLockStatusResult> {

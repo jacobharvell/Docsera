@@ -64,7 +64,24 @@ export async function process(request: RequestLike, response: ResponseLike) {
     const result = createServiceNowWorkspaceChangeSetPersistenceService().pendingChanges(workspace);
     if (result.kind === "failed") {
       response.setStatus?.(result.status);
-      response.setBody({ error: { code: "pending_changes_unavailable", message: result.errorMessage } });
+      response.setBody({
+        error: {
+          code: result.code === "recovery_required" ? "recovery_required" : "pending_changes_unavailable",
+          message: result.errorMessage,
+          ...(typeof result.currentChangeSetId === "string" && typeof result.currentChangeSetRevision === "number"
+            ? {
+                currentChangeSetId: result.currentChangeSetId,
+                currentChangeSetRevision: result.currentChangeSetRevision
+              }
+            : {}),
+          ...(typeof result.affectedPageCount === "number"
+            ? { affectedPageCount: result.affectedPageCount }
+            : {}),
+          ...(typeof result.recoveryCommandId === "string" && result.recoveryCommandId
+            ? { recoveryCommandId: result.recoveryCommandId }
+            : {})
+        }
+      });
       return;
     }
 

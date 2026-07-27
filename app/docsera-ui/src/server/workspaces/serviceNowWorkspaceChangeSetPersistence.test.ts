@@ -9,6 +9,7 @@ type TableRow = {
 const glideMock = vi.hoisted(() => {
   const tables = new Map<string, TableRow[]>();
   const fieldReadAccess = new Map<string, boolean>();
+  const deleteHooks = new Map<string, (row: TableRow) => boolean>();
   const insertHooks = new Map<string, (row: TableRow) => void>();
   const recordReadAccess = new Map<string, boolean>();
   const updateHooks = new Map<string, (row: TableRow) => boolean>();
@@ -197,6 +198,9 @@ const glideMock = vi.hoisted(() => {
       if (!this.currentRow) {
         return false;
       }
+      if (deleteHooks.get(this.tableName)?.(this.currentRow) === false) {
+        return false;
+      }
       const rows = tables.get(this.tableName) ?? [];
       const index = rows.findIndex((candidate) => candidate.sysId === this.currentRow?.sysId);
       if (index < 0) {
@@ -249,6 +253,13 @@ const glideMock = vi.hoisted(() => {
     setFieldReadable(tableName: string, sysId: string, fieldName: string, readable: boolean) {
       fieldReadAccess.set(accessKey(tableName, sysId, fieldName), readable);
     },
+    setDeleteHook(tableName: string, hook: ((row: TableRow) => boolean) | null) {
+      if (!hook) {
+        deleteHooks.delete(tableName);
+        return;
+      }
+      deleteHooks.set(tableName, hook);
+    },
     setUpdateHook(tableName: string, hook: ((row: TableRow) => boolean) | null) {
       if (!hook) {
         updateHooks.delete(tableName);
@@ -269,6 +280,7 @@ const glideMock = vi.hoisted(() => {
     reset() {
       tables.clear();
       fieldReadAccess.clear();
+      deleteHooks.clear();
       insertHooks.clear();
       recordReadAccess.clear();
       updateHooks.clear();
@@ -714,6 +726,12 @@ function claimRow(generationKey: string) {
   return getRows(mutationClaimTable).find((row) => row.fields.generation_key === generationKey);
 }
 
+function claimPayload(generationKey: string) {
+  const row = claimRow(generationKey);
+  const payload = row?.fields.mutation_payload_json;
+  return typeof payload === "string" && payload ? JSON.parse(payload) : null;
+}
+
 function failNextClaimUpdateToPhase(phase: string) {
   let failed = false;
   glideMock.setUpdateHook(mutationClaimTable, (row) => {
@@ -723,6 +741,83 @@ function failNextClaimUpdateToPhase(phase: string) {
     }
     return true;
   });
+}
+
+function activeWorkspaceAuthority(workspace = currentWorkspaceRef()) {
+  const changeSetId = String(workspace.pendingChangeSetSysId ?? "");
+  const changeSetRevision = Number(changeSetRow(changeSetId)?.fields.change_set_revision ?? 0);
+  return {
+    changeSetId,
+    changeSetRevision
+  };
+}
+
+function seedDiscardRecoveryScenario() {
+  seedWorkspaceFoundation({
+    pages: [
+      createSeedPage({
+        pageId: "page-001",
+        draftBodyText: "Overview draft body",
+        draftTitle: "Overview",
+        publishedBodyText: "Overview published body",
+        publishedSlug: "overview",
+        publishedTitle: "Overview",
+        siblingOrder: "1"
+      }),
+      createSeedPage({
+        pageId: "page-002",
+        draftBodyText: "Child draft body",
+        draftTitle: "Child",
+        parentPageId: "page-001",
+        publishedBodyText: "Child published body",
+        publishedSlug: "child",
+        publishedTitle: "Child",
+        siblingOrder: "1"
+      }),
+      createSeedPage({
+        pageId: "page-003",
+        draftBodyText: "Deprecated body",
+        draftTitle: "Deprecated",
+        publishedBodyText: "Deprecated body",
+        publishedSlug: "deprecated",
+        publishedTitle: "Deprecated",
+        siblingOrder: "2"
+      })
+    ]
+  });
+  const service = createService();
+  let authority = expectSucceeded(service.savePageSettings({
+    authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+    pageSysId: "page-001",
+    slug: "overview-renamed",
+    title: "Overview Renamed",
+    workspace: workspaceRef()
+  })).authority;
+  const created = expectSucceeded(service.createPage({
+    authority,
+    parentPageSysId: "page-001",
+    title: "New Guide",
+    workspace: workspaceRef()
+  }));
+  authority = created.authority;
+  authority = expectSucceeded(service.movePage({
+    authority,
+    pageSysId: "page-002",
+    parentPageSysId: null,
+    siblingOrder: "9",
+    workspace: workspaceRef()
+  })).authority;
+  authority = expectSucceeded(service.deletePage({
+    authority,
+    pageSysId: "page-003",
+    workspace: workspaceRef()
+  })).authority;
+  return {
+    addedPageId: created.result.page.sysId ?? "",
+    authority,
+    service,
+    workspace: workspaceRef()
+  };
 }
 
 function expectSucceeded<T extends { kind: string }>(result: T): Extract<T, { kind: "succeeded" }> {
@@ -1849,6 +1944,622 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     expect(loser.currentChangeSetId).toBe(winner.authority.changeSetId);
     expect(loser.currentChangeSetRevision).toBe(0);
     expect(getRows(snapshotSetTable).filter((row) => row.fields.command_kind === "publish")).toHaveLength(1);
+  });
+
+  it("atomically discards a mixed pending set back to the current published workspace state", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({
+          pageId: "page-001",
+          draftBodyText: "Overview draft body",
+          draftTitle: "Overview",
+          publishedBodyText: "Overview published body",
+          publishedSlug: "overview",
+          publishedTitle: "Overview",
+          siblingOrder: "1"
+        }),
+        createSeedPage({
+          pageId: "page-002",
+          draftBodyText: "Child draft body",
+          draftTitle: "Child",
+          parentPageId: "page-001",
+          publishedBodyText: "Child published body",
+          publishedSlug: "child",
+          publishedTitle: "Child",
+          siblingOrder: "1"
+        }),
+        createSeedPage({
+          pageId: "page-003",
+          draftBodyText: "Deprecated body",
+          draftTitle: "Deprecated",
+          publishedBodyText: "Deprecated body",
+          publishedSlug: "deprecated",
+          publishedTitle: "Deprecated",
+          siblingOrder: "2"
+        })
+      ]
+    });
+    const service = createService();
+    const liveBeforeDiscard = expectSucceeded(service.listPages(workspaceRef(), "live"));
+    let authority = expectSucceeded(service.savePageSettings({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-001",
+      slug: "overview-renamed",
+      title: "Overview Renamed",
+      workspace: workspaceRef()
+    })).authority;
+    const created = expectSucceeded(service.createPage({
+      authority,
+      parentPageSysId: "page-001",
+      title: "New Guide",
+      workspace: workspaceRef()
+    }));
+    authority = created.authority;
+    const addedPageId = created.result.page.sysId;
+    authority = expectSucceeded(service.movePage({
+      authority,
+      pageSysId: "page-002",
+      parentPageSysId: null,
+      siblingOrder: "9",
+      workspace: workspaceRef()
+    })).authority;
+    authority = expectSucceeded(service.deletePage({
+      authority,
+      pageSysId: "page-003",
+      workspace: workspaceRef()
+    })).authority;
+
+    const discarded = expectSucceeded(service.discardAllWorkspace({
+      authority,
+      commandId: "discard-mixed-001",
+      workspace: workspaceRef()
+    }));
+
+    expect(discarded.result.pendingChanges).toMatchObject({
+      affectedPageCount: 0,
+      changeSetId: discarded.authority.changeSetId,
+      changeSetRevision: 0,
+      rows: [],
+      workspaceSysId: "workspace-001"
+    });
+    expect(discarded.result.pages.map((page) => ({
+      parentPageSysId: page.parentPageSysId,
+      slug: page.draftSlug,
+      sysId: page.sysId,
+      title: page.draftTitle
+    }))).toEqual(liveBeforeDiscard.pages.map((page) => ({
+      parentPageSysId: page.parentPageSysId,
+      slug: page.draftSlug,
+      sysId: page.sysId,
+      title: page.draftTitle
+    })));
+    expect(expectSucceeded(createService().pendingChanges(currentWorkspaceRef())).pending.rows).toEqual([]);
+    expect(expectSucceeded(createService().listPages(currentWorkspaceRef(), "live")).pages.map((page) => page.draftTitle)).toEqual(
+      liveBeforeDiscard.pages.map((page) => page.draftTitle)
+    );
+    expect(expectSucceeded(createService().listPages(currentWorkspaceRef(), "edit")).pages.map((page) => page.draftTitle)).toEqual(
+      liveBeforeDiscard.pages.map((page) => page.draftTitle)
+    );
+    expect(pageRow(addedPageId)).toBeUndefined();
+    expect(pageRow("page-001")?.fields.draft_title).toBe("Overview");
+    expect(pageRow("page-002")?.fields.parent_page).toBe("page-001");
+    expect(pageRow("page-003")?.fields.active).toBe(true);
+    expect(changeSetRow("change-set-001")?.fields.lifecycle_state).toBe("superseded");
+    expect(getRows(changeEntryTable).filter((row) => row.fields.change_set === "change-set-001")).toEqual([]);
+    expect(getRows(removalBatchTable).filter((row) => row.fields.change_set === "change-set-001")).toEqual([]);
+    expect(getRows(removalMemberTable)).toEqual([]);
+  });
+
+  it("rejects discard-all when there are no pending workspace changes", () => {
+    seedWorkspaceFoundation();
+    const result = createService().discardAllWorkspace({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      commandId: "discard-empty-001",
+      workspace: workspaceRef()
+    });
+
+    expect(result).toMatchObject({
+      kind: "failed",
+      code: "invalid",
+      errorMessage: "There are no pending changes to discard.",
+      status: 400
+    });
+  });
+
+  it("replays the same completed discard-all command without a second selector switch", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({
+          pageId: "page-001",
+          draftTitle: "Overview",
+          publishedTitle: "Overview"
+        })
+      ]
+    });
+    const authority = expectSucceeded(createService().savePageSettings({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-001",
+      slug: "overview-renamed",
+      title: "Overview Renamed",
+      workspace: workspaceRef()
+    })).authority;
+
+    const winner = expectSucceeded(createService().discardAllWorkspace({
+      authority,
+      commandId: "discard-replay-001",
+      workspace: workspaceRef()
+    }));
+    const replayed = expectSucceeded(createService().discardAllWorkspace({
+      authority,
+      commandId: "discard-replay-001",
+      workspace: currentWorkspaceRef()
+    }));
+
+    expect(replayed.authority).toEqual(winner.authority);
+    expect(replayed.result).toEqual(winner.result);
+  });
+
+  it("leaves the original pending set authoritative when selector switching fails before the discard commit boundary", () => {
+    const scenario = seedDiscardRecoveryScenario();
+    const pendingBefore = expectSucceeded(scenario.service.pendingChanges(scenario.workspace)).pending;
+    const editBefore = expectSucceeded(scenario.service.listPages(scenario.workspace, "edit")).pages.map((page) => ({
+      draftSlug: page.draftSlug,
+      draftTitle: page.draftTitle,
+      parentPageSysId: page.parentPageSysId,
+      sysId: page.sysId
+    }));
+    let failed = false;
+    glideMock.setUpdateHook(workspaceTable, () => {
+      if (failed) {
+        return true;
+      }
+      failed = true;
+      return false;
+    });
+
+    const result = scenario.service.discardAllWorkspace({
+      authority: scenario.authority,
+      commandId: "discard-precommit-001",
+      workspace: scenario.workspace
+    });
+
+    glideMock.setUpdateHook(workspaceTable, null);
+    expect(result.kind).toBe("failed");
+    expect(currentWorkspaceRef().pendingChangeSetSysId).toBe("change-set-001");
+    expect(expectSucceeded(createService().pendingChanges(currentWorkspaceRef())).pending).toEqual(pendingBefore);
+    expect(expectSucceeded(createService().listPages(currentWorkspaceRef(), "edit")).pages.map((page) => ({
+      draftSlug: page.draftSlug,
+      draftTitle: page.draftTitle,
+      parentPageSysId: page.parentPageSysId,
+      sysId: page.sysId
+    }))).toEqual(editBefore);
+  });
+
+  it("blocks later mutations during discard recovery after added-page cleanup fails and resumes only on the same discard command", () => {
+    const scenario = seedDiscardRecoveryScenario();
+    let failed = false;
+    glideMock.setDeleteHook(pageTable, (row) => {
+      if (row.sysId !== scenario.addedPageId || failed) {
+        return true;
+      }
+      failed = true;
+      return false;
+    });
+
+    const first = scenario.service.discardAllWorkspace({
+      authority: scenario.authority,
+      commandId: "discard-recovery-001",
+      workspace: scenario.workspace
+    });
+
+    expect(first).toMatchObject({
+      kind: "failed",
+      code: "recovery_required",
+      recoveryCommandId: "discard-recovery-001",
+      status: 409
+    });
+    const recoveryWorkspace = currentWorkspaceRef();
+    const recoveryAuthority = activeWorkspaceAuthority(recoveryWorkspace);
+    expect(changeSetRow(recoveryAuthority.changeSetId)?.fields.recovery_state).toBe("switched");
+
+    expect(createService().pendingChanges(recoveryWorkspace)).toMatchObject({
+      kind: "failed",
+      code: "recovery_required",
+      recoveryCommandId: "discard-recovery-001",
+      status: 409
+    });
+
+    const blockedResults = [
+      createService().savePageBody({
+        authority: recoveryAuthority,
+        draftContentJson: createDocumentEnvelope("Blocked body"),
+        expectedRevision: 0,
+        pageSysId: "page-001",
+        workspace: recoveryWorkspace
+      }),
+      createService().savePageSettings({
+        authority: recoveryAuthority,
+        pageSysId: "page-001",
+        slug: "blocked-settings",
+        title: "Blocked Settings",
+        workspace: recoveryWorkspace
+      }),
+      createService().createPage({
+        authority: recoveryAuthority,
+        parentPageSysId: null,
+        title: "Blocked Create",
+        workspace: recoveryWorkspace
+      }),
+      createService().deletePage({
+        authority: recoveryAuthority,
+        pageSysId: "page-001",
+        workspace: recoveryWorkspace
+      }),
+      createService().movePage({
+        authority: recoveryAuthority,
+        pageSysId: "page-001",
+        parentPageSysId: null,
+        siblingOrder: "3",
+        workspace: recoveryWorkspace
+      }),
+      createService().publishWorkspace({
+        authority: recoveryAuthority,
+        commandId: "publish-blocked-001",
+        workspace: recoveryWorkspace
+      }),
+      createService().discardAllWorkspace({
+        authority: recoveryAuthority,
+        commandId: "discard-competing-001",
+        workspace: recoveryWorkspace
+      })
+    ];
+
+    for (const blocked of blockedResults) {
+      expect(blocked).toMatchObject({
+        kind: "failed",
+        code: "recovery_required",
+        recoveryCommandId: "discard-recovery-001",
+        status: 409
+      });
+    }
+
+    glideMock.setDeleteHook(pageTable, null);
+    const recovered = expectSucceeded(createService().discardAllWorkspace({
+      authority: recoveryAuthority,
+      commandId: "discard-recovery-001",
+      workspace: recoveryWorkspace
+    }));
+
+    expect(recovered.result.pendingChanges.rows).toEqual([]);
+    expect(changeSetRow(recovered.authority.changeSetId)?.fields.recovery_state).toBe("none");
+    expect(pageRow(scenario.addedPageId)).toBeUndefined();
+  });
+
+  it("retries source supersession after selector-switch interruption and preserves one selected active successor", () => {
+    const scenario = seedDiscardRecoveryScenario();
+    const first = createService({ failPhase: "discard_selector_switched" }).discardAllWorkspace({
+      authority: scenario.authority,
+      commandId: "discard-selector-interrupted-001",
+      workspace: scenario.workspace
+    });
+
+    expect(first).toMatchObject({
+      kind: "failed",
+      code: "recovery_required",
+      affectedPageCount: 4,
+      recoveryCommandId: "discard-selector-interrupted-001",
+      status: 409
+    });
+    const recoveryWorkspace = currentWorkspaceRef();
+    const recoveryAuthority = activeWorkspaceAuthority(recoveryWorkspace);
+    expect(changeSetRow("change-set-001")?.fields.lifecycle_state).toBe("active");
+    expect(changeSetRow(recoveryAuthority.changeSetId)?.fields.recovery_state).toBe("switched");
+
+    const recovered = expectSucceeded(createService().discardAllWorkspace({
+      authority: recoveryAuthority,
+      commandId: "discard-selector-interrupted-001",
+      workspace: recoveryWorkspace
+    }));
+
+    expect(changeSetRow("change-set-001")?.fields.lifecycle_state).toBe("superseded");
+    expect(changeSetRow("change-set-001")?.fields.command_correlation_id).toBe("discard-selector-interrupted-001");
+    expect(changeSetRow("change-set-001")?.fields.finalized_on).toBe("2026-07-18 00:00:00");
+    expect(getRows(changeSetTable).filter((row) => row.fields.lifecycle_state === "active").map((row) => row.sysId)).toEqual([recovered.authority.changeSetId]);
+    expect(currentWorkspaceRef().pendingChangeSetSysId).toBe(recovered.authority.changeSetId);
+  });
+
+  it("retries source supersession after the source change-set update fails", () => {
+    const scenario = seedDiscardRecoveryScenario();
+    let failed = false;
+    glideMock.setUpdateHook(changeSetTable, (row) => {
+      if (!failed && row.sysId === "change-set-001" && row.fields.command_correlation_id === "discard-source-failure-001") {
+        failed = true;
+        return false;
+      }
+      return true;
+    });
+
+    const first = scenario.service.discardAllWorkspace({
+      authority: scenario.authority,
+      commandId: "discard-source-failure-001",
+      workspace: scenario.workspace
+    });
+
+    expect(first).toMatchObject({
+      kind: "failed",
+      code: "recovery_required",
+      affectedPageCount: 4,
+      recoveryCommandId: "discard-source-failure-001",
+      status: 409
+    });
+    expect(changeSetRow("change-set-001")?.fields.lifecycle_state).toBe("active");
+
+    glideMock.setUpdateHook(changeSetTable, null);
+    const recovered = expectSucceeded(createService().discardAllWorkspace({
+      authority: activeWorkspaceAuthority(),
+      commandId: "discard-source-failure-001",
+      workspace: currentWorkspaceRef()
+    }));
+
+    expect(changeSetRow("change-set-001")?.fields.lifecycle_state).toBe("superseded");
+    expect(changeSetRow("change-set-001")?.fields.command_correlation_id).toBe("discard-source-failure-001");
+    expect(changeSetRow("change-set-001")?.fields.finalized_on).toBe("2026-07-18 00:00:00");
+    expect(getRows(changeSetTable).filter((row) => row.fields.lifecycle_state === "active").map((row) => row.sysId)).toEqual([recovered.authority.changeSetId]);
+  });
+
+  it("keeps the successor recovery-blocked when replay-safe result persistence fails and reports the original affected count", () => {
+    const scenario = seedDiscardRecoveryScenario();
+    failNextClaimUpdateToPhase("result_persisted");
+
+    const first = scenario.service.discardAllWorkspace({
+      authority: scenario.authority,
+      commandId: "discard-result-persist-failure-001",
+      workspace: scenario.workspace
+    });
+
+    expect(first).toMatchObject({
+      kind: "failed",
+      code: "recovery_required",
+      affectedPageCount: 4,
+      recoveryCommandId: "discard-result-persist-failure-001",
+      status: 409
+    });
+    const recoveryWorkspace = currentWorkspaceRef();
+    const recoveryAuthority = activeWorkspaceAuthority(recoveryWorkspace);
+    expect(changeSetRow(recoveryAuthority.changeSetId)?.fields.recovery_state).toBe("switched");
+    expect(claimRow("change-set-001:4")?.fields.execution_phase).toBe("change_set_persisted");
+    expect(createService().pendingChanges(recoveryWorkspace)).toMatchObject({
+      kind: "failed",
+      code: "recovery_required",
+      affectedPageCount: 4,
+      recoveryCommandId: "discard-result-persist-failure-001",
+      status: 409
+    });
+
+    glideMock.setUpdateHook(mutationClaimTable, null);
+    const recovered = expectSucceeded(createService().discardAllWorkspace({
+      authority: recoveryAuthority,
+      commandId: "discard-result-persist-failure-001",
+      workspace: recoveryWorkspace
+    }));
+    expect(recovered.result.pendingChanges.rows).toEqual([]);
+    expect(changeSetRow(recovered.authority.changeSetId)?.fields.recovery_state).toBe("none");
+  });
+
+  it("retries recovery-marker clearing from the replay-safe phase without rerunning destructive reconciliation", () => {
+    const scenario = seedDiscardRecoveryScenario();
+    let markerFailure = false;
+    glideMock.setUpdateHook(changeSetTable, (row) => {
+      if (
+        !markerFailure &&
+        String(row.fields.recovery_state) === "none" &&
+        String(row.fields.lifecycle_state) === "active" &&
+        String(row.fields.command_correlation_id) === "discard-marker-failure-001"
+      ) {
+        markerFailure = true;
+        return false;
+      }
+      return true;
+    });
+
+    const first = scenario.service.discardAllWorkspace({
+      authority: scenario.authority,
+      commandId: "discard-marker-failure-001",
+      workspace: scenario.workspace
+    });
+
+    expect(first).toMatchObject({
+      kind: "failed",
+      code: "recovery_required",
+      affectedPageCount: 4,
+      recoveryCommandId: "discard-marker-failure-001",
+      status: 409
+    });
+    const recoveryWorkspace = currentWorkspaceRef();
+    const recoveryAuthority = activeWorkspaceAuthority(recoveryWorkspace);
+    expect(claimRow("change-set-001:4")?.fields.execution_phase).toBe("result_persisted");
+    expect(changeSetRow(recoveryAuthority.changeSetId)?.fields.recovery_state).toBe("switched");
+
+    let retryPageDeletes = 0;
+    let retryPageUpdates = 0;
+    glideMock.setDeleteHook(pageTable, () => {
+      retryPageDeletes += 1;
+      return true;
+    });
+    glideMock.setUpdateHook(pageTable, () => {
+      retryPageUpdates += 1;
+      return true;
+    });
+    glideMock.setUpdateHook(changeSetTable, null);
+    const recovered = expectSucceeded(createService().discardAllWorkspace({
+      authority: recoveryAuthority,
+      commandId: "discard-marker-failure-001",
+      workspace: recoveryWorkspace
+    }));
+
+    expect(retryPageDeletes).toBe(0);
+    expect(retryPageUpdates).toBe(0);
+    expect(changeSetRow(recovered.authority.changeSetId)?.fields.recovery_state).toBe("none");
+
+    const beforeReplayPages = JSON.stringify(getRows(pageTable));
+    const replayed = expectSucceeded(createService().discardAllWorkspace({
+      authority: scenario.authority,
+      commandId: "discard-marker-failure-001",
+      workspace: currentWorkspaceRef()
+    }));
+    expect(replayed.result).toEqual(recovered.result);
+    expect(retryPageDeletes).toBe(0);
+    expect(retryPageUpdates).toBe(0);
+    expect(JSON.stringify(getRows(pageTable))).toBe(beforeReplayPages);
+  });
+
+  it("does not let a completed discard replay overwrite later authoring or rerun restoration/deletion", () => {
+    const scenario = seedDiscardRecoveryScenario();
+    let pageDeletes = 0;
+    let pageUpdates = 0;
+    glideMock.setDeleteHook(pageTable, () => {
+      pageDeletes += 1;
+      return true;
+    });
+    glideMock.setUpdateHook(pageTable, () => {
+      pageUpdates += 1;
+      return true;
+    });
+
+    const discarded = expectSucceeded(scenario.service.discardAllWorkspace({
+      authority: scenario.authority,
+      commandId: "discard-completed-replay-001",
+      workspace: scenario.workspace
+    }));
+    const completedDeletes = pageDeletes;
+    const completedUpdates = pageUpdates;
+
+    let laterAuthority = expectSucceeded(createService().savePageBody({
+      authority: discarded.authority,
+      draftContentJson: createDocumentEnvelope("Later body"),
+      expectedRevision: 0,
+      pageSysId: "page-001",
+      workspace: currentWorkspaceRef()
+    })).authority;
+    laterAuthority = expectSucceeded(createService().savePageSettings({
+      authority: laterAuthority,
+      pageSysId: "page-001",
+      slug: "later-overview",
+      title: "Later Overview",
+      workspace: currentWorkspaceRef()
+    })).authority;
+    laterAuthority = expectSucceeded(createService().movePage({
+      authority: laterAuthority,
+      pageSysId: "page-002",
+      parentPageSysId: null,
+      siblingOrder: "9",
+      workspace: currentWorkspaceRef()
+    })).authority;
+    const laterCreated = expectSucceeded(createService().createPage({
+      authority: laterAuthority,
+      parentPageSysId: null,
+      title: "Later Added Page",
+      workspace: currentWorkspaceRef()
+    }));
+    const beforeReplayDeletes = pageDeletes;
+    const beforeReplayUpdates = pageUpdates;
+    const beforeReplayPages = JSON.stringify(getRows(pageTable));
+    const beforeReplayEntries = JSON.stringify(getRows(changeEntryTable));
+
+    const replayed = expectSucceeded(createService().discardAllWorkspace({
+      authority: scenario.authority,
+      commandId: "discard-completed-replay-001",
+      workspace: currentWorkspaceRef()
+    }));
+
+    expect(replayed.result).toEqual(discarded.result);
+    expect(pageDeletes).toBe(beforeReplayDeletes);
+    expect(pageUpdates).toBe(beforeReplayUpdates);
+    expect(JSON.stringify(getRows(pageTable))).toBe(beforeReplayPages);
+    expect(JSON.stringify(getRows(changeEntryTable))).toBe(beforeReplayEntries);
+    expect(pageRow("page-001")?.fields.draft_title).toBe("Later Overview");
+    expect(pageRow("page-001")?.fields.draft_body_text).toBe("Later body");
+    expect(pageRow("page-002")?.fields.parent_page).toBe("");
+    expect(pageRow(laterCreated.result.page.sysId ?? "")?.fields.draft_title).toBe("Later Added Page");
+    expect(claimPayload("change-set-001:4")).toMatchObject({ affectedPageCount: 4, commandId: "discard-completed-replay-001", kind: "discard_all" });
+  });
+
+  it("returns recovery required after published-row restoration fails and completes on explicit retry", () => {
+    const scenario = seedDiscardRecoveryScenario();
+    let failed = false;
+    glideMock.setUpdateHook(pageTable, (row) => {
+      if (row.sysId !== "page-001" || failed) {
+        return true;
+      }
+      failed = true;
+      return false;
+    });
+
+    const first = scenario.service.discardAllWorkspace({
+      authority: scenario.authority,
+      commandId: "discard-row-recovery-001",
+      workspace: scenario.workspace
+    });
+
+    expect(first).toMatchObject({
+      kind: "failed",
+      code: "recovery_required",
+      recoveryCommandId: "discard-row-recovery-001",
+      status: 409
+    });
+    glideMock.setUpdateHook(pageTable, null);
+    const recovered = expectSucceeded(createService().discardAllWorkspace({
+      authority: activeWorkspaceAuthority(),
+      commandId: "discard-row-recovery-001",
+      workspace: currentWorkspaceRef()
+    }));
+
+    expect(recovered.result.pages.map((page) => page.draftTitle)).toEqual(
+      expectSucceeded(createService().listPages(currentWorkspaceRef(), "live")).pages.map((page) => page.draftTitle)
+    );
+    expect(changeSetRow(recovered.authority.changeSetId)?.fields.recovery_state).toBe("none");
+  });
+
+  it("returns recovery required when clearing pending rows or removal cleanup fails and completes on explicit retry", () => {
+    for (const [tableName, commandId] of [
+      [changeEntryTable, "discard-entry-recovery-001"],
+      [removalMemberTable, "discard-removal-member-recovery-001"],
+      [removalBatchTable, "discard-removal-batch-recovery-001"]
+    ] as const) {
+      glideMock.reset();
+      const scenario = seedDiscardRecoveryScenario();
+      let failed = false;
+      glideMock.setDeleteHook(tableName, () => {
+        if (failed) {
+          return true;
+        }
+        failed = true;
+        return false;
+      });
+
+      const first = scenario.service.discardAllWorkspace({
+        authority: scenario.authority,
+        commandId,
+        workspace: scenario.workspace
+      });
+
+      expect(first).toMatchObject({
+        kind: "failed",
+        code: "recovery_required",
+        recoveryCommandId: commandId,
+        status: 409
+      });
+
+      glideMock.setDeleteHook(tableName, null);
+      const recovered = expectSucceeded(createService().discardAllWorkspace({
+        authority: activeWorkspaceAuthority(),
+        commandId,
+        workspace: currentWorkspaceRef()
+      }));
+
+      expect(recovered.result.pendingChanges.rows).toEqual([]);
+      expect(changeSetRow(recovered.authority.changeSetId)?.fields.recovery_state).toBe("none");
+    }
   });
 
   it("resolves pending attribution through record and field read access without leaking identifiers", () => {

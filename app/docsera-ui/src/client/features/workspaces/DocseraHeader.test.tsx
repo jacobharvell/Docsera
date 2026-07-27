@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DocseraHeader } from "./DocseraHeader";
 import type { WorkspacePendingChangesResult } from "../../shared/types/docsera";
@@ -41,10 +41,12 @@ describe("DocseraHeader Changes Center", () => {
 
   it("opens a compact dropdown with singular/plural count, rows, footer publish, and navigation only for non-removed rows", () => {
     const onOpenPendingPage = vi.fn();
+    const onDiscardAllPendingChanges = vi.fn();
     const onPublishPendingChanges = vi.fn();
     render(
       <DocseraHeader
         {...baseProps}
+        onDiscardAllPendingChanges={onDiscardAllPendingChanges}
         onOpenPendingPage={onOpenPendingPage}
         onPublishPendingChanges={onPublishPendingChanges}
         pendingChanges={pending([
@@ -86,7 +88,12 @@ describe("DocseraHeader Changes Center", () => {
     expect(within(dialog).getByText("Modified")).toBeInTheDocument();
     expect(within(dialog).getByText("Archived API")).toBeInTheDocument();
     expect(within(dialog).getByText("Removed")).toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "Discard all" })).toBeDisabled();
+    const discardButton = within(dialog).getByRole("button", { name: "Discard all" });
+    expect(discardButton).toBeEnabled();
+    expect(discardButton).toHaveClass("docsera-changes-center__header-action");
+    expect(discardButton.querySelector("svg")).toHaveClass("lucide-undo-2");
+    const footerPublish = within(dialog).getByRole("button", { name: "Publish" });
+    expect(footerPublish).toHaveClass("docsera-modal__primary");
     fireEvent.click(within(dialog).getByRole("button", { name: "Publish" }));
     expect(onPublishPendingChanges).toHaveBeenCalledTimes(1);
 
@@ -133,6 +140,176 @@ describe("DocseraHeader Changes Center", () => {
     expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: /Overview/ }));
     expect(onOpenPendingPage).toHaveBeenCalledWith("page-001");
+    expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
+  });
+
+  it("opens the discard-all confirmation modal with singular and plural copy and keeps the changes center open on cancel", () => {
+    const onDiscardAllPendingChanges = vi.fn();
+    const { rerender } = render(
+      <DocseraHeader
+        {...baseProps}
+        onDiscardAllPendingChanges={onDiscardAllPendingChanges}
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          }
+        ])}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Changes Center" })).getByRole("button", { name: "Discard all" }));
+    expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
+    const discardModal = screen.getByRole("dialog", { name: "Discard all changes" });
+    expect(discardModal.closest(".docsera-header")).toBeNull();
+    expect(discardModal.closest(".docsera-modal")).toHaveClass("docsera-modal--top-biased");
+    expect(discardModal).toHaveTextContent("Are you sure you want to discard 1 change? This action cannot be undone.");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog", { name: "Discard all changes" })).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
+
+    rerender(
+      <DocseraHeader
+        {...baseProps}
+        onDiscardAllPendingChanges={onDiscardAllPendingChanges}
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          },
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Moved",
+            firstPendingSequence: 2,
+            lastChangedOn: "2026-07-18 00:01:00",
+            navigable: true,
+            pageSysId: "page-002",
+            title: "API"
+          }
+        ])}
+      />
+    );
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Changes Center" })).getByRole("button", { name: "Discard all" }));
+    expect(screen.getByRole("dialog", { name: "Discard all changes" })).toHaveTextContent("Are you sure you want to discard 2 changes? This action cannot be undone.");
+  });
+
+  it("traps focus inside the discard-all modal and restores focus to the header action on cancel", async () => {
+    render(
+      <DocseraHeader
+        {...baseProps}
+        onDiscardAllPendingChanges={vi.fn()}
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          }
+        ])}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    const discardAction = within(screen.getByRole("dialog", { name: "Changes Center" })).getByRole("button", { name: "Discard all" });
+    fireEvent.click(discardAction);
+
+    const modal = screen.getByRole("dialog", { name: "Discard all changes" });
+    const retryButton = within(modal).getByRole("button", { name: "Discard all" });
+    expect(retryButton).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(retryButton).toHaveFocus();
+
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(discardAction).toHaveFocus());
+  });
+
+  it("keeps the discard-all modal open and ignores Escape while discard processing is active", () => {
+    render(
+      <DocseraHeader
+        {...baseProps}
+        onDiscardAllPendingChanges={vi.fn()}
+        pendingChangesDiscarding
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          }
+        ])}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
+  });
+
+  it("allows retryable discard recovery to reopen the modal while workspace controls are locked", () => {
+    render(
+      <DocseraHeader
+        {...baseProps}
+        onDiscardAllPendingChanges={vi.fn()}
+        pendingChanges={{ state: "failed", affectedPageCount: 2, errorMessage: "Discard recovery is incomplete.", code: "recovery_required", recoveryCommandId: "discard-001" }}
+        pendingChangesDiscardAllAffectedPageCount={2}
+        pendingChangesDiscardAllErrorMessage="Discard recovery is incomplete. Retry discard all to finish restoring this workspace before making other changes."
+        pendingChangesDiscardAllRetryable
+        workspaceControlsLocked
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Changes Center" })).getByRole("button", { name: "Discard all" }));
+    expect(screen.getByRole("dialog", { name: "Discard all changes" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Discard all changes" })).toHaveTextContent("Are you sure you want to discard 2 changes? This action cannot be undone.");
+    expect(screen.getByRole("button", { name: "Retry discard all" })).toBeEnabled();
+  });
+
+  it("keeps the Changes Center open when the header Publish control is pressed during discard processing", () => {
+    render(
+      <DocseraHeader
+        {...baseProps}
+        pendingChangesDiscarding
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          }
+        ])}
+      />
+    );
+
+    const publish = screen.getByRole("button", { name: "Open Changes Center" });
+    fireEvent.click(publish);
+    expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
+    fireEvent.click(publish);
     expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
   });
 
