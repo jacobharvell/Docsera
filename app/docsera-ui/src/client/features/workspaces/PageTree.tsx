@@ -297,6 +297,12 @@ function PageTreeNode({
   const rowStyle = {
     "--docsera-page-tree-action-count": String(actionCount)
   } as CSSProperties;
+  function handleRowClick() {
+    onSelectPage(page.id);
+    if (hasChildren) {
+      onToggleCollapsed(page.id);
+    }
+  }
 
   return (
     <li className="docsera-page-tree__item">
@@ -327,29 +333,25 @@ function PageTreeNode({
         onDrop={canMovePage ? (event) => onDropPage(event, page.id) : undefined}
         style={rowStyle}
       >
-        <div className="docsera-page-tree__row-main">
-          {hasChildren ? (
-            <button
-              type="button"
-              className="docsera-page-tree__chevron"
-              aria-label={isExpanded ? `Collapse ${page.title}` : `Expand ${page.title}`}
-              onClick={() => onToggleCollapsed(page.id)}
-            >
-              <ChevronIcon expanded={isExpanded} />
-            </button>
-          ) : (
-            <span className="docsera-page-tree__chevron-spacer" aria-hidden="true" />
-          )}
-          <button
-            type="button"
-            className="docsera-page-tree__button"
-            onClick={() => onSelectPage(page.id)}
-            aria-current={isSelected ? "page" : undefined}
-            title={page.title}
-          >
+        <button
+          type="button"
+          className="docsera-page-tree__button"
+          onClick={handleRowClick}
+          aria-current={isSelected ? "page" : undefined}
+          aria-expanded={hasChildren ? isExpanded : undefined}
+          title={page.title}
+        >
+          <span className="docsera-page-tree__row-main">
+            {hasChildren ? (
+              <span className="docsera-page-tree__chevron" aria-hidden="true">
+                <ChevronIcon expanded={isExpanded} />
+              </span>
+            ) : (
+              <span className="docsera-page-tree__chevron-spacer" aria-hidden="true" />
+            )}
             <span className="docsera-page-tree__title">{page.title}</span>
-          </button>
-        </div>
+          </span>
+        </button>
 
         {actionCount > 0 ? (
           <div className="docsera-page-tree__actions">
@@ -474,17 +476,16 @@ export function PageTree({
   }, [collapsedPageIds]);
 
   function toggleCollapsed(pageId: string) {
-    setLocalCollapsedPageIds((current) => {
-      const next = new Set(current);
-      if (next.has(pageId)) {
-        next.delete(pageId);
-      } else {
-        next.add(pageId);
-      }
+    const next = new Set(localCollapsedPageIds);
+    if (next.has(pageId)) {
+      next.delete(pageId);
+    } else {
+      next.add(pageId);
+    }
 
-      onCollapsedPageIdsChange?.([...next]);
-      return next;
-    });
+    const nextCollapsedPageIds = [...next];
+    setLocalCollapsedPageIds(next);
+    onCollapsedPageIdsChange?.(nextCollapsedPageIds);
   }
 
   function completeDrop(event: DragEvent<HTMLElement>, targetPageId: string) {

@@ -2408,15 +2408,7 @@ html[data-docsera-theme="dark"] .docsera-page-tree__row--selected:hover {
 }
 
 .docsera-page-tree__chevron {
-  padding: 0;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
   color: currentColor;
-}
-
-.docsera-page-tree__chevron:hover {
-  background: rgba(148, 163, 184, 0.16);
 }
 
 .docsera-page-tree__chevron-icon {
@@ -2431,7 +2423,7 @@ html[data-docsera-theme="dark"] .docsera-page-tree__row--selected:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
+  flex: 1 1 auto;
   min-width: 0;
   padding: 6px calc(12px + (var(--docsera-page-tree-action-count, 0) * 24px)) 6px 12px;
   border: 0;

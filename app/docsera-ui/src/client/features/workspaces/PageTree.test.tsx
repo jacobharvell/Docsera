@@ -1,4 +1,5 @@
 import "@testing-library/jest-dom/vitest";
+import { useState } from "react";
 import { createEvent, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { createEmptyDocseraDocumentEnvelope } from "../../../shared/editor/document";
@@ -68,6 +69,48 @@ function renderTree(pages: WorkspacePageView[], overrides: Partial<Parameters<ty
   );
 }
 
+function renderTreeWithCollapsedState(
+  pages: WorkspacePageView[],
+  overrides: Partial<Parameters<typeof PageTree>[0]> = {},
+  initialCollapsedPageIds: string[] = []
+) {
+  const onCollapsedPageIdsChange = vi.fn();
+
+  function Harness() {
+    const [collapsedPageIds, setCollapsedPageIds] = useState(initialCollapsedPageIds);
+
+    return (
+      <PageTree
+        canCreatePage={false}
+        canManagePageSettings
+        collapsedPageIds={collapsedPageIds}
+        filterText=""
+        inlineCreateState={null}
+        isCreatingPage={false}
+        onCollapsedPageIdsChange={(pageIds) => {
+          onCollapsedPageIdsChange(pageIds);
+          setCollapsedPageIds(pageIds);
+        }}
+        onCommitInlineCreate={vi.fn()}
+        onInlineCreateTitleChange={vi.fn()}
+        onSelectPage={vi.fn()}
+        onShowCreatePage={vi.fn()}
+        onShowChildPageCreate={vi.fn()}
+        onTogglePageSettings={vi.fn()}
+        pageSettingsOpenPageId=""
+        pages={pages}
+        selectedPageId=""
+        {...overrides}
+      />
+    );
+  }
+
+  return {
+    ...render(<Harness />),
+    onCollapsedPageIdsChange
+  };
+}
+
 describe("PageTree presentation", () => {
   it("renders status-bearing pages with title-only row text and accessible names", () => {
     renderTree([page({ id: "draft-page", title: "Draft Only", statusIndicator: "Draft" })]);
@@ -75,6 +118,187 @@ describe("PageTree presentation", () => {
     expect(screen.getByRole("button", { name: "Draft Only" })).toBeInTheDocument();
     expect(screen.queryByText("Draft")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Draft Only Draft" })).not.toBeInTheDocument();
+  });
+});
+
+describe("PageTree row interaction", () => {
+  it("selects and expands a collapsed parent row when the row is activated", () => {
+    const parent = page({
+      id: "parent",
+      title: "Parent",
+      children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
+    });
+    const onSelectPage = vi.fn();
+    const { onCollapsedPageIdsChange } = renderTreeWithCollapsedState(
+      [parent],
+      {
+        onSelectPage,
+        selectedPageId: "parent"
+      },
+      ["parent"]
+    );
+
+    const parentButton = screen.getByRole("button", { name: "Parent" });
+    expect(parentButton).toHaveAttribute("aria-current", "page");
+    expect(parentButton).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(parentButton);
+
+    expect(onSelectPage).toHaveBeenCalledWith("parent");
+    expect(onCollapsedPageIdsChange).toHaveBeenCalledWith([]);
+    expect(screen.getByRole("button", { name: "Parent" })).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Child" })).toBeInTheDocument();
+  });
+
+  it("selects and collapses an expanded parent row when the row is activated", () => {
+    const parent = page({
+      id: "parent",
+      title: "Parent",
+      children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
+    });
+    const onSelectPage = vi.fn();
+    const { onCollapsedPageIdsChange } = renderTreeWithCollapsedState(
+      [parent],
+      {
+        onSelectPage,
+        selectedPageId: "parent"
+      },
+      []
+    );
+
+    const parentButton = screen.getByRole("button", { name: "Parent" });
+    expect(parentButton).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(parentButton);
+
+    expect(onSelectPage).toHaveBeenCalledWith("parent");
+    expect(onCollapsedPageIdsChange).toHaveBeenCalledWith(["parent"]);
+    expect(screen.getByRole("button", { name: "Parent" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("button", { name: "Child" })).not.toBeInTheDocument();
+  });
+
+  it("treats the chevron area as part of the same parent-row target and exposes no separate chevron control", () => {
+    const parent = page({
+      id: "parent",
+      title: "Parent",
+      children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
+    });
+    const onSelectPage = vi.fn();
+    const { onCollapsedPageIdsChange } = renderTreeWithCollapsedState(
+      [parent],
+      {
+        onSelectPage,
+        selectedPageId: "parent"
+      },
+      []
+    );
+
+    const parentButton = screen.getByRole("button", { name: "Parent" });
+    const chevron = parentButton.querySelector(".docsera-page-tree__chevron");
+    if (!chevron) {
+      throw new Error("Missing chevron area for Parent.");
+    }
+
+    expect(parentButton.closest(".docsera-page-tree__row")).toBeInTheDocument();
+    expect(parentButton.closest(".docsera-page-tree__row")?.querySelector(".docsera-page-tree__chevron")).toBeInTheDocument();
+    expect(parentButton.closest(".docsera-page-tree__row")?.querySelector(".docsera-page-tree__chevron")?.tagName).toBe("SPAN");
+    expect(screen.queryByRole("button", { name: "Expand Parent" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Collapse Parent" })).not.toBeInTheDocument();
+
+    fireEvent.click(chevron);
+
+    expect(onSelectPage).toHaveBeenCalledWith("parent");
+    expect(onCollapsedPageIdsChange).toHaveBeenCalledWith(["parent"]);
+    expect(screen.getByRole("button", { name: "Parent" })).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("navigates a leaf row without introducing expansion behavior", () => {
+    const onSelectPage = vi.fn();
+    const onCollapsedPageIdsChange = vi.fn();
+    renderTree([page({ id: "leaf", title: "Leaf" })], {
+      onSelectPage,
+      onCollapsedPageIdsChange
+    });
+
+    const leafButton = screen.getByRole("button", { name: "Leaf" });
+    expect(leafButton).not.toHaveAttribute("aria-expanded");
+
+    fireEvent.click(leafButton);
+
+    expect(onSelectPage).toHaveBeenCalledWith("leaf");
+    expect(onCollapsedPageIdsChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps the child-page plus control independent from row activation", () => {
+    const onSelectPage = vi.fn();
+    const onShowChildPageCreate = vi.fn();
+    const onCollapsedPageIdsChange = vi.fn();
+    renderTree(
+      [
+        page({
+          id: "parent",
+          title: "Parent",
+          children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
+        })
+      ],
+      {
+        canCreatePage: true,
+        onCollapsedPageIdsChange,
+        onSelectPage,
+        onShowChildPageCreate
+      }
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Add child page to Parent" }));
+
+    expect(onShowChildPageCreate).toHaveBeenCalledWith("parent", "Parent");
+    expect(onSelectPage).not.toHaveBeenCalled();
+    expect(onCollapsedPageIdsChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps the Page Settings gear independent from row activation", () => {
+    const onSelectPage = vi.fn();
+    const onTogglePageSettings = vi.fn();
+    const onCollapsedPageIdsChange = vi.fn();
+    renderTree(
+      [
+        page({
+          id: "parent",
+          title: "Parent",
+          children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
+        })
+      ],
+      {
+        onCollapsedPageIdsChange,
+        onSelectPage,
+        onTogglePageSettings
+      }
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Parent" }));
+
+    expect(onTogglePageSettings).toHaveBeenCalledWith("parent");
+    expect(onSelectPage).not.toHaveBeenCalled();
+    expect(onCollapsedPageIdsChange).not.toHaveBeenCalled();
+  });
+
+  it("does not add authoring controls to viewer rows", () => {
+    renderTree(
+      [
+        page({
+          id: "parent",
+          title: "Parent",
+          children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
+        })
+      ],
+      {
+        canCreatePage: false,
+        canManagePageSettings: false
+      }
+    );
+
+    expect(screen.queryByRole("button", { name: "Add child page to Parent" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open settings for Parent" })).not.toBeInTheDocument();
   });
 });
 
