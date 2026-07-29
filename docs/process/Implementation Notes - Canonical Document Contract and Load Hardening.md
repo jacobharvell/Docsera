@@ -19,6 +19,9 @@ This note records the repository-side document contract that E2-T2 hardened.
 - Draft-only records may still carry nullable published canonical content when the published field is truly blank or absent
 - Nonblank persisted `published_content_json` values are never normalized to `null`; malformed or unsupported values fail during load instead of being rewritten silently
 - Save handling rejects unsupported `draftContentJson` values instead of coercing them into a body-text save
+- Live projection loading does not validate or depend on non-authoritative draft canonical JSON
+- Live projection loading does not validate or depend on current page-row published canonical JSON once a selected ready snapshot already exists
+- Edit projection loading continues to validate persisted draft canonical JSON strictly and still rejects malformed drafts instead of substituting an empty editable document
 - Published-list projection fails closed when published canonical content is missing, malformed, or unsupported
 
 ## Failure Taxonomy
@@ -33,6 +36,7 @@ This note records the repository-side document contract that E2-T2 hardened.
 - Invalid draft content stays out of the editable ready state
 - Existing E2-T1 recovery UI remains the fallback for invalid draft loads
 - New page creation still initializes an explicit empty canonical envelope through the page-creation/domain path
+- Legacy foundation establishment still validates page-row published canonical JSON strictly because it constructs the initial ready snapshot
 - Live mode never falls back to draft content when published canonical content is invalid
 - Unsupported or malformed persisted content remains non-destructive; it is surfaced as a load failure instead of being rewritten silently
 

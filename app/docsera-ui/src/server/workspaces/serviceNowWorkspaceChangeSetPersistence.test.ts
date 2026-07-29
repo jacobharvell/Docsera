@@ -1125,6 +1125,263 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     ).toEqual(beforeSnapshot);
   });
 
+  it.each([
+    ["malformed JSON", "{not-json"],
+    ["unsupported schema", JSON.stringify({ schemaVersion: 999, document: createDocument("Unsupported schema draft") })]
+  ])("loads the Live projection when a draft is %s", (_label, draftContentJson) => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({
+          pageId: "page-001",
+          draftBodyText: "Root draft body",
+          draftContentJson: createDocument("Root draft body"),
+          draftTitle: "Root",
+          publishedBodyText: "Root published body",
+          publishedContentJson: createDocument("Root published body"),
+          publishedSlug: "root",
+          publishedTitle: "Root",
+          siblingOrder: "1"
+        }),
+        createSeedPage({
+          pageId: "page-002",
+          draftBodyText: "Child draft body",
+          draftContentJson: createDocument("Child draft body"),
+          draftTitle: "Child",
+          parentPageId: "page-001",
+          publishedBodyText: "Child published body",
+          publishedContentJson: createDocument("Child published body"),
+          publishedSlug: "child",
+          publishedTitle: "Child",
+          siblingOrder: "1"
+        }),
+        createSeedPage({
+          pageId: "page-003",
+          draftBodyText: "Sibling draft body",
+          draftContentJson: createDocument("Sibling draft body"),
+          draftTitle: "Sibling",
+          publishedBodyText: "Sibling published body",
+          publishedContentJson: createDocument("Sibling published body"),
+          publishedSlug: "sibling",
+          publishedTitle: "Sibling",
+          siblingOrder: "2"
+        })
+      ]
+    });
+    const page = pageRow("page-002");
+    if (!page) {
+      throw new Error("Expected page-002 to exist.");
+    }
+    glideMock.updateRow(pageTable, "page-002", {
+      ...page.fields,
+      draft_content_json: draftContentJson
+    });
+
+    const live = expectSucceeded(createService().listPages(workspaceRef(), "live"));
+
+    expect(live.pages.map((page) => page.sysId)).toEqual(["page-001", "page-002", "page-003"]);
+    expect(live.pages.find((page) => page.sysId === "page-002")).toMatchObject({
+      draftBodyText: "Child published body",
+      draftTitle: "Child",
+      parentPageSysId: "page-001",
+      publishedBodyText: "Child published body"
+    });
+    expect(live.pages.find((page) => page.sysId === "page-003")).toMatchObject({
+      draftTitle: "Sibling",
+      publishedBodyText: "Sibling published body",
+      siblingOrder: 2
+    });
+  });
+
+  it.each([
+    ["malformed JSON", "{not-json"],
+    ["unsupported schema", JSON.stringify({ schemaVersion: 999, document: createDocument("Unsupported schema published") })]
+  ])("loads the Live projection when a current page-row published content is %s", (_label, publishedContentJson) => {
+    const seeded = seedValidNonSeedSelectors();
+    const publishedRow = pageRow("page-002");
+    if (!publishedRow) {
+      throw new Error("Expected page-002 to exist.");
+    }
+    glideMock.updateRow(pageTable, "page-002", {
+      ...publishedRow.fields,
+      published_body_text: "Published after selector load",
+      published_content_json: publishedContentJson,
+      published_slug: "published-after-selector-load",
+      published_slug_normalized: "published-after-selector-load",
+      published_title: "Published after selector load"
+    });
+
+    const live = expectSucceeded(createService().listPages(seeded.workspace, "live"));
+
+    expect(live.pages).toEqual([
+      expect.objectContaining({
+        active: true,
+        draftBodyText: "Selected root body",
+        draftSlug: "selected-root",
+        draftTitle: "Selected Root",
+        parentPageSysId: null,
+        siblingOrder: 1,
+        sysId: "page-001"
+      }),
+      expect.objectContaining({
+        active: true,
+        draftBodyText: "Selected child body",
+        draftSlug: "selected-child",
+        draftTitle: "Selected Child",
+        parentPageSysId: "page-001",
+        siblingOrder: 1,
+        sysId: "page-002"
+      }),
+      expect.objectContaining({
+        active: true,
+        draftBodyText: "Selected sibling body",
+        draftSlug: "selected-sibling",
+        draftTitle: "Selected Sibling",
+        parentPageSysId: null,
+        siblingOrder: 2,
+        sysId: "page-003"
+      })
+    ]);
+  });
+
+  it.each([
+    ["malformed JSON", "{not-json", "not valid JSON"],
+    ["unsupported schema", JSON.stringify({ schemaVersion: 999, document: createDocument("Unsupported schema snapshot") }), "unsupported document schema version"]
+  ])("fails closed when the selected ready snapshot content is %s", (_label, contentJson, errorMessage) => {
+    const seeded = seedValidNonSeedSelectors();
+    const snapshotRow = getRows(pageSnapshotTable).find(
+      (row) => row.fields.snapshot_set === seeded.selectedSnapshotSetId && row.fields.page === "page-002"
+    );
+    if (!snapshotRow) {
+      throw new Error("Expected selected snapshot page-002 to exist.");
+    }
+    glideMock.updateRow(pageSnapshotTable, snapshotRow.sysId, {
+      ...snapshotRow.fields,
+      content_json: contentJson
+    });
+
+    const result = createService().listPages(seeded.workspace, "live");
+
+    expect(result).toMatchObject({
+      kind: "failed",
+      status: 409
+    });
+    if (result.kind === "failed") {
+      expect(result.errorMessage).toContain(errorMessage);
+    }
+  });
+
+  it.each([
+    ["malformed JSON", "{not-json", "not valid JSON"],
+    ["unsupported schema", JSON.stringify({ schemaVersion: 999, document: createDocument("Unsupported schema foundation") }), "unsupported document schema version"]
+  ])("fails closed when foundation establishment parses a legacy published page row that is %s", (_label, publishedContentJson, errorMessage) => {
+    seedWorkspaceFoundation({
+      includeChangeSet: false,
+      includeSnapshot: false,
+      pages: [
+        createSeedPage({
+          pageId: "page-001",
+          draftBodyText: "Root draft body",
+          draftContentJson: createDocument("Root draft body"),
+          draftTitle: "Root",
+          publishedBodyText: "Root published body",
+          publishedContentJson: createDocument("Root published body"),
+          publishedSlug: "root",
+          publishedTitle: "Root",
+          siblingOrder: "1"
+        }),
+        createSeedPage({
+          pageId: "page-002",
+          draftBodyText: "Child draft body",
+          draftContentJson: createDocument("Child draft body"),
+          draftTitle: "Child",
+          parentPageId: "page-001",
+          publishedBodyText: "Child published body",
+          publishedContentJson: createDocument("Child published body"),
+          publishedSlug: "child",
+          publishedTitle: "Child",
+          siblingOrder: "1"
+        })
+      ]
+    });
+    const page = pageRow("page-002");
+    if (!page) {
+      throw new Error("Expected page-002 to exist.");
+    }
+    glideMock.updateRow(pageTable, "page-002", {
+      ...page.fields,
+      published_content_json: publishedContentJson
+    });
+
+    const result = createService().listPages(
+      workspaceRef({
+        pendingChangeSetSysId: "",
+        publishedSnapshotSetSysId: ""
+      }),
+      "live"
+    );
+
+    expect(result).toMatchObject({
+      kind: "failed",
+      status: 409
+    });
+    if (result.kind === "failed") {
+      expect(result.errorMessage).toContain(errorMessage);
+    }
+    expect(getRows(snapshotSetTable)).toHaveLength(0);
+    expect(getRows(pageSnapshotTable)).toHaveLength(0);
+  });
+
+  it.each([
+    ["malformed JSON", "{not-json", "not valid JSON"],
+    ["unsupported schema", JSON.stringify({ schemaVersion: 999, document: createDocument("Unsupported schema draft") }), "unsupported document schema version"]
+  ])("continues to reject Edit loading when a draft is %s", (_label, draftContentJson, errorMessage) => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({
+          pageId: "page-001",
+          draftBodyText: "Root draft body",
+          draftContentJson: createDocument("Root draft body"),
+          draftTitle: "Root",
+          publishedBodyText: "Root published body",
+          publishedContentJson: createDocument("Root published body"),
+          publishedSlug: "root",
+          publishedTitle: "Root",
+          siblingOrder: "1"
+        }),
+        createSeedPage({
+          pageId: "page-002",
+          draftBodyText: "Child draft body",
+          draftContentJson: createDocument("Child draft body"),
+          draftTitle: "Child",
+          parentPageId: "page-001",
+          publishedBodyText: "Child published body",
+          publishedContentJson: createDocument("Child published body"),
+          publishedSlug: "child",
+          publishedTitle: "Child",
+          siblingOrder: "1"
+        })
+      ]
+    });
+    const page = pageRow("page-002");
+    if (!page) {
+      throw new Error("Expected page-002 to exist.");
+    }
+    glideMock.updateRow(pageTable, "page-002", {
+      ...page.fields,
+      draft_content_json: draftContentJson
+    });
+
+    const result = createService().listPages(workspaceRef(), "edit");
+
+    expect(result).toMatchObject({
+      kind: "failed",
+      status: 409
+    });
+    if (result.kind === "failed") {
+      expect(result.errorMessage).toContain(errorMessage);
+    }
+  });
+
   it("converges an incomplete legacy foundation idempotently and stops rewriting once the ready selectors exist", () => {
     seedWorkspaceFoundation({
       includeChangeSet: false,

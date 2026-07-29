@@ -24,6 +24,8 @@ import {
   collectPageSubtreeSysIds,
   createPageDraft,
   hasPageDraftDifferencesFromPublished,
+  normalizePageRecord,
+  normalizeServiceNowBoolean,
   normalizeSiblingOrder,
   pickNextVisiblePageAfterDelete,
   type PageRecord
@@ -239,6 +241,7 @@ type AclReadableRecord = {
   getElement?: (fieldName: string) => { canRead?: () => boolean } | null;
   getValue: (fieldName: string) => unknown;
 };
+type WorkspacePageRecordLoadMode = "edit" | "foundation" | "live";
 export type WorkspacePendingChangesReadModel = {
   affectedPageCount: number;
   changeSetId: string;
@@ -387,12 +390,84 @@ function loadWorkspaceBySysId(workspaceSysId: string): WorkspaceRecord | null {
   return mapWorkspaceRecord(row);
 }
 
-function listWorkspacePageRecords(workspaceSysId: string): PageRecord[] {
+function mapWorkspaceFoundationPageRecord(record: {
+  getDisplayValue: (fieldName: string) => unknown;
+  getUniqueValue: () => string;
+  getValue: (fieldName: string) => unknown;
+}): PageRecord {
+  const publishedContentJson = cleanText(record.getValue("published_content_json"));
+  const parsedPublishedContentJson = publishedContentJson ? parseServerDocument(publishedContentJson) : null;
+  const publishedTitle = cleanText(record.getValue("published_title")) || null;
+  const publishedSlug = cleanText(record.getValue("published_slug_normalized") || record.getValue("published_slug")) || null;
+  const publishedBodyText = cleanText(record.getValue("published_body_text")) || null;
+
+  return normalizePageRecord({
+    sysId: cleanText(record.getUniqueValue()),
+    workspaceSysId: cleanText(record.getValue("workspace")),
+    parentPageSysId: cleanText(record.getValue("parent_page")) || null,
+    siblingOrder: normalizeSiblingOrder(record.getValue("sibling_order")),
+    draftTitle: cleanText(record.getValue("draft_title")) || publishedTitle || "",
+    draftSlug: cleanText(record.getValue("draft_slug")) || publishedSlug || "",
+    draftSlugNormalized: cleanText(record.getValue("draft_slug_normalized")) || publishedSlug || "",
+    draftContentJson: parsedPublishedContentJson ?? createEmptyServerDocumentEnvelope(),
+    draftRevision: safeInteger(record.getValue("draft_revision")) ?? 0,
+    draftBodyText: cleanText(record.getValue("draft_body_text")) || publishedBodyText || null,
+    publishedTitle,
+    publishedSlug,
+    publishedSlugNormalized: publishedSlug,
+    publishedContentJson: parsedPublishedContentJson,
+    publishedBodyText,
+    publishedAt: cleanText(record.getDisplayValue("published_at")) || cleanText(record.getValue("published_at")) || null,
+    publishedBySysId: cleanText(record.getValue("published_by")) || null,
+    publishedByDisplayName: cleanText(record.getDisplayValue("published_by")) || null,
+    publicationState: cleanText(record.getValue("publication_state")) || "draft",
+    active: normalizeServiceNowBoolean(record.getValue("active"), true)
+  });
+}
+
+function mapWorkspaceLivePageRecord(record: {
+  getDisplayValue: (fieldName: string) => unknown;
+  getUniqueValue: () => string;
+  getValue: (fieldName: string) => unknown;
+}): PageRecord {
+  return normalizePageRecord({
+    sysId: cleanText(record.getUniqueValue()),
+    workspaceSysId: cleanText(record.getValue("workspace")),
+    parentPageSysId: cleanText(record.getValue("parent_page")) || null,
+    siblingOrder: normalizeSiblingOrder(record.getValue("sibling_order")),
+    draftTitle: cleanText(record.getValue("draft_title")),
+    draftSlug: cleanText(record.getValue("draft_slug")),
+    draftSlugNormalized: cleanText(record.getValue("draft_slug_normalized")),
+    draftContentJson: createEmptyServerDocumentEnvelope(),
+    draftRevision: safeInteger(record.getValue("draft_revision")) ?? 0,
+    draftBodyText: cleanText(record.getValue("draft_body_text")) || null,
+    publishedTitle: cleanText(record.getValue("published_title")) || null,
+    publishedSlug: cleanText(record.getValue("published_slug_normalized") || record.getValue("published_slug")) || null,
+    publishedSlugNormalized: cleanText(record.getValue("published_slug_normalized") || record.getValue("published_slug")) || null,
+    publishedContentJson: null,
+    publishedBodyText: cleanText(record.getValue("published_body_text")) || null,
+    publishedAt: cleanText(record.getDisplayValue("published_at")) || cleanText(record.getValue("published_at")) || null,
+    publishedBySysId: cleanText(record.getValue("published_by")) || null,
+    publishedByDisplayName: cleanText(record.getDisplayValue("published_by")) || null,
+    publicationState: cleanText(record.getValue("publication_state")) || "draft",
+    active: normalizeServiceNowBoolean(record.getValue("active"), true)
+  });
+}
+
+function listWorkspacePageRecords(workspaceSysId: string, mode: WorkspacePageRecordLoadMode = "edit"): PageRecord[] {
   const rows = new GlideRecord(DOCSERA_PAGE_TABLE);
   rows.addQuery("workspace", workspaceSysId);
   rows.query();
   const results: PageRecord[] = [];
   while (rows.next()) {
+    if (mode === "live") {
+      results.push(mapWorkspaceLivePageRecord(rows));
+      continue;
+    }
+    if (mode === "foundation") {
+      results.push(mapWorkspaceFoundationPageRecord(rows));
+      continue;
+    }
     results.push(mapPageRecord(rows));
   }
   return results;
@@ -1224,14 +1299,18 @@ function buildDraftPages(pageRecords: PageRecord[], snapshotPages: SnapshotPage[
 
 function loadWorkspaceState(
   workspaceInput: WorkspaceRecord,
-  dependencies: WorkspaceChangeSetPersistenceDependencies
+  dependencies: WorkspaceChangeSetPersistenceDependencies,
+  mode: "edit" | "live" = "edit"
 ): {
   activeChangeSet: { commandCorrelationId: string; recoveryState: string; revision: number; sysId: string };
   pageRecords: PageRecord[];
   state: WorkspaceChangeSetState;
   workspace: WorkspaceRecord;
 } {
-  const workspace = ensureWorkspaceFoundation(workspaceInput, listWorkspacePageRecords(cleanText(workspaceInput.sysId)), dependencies);
+  const foundationPageRecords = mode === "live" && cleanText(workspaceInput.pendingChangeSetSysId) && cleanText(workspaceInput.publishedSnapshotSetSysId)
+    ? []
+    : listWorkspacePageRecords(cleanText(workspaceInput.sysId), "foundation");
+  const workspace = ensureWorkspaceFoundation(workspaceInput, foundationPageRecords, dependencies);
   const workspaceSysId = cleanText(workspace.sysId);
   const activeChangeSetSysId = cleanText(workspace.pendingChangeSetSysId);
   const selectedSnapshotSysId = cleanText(workspace.publishedSnapshotSetSysId);
@@ -1257,7 +1336,7 @@ function loadWorkspaceState(
     throw new Error("Workspace foundation is invalid.");
   }
 
-  const pageRecords = listWorkspacePageRecords(workspaceSysId);
+  const pageRecords = listWorkspacePageRecords(workspaceSysId, mode === "live" ? "live" : "edit");
   const snapshotPages = loadSnapshotPages(selectedSnapshotSysId);
 
   const entries = new GlideRecord(DOCSERA_WORKSPACE_CHANGE_ENTRY_TABLE);
@@ -1319,7 +1398,7 @@ function loadWorkspaceState(
       changeSetRevision: revision
     }))).values()
   ].filter(Boolean));
-  if (retainedPageIds.size === 0 && revision > 0) {
+  if (mode === "edit" && retainedPageIds.size === 0 && revision > 0) {
     for (const page of pageRecords) {
       retainedPageIds.add(cleanText(page.sysId));
     }
@@ -1345,7 +1424,7 @@ function loadWorkspaceState(
       readiness: "ready",
       pages: snapshotPages
     }],
-    draftPages: buildDraftPages(pageRecords, snapshotPages, retainedPageIds),
+    draftPages: mode === "edit" ? buildDraftPages(pageRecords, snapshotPages, retainedPageIds) : [],
     entries: entryResults,
     removalBatches,
     commands: []
@@ -2523,7 +2602,7 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
   return {
     listPages(workspace: WorkspaceRecord, mode: "edit" | "live"): WorkspaceProjectionResult {
       try {
-        const loaded = loadWorkspaceState(workspace, dependencies);
+        const loaded = loadWorkspaceState(workspace, dependencies, mode);
         const recordMap = new Map(loaded.pageRecords.map((page) => [cleanText(page.sysId), page]));
         const projected = orderProjectionPages(mode === "live" ? projectLive(loaded.state) : projectEdit(loaded.state)).map((page) =>
           pageFromProjectionPage(page, recordMap.get(page.pageId), cleanText(loaded.workspace.sysId), mode)
