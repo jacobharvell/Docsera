@@ -1,10 +1,40 @@
 import "@testing-library/jest-dom/vitest";
+// @ts-expect-error node builtin types are not included in the client test tsconfig
+import { readFileSync } from "node:fs";
+// @ts-expect-error node builtin types are not included in the client test tsconfig
+import { join } from "node:path";
 import { useState } from "react";
-import { createEvent, fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createEmptyDocseraDocumentEnvelope } from "../../../shared/editor/document";
 import { PageTree } from "./PageTree";
+import { resolvePageTreeDropGeometry } from "./pageTreeDropGeometry";
+import {
+  resolvePageTreeDropDestination,
+  type PageTreeDropDestination,
+  type PageTreeDropPosition
+} from "./pageTreeDropResolver";
 import type { WorkspacePageView } from "./workspaceViewModels";
+
+vi.mock("./pageTreeDropResolver", () => ({
+  resolvePageTreeDropDestination: vi.fn()
+}));
+
+vi.mock("./pageTreeDropGeometry", () => ({
+  resolvePageTreeDropGeometry: vi.fn()
+}));
+
+const resolveDropDestination = vi.mocked(resolvePageTreeDropDestination);
+const resolveDropGeometry = vi.mocked(resolvePageTreeDropGeometry);
+let activeGeometryCandidate: MockGeometryCandidate | null = null;
+
+beforeEach(() => {
+  resolveDropDestination.mockReset();
+  resolveDropGeometry.mockReset();
+  activeGeometryCandidate = null;
+  resolveDropGeometry.mockImplementation(() => activeGeometryCandidate);
+  resolveDropDestination.mockReturnValue(null);
+});
 
 function page(overrides: Partial<WorkspacePageView> & Pick<WorkspacePageView, "id" | "title">): WorkspacePageView {
   const sysId = overrides.sysId ?? overrides.id;
@@ -302,62 +332,747 @@ describe("PageTree row interaction", () => {
   });
 });
 
-function row(title: string): HTMLElement {
-  const button = screen.getByRole("button", { name: title });
-  const element = button.closest(".docsera-page-tree__row");
-  if (!element) {
-    throw new Error(`Missing row for ${title}.`);
-  }
-  Object.defineProperty(element, "getBoundingClientRect", {
-    configurable: true,
-    value: () => ({ bottom: 90, height: 90, left: 0, right: 200, top: 0, width: 200, x: 0, y: 0, toJSON: () => ({}) })
+describe("PageTree drag destination indicators", () => {
+  it("renders no spacer drop-zone items and keeps movable and non-movable trees compact", () => {
+    const pages = [
+      page({ id: "source", title: "Source", siblingOrder: 1 }),
+      page({
+        id: "parent",
+        title: "Parent",
+        siblingOrder: 2,
+        children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
+      }),
+      page({ id: "root-b", title: "Root B", siblingOrder: 3 })
+    ];
+
+    const { rerender } = renderTree(pages, {
+      canCreatePage: true,
+      onMovePage: vi.fn()
+    });
+
+    expect(document.querySelector("[data-docsera-page-tree-drop-zone]")).not.toBeInTheDocument();
+    expect(treeItems().children).toHaveLength(4);
+    expect(document.querySelectorAll(".docsera-page-tree__drop-edge-line")).toHaveLength(0);
+
+    rerender(
+      <PageTree
+        canCreatePage
+        canManagePageSettings={false}
+        collapsedPageIds={[]}
+        filterText=""
+        inlineCreateState={null}
+        isCreatingPage={false}
+        onCommitInlineCreate={vi.fn()}
+        onInlineCreateTitleChange={vi.fn()}
+        onSelectPage={vi.fn()}
+        onShowCreatePage={vi.fn()}
+        onShowChildPageCreate={vi.fn()}
+        onTogglePageSettings={vi.fn()}
+        pageSettingsOpenPageId=""
+        pages={pages}
+        selectedPageId=""
+      />
+    );
+
+    expect(document.querySelector("[data-docsera-page-tree-drop-zone]")).not.toBeInTheDocument();
+    expect(treeItems().children).toHaveLength(4);
   });
-  return element as HTMLElement;
-}
 
-function dataTransfer() {
-  return {
-    dropEffect: "move",
-    effectAllowed: "move",
-    getData: vi.fn(() => ""),
-    setData: vi.fn()
-  };
-}
-
-function dragDrop(sourceTitle: string, targetTitle: string, clientY: number) {
-  const transfer = dataTransfer();
-  fireEvent.dragStart(row(sourceTitle), { dataTransfer: transfer });
-  fireEvent.dragOver(row(targetTitle), { clientY, dataTransfer: transfer });
-  const drop = createEvent.drop(row(targetTitle), { dataTransfer: transfer });
-  Object.defineProperty(drop, "clientY", { value: clientY });
-  fireEvent(row(targetTitle), drop);
-}
-
-describe("PageTree movement drag and drop", () => {
-  it("calls movement for root reorder and moving a nested page to root", () => {
+  it("resolves the virtual top destination above the first root row and anchors the line at the first row boundary", async () => {
     const onMovePage = vi.fn();
-    renderTree([
-      page({ id: "root-a", title: "Root A", siblingOrder: 1, children: [page({ id: "child-a", parentPageSysId: "root-a", title: "Child A" })] }),
-      page({ id: "root-b", title: "Root B", siblingOrder: 2 })
-    ], { onMovePage });
+    renderTree(
+      [
+        page({ id: "source", title: "Source", siblingOrder: 1 }),
+        page({
+          id: "parent",
+          title: "Parent",
+          siblingOrder: 2,
+          children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
+        }),
+        page({ id: "root-b", title: "Root B", siblingOrder: 3 })
+      ],
+      { onMovePage }
+    );
 
-    dragDrop("Child A", "Root B", 89);
+    setRect(treeList(), 0, 260);
+    setRect(row("Source"), 40, 70);
+    setRect(row("Parent"), 74, 104);
+    setRect(row("Child"), 108, 138);
+    setRect(row("Root B"), 142, 172);
+
+    const transfer = startDrag("Child");
+    mockDropResolver({
+      source: {
+        before: {
+          pageSysId: "child",
+          parentPageSysId: null,
+          position: "before",
+          siblingOrder: "0.5",
+          targetPageId: "source"
+        }
+      }
+    });
+    mockGeometryResolver({ edge: "top", position: "before", targetPageId: "source" });
+
+    hover(treeList(), 20, transfer);
+    await waitFor(() => expect(dropEdgeLine("top")).toHaveStyle({ top: "40px" }));
+    expect(item("Source")).not.toHaveClass("docsera-page-tree__item--drop-before");
+    expect(activeIndicatorCount()).toBe(1);
+
+    fireEvent.drop(treeList(), { clientY: 20, dataTransfer: transfer });
+    expect(onMovePage).toHaveBeenCalledWith({
+      pageSysId: "child",
+      parentPageSysId: null,
+      siblingOrder: "0.5"
+    });
+    expectNoIndicators();
+  });
+
+  it("resolves the virtual bottom destination after the final visible root branch and keeps the line after descendants", async () => {
+    const onMovePage = vi.fn();
+    renderTree(
+      [
+        page({
+          id: "root-a",
+          title: "Root A",
+          siblingOrder: 1,
+          children: [page({ id: "child-a", parentPageSysId: "root-a", title: "Child A" })]
+        }),
+        page({
+          id: "root-b",
+          title: "Root B",
+          siblingOrder: 2,
+          children: [page({ id: "child-b", parentPageSysId: "root-b", title: "Child B" })]
+        })
+      ],
+      { onMovePage }
+    );
+
+    setRect(treeList(), 0, 280);
+    setRect(row("Root A"), 40, 70);
+    setRect(row("Child A"), 74, 104);
+    setRect(row("Root B"), 108, 138);
+    setRect(row("Child B"), 142, 172);
+
+    const transfer = startDrag("Child A");
+    mockDropResolver({
+      "root-b": {
+        after: {
+          pageSysId: "child-a",
+          parentPageSysId: null,
+          position: "after",
+          siblingOrder: "3",
+          targetPageId: "root-b"
+        }
+      }
+    });
+    mockGeometryResolver({ edge: "bottom", position: "after", targetPageId: "root-b" });
+
+    hover(treeList(), 220, transfer);
+    await waitFor(() => expect(dropEdgeLine("bottom")).toHaveStyle({ top: "172px" }));
+    expect(item("Root B")).not.toHaveClass("docsera-page-tree__item--drop-after");
+    expect(activeIndicatorCount()).toBe(1);
+
+    fireEvent.drop(treeList(), { clientY: 220, dataTransfer: transfer });
+    expect(onMovePage).toHaveBeenCalledWith({
+      pageSysId: "child-a",
+      parentPageSysId: null,
+      siblingOrder: "3"
+    });
+    expectNoIndicators();
+  });
+
+  it("keeps one stable line above the lower peer while the pointer crosses equivalent root peer regions", async () => {
+    const onMovePage = vi.fn();
+    renderTree(
+      [
+        page({ id: "dragged", title: "Dragged", siblingOrder: 1 }),
+        page({ id: "root-a", title: "Root A", siblingOrder: 2 }),
+        page({ id: "root-b", title: "Root B", siblingOrder: 3 })
+      ],
+      { onMovePage }
+    );
+
+    setRect(treeList(), 0, 180);
+    setRect(row("Dragged"), 24, 54);
+    setRect(row("Root A"), 58, 88);
+    setRect(row("Root B"), 92, 122);
+
+    const transfer = startDrag("Dragged");
+
+    const regions = [
+      {
+        geometry: { edge: null, position: "after" as PageTreeDropPosition, targetPageId: "root-a" },
+        y: 80
+      },
+      {
+        geometry: { edge: null, position: "after" as PageTreeDropPosition, targetPageId: "root-a" },
+        y: 90
+      },
+      {
+        geometry: { edge: null, position: "before" as PageTreeDropPosition, targetPageId: "root-b" },
+        y: 95
+      },
+      {
+        geometry: { edge: null, position: "before" as PageTreeDropPosition, targetPageId: "root-b" },
+        y: 100
+      }
+    ];
+
+    for (const region of regions) {
+      mockDropResolver({
+        "root-a": {
+          after: {
+            pageSysId: "dragged",
+            parentPageSysId: null,
+            position: "after",
+            siblingOrder: "2.5",
+            targetPageId: "root-a"
+          }
+        },
+        "root-b": {
+          before: {
+            pageSysId: "dragged",
+            parentPageSysId: null,
+            position: "before",
+            siblingOrder: "2.5",
+            targetPageId: "root-b"
+          }
+        }
+      });
+      mockGeometryResolver(region.geometry);
+      hover(treeList(), region.y, transfer);
+      await waitFor(() => expect(item("Root B")).toHaveClass("docsera-page-tree__item--drop-before"));
+      expect(item("Root A")).not.toHaveClass("docsera-page-tree__item--drop-after");
+      expect(activeIndicatorCount()).toBe(1);
+    }
+
+    fireEvent.drop(treeList(), { clientY: 100, dataTransfer: transfer });
+    expect(onMovePage).toHaveBeenCalledWith({
+      pageSysId: "dragged",
+      parentPageSysId: null,
+      siblingOrder: "2.5"
+    });
+    expect(onMovePage).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps equivalent nested peer regions on the lower peer before indicator and final move input", async () => {
+    const onMovePage = vi.fn();
+    renderTree(
+      [
+        page({ id: "dragged", title: "Dragged", siblingOrder: 1 }),
+        page({
+          id: "parent",
+          title: "Parent",
+          siblingOrder: 2,
+          children: [
+            page({ id: "nested-a", parentPageSysId: "parent", title: "Nested A", siblingOrder: 1 }),
+            page({ id: "nested-b", parentPageSysId: "parent", title: "Nested B", siblingOrder: 2 })
+          ]
+        })
+      ],
+      { onMovePage }
+    );
+
+    setRect(treeList(), 0, 220);
+    setRect(row("Dragged"), 24, 54);
+    setRect(row("Parent"), 58, 88);
+    setRect(row("Nested A"), 92, 122);
+    setRect(row("Nested B"), 126, 156);
+
+    const transfer = startDrag("Dragged");
+    const regions = [
+      {
+        geometry: { edge: null, position: "after" as PageTreeDropPosition, targetPageId: "nested-a" },
+        y: 112
+      },
+      {
+        geometry: { edge: null, position: "before" as PageTreeDropPosition, targetPageId: "nested-b" },
+        y: 130
+      }
+    ];
+
+    for (const region of regions) {
+      mockDropResolver({
+        "nested-a": {
+          after: {
+            pageSysId: "dragged",
+            parentPageSysId: "parent",
+            position: "after",
+            siblingOrder: "1.5",
+            targetPageId: "nested-a"
+          }
+        },
+        "nested-b": {
+          before: {
+            pageSysId: "dragged",
+            parentPageSysId: "parent",
+            position: "before",
+            siblingOrder: "1.5",
+            targetPageId: "nested-b"
+          }
+        }
+      });
+      mockGeometryResolver(region.geometry);
+      hover(treeList(), region.y, transfer);
+      await waitFor(() => expect(item("Nested B")).toHaveClass("docsera-page-tree__item--drop-before"));
+      expect(item("Nested A")).not.toHaveClass("docsera-page-tree__item--drop-after");
+      expect(activeIndicatorCount()).toBe(1);
+    }
+
+    fireEvent.drop(treeList(), { clientY: 130, dataTransfer: transfer });
+    expect(onMovePage).toHaveBeenCalledWith({
+      pageSysId: "dragged",
+      parentPageSysId: "parent",
+      siblingOrder: "1.5"
+    });
+    expect(onMovePage).toHaveBeenCalledTimes(1);
+  });
+
+  it("allows the bottom destination to win over the New page area without activating New page", async () => {
+    const onMovePage = vi.fn();
+    const onShowCreatePage = vi.fn();
+    renderTree(
+      [
+        page({
+          id: "root-a",
+          title: "Root A",
+          siblingOrder: 1,
+          children: [page({ id: "child-a", parentPageSysId: "root-a", title: "Child A" })]
+        }),
+        page({
+          id: "root-b",
+          title: "Root B",
+          siblingOrder: 2,
+          children: [page({ id: "child-b", parentPageSysId: "root-b", title: "Child B" })]
+        })
+      ],
+      { canCreatePage: true, onMovePage, onShowCreatePage }
+    );
+
+    setRect(treeList(), 0, 320);
+    setRect(row("Root A"), 40, 70);
+    setRect(row("Child A"), 74, 104);
+    setRect(row("Root B"), 108, 138);
+    setRect(row("Child B"), 142, 172);
+
+    const transfer = startDrag("Child A");
+    mockDropResolver({
+      "root-b": {
+        after: {
+          pageSysId: "child-a",
+          parentPageSysId: null,
+          position: "after",
+          siblingOrder: "3",
+          targetPageId: "root-b"
+        }
+      }
+    });
+    mockGeometryResolver({ edge: "bottom", position: "after", targetPageId: "root-b" });
+
+    hover(treeList(), 290, transfer);
+    await waitFor(() => expect(dropEdgeLine("bottom")).toHaveStyle({ top: "172px" }));
+    fireEvent.drop(treeList(), { clientY: 290, dataTransfer: transfer });
 
     expect(onMovePage).toHaveBeenCalledWith({
       pageSysId: "child-a",
       parentPageSysId: null,
       siblingOrder: "3"
     });
+    expect(onShowCreatePage).not.toHaveBeenCalled();
   });
 
-  it("calls movement for dropping inside an eligible parent", () => {
-    const onMovePage = vi.fn();
-    renderTree([
-      page({ id: "root-a", title: "Root A", siblingOrder: 1 }),
-      page({ id: "root-b", title: "Root B", siblingOrder: 2 })
-    ], { onMovePage });
+  it("keeps the row-third, gap, stale-parent, clear-state, and viewer suppression behavior intact", async () => {
+    mockDropResolver({
+      child: {
+        before: null,
+        inside: null,
+        after: null
+      },
+      parent: {
+        before: null,
+        inside: null,
+        after: null
+      },
+      "level-6": {
+        inside: null
+      },
+      viewer: {
+        before: null
+      }
+    });
+    mockGeometryResolver(null);
 
-    dragDrop("Root B", "Root A", 45);
+    const onMovePage = vi.fn();
+    renderTree(
+      [
+        page({
+          id: "parent",
+          title: "Parent",
+          siblingOrder: 1,
+          children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
+        }),
+        page({ id: "root-a", title: "Root A", siblingOrder: 2 })
+      ],
+      { onMovePage }
+    );
+
+    setRect(treeList(), 0, 220);
+    setRect(row("Parent"), 40, 70);
+    setRect(row("Child"), 74, 104);
+    setRect(row("Root A"), 108, 138);
+
+    const invalidTransfer = startDrag("Parent");
+    hover(treeList(), 50, invalidTransfer);
+    expectNoIndicators();
+
+    hover(treeList(), 82, invalidTransfer);
+    expectNoIndicators();
+
+    const viewerRender = renderTree([page({ id: "viewer", title: "Viewer" })], {
+      canManagePageSettings: false,
+      onMovePage
+    });
+    expect(row("Viewer")).toHaveAttribute("draggable", "false");
+    expectNoIndicators();
+    expect(onMovePage).not.toHaveBeenCalled();
+    viewerRender.unmount();
+  });
+
+  it.each<InvalidDragAcceptanceCase>([
+    {
+      title: "hovering the dragged page itself",
+      pages: [
+        page({
+          id: "parent",
+          title: "Parent",
+          siblingOrder: 1,
+          children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
+        }),
+        page({ id: "root-b", title: "Root B", siblingOrder: 2 })
+      ],
+      draggedTitle: "Parent",
+      geometry: { edge: null, position: "before" as PageTreeDropPosition, targetPageId: "parent" },
+      destinationMap: { parent: { before: null } },
+      rowRects: [
+        ["Parent", 40, 70],
+        ["Child", 74, 104],
+        ["Root B", 108, 138]
+      ],
+      clientY: 50
+    },
+    {
+      title: "a true no-op sibling destination",
+      pages: [page({ id: "root-a", title: "Root A", siblingOrder: 1 }), page({ id: "root-b", title: "Root B", siblingOrder: 2 })],
+      draggedTitle: "Root A",
+      geometry: { edge: null, position: "before" as PageTreeDropPosition, targetPageId: "root-b" },
+      destinationMap: { "root-b": { before: null } },
+      rowRects: [
+        ["Root A", 40, 70],
+        ["Root B", 74, 104]
+      ],
+      clientY: 48
+    },
+    {
+      title: "a descendant or circular destination",
+      pages: [
+        page({
+          id: "parent",
+          title: "Parent",
+          siblingOrder: 1,
+          children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
+        }),
+        page({ id: "root-b", title: "Root B", siblingOrder: 2 })
+      ],
+      draggedTitle: "Parent",
+      geometry: { edge: null, position: "inside" as PageTreeDropPosition, targetPageId: "child" },
+      destinationMap: { child: { inside: null } },
+      rowRects: [
+        ["Parent", 40, 70],
+        ["Child", 74, 104],
+        ["Root B", 108, 138]
+      ],
+      clientY: 86
+    },
+    {
+      title: "a depth-invalid destination",
+      pages: [
+        page({
+          id: "level-1",
+          title: "Level 1",
+          siblingOrder: 1,
+          children: [
+            page({
+              id: "level-2",
+              parentPageSysId: "level-1",
+              title: "Level 2",
+              children: [
+                page({
+                  id: "level-3",
+                  parentPageSysId: "level-2",
+                  title: "Level 3",
+                  children: [
+                    page({
+                      id: "level-4",
+                      parentPageSysId: "level-3",
+                      title: "Level 4",
+                      children: [
+                        page({
+                          id: "level-5",
+                          parentPageSysId: "level-4",
+                          title: "Level 5",
+                          children: [page({ id: "level-6", parentPageSysId: "level-5", title: "Level 6" })]
+                        })
+                      ]
+                    })
+                  ]
+                })
+              ]
+            })
+          ]
+        }),
+        page({
+          id: "source",
+          title: "Source",
+          siblingOrder: 2,
+          children: [page({ id: "source-child", parentPageSysId: "source", title: "Source Child" })]
+        }),
+        page({ id: "other", title: "Other", siblingOrder: 3 })
+      ],
+      draggedTitle: "Source",
+      geometry: { edge: null, position: "inside" as PageTreeDropPosition, targetPageId: "level-5" },
+      destinationMap: { "level-5": { inside: null } },
+      rowRects: [
+        ["Level 1", 24, 54],
+        ["Level 2", 58, 88],
+        ["Level 6", 92, 122],
+        ["Source", 126, 156],
+        ["Other", 160, 190]
+      ],
+      clientY: 104
+    },
+    {
+      title: "a movement-resolver rejection",
+      pages: [page({ id: "mover", title: "Mover", siblingOrder: 1 }), page({ id: "target", title: "Target", siblingOrder: 2 })],
+      draggedTitle: "Mover",
+      geometry: { edge: null, position: "before" as PageTreeDropPosition, targetPageId: "target" },
+      destinationMap: { target: { before: null } },
+      rowRects: [
+        ["Mover", 40, 70],
+        ["Target", 74, 104]
+      ],
+      clientY: 80
+    }
+  ])("accepts browser dragover but rejects movement for $title", async ({ pages, draggedTitle, geometry, destinationMap, rowRects, clientY }) => {
+    const onMovePage = vi.fn();
+    renderTree(pages, { onMovePage });
+
+    setRect(treeList(), 0, 220);
+    for (const [title, top, bottom] of rowRects) {
+      setRect(row(title), top, bottom);
+    }
+
+    const transfer = startDrag(draggedTitle);
+    mockGeometryResolver(geometry);
+    mockDropResolver(destinationMap);
+
+    const dragOverEvent = dispatchDragEvent(treeList(), "dragover", { clientY, dataTransfer: transfer });
+    expect(dragOverEvent.defaultPrevented).toBe(true);
+    expect(transfer.dropEffect).toBe("move");
+    expectNoIndicators();
+
+    const dropEvent = dispatchDragEvent(treeList(), "drop", { clientY, dataTransfer: transfer });
+    expect(dropEvent.defaultPrevented).toBe(true);
+    expect(onMovePage).not.toHaveBeenCalled();
+    expectNoIndicators();
+  });
+
+  it("clears indicators on drag leave, drop, and drag end", async () => {
+    const onMovePage = vi.fn();
+    renderTree(
+      [
+        page({ id: "mover", title: "Mover", siblingOrder: 1 }),
+        page({
+          id: "parent",
+          title: "Parent",
+          siblingOrder: 2,
+          children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
+        })
+      ],
+      { onMovePage }
+    );
+
+    setRect(treeList(), 0, 220);
+    setRect(row("Mover"), 40, 70);
+    setRect(row("Parent"), 74, 104);
+    setRect(row("Child"), 108, 138);
+
+    mockDropResolver({
+      parent: {
+        inside: {
+          pageSysId: "mover",
+          parentPageSysId: "parent",
+          position: "inside",
+          siblingOrder: "1",
+          targetPageId: "parent"
+        }
+      }
+    });
+    mockGeometryResolver({ edge: null, position: "inside", targetPageId: "parent" });
+
+    const transfer = startDrag("Mover");
+    hover(treeList(), 88, transfer);
+    await waitFor(() => expect(row("Parent")).toHaveClass("docsera-page-tree__row--drop-inside"));
+    expect(activeIndicatorCount()).toBe(0);
+
+    fireEvent.dragLeave(treeList(), { dataTransfer: transfer, relatedTarget: document.body });
+    expectNoIndicators();
+
+    hover(treeList(), 88, transfer);
+    await waitFor(() => expect(row("Parent")).toHaveClass("docsera-page-tree__row--drop-inside"));
+
+    fireEvent.drop(treeList(), { clientY: 88, dataTransfer: transfer });
+    expectNoIndicators();
+
+    const nextTransfer = startDrag("Mover");
+    hover(treeList(), 88, nextTransfer);
+    await waitFor(() => expect(row("Parent")).toHaveClass("docsera-page-tree__row--drop-inside"));
+
+    fireEvent.dragEnd(row("Mover"), { dataTransfer: nextTransfer });
+    expectNoIndicators();
+  });
+
+  it("keeps drop-inside title weight at the base row weight while preserving the hover highlight", async () => {
+    const onMovePage = vi.fn();
+    renderTree(
+      [
+        page({ id: "mover", title: "Mover", siblingOrder: 1 }),
+        page({
+          id: "parent",
+          title: "Parent",
+          siblingOrder: 2,
+          children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
+        })
+      ],
+      { onMovePage }
+    );
+
+    setRect(treeList(), 0, 220);
+    setRect(row("Mover"), 40, 70);
+    setRect(row("Parent"), 74, 104);
+    setRect(row("Child"), 108, 138);
+
+    mockDropResolver({
+      parent: {
+        inside: {
+          pageSysId: "mover",
+          parentPageSysId: "parent",
+          position: "inside",
+          siblingOrder: "1",
+          targetPageId: "parent"
+        }
+      }
+    });
+    mockGeometryResolver({ edge: null, position: "inside", targetPageId: "parent" });
+
+    const transfer = startDrag("Mover");
+    hover(treeList(), 88, transfer);
+
+    await waitFor(() => expect(row("Parent")).toHaveClass("docsera-page-tree__row--drop-inside"));
+    const cwd = new Function("return process.cwd()")() as string;
+    const cssSource = readFileSync(join(cwd, "src/client/styles/runtime-shell.css"), "utf8");
+    expect(cssSource).toContain(".docsera-page-tree__row--drop-inside .docsera-page-tree__title");
+    expect(cssSource).toContain("color: var(--docsera-primary);");
+    expect(cssSource).toContain("font-weight: 500;");
+  });
+
+  it("keeps the ordinary New page button behavior unchanged when not dragging", () => {
+    const onShowCreatePage = vi.fn();
+    renderTree(
+      [
+        page({ id: "root-a", title: "Root A", siblingOrder: 1 }),
+        page({ id: "root-b", title: "Root B", siblingOrder: 2 })
+      ],
+      {
+        canCreatePage: true,
+        onShowCreatePage
+      }
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "New page" }));
+
+    expect(onShowCreatePage).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("PageTree movement drag and drop", () => {
+  it("calls movement for root reorder and moving a nested page to root", async () => {
+    mockDropResolver({
+      "root-b": {
+        after: {
+          pageSysId: "child-a",
+          parentPageSysId: null,
+          position: "after",
+          siblingOrder: "3",
+          targetPageId: "root-b"
+        }
+      }
+    });
+
+    const onMovePage = vi.fn();
+    renderTree(
+      [
+        page({ id: "root-a", title: "Root A", siblingOrder: 1, children: [page({ id: "child-a", parentPageSysId: "root-a", title: "Child A" })] }),
+        page({ id: "root-b", title: "Root B", siblingOrder: 2 })
+      ],
+      { onMovePage }
+    );
+
+    setRect(treeList(), 0, 150);
+    setRect(row("Root A"), 24, 54);
+    setRect(row("Child A"), 58, 88);
+    setRect(row("Root B"), 92, 122);
+    mockGeometryResolver({ edge: null, position: "after", targetPageId: "root-b" });
+
+    const transfer = await dragDrop("Child A", "Root B", 116);
+
+    expect(onMovePage).toHaveBeenCalledWith({
+      pageSysId: "child-a",
+      parentPageSysId: null,
+      siblingOrder: "3"
+    });
+    fireEvent.dragEnd(row("Child A"), { dataTransfer: transfer });
+  });
+
+  it("calls movement for dropping inside an eligible parent", async () => {
+    mockDropResolver({
+      "root-a": {
+        inside: {
+          pageSysId: "root-b",
+          parentPageSysId: "root-a",
+          position: "inside",
+          siblingOrder: "1",
+          targetPageId: "root-a"
+        }
+      }
+    });
+
+    const onMovePage = vi.fn();
+    renderTree(
+      [
+        page({ id: "root-a", title: "Root A", siblingOrder: 1 }),
+        page({ id: "root-b", title: "Root B", siblingOrder: 2 })
+      ],
+      { onMovePage }
+    );
+
+    setRect(treeList(), 0, 150);
+    setRect(row("Root A"), 24, 54);
+    setRect(row("Root B"), 58, 88);
+    setRect(treeList(), 0, 150);
+    mockGeometryResolver({ edge: null, position: "inside", targetPageId: "root-a" });
+
+    await dragDrop("Root B", "Root A", 40);
 
     expect(onMovePage).toHaveBeenCalledWith({
       pageSysId: "root-b",
@@ -366,7 +1081,7 @@ describe("PageTree movement drag and drop", () => {
     });
   });
 
-  it("does not move when authoring is disabled or placement is circular or deeper than level six", () => {
+  it("does not move when authoring is disabled or placement is circular or deeper than level six", async () => {
     const onMovePage = vi.fn();
     const chain = page({
       id: "l1",
@@ -399,13 +1114,37 @@ describe("PageTree movement drag and drop", () => {
               ]
             })
           ]
+        }),
+        page({
+          id: "source",
+          parentPageSysId: "l1",
+          title: "Source",
+          children: [page({ id: "source-child", parentPageSysId: "source", title: "Source Child" })]
         })
       ]
     });
 
     const { rerender } = renderTree([chain, page({ id: "other", title: "Other", siblingOrder: 2 })], { onMovePage });
-    dragDrop("Level 1", "Level 2", 45);
-    dragDrop("Other", "Level 6", 45);
+    setRect(treeList(), 0, 190);
+    setRect(row("Level 1"), 24, 54);
+    setRect(row("Level 2"), 58, 88);
+    setRect(row("Level 6"), 92, 122);
+    setRect(row("Other"), 126, 156);
+    setRect(treeList(), 0, 190);
+    mockGeometryResolver({ edge: null, position: "inside", targetPageId: "level-2" });
+
+    mockDropResolver({
+      "level-2": {
+        inside: null
+      },
+      "level-6": {
+        inside: null
+      }
+    });
+
+    await dragDrop("Level 1", "Level 2", 72);
+    mockGeometryResolver({ edge: null, position: "inside", targetPageId: "level-6" });
+    await dragDrop("Source", "Level 6", 104);
     expect(onMovePage).not.toHaveBeenCalled();
 
     rerender(
@@ -431,3 +1170,149 @@ describe("PageTree movement drag and drop", () => {
     expect(row("Root A")).toHaveAttribute("draggable", "false");
   });
 });
+
+function row(title: string): HTMLElement {
+  const button = screen.getByRole("button", { name: title });
+  const element = button.closest(".docsera-page-tree__row");
+  if (!element) {
+    throw new Error(`Missing row for ${title}.`);
+  }
+  return element as HTMLElement;
+}
+
+function item(title: string): HTMLElement {
+  const button = screen.getByRole("button", { name: title });
+  const element = button.closest(".docsera-page-tree__item");
+  if (!element) {
+    throw new Error(`Missing item for ${title}.`);
+  }
+  return element as HTMLElement;
+}
+
+function dropEdgeLine(kind: "top" | "bottom"): HTMLElement {
+  const element = document.querySelector<HTMLElement>(`.docsera-page-tree__drop-edge-line--${kind}`);
+  if (!element) {
+    throw new Error(`Missing ${kind} drop edge line.`);
+  }
+  return element;
+}
+
+function treeItems(): HTMLElement {
+  const element = document.querySelector<HTMLElement>(".docsera-page-tree__items");
+  if (!element) {
+    throw new Error("Missing page tree items.");
+  }
+  return element;
+}
+
+function treeList(): HTMLElement {
+  const element = document.querySelector<HTMLElement>(".docsera-page-tree__list");
+  if (!element) {
+    throw new Error("Missing page tree list.");
+  }
+  return element;
+}
+
+function setRect(element: HTMLElement, top: number, bottom: number) {
+  Object.defineProperty(element, "getBoundingClientRect", {
+    configurable: true,
+    value: () => ({
+      bottom,
+      height: bottom - top,
+      left: 0,
+      right: 200,
+      top,
+      width: 200,
+      x: 0,
+      y: top,
+      toJSON: () => ({})
+    })
+  });
+}
+
+function dataTransfer(): DataTransfer {
+  return {
+    dropEffect: "move",
+    effectAllowed: "move",
+    getData: vi.fn(() => ""),
+    setData: vi.fn()
+  } as unknown as DataTransfer;
+}
+
+function startDrag(sourceTitle: string) {
+  const transfer = dataTransfer();
+  fireEvent.dragStart(row(sourceTitle), { dataTransfer: transfer });
+  return transfer;
+}
+
+function hover(target: HTMLElement, clientY: number, transfer: ReturnType<typeof dataTransfer>) {
+  fireEvent.dragOver(target, { dataTransfer: transfer, clientY });
+}
+
+type InvalidDragAcceptanceCase = {
+  clientY: number;
+  destinationMap: MockDestinationMap;
+  draggedTitle: string;
+  geometry: MockGeometryCandidate;
+  pages: WorkspacePageView[];
+  rowRects: Array<[string, number, number]>;
+  title: string;
+};
+
+function dispatchDragEvent(
+  target: Element,
+  type: "dragover" | "drop",
+  init: { clientY?: number; dataTransfer?: DataTransfer } = {}
+) {
+  const event = new Event(type, { bubbles: true, cancelable: true }) as Event & {
+    clientY?: number;
+    dataTransfer?: DataTransfer;
+  };
+
+  if (typeof init.clientY === "number") {
+    Object.defineProperty(event, "clientY", { configurable: true, value: init.clientY });
+  }
+
+  if (init.dataTransfer) {
+    Object.defineProperty(event, "dataTransfer", { configurable: true, value: init.dataTransfer });
+  }
+
+  act(() => {
+    target.dispatchEvent(event);
+  });
+
+  return event;
+}
+
+async function dragDrop(sourceTitle: string, _targetTitle: string, clientY: number) {
+  const transfer = startDrag(sourceTitle);
+  hover(treeList(), clientY, transfer);
+  fireEvent.drop(treeList(), { clientY, dataTransfer: transfer });
+  return transfer;
+}
+
+function expectNoIndicators() {
+  expect(activeIndicatorCount()).toBe(0);
+}
+
+function activeIndicatorCount() {
+  return document.querySelectorAll(".docsera-page-tree__drop-indicator, .docsera-page-tree__drop-edge-line").length;
+}
+
+type MockDestinationMap = Record<string, Partial<Record<PageTreeDropPosition, PageTreeDropDestination | null>>>;
+
+type MockGeometryCandidate = {
+  edge: "top" | "bottom" | null;
+  position: PageTreeDropPosition;
+  targetPageId: string;
+};
+
+function mockGeometryResolver(candidate: MockGeometryCandidate | null) {
+  activeGeometryCandidate = candidate;
+}
+
+function mockDropResolver(destinationsByTargetPageId: MockDestinationMap) {
+  resolveDropDestination.mockImplementation(({ targetPageId, position }) => {
+    return destinationsByTargetPageId[targetPageId]?.[position] ?? null;
+  });
+}

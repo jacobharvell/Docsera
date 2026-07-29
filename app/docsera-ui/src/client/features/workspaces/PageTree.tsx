@@ -1,8 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, DragEvent } from "react";
+import type { CSSProperties, RefObject } from "react";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
 import type { WorkspacePageView } from "./workspaceViewModels";
+import {
+  resolvePageTreeDropGeometry,
+  type PageTreeDropGeometryEdgeZone,
+  type PageTreeDropGeometryRow
+} from "./pageTreeDropGeometry";
+import {
+  resolvePageTreeDropDestination,
+  type PageTreeDropDestination
+} from "./pageTreeDropResolver";
+import {
+  resolvePageTreeDropPresentationAnchor,
+  type PageTreeDropPresentationAnchor
+} from "./pageTreeDropPresentation";
 
 export type InlinePageCreateState = {
   errorMessage: string;
@@ -17,6 +30,7 @@ export type InlinePageCreateState = {
 type PageTreeProps = {
   canCreatePage: boolean;
   canManagePageSettings: boolean;
+  dragSurfaceRef?: RefObject<HTMLElement>;
   filterText: string;
   inlineCreateState: InlinePageCreateState | null;
   isCreatingPage: boolean;
@@ -32,20 +46,32 @@ type PageTreeProps = {
   selectedPageId: string;
   collapsedPageIds?: string[];
   onCollapsedPageIdsChange?: (pageIds: string[]) => void;
+  treeViewportRef?: RefObject<HTMLElement>;
 };
 
-type PageTreeNodeProps = Omit<PageTreeProps, "collapsedPageIds"> & {
+type PageTreeNodeProps = Omit<PageTreeProps, "collapsedPageIds" | "dragSurfaceRef" | "treeViewportRef"> & {
   collapsedPageIds: ReadonlySet<string>;
   depth: number;
   draggedPageId: string;
+  dropPreview: PageTreeDropPreviewState | null;
   inlineCreateState: InlinePageCreateState | null;
   onCommitInlineCreate: () => void;
   onDragEnd: () => void;
   onDragStart: (pageId: string) => void;
-  onDropPage: (event: DragEvent<HTMLElement>, targetPageId: string) => void;
   onInlineCreateTitleChange: (value: string) => void;
   onToggleCollapsed: (pageId: string) => void;
   page: WorkspacePageView;
+  firstVisibleRootPageId: string | null;
+  lastVisibleRootPageId: string | null;
+};
+
+type PageTreeDropPreviewPlacement = "row" | "top-edge" | "bottom-edge";
+
+type PageTreeDropPreviewState = {
+  destination: PageTreeDropDestination;
+  presentationAnchor: PageTreeDropPresentationAnchor;
+  placement: PageTreeDropPreviewPlacement;
+  edgeLineOffset: number | null;
 };
 
 function GearIcon() {
@@ -83,94 +109,198 @@ function matchesTreeFilter(page: WorkspacePageView, filterText: string): boolean
   return page.children ? page.children.some((child) => matchesTreeFilter(child, filterText)) : false;
 }
 
-function pageContainsId(page: WorkspacePageView, pageId: string): boolean {
-  if (!pageId) {
-    return false;
-  }
-
-  if (page.id === pageId) {
-    return true;
-  }
-
-  return page.children ? page.children.some((child) => pageContainsId(child, pageId)) : false;
-}
-
 function pageHasSelectedDescendant(page: WorkspacePageView, selectedPageId: string): boolean {
-  return page.children ? page.children.some((child) => pageContainsId(child, selectedPageId)) : false;
+  return page.children ? page.children.some((child) => child.id === selectedPageId || pageHasSelectedDescendant(child, selectedPageId)) : false;
 }
 
 function flattenPages(pages: WorkspacePageView[]): WorkspacePageView[] {
   return pages.flatMap((page) => [page, ...flattenPages(page.children ?? [])]);
 }
 
-function subtreeHeight(page: WorkspacePageView): number {
-  const childHeights = (page.children ?? []).map(subtreeHeight);
-  return 1 + (childHeights.length ? Math.max(...childHeights) : 0);
+function sameDropPresentationAnchor(
+  left: PageTreeDropPresentationAnchor | null,
+  right: PageTreeDropPresentationAnchor | null
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+
+  return left.position === right.position && left.targetPageId === right.targetPageId;
 }
 
-function pageDepth(pageId: string | null, pagesById: Map<string, WorkspacePageView>): number {
-  if (!pageId) {
-    return 0;
+function sameDropPreview(left: PageTreeDropPreviewState | null, right: PageTreeDropPreviewState | null): boolean {
+  if (!left || !right) {
+    return left === right;
   }
-  const page = pagesById.get(pageId);
-  return page ? pageDepth(page.parentPageSysId, pagesById) + 1 : 0;
+
+  return (
+    left.edgeLineOffset === right.edgeLineOffset &&
+    left.placement === right.placement &&
+    sameDropPresentationAnchor(left.presentationAnchor, right.presentationAnchor)
+  );
 }
 
-function pageContainsTarget(page: WorkspacePageView, targetPageId: string): boolean {
-  return page.id === targetPageId || Boolean(page.children?.some((child) => pageContainsTarget(child, targetPageId)));
+function isDragEventInsideCurrentTarget(event: { currentTarget: EventTarget | null; relatedTarget: EventTarget | null }): boolean {
+  return event.currentTarget instanceof Node && event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget);
 }
 
-function rankBetween(previous: number | null, next: number | null): string {
-  if (previous === null && next === null) {
-    return "1";
+function buildDropPreview(
+  destination: PageTreeDropDestination,
+  presentationAnchor: PageTreeDropPresentationAnchor,
+  edge: "top" | "bottom" | null,
+  edgeLineOffset: number | null
+): PageTreeDropPreviewState {
+  if (edge === "top") {
+    return {
+      destination,
+      edgeLineOffset,
+      presentationAnchor,
+      placement: "top-edge"
+    };
   }
-  if (previous === null) {
-    return String((next ?? 1) - 1);
+
+  if (edge === "bottom") {
+    return {
+      destination,
+      edgeLineOffset,
+      presentationAnchor,
+      placement: "bottom-edge"
+    };
   }
-  if (next === null) {
-    return String(previous + 1);
-  }
-  return String((previous + next) / 2);
+
+  return {
+    destination,
+    edgeLineOffset: null,
+    presentationAnchor,
+    placement: "row"
+  };
 }
 
-function movementRankForSiblingDrop(input: {
-  draggedPageId: string;
-  parentPageSysId: string | null;
-  pagesByParent: Map<string, WorkspacePageView[]>;
-  position: "before" | "after";
-  targetPageId: string;
-}): string {
-  const parentKey = input.parentPageSysId ?? "";
-  const siblings = (input.pagesByParent.get(parentKey) ?? []).filter((page) => page.id !== input.draggedPageId);
-  const targetIndex = siblings.findIndex((page) => page.id === input.targetPageId);
-  if (targetIndex < 0) {
-    return "1";
+function getRectBounds(element: HTMLElement): { bottom: number; top: number } | null {
+  const rect = element.getBoundingClientRect();
+  if (!Number.isFinite(rect.top) || !Number.isFinite(rect.bottom)) {
+    return null;
   }
 
-  if (input.position === "before") {
-    return rankBetween(siblings[targetIndex - 1]?.siblingOrder ?? null, siblings[targetIndex]?.siblingOrder ?? null);
-  }
-
-  return rankBetween(siblings[targetIndex]?.siblingOrder ?? null, siblings[targetIndex + 1]?.siblingOrder ?? null);
+  return {
+    bottom: rect.bottom,
+    top: rect.top
+  };
 }
 
-function movementRankForChildDrop(parentPageId: string, pagesByParent: Map<string, WorkspacePageView[]>, draggedPageId: string): string {
-  const children = (pagesByParent.get(parentPageId) ?? []).filter((page) => page.id !== draggedPageId);
-  const lastOrder = children.length ? children[children.length - 1]?.siblingOrder ?? null : null;
-  return rankBetween(lastOrder, null);
+function collectPageTreeGeometry(
+  surfaceElement: HTMLElement,
+  treeElement: HTMLElement,
+  firstVisibleRootPageId: string | null,
+  lastVisibleRootPageId: string | null
+): {
+  bottomEdgeZone: PageTreeDropGeometryEdgeZone | null;
+  bottomEdgeLineOffset: number | null;
+  rows: PageTreeDropGeometryRow[];
+  topEdgeLineOffset: number | null;
+  topEdgeZone: PageTreeDropGeometryEdgeZone | null;
+} {
+  const surfaceBounds = getRectBounds(surfaceElement);
+  const treeBounds = getRectBounds(treeElement);
+  const rows = [...treeElement.querySelectorAll<HTMLElement>(".docsera-page-tree__row[data-docsera-page-id]")]
+    .map((rowElement) => {
+      const pageId = rowElement.dataset.docseraPageId?.trim() ?? "";
+      if (!pageId) {
+        return null;
+      }
+
+      const bounds = getRectBounds(rowElement);
+      if (!bounds) {
+        return null;
+      }
+
+      const itemElement = rowElement.closest<HTMLElement>(".docsera-page-tree__item");
+      const depth = Number(itemElement?.dataset.docseraPageTreeDepth ?? rowElement.dataset.docseraPageTreeDepth ?? "0");
+      return {
+        bottom: bounds.bottom,
+        depth: Number.isFinite(depth) ? depth : 0,
+        pageId,
+        top: bounds.top
+      };
+    })
+    .filter((row): row is PageTreeDropGeometryRow => Boolean(row));
+
+  const firstRootRow = firstVisibleRootPageId ? rows.find((row) => row.pageId === firstVisibleRootPageId) ?? null : null;
+  const lastRootIndex = lastVisibleRootPageId ? rows.findIndex((row) => row.pageId === lastVisibleRootPageId) : -1;
+  const lastRootBranchBottom =
+    lastRootIndex >= 0 ? rows.slice(lastRootIndex).reduce((bottom, row) => Math.max(bottom, row.bottom), rows[lastRootIndex]!.bottom) : null;
+
+  return {
+    bottomEdgeLineOffset: treeBounds && lastRootBranchBottom !== null ? lastRootBranchBottom - treeBounds.top : null,
+    bottomEdgeZone:
+      surfaceBounds && lastVisibleRootPageId && lastRootBranchBottom !== null && surfaceBounds.bottom >= lastRootBranchBottom
+        ? {
+            bottom: surfaceBounds.bottom,
+            pageId: lastVisibleRootPageId,
+            top: lastRootBranchBottom
+          }
+        : null,
+    rows,
+    topEdgeLineOffset: treeBounds && firstRootRow ? firstRootRow.top - treeBounds.top : null,
+    topEdgeZone:
+      surfaceBounds && firstRootRow && surfaceBounds.top <= firstRootRow.top
+        ? {
+            bottom: firstRootRow.top,
+            pageId: firstVisibleRootPageId!,
+            top: surfaceBounds.top
+          }
+        : null
+  };
 }
 
-function dropPosition(event: DragEvent<HTMLElement>): "before" | "after" | "inside" {
-  const rect = event.currentTarget.getBoundingClientRect();
-  const height = rect.height || 1;
-  const offset = event.clientY - rect.top;
-  if (offset <= height / 3) {
-    return "before";
+function readTreeDropPreview(
+  surfaceElement: HTMLElement,
+  treeElement: HTMLElement,
+  input: {
+    draggedPageId: string;
+    firstVisibleRootPageId: string | null;
+    lastVisibleRootPageId: string | null;
+    pagesById: ReadonlyMap<string, WorkspacePageView>;
+    pagesByParent: ReadonlyMap<string, WorkspacePageView[]>;
+    pointerY: number;
   }
-  if (offset >= (height * 2) / 3) {
-    return "after";
+): PageTreeDropPreviewState | null {
+  const geometry = collectPageTreeGeometry(surfaceElement, treeElement, input.firstVisibleRootPageId, input.lastVisibleRootPageId);
+  const candidate = resolvePageTreeDropGeometry({
+    bottomEdgeZone: geometry.bottomEdgeZone,
+    pointerY: input.pointerY,
+    rows: geometry.rows,
+    topEdgeZone: geometry.topEdgeZone
+  });
+  if (!candidate) {
+    return null;
   }
-  return "inside";
+
+  const destination = resolvePageTreeDropDestination({
+    draggedPageId: input.draggedPageId,
+    pagesById: input.pagesById,
+    pagesByParent: input.pagesByParent,
+    position: candidate.position,
+    targetPageId: candidate.targetPageId
+  });
+  if (!destination) {
+    return null;
+  }
+
+  const presentationAnchor = resolvePageTreeDropPresentationAnchor({
+    destination,
+    draggedPageId: input.draggedPageId,
+    pagesById: input.pagesById,
+    pagesByParent: input.pagesByParent,
+    rows: geometry.rows
+  });
+
+  return buildDropPreview(
+    destination,
+    presentationAnchor,
+    candidate.edge,
+    candidate.edge === "top" ? geometry.topEdgeLineOffset : candidate.edge === "bottom" ? geometry.bottomEdgeLineOffset : null
+  );
 }
 
 function InlineCreateRow({
@@ -257,13 +387,13 @@ function PageTreeNode({
   collapsedPageIds,
   depth,
   draggedPageId,
+  dropPreview,
   filterText,
   inlineCreateState,
   isCreatingPage,
   onCommitInlineCreate,
   onDragEnd,
   onDragStart,
-  onDropPage,
   onInlineCreateTitleChange,
   onSelectPage,
   onMovePage,
@@ -271,6 +401,8 @@ function PageTreeNode({
   onToggleCollapsed,
   onTogglePageSettings,
   page,
+  firstVisibleRootPageId,
+  lastVisibleRootPageId,
   pageSettingsOpenPageId,
   selectedPageId
 }: PageTreeNodeProps) {
@@ -294,8 +426,25 @@ function PageTreeNode({
   const showSettingsButton = canManagePageSettings;
   const actionCount = [showChildCreateButton, showSettingsButton].filter(Boolean).length;
   const canMovePage = Boolean(onMovePage && canManagePageSettings);
-  const rowStyle = {
-    "--docsera-page-tree-action-count": String(actionCount)
+  const activeDropAnchor = dropPreview?.presentationAnchor ?? null;
+  const isDropBeforeTarget = activeDropAnchor?.targetPageId === page.id && activeDropAnchor.position === "before";
+  const isDropInsideTarget = dropPreview?.destination.targetPageId === page.id && dropPreview.destination.position === "inside";
+  const isDropAfterTarget = activeDropAnchor?.targetPageId === page.id && activeDropAnchor.position === "after";
+  const isRootBeforeEdge = Boolean(
+    dropPreview?.placement === "top-edge" &&
+      firstVisibleRootPageId &&
+      page.id === firstVisibleRootPageId &&
+      isDropBeforeTarget
+  );
+  const isRootAfterEdge = Boolean(
+    dropPreview?.placement === "bottom-edge" &&
+      lastVisibleRootPageId &&
+      page.id === lastVisibleRootPageId &&
+      isDropAfterTarget
+  );
+  const itemStyle = {
+    "--docsera-page-tree-action-count": String(actionCount),
+    "--docsera-page-tree-drop-start": `${depth * 16}px`
   } as CSSProperties;
   function handleRowClick() {
     onSelectPage(page.id);
@@ -305,33 +454,35 @@ function PageTreeNode({
   }
 
   return (
-    <li className="docsera-page-tree__item">
+    <li
+      className={`docsera-page-tree__item${isDropBeforeTarget && !isRootBeforeEdge ? " docsera-page-tree__item--drop-before" : ""}${
+        isDropAfterTarget && !isRootAfterEdge ? " docsera-page-tree__item--drop-after" : ""
+      }`}
+      data-docsera-page-tree-depth={depth}
+      style={itemStyle}
+    >
+      {isDropBeforeTarget && !isRootBeforeEdge ? (
+        <span className="docsera-page-tree__drop-indicator docsera-page-tree__drop-indicator--before" aria-hidden="true" />
+      ) : null}
       <div
         className={`docsera-page-tree__row${isSelected ? " docsera-page-tree__row--selected" : ""}${
           isPageSettingsOpen ? " docsera-page-tree__row--settings-open" : ""
-        }${draggedPageId === page.id ? " docsera-page-tree__row--dragging" : ""}`}
+        }${draggedPageId === page.id ? " docsera-page-tree__row--dragging" : ""}${
+          isDropInsideTarget ? " docsera-page-tree__row--drop-inside" : ""
+        }`}
         data-docsera-page-id={page.id}
+        data-docsera-page-tree-depth={depth}
         draggable={canMovePage}
         onDragEnd={canMovePage ? onDragEnd : undefined}
-        onDragOver={
-          canMovePage
-            ? (event) => {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = "move";
-              }
-            : undefined
-        }
         onDragStart={
           canMovePage
             ? (event) => {
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", page.id);
-                onDragStart(page.id);
-              }
+              event.dataTransfer.effectAllowed = "move";
+              event.dataTransfer.setData("text/plain", page.id);
+              onDragStart(page.id);
+            }
             : undefined
         }
-        onDrop={canMovePage ? (event) => onDropPage(event, page.id) : undefined}
-        style={rowStyle}
       >
         <button
           type="button"
@@ -390,6 +541,7 @@ function PageTreeNode({
               canManagePageSettings={canManagePageSettings}
               collapsedPageIds={collapsedPageIds}
               depth={depth + 1}
+              dropPreview={dropPreview}
               filterText={filterText}
               inlineCreateState={inlineCreateState}
               isCreatingPage={isCreatingPage}
@@ -397,7 +549,6 @@ function PageTreeNode({
               draggedPageId={draggedPageId}
               onDragEnd={onDragEnd}
               onDragStart={onDragStart}
-              onDropPage={onDropPage}
               onInlineCreateTitleChange={onInlineCreateTitleChange}
               onSelectPage={onSelectPage}
               onMovePage={onMovePage}
@@ -406,6 +557,8 @@ function PageTreeNode({
               onToggleCollapsed={onToggleCollapsed}
               onTogglePageSettings={onTogglePageSettings}
               page={child}
+              firstVisibleRootPageId={firstVisibleRootPageId}
+              lastVisibleRootPageId={lastVisibleRootPageId}
               pageSettingsOpenPageId={pageSettingsOpenPageId}
               pages={[]}
               selectedPageId={selectedPageId}
@@ -428,6 +581,9 @@ function PageTreeNode({
           />
         </ul>
       ) : null}
+      {isDropAfterTarget && !isRootAfterEdge ? (
+        <span className="docsera-page-tree__drop-indicator docsera-page-tree__drop-indicator--after" aria-hidden="true" />
+      ) : null}
     </li>
   );
 }
@@ -435,6 +591,7 @@ function PageTreeNode({
 export function PageTree({
   canCreatePage,
   canManagePageSettings,
+  dragSurfaceRef,
   filterText,
   inlineCreateState,
   isCreatingPage,
@@ -449,12 +606,18 @@ export function PageTree({
   pages,
   selectedPageId,
   collapsedPageIds = [],
-  onCollapsedPageIdsChange
+  onCollapsedPageIdsChange,
+  treeViewportRef
 }: PageTreeProps) {
+  const canMovePage = Boolean(onMovePage && canManagePageSettings);
   const [localCollapsedPageIds, setLocalCollapsedPageIds] = useState<Set<string>>(() => new Set(collapsedPageIds));
   const [draggedPageId, setDraggedPageId] = useState("");
+  const [dropPreview, setDropPreview] = useState<PageTreeDropPreviewState | null>(null);
+  const draggedPageIdRef = useRef("");
   const effectiveCollapsedPageIds = useMemo(() => new Set(collapsedPageIds), [collapsedPageIds]);
   const visiblePages = useMemo(() => pages.filter((page) => matchesTreeFilter(page, filterText)), [filterText, pages]);
+  const firstVisibleRootPageId = visiblePages[0]?.id ?? null;
+  const lastVisibleRootPageId = visiblePages[visiblePages.length - 1]?.id ?? null;
   const flatPages = useMemo(() => flattenPages(pages), [pages]);
   const pagesById = useMemo(() => new Map(flatPages.map((page) => [page.id, page])), [flatPages]);
   const pagesByParent = useMemo(() => {
@@ -470,10 +633,27 @@ export function PageTree({
     }
     return groups;
   }, [flatPages]);
+  const dragContextRef = useRef({
+    canManagePageSettings,
+    firstVisibleRootPageId,
+    lastVisibleRootPageId,
+    onMovePage,
+    pagesById,
+    pagesByParent
+  });
 
   useEffect(() => {
     setLocalCollapsedPageIds(new Set(collapsedPageIds));
   }, [collapsedPageIds]);
+
+  dragContextRef.current = {
+    canManagePageSettings,
+    firstVisibleRootPageId,
+    lastVisibleRootPageId,
+    onMovePage,
+    pagesById,
+    pagesByParent
+  };
 
   function toggleCollapsed(pageId: string) {
     const next = new Set(localCollapsedPageIds);
@@ -488,111 +668,247 @@ export function PageTree({
     onCollapsedPageIdsChange?.(nextCollapsedPageIds);
   }
 
-  function completeDrop(event: DragEvent<HTMLElement>, targetPageId: string) {
-    if (!onMovePage || !canManagePageSettings || !draggedPageId) {
+  function resolveDropPreview(surfaceElement: HTMLElement, treeElement: HTMLElement, pointerY: number): PageTreeDropPreviewState | null {
+    if (!draggedPageIdRef.current) {
+      setDropPreview(null);
+      return null;
+    }
+
+    const { firstVisibleRootPageId: currentFirstVisibleRootPageId, lastVisibleRootPageId: currentLastVisibleRootPageId, pagesById: currentPagesById, pagesByParent: currentPagesByParent } =
+      dragContextRef.current;
+
+    return readTreeDropPreview(surfaceElement, treeElement, {
+      draggedPageId: draggedPageIdRef.current,
+      firstVisibleRootPageId: currentFirstVisibleRootPageId,
+      lastVisibleRootPageId: currentLastVisibleRootPageId,
+      pagesById: currentPagesById,
+      pagesByParent: currentPagesByParent,
+      pointerY
+    });
+  }
+
+  function clearDropDestination(event: { currentTarget: EventTarget | null; relatedTarget: EventTarget | null }) {
+    if (isDragEventInsideCurrentTarget(event)) {
       return;
+    }
+
+    setDropPreview(null);
+  }
+
+  function acceptInternalPageDrag(event: { preventDefault: () => void; dataTransfer: DataTransfer | null }) {
+    if (!draggedPageIdRef.current) {
+      return false;
     }
 
     event.preventDefault();
-    event.stopPropagation();
 
-    const draggedPage = pagesById.get(draggedPageId);
-    const targetPage = pagesById.get(targetPageId);
-    if (!draggedPage || !targetPage || draggedPage.id === targetPage.id || pageContainsTarget(draggedPage, targetPage.id)) {
-      setDraggedPageId("");
-      return;
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "move";
     }
 
-    const position = dropPosition(event);
-    const parentPageSysId = position === "inside" ? targetPage.id : targetPage.parentPageSysId;
-    const parentDepth = pageDepth(parentPageSysId, pagesById);
-    if (parentDepth + subtreeHeight(draggedPage) > 6) {
-      setDraggedPageId("");
-      return;
-    }
-
-    const siblingOrder =
-      position === "inside"
-        ? movementRankForChildDrop(targetPage.id, pagesByParent, draggedPage.id)
-        : movementRankForSiblingDrop({
-            draggedPageId: draggedPage.id,
-            parentPageSysId,
-            pagesByParent,
-            position,
-            targetPageId: targetPage.id
-          });
-
-    if (draggedPage.parentPageSysId === parentPageSysId && String(draggedPage.siblingOrder) === siblingOrder) {
-      setDraggedPageId("");
-      return;
-    }
-
-    onMovePage({
-      pageSysId: draggedPage.id,
-      parentPageSysId,
-      siblingOrder
-    });
-    setDraggedPageId("");
+    return true;
   }
 
+  useEffect(() => {
+    const dragSurfaceElement = dragSurfaceRef?.current;
+    const treeElement = treeViewportRef?.current ?? dragSurfaceElement;
+    if (!canMovePage || !dragSurfaceElement || !treeElement) {
+      return;
+    }
+    const activeDragSurfaceElement = dragSurfaceElement;
+    const activeTreeElement = treeElement;
+
+    function handleDragEnter(event: globalThis.DragEvent) {
+      acceptInternalPageDrag(event);
+    }
+
+    function handleDragOver(event: globalThis.DragEvent) {
+      if (!acceptInternalPageDrag(event)) {
+        setDropPreview(null);
+        return;
+      }
+
+      const nextPreview = resolveDropPreview(activeDragSurfaceElement, activeTreeElement, event.clientY);
+      setDropPreview((current) => (sameDropPreview(current, nextPreview) ? current : nextPreview));
+    }
+
+    function handleDragLeave(event: globalThis.DragEvent) {
+      if (
+        isDragEventInsideCurrentTarget({
+          currentTarget: activeDragSurfaceElement,
+          relatedTarget: event.relatedTarget
+        })
+      ) {
+        return;
+      }
+
+      setDropPreview(null);
+    }
+
+    function handleDrop(event: globalThis.DragEvent) {
+      const { canManagePageSettings: currentCanManagePageSettings, onMovePage: currentOnMovePage } = dragContextRef.current;
+      const activeDraggedPageId = draggedPageIdRef.current;
+      if (!activeDraggedPageId || !currentOnMovePage || !currentCanManagePageSettings) {
+        setDropPreview(null);
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const destination = resolveDropPreview(activeDragSurfaceElement, activeTreeElement, event.clientY)?.destination ?? null;
+      setDropPreview(null);
+      if (!destination) {
+        setDraggedPageId("");
+        draggedPageIdRef.current = "";
+        return;
+      }
+
+      currentOnMovePage({
+        pageSysId: destination.pageSysId,
+        parentPageSysId: destination.parentPageSysId,
+        siblingOrder: destination.siblingOrder
+      });
+      setDraggedPageId("");
+      draggedPageIdRef.current = "";
+    }
+
+    dragSurfaceElement.addEventListener("dragenter", handleDragEnter, true);
+    dragSurfaceElement.addEventListener("dragover", handleDragOver, true);
+    dragSurfaceElement.addEventListener("dragleave", handleDragLeave);
+    dragSurfaceElement.addEventListener("drop", handleDrop);
+
+    return () => {
+      dragSurfaceElement.removeEventListener("dragenter", handleDragEnter, true);
+      dragSurfaceElement.removeEventListener("dragover", handleDragOver, true);
+      dragSurfaceElement.removeEventListener("dragleave", handleDragLeave);
+      dragSurfaceElement.removeEventListener("drop", handleDrop);
+    };
+  }, [canMovePage, dragSurfaceRef, treeViewportRef]);
+
   return (
-    <ul className="docsera-page-tree__list">
-      {visiblePages.map((page) => (
-        <PageTreeNode
-          key={page.id}
-          canCreatePage={canCreatePage}
-          canManagePageSettings={canManagePageSettings}
-          collapsedPageIds={effectiveCollapsedPageIds.size > 0 ? effectiveCollapsedPageIds : localCollapsedPageIds}
-          depth={0}
-          draggedPageId={draggedPageId}
-          filterText={filterText}
-          inlineCreateState={inlineCreateState}
-          isCreatingPage={isCreatingPage}
-          onCommitInlineCreate={onCommitInlineCreate}
-          onDragEnd={() => setDraggedPageId("")}
-          onDragStart={setDraggedPageId}
-          onDropPage={completeDrop}
-          onInlineCreateTitleChange={onInlineCreateTitleChange}
-          onSelectPage={onSelectPage}
-          onMovePage={onMovePage}
-          onShowChildPageCreate={onShowChildPageCreate}
-          onShowCreatePage={onShowCreatePage}
-          onToggleCollapsed={toggleCollapsed}
-          onTogglePageSettings={onTogglePageSettings}
-          page={page}
-          pageSettingsOpenPageId={pageSettingsOpenPageId}
-          pages={pages}
-          selectedPageId={selectedPageId}
-        />
-      ))}
-      {canCreatePage && inlineCreateState && !inlineCreateState.parentPageSysId ? (
-        <InlineCreateRow
-          depth={0}
-          errorMessage={inlineCreateState.errorMessage}
-          focusToken={inlineCreateState.focusToken}
-          noticeMessage={inlineCreateState.noticeMessage}
-          pending={inlineCreateState.pending}
-          showInput={inlineCreateState.showInput}
-          title={inlineCreateState.title}
-          onCommit={onCommitInlineCreate}
-          onTitleChange={onInlineCreateTitleChange}
-        />
-      ) : null}
-      {canCreatePage ? (
-        <li className="docsera-page-tree__item docsera-page-tree__item--new-page">
-          <button
-            type="button"
-          className="docsera-page-tree__new-page"
-          onClick={onShowCreatePage}
-          disabled={isCreatingPage}
-        >
-          <span className="docsera-page-tree__new-page-icon-slot" aria-hidden="true">
-            <PlusIcon />
-          </span>
-          <span>New page</span>
-        </button>
-      </li>
-      ) : null}
-    </ul>
+    <div
+      className="docsera-page-tree__list"
+      onDragLeave={!dragSurfaceRef && canMovePage ? clearDropDestination : undefined}
+      onDragOver={
+        !dragSurfaceRef && canMovePage
+          ? (event) => {
+              if (!acceptInternalPageDrag(event)) {
+                setDropPreview(null);
+                return;
+              }
+
+              const nextPreview = resolveDropPreview(event.currentTarget, event.currentTarget, event.clientY);
+              setDropPreview((current) => (sameDropPreview(current, nextPreview) ? current : nextPreview));
+            }
+          : undefined
+      }
+      onDrop={
+        !dragSurfaceRef && canMovePage
+          ? (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const destination = resolveDropPreview(event.currentTarget, event.currentTarget, event.clientY)?.destination ?? null;
+            setDropPreview(null);
+            if (!destination) {
+              setDraggedPageId("");
+              draggedPageIdRef.current = "";
+              return;
+            }
+
+            onMovePage?.({
+              pageSysId: destination.pageSysId,
+              parentPageSysId: destination.parentPageSysId,
+              siblingOrder: destination.siblingOrder
+            });
+            setDraggedPageId("");
+            draggedPageIdRef.current = "";
+          }
+          : undefined
+      }
+    >
+      <div className="docsera-page-tree__drop-layer" aria-hidden="true">
+        {dropPreview?.placement === "top-edge" && dropPreview.edgeLineOffset !== null ? (
+          <span
+            className="docsera-page-tree__drop-edge-line docsera-page-tree__drop-edge-line--top"
+            style={{ top: `${dropPreview.edgeLineOffset}px` }}
+          />
+        ) : null}
+        {dropPreview?.placement === "bottom-edge" && dropPreview.edgeLineOffset !== null ? (
+          <span
+            className="docsera-page-tree__drop-edge-line docsera-page-tree__drop-edge-line--bottom"
+            style={{ top: `${dropPreview.edgeLineOffset}px` }}
+          />
+        ) : null}
+      </div>
+      <ul className="docsera-page-tree__items">
+        {visiblePages.map((page) => (
+          <PageTreeNode
+            key={page.id}
+            canCreatePage={canCreatePage}
+            canManagePageSettings={canManagePageSettings}
+            collapsedPageIds={effectiveCollapsedPageIds.size > 0 ? effectiveCollapsedPageIds : localCollapsedPageIds}
+            depth={0}
+            draggedPageId={draggedPageId}
+            dropPreview={dropPreview}
+            filterText={filterText}
+            inlineCreateState={inlineCreateState}
+            isCreatingPage={isCreatingPage}
+            onCommitInlineCreate={onCommitInlineCreate}
+            onDragEnd={() => {
+              setDraggedPageId("");
+              draggedPageIdRef.current = "";
+              setDropPreview(null);
+            }}
+            onDragStart={(pageId) => {
+              draggedPageIdRef.current = pageId;
+              setDraggedPageId(pageId);
+              setDropPreview(null);
+            }}
+            onInlineCreateTitleChange={onInlineCreateTitleChange}
+            onSelectPage={onSelectPage}
+            onMovePage={onMovePage}
+            onShowChildPageCreate={onShowChildPageCreate}
+            onShowCreatePage={onShowCreatePage}
+            onToggleCollapsed={toggleCollapsed}
+            onTogglePageSettings={onTogglePageSettings}
+            page={page}
+            firstVisibleRootPageId={firstVisibleRootPageId}
+            lastVisibleRootPageId={lastVisibleRootPageId}
+            pageSettingsOpenPageId={pageSettingsOpenPageId}
+            pages={pages}
+            selectedPageId={selectedPageId}
+          />
+        ))}
+        {canCreatePage && inlineCreateState && !inlineCreateState.parentPageSysId ? (
+          <InlineCreateRow
+            depth={0}
+            errorMessage={inlineCreateState.errorMessage}
+            focusToken={inlineCreateState.focusToken}
+            noticeMessage={inlineCreateState.noticeMessage}
+            pending={inlineCreateState.pending}
+            showInput={inlineCreateState.showInput}
+            title={inlineCreateState.title}
+            onCommit={onCommitInlineCreate}
+            onTitleChange={onInlineCreateTitleChange}
+          />
+        ) : null}
+        {canCreatePage ? (
+          <li className="docsera-page-tree__item docsera-page-tree__item--new-page">
+            <button
+              type="button"
+              className="docsera-page-tree__new-page"
+              onClick={onShowCreatePage}
+              disabled={isCreatingPage}
+            >
+              <span className="docsera-page-tree__new-page-icon-slot" aria-hidden="true">
+                <PlusIcon />
+              </span>
+              <span>New page</span>
+            </button>
+          </li>
+        ) : null}
+      </ul>
+    </div>
   );
 }

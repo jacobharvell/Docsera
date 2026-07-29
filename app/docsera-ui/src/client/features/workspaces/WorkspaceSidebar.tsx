@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
 import { PageTree, type InlinePageCreateState } from "./PageTree";
@@ -67,9 +68,11 @@ export function WorkspaceSidebar({
   const showLoadingState = Boolean(isLoading);
   const createPageReasonId = createPageDisabledReason ? "docsera-create-page-reason" : undefined;
   const showPageTree = totalPages > 0 || Boolean(canCreatePage && inlineCreateState);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const treeViewportRef = useRef<HTMLElement>(null);
 
   return (
-    <aside className="docsera-sidebar" aria-label="Workspace navigation" aria-busy={showLoadingState}>
+    <aside ref={sidebarRef} className="docsera-sidebar" aria-label="Workspace navigation" aria-busy={showLoadingState}>
       <div className="docsera-sidebar__search-row">
         <label className="docsera-sidebar__search" htmlFor="docsera-page-filter">
           <span className="docsera-sidebar__search-icon">
@@ -105,7 +108,7 @@ export function WorkspaceSidebar({
         </p>
       ) : null}
 
-      <nav className="docsera-sidebar__tree" aria-label="Page tree">
+      <nav ref={treeViewportRef} className="docsera-sidebar__tree" aria-label="Page tree">
         {showLoadingState && showPendingState ? (
           <div className="docsera-sidebar__pending" aria-hidden="true">
             <span className="docsera-sidebar__pending-line" />
@@ -122,6 +125,7 @@ export function WorkspaceSidebar({
           <PageTree
             canCreatePage={canCreatePage}
             canManagePageSettings={canManagePageSettings}
+            dragSurfaceRef={sidebarRef}
             collapsedPageIds={collapsedPageIds}
             filterText={treeFilter}
             inlineCreateState={inlineCreateState}
@@ -137,6 +141,7 @@ export function WorkspaceSidebar({
             pageSettingsOpenPageId={pageSettingsOpenPageId}
             pages={pages}
             selectedPageId={selectedPageId}
+            treeViewportRef={treeViewportRef}
           />
         )}
       </nav>
