@@ -1,7 +1,11 @@
 import { getSchema, type Extensions } from "@tiptap/core";
 import { Document } from "@tiptap/extension-document";
+import { Highlight } from "@tiptap/extension-highlight";
 import { Link } from "@tiptap/extension-link";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
+import { Subscript } from "@tiptap/extension-subscript";
+import { Superscript } from "@tiptap/extension-superscript";
+import { Underline } from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import type { Schema } from "@tiptap/pm/model";
 import {
@@ -39,6 +43,12 @@ export function createDocseraEditorExtensions(): Extensions {
       },
       underline: false
     }),
+    Underline,
+    Highlight.configure({
+      multicolor: false
+    }),
+    Superscript,
+    Subscript,
     Link.configure({
       autolink: true,
       linkOnPaste: true,

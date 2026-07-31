@@ -226,6 +226,60 @@ export function createSupportedE2DocseraDocumentEnvelope(): DocseraDocumentEnvel
   };
 }
 
+export function createExpandedTextFormattingDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
+  return {
+    schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+    document: {
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 1 },
+          content: [{ type: "text", text: "Getting started" }]
+        },
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "Underlined",
+              marks: [{ type: "underline" }]
+            },
+            { type: "text", text: " and " },
+            {
+              type: "text",
+              text: "highlighted",
+              marks: [{ type: "highlight" }]
+            },
+            { type: "text", text: " text with " },
+            {
+              type: "text",
+              text: "bold superscript",
+              marks: [{ type: "bold" }, { type: "superscript" }]
+            },
+            { type: "text", text: " and " },
+            {
+              type: "text",
+              text: "italic subscript",
+              marks: [{ type: "italic" }, { type: "subscript" }]
+            }
+          ]
+        },
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [{ type: "text", text: "Install" }]
+        },
+        {
+          type: "heading",
+          attrs: { level: 3 },
+          content: [{ type: "text", text: "npm" }]
+        }
+      ]
+    }
+  };
+}
+
 export function createNestedTaskListDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
   return {
     schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
@@ -359,6 +413,58 @@ export function createHeadingPairDocseraDocumentEnvelope(): DocseraDocumentEnvel
           type: "heading",
           attrs: { level: 3 },
           content: [{ type: "text", text: "Subsection heading" }]
+        }
+      ]
+    }
+  };
+}
+
+export function createHeadingHierarchyDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
+  return {
+    schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+    document: {
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 1 },
+          content: [{ type: "text", text: "Overview" }]
+        },
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [{ type: "text", text: "Install" }]
+        },
+        {
+          type: "heading",
+          attrs: { level: 3 },
+          content: [{ type: "text", text: "CLI" }]
+        }
+      ]
+    }
+  };
+}
+
+export function createEmptyHeadingHierarchyDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
+  return {
+    schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+    document: {
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 1 },
+          content: []
+        },
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: []
+        },
+        {
+          type: "heading",
+          attrs: { level: 3 },
+          content: []
         }
       ]
     }
@@ -537,6 +643,14 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
     {
       input: createSupportedE2DocseraDocumentEnvelope(),
       label: "supported rich E2 document",
+      expected: {
+        ok: true,
+        migratedLegacyDocument: false
+      }
+    },
+    {
+      input: createExpandedTextFormattingDocseraDocumentEnvelope(),
+      label: "expanded text formatting document",
       expected: {
         ok: true,
         migratedLegacyDocument: false
@@ -756,8 +870,58 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
               content: [
                 {
                   type: "text",
+                  text: "Unsupported mark combination",
+                  marks: [{ type: "superscript" }, { type: "subscript" }]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "superscript and subscript overlap",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: "Theme-specific highlight",
+                  marks: [{ type: "highlight", attrs: { color: "#ff0" } }]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "highlight color attribute rejected",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
                   text: "Unsupported mark",
-                  marks: [{ type: "underline" }]
+                  marks: [{ type: "rainbow" }]
                 }
               ]
             }
@@ -861,7 +1025,7 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
           content: [
             {
               type: "heading",
-              attrs: { level: 1 },
+              attrs: { level: 4 },
               content: [{ type: "text", text: "Unsupported heading" }]
             }
           ]

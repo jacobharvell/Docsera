@@ -8,7 +8,7 @@ import {
 export type EditorOutlineItem = {
   anchorId: string;
   id: string;
-  level: number;
+  level: 1 | 2 | 3;
   title: string;
 };
 
@@ -28,7 +28,7 @@ export function extractDocumentOutline(envelope: DocseraDocumentEnvelope): Edito
     }
 
     const level = Number((candidate.attrs as Record<string, unknown> | undefined)?.level);
-    if (!DOCSERA_BODY_HEADING_LEVELS.includes(level as 2 | 3)) {
+    if (!DOCSERA_BODY_HEADING_LEVELS.includes(level as 1 | 2 | 3)) {
       continue;
     }
 
@@ -42,7 +42,7 @@ export function extractDocumentOutline(envelope: DocseraDocumentEnvelope): Edito
     items.push({
       anchorId,
       id: anchorId,
-      level,
+      level: level as 1 | 2 | 3,
       title
     });
   }

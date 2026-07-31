@@ -29,7 +29,7 @@ const DOCSERA_DOC_CHILD_TYPES = new Set([
 ]);
 
 export const DOCSERA_DOCUMENT_SCHEMA_VERSION = 1 as const;
-export const DOCSERA_BODY_HEADING_LEVELS = [2, 3] as const;
+export const DOCSERA_BODY_HEADING_LEVELS = [1, 2, 3] as const;
 export const SERVER_DOCSERA_DOCUMENT_SCHEMA_VERSION = DOCSERA_DOCUMENT_SCHEMA_VERSION;
 
 export type DocseraTiptapDocument = {
@@ -126,7 +126,17 @@ function isAllowedDocumentNodeType(type: string): boolean {
 }
 
 function isAllowedMarkType(type: string): boolean {
-  return type === "link" || type === "bold" || type === "italic" || type === "strike" || type === "code";
+  return (
+    type === "link" ||
+    type === "bold" ||
+    type === "italic" ||
+    type === "strike" ||
+    type === "code" ||
+    type === "underline" ||
+    type === "highlight" ||
+    type === "superscript" ||
+    type === "subscript"
+  );
 }
 
 function escapeRegExp(value: string): string {
@@ -202,6 +212,32 @@ function validateMark(mark: unknown): DocseraStructuredDocumentValidationResult 
   return { ok: true };
 }
 
+function validateTextNodeMarks(marks: unknown[]): DocseraStructuredDocumentValidationResult {
+  let hasSuperscript = false;
+  let hasSubscript = false;
+
+  for (const mark of marks) {
+    const markValidation = validateMark(mark);
+    if (!markValidation.ok) {
+      return markValidation;
+    }
+
+    if (!isRecord(mark) || typeof mark.type !== "string") {
+      return createValidationFailure();
+    }
+
+    if (mark.type === "superscript") {
+      hasSuperscript = true;
+    }
+
+    if (mark.type === "subscript") {
+      hasSubscript = true;
+    }
+  }
+
+  return hasSuperscript && hasSubscript ? createValidationFailure() : { ok: true };
+}
+
 function validateNodeAttrs(type: string, attrs: unknown): DocseraStructuredDocumentValidationResult {
   if (attrs === undefined) {
     if (type === "heading") {
@@ -226,7 +262,7 @@ function validateNodeAttrs(type: string, attrs: unknown): DocseraStructuredDocum
     case "hardBreak":
       return Object.keys(attrs).length === 0 ? { ok: true } : createValidationFailure();
     case "heading":
-      return hasOnlyAllowedKeys(attrs, ["level"]) && DOCSERA_BODY_HEADING_LEVELS.includes(attrs.level as 2 | 3)
+      return hasOnlyAllowedKeys(attrs, ["level"]) && DOCSERA_BODY_HEADING_LEVELS.includes(attrs.level as 1 | 2 | 3)
         ? { ok: true }
         : createValidationFailure();
     case "orderedList":
@@ -315,11 +351,9 @@ function validateStructuredNode(node: unknown): DocseraStructuredDocumentValidat
         return createValidationFailure();
       }
 
-      for (const mark of node.marks) {
-        const markValidation = validateMark(mark);
-        if (!markValidation.ok) {
-          return markValidation;
-        }
+      const markValidation = validateTextNodeMarks(node.marks);
+      if (!markValidation.ok) {
+        return markValidation;
       }
     }
 
@@ -393,7 +427,7 @@ function canonicalizeMark(mark: Record<string, unknown>): Record<string, unknown
     type: mark.type
   };
 
-  if (mark.attrs !== undefined) {
+  if (mark.type === "link" && mark.attrs !== undefined) {
     canonicalMark.attrs = cloneJson(mark.attrs);
   }
 

@@ -4,6 +4,7 @@ import { StrictMode, useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import { createEmptyDocseraDocumentEnvelope } from "../../shared/editor/document";
+import { createHeadingHierarchyDocseraDocumentEnvelope } from "../../shared/editor/documentFixtures";
 import type {
   DocseraRuntimeContext,
   PageBodySaveResult,
@@ -506,6 +507,56 @@ describe("App live and edit routing", () => {
     expect(screen.queryByRole("button", { name: "New page" })).not.toBeInTheDocument();
     expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
     expectWorkspaceSearch({ workspace: "product-docs", page: "overview" });
+  });
+
+  it("keeps the live workspace route stable when a TOC link is activated", async () => {
+    const tocEnvelope = createHeadingHierarchyDocseraDocumentEnvelope();
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", [
+        createPageRecord({
+          draftContentJson: tocEnvelope,
+          publishedContentJson: tocEnvelope,
+          draftTitle: "Overview",
+          publishedTitle: "Overview"
+        })
+      ])
+    );
+
+    renderApp("/?workspace=product-docs&page=overview", { listPages });
+
+    const installLink = await screen.findByRole("link", { name: "Install" });
+    expect(installLink).toHaveAttribute("href", "#install");
+    fireEvent.click(installLink);
+
+    expect(await screen.findByRole("heading", { name: "Install", level: 3 })).toBeInTheDocument();
+    expect(screen.queryByText("Workspace unavailable")).toBeNull();
+    expect(screen.queryByText("Unable to load workspace.")).toBeNull();
+    expectWorkspaceSearch({ workspace: "product-docs", page: "overview" });
+  });
+
+  it("keeps the edit workspace route stable when a TOC link is activated", async () => {
+    const tocEnvelope = createHeadingHierarchyDocseraDocumentEnvelope();
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", [
+        createPageRecord({
+          draftContentJson: tocEnvelope,
+          publishedContentJson: tocEnvelope,
+          draftTitle: "Overview",
+          publishedTitle: "Overview",
+          publicationState: "published_with_unpublished_changes"
+        })
+      ])
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { listPages });
+
+    const installLink = await screen.findByRole("link", { name: "Install" });
+    expect(installLink).toHaveAttribute("href", "#install");
+    fireEvent.click(installLink);
+
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expectWorkspaceSearch({ workspace: "product-docs", page: "overview", mode: "edit" });
   });
 
   it("keeps the workspace shell mounted during initial workspace loading and delays contained loading lines", async () => {

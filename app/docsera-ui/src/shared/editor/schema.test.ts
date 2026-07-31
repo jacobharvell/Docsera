@@ -5,6 +5,7 @@ import {
   createCombinedInlineMarksDocseraDocumentEnvelope,
   createDuplicateHeadingDocseraDocumentEnvelope,
   createEmptyHeadingDocseraDocumentEnvelope,
+  createExpandedTextFormattingDocseraDocumentEnvelope,
   createNestedTaskListDocseraDocumentEnvelope,
   createSupportedE2DocseraDocumentEnvelope,
   createTaskCheckedStateDocseraDocumentEnvelope
@@ -20,7 +21,8 @@ describe("Docsera structured document validation", () => {
     ["code block terminal whitespace", createCodeBlockWhitespaceDocseraDocumentEnvelope().document],
     ["combined inline marks document", createCombinedInlineMarksDocseraDocumentEnvelope().document],
     ["duplicate heading document", createDuplicateHeadingDocseraDocumentEnvelope().document],
-    ["empty heading document", createEmptyHeadingDocseraDocumentEnvelope().document]
+    ["empty heading document", createEmptyHeadingDocseraDocumentEnvelope().document],
+    ["expanded text formatting document", createExpandedTextFormattingDocseraDocumentEnvelope().document]
   ])("accepts %s at the raw validation boundary", (_label, document) => {
     expect(validateDocseraStructuredDocument(document)).toEqual({ ok: true });
   });
@@ -50,6 +52,42 @@ describe("Docsera structured document validation", () => {
       }
     ],
     [
+      "superscript and subscript overlap",
+      {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: "Unsupported mark combination",
+                marks: [{ type: "superscript" }, { type: "subscript" }]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    [
+      "highlight color attribute rejected",
+      {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: "Theme-specific highlight",
+                marks: [{ type: "highlight", attrs: { color: "#ff0" } }]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    [
       "unknown mark type",
       {
         type: "doc",
@@ -60,7 +98,7 @@ describe("Docsera structured document validation", () => {
               {
                 type: "text",
                 text: "Unsupported mark",
-                marks: [{ type: "underline" }]
+                marks: [{ type: "rainbow" }]
               }
             ]
           }
@@ -252,7 +290,7 @@ describe("Docsera structured document validation", () => {
         content: [
           {
             type: "heading",
-            attrs: { level: 1 },
+            attrs: { level: 4 },
             content: [{ type: "text", text: "Unsupported heading" }]
           }
         ]

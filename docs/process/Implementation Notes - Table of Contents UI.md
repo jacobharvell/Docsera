@@ -14,6 +14,12 @@ This note documents the current Workspace Table of Contents shell behavior in th
 - The rail keeps the `On this page` heading visible in the expanded state, but empty heading data now renders as a visually clean shell with no placeholder copy.
 - At widths above 1180px the ToC remains the right-side rail. At 1180px and below the entire aside, body, and toggle are hidden; it never relocates beneath the document and leaves no grid row or empty strip. Widening restores the mounted rail and its application-controlled collapsed state without a reload. Live and Edit use the same rule.
 - Editor save state is separate from the ToC and appears subtly beside the stable header's Live/Edit toggle.
+- TOC links now preserve the active workspace/page route and scroll the current document in place instead of letting a bare fragment hash re-enter Docsera route parsing.
+- Pointer and keyboard activation both target the canonical heading id generated for duplicate headings; the browser URL stays on the existing workspace route.
+- Heading navigation now uses one clearance rule for canonical body H1, H2, and H3 targets. The live reader and editor runtime both apply the same header-aware scroll margin so headings land fully below the fixed application header.
+- The ToC resolver checks the live document first and then the workspace editor shadow root, so the same in-page navigation path works in Live and Edit without adding route state.
+- The editor shadow-root fallback now filters out empty headings before applying the outline ordinal, so empty headings do not consume a ToC target and duplicate populated headings still resolve in canonical order.
+- The ToC column stretches to the workspace track height, the full-height divider is carried by the stretched aside boundary, and the sticky rail uses the usable viewport height instead of inheriting the long document track.
 
 ## Expanded State Convention
 
@@ -49,6 +55,7 @@ This note documents the current Workspace Table of Contents shell behavior in th
 
 - Live workspace pages built from current ServiceNow page records still do not provide real TipTap heading extraction to the TOC.
 - Demo-backed pages that already include section data still render TOC items, but live pages without section data intentionally render a clean empty shell until heading wiring is implemented in a later task.
+- In this runtime slice, TOC navigation is intentionally in-page only. It does not add history entries or rewrite the Docsera hash route.
 
 ## Follow-ups
 

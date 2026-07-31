@@ -9,6 +9,9 @@ import type { WorkspacePageRecord } from "../../shared/types/docsera";
 import {
   createDuplicateHeadingDocseraDocumentEnvelope,
   createEmptyHeadingDocseraDocumentEnvelope,
+  createEmptyHeadingHierarchyDocseraDocumentEnvelope,
+  createExpandedTextFormattingDocseraDocumentEnvelope,
+  createHeadingHierarchyDocseraDocumentEnvelope,
   createRelativeLinkDocseraDocumentEnvelope,
   createSupportedE2DocseraDocumentEnvelope
 } from "../../../shared/editor/documentFixtures";
@@ -47,8 +50,8 @@ describe("PublishedDocumentReader", () => {
     const view = renderReader(envelope);
     const reader = screen.getByLabelText("Published page content");
 
-    expect(within(reader).getByRole("heading", { name: "Overview", level: 2 })).toHaveAttribute("id", "overview");
-    expect(within(reader).getByRole("heading", { name: "Nested content", level: 3 })).toHaveAttribute("id", "nested-content");
+    expect(within(reader).getByRole("heading", { name: "Overview", level: 3 })).toHaveAttribute("id", "overview");
+    expect(within(reader).getByRole("heading", { name: "Nested content", level: 4 })).toHaveAttribute("id", "nested-content");
     expect(page.tocItems.map((item) => item.anchorId)).toEqual(["overview", "nested-content"]);
     expect(page.tocItems.map((item) => item.title)).toEqual(["Overview", "Nested content"]);
 
@@ -100,6 +103,34 @@ describe("PublishedDocumentReader", () => {
     expect(link).toHaveAttribute("title", "Open guide");
   });
 
+  it("renders body H1 plus underline, highlight, superscript, and subscript without theme data in canonical JSON", () => {
+    const envelope = createExpandedTextFormattingDocseraDocumentEnvelope();
+    const page = buildWorkspacePageView(createPageRecord(envelope), "live");
+
+    renderReader(envelope);
+
+    const reader = screen.getByLabelText("Published page content");
+    expect(within(reader).getByRole("heading", { name: "Getting started", level: 2 })).toHaveClass("docsera-main__body-heading");
+    expect(within(reader).getByRole("heading", { name: "Install", level: 3 })).toHaveClass("docsera-main__section-title");
+    expect(within(reader).getByRole("heading", { name: "npm", level: 4 })).toHaveClass("docsera-main__subsection-title");
+    expect(page.tocItems.map((item) => item.level)).toEqual([1, 2, 3]);
+
+    const underline = within(reader).getByText("Underlined");
+    expect(underline.closest("u")).not.toBeNull();
+
+    const highlight = within(reader).getByText("highlighted");
+    expect(highlight.closest("mark")).toHaveClass("docsera-main__highlight");
+
+    const superscript = within(reader).getByText("bold superscript");
+    expect(superscript.closest("sup")).not.toBeNull();
+    expect(superscript.closest("strong")).not.toBeNull();
+
+    const subscript = within(reader).getByText("italic subscript");
+    expect(subscript.closest("sub")).not.toBeNull();
+    expect(subscript.closest("em")).not.toBeNull();
+    expect(JSON.stringify(envelope)).not.toContain("color");
+  });
+
   it("renders supported marks even if the runtime array does not expose entries()", () => {
     const envelope = createSupportedE2DocseraDocumentEnvelope();
     const firstParagraph = envelope.document.content?.[1];
@@ -137,12 +168,25 @@ describe("PublishedDocumentReader", () => {
     duplicateView.unmount();
     cleanup();
 
-    const emptyEnvelope = createEmptyHeadingDocseraDocumentEnvelope();
+    const emptyEnvelope = createEmptyHeadingHierarchyDocseraDocumentEnvelope();
     const emptyPage = buildWorkspacePageView(createPageRecord(emptyEnvelope), "live");
     renderReader(emptyEnvelope);
 
-    expect(screen.getByRole("heading", { level: 2 })).not.toHaveAttribute("id");
+    expect(screen.getAllByRole("heading").map((heading) => [heading.tagName.toLowerCase(), heading.id])).toEqual([
+      ["h2", ""],
+      ["h3", ""],
+      ["h4", ""]
+    ]);
     expect(emptyPage.tocItems).toEqual([]);
+  });
+
+  it("keeps body H1, H2, and H3 outline anchors in canonical order", () => {
+    const hierarchyEnvelope = createHeadingHierarchyDocseraDocumentEnvelope();
+    const hierarchyPage = buildWorkspacePageView(createPageRecord(hierarchyEnvelope), "live");
+    renderReader(hierarchyEnvelope);
+
+    expect(screen.getAllByRole("heading").map((heading) => heading.id)).toEqual(["overview", "install", "cli"]);
+    expect(hierarchyPage.tocItems.map((item) => item.anchorId)).toEqual(["overview", "install", "cli"]);
   });
 
   it("renders empty headings when the content array is omitted by the runtime envelope", () => {
@@ -156,7 +200,7 @@ describe("PublishedDocumentReader", () => {
     const emptyPage = buildWorkspacePageView(createPageRecord(emptyEnvelope), "live");
     renderReader(emptyEnvelope);
 
-    expect(screen.getByRole("heading", { level: 2 })).not.toHaveAttribute("id");
+    expect(screen.getByRole("heading", { level: 3 })).not.toHaveAttribute("id");
     expect(emptyPage.tocItems).toEqual([]);
   });
 

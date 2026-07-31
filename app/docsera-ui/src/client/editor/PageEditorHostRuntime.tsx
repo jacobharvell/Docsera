@@ -18,16 +18,21 @@ import { docseraIcons } from "../shared/icons/docseraIcons";
 import {
   Bold,
   Code2,
+  Heading1,
   Heading2,
   Heading3,
+  Highlighter,
   Italic,
   Link2,
   List,
   ListOrdered,
   Minus,
   Quote,
+  Subscript as SubscriptIcon,
+  Superscript as SuperscriptIcon,
   Strikethrough,
-  Type
+  Type,
+  Underline as UnderlineIcon
 } from "lucide-react";
 
 type PageEditorHostRuntimeProps = {
@@ -82,6 +87,7 @@ type RuntimeStatus = "conflict" | "dirty" | "failed" | "saved" | "saving";
 
 type SlashCommandId =
   | "paragraph"
+  | "heading1"
   | "heading2"
   | "heading3"
   | "bulletedList"
@@ -120,7 +126,7 @@ export function getAutosaveRetryDelay(attempt: number): number | null {
     ? AUTOSAVE_RETRY_DELAYS_MS[attempt]
     : null;
 }
-const BUBBLE_MENU_WIDTH = 264;
+const BUBBLE_MENU_WIDTH = 456;
 const LINK_MENU_WIDTH = 336;
 const POPOVER_GAP = 10;
 const VIEWPORT_GUTTER = 12;
@@ -138,6 +144,14 @@ const SLASH_COMMANDS: SlashCommand[] = [
     keywords: ["text", "body", "normal"],
     run: (editor) => {
       editor.chain().focus(undefined, { scrollIntoView: false }).setParagraph().run();
+    }
+  },
+  {
+    id: "heading1",
+    label: "Heading 1",
+    keywords: ["h1", "heading", "section"],
+    run: (editor) => {
+      editor.chain().focus(undefined, { scrollIntoView: false }).toggleHeading({ level: 1 }).run();
     }
   },
   {
@@ -450,6 +464,8 @@ function SlashCommandIcon({ id }: { id: SlashCommandId }) {
   switch (id) {
     case "paragraph":
       return <Type size={16} strokeWidth={2} />;
+    case "heading1":
+      return <Heading1 size={16} strokeWidth={2} />;
     case "heading2":
       return <Heading2 size={16} strokeWidth={2} />;
     case "heading3":
@@ -516,6 +532,22 @@ function applySlashCommand(editor: Editor, command: SlashCommand, range: { from:
 
 function restoreSelection(editor: Editor, from: number, to: number) {
   editor.chain().focus(undefined, { scrollIntoView: false }).setTextSelection({ from, to }).run();
+}
+
+function toggleUnderlineMark(editor: Editor) {
+  editor.chain().focus(undefined, { scrollIntoView: false }).toggleUnderline().run();
+}
+
+function toggleHighlightMark(editor: Editor) {
+  editor.chain().focus(undefined, { scrollIntoView: false }).toggleHighlight().run();
+}
+
+function toggleSuperscriptMark(editor: Editor) {
+  editor.chain().focus(undefined, { scrollIntoView: false }).unsetSubscript().toggleSuperscript().run();
+}
+
+function toggleSubscriptMark(editor: Editor) {
+  editor.chain().focus(undefined, { scrollIntoView: false }).unsetSuperscript().toggleSubscript().run();
 }
 
 function getEditorSelectionRole(selection: unknown): string {
@@ -907,6 +939,7 @@ export function PageEditorHostRuntime({
             editable: false
           }
   });
+
   const slashContext = editor && isEditable ? getSlashQuery(editor) : null;
   const slashMatches = slashContext ? getSlashCommandMatches(slashContext.query) : [];
   const slashKey = slashContext ? `${slashContext.from}:${slashContext.to}:${slashContext.query}` : "";
@@ -924,8 +957,12 @@ export function PageEditorHostRuntime({
     ? {
         bold: editor.isActive("bold"),
         italic: editor.isActive("italic"),
+        underline: editor.isActive("underline"),
         strike: editor.isActive("strike"),
         code: editor.isActive("code"),
+        highlight: editor.isActive("highlight"),
+        superscript: editor.isActive("superscript"),
+        subscript: editor.isActive("subscript"),
         link: editor.isActive("link")
       }
     : null;
@@ -1347,6 +1384,7 @@ export function PageEditorHostRuntime({
           font-size: 1rem;
           line-height: 1.8;
           outline: none;
+          scroll-padding-top: var(--docsera-workspace-heading-scroll-margin);
         }
         .docsera-editor-runtime__surface .ProseMirror ::selection {
           background: color-mix(in srgb, var(--docsera-editor-primary) 22%, transparent);
@@ -1365,6 +1403,19 @@ export function PageEditorHostRuntime({
         .docsera-editor-runtime__surface .ProseMirror h3 {
           margin: 1.4rem 0 0.7rem;
           line-height: 1.2;
+          scroll-margin-block-start: var(--docsera-workspace-heading-scroll-margin);
+          scroll-margin-top: var(--docsera-workspace-heading-scroll-margin);
+        }
+        .docsera-editor-runtime__surface .ProseMirror h1 {
+          font-size: 1.9rem;
+          letter-spacing: -0.025em;
+        }
+        .docsera-editor-runtime__surface .ProseMirror h2 {
+          font-size: 1.65rem;
+          letter-spacing: -0.02em;
+        }
+        .docsera-editor-runtime__surface .ProseMirror h3 {
+          font-size: 1.25rem;
         }
         .docsera-editor-runtime__surface .ProseMirror ul,
         .docsera-editor-runtime__surface .ProseMirror ol {
@@ -1407,6 +1458,17 @@ export function PageEditorHostRuntime({
           text-decoration-thickness: 0.08em;
           text-underline-offset: 0.16em;
         }
+        .docsera-editor-runtime__surface .ProseMirror mark {
+          padding: 0.08em 0.2em;
+          border-radius: 0.28em;
+          background: color-mix(in srgb, #f6d84e 58%, var(--docsera-editor-panel));
+          color: inherit;
+        }
+        .docsera-editor-runtime__surface .ProseMirror sup,
+        .docsera-editor-runtime__surface .ProseMirror sub {
+          font-size: 0.72em;
+          line-height: 0;
+        }
         .docsera-editor-floating-layer {
           position: fixed;
           inset: 0;
@@ -1424,9 +1486,11 @@ export function PageEditorHostRuntime({
           box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
           backdrop-filter: blur(14px);
         }
-        .docsera-editor-floating--slash,
-        .docsera-editor-floating--bubble {
+        .docsera-editor-floating--slash {
           width: min(100vw - 24px, 320px);
+        }
+        .docsera-editor-floating--bubble {
+          width: min(100vw - 24px, 456px);
         }
         .docsera-editor-floating--link {
           width: min(100vw - 24px, 340px);
@@ -1694,6 +1758,16 @@ export function PageEditorHostRuntime({
                     <DocseraIcon icon={Italic} size={15} />
                   </FloatingIconButton>
                   <FloatingIconButton
+                    label="Underline"
+                    active={bubbleMarks?.underline}
+                    onClick={() => {
+                      restoreSelection(editor, bubbleSelection.from, bubbleSelection.to);
+                      toggleUnderlineMark(editor);
+                    }}
+                  >
+                    <DocseraIcon icon={UnderlineIcon} size={15} />
+                  </FloatingIconButton>
+                  <FloatingIconButton
                     label="Strike"
                     active={bubbleMarks?.strike}
                     onClick={() => {
@@ -1712,6 +1786,36 @@ export function PageEditorHostRuntime({
                     }}
                   >
                     <DocseraIcon icon={Code2} size={15} />
+                  </FloatingIconButton>
+                  <FloatingIconButton
+                    label="Highlight"
+                    active={bubbleMarks?.highlight}
+                    onClick={() => {
+                      restoreSelection(editor, bubbleSelection.from, bubbleSelection.to);
+                      toggleHighlightMark(editor);
+                    }}
+                  >
+                    <DocseraIcon icon={Highlighter} size={15} />
+                  </FloatingIconButton>
+                  <FloatingIconButton
+                    label="Superscript"
+                    active={bubbleMarks?.superscript}
+                    onClick={() => {
+                      restoreSelection(editor, bubbleSelection.from, bubbleSelection.to);
+                      toggleSuperscriptMark(editor);
+                    }}
+                  >
+                    <DocseraIcon icon={SuperscriptIcon} size={15} />
+                  </FloatingIconButton>
+                  <FloatingIconButton
+                    label="Subscript"
+                    active={bubbleMarks?.subscript}
+                    onClick={() => {
+                      restoreSelection(editor, bubbleSelection.from, bubbleSelection.to);
+                      toggleSubscriptMark(editor);
+                    }}
+                  >
+                    <DocseraIcon icon={SubscriptIcon} size={15} />
                   </FloatingIconButton>
                   <FloatingIconButton
                     label="Link"

@@ -4,7 +4,10 @@ import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { PageBodySaveResult } from "../shared/types/docsera";
 import { describe, expect, it, vi } from "vitest";
-import { createSupportedE2DocseraDocumentEnvelope } from "../../shared/editor/documentFixtures";
+import {
+  createExpandedTextFormattingDocseraDocumentEnvelope,
+  createSupportedE2DocseraDocumentEnvelope
+} from "../../shared/editor/documentFixtures";
 import { getAutosaveRetryDelay } from "./PageEditorHostRuntime";
 import {
   createEnvelopeFromDocument,
@@ -142,6 +145,19 @@ describe("PageEditorHostRuntime", () => {
     expect(runtimeStyle).not.toContain(".docsera-editor-runtime__overlay");
     expect(runtimeStyle).not.toContain(".docsera-editor-runtime__overlay-button");
     expect(runtimeStyle).not.toContain(".docsera-editor-runtime__save-button");
+    expect(runtimeStyle).toContain("scroll-padding-top: var(--docsera-workspace-heading-scroll-margin);");
+    expect(runtimeStyle).toContain("scroll-margin-top: var(--docsera-workspace-heading-scroll-margin);");
+  });
+
+  it("mounts the expanded heading and mark contract without normalizing away H1, underline, highlight, superscript, or subscript", async () => {
+    const supportedEnvelope = createExpandedTextFormattingDocseraDocumentEnvelope();
+    const { editorReady } = renderRuntime({ initialEnvelope: supportedEnvelope });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    expect(editorReady[0].getJSON()).toEqual(supportedEnvelope.document);
   });
 
   it("explicitly saves the supported E2 rich-text schema without flattening accepted structure", async () => {
@@ -220,8 +236,9 @@ describe("PageEditorHostRuntime", () => {
     await pasteIntoEditor(
       editor,
       [
+        "<h1>Getting started</h1>",
         "<h2>Overview</h2>",
-        "<p><strong>Bold</strong> <em>italic</em> <s>strike</s> <code>code</code> <a href=\"https://example.com/docs\">link</a></p>",
+        "<p><strong>Bold</strong> <em>italic</em> <u>underline</u> <s>strike</s> <code>code</code> <a href=\"https://example.com/docs\">link</a> <mark style=\"background-color:#00ff00\">highlight</mark> H<sub>2</sub> x<sup>2</sup></p>",
         "<ol start=\"3\"><li><p>Ordered item</p><ul><li><p>Nested bullet</p></li></ul></li></ol>",
         "<ul data-type=\"taskList\"><li data-type=\"taskItem\" data-checked=\"true\"><p>Checked task</p></li></ul>",
         "<blockquote><p>Quoted text</p></blockquote>",
@@ -236,6 +253,11 @@ describe("PageEditorHostRuntime", () => {
     expect(json).toMatchObject({
       type: "doc",
       content: [
+        {
+          type: "heading",
+          attrs: { level: 1 },
+          content: [{ type: "text", text: "Getting started" }]
+        },
         {
           type: "heading",
           attrs: { level: 2 },
@@ -307,9 +329,10 @@ describe("PageEditorHostRuntime", () => {
       ]
     });
 
-    const paragraph = (json.content?.[1] as { content?: Array<{ marks?: Array<{ type: string }> }> } | undefined)?.content ?? [];
+    const paragraph = (json.content?.[2] as { content?: Array<{ marks?: Array<{ type: string }> }> } | undefined)?.content ?? [];
     const paragraphMarkTypes = paragraph.flatMap((node) => node.marks?.map((mark) => mark.type) ?? []);
-    expect(paragraphMarkTypes).toEqual(expect.arrayContaining(["bold", "italic", "strike", "code", "link"]));
+    expect(paragraphMarkTypes).toEqual(expect.arrayContaining(["bold", "italic", "underline", "strike", "code", "link", "highlight", "subscript", "superscript"]));
+    expect(JSON.stringify(json)).not.toContain("background-color");
   });
 
   it("keeps unsupported active and embedded markup out of canonical JSON during paste", async () => {

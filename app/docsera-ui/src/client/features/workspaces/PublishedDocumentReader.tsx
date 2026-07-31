@@ -77,6 +77,22 @@ function getNodeAttrs(node: Record<string, unknown>): Record<string, unknown> {
   return isRecord(node.attrs) ? node.attrs : {};
 }
 
+function getReaderHeadingTag(level: 1 | 2 | 3): "h2" | "h3" | "h4" {
+  if (level === 1) {
+    return "h2";
+  }
+
+  return level === 2 ? "h3" : "h4";
+}
+
+function getReaderHeadingClassName(level: 1 | 2 | 3): string {
+  if (level === 1) {
+    return "docsera-main__body-heading";
+  }
+
+  return level === 2 ? "docsera-main__section-title" : "docsera-main__subsection-title";
+}
+
 function renderMark(child: ReactNode, mark: unknown, path: string): ReactNode {
   if (!isRecord(mark) || typeof mark.type !== "string") {
     throw new Error("The published page content contains an unsupported text mark.");
@@ -89,6 +105,18 @@ function renderMark(child: ReactNode, mark: unknown, path: string): ReactNode {
       return <em key={`${path}-italic`}>{child}</em>;
     case "strike":
       return <s key={`${path}-strike`}>{child}</s>;
+    case "underline":
+      return <u key={`${path}-underline`}>{child}</u>;
+    case "superscript":
+      return <sup key={`${path}-superscript`}>{child}</sup>;
+    case "subscript":
+      return <sub key={`${path}-subscript`}>{child}</sub>;
+    case "highlight":
+      return (
+        <mark key={`${path}-highlight`} className="docsera-main__highlight">
+          {child}
+        </mark>
+      );
     case "code":
       return (
         <code key={`${path}-code`} className="docsera-main__inline-code">
@@ -176,18 +204,19 @@ function renderParagraph(node: Record<string, unknown>, path: string): ReactNode
 
 function renderHeading(node: Record<string, unknown>, path: string, context: ReaderContext): ReactNode {
   const level = Number(getNodeAttrs(node).level);
-  if (level !== 2 && level !== 3) {
+  if (level !== 1 && level !== 2 && level !== 3) {
     throw new Error("The published page content contains an unsupported heading level.");
   }
 
   const title = extractCanonicalHeadingText(node);
   if (!title) {
-    return level === 2 ? <h2 key={path} className="docsera-main__section-title" /> : <h3 key={path} className="docsera-main__subsection-title" />;
+    const EmptyHeadingTag = getReaderHeadingTag(level);
+    return <EmptyHeadingTag key={path} className={getReaderHeadingClassName(level)} />;
   }
 
   const id = context.resolveHeadingAnchor(title);
-  const HeadingTag = level === 2 ? "h2" : "h3";
-  const className = level === 2 ? "docsera-main__section-title" : "docsera-main__subsection-title";
+  const HeadingTag = getReaderHeadingTag(level);
+  const className = getReaderHeadingClassName(level);
 
   return (
     <HeadingTag key={path} id={id} className={className}>

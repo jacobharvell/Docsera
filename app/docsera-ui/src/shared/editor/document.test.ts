@@ -12,6 +12,7 @@ import {
   createCombinedInlineMarksDocseraDocumentEnvelope,
   createDuplicateHeadingDocseraDocumentEnvelope,
   createEmptyHeadingDocseraDocumentEnvelope,
+  createExpandedTextFormattingDocseraDocumentEnvelope,
   createLargeCanonicalDocseraDocumentEnvelope,
   createLegacyDocseraDocument,
   createNestedTaskListDocseraDocumentEnvelope,
@@ -101,7 +102,8 @@ describe("Docsera document envelope", () => {
     ["unchecked task state", createTaskCheckedStateDocseraDocumentEnvelope(false)],
     ["code block terminal whitespace", createCodeBlockWhitespaceDocseraDocumentEnvelope()],
     ["combined inline marks", createCombinedInlineMarksDocseraDocumentEnvelope()],
-    ["duplicate headings", createDuplicateHeadingDocseraDocumentEnvelope()]
+    ["duplicate headings", createDuplicateHeadingDocseraDocumentEnvelope()],
+    ["expanded text formatting", createExpandedTextFormattingDocseraDocumentEnvelope()]
   ])("round-trips %s", (_label, envelope) => {
     const parsed = parseDocseraDocument(serializeDocseraDocument(envelope));
 

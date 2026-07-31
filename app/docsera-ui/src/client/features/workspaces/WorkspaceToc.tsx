@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from "react";
 import type { WorkspacePageView } from "./workspaceViewModels";
 
 type WorkspaceTocProps = {
@@ -32,6 +33,44 @@ function WorkspaceTocChevron({ collapsed }: { collapsed: boolean }) {
       />
     </svg>
   );
+}
+
+export function resolveWorkspaceHeadingTarget(anchorId: string, ordinal: number): HTMLElement | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
+
+  const directTarget = document.getElementById(anchorId);
+  if (directTarget instanceof HTMLElement) {
+    return directTarget;
+  }
+
+  const editorHost = document.querySelector<HTMLElement>("[data-docsera-page-editor-host='true']");
+  const shadowTarget = editorHost?.shadowRoot?.getElementById(anchorId);
+  if (shadowTarget instanceof HTMLElement) {
+    return shadowTarget;
+  }
+
+  const shadowHeadings = editorHost?.shadowRoot?.querySelectorAll<HTMLElement>("h1, h2, h3");
+  const populatedShadowHeadings = Array.from(shadowHeadings ?? []).filter((heading) => {
+    return Boolean(heading.textContent?.replace(/\s+/g, " ").trim());
+  });
+  const fallbackTarget = populatedShadowHeadings[ordinal];
+  return fallbackTarget instanceof HTMLElement ? fallbackTarget : null;
+}
+
+function scrollToWorkspaceHeading(anchorId: string, ordinal: number): void {
+  const target = resolveWorkspaceHeadingTarget(anchorId, ordinal);
+  target?.scrollIntoView({ block: "start", inline: "nearest" });
+}
+
+function activateWorkspaceHeading(anchorId: string, ordinal: number, event: { preventDefault: () => void }): void {
+  event.preventDefault();
+  scrollToWorkspaceHeading(anchorId, ordinal);
+}
+
+function isWorkspaceTocKeyboardActivation(event: KeyboardEvent<HTMLAnchorElement>): boolean {
+  return event.key === "Enter" || event.key === " ";
 }
 
 export function WorkspaceToc({ collapsed, isLoading = false, showPendingState, page, panelId, onToggleCollapsed }: WorkspaceTocProps) {
@@ -71,7 +110,18 @@ export function WorkspaceToc({ collapsed, isLoading = false, showPendingState, p
                   <li key={section.id} className="docsera-toc__item">
                     <a
                       className={`docsera-toc__link${index === 0 ? " docsera-toc__link--active" : ""}`}
+                      data-level={section.level}
                       href={`#${section.anchorId}`}
+                      onClick={(event) => {
+                        activateWorkspaceHeading(section.anchorId, index, event);
+                      }}
+                      onKeyDown={(event) => {
+                        if (!isWorkspaceTocKeyboardActivation(event)) {
+                          return;
+                        }
+
+                        activateWorkspaceHeading(section.anchorId, index, event);
+                      }}
                       tabIndex={collapsed ? -1 : undefined}
                     >
                       {section.title}

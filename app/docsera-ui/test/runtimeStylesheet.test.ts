@@ -30,6 +30,20 @@ test("keeps launcher background ownership explicit without changing workspace ba
   expect(css).not.toMatch(/\.docsera-shell\s*\{[^}]*min-height:\s*100vh;/s);
   expect(css).toContain(".docsera-workspace {");
   expect(css).toContain("background: var(--docsera-workspace-bg, var(--docsera-surface));");
+  expect(css).toContain("--docsera-workspace-heading-scroll-margin: calc(var(--docsera-header-height) + 16px);");
+  expect(css).toContain("--docsera-workspace-toc-top-gap: 8px;");
+  expect(css).toContain("align-items: stretch;");
+  expect(css).toContain(".docsera-workspace__aside {");
+  expect(css).toContain("display: flex;");
+  expect(css).toMatch(/\.docsera-workspace__aside\s*{[^}]*border-left:\s*1px solid var\(--docsera-border\);/s);
+  expect(css).toContain(".docsera-toc-rail {");
+  expect(css).toMatch(/\.docsera-toc-rail\s*{[^}]*align-self:\s*flex-start;[^}]*height:\s*calc\(100vh - var\(--docsera-header-height\) - var\(--docsera-workspace-toc-top-gap\)\);/s);
+  expect(css).not.toMatch(/\.docsera-toc-rail\s*{[^}]*height:\s*100%;/s);
+  expect(css).toContain("top: calc(var(--docsera-header-height) + var(--docsera-workspace-toc-top-gap));");
+  expect(css).toMatch(/\.docsera-toc-rail__body\s*{[^}]*height:\s*100%;[^}]*min-height:\s*0;/s);
+  expect(css).not.toMatch(/\.docsera-toc-rail__body\s*{[^}]*border-left:/s);
+  expect(css).toContain(".docsera-main__body-heading,");
+  expect(css).toContain("scroll-margin-block-start: var(--docsera-workspace-heading-scroll-margin);");
 });
 
 test("hides the complete ToC rail at the responsive breakpoint instead of stacking it below the document", () => {

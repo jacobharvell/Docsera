@@ -61,6 +61,7 @@ describe("PageEditorHostRuntime", () => {
     await openSlashQuery(editor, "he");
 
     const slashMenu = await screen.findByRole("listbox", { name: "Slash command menu" });
+    expect(within(slashMenu).getByRole("option", { name: /Heading 1/ })).toBeInTheDocument();
     expect(within(slashMenu).getByRole("option", { name: /Heading 2/ })).toBeInTheDocument();
     expect(within(slashMenu).getByRole("option", { name: /Heading 3/ })).toBeInTheDocument();
 
@@ -97,6 +98,7 @@ describe("PageEditorHostRuntime", () => {
     await openSlashQuery(editor, "he");
 
     fireEvent.keyDown(editor.view.dom, { key: "ArrowDown" });
+    fireEvent.keyDown(editor.view.dom, { key: "ArrowDown" });
     fireEvent.keyDown(editor.view.dom, { key: "Enter" });
 
     expect(editor.getJSON().content?.[0]).toMatchObject({
@@ -117,6 +119,7 @@ describe("PageEditorHostRuntime", () => {
 
   it.each([
     ["Paragraph", { type: "doc", content: [{ type: "paragraph" }] }],
+    ["Heading 1", { type: "doc", content: [{ type: "heading", attrs: { level: 1 } }] }],
     ["Heading 2", { type: "doc", content: [{ type: "heading", attrs: { level: 2 } }] }],
     ["Heading 3", { type: "doc", content: [{ type: "heading", attrs: { level: 3 } }] }],
     ["Bulleted list", { type: "doc", content: [{ type: "bulletList" }] }],
@@ -191,8 +194,12 @@ describe("PageEditorHostRuntime", () => {
   it.each([
     ["Bold", { type: "bold" }],
     ["Italic", { type: "italic" }],
+    ["Underline", { type: "underline" }],
     ["Strike", { type: "strike" }],
-    ["Inline code", { type: "code" }]
+    ["Inline code", { type: "code" }],
+    ["Highlight", { type: "highlight" }],
+    ["Superscript", { type: "superscript" }],
+    ["Subscript", { type: "subscript" }]
   ])("toggles %s through the bubble menu", async (label, expectedMark) => {
     const { editorReady } = renderRuntime();
 
@@ -624,6 +631,28 @@ describe("PageEditorHostRuntime", () => {
     expect(screen.queryByRole("dialog", { name: /link/i })).toBeNull();
     expect(screen.queryByRole("toolbar", { name: "Text formatting" })).toBeNull();
     expect(screen.queryByRole("listbox", { name: "Slash command menu" })).toBeNull();
+  });
+
+  it("replaces superscript with subscript without removing unrelated marks", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await setParagraphText(editor, "Formula");
+    await selectText(editor, 1, 8);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Bold" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Superscript" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Subscript" }));
+
+    expect(editor.getJSON().content?.[0]).toMatchObject({
+      type: "paragraph",
+      content: [{ type: "text", text: "Formula", marks: [{ type: "bold" }, { type: "subscript" }] }]
+    });
+    expect(JSON.stringify(editor.getJSON())).not.toContain("superscript");
   });
 });
 

@@ -290,6 +290,7 @@ declare global {
                     package_json: {
                         table: 'sys_module'
                         id: '59eb37ac11e3463591b83e545fd64cc4'
+                        deleted: false
                     }
                     'src_server_api_docsera-runtime-create-page_ts': {
                         table: 'sys_module'

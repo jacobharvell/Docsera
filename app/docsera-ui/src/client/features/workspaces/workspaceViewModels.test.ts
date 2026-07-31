@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { WorkspacePageRecord, WorkspaceViewRecord } from "../../shared/types/docsera";
 import {
   createDuplicateHeadingDocseraDocumentEnvelope,
-  createEmptyHeadingDocseraDocumentEnvelope
+  createEmptyHeadingDocseraDocumentEnvelope,
+  createHeadingHierarchyDocseraDocumentEnvelope
 } from "../../../shared/editor/documentFixtures";
 import {
   buildWorkspacePageTree,
@@ -111,6 +112,36 @@ describe("workspace view models", () => {
         id: "overview-3",
         level: 2,
         title: "Overview"
+      }
+    ]);
+  });
+
+  it("treats body H1 as the top TOC level while preserving H2 and H3 hierarchy", () => {
+    const page = buildWorkspacePageView(
+      createPage({
+        draftContentJson: createHeadingHierarchyDocseraDocumentEnvelope()
+      }),
+      "edit"
+    );
+
+    expect(page.tocItems).toEqual([
+      {
+        anchorId: "overview",
+        id: "overview",
+        level: 1,
+        title: "Overview"
+      },
+      {
+        anchorId: "install",
+        id: "install",
+        level: 2,
+        title: "Install"
+      },
+      {
+        anchorId: "cli",
+        id: "cli",
+        level: 3,
+        title: "CLI"
       }
     ]);
   });
