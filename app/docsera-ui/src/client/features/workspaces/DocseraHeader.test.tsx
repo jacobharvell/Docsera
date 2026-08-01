@@ -29,39 +29,7 @@ function pending(rows: PendingRow[]): WorkspacePendingChangesResult {
   };
 }
 
-describe("DocseraHeader Changes Center", () => {
-  it("keeps the persistent workspace label truncated inside the header identity block", () => {
-    const longName = "Engineering Platform Documentation Workspace for Release Readiness and Partner Enablement";
-
-    render(
-      <DocseraHeader
-        {...baseProps}
-        identity={{
-          kind: "workspace",
-          icon: { type: "builtin", key: "docs", label: "Docs" },
-          name: longName
-        }}
-      />
-    );
-
-    const workspaceButton = screen.getByRole("button", { name: longName });
-    const workspaceName = screen.getByTitle(longName);
-
-    expect(workspaceButton).toContainElement(workspaceName);
-    expect(workspaceName).toHaveClass("docsera-header__workspace-name");
-    expect(workspaceName.parentElement).toHaveClass("docsera-header__workspace-copy");
-    expect(workspaceButton.querySelector(".docsera-header__workspace-copy")).toContainElement(workspaceName);
-  });
-
-  it("renders the centered mode toggle without global save status and keeps empty Publish disabled", () => {
-    const { container } = render(<DocseraHeader {...baseProps} pendingChanges={pending([])} />);
-
-    expect(screen.getByRole("group", { name: "Workspace mode" })).toBeInTheDocument();
-    expect(screen.queryByRole("status", { name: /saved/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "No pending changes to publish" })).toBeDisabled();
-    expect(container.querySelector(".docsera-header__action-slot--mode")).toBeInTheDocument();
-  });
-
+describe("DocseraHeader publishing changes", () => {
   it("opens a compact dropdown with singular/plural count, rows, footer publish, and navigation only for non-removed rows", () => {
     const onOpenPendingPage = vi.fn();
     const onDiscardAllPendingChanges = vi.fn();

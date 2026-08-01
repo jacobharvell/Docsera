@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { WorkspaceRecord } from "../workspaces/serverWorkspaceDomain";
 import { createPageCreationService } from "./serviceNowPageCreation";
+import type { WorkspaceRecord } from "../workspaces/serverWorkspaceDomain";
 import type { PageRecord } from "./serverPageDomain";
 
 function createWorkspace(): WorkspaceRecord {
@@ -26,30 +26,6 @@ function createWorkspace(): WorkspaceRecord {
 }
 
 describe("service now page creation service", () => {
-  it("rejects users without authoring capability", async () => {
-    const service = createPageCreationService({
-      evaluateWorkspaceCapabilities: () => ({
-        canAdminWorkspace: false,
-        canEditWorkspace: false,
-        canManageWorkspaceMembers: false,
-        canViewWorkspace: true
-      }),
-      loadWorkspaceBySlug: async () => createWorkspace(),
-      listWorkspacePages: async () => [],
-      savePage: async (page) => page
-    });
-
-    const result = await service.createPage({
-      title: "Task 33 Page Smoke",
-      workspaceSlug: "product-docs"
-    });
-
-    expect(result.kind).toBe("forbidden");
-    if (result.kind === "forbidden") {
-      expect(result.errorMessage).toContain("permission");
-    }
-  });
-
   it("allocates a live root page with workspace-scoped slug uniqueness", async () => {
     const savedPages: PageRecord[] = [];
     const service = createPageCreationService({

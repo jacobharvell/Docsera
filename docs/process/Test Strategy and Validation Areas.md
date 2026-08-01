@@ -69,6 +69,35 @@ A task does not automatically require every validation area that could possibly 
 
 Implementation briefs may call out specific validation expectations when product behavior is critical or easy to miss, but Codex remains responsible for selecting the final validation approach.
 
+## Named Logical Suites
+
+Docsera also uses named Vitest suites as practical execution groups.
+
+These suites are a convenience for the common inner loop. They do not replace task-specific judgment, exact file slices, platform verification, or full validation when those are warranted.
+
+Current suite names and package commands:
+
+- `my-workspaces` - `npm --prefix app/docsera-ui run test:my-workspaces`
+- `workspace-shell` - `npm --prefix app/docsera-ui run test:workspace-shell`
+- `nav-tree` - `npm --prefix app/docsera-ui run test:nav-tree`
+- `page-settings` - `npm --prefix app/docsera-ui run test:page-settings`
+- `page-model` - `npm --prefix app/docsera-ui run test:page-model`
+- `editor-contract` - `npm --prefix app/docsera-ui run test:editor-contract`
+- `editor-interactions` - `npm --prefix app/docsera-ui run test:editor-interactions`
+- `reader-toc` - `npm --prefix app/docsera-ui run test:reader-toc`
+- `publishing-changes` - `npm --prefix app/docsera-ui run test:publishing-changes`
+- `workspace-state` - `npm --prefix app/docsera-ui run test:workspace-state`
+- `access-security` - `npm --prefix app/docsera-ui run test:access-security`
+- `shared-runtime` - `npm --prefix app/docsera-ui run test:shared-runtime`
+- Generic selection - `npm --prefix app/docsera-ui run test:suite -- publishing-changes workspace-state page-settings`
+
+Use `publishing-changes` for Publish, Changes Center, Discard, Undo, and pending-change presentation or refresh checks when the user-facing workflow is the primary concern.
+Use `page-settings` for Page Settings editing, dismissal, save behavior, reopening, rebinding, and restoration UX.
+Use `workspace-state` for lease, generation, queue ordering, recovery, and other authority or persistence transitions.
+Cross-cutting changes may legitimately run multiple suites when one behavior spans both the workflow surface and the authority boundary.
+
+The complete `npm --prefix app/docsera-ui run test` path remains the authoritative broad test run and should be treated as an integration checkpoint, not the normal inner loop.
+
 ### Prefer Existing Patterns
 
 Codex should prefer existing repo and ServiceNow testing patterns when available.
@@ -398,6 +427,20 @@ Preferred validation:
 Fallback:
 
 * manual reproduction steps showing the original failure no longer occurs
+
+## Suite Selection Matrix
+
+Representative examples:
+
+- My Workspaces filtering change -> `my-workspaces`
+- Header or route change -> `workspace-shell`
+- Drag-and-drop hierarchy change -> `nav-tree`, plus `page-model` when page allocation or sibling-order contracts change, plus `workspace-state` when persistence or projection changes
+- Page creation or page hierarchy change -> `page-model`, plus `workspace-state` when server authority or recovery changes
+- Toolbar-only visual interaction -> `editor-interactions`
+- New canonical mark or node -> `editor-contract`, `reader-toc`, and affected editor tests
+- Publish, Discard, or Undo change -> `publishing-changes`, plus `workspace-state` when server workflow changes
+- Shared permission change -> `access-security`, plus affected consumer suites
+- Global stylesheet or runtime primitive change -> `shared-runtime`, plus visibly affected product suites
 
 ## Task-Type Guidance
 
