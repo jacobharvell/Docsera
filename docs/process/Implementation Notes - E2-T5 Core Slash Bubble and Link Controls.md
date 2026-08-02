@@ -80,6 +80,26 @@ Behavior notes:
 - follow opens a safe URL in a new tab/window with opener protection
 - clicking linked text while editing does not navigate away because editor clicks remain local to the child host
 
+## E4-T4C Compact Text-Selection Toolbar Reconstruction
+
+The later compact toolbar reconstruction reused the E2-T5 link contract and the legacy evidence spike rather than the rejected height-changing shell.
+
+- Legacy evidence used: `src/components/Editor.tsx`, `src/components/editor/useBubbleLinkMenuController.ts`, and `src/app/globals.css`
+- `CompactTextToolbar` is the single production owner for toolbar selection state, pointer timing, geometry, menus, tooltips, and the link surface; `PageEditorHostRuntime` retains only editor lifecycle, slash controls, autosave, outline wiring, and the always-mounted eligible `Mod+K` event bridge
+- Pointer-selection ownership now lives in one editor-local toolbar controller with the legacy 90 ms idle interval and 4 px drag-intent threshold
+- Keyboard-created selections update the toolbar immediately; pointer-created selections stay hidden while the pointer moves, reveal after idle, and hide again if movement resumes
+- Toolbar reveal uses an atomic current-selection snapshot so the plain toolbar reappears from the current selection rectangle rather than reviving a stale interaction rectangle; menu and link interactions may intentionally freeze the active selection while their nested surface is open
+- The toolbar is centered on the selected range, then viewport-clamped; block-type and More remain separate floating overlays with independent trigger anchoring rather than expanding the toolbar height
+- Shell tokens from the current Docsera runtime are mapped into the toolbar, menu, tooltip, and link surfaces instead of using the old editor-only palette
+- The block-type command boundary now performs schema-aware structural conversions for Text, Heading 1, Heading 2, Heading 3, Unordered List, and Numbered List, preserves representative inline marks, accepts the canonical ordered-list shape with `start: 1` and `type: null`, and returns a same-type no-op without adding history
+- The More menu now uses checkbox semantics so Blockquote, Highlight, Superscript, and Subscript can compose as accepted, while Superscript and Subscript remain mutually exclusive
+- Styled tooltips are owned by one toolbar-level timer, wait 180 ms on pointer hover, show immediately on keyboard focus, and close on leave, blur, command activation, nested-surface opening, Escape, and teardown
+- The link surface continues to provide create, edit, remove, and follow with safe URL validation and opener protection, and the eligible `Mod+K` bridge stays available whenever the editable editor is mounted, even after Escape dismisses the visible toolbar
+- Remaining E4-T4D scope is limited to browser-specific hardening, secondary race correction, additional multi-block parity, and polish
+- Focused validation for this reconstruction was `npm --prefix app/docsera-ui run test:editor-interactions`, `npm --prefix app/docsera-ui run test:shared-runtime`, and `npm --prefix app/docsera-ui exec vitest run scripts/run-managed-vitest-suites.test.mjs`
+- Complete managed validation passed with `npm --prefix app/docsera-ui run validate`, including managed Vitest, SDK build, and inline runtime CSS verification
+- Deployment validation passed with `npm --prefix app/docsera-ui run deploy:sdk` and `npm --prefix app/docsera-ui run verify:sdk-runtime`
+
 ## Overlay Boundary And Ownership
 
 Floating controls are rendered through the editor-local overlay root inside the child host shadow root.
@@ -351,6 +371,21 @@ The final correction also requires deployed PDI validation for:
 - same-workspace page navigation in Edit
 - typing, dirty state, explicit Save, refresh persistence, slash controls, bubble controls, link controls, undo, and redo
 
+## E4-T4C Compact Text Toolbar And Menus
+
+The compact selected-text toolbar now owns the floating control surface for ordinary non-empty text selections.
+
+- toolbar state remains editor-local and transient
+- the compact row stays inside the existing editor overlay root and uses centered, viewport-clamped selection geometry
+- the visible control order is block type, divider, Bold, Italic, Underline, Strikethrough, Inline code, Link, divider, More
+- the block-type trigger reflects the active block type and opens the `Change to` menu with the accepted block order, checkmark treatment, chevron swap, and same-type no-op behavior
+- the More trigger opens the accepted Blockquote, Superscript, Subscript, and Highlight menu with the same selected-row treatment and checkbox semantics
+- the Link button continues to launch the existing create/edit/remove/follow surface and closes toolbar-owned nested surfaces before opening that dialog
+- tooltips now cover the compact actions, use platform-aware shortcut labels where shortcuts are supported, and share one toolbar-level lifecycle
+- current block and mark state remain TipTap-authoritative through the existing editor selection and mark inspection path
+- the compact density contract is intentionally narrow and token-driven rather than tied to a fixed pixel grid
+- E4-T4D still owns browser-specific hardening, secondary race correction, additional multi-block parity, and polish
+
 ## Deferred To E4
 
 The following interaction work remains intentionally out of scope for E2-T5:
@@ -362,3 +397,20 @@ The following interaction work remains intentionally out of scope for E2-T5:
 - richer slash search and context-aware filtering
 - persistent top toolbar
 - collaboration, comments, reactions, publishing, autosave, and reader-mode work
+
+## E4-T4C Closeout
+
+The final E4-T4C production behavior is now recorded here as a concise closeout summary:
+
+- `CompactTextToolbar` is the sole toolbar-local production authority for selection state, pointer timing, geometry, menus, tooltips, and the link surface
+- Compact control order, menus, density, tokens, hover, focus, pointer cursors, and tooltips are all owned by the compact surface
+- Structural Text, H1, H2, H3, unordered, and numbered conversion preserve same-type no-op behavior and the existing document contract
+- Pointer-session ownership uses owner-window listeners, composed-path and owner-realm node handling, the initial hidden drag state, the 90 ms settled reveal, stationary toolbar behavior during resumed movement, idle and release repositioning, and cross-block selection preservation
+- Intrinsic toolbar sizing and the 170 px Text/More dropdown floor are preserved
+- The toolbar/menu gap is 4 px and the start/end alignment remains distinct
+- The source-aware link popup keeps toolbar versus direct-link-click ownership separate, freezes the visible selection while the command-owned link range is active, uses the stable Create and Edit widths, follows the shared safe URL policy, and supports Open, Copy, Remove, and post-mutation suppression
+- Editor hyperlinks use `var(--docsera-primary)`
+- The owner-window and shadow-root boundary remains the current runtime boundary for the floating controls
+- Focused regression coverage and Jacob manual PDI acceptance are recorded for the closeout
+- No document, persistence, routing, publishing, lease, permission, or ServiceNow data contract changed
+- The remaining boundary for future work is E4-T4D browser-specific hardening, secondary race correction, broader multi-block parity, and polish

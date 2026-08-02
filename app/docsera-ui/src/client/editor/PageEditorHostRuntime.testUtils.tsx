@@ -183,22 +183,46 @@ function createClipboardData(html: string, text = html) {
 function createOverlayOwnerDocumentHarness(width: number, height: number) {
   let scrollHandler: EventListener | null = null;
   let resizeHandler: EventListener | null = null;
+  const ownerDocumentListeners = new Map<string, Set<EventListener>>();
+  const ownerWindowListeners = new Map<string, Set<EventListener>>();
+  const addListener = (listeners: Map<string, Set<EventListener>>, type: string, handler: EventListener) => {
+    const registered = listeners.get(type) ?? new Set<EventListener>();
+    registered.add(handler);
+    listeners.set(type, registered);
+  };
+  const removeListener = (listeners: Map<string, Set<EventListener>>, type: string, handler: EventListener) => {
+    const registered = listeners.get(type);
+    registered?.delete(handler);
+    if (registered && registered.size === 0) {
+      listeners.delete(type);
+    }
+  };
+  const dispatchListeners = (listeners: Map<string, Set<EventListener>>, event: Event) => {
+    for (const listener of listeners.get(event.type) ?? []) {
+      listener(event);
+    }
+    return true;
+  };
   const ownerWindowAddEventListener = vi.fn((type: string, handler: EventListener) => {
+    addListener(ownerWindowListeners, type, handler);
     if (type === "resize") {
       resizeHandler = handler;
     }
   });
   const ownerWindowRemoveEventListener = vi.fn((type: string, handler: EventListener) => {
+    removeListener(ownerWindowListeners, type, handler);
     if (type === "resize" && resizeHandler === handler) {
       resizeHandler = null;
     }
   });
   const ownerDocumentAddEventListener = vi.fn((type: string, handler: EventListener) => {
+    addListener(ownerDocumentListeners, type, handler);
     if (type === "scroll") {
       scrollHandler = handler;
     }
   });
   const ownerDocumentRemoveEventListener = vi.fn((type: string, handler: EventListener) => {
+    removeListener(ownerDocumentListeners, type, handler);
     if (type === "scroll" && scrollHandler === handler) {
       scrollHandler = null;
     }
@@ -222,8 +246,12 @@ function createOverlayOwnerDocumentHarness(width: number, height: number) {
     documentElement: document.documentElement,
     hasFocus: () => true,
     addEventListener: ownerDocumentAddEventListener,
-    removeEventListener: ownerDocumentRemoveEventListener
+    removeEventListener: ownerDocumentRemoveEventListener,
+    dispatchEvent: (event: Event) => dispatchListeners(ownerDocumentListeners, event)
   } as unknown as Document;
+  Object.assign(ownerWindow, {
+    dispatchEvent: (event: Event) => dispatchListeners(ownerWindowListeners, event)
+  });
 
   return {
     ownerDocument,

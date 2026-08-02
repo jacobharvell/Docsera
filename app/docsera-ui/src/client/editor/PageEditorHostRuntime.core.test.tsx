@@ -18,6 +18,24 @@ import {
 } from "./PageEditorHostRuntime.testUtils";
 
 describe("PageEditorHostRuntime", () => {
+  it("keeps editor links on the shared primary token and preserves visited-link styling", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/PageEditorHostRuntime.tsx`,
+      "utf8"
+    );
+
+    expect(source).toContain(".docsera-editor-runtime__surface .ProseMirror a {");
+    expect(source).toContain("color: var(--docsera-primary);");
+    expect(source).toContain(".docsera-editor-runtime__surface .ProseMirror a:visited {");
+    expect(source).toContain("text-decoration-color: currentColor;");
+    expect(source).toContain(".docsera-editor-runtime__surface .ProseMirror a:hover,");
+    expect(source).toContain(".docsera-editor-runtime__surface .ProseMirror a:focus-visible {");
+  });
+
   it("defines exactly four finite automatic retry delays", () => {
     expect([0, 1, 2, 3, 4, 5].map(getAutosaveRetryDelay)).toEqual([1500, 3000, 6000, 12000, null, null]);
   });

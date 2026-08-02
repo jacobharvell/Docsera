@@ -98,6 +98,14 @@ Do not ask for confirmation on routine technical implementation choices. Use rep
 
 Pause or report a blocker only when proceeding would change accepted product behavior, require broad out-of-scope work, depend on missing credentials/environment access, conflict with a ServiceNow platform constraint, or require choosing between materially different product/UX interpretations.
 
+## Legacy Docsera Editor Baseline
+
+When implementing, replacing, or materially redesigning an editor capability that already exists in Legacy Docsera, inspect the relevant legacy source, styles, interaction logic, tests, and any available screenshots or visual references before choosing the new approach.
+
+Treat Legacy Docsera as proven evidence and a behavioral baseline, not as unquestioned authority. Preserve the working core, reject known defects, quirks, and obsolete framework or DOM assumptions, and adapt the behavior to current Docsera architecture, including TipTap/ProseMirror, the editor-host boundary, editor-local overlays, current design tokens, and ServiceNow-authoritative persistence and workflow state.
+
+Deliberate deviations or improvements are allowed only when they remain compatible with accepted requirements, have a clear reason, and preserve or improve the original core behavior; they should receive focused regression coverage and be reported explicitly. For editor work that uses the legacy baseline, report the legacy files and tests inspected, what core behavior was retained, what obsolete patterns were intentionally not carried forward, any deliberate improvements or deviations, and the regression coverage that protects the result.
+
 ## Product Scope Guardrails
 
 - Build a focused product/API documentation experience.

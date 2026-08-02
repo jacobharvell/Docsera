@@ -44,6 +44,23 @@ function renderReader(envelope: DocseraDocumentEnvelope) {
 }
 
 describe("PublishedDocumentReader", () => {
+  it("keeps live published links unchanged while the editor link color is corrected", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+
+    expect(source).toContain(".docsera-main__reader a {");
+    expect(source).toContain("color: var(--docsera-primary);");
+    expect(source).toContain(".docsera-main__reader a:hover {");
+    expect(source).toContain("color: color-mix(in srgb, var(--docsera-primary) 84%, black);");
+    expect(source).not.toContain(".docsera-main__reader a:visited {");
+  });
+
   it("renders the supported E2 envelope with nested lists, marks, task state, code blocks, and safe links", () => {
     const envelope = createSupportedE2DocseraDocumentEnvelope();
     const page = buildWorkspacePageView(createPageRecord(envelope), "live");

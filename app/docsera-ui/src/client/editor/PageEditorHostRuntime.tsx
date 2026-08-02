@@ -1,38 +1,28 @@
 import type { Editor } from "@tiptap/core";
-import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
-import { getMarkRange } from "@tiptap/core";
+import { EditorContent, useEditor } from "@tiptap/react";
 import { createPortal } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import * as React from "react";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 import type { DocseraDocumentEnvelope, DocseraTiptapDocument } from "../../shared/editor/document";
 import { DOCSERA_DOCUMENT_SCHEMA_VERSION, parseDocseraDocumentOrThrow } from "../../shared/editor/document";
-import { createDocseraEditorExtensions, isDocseraAllowedLinkHref } from "../../shared/editor/schema";
+import { createDocseraEditorExtensions } from "../../shared/editor/schema";
 import { extractDocumentOutline, type EditorOutlineItem } from "./documentOutline";
 import { sanitizeDocseraPastedHTML, sanitizeDocseraPastedText } from "./pasteSanitizer";
 import type { PageBodySaveResult } from "../shared/types/docsera";
-import { NodeSelection, TextSelection } from "@tiptap/pm/state";
-import { DocseraIcon } from "../shared/icons/DocseraIcon";
-import { docseraIcons } from "../shared/icons/docseraIcons";
+import { TextSelection } from "@tiptap/pm/state";
+import { CompactTextToolbar } from "./CompactTextToolbar";
 import {
-  Bold,
   Code2,
   Heading1,
   Heading2,
   Heading3,
-  Highlighter,
-  Italic,
-  Link2,
   List,
   ListOrdered,
   Minus,
   Quote,
-  Subscript as SubscriptIcon,
-  Superscript as SuperscriptIcon,
-  Strikethrough,
   Type,
-  Underline as UnderlineIcon
 } from "lucide-react";
 
 type PageEditorHostRuntimeProps = {
@@ -104,20 +94,6 @@ type SlashCommand = {
   run: (editor: Editor) => void;
 };
 
-type LinkSurfaceState =
-  | {
-      from: number;
-      to: number;
-      draftHref: string;
-      mode: "create";
-    }
-  | {
-      from: number;
-      to: number;
-      draftHref: string;
-      mode: "edit";
-    };
-
 const SLASH_MENU_WIDTH = 316;
 const AUTOSAVE_RETRY_DELAYS_MS = [1500, 3000, 6000, 12000] as const;
 
@@ -126,16 +102,8 @@ export function getAutosaveRetryDelay(attempt: number): number | null {
     ? AUTOSAVE_RETRY_DELAYS_MS[attempt]
     : null;
 }
-const BUBBLE_MENU_WIDTH = 456;
-const LINK_MENU_WIDTH = 336;
 const POPOVER_GAP = 10;
 const VIEWPORT_GUTTER = 12;
-const SAFE_LINK_ATTRIBUTES = {
-  target: "_blank",
-  rel: "noopener noreferrer nofollow",
-  class: null,
-  title: null
-} as const;
 
 const SLASH_COMMANDS: SlashCommand[] = [
   {
@@ -275,35 +243,8 @@ function cloneEnvelope(envelope: DocseraDocumentEnvelope): DocseraDocumentEnvelo
   return JSON.parse(JSON.stringify(envelope)) as DocseraDocumentEnvelope;
 }
 
-function cleanText(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-function getSafeLinkAttributes(href: string) {
-  return {
-    href,
-    ...SAFE_LINK_ATTRIBUTES
-  };
-}
-
 function isTextSelection(selection: unknown): selection is TextSelection {
   return selection instanceof TextSelection;
-}
-
-function isNodeSelection(selection: unknown): selection is NodeSelection {
-  return selection instanceof NodeSelection;
-}
-
-function getCurrentSelectionRange(editor: Editor): { from: number; to: number } | null {
-  const { selection } = editor.state;
-  if (!isTextSelection(selection) || selection.empty) {
-    return null;
-  }
-
-  return {
-    from: selection.from,
-    to: selection.to
-  };
 }
 
 function getSlashQuery(editor: Editor): {
@@ -337,25 +278,6 @@ function getSlashQuery(editor: Editor): {
     to: selection.from,
     query
   };
-}
-
-function getSelectionBounds(editor: Editor): DOMRect | null {
-  const { selection } = editor.state;
-  if (!editor.isEditable || isNodeSelection(selection) || !selection || !editor.view) {
-    return null;
-  }
-
-  try {
-    const fromRect = editor.view.coordsAtPos(selection.from);
-    const toRect = editor.view.coordsAtPos(selection.to);
-    const left = Math.min(fromRect.left, toRect.left);
-    const right = Math.max(fromRect.right, toRect.right);
-    const top = Math.min(fromRect.top, toRect.top);
-    const bottom = Math.max(fromRect.bottom, toRect.bottom);
-    return new DOMRect(left, top, Math.max(1, right - left), Math.max(1, bottom - top));
-  } catch {
-    return null;
-  }
 }
 
 function getCaretBounds(editor: Editor): DOMRect | null {
@@ -405,59 +327,11 @@ function getSlashCommandMatches(query: string): SlashCommand[] {
   });
 }
 
-function findLinkRange(editor: Editor): { from: number; to: number; href: string } | null {
-  const { selection } = editor.state;
-  const linkType = editor.schema.marks.link;
-  if (!linkType) {
-    return null;
-  }
-
-  const range = getMarkRange(selection.$from, linkType);
-  if (!range) {
-    return null;
-  }
-
-  const attrs = editor.getAttributes("link");
-  const href = typeof attrs.href === "string" ? attrs.href : "";
-  return {
-    from: range.from,
-    to: range.to,
-    href
-  };
-}
-
 function buildSurfaceStyle(ownerDocument: Document, rect: DOMRect, width: number, height: number, preferAbove = false): CSSProperties {
   return {
     position: "fixed",
     ...clampSurfacePosition(ownerDocument, rect, width, height, preferAbove)
   };
-}
-
-function BubbleButton({
-  active,
-  children,
-  label,
-  onClick
-}: {
-  active?: boolean;
-  children: React.ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`docsera-editor-floating__chip${active ? " docsera-editor-floating__chip--active" : ""}`}
-      aria-pressed={Boolean(active)}
-      aria-label={label}
-      onMouseDown={(event) => {
-        event.preventDefault();
-      }}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
 }
 
 function SlashCommandIcon({ id }: { id: SlashCommandId }) {
@@ -494,72 +368,9 @@ function CheckIcon() {
   );
 }
 
-function FloatingIconButton({
-  active,
-  label,
-  onClick,
-  children
-}: {
-  active?: boolean;
-  children: React.ReactNode;
-  label: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      className={`docsera-editor-floating__icon-button${active ? " docsera-editor-floating__icon-button--active" : ""}`}
-      aria-pressed={Boolean(active)}
-      aria-label={label}
-      onMouseDown={(event) => {
-        event.preventDefault();
-      }}
-      onClick={onClick}
-    >
-      {children}
-    </button>
-  );
-}
-
-function LinkFieldIcon() {
-  return <Link2 size={15} strokeWidth={2} />;
-}
-
 function applySlashCommand(editor: Editor, command: SlashCommand, range: { from: number; to: number }) {
   editor.chain().focus(undefined, { scrollIntoView: false }).deleteRange(range).run();
   command.run(editor);
-}
-
-function restoreSelection(editor: Editor, from: number, to: number) {
-  editor.chain().focus(undefined, { scrollIntoView: false }).setTextSelection({ from, to }).run();
-}
-
-function toggleUnderlineMark(editor: Editor) {
-  editor.chain().focus(undefined, { scrollIntoView: false }).toggleUnderline().run();
-}
-
-function toggleHighlightMark(editor: Editor) {
-  editor.chain().focus(undefined, { scrollIntoView: false }).toggleHighlight().run();
-}
-
-function toggleSuperscriptMark(editor: Editor) {
-  editor.chain().focus(undefined, { scrollIntoView: false }).unsetSubscript().toggleSuperscript().run();
-}
-
-function toggleSubscriptMark(editor: Editor) {
-  editor.chain().focus(undefined, { scrollIntoView: false }).unsetSuperscript().toggleSubscript().run();
-}
-
-function getEditorSelectionRole(selection: unknown): string {
-  if (isNodeSelection(selection)) {
-    return "node";
-  }
-
-  if (isTextSelection(selection)) {
-    return selection.empty ? "collapsed" : "text";
-  }
-
-  return "other";
 }
 
 function normalizeDocument(document: DocseraTiptapDocument): DocseraTiptapDocument {
@@ -669,7 +480,6 @@ export function PageEditorHostRuntime({
   theme
 }: PageEditorHostRuntimeProps) {
   const [errorMessage, setErrorMessage] = useState("");
-  const [linkSurface, setLinkSurface] = useState<LinkSurfaceState | null>(null);
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
   const [dismissedSlashKey, setDismissedSlashKey] = useState("");
   const [, setLayoutTick] = useState(0);
@@ -689,6 +499,17 @@ export function PageEditorHostRuntime({
         const runtimeEditor = editorRef.current;
         if (!runtimeEditor || !editableRef.current) {
           return false;
+        }
+
+        if (
+          (event.ctrlKey || event.metaKey) &&
+          !event.altKey &&
+          !event.shiftKey &&
+          event.key.toLowerCase() === "k"
+        ) {
+          event.preventDefault();
+          overlayOwnerDocument.dispatchEvent(new CustomEvent("docsera-open-link-surface"));
+          return true;
         }
 
         const slashQuery = getSlashQuery(runtimeEditor);
@@ -730,25 +551,6 @@ export function PageEditorHostRuntime({
               }
             }
           }
-        }
-
-        if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
-          event.preventDefault();
-          const selectedLink = findLinkRange(runtimeEditor);
-          const selectionRange = selectedLink ?? getCurrentSelectionRange(runtimeEditor);
-          if (!selectionRange) {
-            return true;
-          }
-
-          const href = selectedLink?.href ?? (typeof runtimeEditor.getAttributes("link").href === "string" ? String(runtimeEditor.getAttributes("link").href) : "");
-          const mode: LinkSurfaceState["mode"] = selectedLink || runtimeEditor.isActive("link") ? "edit" : "create";
-          setLinkSurface({
-            from: selectionRange.from,
-            to: selectionRange.to,
-            draftHref: href,
-            mode
-          });
-          return true;
         }
 
         return false;
@@ -900,16 +702,6 @@ export function PageEditorHostRuntime({
       return;
     }
 
-    if (!isEditable) {
-      setLinkSurface(null);
-    }
-  }, [editor, isEditable]);
-
-  useEffect(() => {
-    if (!editor) {
-      return;
-    }
-
     editor.setEditable(isEditable);
     editor.view.dom.tabIndex = isEditable ? 0 : -1;
   }, [editor, isEditable]);
@@ -918,54 +710,10 @@ export function PageEditorHostRuntime({
     () => (theme === "dark" ? "docsera-editor-runtime--dark" : "docsera-editor-runtime--light"),
     [theme]
   );
-  const selectionSnapshot = useEditorState({
-    editor,
-    selector: ({ editor: snapshotEditor, transactionNumber }) =>
-      snapshotEditor
-        ? {
-            transactionNumber,
-            selectionFrom: snapshotEditor.state.selection.from,
-            selectionTo: snapshotEditor.state.selection.to,
-            selectionEmpty: snapshotEditor.state.selection.empty,
-            selectionRole: getEditorSelectionRole(snapshotEditor.state.selection),
-            editable: snapshotEditor.isEditable
-          }
-        : {
-            transactionNumber,
-            selectionFrom: 0,
-            selectionTo: 0,
-            selectionEmpty: true,
-            selectionRole: "other",
-            editable: false
-          }
-  });
-
   const slashContext = editor && isEditable ? getSlashQuery(editor) : null;
   const slashMatches = slashContext ? getSlashCommandMatches(slashContext.query) : [];
   const slashKey = slashContext ? `${slashContext.from}:${slashContext.to}:${slashContext.query}` : "";
-  const slashVisible = Boolean(slashContext) && slashKey !== dismissedSlashKey && !linkSurface && isEditable;
-  const bubbleVisible =
-    Boolean(editor) &&
-    isEditable &&
-    !linkSurface &&
-    editor!.isEditable &&
-    isTextSelection(editor!.state.selection) &&
-    !editor!.state.selection.empty &&
-    !editor!.state.selection.$from.parent.type.spec.code;
-  const bubbleSelection = bubbleVisible && editor ? { from: editor.state.selection.from, to: editor.state.selection.to } : null;
-  const bubbleMarks = editor
-    ? {
-        bold: editor.isActive("bold"),
-        italic: editor.isActive("italic"),
-        underline: editor.isActive("underline"),
-        strike: editor.isActive("strike"),
-        code: editor.isActive("code"),
-        highlight: editor.isActive("highlight"),
-        superscript: editor.isActive("superscript"),
-        subscript: editor.isActive("subscript"),
-        link: editor.isActive("link")
-      }
-    : null;
+  const slashVisible = Boolean(slashContext) && slashKey !== dismissedSlashKey && isEditable;
   useEffect(() => {
     if (!slashContext) {
       setSlashActiveIndex(0);
@@ -985,33 +733,7 @@ export function PageEditorHostRuntime({
   }, [slashContext, slashMatches.length]);
 
   useEffect(() => {
-    if (!linkSurface) {
-      return;
-    }
-
-    const ownerDocument = overlayOwnerDocument;
-    const ownerNode = ownerDocument.defaultView?.Node;
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (!ownerNode || !(target instanceof ownerNode)) {
-        return;
-      }
-
-      if (overlayRoot.contains(target)) {
-        return;
-      }
-
-      setLinkSurface(null);
-    };
-
-    ownerDocument.addEventListener("pointerdown", handlePointerDown, true);
-    return () => {
-      ownerDocument.removeEventListener("pointerdown", handlePointerDown, true);
-    };
-  }, [linkSurface, overlayOwnerDocument, overlayRoot]);
-
-  useEffect(() => {
-    if (!editor || (!slashContext && !bubbleVisible && !linkSurface)) {
+    if (!editor || !slashContext) {
       return;
     }
 
@@ -1025,7 +747,7 @@ export function PageEditorHostRuntime({
       overlayOwnerDocument.removeEventListener("scroll", handleViewportChange, true);
       overlayOwnerWindow?.removeEventListener("resize", handleViewportChange);
     };
-  }, [bubbleVisible, editor, linkSurface, overlayOwnerDocument, overlayOwnerWindow, slashContext]);
+  }, [editor, overlayOwnerDocument, overlayOwnerWindow, slashContext]);
 
   function executeSlashCommand(command: SlashCommand) {
     if (!editor || !slashContext) {
@@ -1035,82 +757,6 @@ export function PageEditorHostRuntime({
     applySlashCommand(editor, command, { from: slashContext.from, to: slashContext.to });
     setSlashActiveIndex(0);
     setDismissedSlashKey("");
-  }
-
-  function openLinkSurfaceFromEditor() {
-    if (!editor || !isEditable) {
-      return;
-    }
-
-    const selectedLink = findLinkRange(editor);
-    const selectionRange = selectedLink ?? getCurrentSelectionRange(editor);
-    if (!selectionRange) {
-      return;
-    }
-
-    const href = selectedLink?.href ?? (typeof editor.getAttributes("link").href === "string" ? String(editor.getAttributes("link").href) : "");
-    const mode: LinkSurfaceState["mode"] = selectedLink || editor.isActive("link") ? "edit" : "create";
-
-    setLinkSurface({
-      from: selectionRange.from,
-      to: selectionRange.to,
-      draftHref: href,
-      mode
-    });
-  }
-
-  function dismissLinkSurface() {
-    if (!editor || !linkSurface) {
-      setLinkSurface(null);
-      return;
-    }
-
-    restoreSelection(editor, linkSurface.from, linkSurface.to);
-    setLinkSurface(null);
-  }
-
-  function applyLinkSurface() {
-    if (!editor || !linkSurface) {
-      return;
-    }
-
-    const href = linkSurface.draftHref.trim();
-    if (!editor.isEditable || !href || !isDocseraAllowedLinkHref(href)) {
-      return;
-    }
-
-    restoreSelection(editor, linkSurface.from, linkSurface.to);
-    if (!editor.commands.setLink(getSafeLinkAttributes(href))) {
-      return;
-    }
-
-    setLinkSurface(null);
-  }
-
-  function removeLinkSurfaceLink() {
-    if (!editor || !linkSurface) {
-      return;
-    }
-
-    restoreSelection(editor, linkSurface.from, linkSurface.to);
-    editor.chain().focus(undefined, { scrollIntoView: false }).unsetLink().run();
-    setLinkSurface(null);
-  }
-
-  function followLinkSurfaceLink() {
-    if (!linkSurface) {
-      return;
-    }
-
-    const href = linkSurface.draftHref.trim();
-    if (!href || !isDocseraAllowedLinkHref(href)) {
-      return;
-    }
-
-    const externalWindow = overlayOwnerWindow?.open(href, "_blank", "noopener,noreferrer") ?? null;
-    if (externalWindow) {
-      externalWindow.opener = null;
-    }
   }
 
   function scheduleAutosave() {
@@ -1454,9 +1100,19 @@ export function PageEditorHostRuntime({
           border-top: 1px solid color-mix(in srgb, var(--docsera-editor-panel-border) 88%, transparent);
         }
         .docsera-editor-runtime__surface .ProseMirror a {
-          color: var(--docsera-editor-primary);
+          color: var(--docsera-primary);
+          text-decoration-line: underline;
+          text-decoration-color: currentColor;
           text-decoration-thickness: 0.08em;
           text-underline-offset: 0.16em;
+        }
+        .docsera-editor-runtime__surface .ProseMirror a:visited {
+          color: var(--docsera-primary);
+          text-decoration-color: currentColor;
+        }
+        .docsera-editor-runtime__surface .ProseMirror a:hover,
+        .docsera-editor-runtime__surface .ProseMirror a:focus-visible {
+          text-decoration-thickness: 0.12em;
         }
         .docsera-editor-runtime__surface .ProseMirror mark {
           padding: 0.08em 0.2em;
@@ -1492,9 +1148,6 @@ export function PageEditorHostRuntime({
         .docsera-editor-floating--bubble {
           width: min(100vw - 24px, 456px);
         }
-        .docsera-editor-floating--link {
-          width: min(100vw - 24px, 340px);
-        }
         .docsera-editor-floating__label {
           margin: 0;
           color: var(--docsera-editor-muted);
@@ -1527,10 +1180,6 @@ export function PageEditorHostRuntime({
         .docsera-editor-floating__item-button[aria-selected="true"],
         .docsera-editor-floating__item-button:hover,
         .docsera-editor-floating__item-button:focus-visible,
-        .docsera-editor-floating__chip:hover,
-        .docsera-editor-floating__chip:focus-visible,
-        .docsera-editor-floating__icon-button:hover,
-        .docsera-editor-floating__icon-button:focus-visible,
         .docsera-editor-floating__action:hover,
         .docsera-editor-floating__action:focus-visible {
           border-color: rgba(1, 94, 194, 0.22);
@@ -1569,8 +1218,27 @@ export function PageEditorHostRuntime({
           gap: 8px;
           flex-wrap: wrap;
         }
-        .docsera-editor-floating__chip,
-        .docsera-editor-floating__icon-button,
+        .docsera-editor-floating__menu {
+          display: grid;
+          gap: 4px;
+          padding: 6px;
+          border: 1px solid var(--docsera-editor-panel-border);
+          border-radius: 12px;
+          background: color-mix(in srgb, var(--docsera-editor-panel) 96%, transparent);
+        }
+        .docsera-editor-floating__menu-heading {
+          margin: 0;
+          padding: 0 4px 2px;
+          color: var(--docsera-editor-muted);
+          font-size: 0.72rem;
+          font-weight: 700;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+        }
+        .docsera-editor-floating__menu-list {
+          display: grid;
+          gap: 2px;
+        }
         .docsera-editor-floating__action,
         .docsera-editor-floating__secondary {
           display: inline-flex;
@@ -1585,55 +1253,9 @@ export function PageEditorHostRuntime({
           font-size: 0.875rem;
           font-weight: 700;
         }
-        .docsera-editor-floating__icon-button,
         .docsera-editor-floating__secondary {
           min-width: 36px;
           padding-inline: 10px;
-        }
-        .docsera-editor-floating__chip--active,
-        .docsera-editor-floating__icon-button--active {
-          border-color: rgba(1, 94, 194, 0.3);
-          background: rgba(1, 94, 194, 0.13);
-          color: var(--docsera-editor-primary);
-        }
-        .docsera-editor-floating__link-form {
-          display: grid;
-          gap: 10px;
-        }
-        .docsera-editor-floating__field {
-          display: grid;
-          gap: 6px;
-        }
-        .docsera-editor-floating__field-label {
-          color: var(--docsera-editor-muted);
-          font-size: 0.78rem;
-          font-weight: 700;
-          letter-spacing: 0.03em;
-          text-transform: uppercase;
-        }
-        .docsera-editor-floating__input {
-          min-width: 0;
-          padding: 10px 11px;
-          border: 1px solid var(--docsera-editor-panel-border);
-          border-radius: 12px;
-          background: var(--docsera-editor-panel);
-          color: var(--docsera-editor-text);
-          font: inherit;
-        }
-        .docsera-editor-floating__input--invalid {
-          border-color: rgba(186, 26, 26, 0.3);
-        }
-        .docsera-editor-floating__error {
-          margin: 0;
-          color: #ba1a1a;
-          font-size: 0.8rem;
-          font-weight: 600;
-          line-height: 1.45;
-        }
-        .docsera-editor-floating__actions {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
         }
         .docsera-editor-floating__action {
           border-color: rgba(1, 94, 194, 0.24);
@@ -1722,253 +1344,18 @@ export function PageEditorHostRuntime({
               </div>
             ) : null}
 
-            {bubbleVisible && editor && bubbleSelection ? (
-              <div
-                className="docsera-editor-floating docsera-editor-floating--bubble"
-                style={buildSurfaceStyle(
-                  overlayOwnerDocument,
-                  getSelectionBounds(editor) ?? new DOMRect(12, 12, 1, 1),
-                  BUBBLE_MENU_WIDTH,
-                  52,
-                  true
-                )}
-                role="toolbar"
-                aria-label="Text formatting"
-                data-surface="bubble"
-              >
-                <div className="docsera-editor-floating__row">
-                  <FloatingIconButton
-                    label="Bold"
-                    active={bubbleMarks?.bold}
-                    onClick={() => {
-                      restoreSelection(editor, bubbleSelection.from, bubbleSelection.to);
-                      editor.chain().focus(undefined, { scrollIntoView: false }).toggleBold().run();
-                    }}
-                  >
-                    <DocseraIcon icon={Bold} size={15} />
-                  </FloatingIconButton>
-                  <FloatingIconButton
-                    label="Italic"
-                    active={bubbleMarks?.italic}
-                    onClick={() => {
-                      restoreSelection(editor, bubbleSelection.from, bubbleSelection.to);
-                      editor.chain().focus(undefined, { scrollIntoView: false }).toggleItalic().run();
-                    }}
-                  >
-                    <DocseraIcon icon={Italic} size={15} />
-                  </FloatingIconButton>
-                  <FloatingIconButton
-                    label="Underline"
-                    active={bubbleMarks?.underline}
-                    onClick={() => {
-                      restoreSelection(editor, bubbleSelection.from, bubbleSelection.to);
-                      toggleUnderlineMark(editor);
-                    }}
-                  >
-                    <DocseraIcon icon={UnderlineIcon} size={15} />
-                  </FloatingIconButton>
-                  <FloatingIconButton
-                    label="Strike"
-                    active={bubbleMarks?.strike}
-                    onClick={() => {
-                      restoreSelection(editor, bubbleSelection.from, bubbleSelection.to);
-                      editor.chain().focus(undefined, { scrollIntoView: false }).toggleStrike().run();
-                    }}
-                  >
-                    <DocseraIcon icon={Strikethrough} size={15} />
-                  </FloatingIconButton>
-                  <FloatingIconButton
-                    label="Inline code"
-                    active={bubbleMarks?.code}
-                    onClick={() => {
-                      restoreSelection(editor, bubbleSelection.from, bubbleSelection.to);
-                      editor.chain().focus(undefined, { scrollIntoView: false }).toggleCode().run();
-                    }}
-                  >
-                    <DocseraIcon icon={Code2} size={15} />
-                  </FloatingIconButton>
-                  <FloatingIconButton
-                    label="Highlight"
-                    active={bubbleMarks?.highlight}
-                    onClick={() => {
-                      restoreSelection(editor, bubbleSelection.from, bubbleSelection.to);
-                      toggleHighlightMark(editor);
-                    }}
-                  >
-                    <DocseraIcon icon={Highlighter} size={15} />
-                  </FloatingIconButton>
-                  <FloatingIconButton
-                    label="Superscript"
-                    active={bubbleMarks?.superscript}
-                    onClick={() => {
-                      restoreSelection(editor, bubbleSelection.from, bubbleSelection.to);
-                      toggleSuperscriptMark(editor);
-                    }}
-                  >
-                    <DocseraIcon icon={SuperscriptIcon} size={15} />
-                  </FloatingIconButton>
-                  <FloatingIconButton
-                    label="Subscript"
-                    active={bubbleMarks?.subscript}
-                    onClick={() => {
-                      restoreSelection(editor, bubbleSelection.from, bubbleSelection.to);
-                      toggleSubscriptMark(editor);
-                    }}
-                  >
-                    <DocseraIcon icon={SubscriptIcon} size={15} />
-                  </FloatingIconButton>
-                  <FloatingIconButton
-                    label="Link"
-                    active={bubbleMarks?.link}
-                    onClick={() => {
-                      restoreSelection(editor, bubbleSelection.from, bubbleSelection.to);
-                      openLinkSurfaceFromEditor();
-                    }}
-                  >
-                    <DocseraIcon icon={Link2} size={15} />
-                  </FloatingIconButton>
-                </div>
-              </div>
-            ) : null}
-
-            {linkSurface && editor ? (
-              <LinkSurface
-                canEdit={isEditable}
-                editor={editor}
-                linkSurface={linkSurface}
-                onChangeHref={(draftHref) => {
-                  setLinkSurface((current) => (current ? { ...current, draftHref } : current));
-                }}
-                onDismiss={() => {
-                  dismissLinkSurface();
-                }}
-                onApply={() => {
-                  applyLinkSurface();
-                }}
-                onRemove={() => {
-                  removeLinkSurfaceLink();
-                }}
-                onFollow={() => {
-                  followLinkSurfaceLink();
-                }}
-                ownerDocument={overlayOwnerDocument}
-                overlayRect={getSelectionBounds(editor) ?? getCaretBounds(editor) ?? new DOMRect(12, 12, 1, 1)}
-              />
-            ) : null}
+            <CompactTextToolbar
+              canEdit={isEditable}
+              editor={editor}
+              ownerDocument={overlayOwnerDocument}
+              ownerWindow={overlayOwnerWindow}
+              overlayRoot={overlayRoot}
+            />
           </div>,
           overlayRoot
         )}
       </div>
 
     </section>
-  );
-}
-
-function LinkSurface({
-  canEdit,
-  editor,
-  linkSurface,
-  onApply,
-  onChangeHref,
-  onDismiss,
-  onFollow,
-  onRemove,
-  ownerDocument,
-  overlayRect
-}: {
-  canEdit: boolean;
-  editor: Editor;
-  linkSurface: LinkSurfaceState;
-  onApply: () => void;
-  onChangeHref: (href: string) => void;
-  onDismiss: () => void;
-  onFollow: () => void;
-  onRemove: () => void;
-  ownerDocument: Document;
-  overlayRect: DOMRect;
-}) {
-  const inputId = useId();
-  const inputRef = useRef<HTMLInputElement | null>(null);
-  const safeHref = linkSurface.draftHref.trim();
-  const isValidHref = Boolean(safeHref) && isDocseraAllowedLinkHref(safeHref);
-  const showValidation = Boolean(safeHref) && !isValidHref;
-  const canApply = canEdit && isValidHref;
-
-  useEffect(() => {
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  }, [inputId]);
-
-  return (
-    <div
-      className="docsera-editor-floating docsera-editor-floating--link"
-      style={buildSurfaceStyle(ownerDocument, overlayRect, LINK_MENU_WIDTH, linkSurface.mode === "edit" ? 238 : 210)}
-      role="dialog"
-      aria-label={linkSurface.mode === "edit" ? "Edit link" : "Create link"}
-      data-surface="link"
-    >
-      <p className="docsera-editor-floating__label">{linkSurface.mode === "edit" ? "Edit link" : "Create link"}</p>
-      <div className="docsera-editor-floating__link-form">
-        <label className="docsera-editor-floating__field" htmlFor={inputId}>
-          <span className="docsera-editor-floating__field-label">URL</span>
-          <input
-            id={inputId}
-            ref={inputRef}
-            className={`docsera-editor-floating__input${showValidation ? " docsera-editor-floating__input--invalid" : ""}`}
-            type="url"
-            value={linkSurface.draftHref}
-            placeholder="https://example.com"
-            onChange={(event) => {
-              onChangeHref(event.target.value);
-            }}
-            onKeyDown={(event: ReactKeyboardEvent<HTMLInputElement>) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                onDismiss();
-              }
-
-              if (event.key === "Enter") {
-                event.preventDefault();
-                if (canApply) {
-                  onApply();
-                }
-              }
-            }}
-            aria-invalid={showValidation}
-            aria-describedby={showValidation ? `${inputId}-error` : undefined}
-            disabled={!canEdit}
-          />
-        </label>
-        {showValidation ? (
-          <p id={`${inputId}-error`} className="docsera-editor-floating__error" role="alert">
-            Enter a safe URL.
-          </p>
-        ) : null}
-        <div className="docsera-editor-floating__actions">
-          <button
-            type="button"
-            className="docsera-editor-floating__action"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              if (canApply) {
-                onApply();
-              }
-            }}
-            disabled={!canApply}
-          >
-            Apply
-          </button>
-          <button type="button" className="docsera-editor-floating__secondary" onMouseDown={(event) => event.preventDefault()} onClick={onRemove} disabled={linkSurface.mode === "create"}>
-            Remove
-          </button>
-          <button type="button" className="docsera-editor-floating__secondary" onMouseDown={(event) => event.preventDefault()} onClick={onFollow} disabled={!isValidHref}>
-            Follow
-          </button>
-          <button type="button" className="docsera-editor-floating__secondary" onMouseDown={(event) => event.preventDefault()} onClick={onDismiss}>
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }

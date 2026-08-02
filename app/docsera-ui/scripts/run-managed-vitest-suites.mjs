@@ -7,56 +7,8 @@ import {
   getValidationStateDir,
   runManagedVitest
 } from "./validation-process.mjs";
+import { parseManagedVitestSuiteArgs } from "./run-managed-vitest-suites.args.mjs";
 import { resolveSuiteSelection, testSuites, validateSuiteManifest } from "./test-suite-manifest.mjs";
-
-export function parseManagedVitestSuiteArgs(argv) {
-  const result = {
-    forwarded: [],
-    help: false,
-    stateDir: undefined,
-    suites: [],
-    workers: undefined
-  };
-
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === "--") {
-      result.forwarded.push(...argv.slice(index + 1));
-      break;
-    }
-
-    if (arg === "-h" || arg === "--help") {
-      result.help = true;
-      continue;
-    }
-
-    if (arg.startsWith("--state-dir=")) {
-      result.stateDir = arg.slice("--state-dir=".length);
-      continue;
-    }
-
-    if (arg === "--state-dir") {
-      result.stateDir = argv[index + 1];
-      index += 1;
-      continue;
-    }
-
-    if (arg.startsWith("--workers=")) {
-      result.workers = arg.slice("--workers=".length);
-      continue;
-    }
-
-    if (arg === "--workers") {
-      result.workers = argv[index + 1];
-      index += 1;
-      continue;
-    }
-
-    result.suites.push(arg);
-  }
-
-  return result;
-}
 
 function printUsage() {
   console.log(
@@ -108,8 +60,14 @@ async function main(argv = process.argv.slice(2)) {
 }
 
 if (fileURLToPath(import.meta.url) === process.argv[1]) {
-  const exitCode = await main();
-  process.exit(exitCode);
+  void main()
+    .then((exitCode) => {
+      process.exit(exitCode);
+    })
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
 }
 
 export { main };

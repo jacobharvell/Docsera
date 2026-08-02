@@ -1,7 +1,7 @@
 /* @vitest-environment node */
 
 import { describe, expect, it } from "vitest";
-import { parseManagedVitestSuiteArgs } from "./run-managed-vitest-suites.mjs";
+import { parseManagedVitestSuiteArgs } from "./run-managed-vitest-suites.args.mjs";
 import { resolveSuiteSelection } from "./test-suite-manifest.mjs";
 
 const suites = [
