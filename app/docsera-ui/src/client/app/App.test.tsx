@@ -1419,7 +1419,7 @@ describe("App workspace state integration", () => {
       publishedSlugNormalized: null,
       publicationState: "draft"
     });
-    const publishedPage = createPageRecord({
+    const editPublishedPage = createPageRecord({
       sysId: "page-001",
       draftTitle: "Published Overview",
       publishedTitle: "Published Overview",
@@ -1428,8 +1428,42 @@ describe("App workspace state integration", () => {
       publishedSlug: "published-overview",
       publishedSlugNormalized: "published-overview"
     });
+    const livePublishedPage = createPageRecord({
+      sysId: "page-001",
+      draftTitle: "Published Overview",
+      publishedTitle: "Published Overview",
+      draftSlug: "published-overview",
+      draftSlugNormalized: "published-overview",
+      publishedSlug: "published-overview",
+      publishedSlugNormalized: "published-overview"
+    });
+    const editReferencePage = createPageRecord({
+      sysId: "page-004",
+      siblingOrder: 2,
+      draftTitle: "Reference Draft",
+      draftSlug: "reference-draft",
+      draftSlugNormalized: "reference-draft",
+      publishedTitle: "Reference",
+      publishedSlug: "reference-live",
+      publishedSlugNormalized: "reference-live",
+      draftContentJson: createHeadingHierarchyDocseraDocumentEnvelope(),
+      publishedContentJson: createHeadingHierarchyDocseraDocumentEnvelope()
+    });
+    const liveReferencePage = createPageRecord({
+      sysId: "page-004",
+      siblingOrder: 2,
+      draftTitle: "Reference",
+      draftSlug: "reference-live",
+      draftSlugNormalized: "reference-live",
+      publishedTitle: "Reference",
+      publishedSlug: "reference-live",
+      publishedSlugNormalized: "reference-live"
+    });
     const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
-      createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? [publishedPage, draftOnlyPage] : [publishedPage])
+      createPageListResult(
+        mode === "edit" ? "edit" : "live",
+        mode === "edit" ? [editPublishedPage, draftOnlyPage, editReferencePage] : [livePublishedPage, liveReferencePage]
+      )
     );
 
     renderApp("/?workspace=product-docs&mode=edit&page=published-overview", { listPages });
@@ -1443,12 +1477,445 @@ describe("App workspace state integration", () => {
     expect(await screen.findByRole("heading", { name: "Published Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 
-    expect(await screen.findByRole("heading", { name: "Draft Only" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Published Overview" })).toBeInTheDocument();
     await waitFor(() => {
       expectWorkspaceSearch({
         workspace: "product-docs",
         mode: "edit",
-        page: "draft-only"
+        page: "published-overview"
+      });
+    });
+
+    await act(async () => {
+      window.history.back();
+      await Promise.resolve();
+    });
+    expect(await screen.findByRole("heading", { name: "Published Overview" })).toBeInTheDocument();
+    await waitFor(() => {
+      expectWorkspaceSearch({
+        workspace: "product-docs",
+        mode: null,
+        page: "published-overview"
+      });
+    });
+
+    await act(async () => {
+      window.history.forward();
+      await Promise.resolve();
+    });
+    expect(await screen.findByRole("heading", { name: "Published Overview" })).toBeInTheDocument();
+    await waitFor(() => {
+      expectWorkspaceSearch({
+        workspace: "product-docs",
+        mode: "edit",
+        page: "published-overview"
+      });
+    });
+
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Reference Draft" }));
+
+    expect(await screen.findByRole("heading", { name: "Reference Draft" })).toBeInTheDocument();
+    expect(screen.getByRole("main", { name: "Reference Draft" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reference Draft" })).toHaveAttribute("aria-current", "page");
+    expect(within(screen.getByRole("complementary", { name: "Page outline" })).getByRole("link", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => {
+      expectWorkspaceSearch({
+        workspace: "product-docs",
+        mode: "edit",
+        page: "reference-draft"
+      });
+    });
+  });
+
+  it("preserves the current page identity across mode switches when live and edit slugs differ", async () => {
+    const livePage = createPageRecord({
+      sysId: "page-001",
+      draftTitle: "Overview",
+      draftSlug: "overview-live",
+      draftSlugNormalized: "overview-live",
+      publishedTitle: "Overview",
+      publishedSlug: "overview-live",
+      publishedSlugNormalized: "overview-live"
+    });
+    const editPage = createPageRecord({
+      sysId: "page-001",
+      draftTitle: "Overview Draft",
+      draftSlug: "overview-draft",
+      draftSlugNormalized: "overview-draft",
+      publishedTitle: "Overview",
+      publishedSlug: "overview-live",
+      publishedSlugNormalized: "overview-live",
+      publicationState: "published_with_unpublished_changes"
+    });
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? [editPage] : [livePage])
+    );
+
+    renderApp("/?workspace=product-docs&page=overview-live", { listPages });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await waitFor(() => {
+      expectWorkspaceSearch({
+        workspace: "product-docs",
+        mode: "edit",
+        page: "overview-draft"
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => {
+      expectWorkspaceSearch({
+        workspace: "product-docs",
+        mode: null,
+        page: "overview-live"
+      });
+    });
+  });
+
+  it("falls back to the nearest visible ancestor when the selected edit page is unavailable in live", async () => {
+    const liveRootPage = createPageRecord({
+      sysId: "page-root",
+      draftTitle: "Overview",
+      draftSlug: "overview-live",
+      draftSlugNormalized: "overview-live",
+      publishedTitle: "Overview",
+      publishedSlug: "overview-live",
+      publishedSlugNormalized: "overview-live"
+    });
+    const editRootPage = createPageRecord({
+      sysId: "page-root",
+      draftTitle: "Overview Draft",
+      draftSlug: "overview-draft",
+      draftSlugNormalized: "overview-draft",
+      publishedTitle: "Overview",
+      publishedSlug: "overview-live",
+      publishedSlugNormalized: "overview-live",
+      publicationState: "published_with_unpublished_changes"
+    });
+    const liveParentPage = createPageRecord({
+      sysId: "page-parent",
+      parentPageSysId: "page-root",
+      siblingOrder: 1,
+      draftTitle: "Parent",
+      draftSlug: "parent-live",
+      draftSlugNormalized: "parent-live",
+      publishedTitle: "Parent",
+      publishedSlug: "parent-live",
+      publishedSlugNormalized: "parent-live"
+    });
+    const editParentPage = createPageRecord({
+      sysId: "page-parent",
+      parentPageSysId: "page-root",
+      siblingOrder: 1,
+      draftTitle: "Parent Draft",
+      draftSlug: "parent-draft",
+      draftSlugNormalized: "parent-draft",
+      publishedTitle: "Parent",
+      publishedSlug: "parent-live",
+      publishedSlugNormalized: "parent-live",
+      publicationState: "published_with_unpublished_changes"
+    });
+    const draftOnlyChild = createPageRecord({
+      sysId: "page-child",
+      parentPageSysId: "page-parent",
+      siblingOrder: 1,
+      draftTitle: "Child Draft",
+      draftSlug: "child-draft",
+      draftSlugNormalized: "child-draft",
+      publishedTitle: null,
+      publishedSlug: null,
+      publishedSlugNormalized: null,
+      publicationState: "draft"
+    });
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(
+        mode === "edit" ? "edit" : "live",
+        mode === "edit" ? [editRootPage, editParentPage, draftOnlyChild] : [liveRootPage, liveParentPage]
+      )
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=child-draft", { listPages });
+
+    expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+
+    expect(await screen.findByRole("heading", { name: "Parent" })).toBeInTheDocument();
+    await waitFor(() => {
+      expectWorkspaceSearch({
+        workspace: "product-docs",
+        mode: null,
+        page: "parent-live"
+      });
+    });
+
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Overview" }));
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Overview" })).toHaveAttribute("aria-current", "page");
+    await waitFor(() => {
+      expectWorkspaceSearch({
+        workspace: "product-docs",
+        mode: null,
+        page: "overview-live"
+      });
+    });
+  });
+
+  it("continues ancestor fallback upward before using the first visible top-level page", async () => {
+    const liveRootPage = createPageRecord({
+      sysId: "page-root",
+      draftTitle: "Overview",
+      draftSlug: "overview-live",
+      draftSlugNormalized: "overview-live",
+      publishedTitle: "Overview",
+      publishedSlug: "overview-live",
+      publishedSlugNormalized: "overview-live"
+    });
+    const editRootPage = createPageRecord({
+      sysId: "page-root",
+      draftTitle: "Overview Draft",
+      draftSlug: "overview-draft",
+      draftSlugNormalized: "overview-draft",
+      publishedTitle: "Overview",
+      publishedSlug: "overview-live",
+      publishedSlugNormalized: "overview-live",
+      publicationState: "published_with_unpublished_changes"
+    });
+    const draftOnlyParent = createPageRecord({
+      sysId: "page-parent",
+      parentPageSysId: "page-root",
+      siblingOrder: 1,
+      draftTitle: "Draft Parent",
+      draftSlug: "draft-parent",
+      draftSlugNormalized: "draft-parent",
+      publishedTitle: null,
+      publishedSlug: null,
+      publishedSlugNormalized: null,
+      publicationState: "draft"
+    });
+    const draftOnlyChild = createPageRecord({
+      sysId: "page-child",
+      parentPageSysId: "page-parent",
+      siblingOrder: 1,
+      draftTitle: "Draft Child",
+      draftSlug: "draft-child",
+      draftSlugNormalized: "draft-child",
+      publishedTitle: null,
+      publishedSlug: null,
+      publishedSlugNormalized: null,
+      publicationState: "draft"
+    });
+    const liveSecondRootPage = createPageRecord({
+      sysId: "page-second-root",
+      siblingOrder: 2,
+      draftTitle: "Reference",
+      draftSlug: "reference-live",
+      draftSlugNormalized: "reference-live",
+      publishedTitle: "Reference",
+      publishedSlug: "reference-live",
+      publishedSlugNormalized: "reference-live",
+      publicationState: "published_with_unpublished_changes"
+    });
+    const editSecondRootPage = createPageRecord({
+      sysId: "page-second-root",
+      siblingOrder: 2,
+      draftTitle: "Reference Draft",
+      draftSlug: "reference-draft",
+      draftSlugNormalized: "reference-draft",
+      publishedTitle: "Reference",
+      publishedSlug: "reference-live",
+      publishedSlugNormalized: "reference-live",
+      publicationState: "published_with_unpublished_changes"
+    });
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(
+        mode === "edit" ? "edit" : "live",
+        mode === "edit" ? [editRootPage, draftOnlyParent, draftOnlyChild, editSecondRootPage] : [liveRootPage, liveSecondRootPage]
+      )
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=draft-child", { listPages });
+
+    expect(await screen.findByRole("heading", { name: "Draft Child" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => {
+      expectWorkspaceSearch({
+        workspace: "product-docs",
+        mode: null,
+        page: "overview-live"
+      });
+    });
+  });
+
+  it("falls back to the first visible top-level page when no visible ancestor exists", async () => {
+    const draftOnlyRoot = createPageRecord({
+      sysId: "page-draft-root",
+      draftTitle: "Draft Root",
+      draftSlug: "draft-root",
+      draftSlugNormalized: "draft-root",
+      publishedTitle: null,
+      publishedSlug: null,
+      publishedSlugNormalized: null,
+      publicationState: "draft"
+    });
+    const firstPublishedRoot = createPageRecord({
+      sysId: "page-first-root",
+      siblingOrder: 1,
+      draftTitle: "API",
+      draftSlug: "api-live",
+      draftSlugNormalized: "api-live",
+      publishedTitle: "API",
+      publishedSlug: "api-live",
+      publishedSlugNormalized: "api-live",
+      publicationState: "published_with_unpublished_changes"
+    });
+    const secondPublishedRoot = createPageRecord({
+      sysId: "page-second-root",
+      siblingOrder: 2,
+      draftTitle: "Reference",
+      draftSlug: "reference-live",
+      draftSlugNormalized: "reference-live",
+      publishedTitle: "Reference",
+      publishedSlug: "reference-live",
+      publishedSlugNormalized: "reference-live",
+      publicationState: "published_with_unpublished_changes"
+    });
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(
+        mode === "edit" ? "edit" : "live",
+        mode === "edit" ? [draftOnlyRoot, firstPublishedRoot, secondPublishedRoot] : [firstPublishedRoot, secondPublishedRoot]
+      )
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=draft-root", { listPages });
+
+    expect(await screen.findByRole("heading", { name: "Draft Root" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+
+    expect(await screen.findByRole("heading", { name: "API" })).toBeInTheDocument();
+    await waitFor(() => {
+      expectWorkspaceSearch({
+        workspace: "product-docs",
+        mode: null,
+        page: "api-live"
+      });
+    });
+
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Reference" }));
+
+    expect(await screen.findByRole("heading", { name: "Reference" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reference" })).toHaveAttribute("aria-current", "page");
+    await waitFor(() => {
+      expectWorkspaceSearch({
+        workspace: "product-docs",
+        mode: null,
+        page: "reference-live"
+      });
+    });
+  });
+
+  it("consumes the target after a Live-to-Edit fallback and still allows normal Edit navigation", async () => {
+    const liveOnlyRoot = createPageRecord({
+      sysId: "page-live-only",
+      draftTitle: "Live Only",
+      draftSlug: "live-only",
+      draftSlugNormalized: "live-only",
+      publishedTitle: "Live Only",
+      publishedSlug: "live-only",
+      publishedSlugNormalized: "live-only",
+      publicationState: "published_with_unpublished_changes"
+    });
+    const editFirstRoot = createPageRecord({
+      sysId: "page-first-root",
+      siblingOrder: 1,
+      draftTitle: "API Draft",
+      draftSlug: "api-draft",
+      draftSlugNormalized: "api-draft",
+      publishedTitle: "API",
+      publishedSlug: "api-live",
+      publishedSlugNormalized: "api-live",
+      publicationState: "published_with_unpublished_changes"
+    });
+    const editSecondRoot = createPageRecord({
+      sysId: "page-second-root",
+      siblingOrder: 2,
+      draftTitle: "Reference Draft",
+      draftSlug: "reference-draft",
+      draftSlugNormalized: "reference-draft",
+      publishedTitle: "Reference",
+      publishedSlug: "reference-live",
+      publishedSlugNormalized: "reference-live",
+      publicationState: "published_with_unpublished_changes"
+    });
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(
+        mode === "edit" ? "edit" : "live",
+        mode === "edit" ? [editFirstRoot, editSecondRoot] : [liveOnlyRoot]
+      )
+    );
+
+    renderApp("/?workspace=product-docs&page=live-only", { listPages });
+
+    expect(await screen.findByRole("heading", { name: "Live Only" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    expect(await screen.findByRole("heading", { name: "API Draft" })).toBeInTheDocument();
+    await waitFor(() => {
+      expectWorkspaceSearch({
+        workspace: "product-docs",
+        mode: "edit",
+        page: "api-draft"
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Reference Draft" }));
+
+    expect(await screen.findByRole("heading", { name: "Reference Draft" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reference Draft" })).toHaveAttribute("aria-current", "page");
+    await waitFor(() => {
+      expectWorkspaceSearch({
+        workspace: "product-docs",
+        mode: "edit",
+        page: "reference-draft"
+      });
+    });
+  });
+
+  it("consumes the target after an empty destination and does not contaminate later mode switches", async () => {
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? [] : [createPageRecord()])
+    );
+
+    renderApp("/?workspace=product-docs&page=overview", { listPages });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    await waitFor(() => {
+      expectWorkspaceSearch({
+        workspace: "product-docs",
+        mode: "edit",
+        page: null
+      });
+    });
+    expect(screen.queryByRole("heading", { name: "Overview" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Overview" })).toHaveAttribute("aria-current", "page");
+    await waitFor(() => {
+      expectWorkspaceSearch({
+        workspace: "product-docs",
+        mode: null,
+        page: "overview"
       });
     });
   });

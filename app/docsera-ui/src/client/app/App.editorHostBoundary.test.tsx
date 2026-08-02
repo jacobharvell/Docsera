@@ -908,6 +908,74 @@ describe("App editor-host session boundary", () => {
     expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
   });
 
+  it("opens the dirty guard when a fallback Edit page is not the same as the requested Edit page", async () => {
+    const liveOnlyPage = createPageRecord({
+      sysId: "page-live-only",
+      draftTitle: "Live Only",
+      draftSlug: "live-only",
+      draftSlugNormalized: "live-only",
+      publishedTitle: "Live Only",
+      publishedSlug: "live-only",
+      publishedSlugNormalized: "live-only",
+      publicationState: "published_with_unpublished_changes"
+    });
+    const editFallbackPage = createPageRecord({
+      sysId: "page-edit-fallback",
+      siblingOrder: 1,
+      draftTitle: "API Draft",
+      draftSlug: "api-draft",
+      draftSlugNormalized: "api-draft",
+      publishedTitle: "API",
+      publishedSlug: "api-live",
+      publishedSlugNormalized: "api-live",
+      publicationState: "published_with_unpublished_changes"
+    });
+    const editTargetPage = createPageRecord({
+      sysId: "page-edit-target",
+      siblingOrder: 2,
+      draftTitle: "Reference Draft",
+      draftSlug: "reference-draft",
+      draftSlugNormalized: "reference-draft",
+      publishedTitle: "Reference",
+      publishedSlug: "reference-live",
+      publishedSlugNormalized: "reference-live",
+      publicationState: "published_with_unpublished_changes"
+    });
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(
+        mode === "edit" ? "edit" : "live",
+        mode === "edit" ? [editFallbackPage, editTargetPage] : [liveOnlyPage]
+      )
+    );
+
+    renderApp("/?workspace=product-docs&page=live-only", { listPages });
+
+    expect(await screen.findByRole("heading", { name: "Live Only" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    expect(await screen.findByRole("heading", { name: "API Draft" })).toBeInTheDocument();
+    await waitForHostControl();
+    await waitFor(() => {
+      expectWorkspaceSearch({
+        workspace: "product-docs",
+        mode: "edit",
+        page: "api-draft"
+      });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Register failed flush" }));
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    expect(await screen.findByText("Status Unsaved")).toBeInTheDocument();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Reference Draft" }));
+
+    expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "API Draft" })).toBeInTheDocument();
+    expect(latestHostControl?.pageSysId).toBe("page-edit-fallback");
+  });
+
   it("waits for the latest local document before a deferred flush resolves", async () => {
     renderApp("/?workspace=product-docs&mode=edit&page=overview");
 

@@ -192,6 +192,11 @@ type WorkspaceModeUiState = {
   selectedPageSysId: string;
 };
 
+type PendingSelectionTarget = {
+  fallbackAncestorPageSysIds: string[];
+  pageSysId: string;
+};
+
 type RetainedWorkspaceShellState = {
   mode: WorkspaceMode;
   outlinePage: WorkspacePageView | null;
@@ -730,6 +735,10 @@ function getFirstWorkspacePage(pages: WorkspacePageRecord[]): WorkspacePageRecor
   return pages[0] ?? null;
 }
 
+function getFirstVisibleTopLevelWorkspacePage(pages: WorkspacePageRecord[]): WorkspacePageRecord | null {
+  return pages.find((page) => !cleanText(page.parentPageSysId)) ?? null;
+}
+
 function findWorkspacePageBySysId(pages: WorkspacePageRecord[], pageSysId: string): WorkspacePageRecord | null {
   const normalizedPageSysId = cleanText(pageSysId);
   if (!normalizedPageSysId) {
@@ -737,6 +746,25 @@ function findWorkspacePageBySysId(pages: WorkspacePageRecord[], pageSysId: strin
   }
 
   return pages.find((page) => cleanText(page.sysId) === normalizedPageSysId) ?? null;
+}
+
+function collectWorkspaceAncestorPageSysIds(pages: WorkspacePageRecord[], pageSysId: string): string[] {
+  const ancestorPageSysIds: string[] = [];
+  const visitedPageIds = new Set<string>();
+  let currentPage = findWorkspacePageBySysId(pages, pageSysId);
+
+  while (currentPage) {
+    const parentPageSysId = cleanText(currentPage.parentPageSysId);
+    if (!parentPageSysId || visitedPageIds.has(parentPageSysId)) {
+      break;
+    }
+
+    ancestorPageSysIds.push(parentPageSysId);
+    visitedPageIds.add(parentPageSysId);
+    currentPage = findWorkspacePageBySysId(pages, parentPageSysId);
+  }
+
+  return ancestorPageSysIds;
 }
 
 function findWorkspacePageBySlug(
@@ -760,19 +788,40 @@ function findWorkspacePageBySlug(
   return pages.find((page) => cleanText(page.draftSlugNormalized || page.draftSlug).toLowerCase() === normalizedPageSlug) ?? null;
 }
 
+function resolvePendingSelectionTargetPage(
+  pages: WorkspacePageRecord[],
+  pendingSelectionTarget: PendingSelectionTarget | null | undefined
+): WorkspacePageRecord | null {
+  if (!pendingSelectionTarget) {
+    return null;
+  }
+
+  return (
+    findWorkspacePageBySysId(pages, pendingSelectionTarget.pageSysId) ??
+    pendingSelectionTarget.fallbackAncestorPageSysIds
+      .map((pageSysId) => findWorkspacePageBySysId(pages, pageSysId))
+      .find((page): page is WorkspacePageRecord => Boolean(page)) ??
+    getFirstVisibleTopLevelWorkspacePage(pages) ??
+    getFirstWorkspacePage(pages)
+  );
+}
+
 function resolveWorkspacePageSelection(
   pages: WorkspacePageRecord[],
   input: {
     legacyPageId?: string;
+    pendingSelectionTarget?: PendingSelectionTarget | null;
     preferredPageSysId?: string;
     pageSlug?: string;
     mode: WorkspaceMode;
   }
 ): { page: WorkspacePageRecord | null; pageId: string; pageSlug: string } {
   const page =
+    resolvePendingSelectionTargetPage(pages, input.pendingSelectionTarget) ??
     findWorkspacePageBySlug(pages, input.pageSlug ?? "", input.mode) ??
     findWorkspacePageBySysId(pages, input.preferredPageSysId ?? "") ??
     findWorkspacePageBySysId(pages, input.legacyPageId ?? "") ??
+    getFirstVisibleTopLevelWorkspacePage(pages) ??
     getFirstWorkspacePage(pages);
 
   return {
@@ -935,7 +984,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const launcherRequestIdRef = useRef(0);
   const staleRefreshRequestIdRef = useRef(0);
   const pendingChangesRequestIdRef = useRef(0);
-  const crossModeTargetPageSysIdRef = useRef("");
+  const pendingSelectionTargetRef = useRef<PendingSelectionTarget | null>(null);
   const inlinePageCreateFocusTokenRef = useRef(0);
   const inlinePageCreateStateRef = useRef<InlinePageCreateState | null>(null);
   const lastWorkspaceModeKeyRef = useRef("");
@@ -1981,8 +2030,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       ? resolveWorkspacePageSelection(currentWorkspacePages, {
           legacyPageId: currentWorkspaceLegacyPageId,
           mode: activeWorkspaceMode,
+          pendingSelectionTarget: pendingSelectionTargetRef.current,
           pageSlug: currentWorkspacePageSlug,
-          preferredPageSysId: crossModeTargetPageSysIdRef.current || currentModeUiState.selectedPageSysId
+          preferredPageSysId: pendingSelectionTargetRef.current?.pageSysId || currentModeUiState.selectedPageSysId
         }).page
       : null;
   const selectedWorkspacePageId = cleanText(selectedWorkspacePage?.sysId) || currentModeUiState.selectedPageSysId;
@@ -3317,12 +3367,17 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
+    const pendingSelectionTarget = pendingSelectionTargetRef.current;
     const resolvedSelection = resolveWorkspacePageSelection(currentWorkspacePages, {
       legacyPageId: currentWorkspaceLegacyPageId,
       mode: activeWorkspaceMode,
+      pendingSelectionTarget,
       pageSlug: currentWorkspacePageSlug,
-      preferredPageSysId: crossModeTargetPageSysIdRef.current || currentModeUiState.selectedPageSysId
+      preferredPageSysId: pendingSelectionTarget?.pageSysId || currentModeUiState.selectedPageSysId
     });
+    if (pendingSelectionTarget) {
+      pendingSelectionTargetRef.current = null;
+    }
     const canonicalPageSlug = cleanText(resolvedSelection.pageSlug);
     const needsCanonicalRoute =
       currentWorkspaceLegacyPageId.length > 0 ||
@@ -3388,9 +3443,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       };
     });
 
-    if (crossModeTargetPageSysIdRef.current && crossModeTargetPageSysIdRef.current === nextSelectedPageSysId) {
-      crossModeTargetPageSysIdRef.current = "";
-    }
   }, [currentModeStateKey, route.mode, selectedWorkspacePageId]);
 
   useEffect(() => {
@@ -3427,6 +3479,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       resolveWorkspacePageSelection(currentWorkspacePages, {
         legacyPageId: targetRoute.legacyPageId,
         mode: "edit",
+        pendingSelectionTarget: pendingSelectionTargetRef.current,
         pageSlug: targetRoute.pageSlug
       }).pageId
     );
@@ -3582,7 +3635,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           optimisticIdentity && cleanText(optimisticIdentity.slug) === cleanText(workspaceSlug) ? optimisticIdentity : null
         );
         pageSettingsPendingOpenPageIdRef.current = "";
-        crossModeTargetPageSysIdRef.current = "";
+        pendingSelectionTargetRef.current = null;
       }
     });
   }
@@ -3634,20 +3687,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       workspaceLeaseState.failure !== "terminal";
     const currentPageSysId = cleanText(selectedWorkspacePage?.sysId);
     const nextModeStateKey = buildModeStateKey(currentWorkspaceSlug, nextMode);
-    const nextModeState = modeUiState[nextModeStateKey] ?? createWorkspaceModeUiState();
-    const rememberedNextPageSysId = cleanText(nextModeState.selectedPageSysId);
-    const rememberedNextPage = rememberedNextPageSysId
-      ? findWorkspacePageBySysId(currentWorkspacePages, rememberedNextPageSysId)
-      : null;
-    const nextPageSlug = nextMode === "live"
-      ? rememberedNextPage
-        ? cleanText(rememberedNextPage.draftSlug)
-        : selectedWorkspacePage?.publicationState === "draft"
-          ? cleanText(getFirstWorkspacePage(currentWorkspacePages.filter((page) => page.publicationState !== "draft"))?.draftSlug)
-          : cleanText(selectedWorkspacePage?.draftSlug)
-      : rememberedNextPageSysId
-        ? cleanText(rememberedNextPage?.draftSlug)
-        : cleanText(selectedWorkspacePage?.draftSlug);
+    const nextPageSlug = cleanText(selectedWorkspacePage?.draftSlug);
 
     requestRouteTransition({
       href: buildWorkspaceHref(currentWorkspaceSlug, {
@@ -3658,7 +3698,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       replace: false,
       beforeCommit: () => {
         editReentryRequestedRef.current = isDeliberateBlockedReentry;
-        crossModeTargetPageSysIdRef.current = rememberedNextPageSysId || currentPageSysId;
+        pendingSelectionTargetRef.current = currentPageSysId
+          ? {
+              fallbackAncestorPageSysIds: collectWorkspaceAncestorPageSysIds(currentWorkspacePages, currentPageSysId),
+              pageSysId: currentPageSysId
+            }
+          : null;
         pageSettingsPendingOpenPageIdRef.current = "";
         setInlinePageCreateState(null);
         setEditorFailure(null);
@@ -4549,7 +4594,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }),
       replace: false,
       beforeCommit: () => {
-        crossModeTargetPageSysIdRef.current = cleanText(page.sysId);
+        pendingSelectionTargetRef.current = {
+          fallbackAncestorPageSysIds: [],
+          pageSysId: cleanText(page.sysId)
+        };
       }
     });
   }

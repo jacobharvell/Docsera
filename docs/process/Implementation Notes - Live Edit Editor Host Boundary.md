@@ -30,9 +30,14 @@ It describes durable repo behavior only. Accepted product behavior remains defin
 - Edit tree rows can show compact `Draft` and `Unpublished` indicators.
 - Search is mode-specific: Live matches published titles and slugs, Edit matches draft titles and slugs.
 - Selection, expansion, and search query state are stored separately per workspace mode.
+- Selected-page continuity remains transient client and route state only; no ServiceNow persistence is added for mode-specific page memory.
 - Switching modes clears the current tree search query.
-- When a page exists in both modes, the first switch preserves the current page by slug.
-- When Edit switches to Live from a draft-only page, selection falls back to the first published page.
+- During an explicit same-workspace Live/Edit switch, the currently selected page `sys_id` is authoritative over any one-shot destination-mode transition target.
+- Same-workspace Live/Edit switching resolves the destination page by stable page identity, consumes that transition target, and then uses the destination projection's canonical route slug.
+- If the current page is unavailable in the destination projection, selection falls back to the nearest visible ancestor from the source hierarchy.
+- If no visible ancestor exists in the destination projection, selection falls back to the first visible top-level page in destination order.
+- Exact, ancestor, top-level, and empty outcomes do not retain stale transition targets or contaminate later same-workspace navigation.
+- Explicit workspace switches still reopen the destination workspace in Live on its first visible published page.
 - When a workspace has no published pages, Live renders an empty state. When Edit has no pages, Edit renders an authoring empty state with create action.
 
 ## Parent And Child Editor Ownership
@@ -84,6 +89,7 @@ The parent does not receive editor transactions, selection state, extension inte
 - Successful child saves update parent page state through one session-scoped path after the save result is confirmed to belong to the active editor session.
 - Late save completions from an obsolete page or obsolete session are ignored by the parent shell.
 - A successful save leaves the editor clean only when the saved snapshot still matches the current in-memory document.
+- Task 42 did not alter save/autosave ownership; selected-page continuity stayed on the routing and view-model boundary rather than shifting into page-body persistence logic.
 
 ## Dirty Transition Guard
 
