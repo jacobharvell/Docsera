@@ -464,6 +464,15 @@ function dispatchSyntheticPaste(editor: Editor, input: { html: string; text: str
   }
 }
 
+function trySetEditorTabIndex(editor: Editor, isEditable: boolean): boolean {
+  try {
+    editor.view.dom.tabIndex = isEditable ? 0 : -1;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function PageEditorHostRuntime({
   canEdit,
   initialEnvelope,
@@ -490,6 +499,7 @@ export function PageEditorHostRuntime({
   );
   const initialDocumentKey = useMemo(() => serializeDocument(validatedInitialEnvelope.document), [validatedInitialEnvelope]);
   const initialSavedDocumentKey = useMemo(() => serializeDocument(validatedInitialSavedEnvelope.document), [validatedInitialSavedEnvelope]);
+  const initialSessionIsClean = initialDocumentKey === initialSavedDocumentKey;
   const editorExtensions = useMemo(() => createDocseraEditorExtensions(), []);
   const editorProps = useMemo(
     () => ({
@@ -572,6 +582,7 @@ export function PageEditorHostRuntime({
   const savedDocumentKeyRef = useRef(savedDocumentKey);
   const savedRevisionRef = useRef(initialRevision);
   const statusRef = useRef<RuntimeStatus>("saved");
+  const initializingRef = useRef(true);
   const editorRef = useRef<Editor | null>(null);
   const editableRef = useRef(false);
   const slashActiveIndexRef = useRef(0);
@@ -659,15 +670,39 @@ export function PageEditorHostRuntime({
     onCreate: ({ editor: runtimeEditor }) => {
       editorRef.current = runtimeEditor;
       const envelope = createEnvelope(runtimeEditor.getJSON() as DocseraTiptapDocument);
-      currentDocumentKeyRef.current = serializeDocument(envelope.document);
+      const mountedDocumentKey = serializeDocument(envelope.document);
+      currentDocumentKeyRef.current = mountedDocumentKey;
+      if (initialSessionIsClean && mountedDocumentKey !== savedDocumentKeyRef.current) {
+        savedDocumentKeyRef.current = mountedDocumentKey;
+        setSavedDocumentKey(mountedDocumentKey);
+      }
       onEditorReady?.(runtimeEditor);
       onOutlineChange(extractDocumentOutline(envelope));
+      queueMicrotask(() => {
+        if (!disposedRef.current) {
+          initializingRef.current = false;
+        }
+      });
     },
     onUpdate: ({ editor: runtimeEditor }) => {
       const envelope = createEnvelope(runtimeEditor.getJSON() as DocseraTiptapDocument);
       const nextDocumentKey = serializeDocument(envelope.document);
       currentDocumentKeyRef.current = nextDocumentKey;
       onOutlineChange(extractDocumentOutline(envelope));
+
+       if (initializingRef.current) {
+        if (initialSessionIsClean && nextDocumentKey !== savedDocumentKeyRef.current) {
+          savedDocumentKeyRef.current = nextDocumentKey;
+          setSavedDocumentKey(nextDocumentKey);
+        }
+        if (statusRef.current !== "saving" && statusRef.current !== "conflict") {
+          setStatus(nextDocumentKey === savedDocumentKeyRef.current ? "saved" : "dirty");
+        }
+        if (errorMessage) {
+          setErrorMessage("");
+        }
+        return;
+      }
 
       if (statusRef.current !== "saving" && statusRef.current !== "conflict") {
         setStatus(nextDocumentKey === savedDocumentKeyRef.current ? "saved" : "dirty");
@@ -686,12 +721,13 @@ export function PageEditorHostRuntime({
         scheduleAutosave();
       }
     }
-  });
+  }, [editorExtensions, editorProps, initialSessionIsClean, isEditable, onEditorReady, onOutlineChange, validatedInitialEnvelope.document]);
 
   useEffect(() => {
     disposedRef.current = false;
     return () => {
       disposedRef.current = true;
+      initializingRef.current = false;
       cancelPendingTimers();
       editorRef.current = null;
     };
@@ -703,7 +739,16 @@ export function PageEditorHostRuntime({
     }
 
     editor.setEditable(isEditable);
-    editor.view.dom.tabIndex = isEditable ? 0 : -1;
+    if (trySetEditorTabIndex(editor, isEditable)) {
+      return;
+    }
+
+    queueMicrotask(() => {
+      if (disposedRef.current || (editor as Editor & { isDestroyed?: boolean }).isDestroyed) {
+        return;
+      }
+      void trySetEditorTabIndex(editor, isEditable);
+    });
   }, [editor, isEditable]);
 
   const overlayThemeClass = useMemo(

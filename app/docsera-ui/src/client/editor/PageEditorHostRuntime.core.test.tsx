@@ -4,10 +4,8 @@ import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { PageBodySaveResult } from "../shared/types/docsera";
 import { describe, expect, it, vi } from "vitest";
-import {
-  createExpandedTextFormattingDocseraDocumentEnvelope,
-  createSupportedE2DocseraDocumentEnvelope
-} from "../../shared/editor/documentFixtures";
+import { createEmptyDocseraDocumentEnvelope } from "../../shared/editor/document";
+import { createExpandedTextFormattingDocseraDocumentEnvelope, createSupportedE2DocseraDocumentEnvelope } from "../../shared/editor/documentFixtures";
 import { getAutosaveRetryDelay } from "./PageEditorHostRuntime";
 import {
   createEnvelopeFromDocument,
@@ -476,6 +474,56 @@ describe("PageEditorHostRuntime", () => {
     await waitFor(() => {
       expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saved" }));
     });
+  });
+
+  it("keeps a restored unsaved snapshot dirty without autosaving it on mount, and the first real edit still saves", async () => {
+    const restoredEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Recovered draft" }]
+        }
+      ]
+    });
+    const { editorReady, onSaveDraft, onStatusChange } = renderRuntime({
+      initialEnvelope: restoredEnvelope,
+      initialSavedEnvelope: createEmptyDocseraDocumentEnvelope()
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ isDirty: true, status: "Unsaved" }));
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(0);
+
+    await act(async () => {
+      editorReady[0].commands.insertContent(" plus one edit");
+    });
+
+    expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ isDirty: true, status: "Unsaved" }));
+    await runAutosave();
+
+    await waitFor(() => {
+      expect(onSaveDraft).toHaveBeenCalledTimes(1);
+    });
+    expect(onSaveDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        draftContentJson: createEnvelopeFromDocument({
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: " plus one editRecovered draft" }]
+            }
+          ]
+        }),
+        expectedRevision: 0,
+        pageSysId: "page-001"
+      })
+    );
   });
 
   it("keeps newer edits dirty while a save is pending and advances the revision after success", async () => {

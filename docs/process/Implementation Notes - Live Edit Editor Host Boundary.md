@@ -75,6 +75,8 @@ The parent does not receive editor transactions, selection state, extension inte
 - The production editor host lazy-loads only in Edit mode.
 - Live mode does not mount the editor host or TipTap runtime.
 - Each page selection gets an isolated editor session keyed by page identity and an explicit session generation, not by the current persisted draft revision.
+- Session initialization keeps a bounded mount-time window for TipTap bootstrap work before autosave eligibility begins.
+- Mount-time editor updates can refresh the current draft document and clean baseline, but they do not schedule autosave or execute persistence before the session becomes interactive.
 - Session creation and invalidation occur in commit-safe lifecycle paths instead of during React render.
 - Ordinary successful saves update persistence without creating a new editor generation or remounting TipTap.
 - Cursor position, focus, selection, and undo/redo history are preserved across an ordinary successful save because the child host is not recreated for a revision-only change.
@@ -86,6 +88,8 @@ The parent does not receive editor transactions, selection state, extension inte
 ## Save And Parent Update Flow
 
 - Explicit Save remains the E2 persistence scaffold.
+- A clean Live -> Edit or direct Edit entry establishes the loaded draft as the authoritative clean session baseline after TipTap finishes its mount burst.
+- Restored local recovery content remains dirty against the authoritative saved baseline and does not autosave on mount.
 - Successful child saves update parent page state through one session-scoped path after the save result is confirmed to belong to the active editor session.
 - Late save completions from an obsolete page or obsolete session are ignored by the parent shell.
 - A successful save leaves the editor clean only when the saved snapshot still matches the current in-memory document.
