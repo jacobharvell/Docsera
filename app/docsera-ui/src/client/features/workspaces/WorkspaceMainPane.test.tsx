@@ -187,7 +187,7 @@ describe("WorkspaceMainPane", () => {
     view.unmount();
   });
 
-  it("shows current-page save status in the Edit-mode page title row only", async () => {
+  it("keeps current-page save status out of the page body", async () => {
     const page = createPageView();
     const baseProps = {
       bodyState: "ready" as const,
@@ -217,11 +217,8 @@ describe("WorkspaceMainPane", () => {
       onEditorFailureChange: vi.fn()
     };
 
-    const { rerender, unmount } = render(<WorkspaceMainPane {...baseProps} workspaceMode="edit" saveStatus="Saving…" />);
-    const pageHeader = document.querySelector(".docsera-main__page-header");
-    expect(within(pageHeader as HTMLElement).getByRole("status")).toHaveTextContent("Saving…");
-
-    rerender(<WorkspaceMainPane {...baseProps} workspaceMode="live" saveStatus="Saving…" />);
+    const { rerender, unmount } = render(<WorkspaceMainPane {...baseProps} workspaceMode="edit" />);
+    rerender(<WorkspaceMainPane {...baseProps} workspaceMode="live" />);
     expect(screen.queryByRole("status", { name: /saving/i })).not.toBeInTheDocument();
     expect(document.querySelector(".docsera-main__save-status")).toBeNull();
 

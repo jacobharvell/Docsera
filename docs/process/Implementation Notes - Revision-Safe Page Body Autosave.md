@@ -2,7 +2,7 @@
 
 ## Runtime state model
 
-The lazy `PageEditorHostRuntime` remains the only owner of the live TipTap document. It derives a serialized document key directly from TipTap and reports plain `Unsaved`, `Saving…`, `Saved`, or `Changes not saved` data to the App shell. The current visible status remains in the page-title/editor area during Task 46; Task 47 is the later header-presentation move. No React document mirror is introduced.
+The lazy `PageEditorHostRuntime` remains the only owner of the live TipTap document. It derives a serialized document key directly from TipTap and reports plain `Unsaved`, `Saving…`, `Saved`, or `Changes not saved` data to the App shell. Task 46 kept the autosave contract at the editor-runtime boundary; Task 47 moved the current-page visible status into the Edit-mode workspace header immediately before Publish. The runtime still does not mirror the document into React state.
 
 Task 46 corrected a false initialization-mutation regression at the editor-runtime boundary. TipTap can emit one or more mount-time updates before the session is ready for user edits. Those updates are now treated as initialization work instead of autosave-eligible mutations.
 
@@ -16,6 +16,16 @@ Task 46 corrected a false initialization-mutation regression at the editor-runti
 The one canonical empty representation is `{"schemaVersion":1,"document":{"type":"doc","content":[{"type":"paragraph"}]}}`. Previously stored raw or enveloped `{type:"doc"}` documents and documents with an empty `content` array remain accepted, but parse immediately to that same runtime-compatible representation. Invalid and unsupported documents still fail closed.
 
 Focus, caret movement, selection-only transactions, outline extraction, editable-state setup, and other non-content initialization work do not change the document baseline, schedule a save, or advance the draft revision. The paragraph is immediately usable. Clicking canvas space below content reuses an existing trailing empty paragraph or appends one paragraph at the document end; repeated clicks do not duplicate it. Normal paragraph Enter behavior remains TipTap/ProseMirror-owned, preserving native list, task-list, blockquote, and code-block behavior.
+
+Shadow-root click retargeting on the installed PDI can report ordinary editor clicks through the `ProseMirror` root element instead of the inner text block. The blank-canvas helper therefore only runs for clicks whose client Y position is at or below the last rendered content block. Root-retargeted clicks above that boundary must remain ordinary focus and caret placement, not draft mutations.
+
+Installed-runtime focus loss on Sunday, August 2, 2026 was not caused by `pointerdown` or `mousedown` cancellation. Native `mousedown` did focus the `ProseMirror` root inside the child shadow root, but the focused node was then immediately removed and replaced by a fresh `ProseMirror` instance, which blurred the editor back to `BODY` before typing. The first remount came from `PageEditorHostRuntime` treating callback-prop identity (`onEditorReady`, `onOutlineChange`) as `useEditor(...)` construction dependencies. Parent rerenders that refreshed those callback identities therefore rebuilt the editor instance during ordinary click-to-focus interaction. The correction keeps those callbacks in refs and removes them from the editor-construction dependency list so callback refreshes update behavior without replacing the mounted editor DOM.
+
+The remaining blocking caret-loss defect had a second same-session reconstruction boundary. `PageEditorHostRuntime` also fed mounted-session `initialEnvelope` and `initialSavedEnvelope` document objects into `useEditor(...)` construction dependencies. Autosave acknowledgement and parent draft-projection refresh could therefore supply a new accepted document object for the same page session and reconstruct TipTap again exactly when the header status moved to `Saved`. The accepted fix freezes the mounted session's initial and initial-saved envelopes in refs, keeps save acknowledgement limited to accepted revision and saved-baseline updates inside the active runtime session, and removes initial-document object identity from the editor-construction boundary.
+
+Within one active page editor session, autosave acknowledgement may advance the accepted saved document key and accepted draft revision, but it must not reconstruct TipTap, replace the mounted `ProseMirror` node, blur the editor, reset the current selection, or reload identical accepted content back into the active editor. A new editor instance is valid only when the actual editor session boundary changes, such as a different page, a different session key, or a genuine teardown.
+
+That mounted-session envelope freeze is only correct after the session has been initialized from the authoritative target-mode projection. The Monday, August 3, 2026 Task 47 blocking correction proved that same-workspace shell retention cannot reuse a retained Live page view to initialize a new Edit session, or reuse a retained Edit page view to render Live, while the destination `listPages(...)` request is still loading. Shell retention and content authority are separate concerns: same-mode loading may keep the current mounted editor hidden and stable, but cross-mode loading must wait for the destination projection before a new editor session or reader content is created.
 
 ## Debounce, coalescing, and flush
 
@@ -60,6 +70,10 @@ Local regression coverage now includes:
 
 - a real `PageEditorHostRuntime` mount test proving restored unsaved recovery input remains dirty and does not autosave on mount;
 - a targeted initialization-baseline test that emits controlled mount-time `onUpdate` bursts, proves a clean session stays `Saved` with no autosave and no save request during initialization, and then proves the first real post-initialization update follows the ordinary single autosave path exactly once;
+- header presentation coverage proving the current-page save state is rendered as a bare 20 x 20 icon-only indicator in the workspace header, hidden in Live mode, with no circle/background/border/shadow treatment and the accepted divider treatment before Publish;
+- same-session runtime coverage proving save acknowledgement does not replace the editor instance, the mounted `ProseMirror` node, or the active selection/focus state when parent draft refresh supplies new accepted envelopes;
+- same-session queue coverage proving a newer edit made during an in-flight save stays on the current editor instance and selection while the existing serialized save flow accepts both saves in order;
+- App-boundary mode-switch coverage proving direct Live -> Edit waits for the authoritative draft projection before the first editor mount, repeated Live -> Edit re-entry keeps using that draft projection without a page hop, and Edit -> Live does not transiently render draft-only content while the published projection reloads;
 - the existing command and runtime tests that keep no-op slash or selection behavior clean and preserve first-edit autosave, retry, conflict, and stale-session behavior.
 
 ## Failures and session safety

@@ -55,11 +55,15 @@ test("hides the complete ToC rail at the responsive breakpoint instead of stacki
   expect(responsive).not.toContain(".docsera-toc-rail__body");
 });
 
-test("centers workspace mode control and moves save status into the page title row", () => {
+test("centers workspace mode control and keeps the save status in the header before Publish", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
 
   expect(css).toMatch(/\.docsera-header__action-slot--mode\s*{[^}]*position:\s*absolute;[^}]*left:\s*50%;[^}]*transform:\s*translate\(-50%, -50%\);/s);
-  expect(css).toMatch(/\.docsera-main__save-status\s*{[^}]*white-space:\s*nowrap;/s);
+  expect(css).toMatch(/\.docsera-header__save-status\s*{[^}]*position:\s*relative;[^}]*width:\s*32px;[^}]*height:\s*32px;/s);
+  expect(css).toContain(".docsera-header__save-status-sr-only {");
+  expect(css).not.toContain(".docsera-main__save-status");
+  expect(css).toMatch(/\.docsera-header__save-status-sync\s*{[^}]*animation:\s*docsera-header-save-status-spin 1\.1s linear infinite;/s);
+  expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.docsera-header__save-status-sync\s*{[\s\S]*?animation:\s*none;/);
   expect(css).toMatch(/\.docsera-main__page-header \.docsera-main__title\s*{[^}]*font-size:\s*clamp\(2\.1rem, 3vw, 2\.5rem\);[^}]*line-height:\s*1\.1;/s);
   expect(css).toContain(".docsera-header__publish-button");
   expect(css).toContain(".docsera-changes-center__list");

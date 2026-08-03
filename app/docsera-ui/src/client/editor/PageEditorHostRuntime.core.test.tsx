@@ -1,12 +1,13 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { act, fireEvent, screen, waitFor } from "@testing-library/react";
+import { useMemo, useState } from "react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { PageBodySaveResult } from "../shared/types/docsera";
 import { describe, expect, it, vi } from "vitest";
-import { createEmptyDocseraDocumentEnvelope } from "../../shared/editor/document";
+import { createEmptyDocseraDocumentEnvelope, type DocseraDocumentEnvelope } from "../../shared/editor/document";
 import { createExpandedTextFormattingDocseraDocumentEnvelope, createSupportedE2DocseraDocumentEnvelope } from "../../shared/editor/documentFixtures";
-import { getAutosaveRetryDelay } from "./PageEditorHostRuntime";
+import { getAutosaveRetryDelay, PageEditorHostRuntime } from "./PageEditorHostRuntime";
 import {
   createEnvelopeFromDocument,
   createSuccessPage,
@@ -14,6 +15,59 @@ import {
   renderRuntime,
   runAutosave
 } from "./PageEditorHostRuntime.testUtils";
+
+function SaveAcknowledgeHarness(input: {
+  initialEnvelope: DocseraDocumentEnvelope;
+  onEditorReady?: (editor: Parameters<NonNullable<Parameters<typeof PageEditorHostRuntime>[0]["onEditorReady"]>>[0]) => void;
+  onOutlineChange?: Parameters<typeof PageEditorHostRuntime>[0]["onOutlineChange"];
+  onSaveDraft: Parameters<typeof PageEditorHostRuntime>[0]["onSaveDraft"];
+  onStatusChange: Parameters<typeof PageEditorHostRuntime>[0]["onStatusChange"];
+  overlayRoot: HTMLElement;
+}) {
+  const [pageState, setPageState] = useState(() => ({
+    envelope: input.initialEnvelope,
+    revision: 0,
+    savedEnvelope: input.initialEnvelope
+  }));
+  const handleSaveDraft = useMemo(
+    () =>
+      (async (saveInput: Parameters<typeof PageEditorHostRuntime>[0]["onSaveDraft"] extends (arg: infer T) => Promise<PageBodySaveResult> ? T : never) => {
+        const result = await input.onSaveDraft(saveInput);
+        if (result.state === "succeeded") {
+          const nextEnvelope = (
+            result.page.draftContentJson ??
+            saveInput.readLatestDraftContentJson?.() ??
+            saveInput.draftContentJson
+          ) as DocseraDocumentEnvelope;
+          setPageState((current) => ({
+            envelope: nextEnvelope,
+            revision: result.page.draftRevision ?? current.revision,
+            savedEnvelope: nextEnvelope
+          }));
+        }
+        return result;
+      }),
+    [input]
+  );
+
+  return (
+    <PageEditorHostRuntime
+      canEdit={true}
+      initialEnvelope={pageState.envelope}
+      initialSavedEnvelope={pageState.savedEnvelope}
+      initialRevision={pageState.revision}
+      onAccessLost={vi.fn()}
+      onEditorReady={input.onEditorReady}
+      onOutlineChange={input.onOutlineChange ?? vi.fn()}
+      onSaveDraft={handleSaveDraft}
+      onStatusChange={input.onStatusChange}
+      overlayRoot={input.overlayRoot}
+      pageSysId="page-001"
+      sessionKey="page-001:1"
+      theme="light"
+    />
+  );
+}
 
 describe("PageEditorHostRuntime", () => {
   it("keeps editor links on the shared primary token and preserves visited-link styling", () => {
@@ -118,6 +172,378 @@ describe("PageEditorHostRuntime", () => {
     });
     await runAutosave();
     expect(onSaveDraft).toHaveBeenCalledTimes(0);
+  });
+
+  it("does not treat a retargeted ProseMirror root click above the last content block as a blank-canvas mutation", async () => {
+    const initialEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [{ type: "text", text: "Overview" }]
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Body copy" }]
+        }
+      ]
+    });
+    const { editorReady, onSaveDraft, container } = renderRuntime({ initialEnvelope });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+
+    const proseMirror = container.querySelector(".ProseMirror") as HTMLElement | null;
+    expect(proseMirror).not.toBeNull();
+
+    const lastContentElement = proseMirror?.lastElementChild as HTMLElement | null;
+    expect(lastContentElement).not.toBeNull();
+
+    Object.defineProperty(lastContentElement, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({
+        bottom: 240,
+        height: 24,
+        left: 0,
+        right: 100,
+        top: 216,
+        width: 100,
+        x: 0,
+        y: 216,
+        toJSON() {
+          return this;
+        }
+      })
+    });
+
+    fireEvent.click(proseMirror!, { clientY: 200 });
+    await runAutosave();
+
+    expect(editorReady[0].getJSON()).toEqual(initialEnvelope.document);
+    expect(onSaveDraft).toHaveBeenCalledTimes(0);
+  });
+
+  it("allows ordinary editor mouse and click interactions to reach outer document handlers", async () => {
+    const initialEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Body copy" }]
+        }
+      ]
+    });
+    const documentMouseDown = vi.fn();
+    const documentClick = vi.fn();
+    document.addEventListener("mousedown", documentMouseDown);
+    document.addEventListener("click", documentClick);
+
+    try {
+      const { container } = renderRuntime({ initialEnvelope });
+      const proseMirror = await waitFor(() => {
+        const element = container.querySelector(".ProseMirror") as HTMLElement | null;
+        expect(element).not.toBeNull();
+        return element!;
+      });
+      const paragraph = proseMirror.querySelector("p");
+      expect(paragraph).not.toBeNull();
+      const originalElementFromPoint = document.elementFromPoint?.bind(document);
+      Object.defineProperty(document, "elementFromPoint", {
+        configurable: true,
+        value: () => paragraph
+      });
+
+      fireEvent.mouseDown(paragraph!);
+      fireEvent.click(paragraph!, { clientY: 120 });
+
+      expect(documentMouseDown).toHaveBeenCalledTimes(1);
+      expect(documentClick).toHaveBeenCalledTimes(1);
+      if (originalElementFromPoint) {
+        Object.defineProperty(document, "elementFromPoint", {
+          configurable: true,
+          value: originalElementFromPoint
+        });
+      }
+    } finally {
+      document.removeEventListener("mousedown", documentMouseDown);
+      document.removeEventListener("click", documentClick);
+    }
+  });
+
+  it("does not replace the mounted ProseMirror root when callback props refresh", async () => {
+    const initialEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Body copy" }]
+        }
+      ]
+    });
+    const firstOutlineChange = vi.fn();
+    const firstEditorReady = vi.fn();
+    const { container, rerender } = renderRuntime({
+      initialEnvelope,
+      onEditorReady: firstEditorReady,
+      onOutlineChange: firstOutlineChange
+    });
+
+    const originalProseMirror = await waitFor(() => {
+      const element = container.querySelector(".ProseMirror") as HTMLElement | null;
+      expect(element).not.toBeNull();
+      return element!;
+    });
+
+    rerender(
+      <PageEditorHostRuntime
+        canEdit={true}
+        initialEnvelope={initialEnvelope}
+        initialRevision={0}
+        onAccessLost={vi.fn()}
+        onEditorReady={vi.fn()}
+        onOutlineChange={vi.fn()}
+        onSaveDraft={vi.fn(async (): Promise<PageBodySaveResult> => ({
+          state: "succeeded",
+          page: createSuccessPage(1)
+        }))}
+        onStatusChange={vi.fn()}
+        overlayRoot={document.querySelector("[data-docsera-editor-runtime-overlay-root='true']") as HTMLElement}
+        pageSysId="page-001"
+        theme="light"
+      />
+    );
+
+    const currentProseMirror = await waitFor(() => {
+      const element = container.querySelector(".ProseMirror") as HTMLElement | null;
+      expect(element).not.toBeNull();
+      return element!;
+    });
+
+    expect(currentProseMirror).toBe(originalProseMirror);
+    expect(originalProseMirror.isConnected).toBe(true);
+  });
+
+  it("keeps the editor instance, ProseMirror node, focus, and caret stable when a successful save refreshes same-session props", async () => {
+    let resolveSave: ((value: PageBodySaveResult) => void) | null = null;
+    const externalSave = vi.fn(
+      () =>
+        new Promise<PageBodySaveResult>((resolve) => {
+          resolveSave = resolve;
+        })
+    );
+    const statusChanges = vi.fn();
+    const editorReady: Array<Parameters<NonNullable<Parameters<typeof PageEditorHostRuntime>[0]["onEditorReady"]>>[0]> = [];
+    const overlayRoot = document.createElement("div");
+    overlayRoot.dataset.docseraEditorRuntimeOverlayRoot = "true";
+    document.body.append(overlayRoot);
+    const initialEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Alpha Beta" }]
+        }
+      ]
+    });
+
+    const view = render(
+      <SaveAcknowledgeHarness
+        initialEnvelope={initialEnvelope}
+        onEditorReady={(editor) => {
+          editorReady.push(editor);
+          const editorView = editor.view as typeof editor.view & { scrollToSelection: () => void };
+          editorView.scrollToSelection = () => undefined;
+        }}
+        onSaveDraft={externalSave}
+        onStatusChange={statusChanges}
+        overlayRoot={overlayRoot}
+      />
+    );
+
+    const editor = await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+      return editorReady[0]!;
+    });
+    const proseMirror = await waitFor(() => {
+      const element = view.container.querySelector(".ProseMirror") as HTMLElement | null;
+      expect(element).not.toBeNull();
+      return element!;
+    });
+
+    await act(async () => {
+      proseMirror.focus();
+      editor.commands.setTextSelection(7);
+      editor.commands.insertContent("X");
+    });
+    const selectionBeforeSave = {
+      anchor: editor.state.selection.anchor,
+      from: editor.state.selection.from,
+      head: editor.state.selection.head,
+      to: editor.state.selection.to
+    };
+
+    await runAutosave();
+    await waitFor(() => {
+      expect(statusChanges).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saving…" }));
+    });
+
+    await act(async () => {
+      resolveSave?.({
+        state: "succeeded",
+        page: {
+          ...createSuccessPage(1),
+          draftContentJson: createEnvelopeFromDocument(editor.getJSON()),
+          draftRevision: 1
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(statusChanges).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saved" }));
+    });
+
+    expect(editorReady).toHaveLength(1);
+    expect(view.container.querySelector(".ProseMirror")).toBe(proseMirror);
+    expect(proseMirror.isConnected).toBe(true);
+    expect(document.activeElement).toBe(proseMirror);
+    expect(editor.isFocused).toBe(true);
+    expect(editor.state.selection.from).toBe(selectionBeforeSave.from);
+    expect(editor.state.selection.to).toBe(selectionBeforeSave.to);
+    expect(editor.state.selection.anchor).toBe(selectionBeforeSave.anchor);
+    expect(editor.state.selection.head).toBe(selectionBeforeSave.head);
+
+    await act(async () => {
+      editor.view.dispatch(editor.state.tr.insertText("Y", editor.state.selection.from, editor.state.selection.to));
+    });
+
+    expect(document.activeElement).toBe(proseMirror);
+    expect(editor.getText()).toContain("Alpha XYBeta");
+  });
+
+  it("keeps the active editor and current selection stable while a newer edit queues behind an in-flight save", async () => {
+    let resolveFirstSave: ((value: PageBodySaveResult) => void) | null = null;
+    const externalSave = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<PageBodySaveResult>((resolve) => {
+            resolveFirstSave = resolve;
+          })
+      )
+      .mockResolvedValueOnce({
+        state: "succeeded",
+        page: {
+          ...createSuccessPage(2),
+          draftContentJson: createEnvelopeFromDocument({
+            type: "doc",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "Alpha XZBeta" }]
+              }
+            ]
+          }),
+          draftRevision: 2
+        }
+      } satisfies PageBodySaveResult);
+    const statusChanges = vi.fn();
+    const editorReady: Array<Parameters<NonNullable<Parameters<typeof PageEditorHostRuntime>[0]["onEditorReady"]>>[0]> = [];
+    const overlayRoot = document.createElement("div");
+    overlayRoot.dataset.docseraEditorRuntimeOverlayRoot = "true";
+    document.body.append(overlayRoot);
+    const initialEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Alpha Beta" }]
+        }
+      ]
+    });
+
+    const view = render(
+      <SaveAcknowledgeHarness
+        initialEnvelope={initialEnvelope}
+        onEditorReady={(editor) => {
+          editorReady.push(editor);
+          const editorView = editor.view as typeof editor.view & { scrollToSelection: () => void };
+          editorView.scrollToSelection = () => undefined;
+        }}
+        onSaveDraft={externalSave}
+        onStatusChange={statusChanges}
+        overlayRoot={overlayRoot}
+      />
+    );
+
+    const editor = await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+      return editorReady[0]!;
+    });
+    const proseMirror = await waitFor(() => {
+      const element = view.container.querySelector(".ProseMirror") as HTMLElement | null;
+      expect(element).not.toBeNull();
+      return element!;
+    });
+
+    await act(async () => {
+      proseMirror.focus();
+      editor.commands.setTextSelection(7);
+      editor.commands.insertContent("X");
+    });
+
+    await runAutosave();
+    await waitFor(() => {
+      expect(statusChanges).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saving…" }));
+    });
+
+    await act(async () => {
+      editor.commands.insertContent("Z");
+    });
+    const selectionDuringSave = {
+      anchor: editor.state.selection.anchor,
+      from: editor.state.selection.from,
+      head: editor.state.selection.head,
+      to: editor.state.selection.to
+    };
+
+    await act(async () => {
+      resolveFirstSave?.({
+        state: "succeeded",
+        page: {
+          ...createSuccessPage(1),
+          draftContentJson: createEnvelopeFromDocument({
+            type: "doc",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "Alpha XBeta" }]
+              }
+            ]
+          }),
+          draftRevision: 1
+        }
+      });
+    });
+
+    await waitFor(() => {
+      expect(externalSave).toHaveBeenCalledTimes(2);
+    });
+
+    expect(editorReady).toHaveLength(1);
+    expect(view.container.querySelector(".ProseMirror")).toBe(proseMirror);
+    expect(document.activeElement).toBe(proseMirror);
+    expect(editor.state.selection.from).toBe(selectionDuringSave.from);
+    expect(editor.state.selection.to).toBe(selectionDuringSave.to);
+    expect(editor.state.selection.anchor).toBe(selectionDuringSave.anchor);
+    expect(editor.state.selection.head).toBe(selectionDuringSave.head);
+    expect(externalSave.mock.calls[1]?.[0]).toMatchObject({
+      expectedRevision: 1,
+      pageSysId: "page-001"
+    });
+
+    await waitFor(() => {
+      expect(statusChanges).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saved" }));
+    });
+    expect(editor.getText()).toContain("Alpha XZBeta");
   });
 
   it("reuses a trailing empty paragraph and appends exactly one paragraph below non-empty content", async () => {

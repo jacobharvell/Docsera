@@ -194,6 +194,7 @@ type WorkspaceModeUiState = {
 
 type PendingSelectionTarget = {
   fallbackAncestorPageSysIds: string[];
+  mode: WorkspaceMode;
   pageSysId: string;
 };
 
@@ -816,8 +817,9 @@ function resolveWorkspacePageSelection(
     mode: WorkspaceMode;
   }
 ): { page: WorkspacePageRecord | null; pageId: string; pageSlug: string } {
+  const matchingPendingSelectionTarget = input.pendingSelectionTarget?.mode === input.mode ? input.pendingSelectionTarget : null;
   const page =
-    resolvePendingSelectionTargetPage(pages, input.pendingSelectionTarget) ??
+    resolvePendingSelectionTargetPage(pages, matchingPendingSelectionTarget) ??
     findWorkspacePageBySlug(pages, input.pageSlug ?? "", input.mode) ??
     findWorkspacePageBySysId(pages, input.preferredPageSysId ?? "") ??
     findWorkspacePageBySysId(pages, input.legacyPageId ?? "") ??
@@ -2025,14 +2027,15 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           workspacePagesState.mode === activeWorkspaceMode
         ? "New page is unavailable because the workspace page list failed to load."
         : "";
+  const pendingSelectionTarget = pendingSelectionTargetRef.current?.mode === activeWorkspaceMode ? pendingSelectionTargetRef.current : null;
   const selectedWorkspacePage =
     workspacePagesLoaded && currentWorkspacePages.length > 0
       ? resolveWorkspacePageSelection(currentWorkspacePages, {
           legacyPageId: currentWorkspaceLegacyPageId,
           mode: activeWorkspaceMode,
-          pendingSelectionTarget: pendingSelectionTargetRef.current,
+          pendingSelectionTarget,
           pageSlug: currentWorkspacePageSlug,
-          preferredPageSysId: pendingSelectionTargetRef.current?.pageSysId || currentModeUiState.selectedPageSysId
+          preferredPageSysId: pendingSelectionTarget?.pageSysId || currentModeUiState.selectedPageSysId
         }).page
       : null;
   const selectedWorkspacePageId = cleanText(selectedWorkspacePage?.sysId) || currentModeUiState.selectedPageSysId;
@@ -2270,13 +2273,14 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         : workspacePagesLoading
           ? "Fetching live page records from ServiceNow."
           : "";
-  const shouldRetainWorkspaceShell =
+  const canRetainWorkspaceShell =
     route.mode === "workspace" &&
     workspaceState.status === "success" &&
     workspaceState.data.slug === currentWorkspaceSlug &&
     workspacePagesLoading &&
     lastReadyWorkspaceShell !== null &&
     lastReadyWorkspaceShell.workspaceSlug === currentWorkspaceSlug;
+  const shouldRetainWorkspaceShell = canRetainWorkspaceShell && lastReadyWorkspaceShell.mode === activeWorkspaceMode;
   const displayedTreePages = shouldRetainWorkspaceShell ? lastReadyWorkspaceShell.treePages : treePages;
   const displayedSelectedPageView = shouldRetainWorkspaceShell ? lastReadyWorkspaceShell.selectedPageView : selectedPageViewWithRecovery;
   const displayedSelectedPageId = shouldRetainWorkspaceShell ? lastReadyWorkspaceShell.selectedPageId : selectedWorkspacePageId;
@@ -3367,7 +3371,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
-    const pendingSelectionTarget = pendingSelectionTargetRef.current;
+    const pendingSelectionTarget = pendingSelectionTargetRef.current?.mode === activeWorkspaceMode ? pendingSelectionTargetRef.current : null;
     const resolvedSelection = resolveWorkspacePageSelection(currentWorkspacePages, {
       legacyPageId: currentWorkspaceLegacyPageId,
       mode: activeWorkspaceMode,
@@ -3701,6 +3705,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         pendingSelectionTargetRef.current = currentPageSysId
           ? {
               fallbackAncestorPageSysIds: collectWorkspaceAncestorPageSysIds(currentWorkspacePages, currentPageSysId),
+              mode: nextMode,
               pageSysId: currentPageSysId
             }
           : null;
@@ -4596,6 +4601,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       beforeCommit: () => {
         pendingSelectionTargetRef.current = {
           fallbackAncestorPageSysIds: [],
+          mode: "edit",
           pageSysId: cleanText(page.sysId)
         };
       }
@@ -5972,6 +5978,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         onSelectBreadcrumb={route.mode === "workspace" ? openWorkspacePage : undefined}
         onToggleSidebar={route.mode === "workspace" ? () => setSidebarCollapsed((collapsed) => !collapsed) : undefined}
         recentWorkspaces={recentWorkspaceItems}
+        saveStatus={appHeaderWorkspaceMode === "edit" && renderedEditorSession ? editorStatusLabel as EditorTransitionState["status"] : undefined}
         pendingChanges={pendingChangesResult}
         pendingChangesDiscardAllErrorMessage={workspaceDiscardAllErrorMessage}
         pendingChangesDiscardAllAffectedPageCount={workspaceDiscardAllAffectedPageCount}
@@ -6048,7 +6055,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               }}
               onSavePageDraft={(input) => savePageDraftForSession(renderedEditorSession, input)}
               onStatusChange={(state) => handleEditorStatusChange(selectedWorkspacePageId, state)}
-              saveStatus={activeWorkspaceMode === "edit" && renderedEditorSession ? editorStatusLabel as EditorTransitionState["status"] : undefined}
               onSelectPage={openWorkspacePage}
               onMovePage={moveWorkspacePage}
               onShowChildPageCreate={openCreatePageModal}

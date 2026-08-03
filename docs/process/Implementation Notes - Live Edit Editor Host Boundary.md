@@ -36,6 +36,8 @@ It describes durable repo behavior only. Accepted product behavior remains defin
 - Same-workspace Live/Edit switching resolves the destination page by stable page identity, consumes that transition target, and then uses the destination projection's canonical route slug.
 - If the current page is unavailable in the destination projection, selection falls back to the nearest visible ancestor from the source hierarchy.
 - If no visible ancestor exists in the destination projection, selection falls back to the first visible top-level page in destination order.
+- Same-workspace shell retention is mode-scoped. A retained ready shell may be reused only while the same workspace mode reloads.
+- Cross-mode loading may keep the shell mounted, but prior-mode page projections are not authoritative target-mode content. Live content waits for the published projection, and Edit content waits for the draft projection.
 - Exact, ancestor, top-level, and empty outcomes do not retain stale transition targets or contaminate later same-workspace navigation.
 - Explicit workspace switches still reopen the destination workspace in Live on its first visible published page.
 - When a workspace has no published pages, Live renders an empty state. When Edit has no pages, Edit renders an authoring empty state with create action.
@@ -75,6 +77,7 @@ The parent does not receive editor transactions, selection state, extension inte
 - The production editor host lazy-loads only in Edit mode.
 - Live mode does not mount the editor host or TipTap runtime.
 - Each page selection gets an isolated editor session keyed by page identity and an explicit session generation, not by the current persisted draft revision.
+- A new Edit session does not mount from a retained Live page envelope during cross-mode loading. The first mount waits for the authoritative Edit projection for the selected page.
 - Session initialization keeps a bounded mount-time window for TipTap bootstrap work before autosave eligibility begins.
 - Mount-time editor updates can refresh the current draft document and clean baseline, but they do not schedule autosave or execute persistence before the session becomes interactive.
 - Session creation and invalidation occur in commit-safe lifecycle paths instead of during React render.
@@ -116,6 +119,7 @@ The parent does not receive editor transactions, selection state, extension inte
 - Live page listing now fails closed for inconsistent published records.
 - Pages in Live mode use only published title, published slug, published normalized slug, published canonical content, and the published compatibility body field.
 - Draft-only pages remain excluded from Live.
+- A retained Edit page projection is never rendered as transient Live reader content while the published projection is still loading.
 - If a published record is missing required published metadata or has malformed published canonical JSON, it is omitted from the Live listing rather than falling back to draft values.
 
 ## Runtime Error Containment And Retry

@@ -651,6 +651,151 @@ async function waitForHostControl() {
 }
 
 describe("App editor-host session boundary", () => {
+  it("waits for the authoritative edit projection before mounting a direct Live-to-Edit session", async () => {
+    const publishedEnvelope = createEnvelopeForMockText("Published only A");
+    const draftEnvelope = createEnvelopeForMockText("Published only A plus draft B");
+    const livePage = createPageRecord({
+      draftContentJson: publishedEnvelope,
+      draftTitle: "Overview",
+      publicationState: "published",
+      publishedContentJson: publishedEnvelope,
+      publishedTitle: "Overview"
+    });
+    const editPage = createPageRecord({
+      draftContentJson: draftEnvelope,
+      draftTitle: "Overview Draft",
+      publicationState: "published_with_unpublished_changes",
+      publishedContentJson: publishedEnvelope,
+      publishedTitle: "Overview"
+    });
+    const firstEditLoad = createDeferred<PageListResult>();
+    const secondEditLoad = createDeferred<PageListResult>();
+    let editLoadCount = 0;
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }): Promise<PageListResult> => {
+      if (mode === "edit") {
+        editLoadCount += 1;
+        return editLoadCount === 1 ? firstEditLoad.promise : secondEditLoad.promise;
+      }
+
+      return createPageListResult("live", [livePage]);
+    });
+
+    renderApp("/?workspace=product-docs&page=overview", { listPages });
+
+    const reader = await screen.findByLabelText("Published page content");
+    expect(reader).toHaveTextContent("Published only A");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    await waitFor(() => {
+      expect(listPages).toHaveBeenLastCalledWith({
+        mode: "edit",
+        workspaceSlug: "product-docs"
+      });
+    });
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+
+    await act(async () => {
+      firstEditLoad.resolve(createPageListResult("edit", [editPage]));
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await waitForHostControl();
+    const firstEditMountId = latestHostControl?.mountId ?? 0;
+    const firstEditSessionKey = latestHostControl?.sessionKey ?? "";
+    expect(firstEditMountId).toBeGreaterThan(0);
+    expect(JSON.parse(latestHostControl?.initialEnvelopeText ?? "null")).toEqual(draftEnvelope.document);
+    expect(JSON.parse(latestHostControl?.initialSavedEnvelopeText ?? "null")).toEqual(draftEnvelope.document);
+    expect(screen.getByText("Status Saved")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    await waitFor(() => {
+      expect(listPages).toHaveBeenLastCalledWith({
+        mode: "edit",
+        workspaceSlug: "product-docs"
+      });
+    });
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+
+    await act(async () => {
+      secondEditLoad.resolve(createPageListResult("edit", [editPage]));
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect((latestHostControl?.mountId ?? 0)).toBeGreaterThan(firstEditMountId);
+    });
+    expect(latestHostControl?.sessionKey).not.toBe(firstEditSessionKey);
+    expect(JSON.parse(latestHostControl?.initialEnvelopeText ?? "null")).toEqual(draftEnvelope.document);
+    expect(JSON.parse(latestHostControl?.initialSavedEnvelopeText ?? "null")).toEqual(draftEnvelope.document);
+    expect(screen.getByText("Status Saved")).toBeInTheDocument();
+  });
+
+  it("keeps draft-only content out of Live while the published projection reloads", async () => {
+    const publishedEnvelope = createEnvelopeForMockText("Published only A");
+    const draftEnvelope = createEnvelopeForMockText("Published only A plus draft B");
+    const livePage = createPageRecord({
+      draftContentJson: publishedEnvelope,
+      draftTitle: "Overview",
+      publicationState: "published",
+      publishedContentJson: publishedEnvelope,
+      publishedTitle: "Overview"
+    });
+    const editPage = createPageRecord({
+      draftContentJson: draftEnvelope,
+      draftTitle: "Overview Draft",
+      publicationState: "published_with_unpublished_changes",
+      publishedContentJson: publishedEnvelope,
+      publishedTitle: "Overview"
+    });
+    const liveLoad = createDeferred<PageListResult>();
+    let liveLoadCount = 0;
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }): Promise<PageListResult> => {
+      if (mode === "edit") {
+        return createPageListResult("edit", [editPage]);
+      }
+
+      liveLoadCount += 1;
+      return liveLoadCount === 1 ? liveLoad.promise : createPageListResult("live", [livePage]);
+    });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { listPages });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await waitForHostControl();
+    expect(JSON.parse(latestHostControl?.initialEnvelopeText ?? "null")).toEqual(draftEnvelope.document);
+
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+
+    await waitFor(() => {
+      expect(listPages).toHaveBeenLastCalledWith({
+        mode: "live",
+        workspaceSlug: "product-docs"
+      });
+    });
+    await waitFor(() => {
+      expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+    });
+    expect(screen.queryByLabelText("Published page content")).toBeNull();
+    expect(screen.queryByText("Published only A plus draft B")).not.toBeInTheDocument();
+
+    await act(async () => {
+      liveLoad.resolve(createPageListResult("live", [livePage]));
+    });
+
+    const reader = await screen.findByLabelText("Published page content");
+    expect(reader).toHaveTextContent("Published only A");
+    expect(reader).not.toHaveTextContent("draft B");
+  });
+
   it("serializes pending body autosave before child creation and advances mutation authority", async () => {
     const saveDeferred = createDeferred<PageBodySaveResult>();
     const createdChild = createPageRecord({
@@ -731,6 +876,8 @@ describe("App editor-host session boundary", () => {
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
     await waitForHostControl();
+    const initialMountId = latestHostControl?.mountId;
+    const initialSessionKey = latestHostControl?.sessionKey;
     await waitFor(() => expect(getWorkspacePendingChanges).toHaveBeenCalledTimes(1));
     let publish = screen.getByRole("button", { name: "Open Changes Center" });
     expect(publish).toBeEnabled();
@@ -738,10 +885,15 @@ describe("App editor-host session boundary", () => {
 
     pendingChangesResponse = pendingRefresh.promise;
     fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    expect(await screen.findByRole("status", { name: "Current page has unsaved changes" })).toBeInTheDocument();
+    expect(latestHostControl?.mountId).toBe(initialMountId);
+    expect(latestHostControl?.sessionKey).toBe(initialSessionKey);
     fireEvent.click(screen.getByRole("button", { name: "Mark saving" }));
     const flushPromise = latestHostControl?.status?.flush?.();
     await waitFor(() => expect(savePageBody).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText(/Status Saving/)).toBeInTheDocument();
+    expect(await screen.findByRole("status", { name: "Saving current page" })).toBeInTheDocument();
+    expect(latestHostControl?.mountId).toBe(initialMountId);
+    expect(latestHostControl?.sessionKey).toBe(initialSessionKey);
     publish = screen.getByRole("button", { name: "Open Changes Center" });
     expect(publish).toHaveClass("docsera-header__publish-button--active");
     expect(publish).toHaveTextContent("Publish");
@@ -763,7 +915,9 @@ describe("App editor-host session boundary", () => {
     await act(async () => {
       pendingRefresh.resolve(createPendingChangesResult([pendingRow]));
     });
-    await waitFor(() => expect(screen.getByText("Status Saved")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("status", { name: "Current page changes saved" })).toBeInTheDocument());
+    expect(latestHostControl?.mountId).toBe(initialMountId);
+    expect(latestHostControl?.sessionKey).toBe(initialSessionKey);
     publish = screen.getByRole("button", { name: "Open Changes Center" });
     expect(publish).toBeEnabled();
     expect(publish).toHaveClass("docsera-header__publish-button--active");
@@ -965,7 +1119,7 @@ describe("App editor-host session boundary", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Register failed flush" }));
     fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
-    expect(await screen.findByText("Status Unsaved")).toBeInTheDocument();
+    expect(await screen.findByRole("status", { name: "Current page has unsaved changes" })).toBeInTheDocument();
     await act(async () => {
       await Promise.resolve();
     });
@@ -1160,7 +1314,7 @@ describe("App editor-host session boundary", () => {
     expect(acquireWorkspaceEditLease).toHaveBeenCalledTimes(2);
     expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
     expect(document.querySelector("[data-docsera-page-editor-host='true']")).not.toBeNull();
-    expect(await screen.findByText("Status Changes not saved")).toBeInTheDocument();
+    expect(await screen.findByRole("status", { name: "Current page changes could not be saved" })).toBeInTheDocument();
     expect(latestHostControl?.status?.isDirty).toBe(true);
     expect(screen.queryByText(/currently being edited by another user/i)).toBeNull();
   });
@@ -1213,7 +1367,7 @@ describe("App editor-host session boundary", () => {
     await act(async () => {
       await latestHostControl?.status?.flush?.();
     });
-    expect(await screen.findByText("Status Changes not saved")).toBeInTheDocument();
+    expect(await screen.findByRole("status", { name: "Current page changes could not be saved" })).toBeInTheDocument();
 
     await act(async () => {
       await latestHostControl?.status?.flush?.();
@@ -1225,7 +1379,7 @@ describe("App editor-host session boundary", () => {
       "replacement-lease-token"
     ]);
     expect(acquireWorkspaceEditLease).toHaveBeenCalledTimes(3);
-    expect(await screen.findByText("Status Saved")).toBeInTheDocument();
+    expect(await screen.findByRole("status", { name: "Current page changes saved" })).toBeInTheDocument();
     expect(latestHostControl?.status?.isDirty).toBe(false);
     expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
   });
@@ -1312,7 +1466,7 @@ describe("App editor-host session boundary", () => {
     });
 
     expect(savePageBody).toHaveBeenCalledTimes(1);
-    expect(await screen.findByText("Status Changes not saved")).toBeInTheDocument();
+    expect(await screen.findByRole("status", { name: "Current page changes could not be saved" })).toBeInTheDocument();
     expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
     expect(await screen.findByRole("heading", { name: "Overview Refreshed" })).toBeInTheDocument();
 
@@ -1325,7 +1479,7 @@ describe("App editor-host session boundary", () => {
       workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 8 }),
       workspaceLeaseToken: "workspace-lease-token"
     }));
-    expect(await screen.findByText("Status Saved")).toBeInTheDocument();
+    expect(await screen.findByRole("status", { name: "Current page changes saved" })).toBeInTheDocument();
   });
 
   it.each([
@@ -1432,7 +1586,7 @@ describe("App editor-host session boundary", () => {
 
     await waitFor(() => expect(savePageBody).toHaveBeenCalledTimes(2));
     expect(savePageBody.mock.calls[1]?.[0]).toEqual(expect.objectContaining({ workspaceLeaseToken: "replacement-lease-token" }));
-    expect(await screen.findByText("Status Saved")).toBeInTheDocument();
+    expect(await screen.findByRole("status", { name: "Current page changes saved" })).toBeInTheDocument();
   });
 
   it("clears the stale body snapshot when the shared draft revision changed before Edit re-entry", async () => {
@@ -1702,7 +1856,7 @@ describe("App editor-host session boundary", () => {
     await waitFor(() => expect(savePageBody).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole("alert")).toHaveTextContent("You do not have permission to edit this workspace.");
     expect(savedSnapshots.get("page-001")).toBeUndefined();
-    expect(screen.queryByText("Status Saved")).toBeNull();
+    expect(screen.queryByRole("status", { name: "Current page changes saved" })).toBeNull();
     await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));

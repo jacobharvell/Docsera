@@ -464,6 +464,32 @@ function dispatchSyntheticPaste(editor: Editor, input: { html: string; text: str
   }
 }
 
+function findLastCanvasContentElement(proseMirror: HTMLElement): HTMLElement | null {
+  const directChildren = Array.from(proseMirror.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+  if (directChildren.length === 0) {
+    return null;
+  }
+
+  for (let index = directChildren.length - 1; index >= 0; index -= 1) {
+    const candidate = directChildren[index];
+    if (candidate.getBoundingClientRect().height > 0) {
+      return candidate;
+    }
+  }
+
+  return directChildren[directChildren.length - 1] ?? null;
+}
+
+function isBelowEditorContentCanvasClick(event: React.MouseEvent<HTMLElement>, proseMirror: HTMLElement): boolean {
+  const lastContentElement = findLastCanvasContentElement(proseMirror);
+  if (!lastContentElement) {
+    return true;
+  }
+
+  const lastContentRect = lastContentElement.getBoundingClientRect();
+  return event.clientY >= lastContentRect.bottom;
+}
+
 function trySetEditorTabIndex(editor: Editor, isEditable: boolean): boolean {
   try {
     editor.view.dom.tabIndex = isEditable ? 0 : -1;
@@ -492,11 +518,21 @@ export function PageEditorHostRuntime({
   const [slashActiveIndex, setSlashActiveIndex] = useState(0);
   const [dismissedSlashKey, setDismissedSlashKey] = useState("");
   const [, setLayoutTick] = useState(0);
-  const validatedInitialEnvelope = useMemo(() => parseDocseraDocumentOrThrow(initialEnvelope), [initialEnvelope]);
-  const validatedInitialSavedEnvelope = useMemo(
+  const incomingInitialEnvelope = useMemo(() => parseDocseraDocumentOrThrow(initialEnvelope), [initialEnvelope]);
+  const incomingInitialSavedEnvelope = useMemo(
     () => parseDocseraDocumentOrThrow(initialSavedEnvelope ?? initialEnvelope),
     [initialEnvelope, initialSavedEnvelope]
   );
+  const mountedInitialEnvelopeRef = useRef<DocseraDocumentEnvelope | null>(null);
+  const mountedInitialSavedEnvelopeRef = useRef<DocseraDocumentEnvelope | null>(null);
+  if (mountedInitialEnvelopeRef.current === null) {
+    mountedInitialEnvelopeRef.current = incomingInitialEnvelope;
+  }
+  if (mountedInitialSavedEnvelopeRef.current === null) {
+    mountedInitialSavedEnvelopeRef.current = incomingInitialSavedEnvelope;
+  }
+  const validatedInitialEnvelope = mountedInitialEnvelopeRef.current;
+  const validatedInitialSavedEnvelope = mountedInitialSavedEnvelopeRef.current;
   const initialDocumentKey = useMemo(() => serializeDocument(validatedInitialEnvelope.document), [validatedInitialEnvelope]);
   const initialSavedDocumentKey = useMemo(() => serializeDocument(validatedInitialSavedEnvelope.document), [validatedInitialSavedEnvelope]);
   const initialSessionIsClean = initialDocumentKey === initialSavedDocumentKey;
@@ -587,6 +623,8 @@ export function PageEditorHostRuntime({
   const editableRef = useRef(false);
   const slashActiveIndexRef = useRef(0);
   const dismissedSlashKeyRef = useRef("");
+  const onEditorReadyRef = useRef(onEditorReady);
+  const onOutlineChangeRef = useRef(onOutlineChange);
   const isEditable = canEdit;
   const overlayOwnerDocument = overlayRoot.ownerDocument;
   const overlayOwnerWindow = overlayOwnerDocument.defaultView;
@@ -605,6 +643,14 @@ export function PageEditorHostRuntime({
   useEffect(() => {
     dismissedSlashKeyRef.current = dismissedSlashKey;
   }, [dismissedSlashKey]);
+
+  useEffect(() => {
+    onEditorReadyRef.current = onEditorReady;
+  }, [onEditorReady]);
+
+  useEffect(() => {
+    onOutlineChangeRef.current = onOutlineChange;
+  }, [onOutlineChange]);
 
   useEffect(() => {
     statusRef.current = status;
@@ -676,8 +722,8 @@ export function PageEditorHostRuntime({
         savedDocumentKeyRef.current = mountedDocumentKey;
         setSavedDocumentKey(mountedDocumentKey);
       }
-      onEditorReady?.(runtimeEditor);
-      onOutlineChange(extractDocumentOutline(envelope));
+      onEditorReadyRef.current?.(runtimeEditor);
+      onOutlineChangeRef.current(extractDocumentOutline(envelope));
       queueMicrotask(() => {
         if (!disposedRef.current) {
           initializingRef.current = false;
@@ -688,7 +734,7 @@ export function PageEditorHostRuntime({
       const envelope = createEnvelope(runtimeEditor.getJSON() as DocseraTiptapDocument);
       const nextDocumentKey = serializeDocument(envelope.document);
       currentDocumentKeyRef.current = nextDocumentKey;
-      onOutlineChange(extractDocumentOutline(envelope));
+      onOutlineChangeRef.current(extractDocumentOutline(envelope));
 
        if (initializingRef.current) {
         if (initialSessionIsClean && nextDocumentKey !== savedDocumentKeyRef.current) {
@@ -721,7 +767,7 @@ export function PageEditorHostRuntime({
         scheduleAutosave();
       }
     }
-  }, [editorExtensions, editorProps, initialSessionIsClean, isEditable, onEditorReady, onOutlineChange, validatedInitialEnvelope.document]);
+  }, [editorExtensions, editorProps, initialSessionIsClean, isEditable]);
 
   useEffect(() => {
     disposedRef.current = false;
@@ -1326,7 +1372,8 @@ export function PageEditorHostRuntime({
         onClick={(event) => {
         if (!editor || !isEditable || !(event.target instanceof HTMLElement)) return;
         const proseMirror = event.currentTarget.querySelector(".ProseMirror");
-        if (!proseMirror || (event.target !== event.currentTarget && event.target !== proseMirror)) return;
+        if (!(proseMirror instanceof HTMLElement) || (event.target !== event.currentTarget && event.target !== proseMirror)) return;
+        if (event.target === proseMirror && !isBelowEditorContentCanvasClick(event, proseMirror)) return;
         const lastChild = editor.state.doc.lastChild;
         if (lastChild?.type.name === "paragraph" && lastChild.content.size === 0) {
           editor.commands.focus("end", { scrollIntoView: false });

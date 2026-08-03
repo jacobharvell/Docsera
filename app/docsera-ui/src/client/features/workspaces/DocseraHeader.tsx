@@ -1,6 +1,8 @@
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { WorkspaceMode, WorkspacePendingChangesResult, WorkspaceViewRecord } from "../../shared/types/docsera";
+import { DocseraIcon } from "../../shared/icons/DocseraIcon";
+import { docseraIcons } from "../../shared/icons/docseraIcons";
 import {
   DocseraBrandIcon,
   DoubleChevronIcon,
@@ -13,6 +15,8 @@ import {
 import { RecentWorkspacesMenu, type RecentWorkspaceItem } from "./RecentWorkspacesMenu";
 import { WorkspaceIconBadge } from "./WorkspacePrimitives";
 import type { WorkspacePageView } from "./workspaceViewModels";
+
+type CurrentPageSaveStatus = "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
 
 function listFocusableElements(root: HTMLElement | null): HTMLElement[] {
   if (!root) {
@@ -61,6 +65,7 @@ type DocseraHeaderProps = {
   pendingChangesReadinessMessage?: string;
   pendingChangesRefreshing?: boolean;
   pendingChangesErrorMessage?: string;
+  saveStatus?: CurrentPageSaveStatus;
   onDismissPendingChangesPublishToast?: () => void;
   onOpenPendingPage?: (pageSysId: string) => void;
   onDiscardAllPendingChanges?: () => void;
@@ -97,6 +102,87 @@ function PublishSuccessIcon() {
         <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="1.8" />
         <path d="M6.5 10.2l2.2 2.3 4.8-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
       </svg>
+    </span>
+  );
+}
+
+function SavingCloudSyncIcon() {
+  return (
+    <svg
+      className="docsera-header__save-status-icon docsera-header__save-status-icon--saving"
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      focusable="false"
+      aria-hidden="true"
+    >
+      {/* Split from Lucide CloudSync so the cloud stays fixed while only the sync arrows animate. */}
+      <path
+        className="docsera-header__save-status-cloud"
+        d="M20.996 15.251A4.5 4.5 0 0 0 17.495 8h-1.79a7 7 0 1 0-12.709 5.607"
+        fill="none"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="2"
+      />
+      <g className="docsera-header__save-status-sync">
+        <path d="m17 18-1.535 1.605a5 5 0 0 1-8-1.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+        <path d="M17 22v-4h-4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+        <path d="M7 10v4h4" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+        <path d="m7 14 1.535-1.605a5 5 0 0 1 8 1.5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" />
+      </g>
+    </svg>
+  );
+}
+
+function CurrentPageSaveStatusIndicator({ status }: { status: CurrentPageSaveStatus }) {
+  const label =
+    status === "Unsaved"
+      ? "Current page has unsaved changes"
+      : status === "Saving…"
+        ? "Saving current page"
+        : status === "Changes not saved"
+          ? "Current page changes could not be saved"
+          : "Current page changes saved";
+
+  const statusClass =
+    status === "Unsaved"
+      ? "unsaved"
+      : status === "Saving…"
+        ? "saving"
+        : status === "Changes not saved"
+          ? "failed"
+          : "saved";
+
+  return (
+    <span
+      className={`docsera-header__save-status docsera-header__save-status--${statusClass}`}
+      role="status"
+      aria-atomic="true"
+      aria-live="polite"
+      aria-label={label}
+      title={label}
+    >
+      <span className="docsera-header__save-status-icon-slot" aria-hidden="true">
+        {status === "Saving…" ? (
+          <SavingCloudSyncIcon />
+        ) : (
+          <DocseraIcon
+            className="docsera-header__save-status-icon"
+            icon={
+              status === "Unsaved"
+                ? docseraIcons.cloudOff
+                : status === "Changes not saved"
+                  ? docseraIcons.cloudAlert
+                  : docseraIcons.cloudCheck
+            }
+            size={20}
+            strokeWidth={2}
+          />
+        )}
+      </span>
+      <span className="docsera-header__save-status-sr-only">{label}</span>
     </span>
   );
 }
@@ -149,6 +235,7 @@ export function DocseraHeader({
   pendingChangesReadinessMessage = "",
   pendingChangesRefreshing = false,
   recentWorkspaces,
+  saveStatus,
   onDiscardPendingPage,
   onPublishPendingChanges,
   pendingChangesUndoBlockedPageSysId = "",
@@ -234,6 +321,8 @@ export function DocseraHeader({
   const discardAllBody = pendingCount === 1
     ? "Are you sure you want to discard 1 change? This action cannot be undone."
     : `Are you sure you want to discard ${pendingCount} changes? This action cannot be undone.`;
+
+  const showCurrentPageSaveStatus = showPublishControl && Boolean(saveStatus);
 
   useEffect(() => {
     if (!menuOpen) {
@@ -521,6 +610,12 @@ export function DocseraHeader({
           </div>
           {showPublishControl ? (
             <div className="docsera-header__publish-panel" ref={changesRef}>
+              {showCurrentPageSaveStatus && saveStatus ? (
+                <>
+                  <CurrentPageSaveStatusIndicator status={saveStatus} />
+                  <span className="docsera-header__publish-divider" aria-hidden="true" />
+                </>
+              ) : null}
               {pendingChangesPublishToastMessage ? (
                 <div className="docsera-header__publish-toast" role="status" aria-atomic="true" aria-live="polite">
                   <PublishSuccessIcon />

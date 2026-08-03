@@ -1477,7 +1477,9 @@ describe("App workspace state integration", () => {
     expect(await screen.findByRole("heading", { name: "Published Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 
-    expect(await screen.findByRole("heading", { name: "Published Overview" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(screen.getByRole("navigation", { name: "Page breadcrumbs" })).getByText("Published Overview")).toBeInTheDocument();
+    });
     await waitFor(() => {
       expectWorkspaceSearch({
         workspace: "product-docs",
@@ -1503,7 +1505,9 @@ describe("App workspace state integration", () => {
       window.history.forward();
       await Promise.resolve();
     });
-    expect(await screen.findByRole("heading", { name: "Published Overview" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(screen.getByRole("navigation", { name: "Page breadcrumbs" })).getByText("Published Overview")).toBeInTheDocument();
+    });
     await waitFor(() => {
       expectWorkspaceSearch({
         workspace: "product-docs",

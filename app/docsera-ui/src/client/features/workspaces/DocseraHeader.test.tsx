@@ -1,3 +1,5 @@
+/* @vitest-environment jsdom */
+
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
@@ -30,6 +32,32 @@ function pending(rows: PendingRow[]): WorkspacePendingChangesResult {
 }
 
 describe("DocseraHeader publishing changes", () => {
+  it("uses a bare 20px save-status icon treatment and disables the saving animation under reduced motion", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+    const statusBlock = source.match(/\.docsera-header__save-status \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const iconSlotBlock = source.match(/\.docsera-header__save-status-icon-slot \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const iconBlock = source.match(/\.docsera-header__save-status-icon \{([\s\S]*?)\n\}/)?.[1] ?? "";
+
+    expect(statusBlock).toContain("width: 20px;");
+    expect(statusBlock).toContain("height: 20px;");
+    expect(statusBlock).not.toContain("border:");
+    expect(statusBlock).not.toContain("border-radius:");
+    expect(statusBlock).not.toContain("background:");
+    expect(statusBlock).not.toContain("box-shadow:");
+    expect(iconSlotBlock).toContain("width: 20px;");
+    expect(iconSlotBlock).toContain("height: 20px;");
+    expect(iconBlock).toContain("width: 20px;");
+    expect(iconBlock).toContain("height: 20px;");
+    expect(source).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.docsera-header__save-status-sync \{\s*animation: none;/);
+  });
+
   it("opens a compact dropdown with singular/plural count, rows, footer publish, and navigation only for non-removed rows", () => {
     const onOpenPendingPage = vi.fn();
     const onDiscardAllPendingChanges = vi.fn();
@@ -541,4 +569,87 @@ describe("DocseraHeader publishing changes", () => {
     expect(screen.queryByRole("dialog", { name: "Changes Center" })).not.toBeInTheDocument();
     expect(publish).toHaveFocus();
   });
+
+  it("renders the current-page save status indicator with the accepted icon mappings and live-region text updates", () => {
+    const states = [
+      {
+        label: "Current page has unsaved changes",
+        saveStatus: "Unsaved" as const,
+        statusClass: "docsera-header__save-status--unsaved",
+        iconSelector: ".lucide-cloud-off"
+      },
+      {
+        label: "Saving current page",
+        saveStatus: "Saving…" as const,
+        statusClass: "docsera-header__save-status--saving",
+        iconSelector: ".docsera-header__save-status-sync"
+      },
+      {
+        label: "Current page changes saved",
+        saveStatus: "Saved" as const,
+        statusClass: "docsera-header__save-status--saved",
+        iconSelector: ".lucide-cloud-check"
+      },
+      {
+        label: "Current page changes could not be saved",
+        saveStatus: "Changes not saved" as const,
+        statusClass: "docsera-header__save-status--failed",
+        iconSelector: ".lucide-cloud-alert"
+      }
+    ];
+
+    const { container, rerender } = render(
+      <DocseraHeader {...baseProps} onPublishPendingChanges={vi.fn()} pendingChanges={pending([])} saveStatus={states[0].saveStatus} />
+    );
+
+    const publish = within(container).getByRole("button", { name: "No pending changes to publish" });
+    const indicator = within(container).getByRole("status", { name: states[0].label });
+
+    for (const [index, state] of states.entries()) {
+      if (index > 0) {
+        rerender(<DocseraHeader {...baseProps} onPublishPendingChanges={vi.fn()} pendingChanges={pending([])} saveStatus={state.saveStatus} />);
+      }
+
+      expect(indicator).toHaveTextContent(state.label);
+      expect(indicator).toHaveAttribute("aria-label", state.label);
+      expect(indicator).toHaveAttribute("title", state.label);
+      expect(indicator).toHaveClass(state.statusClass);
+      expect(indicator.querySelector(".docsera-header__save-status-icon-slot")).toBeInTheDocument();
+      expect(indicator.querySelector(".docsera-header__save-status-sr-only")).toHaveTextContent(state.label);
+      expect(indicator.querySelector(state.iconSelector)).toBeInTheDocument();
+      expect(within(container).getByRole("status", { name: state.label })).toBe(indicator);
+      expect(indicator.querySelector(".docsera-header__save-status-icon-slot")).toHaveAttribute("aria-hidden", "true");
+      expect((indicator.querySelector("svg")?.getAttribute("width")) ?? "").toBe("20");
+      expect((indicator.querySelector("svg")?.getAttribute("height")) ?? "").toBe("20");
+
+      if (state.saveStatus === "Saving…") {
+        expect(indicator.querySelector(".docsera-header__save-status-cloud")).toBeInTheDocument();
+      } else {
+        expect(indicator.querySelector(".docsera-header__save-status-cloud")).toBeNull();
+      }
+    }
+
+    expect(container.querySelector(".docsera-header__publish-divider")).toBeInTheDocument();
+    expect(publish).toHaveTextContent("Publish");
+  });
+
+  it.each([
+    { label: "Current page changes saved", props: { showWorkspaceMode: "live" as const } },
+    { label: "Current page changes saved", props: { showEditModeToggle: false } }
+  ])("hides the current-page save status in $props presentation", ({ label, props }) => {
+    const { container } = render(
+      <DocseraHeader
+        {...baseProps}
+        {...props}
+        onPublishPendingChanges={vi.fn()}
+        pendingChanges={pending([])}
+        saveStatus="Saved"
+      />
+    );
+
+    expect(within(container).queryByRole("status", { name: label })).not.toBeInTheDocument();
+    expect(container.querySelector(".docsera-header__save-status")).toBeNull();
+    expect(container.querySelector(".docsera-header__publish-divider")).toBeNull();
+  });
+
 });

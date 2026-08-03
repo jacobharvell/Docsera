@@ -43,7 +43,6 @@ type WorkspaceMainPaneProps = {
     isSaving: boolean;
     status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
   }) => void;
-  saveStatus?: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
   onShowCreatePage: () => void;
   onAccessLost: () => void;
   sessionKey: string;
@@ -132,7 +131,6 @@ export function WorkspaceMainPane({
   onOutlineChange,
   onSavePageDraft,
   onStatusChange,
-  saveStatus,
   onShowCreatePage,
   onAccessLost,
   sessionKey,
@@ -208,11 +206,6 @@ export function WorkspaceMainPane({
             <h1 id="docsera-page-title" className="docsera-main__title">
               {page.title}
             </h1>
-            {workspaceMode === "edit" && saveStatus ? (
-              <span className="docsera-main__save-status" aria-live="polite" role="status">
-                {saveStatus}
-              </span>
-            ) : null}
           </div>
         </div>
 

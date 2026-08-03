@@ -54,7 +54,6 @@ type WorkspaceShellProps = {
     isSaving: boolean;
     status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
   }) => void;
-  saveStatus?: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
   onSelectPage: (pageId: string) => void;
   onMovePage?: (input: { pageSysId: string; parentPageSysId: string | null; siblingOrder: string | number }) => void;
   onShowChildPageCreate: (parentPageId: string, parentPageTitle: string) => void;
@@ -156,7 +155,6 @@ export function WorkspaceShell({
   onRetryEditor,
   onSavePageDraft,
   onStatusChange,
-  saveStatus,
   onSelectPage,
   onMovePage,
   onShowChildPageCreate,
@@ -334,7 +332,6 @@ export function WorkspaceShell({
           onRetryEditor={onRetryEditor}
           onSavePageDraft={onSavePageDraft}
           onStatusChange={onStatusChange}
-          saveStatus={saveStatus}
           onShowCreatePage={onShowCreatePage}
           page={selectedPageViewForShell}
           stateCopy={shellCopy}
