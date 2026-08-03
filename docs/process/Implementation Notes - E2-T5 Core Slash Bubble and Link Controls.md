@@ -297,10 +297,25 @@ The repo now includes a repeatable PDI reset for the disposable E2-T5 verificati
 
 Behavior notes:
 
-- the reset deletes only the owned disposable records for `task-32-jacob-smoke`, `task-32-jacob-smoke-populated`, and `task-32-jacob-smoke-empty`
+- the reset owns only the disposable records for `task-32-jacob-smoke`, `task-32-jacob-smoke-populated`, and `task-32-jacob-smoke-empty`
+- dry-run prints the owned fixture inventory, the planned reset actions, and the lease preflight state for each owned workspace without mutating records
+- apply performs a lease-aware preflight before any destructive workspace cleanup; an active lease held by another session blocks that workspace from being deleted or recreated
+- the script never deletes, patches, or backdates workspace lease rows directly
 - apply recreates the two current smoke workspaces, their scoped groups, their role grants, and one representative published page in the populated workspace
-- apply verifies the page-list route in Live and Edit for both workspaces and exercises the empty-workspace create-first-page flow before deleting that temporary page
-- the representative document payload is the same canonical envelope shape expected by the E2 editor contract, so the reset doubles as a reusable page-list and parser smoke fixture
+- the empty-workspace create proof uses a fresh temporary workspace with the explicit verifier ownership marker `Temporary verification workspace owned by reset-editor-smoke-data.mjs`
+- before creating a new proof workspace, the script locates only prior workspaces carrying that exact marker, checks each lease through the supported status route, fully recovers only stale unlocked proof workspaces, and blocks with an actionable error when a stale proof workspace remains actively leased or cannot be confirmed unlocked
+- the proof reset now has an explicit inspection/planning phase before any proof mutation: it inventories verifier-owned proof workspaces, exact workspace/group identifiers, supported lease state, failed provisioning requests, deterministic proof groups, and whether each exact-name group is still referenced by an existing proof workspace
+- a held or unknown proof lease blocks all proof cleanup work, including failed-request cleanup and exact-name orphan-group cleanup, and also blocks creating another proof workspace
+- the runtime page-delete route is not used for the draft-only proof page; after the proof lease is supported-released or otherwise confirmed unlocked through the supported status route, the entire verifier-owned proof boundary is removed through bounded cleanup
+- the bounded proof cleanup inventory includes pages, page snapshots, snapshot sets, change entries, mutation claims, removal members, removal batches, change sets, provisioning requests, the workspace row, memberships, group role grants, and the verifier-created groups
+- change-set and snapshot-set records are not assumed to cascade from workspace deletion; the cleanup order removes the bounded foundation graph before deleting the workspace boundary
+- normal proof-workspace cleanup has one authoritative deletion path for memberships, group role grants, and groups through that bounded cleanup inventory; it does not run a second immediate group-deletion pass over the same proof workspace group ids
+- exact-name orphan-group cleanup is limited to deterministic proof groups proven not to be referenced by any remaining verifier-owned proof workspace, and is used only for failed or incomplete provisioning artifacts that have no surviving workspace boundary
+- if supported lease release cannot be confirmed and the proof workspace cannot be confirmed unlocked through the supported status route, destructive proof cleanup is skipped and the proof workspace is intentionally left behind for bounded recovery on the next run
+- dry-run now reports both the persistent smoke-fixture lease plan and the proof recovery plan, including proof-workspace lease state, failed provisioning artifacts, orphan-group eligibility, planned proof cleanup actions, and any proof apply blockers, while still performing no mutation
+- apply verifies the page-list route in Live and Edit for both workspaces and restores the empty workspace to zero pages after the temporary create flow
+- the representative document payload is the same canonical envelope shape expected by the E2 editor contract, so the reset still doubles as a reusable page-list and parser smoke fixture
+- no bounded fresh-workspace fallback is used by default; a blocked active lease leaves the owned workspace untouched and surfaces an explicit actionable failure instead
 - the script now declares `@napi-rs/keyring` as an exact direct dev dependency at `1.2.0` instead of relying on the SDK's transitive install shape
 
 ## Validation Completed

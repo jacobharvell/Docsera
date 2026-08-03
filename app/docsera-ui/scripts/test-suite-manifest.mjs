@@ -147,6 +147,7 @@ export const testSuites = [
     name: "shared-runtime",
     description: "shared UI primitives; icons; stylesheet contracts; runtime and build boundaries; infrastructure tests not owned by one feature area.",
     files: [
+      "scripts/reset-editor-smoke-data.test.mjs",
       "scripts/run-managed-vitest-suites.test.mjs",
       "scripts/test-suite-manifest.test.mjs",
       "scripts/validation-process.test.ts",

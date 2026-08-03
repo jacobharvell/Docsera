@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { Entry } from "@napi-rs/keyring";
+import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
+import { safeErrorMessage } from "./verification-output-safety.mjs";
 
 const defaults = {
   authAlias: "docsera-pdi",
@@ -9,8 +11,29 @@ const defaults = {
   keyringAccount: "now-sdk",
   keyringService: "ServiceNow",
   pingPath: "/api/x_82900_docsera/docsera_runtime/ping",
-  pagesPath: "/api/x_82900_docsera/docsera_runtime/pages"
+  workspacePath: "/api/x_82900_docsera/docsera_runtime/workspaces",
+  workspaceProvisioningStatusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status",
+  pagesPath: "/api/x_82900_docsera/docsera_runtime/pages",
+  workspaceEditLeasePath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease",
+  workspaceTable: "x_82900_docsera_workspace",
+  workspaceLeaseTable: "x_82900_docsera_workspace_edit_lease",
+  workspaceChangeSetTable: "x_82900_docsera_workspace_change_set",
+  workspaceSnapshotSetTable: "x_82900_docsera_workspace_snapshot_set",
+  workspacePageSnapshotTable: "x_82900_docsera_workspace_page_snapshot",
+  workspaceChangeEntryTable: "x_82900_docsera_workspace_change_entry",
+  workspaceMutationClaimTable: "x_82900_docsera_workspace_mutation_claim",
+  workspaceRemovalBatchTable: "x_82900_docsera_workspace_removal_batch",
+  workspaceRemovalMemberTable: "x_82900_docsera_workspace_removal_member",
+  pageTable: "x_82900_docsera_page"
 };
+
+const proofWorkspaceOwnershipMarker = "Temporary verification workspace owned by reset-editor-smoke-data.mjs";
+const proofWorkspaceName = "Task 32 Jacob Smoke Empty Proof";
+const proofWorkspaceSlug = "task-32-jacob-smoke-empty-proof";
+const proofGroupNames = Object.freeze([
+  "Docsera_Task_32_Jacob_Smoke_Empty_Proof_Admins",
+  "Docsera_Task_32_Jacob_Smoke_Empty_Proof_Editors"
+]);
 
 const ownedWorkspaceConfigs = Object.freeze([
   {
@@ -429,6 +452,162 @@ async function fetchJson(instanceUrl, session, path, options = {}) {
   };
 }
 
+async function fetchText(instanceUrl, session, path, options = {}) {
+  const response = await fetch(new URL(path, instanceUrl), {
+    ...options,
+    headers: {
+      ...createAuthHeaders(session, options.accept ?? "text/html"),
+      ...(options.headers ?? {})
+    }
+  });
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    text: await response.text(),
+    headers: response.headers,
+    url: response.url
+  };
+}
+
+function runtimeResult(result) {
+  return result?.payload ? normalizePayload(result.payload) : null;
+}
+
+async function callRuntime(instanceUrl, session, path, body, method = "POST") {
+  return fetchJson(instanceUrl, session, path, {
+    method,
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(body)
+  });
+}
+
+async function runBackgroundScript(instanceUrl, session, script, scopeName = "x_82900_docsera") {
+  const form = await fetchText(instanceUrl, session, "sys.scripts.do", { accept: "text/html" });
+  if (!form.ok) {
+    throw new Error(`Background script form failed with HTTP ${form.status}.`);
+  }
+
+  const ckMatch = form.text.match(/name="sysparm_ck" type="hidden" value="([^"]+)"/i);
+  const scopePattern = new RegExp(`<option[^>]+value="([^"]+)"[^>]*>${scopeName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}</option>`, "i");
+  const scopeMatch = form.text.match(scopePattern);
+
+  if (!ckMatch?.[1] || !scopeMatch?.[1]) {
+    throw new Error("Could not resolve the background script form token or Docsera scope.");
+  }
+
+  const response = await fetchText(instanceUrl, session, "sys.scripts.do", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded"
+    },
+    body: new URLSearchParams({
+      script,
+      sys_scope: scopeMatch[1],
+      sysparm_ck: ckMatch[1],
+      runscript: "Run script",
+      record_for_rollback: "false",
+      quota_managed_transaction: "true"
+    }).toString(),
+    accept: "text/html"
+  });
+
+  if (!response.ok) {
+    throw new Error(`Background script execution failed with HTTP ${response.status}.`);
+  }
+
+  const resultMatch = response.text.match(/DOCSERA_RESULT:([\s\S]*?)(?:<BR\/>|<\/PRE>)/i);
+  if (!resultMatch?.[1]) {
+    throw new Error("Background script result marker was not found.");
+  }
+
+  const jsonText = resultMatch[1]
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .trim();
+  const parsed = JSON.parse(jsonText);
+  if (parsed?.error) {
+    throw new Error(safeErrorMessage(parsed.error, "Background script failed."));
+  }
+  return parsed;
+}
+
+function normalizeWorkspaceRoute(result) {
+  const normalized = normalizePayload(result);
+  if (!normalized || typeof normalized !== "object") {
+    throw new Error("Workspace route did not return the expected payload.");
+  }
+
+  return normalized;
+}
+
+async function createTemporaryVerificationWorkspace(instanceUrl, session, workspaceName) {
+  const createResult = await fetchJson(instanceUrl, session, defaults.workspacePath, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      name: workspaceName,
+      shortDescription: "Temporary verification workspace owned by reset-editor-smoke-data.mjs",
+      icon: {
+        type: "builtin",
+        key: "docsera-workspace",
+        label: "Docsera workspace icon"
+      },
+      layout: {
+        tocVisibleByDefault: true,
+        pageWidth: "readable"
+      }
+    })
+  });
+
+  if (![201, 202].includes(createResult.status)) {
+    throw new Error(`Temporary workspace create failed with HTTP ${createResult.status}: ${createResult.text}`);
+  }
+
+  const created = normalizeWorkspaceRoute(createResult.payload);
+  if (createResult.status === 201) {
+    return created;
+  }
+
+  const requestId = cleanText(created?.provisioning?.requestId);
+  if (!requestId) {
+    throw new Error("Temporary workspace create did not return a provisioning requestId.");
+  }
+
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const statusResult = await fetchJson(
+      instanceUrl,
+      session,
+      `${defaults.workspaceProvisioningStatusPath}?requestId=${encodeURIComponent(requestId)}`
+    );
+
+    if (!statusResult.ok) {
+      throw new Error(`Temporary workspace provisioning status lookup failed with HTTP ${statusResult.status}: ${statusResult.text}`);
+    }
+
+    const payload = normalizeWorkspaceRoute(statusResult.payload);
+    const state = cleanText(payload?.provisioning?.state);
+    if (state === "succeeded") {
+      return payload;
+    }
+
+    if (state === "failed") {
+      throw new Error(payload?.error?.message ?? "Temporary workspace provisioning failed.");
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+  }
+
+  throw new Error("Temporary workspace provisioning did not complete within the polling window.");
+}
+
 async function tableQuery(instanceUrl, session, table, { query, fields, limit = 100 } = {}) {
   const params = new URLSearchParams({
     sysparm_query: encodeQuery(query),
@@ -479,8 +658,287 @@ function printSection(title) {
   console.log(title);
 }
 
+export function planSmokeResetWorkspace(workspaceConfig, leaseStatusResult) {
+  const successLease = leaseStatusResult?.status === 200 ? runtimeResult(leaseStatusResult) : null;
+  const errorLease = leaseStatusResult?.status === 200 ? null : leaseStatusResult?.payload?.error ?? null;
+  const leaseState = cleanText(successLease?.state || errorLease?.state);
+  const holderDisplayName = cleanText(successLease?.holderDisplayName || errorLease?.holderDisplayName);
+  const blocked = leaseStatusResult ? leaseStatusResult.status !== 200 || leaseState !== "unlocked" : true;
+
+  return {
+    slug: workspaceConfig.slug,
+    name: workspaceConfig.name,
+    plannedAction: workspaceConfig.page ? "delete-and-recreate" : "delete-and-recreate",
+    leaseState: leaseState || "unknown",
+    holderDisplayName,
+    blocked,
+    blockReason:
+      leaseStatusResult && leaseStatusResult.status !== 200 && errorLease?.code === "workspace_locked"
+        ? `active lease held by ${holderDisplayName || "another session"}`
+        : leaseStatusResult && leaseStatusResult.status !== 200 && errorLease?.code === "workspace_lease_lost"
+          ? `active lease held by ${holderDisplayName || "another session"}`
+          : leaseStatusResult && leaseStatusResult.status !== 200
+            ? `lease status returned HTTP ${leaseStatusResult.status}`
+            : blocked && leaseState === "held"
+              ? `active lease held by ${holderDisplayName || "another session"}`
+              : blocked
+                ? "workspace lease state could not be confirmed as unlocked"
+                : ""
+  };
+}
+
+export function buildEmptyWorkspaceCreateBody({
+  title,
+  workspaceSlug,
+  workspaceSysId,
+  workspaceLeaseToken,
+  expectedChangeSetId,
+  expectedChangeSetRevision
+}) {
+  return {
+    title,
+    workspaceSlug,
+    workspaceSysId,
+    workspaceLeaseToken,
+    expectedChangeSetId,
+    expectedChangeSetRevision
+  };
+}
+
+export function shouldReleaseSmokeLease(leaseToken) {
+  return Boolean(cleanText(leaseToken));
+}
+
+export function planProofWorkspaceRecovery(workspace, leaseStatusResult) {
+  const leasePlan = planSmokeResetWorkspace(workspace, leaseStatusResult);
+  return {
+    ...leasePlan,
+    action: leasePlan.blocked ? "block" : "cleanup"
+  };
+}
+
+function normalizeProofWorkspacePlanEntry(entry) {
+  const workspace = entry?.workspace ?? {};
+  const record = entry?.record ?? {};
+  const plan = entry?.plan ?? {};
+  return {
+    workspace: {
+      slug: cleanText(workspace.slug),
+      name: cleanText(workspace.name),
+      sysId: cleanText(workspace.sysId)
+    },
+    record: {
+      adminGroupId: cleanText(record.admin_group),
+      editorGroupId: cleanText(record.editor_group)
+    },
+    plan: {
+      slug: cleanText(plan.slug),
+      name: cleanText(plan.name),
+      plannedAction: cleanText(plan.plannedAction),
+      leaseState: cleanText(plan.leaseState) || "unknown",
+      holderDisplayName: cleanText(plan.holderDisplayName),
+      blocked: Boolean(plan.blocked),
+      blockReason: cleanText(plan.blockReason),
+      action: cleanText(plan.action) || (plan.blocked ? "block" : "cleanup")
+    }
+  };
+}
+
+function normalizeProofFailedRequestEntry(entry) {
+  return {
+    requestId: cleanText(entry?.sys_id),
+    workspaceSlug: cleanText(entry?.workspace_slug),
+    workspaceName: cleanText(entry?.name),
+    state: cleanText(entry?.state),
+    errorCode: cleanText(entry?.error_code),
+    errorMessage: cleanText(entry?.error_message),
+    adminGroupId: cleanText(entry?.admin_group),
+    editorGroupId: cleanText(entry?.editor_group),
+    adminGroupName: cleanText(entry?.admin_group_name),
+    editorGroupName: cleanText(entry?.editor_group_name)
+  };
+}
+
+function normalizeProofGroupRecord(record) {
+  return {
+    sysId: cleanText(record?.sys_id),
+    name: cleanText(record?.name)
+  };
+}
+
+export function buildProofRecoveryPlan({ proofWorkspacePlans, failedRequests, candidateGroupRecords }) {
+  const normalizedWorkspacePlans = Array.isArray(proofWorkspacePlans)
+    ? proofWorkspacePlans.map((entry) => normalizeProofWorkspacePlanEntry(entry))
+    : [];
+  const normalizedFailedRequests = Array.isArray(failedRequests)
+    ? failedRequests.map((entry) => normalizeProofFailedRequestEntry(entry))
+    : [];
+  const normalizedCandidateGroups = Array.isArray(candidateGroupRecords)
+    ? candidateGroupRecords.map((entry) => normalizeProofGroupRecord(entry)).filter((entry) => entry.sysId || entry.name)
+    : [];
+
+  const referencedGroupIds = new Set();
+  const referencedWorkspaceSlugs = new Set();
+  for (const entry of normalizedWorkspacePlans) {
+    if (entry.workspace.slug) {
+      referencedWorkspaceSlugs.add(entry.workspace.slug);
+    }
+    if (entry.record.adminGroupId) {
+      referencedGroupIds.add(entry.record.adminGroupId);
+    }
+    if (entry.record.editorGroupId) {
+      referencedGroupIds.add(entry.record.editorGroupId);
+    }
+  }
+
+  const blockedWorkspaces = normalizedWorkspacePlans.filter((entry) => entry.plan.blocked);
+  const blocked = blockedWorkspaces.length > 0;
+
+  const workspaces = normalizedWorkspacePlans.map((entry) => ({
+    slug: entry.workspace.slug,
+    name: entry.workspace.name,
+    workspaceSysId: entry.workspace.sysId,
+    adminGroupId: entry.record.adminGroupId,
+    editorGroupId: entry.record.editorGroupId,
+    leaseState: entry.plan.leaseState,
+    holderDisplayName: entry.plan.holderDisplayName,
+    blocked: entry.plan.blocked,
+    blockReason: entry.plan.blockReason,
+    plannedAction: entry.plan.action
+  }));
+
+  const failedProvisionRequests = normalizedFailedRequests.map((entry) => {
+    const referencedByWorkspace = Boolean(
+      (entry.workspaceSlug && referencedWorkspaceSlugs.has(entry.workspaceSlug)) ||
+        (entry.adminGroupId && referencedGroupIds.has(entry.adminGroupId)) ||
+        (entry.editorGroupId && referencedGroupIds.has(entry.editorGroupId))
+    );
+    return {
+      requestId: entry.requestId,
+      workspaceSlug: entry.workspaceSlug,
+      workspaceName: entry.workspaceName,
+      state: entry.state,
+      errorCode: entry.errorCode,
+      errorMessage: entry.errorMessage,
+      adminGroupId: entry.adminGroupId,
+      editorGroupId: entry.editorGroupId,
+      adminGroupName: entry.adminGroupName,
+      editorGroupName: entry.editorGroupName,
+      referencedByWorkspace,
+      plannedAction: blocked ? "block" : referencedByWorkspace ? "retain" : "cleanup"
+    };
+  });
+
+  const orphanGroups = normalizedCandidateGroups.map((group) => {
+    const referencedByWorkspace = Boolean(group.sysId && referencedGroupIds.has(group.sysId));
+    return {
+      sysId: group.sysId,
+      name: group.name,
+      referencedByWorkspace,
+      plannedAction: blocked ? "block" : referencedByWorkspace ? "retain" : "cleanup"
+    };
+  });
+
+  return {
+    blocked,
+    blockers: blockedWorkspaces.map((entry) => ({
+      slug: entry.workspace.slug,
+      workspaceSysId: entry.workspace.sysId,
+      leaseState: entry.plan.leaseState,
+      holderDisplayName: entry.plan.holderDisplayName,
+      blockReason: entry.plan.blockReason
+    })),
+    workspaces,
+    failedProvisionRequests,
+    orphanGroups,
+    plannedActions: {
+      cleanupWorkspaceSysIds: blocked ? [] : workspaces.filter((entry) => entry.plannedAction === "cleanup").map((entry) => entry.workspaceSysId),
+      cleanupFailedRequestIds: blocked ? [] : failedProvisionRequests.filter((entry) => entry.plannedAction === "cleanup").map((entry) => entry.requestId),
+      cleanupOrphanGroupIds: blocked ? [] : orphanGroups.filter((entry) => entry.plannedAction === "cleanup").map((entry) => entry.sysId)
+    }
+  };
+}
+
+export function buildProofCleanupInventory(boundary) {
+  return {
+    workspaceSysId: cleanText(boundary?.workspaceSysId),
+    workspaceSlug: cleanText(boundary?.workspaceSlug),
+    requestIds: toCleanIdList(boundary?.requestIds),
+    pageIds: toCleanIdList(boundary?.pageIds),
+    snapshotSetIds: toCleanIdList(boundary?.snapshotSetIds),
+    changeSetIds: toCleanIdList(boundary?.changeSetIds),
+    snapshotPageIds: toCleanIdList(boundary?.snapshotPageIds),
+    changeEntryIds: toCleanIdList(boundary?.changeEntryIds),
+    mutationClaimIds: toCleanIdList(boundary?.mutationClaimIds),
+    removalBatchIds: toCleanIdList(boundary?.removalBatchIds),
+    removalMemberIds: toCleanIdList(boundary?.removalMemberIds),
+    membershipIds: toCleanIdList(boundary?.membershipIds),
+    groupRoleGrantIds: toCleanIdList(boundary?.groupRoleGrantIds),
+    groupIds: toCleanIdList(boundary?.groupIds),
+    leaseIds: toCleanIdList(boundary?.leaseIds)
+  };
+}
+
+export function buildProofCleanupDeleteOrder(inventory) {
+  return [
+    { kind: "removalMembers", ids: inventory.removalMemberIds },
+    { kind: "removalBatches", ids: inventory.removalBatchIds },
+    { kind: "mutationClaims", ids: inventory.mutationClaimIds },
+    { kind: "changeEntries", ids: inventory.changeEntryIds },
+    { kind: "snapshotPages", ids: inventory.snapshotPageIds },
+    { kind: "pages", ids: inventory.pageIds },
+    { kind: "snapshotSets", ids: inventory.snapshotSetIds },
+    { kind: "changeSets", ids: inventory.changeSetIds },
+    { kind: "requests", ids: inventory.requestIds },
+    { kind: "workspace", ids: inventory.workspaceSysId ? [inventory.workspaceSysId] : [] },
+    { kind: "memberships", ids: inventory.membershipIds },
+    { kind: "groupRoleGrants", ids: inventory.groupRoleGrantIds },
+    { kind: "groups", ids: inventory.groupIds }
+  ];
+}
+
+export function authorizeProofCleanup({ releaseResult, statusResult }) {
+  if (releaseResult?.status === 200) {
+    return {
+      authorized: true,
+      reason: "supported release confirmed"
+    };
+  }
+
+  const statusPayload = statusResult?.status === 200 ? runtimeResult(statusResult) : null;
+  const leaseState = cleanText(statusPayload?.state);
+  if (leaseState === "unlocked") {
+    return {
+      authorized: true,
+      reason: "supported status confirmed unlocked"
+    };
+  }
+
+  return {
+    authorized: false,
+    reason:
+      releaseResult
+        ? `supported release could not be confirmed${statusResult ? " and the workspace remained non-unlocked" : ""}`
+        : "no supported release confirmation was available"
+  };
+}
+
 function listValue(values) {
   return values.length ? values.join(", ") : "(none)";
+}
+
+function toCleanIdList(values) {
+  const seen = new Set();
+  const result = [];
+  for (const value of Array.isArray(values) ? values : []) {
+    const cleaned = cleanText(value);
+    if (!cleaned || seen.has(cleaned)) {
+      continue;
+    }
+    seen.add(cleaned);
+    result.push(cleaned);
+  }
+  return result;
 }
 
 function buildWorkspaceInsert(config, currentUserSysId, groupSysIds) {
@@ -534,7 +992,7 @@ async function getCurrentUser(instanceUrl, session) {
   };
 }
 
-async function deleteOwnedRecords(instanceUrl, session, dryRun) {
+async function loadOwnedRecords(instanceUrl, session) {
   const requestRecords = await tableQuery(instanceUrl, session, "x_82900_docsera_workspace_provision_request", {
     query: `workspace_slugIN${ownedWorkspaceSlugs.join(",")}`,
     fields: "sys_id,workspace_slug,name",
@@ -574,50 +1032,13 @@ async function deleteOwnedRecords(instanceUrl, session, dryRun) {
       })
     : [];
 
-  printSection("Owned disposable records");
-  console.log(`Workspaces: ${listValue(workspaceRecords.map((record) => cleanText(record.workspace_slug) || cleanText(record.name)))}`);
-  console.log(`Pages: ${listValue(pageRecords.map((record) => cleanText(record.draft_slug) || cleanText(record.draft_title)))}`);
-  console.log(`Groups: ${listValue(groupRecords.map((record) => cleanText(record.name)))}`);
-  console.log(`Provision requests: ${requestRecords.length}`);
-
-  if (dryRun) {
-    return {
-      deleted: {
-        requestCount: requestRecords.length,
-        workspaceCount: workspaceRecords.length,
-        pageCount: pageRecords.length,
-        groupCount: groupRecords.length,
-        membershipCount: membershipRecords.length,
-        groupRoleCount: groupRoleRecords.length
-      }
-    };
-  }
-
-  for (const record of pageRecords) {
-    await tableDelete(instanceUrl, session, "x_82900_docsera_page", cleanText(record.sys_id));
-  }
-
-  for (const record of requestRecords) {
-    await tableDelete(instanceUrl, session, "x_82900_docsera_workspace_provision_request", cleanText(record.sys_id));
-  }
-
-  for (const record of workspaceRecords) {
-    await tableDelete(instanceUrl, session, "x_82900_docsera_workspace", cleanText(record.sys_id));
-  }
-
-  for (const record of membershipRecords) {
-    await tableDelete(instanceUrl, session, "sys_user_grmember", cleanText(record.sys_id));
-  }
-
-  for (const record of groupRoleRecords) {
-    await tableDelete(instanceUrl, session, "sys_group_has_role", cleanText(record.sys_id));
-  }
-
-  for (const record of groupRecords) {
-    await tableDelete(instanceUrl, session, "sys_user_group", cleanText(record.sys_id));
-  }
-
   return {
+    requestRecords,
+    workspaceRecords,
+    pageRecords,
+    groupRecords,
+    membershipRecords,
+    groupRoleRecords,
     deleted: {
       requestCount: requestRecords.length,
       workspaceCount: workspaceRecords.length,
@@ -627,6 +1048,569 @@ async function deleteOwnedRecords(instanceUrl, session, dryRun) {
       groupRoleCount: groupRoleRecords.length
     }
   };
+}
+
+function printOwnedRecords(ownedRecords) {
+  printSection("Owned disposable records");
+  console.log(`Workspaces: ${listValue(ownedRecords.workspaceRecords.map((record) => cleanText(record.workspace_slug) || cleanText(record.name)))}`);
+  console.log(`Pages: ${listValue(ownedRecords.pageRecords.map((record) => cleanText(record.draft_slug) || cleanText(record.draft_title)))}`);
+  console.log(`Groups: ${listValue(ownedRecords.groupRecords.map((record) => cleanText(record.name)))}`);
+  console.log(`Provision requests: ${ownedRecords.requestRecords.length}`);
+}
+
+async function deleteOwnedRecords(instanceUrl, session, ownedRecords) {
+  for (const record of ownedRecords.pageRecords) {
+    await tableDelete(instanceUrl, session, "x_82900_docsera_page", cleanText(record.sys_id));
+  }
+
+  for (const record of ownedRecords.requestRecords) {
+    await tableDelete(instanceUrl, session, "x_82900_docsera_workspace_provision_request", cleanText(record.sys_id));
+  }
+
+  for (const record of ownedRecords.workspaceRecords) {
+    await tableDelete(instanceUrl, session, "x_82900_docsera_workspace", cleanText(record.sys_id));
+  }
+
+  for (const record of ownedRecords.membershipRecords) {
+    await tableDelete(instanceUrl, session, "sys_user_grmember", cleanText(record.sys_id));
+  }
+
+  for (const record of ownedRecords.groupRoleRecords) {
+    await tableDelete(instanceUrl, session, "sys_group_has_role", cleanText(record.sys_id));
+  }
+
+  for (const record of ownedRecords.groupRecords) {
+    await tableDelete(instanceUrl, session, "sys_user_group", cleanText(record.sys_id));
+  }
+}
+
+async function preflightOwnedWorkspaceLeases(instanceUrl, session, workspaceRecords) {
+  const leaseStatuses = await Promise.all(
+    workspaceRecords.map(async (record) => {
+      const workspace = {
+        slug: cleanText(record.workspace_slug),
+        name: cleanText(record.name),
+        sysId: cleanText(record.sys_id)
+      };
+      const leaseStatus = await callRuntime(instanceUrl, session, `${defaults.workspaceEditLeasePath}/status`, {
+        workspaceSlug: workspace.slug,
+        workspaceSysId: workspace.sysId
+      });
+      return planSmokeResetWorkspace(workspace, leaseStatus);
+    })
+  );
+
+  return leaseStatuses;
+}
+
+async function inspectProofWorkspaceBoundary(instanceUrl, session, boundary) {
+  return runBackgroundScript(
+    instanceUrl,
+    session,
+    `
+    (function () {
+      var defaults = ${JSON.stringify(defaults)};
+      var ownershipMarker = ${JSON.stringify(proofWorkspaceOwnershipMarker)};
+      var workspaceSysId = ${JSON.stringify(cleanText(boundary?.workspaceSysId))};
+      var workspaceSlug = ${JSON.stringify(cleanText(boundary?.workspaceSlug))};
+      var requestIds = ${JSON.stringify(toCleanIdList(boundary?.requestIds))};
+      var groupIds = ${JSON.stringify(toCleanIdList(boundary?.groupIds))};
+
+      function listIds(table, field, values) {
+        var cleaned = [];
+        var seen = {};
+        for (var i = 0; i < values.length; i += 1) {
+          var value = String(values[i] || '').trim();
+          if (value && !seen[value]) {
+            seen[value] = true;
+            cleaned.push(value);
+          }
+        }
+        if (!cleaned.length) {
+          return [];
+        }
+        var rows = new GlideRecord(table);
+        rows.addQuery(field, 'IN', cleaned.join(','));
+        rows.query();
+        var result = [];
+        while (rows.next()) {
+          result.push(String(rows.getUniqueValue() || ''));
+        }
+        return result;
+      }
+
+      var workspace = new GlideRecord(defaults.workspaceTable);
+      if (!workspace.get(workspaceSysId)) {
+        gs.info('DOCSERA_RESULT:' + JSON.stringify({
+          inventory: {
+            workspaceSysId: workspaceSysId,
+            workspaceSlug: workspaceSlug,
+            requestIds: [],
+            pageIds: [],
+            snapshotSetIds: [],
+            changeSetIds: [],
+            snapshotPageIds: [],
+            changeEntryIds: [],
+            mutationClaimIds: [],
+            removalBatchIds: [],
+            removalMemberIds: [],
+            membershipIds: [],
+            groupRoleGrantIds: [],
+            groupIds: groupIds,
+            leaseIds: []
+          }
+        }));
+        return;
+      }
+
+      if (String(workspace.getValue('short_description') || '') !== ownershipMarker) {
+        gs.info('DOCSERA_RESULT:' + JSON.stringify({ error: 'Proof workspace ownership marker mismatch.' }));
+        return;
+      }
+
+      var derivedGroupIds = [];
+      var adminGroup = String(workspace.getValue('admin_group') || '');
+      var editorGroup = String(workspace.getValue('editor_group') || '');
+      if (adminGroup) {
+        derivedGroupIds.push(adminGroup);
+      }
+      if (editorGroup && editorGroup !== adminGroup) {
+        derivedGroupIds.push(editorGroup);
+      }
+
+      var effectiveGroupIds = {};
+      for (var groupIndex = 0; groupIndex < groupIds.length; groupIndex += 1) {
+        effectiveGroupIds[String(groupIds[groupIndex] || '').trim()] = true;
+      }
+      for (var derivedIndex = 0; derivedIndex < derivedGroupIds.length; derivedIndex += 1) {
+        effectiveGroupIds[derivedGroupIds[derivedIndex]] = true;
+      }
+      var groupIdList = Object.keys(effectiveGroupIds).filter(Boolean);
+
+      var pages = [];
+      var pageRows = new GlideRecord(defaults.pageTable);
+      pageRows.addQuery('workspace', workspaceSysId);
+      pageRows.query();
+      while (pageRows.next()) {
+        pages.push(String(pageRows.getUniqueValue() || ''));
+      }
+
+      var changeSets = [];
+      var changeSetRows = new GlideRecord(defaults.workspaceChangeSetTable);
+      changeSetRows.addQuery('workspace', workspaceSysId);
+      changeSetRows.query();
+      while (changeSetRows.next()) {
+        changeSets.push(String(changeSetRows.getUniqueValue() || ''));
+      }
+
+      var snapshotSets = [];
+      var snapshotSetRows = new GlideRecord(defaults.workspaceSnapshotSetTable);
+      snapshotSetRows.addQuery('workspace', workspaceSysId);
+      snapshotSetRows.query();
+      while (snapshotSetRows.next()) {
+        snapshotSets.push(String(snapshotSetRows.getUniqueValue() || ''));
+      }
+
+      var leaseIds = [];
+      var leaseRows = new GlideRecord(defaults.workspaceLeaseTable);
+      leaseRows.addQuery('workspace', workspaceSysId);
+      leaseRows.query();
+      while (leaseRows.next()) {
+        leaseIds.push(String(leaseRows.getUniqueValue() || ''));
+      }
+
+      var removalBatchIds = listIds(defaults.workspaceRemovalBatchTable, 'change_set', changeSets);
+      var removalMemberIds = listIds(defaults.workspaceRemovalMemberTable, 'removal_batch', removalBatchIds);
+      var mutationClaimIds = listIds(defaults.workspaceMutationClaimTable, 'workspace', [workspaceSysId]);
+      var changeEntryIds = listIds(defaults.workspaceChangeEntryTable, 'change_set', changeSets);
+      var snapshotPageIds = listIds(defaults.workspacePageSnapshotTable, 'snapshot_set', snapshotSets);
+      var membershipIds = listIds('sys_user_grmember', 'group', groupIdList);
+      var groupRoleGrantIds = listIds('sys_group_has_role', 'group', groupIdList);
+
+      var requestRowIds = [];
+      if (requestIds.length) {
+        requestRowIds = listIds('x_82900_docsera_workspace_provision_request', 'sys_id', requestIds);
+      } else if (workspaceSlug) {
+        var requestRows = new GlideRecord('x_82900_docsera_workspace_provision_request');
+        requestRows.addQuery('workspace_slug', workspaceSlug);
+        requestRows.query();
+        while (requestRows.next()) {
+          requestRowIds.push(String(requestRows.getUniqueValue() || ''));
+        }
+      }
+
+      gs.info('DOCSERA_RESULT:' + JSON.stringify({
+        inventory: {
+          workspaceSysId: workspaceSysId,
+          workspaceSlug: workspaceSlug,
+          requestIds: requestRowIds,
+          pageIds: pages,
+          snapshotSetIds: snapshotSets,
+          changeSetIds: changeSets,
+          snapshotPageIds: snapshotPageIds,
+          changeEntryIds: changeEntryIds,
+          mutationClaimIds: mutationClaimIds,
+          removalBatchIds: removalBatchIds,
+          removalMemberIds: removalMemberIds,
+          membershipIds: membershipIds,
+          groupRoleGrantIds: groupRoleGrantIds,
+          groupIds: groupIdList,
+          leaseIds: leaseIds
+        }
+      }));
+    })();
+    `
+  );
+}
+
+async function cleanupProofWorkspaceBoundary(instanceUrl, session, inventory) {
+  const deleteOrder = buildProofCleanupDeleteOrder(inventory);
+  await runBackgroundScript(
+    instanceUrl,
+    session,
+    `
+    (function () {
+      var deleteOrder = ${JSON.stringify(deleteOrder)};
+
+      function deleteByIds(table, ids) {
+        for (var i = 0; i < ids.length; i += 1) {
+          var sysId = String(ids[i] || '').trim();
+          if (!sysId) {
+            continue;
+          }
+          var row = new GlideRecord(table);
+          if (row.get(sysId)) {
+            row.deleteRecord();
+          }
+        }
+      }
+
+      for (var stepIndex = 0; stepIndex < deleteOrder.length; stepIndex += 1) {
+        var step = deleteOrder[stepIndex];
+        var ids = Array.isArray(step.ids) ? step.ids : [];
+        if (!ids.length) {
+          continue;
+        }
+        switch (step.kind) {
+          case 'removalMembers':
+            deleteByIds('${defaults.workspaceRemovalMemberTable}', ids);
+            break;
+          case 'removalBatches':
+            deleteByIds('${defaults.workspaceRemovalBatchTable}', ids);
+            break;
+          case 'mutationClaims':
+            deleteByIds('${defaults.workspaceMutationClaimTable}', ids);
+            break;
+          case 'changeEntries':
+            deleteByIds('${defaults.workspaceChangeEntryTable}', ids);
+            break;
+          case 'snapshotPages':
+            deleteByIds('${defaults.workspacePageSnapshotTable}', ids);
+            break;
+          case 'pages':
+            deleteByIds('${defaults.pageTable}', ids);
+            break;
+          case 'snapshotSets':
+            deleteByIds('${defaults.workspaceSnapshotSetTable}', ids);
+            break;
+          case 'changeSets':
+            deleteByIds('${defaults.workspaceChangeSetTable}', ids);
+            break;
+          case 'requests':
+            deleteByIds('x_82900_docsera_workspace_provision_request', ids);
+            break;
+          case 'workspace':
+            deleteByIds('${defaults.workspaceTable}', ids);
+            break;
+          case 'memberships':
+            deleteByIds('sys_user_grmember', ids);
+            break;
+          case 'groupRoleGrants':
+            deleteByIds('sys_group_has_role', ids);
+            break;
+          case 'groups':
+            deleteByIds('sys_user_group', ids);
+            break;
+          default:
+            gs.info('DOCSERA_RESULT:' + JSON.stringify({ error: 'Unsupported cleanup step: ' + step.kind }));
+            return;
+        }
+      }
+
+      gs.info('DOCSERA_RESULT:' + JSON.stringify({ cleaned: true }));
+    })();
+    `
+  );
+}
+
+async function preflightProofWorkspaceRecovery(instanceUrl, session) {
+  const proofWorkspaces = await tableQuery(instanceUrl, session, defaults.workspaceTable, {
+    query: `short_description=${proofWorkspaceOwnershipMarker}`,
+    fields: "sys_id,workspace_slug,name,admin_group,editor_group,short_description",
+    limit: 20
+  });
+
+  const plans = await Promise.all(
+    proofWorkspaces.map(async (record) => {
+      const workspace = {
+        slug: cleanText(record.workspace_slug),
+        name: cleanText(record.name),
+        sysId: cleanText(record.sys_id)
+      };
+      const leaseStatus = await callRuntime(instanceUrl, session, `${defaults.workspaceEditLeasePath}/status`, {
+        workspaceSlug: workspace.slug,
+        workspaceSysId: workspace.sysId
+      });
+      return {
+        workspace,
+        plan: planProofWorkspaceRecovery(workspace, leaseStatus),
+        record
+      };
+    })
+  );
+
+  return plans;
+}
+
+async function loadFailedProofProvisionRequests(instanceUrl, session) {
+  return tableQuery(instanceUrl, session, "x_82900_docsera_workspace_provision_request", {
+    query: `short_description=${proofWorkspaceOwnershipMarker}^workspaceISEMPTY`,
+    fields: "sys_id,workspace_slug,name,admin_group,editor_group,admin_group_name,editor_group_name,state,error_code,error_message",
+    limit: 20
+  });
+}
+
+async function loadProofCandidateGroups(instanceUrl, session, failedRequests) {
+  const groupNames = new Set(proofGroupNames);
+  for (const requestRecord of Array.isArray(failedRequests) ? failedRequests : []) {
+    const adminGroupName = cleanText(requestRecord.admin_group_name);
+    const editorGroupName = cleanText(requestRecord.editor_group_name);
+    if (adminGroupName) {
+      groupNames.add(adminGroupName);
+    }
+    if (editorGroupName) {
+      groupNames.add(editorGroupName);
+    }
+  }
+
+  const effectiveGroupNames = Array.from(groupNames);
+  if (!effectiveGroupNames.length) {
+    return [];
+  }
+
+  return tableQuery(instanceUrl, session, "sys_user_group", {
+    query: `nameIN${effectiveGroupNames.join(",")}`,
+    fields: "sys_id,name",
+    limit: 20
+  });
+}
+
+async function inspectProofRecoveryPlan(instanceUrl, session) {
+  const proofWorkspacePlans = await preflightProofWorkspaceRecovery(instanceUrl, session);
+  const failedRequests = await loadFailedProofProvisionRequests(instanceUrl, session);
+  const candidateGroupRecords = await loadProofCandidateGroups(instanceUrl, session, failedRequests);
+
+  return {
+    proofWorkspacePlans,
+    failedRequests,
+    candidateGroupRecords,
+    plan: buildProofRecoveryPlan({
+      proofWorkspacePlans,
+      failedRequests,
+      candidateGroupRecords
+    })
+  };
+}
+
+async function cleanupProofGroupsByIdsOrNames(instanceUrl, session, { groupIds, groupNames }) {
+  const effectiveGroupIds = new Set(toCleanIdList(groupIds));
+  const effectiveGroupNames = Array.from(new Set((Array.isArray(groupNames) ? groupNames : []).map((value) => cleanText(value)).filter(Boolean)));
+
+  if (effectiveGroupNames.length > 0) {
+    const groupRecords = await tableQuery(instanceUrl, session, "sys_user_group", {
+      query: `nameIN${effectiveGroupNames.join(",")}`,
+      fields: "sys_id,name",
+      limit: 20
+    });
+    for (const groupRecord of groupRecords) {
+      const groupSysId = cleanText(groupRecord.sys_id);
+      if (groupSysId) {
+        effectiveGroupIds.add(groupSysId);
+      }
+    }
+  }
+
+  const resolvedGroupIds = Array.from(effectiveGroupIds);
+  if (!resolvedGroupIds.length) {
+    return [];
+  }
+
+  const membershipRecords = await tableQuery(instanceUrl, session, "sys_user_grmember", {
+    query: `groupIN${resolvedGroupIds.join(",")}`,
+    fields: "sys_id",
+    limit: 100
+  });
+  for (const membershipRecord of membershipRecords) {
+    await tableDelete(instanceUrl, session, "sys_user_grmember", cleanText(membershipRecord.sys_id));
+  }
+
+  const groupRoleRecords = await tableQuery(instanceUrl, session, "sys_group_has_role", {
+    query: `groupIN${resolvedGroupIds.join(",")}`,
+    fields: "sys_id",
+    limit: 100
+  });
+  for (const groupRoleRecord of groupRoleRecords) {
+    await tableDelete(instanceUrl, session, "sys_group_has_role", cleanText(groupRoleRecord.sys_id));
+  }
+
+  for (const groupSysId of resolvedGroupIds) {
+    await tableDelete(instanceUrl, session, "sys_user_group", groupSysId);
+  }
+
+  return resolvedGroupIds;
+}
+
+async function applyProofRecoveryPlan(instanceUrl, session, proofRecoveryInspection) {
+  const proofPlan = proofRecoveryInspection?.plan ?? buildProofRecoveryPlan({});
+  if (proofPlan.blocked) {
+    throw new Error(
+      `Existing proof workspace cleanup is blocked by active or unknown lease state: ${proofPlan.blockers
+        .map((entry) => `${entry.slug}${entry.holderDisplayName ? ` (${entry.holderDisplayName})` : ""}`)
+        .join(", ")}`
+    );
+  }
+
+  const recovered = [];
+  for (const entry of proofRecoveryInspection?.proofWorkspacePlans ?? []) {
+    const normalizedEntry = normalizeProofWorkspacePlanEntry(entry);
+    if (normalizedEntry.plan.action !== "cleanup") {
+      continue;
+    }
+    const inventoryPayload = await inspectProofWorkspaceBoundary(instanceUrl, session, {
+      workspaceSysId: normalizedEntry.workspace.sysId,
+      workspaceSlug: normalizedEntry.workspace.slug,
+      groupIds: [normalizedEntry.record.adminGroupId, normalizedEntry.record.editorGroupId]
+    });
+    const inventory = buildProofCleanupInventory(inventoryPayload?.inventory);
+    await cleanupProofWorkspaceBoundary(instanceUrl, session, inventory);
+    recovered.push({
+      workspaceSlug: inventory.workspaceSlug,
+      state: "workspace_boundary_removed",
+      inventory
+    });
+  }
+
+  const failedRequestRecoveries = [];
+  for (const requestPlan of proofPlan.failedProvisionRequests) {
+    if (requestPlan.plannedAction !== "cleanup" || !requestPlan.requestId) {
+      continue;
+    }
+    await tableDelete(instanceUrl, session, "x_82900_docsera_workspace_provision_request", requestPlan.requestId);
+    failedRequestRecoveries.push({
+      requestId: requestPlan.requestId,
+      workspaceSlug: requestPlan.workspaceSlug,
+      state: requestPlan.state,
+      groupIds: []
+    });
+  }
+
+  const orphanGroupIds = proofPlan.plannedActions.cleanupOrphanGroupIds;
+  if (orphanGroupIds.length > 0) {
+    await cleanupProofGroupsByIdsOrNames(instanceUrl, session, {
+      groupIds: orphanGroupIds,
+      groupNames: []
+    });
+    failedRequestRecoveries.push({
+      requestId: "",
+      workspaceSlug: proofWorkspaceSlug,
+      state: "orphaned_groups_removed",
+      groupIds: orphanGroupIds
+    });
+  }
+
+  return [...recovered, ...failedRequestRecoveries];
+}
+
+function hasPlannedProofRecoveryMutations(proofPlan) {
+  return Boolean(
+    proofPlan?.plannedActions?.cleanupWorkspaceSysIds?.length ||
+      proofPlan?.plannedActions?.cleanupFailedRequestIds?.length ||
+      proofPlan?.plannedActions?.cleanupOrphanGroupIds?.length
+  );
+}
+
+async function recoverStaleProofWorkspaces(instanceUrl, session) {
+  const proofRecoveryInspection = await inspectProofRecoveryPlan(instanceUrl, session);
+  return applyProofRecoveryPlan(instanceUrl, session, proofRecoveryInspection);
+}
+
+async function seedTemporaryVerificationWorkspaceFoundation(instanceUrl, session, workspaceSysId) {
+  return runBackgroundScript(
+    instanceUrl,
+    session,
+    `
+    (function () {
+      var workspaceSysId = ${JSON.stringify(workspaceSysId)};
+      var workspace = new GlideRecord('${defaults.workspaceTable}');
+      if (!workspace.get(workspaceSysId)) {
+        gs.info('DOCSERA_RESULT:' + JSON.stringify({ error: 'Workspace not found.' }));
+        return;
+      }
+
+      var changeSetKey = workspaceSysId + ':change-set';
+      var snapshotKey = workspaceSysId + ':snapshot';
+      var activeId = '';
+      var snapshotId = '';
+      var workspaceStateRevision = String(workspace.getValue('workspace_state_revision') || '0');
+
+      var existingActive = new GlideRecord('${defaults.workspaceChangeSetTable}');
+      existingActive.addQuery('generation_key', changeSetKey);
+      existingActive.setLimit(1);
+      existingActive.query();
+      if (existingActive.next()) {
+        activeId = String(existingActive.getUniqueValue() || '');
+      } else {
+        var active = new GlideRecord('${defaults.workspaceChangeSetTable}');
+        active.initialize();
+        active.workspace = workspaceSysId;
+        active.generation_key = changeSetKey;
+        active.change_set_revision = 0;
+        active.next_pending_sequence = 1;
+        active.lifecycle_state = 'active';
+        active.recovery_state = 'none';
+        activeId = String(active.insert() || '');
+      }
+
+      var existingSnapshot = new GlideRecord('${defaults.workspaceSnapshotSetTable}');
+      existingSnapshot.addQuery('snapshot_key', snapshotKey);
+      existingSnapshot.setLimit(1);
+      existingSnapshot.query();
+      if (existingSnapshot.next()) {
+        snapshotId = String(existingSnapshot.getUniqueValue() || '');
+      } else {
+        var snapshot = new GlideRecord('${defaults.workspaceSnapshotSetTable}');
+        snapshot.initialize();
+        snapshot.workspace = workspaceSysId;
+        snapshot.snapshot_key = snapshotKey;
+        snapshot.readiness_state = 'ready';
+        snapshot.source_change_set = activeId;
+        snapshot.source_change_set_revision = 0;
+        snapshot.published_on = new GlideDateTime();
+        snapshotId = String(snapshot.insert() || '');
+      }
+
+      workspace.pending_change_set = activeId;
+      workspace.published_snapshot_set = snapshotId;
+      workspace.workspace_state_revision = workspaceStateRevision;
+      workspace.update();
+
+      gs.info('DOCSERA_RESULT:' + JSON.stringify({
+        activeChangeSetSysId: activeId,
+        snapshotSetSysId: snapshotId
+      }));
+    })();
+    `
+  );
 }
 
 async function createOwnedRecords(instanceUrl, session, currentUser, dryRun) {
@@ -644,7 +1628,8 @@ async function createOwnedRecords(instanceUrl, session, currentUser, dryRun) {
   const created = {
     groups: [],
     workspaces: [],
-    pages: []
+    pages: [],
+    workspaceSysIdsBySlug: {}
   };
 
   printSection("Planned smoke fixtures");
@@ -693,6 +1678,7 @@ async function createOwnedRecords(instanceUrl, session, currentUser, dryRun) {
 
     const workspaceSysId = cleanText(workspaceRecord?.sys_id);
     created.workspaces.push(workspaceSysId);
+    created.workspaceSysIdsBySlug[workspaceConfig.slug] = workspaceSysId;
 
     if (workspaceConfig.page) {
       const pageRecord = await tableInsert(
@@ -732,29 +1718,161 @@ async function verifyWorkspaceRoute(instanceUrl, session, slug, mode, expectedCo
   };
 }
 
-async function verifyEmptyWorkspaceCreateFlow(instanceUrl, session, slug) {
-  const createResult = await fetchJson(instanceUrl, session, defaults.pagesPath, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
+async function verifyEmptyWorkspaceCreateFlow(instanceUrl, session, workspace) {
+  if (!cleanText(workspace?.slug) || !cleanText(workspace?.sysId)) {
+    throw new Error("Empty-workspace create verification requires workspace identifiers.");
+  }
+
+  await recoverStaleProofWorkspaces(instanceUrl, session);
+  let proofWorkspaceResult = null;
+  let proofPageSysId = "";
+  let leaseToken = "";
+  let releaseError = null;
+  let cleanupError = null;
+  let cleanupAuthorization = { authorized: false, reason: "cleanup authorization not evaluated" };
+  let proofInventory = null;
+  let postReleaseStatusResult = null;
+
+  try {
+    proofWorkspaceResult = await createTemporaryVerificationWorkspace(instanceUrl, session, proofWorkspaceName);
+    const proofWorkspaceSysId = cleanText(proofWorkspaceResult?.workspace?.sysId);
+    const proofWorkspaceSlug = cleanText(proofWorkspaceResult?.workspace?.slug);
+    if (!proofWorkspaceSysId || !proofWorkspaceSlug) {
+      throw new Error("Temporary proof workspace creation did not return a usable workspace identity.");
+    }
+
+    await seedTemporaryVerificationWorkspaceFoundation(instanceUrl, session, proofWorkspaceSysId);
+
+    const acquireResult = await callRuntime(instanceUrl, session, `${defaults.workspaceEditLeasePath}/acquire`, {
+      workspaceSlug: proofWorkspaceSlug,
+      workspaceSysId: proofWorkspaceSysId
+    });
+    if (acquireResult.status !== 200) {
+      throw new Error(`Acquire for ${proofWorkspaceSlug} failed with HTTP ${acquireResult.status}: ${acquireResult.text}`);
+    }
+
+    const acquired = runtimeResult(acquireResult);
+    leaseToken = cleanText(acquired?.leaseToken);
+    const expectedChangeSetId = cleanText(acquired?.changeSetId);
+    const expectedChangeSetRevision = Number(acquired?.changeSetRevision);
+    if (!leaseToken || !expectedChangeSetId || !Number.isInteger(expectedChangeSetRevision) || expectedChangeSetRevision < 0) {
+      throw new Error(`Acquire for ${proofWorkspaceSlug} did not return a usable workspace lease authority.`);
+    }
+
+    const createResult = await callRuntime(instanceUrl, session, defaults.pagesPath, buildEmptyWorkspaceCreateBody({
       title: "First Smoke Reset Page",
-      workspaceSlug: slug
-    })
-  });
+      workspaceSlug: proofWorkspaceSlug,
+      workspaceSysId: proofWorkspaceSysId,
+      workspaceLeaseToken: leaseToken,
+      expectedChangeSetId,
+      expectedChangeSetRevision
+    }));
 
-  if (createResult.status !== 201) {
-    throw new Error(`Create-page flow for ${slug} failed with HTTP ${createResult.status}: ${createResult.text}`);
+    if (createResult.status !== 201) {
+      throw new Error(`Create-page flow for ${proofWorkspaceSlug} failed with HTTP ${createResult.status}: ${createResult.text}`);
+    }
+
+    const created = runtimeResult(createResult);
+    proofPageSysId = cleanText(created?.page?.sysId);
+    if (!proofPageSysId) {
+      throw new Error(`Create-page flow for ${proofWorkspaceSlug} did not return a page sys_id.`);
+    }
+  } catch (error) {
+    cleanupError = error;
+  } finally {
+    if (shouldReleaseSmokeLease(leaseToken)) {
+      try {
+        const proofWorkspaceSysId = cleanText(proofWorkspaceResult?.workspace?.sysId);
+        const proofWorkspaceSlug = cleanText(proofWorkspaceResult?.workspace?.slug);
+        const releaseResult = await callRuntime(instanceUrl, session, `${defaults.workspaceEditLeasePath}/release`, {
+          workspaceSlug: proofWorkspaceSlug,
+          workspaceSysId: proofWorkspaceSysId,
+          leaseToken
+        });
+        cleanupAuthorization = authorizeProofCleanup({
+          releaseResult,
+          statusResult: null
+        });
+        if (!cleanupAuthorization.authorized) {
+          postReleaseStatusResult = await callRuntime(instanceUrl, session, `${defaults.workspaceEditLeasePath}/status`, {
+            workspaceSlug: proofWorkspaceSlug,
+            workspaceSysId: proofWorkspaceSysId
+          });
+          cleanupAuthorization = authorizeProofCleanup({
+            releaseResult,
+            statusResult: postReleaseStatusResult
+          });
+        }
+        if (!cleanupAuthorization.authorized) {
+          releaseError = new Error(`Lease release for ${proofWorkspaceSlug} failed with HTTP ${releaseResult.status}: ${safeErrorMessage(releaseResult.text, "release failed")}`);
+        }
+      } catch (error) {
+        releaseError = releaseError ?? error;
+      }
+    }
+
+    if (proofWorkspaceResult?.workspace) {
+      try {
+        const proofWorkspaceSysId = cleanText(proofWorkspaceResult?.workspace?.sysId);
+        const proofWorkspaceSlug = cleanText(proofWorkspaceResult?.workspace?.slug);
+        if (!cleanupAuthorization.authorized && proofWorkspaceSysId && proofWorkspaceSlug) {
+          postReleaseStatusResult = await callRuntime(instanceUrl, session, `${defaults.workspaceEditLeasePath}/status`, {
+            workspaceSlug: proofWorkspaceSlug,
+            workspaceSysId: proofWorkspaceSysId
+          });
+          cleanupAuthorization = authorizeProofCleanup({
+            releaseResult: shouldReleaseSmokeLease(leaseToken) ? { status: 0 } : null,
+            statusResult: postReleaseStatusResult
+          });
+        }
+        proofInventory = buildProofCleanupInventory(
+          (await inspectProofWorkspaceBoundary(instanceUrl, session, {
+            workspaceSysId: proofWorkspaceSysId,
+            workspaceSlug: proofWorkspaceSlug,
+            requestIds: [cleanText(proofWorkspaceResult?.provisioning?.requestId)],
+            groupIds: [
+              cleanText(proofWorkspaceResult?.groups?.admin?.sysId),
+              cleanText(proofWorkspaceResult?.groups?.editor?.sysId)
+            ]
+          }))?.inventory
+        );
+        if (cleanupAuthorization.authorized) {
+          await cleanupProofWorkspaceBoundary(instanceUrl, session, proofInventory);
+          const postCleanupProofRecoveryInspection = await inspectProofRecoveryPlan(instanceUrl, session);
+          if (!postCleanupProofRecoveryInspection.plan.blocked && hasPlannedProofRecoveryMutations(postCleanupProofRecoveryInspection.plan)) {
+            await applyProofRecoveryPlan(instanceUrl, session, postCleanupProofRecoveryInspection);
+          }
+        }
+      } catch (error) {
+        cleanupError = cleanupError ?? error;
+      }
+    }
   }
 
-  const payload = normalizePayload(createResult.payload);
-  const pageSysId = cleanText(payload?.page?.sysId);
-  if (!pageSysId) {
-    throw new Error(`Create-page flow for ${slug} did not return a page sys_id.`);
+  if (cleanupError) {
+    throw cleanupError;
+  }
+  if (releaseError) {
+    throw releaseError;
+  }
+  if (!cleanupAuthorization.authorized) {
+    const proofWorkspaceSlug = cleanText(proofWorkspaceResult?.workspace?.slug);
+    const proofWorkspaceSysId = cleanText(proofWorkspaceResult?.workspace?.sysId);
+    throw new Error(
+      `Proof workspace cleanup could not be authorized for ${proofWorkspaceSlug || "unknown workspace"} (${proofWorkspaceSysId || "unknown sys_id"}): ${cleanupAuthorization.reason}.`
+    );
   }
 
-  await tableDelete(instanceUrl, session, "x_82900_docsera_page", pageSysId);
+  return {
+    proofWorkspace: {
+      slug: cleanText(proofWorkspaceResult?.workspace?.slug),
+      sysId: cleanText(proofWorkspaceResult?.workspace?.sysId)
+    },
+    cleanupAuthorization,
+    inventory: proofInventory,
+    postReleaseLeaseState:
+      postReleaseStatusResult?.status === 200 ? cleanText(runtimeResult(postReleaseStatusResult)?.state) || "unknown" : "unknown"
+  };
 }
 
 async function main() {
@@ -816,14 +1934,41 @@ async function main() {
   printSection("Authenticated user");
   console.log(`${currentUser.userName || "(unknown user)"} (${currentUser.sysId})`);
 
-  const deleted = await deleteOwnedRecords(instanceUrl, session, dryRun);
+  const ownedRecords = await loadOwnedRecords(instanceUrl, session);
+  printOwnedRecords(ownedRecords);
+  const leasePlan = await preflightOwnedWorkspaceLeases(instanceUrl, session, ownedRecords.workspaceRecords);
+  const proofRecoveryInspection = await inspectProofRecoveryPlan(instanceUrl, session);
+  printSection("Lease preflight");
+  console.log(JSON.stringify(leasePlan, null, 2));
+  printSection("Proof recovery plan");
+  console.log(JSON.stringify(proofRecoveryInspection.plan, null, 2));
+  const blockedWorkspaces = leasePlan.filter((workspace) => workspace.blocked);
 
   if (dryRun) {
     printSection("Dry-run result");
-    console.log(JSON.stringify(deleted, null, 2));
+    console.log(
+      JSON.stringify(
+        {
+          deleted: ownedRecords.deleted,
+          leasePlan,
+          proofRecoveryPlan: proofRecoveryInspection.plan
+        },
+        null,
+        2
+      )
+    );
     return;
   }
 
+  if (blockedWorkspaces.length > 0) {
+    throw new Error(
+      `Smoke reset blocked by active workspace lease(s): ${blockedWorkspaces
+        .map((workspace) => `${workspace.slug}${workspace.holderDisplayName ? ` (${workspace.holderDisplayName})` : ""}`)
+        .join(", ")}`
+    );
+  }
+
+  await deleteOwnedRecords(instanceUrl, session, ownedRecords);
   const created = await createOwnedRecords(instanceUrl, session, currentUser, dryRun);
 
   printSection("Created fixture sys_ids");
@@ -844,10 +1989,31 @@ async function main() {
     representativePage?.draftContentJson?.content?.[0]?.content?.[0]?.text ??
     "";
 
-  await verifyEmptyWorkspaceCreateFlow(instanceUrl, session, emptyWorkspace.slug);
+  await verifyEmptyWorkspaceCreateFlow(instanceUrl, session, {
+    slug: emptyWorkspace.slug,
+    sysId: cleanText(created.workspaceSysIdsBySlug[emptyWorkspace.slug])
+  });
 
   const restoredEmptyEdit = await verifyWorkspaceRoute(instanceUrl, session, emptyWorkspace.slug, "edit", 0);
   const restoredEmptyLive = await verifyWorkspaceRoute(instanceUrl, session, emptyWorkspace.slug, "live", 0);
+  const finalWorkspaceRecords = ownedWorkspaceConfigs.map((workspace) => ({
+    workspace_slug: workspace.slug,
+    name: workspace.name,
+    sys_id: cleanText(created.workspaceSysIdsBySlug[workspace.slug])
+  }));
+  const finalLeasePlan = await preflightOwnedWorkspaceLeases(instanceUrl, session, finalWorkspaceRecords);
+  const finalBlockedWorkspaces = finalLeasePlan.filter((workspace) => workspace.blocked);
+
+  printSection("Final lease state");
+  console.log(JSON.stringify(finalLeasePlan, null, 2));
+
+  if (finalBlockedWorkspaces.length > 0) {
+    throw new Error(
+      `Smoke reset left active workspace lease(s): ${finalBlockedWorkspaces
+        .map((workspace) => `${workspace.slug}${workspace.holderDisplayName ? ` (${workspace.holderDisplayName})` : ""}`)
+        .join(", ")}`
+    );
+  }
 
   printSection("Verification summary");
   console.log(
@@ -876,4 +2042,7 @@ async function main() {
   );
 }
 
-await main();
+const directExecutionUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
+if (directExecutionUrl && import.meta.url === directExecutionUrl) {
+  await main();
+}
