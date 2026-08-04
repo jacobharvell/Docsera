@@ -68,6 +68,11 @@ function getCommandQueryHelper(editor: Editor): HTMLElement | null {
   return editor.view.dom.querySelector("[data-docsera-command-query-helper]");
 }
 
+function getSelectedBlockElement(editor: Editor): HTMLElement | null {
+  const selectedBlock = editor.view.dom.querySelector("[data-docsera-block-selected='true']");
+  return selectedBlock instanceof HTMLElement ? selectedBlock : null;
+}
+
 function getBlockquoteParagraph(editor: Editor): HTMLParagraphElement | null {
   const paragraph = editor.view.dom.querySelector("blockquote > p");
   return paragraph instanceof HTMLParagraphElement ? paragraph : null;
@@ -77,6 +82,22 @@ function getRuntimeStyleText(): string {
   return Array.from(document.querySelectorAll("style"))
     .map((style) => style.textContent ?? "")
     .join("\n");
+}
+
+function readInlineBox(element: HTMLElement) {
+  const left = Number.parseFloat(element.style.left || "0");
+  const top = Number.parseFloat(element.style.top || "0");
+  const width = Number.parseFloat(element.style.width || "0");
+  const height = Number.parseFloat(element.style.height || "0");
+
+  return {
+    bottom: top + height,
+    height,
+    left,
+    right: left + width,
+    top,
+    width
+  };
 }
 
 async function typeTextThroughBrowserInput(editor: Editor, text: string) {
@@ -232,13 +253,20 @@ async function openQuickAdd(editor: Editor, pointer: { clientX: number; clientY:
   fireEvent.click(await screen.findByRole("button", { name: buttonName }));
 }
 
-async function dispatchOwnerPointerMove(
+async function dispatchOwnerPointerEvent(
   ownerDocument: Document,
   target: EventTarget,
+  type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel" | "lostpointercapture",
   point: { clientX: number; clientY: number },
-  options: { composedPath?: Array<EventTarget | null | undefined> } = {}
+  options: {
+    button?: number;
+    buttons?: number;
+    composedPath?: Array<EventTarget | null | undefined>;
+    pointerId?: number;
+    pointerType?: string;
+  } = {}
 ) {
-  const event = new Event("pointermove", { bubbles: true, cancelable: true });
+  const event = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperties(event, {
     clientX: {
       configurable: true,
@@ -247,6 +275,22 @@ async function dispatchOwnerPointerMove(
     clientY: {
       configurable: true,
       value: point.clientY
+    },
+    button: {
+      configurable: true,
+      value: options.button ?? 0
+    },
+    buttons: {
+      configurable: true,
+      value: options.buttons ?? (type === "pointerdown" ? 1 : 0)
+    },
+    pointerId: {
+      configurable: true,
+      value: options.pointerId ?? 1
+    },
+    pointerType: {
+      configurable: true,
+      value: options.pointerType ?? "mouse"
     },
     target: {
       configurable: true,
@@ -258,8 +302,19 @@ async function dispatchOwnerPointerMove(
     }
   });
   await act(async () => {
-    ownerDocument.dispatchEvent(event);
+    const dispatchTarget =
+      target instanceof Node && target.isConnected && target.ownerDocument === ownerDocument ? target : ownerDocument;
+    dispatchTarget.dispatchEvent(event);
   });
+}
+
+async function dispatchOwnerPointerMove(
+  ownerDocument: Document,
+  target: EventTarget,
+  point: { clientX: number; clientY: number },
+  options: { composedPath?: Array<EventTarget | null | undefined>; pointerId?: number; pointerType?: string } = {}
+) {
+  await dispatchOwnerPointerEvent(ownerDocument, target, "pointermove", point, options);
 }
 
 function createCanonicalOrderedListNode(content: Array<Record<string, unknown>>) {
@@ -2426,6 +2481,428 @@ describe("PageEditorHostRuntime", () => {
     });
 
     expect(editor.view.dom).toBe(proseMirrorRoot);
+    geometrySpy.mockRestore();
+  });
+
+  it("renders the handle immediately after Quick Add and keeps the selected-block hook out of document flow", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Alpha" }]
+        }
+      ]
+    };
+    const { editorReady, onSaveDraft, overlayRoot } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to be available.");
+    }
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+
+    const floatingLayer = overlayRoot.querySelector(".docsera-editor-floating-layer");
+    if (!(floatingLayer instanceof HTMLElement)) {
+      throw new Error("Expected the floating editor layer to be available.");
+    }
+
+    const floatingButtons = within(floatingLayer).getAllByRole("button");
+    expect(floatingButtons).toHaveLength(2);
+    expect(floatingButtons.map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Add block after Text",
+      "Select block: Text"
+    ]);
+    const quickAddButton = floatingButtons[0] as HTMLElement;
+    const handleButton = floatingButtons[1] as HTMLElement;
+    const quickAddBox = readInlineBox(quickAddButton);
+    const handleBox = readInlineBox(handleButton);
+    expect(handleButton).toHaveAttribute("tabindex", "-1");
+    expect(getComputedStyle(handleButton).cursor).toBe("grab");
+    expect(quickAddBox).toMatchObject({
+      height: 24,
+      left: 63,
+      right: 87,
+      top: 53,
+      width: 24
+    });
+    expect(handleBox).toMatchObject({
+      height: 24,
+      left: 93,
+      right: 117,
+      top: 53,
+      width: 24
+    });
+    expect(handleBox.left - quickAddBox.right).toBe(6);
+    expect(132 - handleBox.right).toBe(15);
+    expect(handleBox.right).toBeLessThan(132);
+    expect(getRuntimeStyleText()).toContain(".docsera-editor-runtime__block--selected");
+    expect(getRuntimeStyleText()).toContain("cursor: grab;");
+    expect(getRuntimeStyleText()).toContain("cursor: grabbing;");
+
+    const selectedBefore = editor.getJSON();
+    const undoDepthBefore = undoDepth(editor.state);
+
+    await dispatchOwnerPointerEvent(surface.ownerDocument, floatingButtons[1], "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, floatingButtons[1], "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
+
+    expect(getSelectedBlockElement(editor)).toHaveTextContent("Alpha");
+    expect(editor.getJSON()).toEqual(selectedBefore);
+    expect(undoDepth(editor.state)).toBe(undoDepthBefore);
+    expect(onSaveDraft).toHaveBeenCalledTimes(0);
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, document.body, { clientX: 20, clientY: 20 }, { composedPath: [document.body] });
+
+    expect(screen.queryByRole("button", { name: "Add block after Text" })).toBeNull();
+    expect(getSelectedBlockElement(editor)).toHaveTextContent("Alpha");
+
+    geometrySpy.mockRestore();
+  });
+
+  it("keeps the shared gutter geometry across paragraphs, nested blockquotes, lists, and structural blocks", async () => {
+    const cases = [
+      {
+        blockRects: [new DOMRect(132, 52, 620, 28)],
+        hoverPoint: { clientX: 120, clientY: 64 },
+        initialEnvelope: createEnvelopeFromDocument({
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "Alpha" }]
+            }
+          ]
+        } as DocseraTiptapDocument),
+        label: "Text"
+      },
+      {
+        blockRects: [new DOMRect(132, 52, 620, 52), new DOMRect(132, 140, 620, 28)],
+        hoverPoint: { clientX: 124, clientY: 68 },
+        initialEnvelope: createEnvelopeFromDocument({
+          type: "doc",
+          content: [
+            {
+              type: "blockquote",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Quoted" }]
+                }
+              ]
+            },
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "After" }]
+            }
+          ]
+        } as DocseraTiptapDocument),
+        label: "Blockquote"
+      },
+      {
+        blockRects: [new DOMRect(132, 52, 620, 52), new DOMRect(132, 140, 620, 28)],
+        hoverPoint: { clientX: 124, clientY: 68 },
+        initialEnvelope: createEnvelopeFromDocument({
+          type: "doc",
+          content: [
+            {
+              type: "bulletList",
+              content: [
+                {
+                  type: "listItem",
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "Item" }]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "After" }]
+            }
+          ]
+        } as DocseraTiptapDocument),
+        label: "Bulleted List"
+      },
+      {
+        blockRects: [new DOMRect(132, 52, 620, 28), new DOMRect(132, 140, 620, 28)],
+        hoverPoint: { clientX: 124, clientY: 64 },
+        initialEnvelope: createEnvelopeFromDocument({
+          type: "doc",
+          content: [
+            { type: "horizontalRule" },
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "After" }]
+            }
+          ]
+        } as DocseraTiptapDocument),
+        label: "Horizontal Rule"
+      }
+    ] as const;
+
+    for (const testCase of cases) {
+      const { editorReady, overlayRoot } = renderRuntime({
+        initialEnvelope: testCase.initialEnvelope
+      });
+
+      await waitFor(() => {
+        expect(editorReady[0]).toBeDefined();
+      });
+
+      const editor = editorReady[0];
+      const geometrySpy = mockTopLevelBlockGeometry(editor, [...testCase.blockRects]);
+      const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+      if (!(surface instanceof HTMLElement)) {
+        throw new Error("Expected the editor surface to be available.");
+      }
+
+      await dispatchOwnerPointerMove(surface.ownerDocument, surface, testCase.hoverPoint);
+
+      const floatingLayer = overlayRoot.querySelector(".docsera-editor-floating-layer");
+      if (!(floatingLayer instanceof HTMLElement)) {
+        throw new Error("Expected the floating editor layer to be available.");
+      }
+
+      const floatingButtons = within(floatingLayer).getAllByRole("button");
+      expect(floatingButtons.map((button) => button.getAttribute("aria-label"))).toEqual([
+        `Add block after ${testCase.label}`,
+        `Select block: ${testCase.label}`
+      ]);
+
+      const quickAddBox = readInlineBox(floatingButtons[0] as HTMLElement);
+      const handleBox = readInlineBox(floatingButtons[1] as HTMLElement);
+      expect(quickAddBox.right).toBe(handleBox.left - 6);
+      expect(handleBox.right).toBeLessThan(testCase.blockRects[0].left);
+      expect(testCase.blockRects[0].left - handleBox.right).toBe(15);
+      expect(quickAddBox.top).toBe(testCase.blockRects[0].top + 1);
+      expect(handleBox.top).toBe(testCase.blockRects[0].top + 1);
+
+      geometrySpy.mockRestore();
+    }
+  });
+
+  it("targets a nested blockquote descendant and only selects on handle release below the threshold", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "blockquote",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "Quoted" }]
+            }
+          ]
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "After" }]
+        }
+      ]
+    };
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [
+      new DOMRect(132, 52, 620, 52),
+      new DOMRect(132, 140, 620, 28)
+    ]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to be available.");
+    }
+
+    const nestedParagraph = editor.view.dom.querySelector("blockquote > p");
+    if (!(nestedParagraph instanceof HTMLElement)) {
+      throw new Error("Expected the nested blockquote paragraph to be available.");
+    }
+
+    const blockquote = editor.view.dom.querySelector("blockquote");
+    if (!(blockquote instanceof HTMLElement)) {
+      throw new Error("Expected the blockquote block to be available.");
+    }
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, nestedParagraph, {
+      clientX: 124,
+      clientY: 68
+    }, {
+      composedPath: [nestedParagraph, blockquote, editor.view.dom, surface]
+    });
+
+    expect(await screen.findByRole("button", { name: "Add block after Blockquote" })).toBeInTheDocument();
+
+    const handle = screen.getByRole("button", { name: "Select block: Blockquote" });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 68 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointermove", { clientX: 162, clientY: 69 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 162, clientY: 69 }, { button: 0, buttons: 0 });
+
+    expect(getSelectedBlockElement(editor)).toHaveTextContent("Quoted");
+
+    fireEvent.keyDown(editor.view.dom, { key: "Escape" });
+    expect(getSelectedBlockElement(editor)).toBeNull();
+
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 68 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointermove", { clientX: 172, clientY: 80 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 172, clientY: 80 }, { button: 0, buttons: 0 });
+
+    expect(getSelectedBlockElement(editor)).toBeNull();
+    expect(editor.getJSON()).toEqual(initial);
+
+    geometrySpy.mockRestore();
+  });
+
+  it.each(["pointercancel", "lostpointercapture"] as const)(
+    "clears a pending handle gesture on %s without selecting or mutating",
+    async (eventType) => {
+      const initial = {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Alpha" }]
+          }
+        ]
+      };
+      const { editorReady } = renderRuntime({
+        initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument)
+      });
+
+      await waitFor(() => {
+        expect(editorReady[0]).toBeDefined();
+      });
+
+      const editor = editorReady[0];
+      const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+      const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+      if (!(surface instanceof HTMLElement)) {
+        throw new Error("Expected the editor surface to be available.");
+      }
+
+      await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+      const handle = await screen.findByRole("button", { name: "Select block: Text" });
+
+      await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
+      await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointermove", { clientX: 172, clientY: 76 }, { button: 0, buttons: 1 });
+      await dispatchOwnerPointerEvent(surface.ownerDocument, handle, eventType, { clientX: 172, clientY: 76 }, { button: 0, buttons: 0 });
+
+      expect(getSelectedBlockElement(editor)).toBeNull();
+      expect(editor.getJSON()).toEqual(initial);
+      expect(undoDepth(editor.state)).toBe(0);
+
+      geometrySpy.mockRestore();
+    }
+  );
+
+  it("maps the transient selected block through document changes and clears it when the owner disappears", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Alpha" }]
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Omega" }]
+        }
+      ]
+    };
+    const { editorReady, rerender, onAccessLost, onOutlineChange, onSaveDraft, onStatusChange, overlayRoot } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [
+      new DOMRect(132, 52, 620, 28),
+      new DOMRect(132, 108, 620, 28)
+    ]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to be available.");
+    }
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 120 });
+    const handle = await screen.findByRole("button", { name: "Select block: Text" });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 120 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 120 }, { button: 0, buttons: 0 });
+
+    expect(getSelectedBlockElement(editor)).toHaveTextContent("Omega");
+
+    await act(async () => {
+      editor.view.dispatch(
+        editor.state.tr.insert(
+          0,
+          editor.schema.nodes.paragraph.create(null, editor.schema.text("Prelude"))
+        )
+      );
+    });
+
+    expect(getSelectedBlockElement(editor)).toHaveTextContent("Omega");
+
+    let omegaFrom = 0;
+    let omegaTo = 0;
+    let foundOmega = false;
+    editor.state.doc.forEach((node, pos) => {
+      if (!foundOmega && node.isTextblock && node.textContent === "Omega") {
+        omegaFrom = pos;
+        omegaTo = pos + node.nodeSize;
+        foundOmega = true;
+      }
+    });
+
+    if (!foundOmega) {
+      throw new Error("Expected to resolve the Omega block range.");
+    }
+
+    await act(async () => {
+      editor.view.dispatch(editor.state.tr.delete(omegaFrom, omegaTo));
+    });
+
+    expect(getSelectedBlockElement(editor)).toBeNull();
+
+    rerender(
+      <PageEditorHostRuntime
+        canEdit={false}
+        initialEnvelope={createEnvelopeFromDocument(initial as DocseraTiptapDocument)}
+        initialRevision={0}
+        onAccessLost={onAccessLost}
+        onOutlineChange={onOutlineChange}
+        onSaveDraft={onSaveDraft}
+        onEditorReady={(nextEditor) => {
+          editorReady[0] = nextEditor;
+        }}
+        onStatusChange={onStatusChange}
+        overlayRoot={overlayRoot}
+        pageSysId="page-002"
+        sessionKey="session-b"
+        theme="light"
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Select block: Text" })).toBeNull();
+
     geometrySpy.mockRestore();
   });
 
