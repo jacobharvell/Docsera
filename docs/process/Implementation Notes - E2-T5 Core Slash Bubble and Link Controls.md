@@ -24,12 +24,15 @@ The editor-local slash menu now supports the current E2 block inventory:
 - Horizontal rule
 - Code block
 
+The inventory is now owned by the shared `editorBlockCommands` registry that also powers E4 Quick Add. Slash keeps its existing trigger contract and cancellation behavior, while Quick Add reuses the same selector inventory against an inserted gutter paragraph.
+
 Trigger behavior is intentionally narrow:
 
 - the menu opens only from an ordinary editable text-block query whose text from block start to caret begins with `/`
 - slash input in prose, URLs, or mid-word text does not open the menu
 - typing additional characters filters the fixed inventory by label or simple keyword
 - Escape dismisses the menu without changing document content
+- ordinary slash dismissal preserves the preexisting paragraph; it does not use Quick Add cancellation behavior
 - Enter executes the active option
 - pointer selection executes the clicked option
 - horizontal rule insertion leaves a following paragraph position available for continued typing

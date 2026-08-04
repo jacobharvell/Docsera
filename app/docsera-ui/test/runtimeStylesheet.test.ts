@@ -32,6 +32,7 @@ test("keeps launcher background ownership explicit without changing workspace ba
   expect(css).toContain("background: var(--docsera-workspace-bg, var(--docsera-surface));");
   expect(css).toContain("--docsera-workspace-heading-scroll-margin: calc(var(--docsera-header-height) + 16px);");
   expect(css).toContain("--docsera-workspace-toc-top-gap: 8px;");
+  expect(css).toContain("--docsera-editor-block-gutter-width: 60px;");
   expect(css).toContain("align-items: stretch;");
   expect(css).toContain(".docsera-workspace__aside {");
   expect(css).toContain("display: flex;");
@@ -44,27 +45,34 @@ test("keeps launcher background ownership explicit without changing workspace ba
   expect(css).not.toMatch(/\.docsera-toc-rail__body\s*{[^}]*border-left:/s);
   expect(css).toContain(".docsera-main__body-heading,");
   expect(css).toContain("scroll-margin-block-start: var(--docsera-workspace-heading-scroll-margin);");
+  expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*margin-inline-start:\s*clamp\([^}]*var\(--docsera-toc-panel-width\)/s);
+  expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*display:\s*grid;[^}]*align-content:\s*start;[^}]*gap:\s*28px;/s);
+  expect(css).toMatch(/\.docsera-main__surface--editor\s*{[^}]*gap:\s*0;[^}]*padding-left:\s*calc\(24px \+ var\(--docsera-editor-block-gutter-width\)\);/s);
+  expect(css).toMatch(/\.docsera-main__editor-host\s*{[^}]*margin-top:\s*72px;/s);
 });
 
-test("hides the complete ToC rail at the responsive breakpoint instead of stacking it below the document", () => {
+test("keeps the same main-surface anchor contract when the ToC auto-hides at the responsive breakpoint", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
   const responsive = css.slice(css.indexOf("@media (max-width: 1180px)"), css.indexOf("@media (max-width: 920px)"));
   expect(responsive).toContain(".docsera-workspace__aside");
   expect(responsive).toContain("display: none;");
   expect(responsive).not.toContain("grid-column: 1 / -1");
   expect(responsive).not.toContain(".docsera-toc-rail__body");
+  expect(responsive).not.toContain("margin: 0 auto;");
 });
 
 test("centers workspace mode control and keeps the save status in the header before Publish", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
 
   expect(css).toMatch(/\.docsera-header__action-slot--mode\s*{[^}]*position:\s*absolute;[^}]*left:\s*50%;[^}]*transform:\s*translate\(-50%, -50%\);/s);
-  expect(css).toMatch(/\.docsera-header__save-status\s*{[^}]*position:\s*relative;[^}]*width:\s*32px;[^}]*height:\s*32px;/s);
+  expect(css).toMatch(/\.docsera-header__save-status\s*{[^}]*position:\s*relative;[^}]*width:\s*20px;[^}]*height:\s*20px;/s);
   expect(css).toContain(".docsera-header__save-status-sr-only {");
   expect(css).not.toContain(".docsera-main__save-status");
   expect(css).toMatch(/\.docsera-header__save-status-sync\s*{[^}]*animation:\s*docsera-header-save-status-spin 1\.1s linear infinite;/s);
   expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.docsera-header__save-status-sync\s*{[\s\S]*?animation:\s*none;/);
-  expect(css).toMatch(/\.docsera-main__page-header \.docsera-main__title\s*{[^}]*font-size:\s*clamp\(2\.1rem, 3vw, 2\.5rem\);[^}]*line-height:\s*1\.1;/s);
+  expect(css).toMatch(/\.docsera-main__page-header \.docsera-main__title\s*{[^}]*font-size:\s*2\.5rem;[^}]*line-height:\s*1\.1;/s);
+  expect(css).not.toMatch(/\.docsera-main__page-header \.docsera-main__title\s*{[^}]*vw/s);
+  expect(css).not.toMatch(/\.docsera-main__page-header \.docsera-main__title\s*{[^}]*clamp\(/s);
   expect(css).toContain(".docsera-header__publish-button");
   expect(css).toContain(".docsera-changes-center__list");
 });

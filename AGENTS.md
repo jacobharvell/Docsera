@@ -136,6 +136,14 @@ Deliberate deviations or improvements are allowed only when they remain compatib
 
 Validation should match change risk and surface area.
 
+- Jacob is the default live PDI/browser interaction and visual verifier unless the current task explicitly says otherwise.
+- Codex must not perform interactive PDI testing, Playwright PDI testing, browser-session probing, or visual acceptance unless the current task explicitly requests it.
+- Codex may use established repository SDK deployment and non-interactive installed-runtime verification scripts when the brief requires a PDI build for Jacob.
+- Deployment and non-interactive bundle/runtime verification do not constitute live functional acceptance.
+- Codex must not create ad hoc browser-authentication scripts, reset smoke fixtures, manipulate leases or ServiceNow records, or improvise PDI recovery unless explicitly authorized.
+- When the established deployment or verification path fails, use the applicable runbook for a bounded diagnosis, report the exact failure, and stop instead of letting the product task become environment troubleshooting.
+- When the same operational workaround is needed a second time, identify it as process debt and propose a separate runbook or script-hardening task before a third recurrence. Do not perform that hardening as part of the current product task unless explicitly requested.
+
 - Docs-only edits:
   - Do not run builds or PDI deployment by default.
 - Configuration or metadata-only edits:
@@ -143,7 +151,6 @@ Validation should match change risk and surface area.
 - Custom component/editor changes:
   - Run local build/type/lint checks if available.
   - Deploy to the PDI only when runtime behavior must be verified.
-- For manual browser/PDI smoke tests, use Playwright CLI from the terminal when a usable in-app browser backend is not attached; establish the authenticated PDI session first and record the fallback in validation notes.
 - ServiceNow table/API/security changes:
   - Verify role/ACL behavior and save/load behavior in the PDI.
 - Broad/high-risk editor or persistence changes:

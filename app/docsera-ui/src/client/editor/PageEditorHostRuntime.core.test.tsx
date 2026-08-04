@@ -88,6 +88,82 @@ describe("PageEditorHostRuntime", () => {
     expect(source).toContain(".docsera-editor-runtime__surface .ProseMirror a:focus-visible {");
   });
 
+  it("keeps natural document width and derives gutter hit testing from an extended lane instead of widening the document canvas", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/PageEditorHostRuntime.tsx`,
+      "utf8"
+    );
+
+    expect(source).not.toContain("width: calc(100% + ${BLOCK_GUTTER_WIDTH}px);");
+    expect(source).not.toContain("margin-left: -${BLOCK_GUTTER_WIDTH}px;");
+    expect(source).not.toContain("padding-left: ${BLOCK_GUTTER_WIDTH}px;");
+    expect(source).toContain("resolveEditorLaneGeometry(surfaceElement, proseMirror)");
+    expect(source).toContain("proseMirrorRect.left - BLOCK_GUTTER_WIDTH");
+  });
+
+  it("uses a dedicated grouped block selector contract and removes the legacy 340px editor minimum height", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/PageEditorHostRuntime.tsx`,
+      "utf8"
+    );
+    const selectorStyleSource = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/BlockSelectorStyles.ts`,
+      "utf8"
+    );
+
+    expect(source).toContain('import { BLOCK_SELECTOR_STYLES } from "./BlockSelectorStyles";');
+    expect(source).toContain('className="docsera-editor-floating docsera-block-selector"');
+    expect(source).not.toContain("min-height: 340px;");
+    expect(selectorStyleSource).toContain("width: min(320px, calc(100vw - 24px));");
+    expect(selectorStyleSource).toContain("max-height: 288px;");
+    expect(selectorStyleSource).toContain(".docsera-block-selector__heading");
+    expect(selectorStyleSource).toContain("width: calc(100% + var(--docsera-block-selector-scrollbar-gap));");
+    expect(selectorStyleSource).toContain("margin-right: calc(-1 * var(--docsera-block-selector-scrollbar-gap));");
+    expect(selectorStyleSource).toContain("padding: 8px calc(10px + var(--docsera-block-selector-scrollbar-gap)) 8px 10px;");
+  });
+
+  it("keeps the edit-mode title-to-editor spacing at 40px", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const runtimeShellSource = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+
+    expect(runtimeShellSource).toContain(".docsera-main__editor-host {");
+    expect(runtimeShellSource).toContain("margin-top: 40px;");
+  });
+
+  it("keeps the Quick Add control transparent by default and applies token-based hover chrome only on hover or focus", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/PageEditorHostRuntime.tsx`,
+      "utf8"
+    );
+
+    expect(source).toContain("width: ${QUICK_ADD_BUTTON_SIZE}px;");
+    expect(source).toContain("height: ${QUICK_ADD_BUTTON_SIZE}px;");
+    expect(source).toContain("background: transparent;");
+    expect(source).toContain("color: var(--docsera-text-soft);");
+    expect(source).toContain("box-shadow: none;");
+    expect(source).toContain(".docsera-editor-floating__quick-add:hover,");
+    expect(source).toContain("background: var(--docsera-surface-muted);");
+    expect(source).toContain("color: var(--docsera-primary);");
+  });
+
   it("defines exactly four finite automatic retry delays", () => {
     expect([0, 1, 2, 3, 4, 5].map(getAutosaveRetryDelay)).toEqual([1500, 3000, 6000, 12000, null, null]);
   });
@@ -165,6 +241,7 @@ describe("PageEditorHostRuntime", () => {
     await waitFor(() => expect(editorReady[0]).toBeDefined());
     const editor = editorReady[0];
     expect(editor.getJSON()).toEqual({ type: "doc", content: [{ type: "paragraph" }] });
+    expect(editor.view.dom.firstElementChild).toHaveAttribute("data-placeholder", "Start typing or press '/' for commands");
     fireEvent.click(container.querySelector(".ProseMirror")!);
     await act(async () => {
       editor.commands.focus("start", { scrollIntoView: false });
@@ -600,6 +677,19 @@ describe("PageEditorHostRuntime", () => {
     });
 
     expect(editorReady[0].getJSON()).toEqual(supportedEnvelope.document);
+  });
+
+  it("disables TipTap trailing-node ownership so end-of-document paragraphs only come from explicit editor actions or native block transitions", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/shared/editor/schema.ts`,
+      "utf8"
+    );
+
+    expect(source).toContain("trailingNode: false");
   });
 
   it("explicitly saves the supported E2 rich-text schema without flattening accepted structure", async () => {

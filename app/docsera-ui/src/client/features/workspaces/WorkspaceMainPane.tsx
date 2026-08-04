@@ -252,7 +252,7 @@ export function WorkspaceMainPane({
         ) : page.contentEnvelope ? (
           <>
             {sessionKey ? (
-              <div hidden={showBodyPending}>
+              <div className="docsera-main__editor-host" hidden={showBodyPending}>
                 <PageEditorHost
                   canEdit={canEditPageBody && !editAccessLost}
                   initialEnvelope={page.contentEnvelope}

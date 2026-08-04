@@ -285,10 +285,14 @@ async function setParagraphText(editor: Editor, text: string) {
     editor.commands.setContent({
       type: "doc",
       content: [
-        {
-          type: "paragraph",
-          content: [{ type: "text", text }]
-        }
+        text.length
+          ? {
+              type: "paragraph",
+              content: [{ type: "text", text }]
+            }
+          : {
+              type: "paragraph"
+            }
       ]
     });
   });
@@ -309,8 +313,11 @@ async function selectText(editor: Editor, from: number, to: number) {
 async function openSlashQuery(editor: Editor, query = "") {
   await act(async () => {
     editor.commands.focus("end", { scrollIntoView: false });
-    editor.commands.insertContent(`/${query}`);
   });
+  fireEvent.keyDown(editor.view.dom, { key: "/" });
+  for (const character of query) {
+    fireEvent.keyDown(editor.view.dom, { key: character });
+  }
 }
 
 async function openLinkSurface(editor: Editor) {

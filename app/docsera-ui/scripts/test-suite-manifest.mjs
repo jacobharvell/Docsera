@@ -74,6 +74,7 @@ export const testSuites = [
     description: "editor host; editor commands; toolbar behavior; selection; autosave; editor session lifecycle; editor focus; editor overlays.",
     files: [
       "src/client/app/App.editorInteractions.test.tsx",
+      "src/client/editor/editorBlockHover.test.ts",
       "src/client/app/App.editorHostBoundary.test.tsx",
       "src/client/editor/PageEditorHost.test.tsx",
       "src/client/editor/PageEditorHostRuntime.initialization.test.tsx",

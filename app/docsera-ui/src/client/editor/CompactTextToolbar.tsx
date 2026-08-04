@@ -10,6 +10,7 @@ import { Bold, Code2, Copy, ExternalLink, Heading1, Heading2, Heading3, Italic, 
 import { DocseraIcon } from "../shared/icons/DocseraIcon";
 import { docseraIcons } from "../shared/icons/docseraIcons";
 import { isDocseraAllowedLinkHref } from "../../shared/editor/schema";
+import { COMPACT_MENU_STYLES } from "./CompactMenuStyles";
 
 type ToolbarMenuId = "blockType" | "more";
 type ToolbarBlockTypeId = "text" | "heading1" | "heading2" | "heading3" | "bulletedList" | "numberedList";
@@ -2210,42 +2211,11 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
           flex: 0 0 auto;
         }
 
+        ${COMPACT_MENU_STYLES}
+
         .docsera-text-toolbar__menu {
-          display: grid;
-          gap: 4px;
-          inline-size: max-content;
           min-width: ${TOOLBAR_MENU_TARGET_WIDTH}px;
-          padding: 6px;
-          border: 1px solid var(--docsera-border);
-          border-radius: 8px;
-          background: var(--docsera-surface);
-          box-shadow: var(--docsera-shadow);
           max-width: min(${TOOLBAR_MENU_MAX_WIDTH}px, calc(100vw - ${VIEWPORT_GUTTER * 2}px));
-        }
-
-        .docsera-text-toolbar__surface-heading {
-          margin: 0;
-          padding: 0 4px 1px;
-          color: var(--docsera-text-soft);
-          font-size: 0.68rem;
-          font-weight: 700;
-          letter-spacing: 0.06em;
-          text-transform: uppercase;
-        }
-
-        .docsera-text-toolbar__menu-list {
-          display: grid;
-          gap: 2px;
-        }
-
-        .docsera-text-toolbar__menu-item {
-          justify-content: space-between;
-          gap: 8px;
-          width: 100%;
-          min-height: 28px;
-          padding: 0 8px;
-          text-align: left;
-          color: var(--docsera-text);
         }
 
         .docsera-text-toolbar__menu-check {

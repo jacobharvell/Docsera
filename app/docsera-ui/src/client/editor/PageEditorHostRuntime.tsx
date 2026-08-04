@@ -1,17 +1,26 @@
-import type { Editor } from "@tiptap/core";
+import { Extension, type Editor } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { createPortal } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import * as React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { Fragment } from "@tiptap/pm/model";
 import type { DocseraDocumentEnvelope, DocseraTiptapDocument } from "../../shared/editor/document";
 import { DOCSERA_DOCUMENT_SCHEMA_VERSION, parseDocseraDocumentOrThrow } from "../../shared/editor/document";
 import { createDocseraEditorExtensions } from "../../shared/editor/schema";
 import { extractDocumentOutline, type EditorOutlineItem } from "./documentOutline";
+import {
+  getEditorBlockCommandMatches,
+  getGroupedEditorBlockCommandMatches,
+  type EditorBlockCommand,
+  type EditorBlockCommandId
+} from "./editorBlockCommands";
+import { resolveHoverTargetBlockIndex } from "./editorBlockHover";
 import { sanitizeDocseraPastedHTML, sanitizeDocseraPastedText } from "./pasteSanitizer";
 import type { PageBodySaveResult } from "../shared/types/docsera";
-import { TextSelection } from "@tiptap/pm/state";
+import { Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { CompactTextToolbar } from "./CompactTextToolbar";
 import {
   Code2,
@@ -21,9 +30,11 @@ import {
   List,
   ListOrdered,
   Minus,
+  Pilcrow,
+  Plus,
   Quote,
-  Type,
 } from "lucide-react";
+import { BLOCK_SELECTOR_STYLES } from "./BlockSelectorStyles";
 
 type PageEditorHostRuntimeProps = {
   canEdit: boolean;
@@ -75,27 +86,62 @@ type RuntimeBoundaryState = {
 
 type RuntimeStatus = "conflict" | "dirty" | "failed" | "saved" | "saving";
 
-type SlashCommandId =
-  | "paragraph"
-  | "heading1"
-  | "heading2"
-  | "heading3"
-  | "bulletedList"
-  | "numberedList"
-  | "taskList"
-  | "blockquote"
-  | "horizontalRule"
-  | "codeBlock";
-
-type SlashCommand = {
-  id: SlashCommandId;
-  label: string;
-  keywords: string[];
-  run: (editor: Editor) => void;
+type HoverTarget = {
+  accessibleLabel: string;
+  blockIndex: number;
 };
 
-const SLASH_MENU_WIDTH = 316;
+type EditorLaneGeometry = {
+  laneRect: DOMRect;
+  surfaceRect: DOMRect;
+};
+
+type CommandSelectorPlacement = "above" | "below";
+
+type CommandSelectorState =
+  | {
+      activeIndex: number;
+      fallbackAnchorRect: DOMRect;
+      historyTime: number;
+      insertedBlockIndex: number;
+      ownerBlockIndex: number;
+      ownerLabel: string;
+      placement: CommandSelectorPlacement;
+      query: string;
+      source: "quickAdd";
+    }
+  | {
+      activeIndex: number;
+      anchorRect: DOMRect;
+      ownerBlockIndex: number;
+      placement: CommandSelectorPlacement;
+      query: string;
+      source: "slash";
+    };
+
+type SlashTriggerSelection = {
+  blockIndex: number;
+  from: number;
+  to: number;
+};
+
+export type CommandQueryPresentationState = {
+  ownerPos: number;
+  query: string;
+  source: CommandSelectorState["source"];
+};
+
 const AUTOSAVE_RETRY_DELAYS_MS = [1500, 3000, 6000, 12000] as const;
+const BLOCK_GUTTER_WIDTH = 60;
+const BLOCK_GUTTER_BUTTON_GAP = 15;
+const QUICK_ADD_BUTTON_SIZE = 24;
+const QUICK_ADD_ICON_SIZE = 14;
+const BLOCK_SELECTOR_HEIGHT = 288;
+const BLOCK_SELECTOR_WIDTH = 320;
+const BLOCK_SELECTOR_PLACEMENT_GAP = 6;
+const BLOCK_TARGET_TOP_OFFSET = 1;
+const TIPTAP_SKIP_TRAILING_NODE_META = "skipTrailingNode";
+const COMMAND_QUERY_PRESENTATION_PLUGIN_KEY = new PluginKey<CommandQueryPresentationState | null>("docseraCommandQueryPresentation");
 
 export function getAutosaveRetryDelay(attempt: number): number | null {
   return Number.isInteger(attempt) && attempt >= 0 && attempt < AUTOSAVE_RETRY_DELAYS_MS.length
@@ -104,89 +150,6 @@ export function getAutosaveRetryDelay(attempt: number): number | null {
 }
 const POPOVER_GAP = 10;
 const VIEWPORT_GUTTER = 12;
-
-const SLASH_COMMANDS: SlashCommand[] = [
-  {
-    id: "paragraph",
-    label: "Paragraph",
-    keywords: ["text", "body", "normal"],
-    run: (editor) => {
-      editor.chain().focus(undefined, { scrollIntoView: false }).setParagraph().run();
-    }
-  },
-  {
-    id: "heading1",
-    label: "Heading 1",
-    keywords: ["h1", "heading", "section"],
-    run: (editor) => {
-      editor.chain().focus(undefined, { scrollIntoView: false }).toggleHeading({ level: 1 }).run();
-    }
-  },
-  {
-    id: "heading2",
-    label: "Heading 2",
-    keywords: ["h2", "heading", "title"],
-    run: (editor) => {
-      editor.chain().focus(undefined, { scrollIntoView: false }).toggleHeading({ level: 2 }).run();
-    }
-  },
-  {
-    id: "heading3",
-    label: "Heading 3",
-    keywords: ["h3", "heading", "subtitle"],
-    run: (editor) => {
-      editor.chain().focus(undefined, { scrollIntoView: false }).toggleHeading({ level: 3 }).run();
-    }
-  },
-  {
-    id: "bulletedList",
-    label: "Bulleted list",
-    keywords: ["bullet", "unordered", "list"],
-    run: (editor) => {
-      editor.chain().focus(undefined, { scrollIntoView: false }).toggleBulletList().run();
-    }
-  },
-  {
-    id: "numberedList",
-    label: "Numbered list",
-    keywords: ["numbered", "ordered", "list"],
-    run: (editor) => {
-      editor.chain().focus(undefined, { scrollIntoView: false }).toggleOrderedList().run();
-    }
-  },
-  {
-    id: "taskList",
-    label: "Task list",
-    keywords: ["task", "todo", "checklist"],
-    run: (editor) => {
-      editor.chain().focus(undefined, { scrollIntoView: false }).toggleTaskList().run();
-    }
-  },
-  {
-    id: "blockquote",
-    label: "Blockquote",
-    keywords: ["quote", "callout", "blockquote"],
-    run: (editor) => {
-      editor.chain().focus(undefined, { scrollIntoView: false }).toggleBlockquote().run();
-    }
-  },
-  {
-    id: "horizontalRule",
-    label: "Horizontal rule",
-    keywords: ["rule", "separator", "divider"],
-    run: (editor) => {
-      editor.chain().focus(undefined, { scrollIntoView: false }).insertContent([{ type: "horizontalRule" }, { type: "paragraph" }]).run();
-    }
-  },
-  {
-    id: "codeBlock",
-    label: "Code block",
-    keywords: ["code", "pre", "snippet"],
-    run: (editor) => {
-      editor.chain().focus(undefined, { scrollIntoView: false }).toggleCodeBlock().run();
-    }
-  }
-];
 
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
 const AUTOSAVE_IDLE_MS = 700;
@@ -247,11 +210,264 @@ function isTextSelection(selection: unknown): selection is TextSelection {
   return selection instanceof TextSelection;
 }
 
-function getSlashQuery(editor: Editor): {
+function resolveTopLevelBlockIndexForPosition(editor: Editor, position: number): number | null {
+  let blockIndex: number | null = null;
+
+  editor.state.doc.forEach((node, offset, index) => {
+    const blockStart = offset + 1;
+    const blockEnd = offset + node.nodeSize - 1;
+    if (position >= blockStart && position <= blockEnd) {
+      blockIndex = index;
+    }
+  });
+
+  return blockIndex;
+}
+
+function getTopLevelBlockAtPosition(doc: Editor["state"]["doc"], position: number): {
   from: number;
+  node: (typeof doc)["content"]["content"][number];
   to: number;
-  query: string;
 } | null {
+  let block: {
+    from: number;
+    node: (typeof doc)["content"]["content"][number];
+    to: number;
+  } | null = null;
+
+  doc.forEach((node, offset) => {
+    if (offset === position) {
+      block = {
+        from: offset,
+        node,
+        to: offset + node.nodeSize
+      };
+    }
+  });
+
+  return block;
+}
+
+function getTopLevelBlockPositionFromDoc(doc: Editor["state"]["doc"], blockIndex: number): number | null {
+  let blockPosition: number | null = null;
+
+  doc.forEach((_node, offset, index) => {
+    if (index === blockIndex) {
+      blockPosition = offset;
+    }
+  });
+
+  return blockPosition;
+}
+
+function getTopLevelBlockPosition(editor: Editor, blockIndex: number): number | null {
+  return getTopLevelBlockPositionFromDoc(editor.state.doc, blockIndex);
+}
+
+function resolveBlockquoteExitBackspaceBoundary(editor: Editor): {
+  blockquote: NonNullable<ReturnType<typeof getTopLevelBlockAtPosition>>;
+  paragraph: NonNullable<ReturnType<typeof getTopLevelBlockAtPosition>>;
+} | null {
+  const selection = editor.state.selection;
+  if (!isTextSelection(selection) || !selection.empty) {
+    return null;
+  }
+
+  const { $from } = selection;
+  if (
+    $from.depth !== 1 ||
+    $from.parent.type.name !== "paragraph" ||
+    $from.parent.content.size !== 0 ||
+    $from.parentOffset !== 0
+  ) {
+    return null;
+  }
+
+  const blockIndex = $from.index(0);
+  if (blockIndex <= 0) {
+    return null;
+  }
+
+  const paragraphPosition = getTopLevelBlockPositionFromDoc(editor.state.doc, blockIndex);
+  const blockquotePosition = getTopLevelBlockPositionFromDoc(editor.state.doc, blockIndex - 1);
+  if (paragraphPosition === null || blockquotePosition === null) {
+    return null;
+  }
+
+  const paragraph = getTopLevelBlockAtPosition(editor.state.doc, paragraphPosition);
+  const blockquote = getTopLevelBlockAtPosition(editor.state.doc, blockquotePosition);
+  if (!paragraph || paragraph.node.type.name !== "paragraph" || !blockquote || blockquote.node.type.name !== "blockquote") {
+    return null;
+  }
+
+  return {
+    blockquote,
+    paragraph
+  };
+}
+
+function handleBlockquoteExitBackspace(editor: Editor): boolean {
+  const boundary = resolveBlockquoteExitBackspaceBoundary(editor);
+  if (!boundary) {
+    return false;
+  }
+
+  let transaction = editor.state.tr.delete(boundary.paragraph.from, boundary.paragraph.to);
+  const selectionAnchor = Math.max(1, Math.min(boundary.blockquote.from + boundary.blockquote.node.nodeSize - 1, transaction.doc.content.size));
+  const resolvedSelection = Selection.findFrom(transaction.doc.resolve(selectionAnchor), -1, true);
+  if (!(resolvedSelection instanceof TextSelection)) {
+    return false;
+  }
+
+  transaction = transaction.setSelection(TextSelection.create(transaction.doc, resolvedSelection.from)).scrollIntoView();
+  editor.view.dispatch(transaction);
+  return true;
+}
+
+function resolveCommandQueryPresentationState(
+  editor: Editor,
+  selector: CommandSelectorState | null
+): CommandQueryPresentationState | null {
+  if (!selector) {
+    return null;
+  }
+
+  const ownerPos = getTopLevelBlockPosition(editor, selector.ownerBlockIndex);
+  if (ownerPos === null) {
+    return null;
+  }
+
+  const ownerBlock = getTopLevelBlockAtPosition(editor.state.doc, ownerPos);
+  if (!ownerBlock || ownerBlock.node.type.name !== "paragraph") {
+    return null;
+  }
+
+  return {
+    ownerPos,
+    query: selector.query,
+    source: selector.source
+  };
+}
+
+function mapCommandQueryPresentationState(
+  transaction: Transaction,
+  state: CommandQueryPresentationState | null
+): CommandQueryPresentationState | null {
+  if (!state) {
+    return null;
+  }
+
+  const mappedOwnerPos = transaction.mapping.map(state.ownerPos, -1);
+  const mappedBlock = getTopLevelBlockAtPosition(transaction.doc, mappedOwnerPos);
+  if (!mappedBlock || mappedBlock.node.type.name !== "paragraph") {
+    return null;
+  }
+
+  return {
+    ...state,
+    ownerPos: mappedBlock.from
+  };
+}
+
+function createCommandQueryPresentationExtension() {
+  return Extension.create({
+    name: "docseraCommandQueryPresentation",
+    addProseMirrorPlugins() {
+      return [
+        new Plugin<CommandQueryPresentationState | null>({
+          key: COMMAND_QUERY_PRESENTATION_PLUGIN_KEY,
+          state: {
+            init: () => null,
+            apply(transaction, value) {
+              const meta = transaction.getMeta(COMMAND_QUERY_PRESENTATION_PLUGIN_KEY);
+              if (meta === null) {
+                return null;
+              }
+              if (meta) {
+                return mapCommandQueryPresentationState(transaction, meta satisfies CommandQueryPresentationState);
+              }
+
+              return transaction.docChanged ? mapCommandQueryPresentationState(transaction, value) : value;
+            }
+          },
+          props: {
+            decorations(state) {
+              const presentation = COMMAND_QUERY_PRESENTATION_PLUGIN_KEY.getState(state);
+              if (!presentation) {
+                return DecorationSet.empty;
+              }
+
+              const ownerBlock = getTopLevelBlockAtPosition(state.doc, presentation.ownerPos);
+              if (!ownerBlock || ownerBlock.node.type.name !== "paragraph") {
+                return DecorationSet.empty;
+              }
+
+              const decorations: Decoration[] = [
+                Decoration.node(ownerBlock.from, ownerBlock.to, {
+                  class: "docsera-command-query-owner",
+                  "data-docsera-command-query-owner": "true"
+                })
+              ];
+              const queryPosition = ownerBlock.from + 1;
+
+              if (presentation.query.length) {
+                decorations.push(
+                  Decoration.widget(
+                    queryPosition,
+                    () => {
+                      const element = document.createElement("span");
+                      element.className = "docsera-command-query-inline";
+                      element.setAttribute("data-docsera-command-query", `/${presentation.query}`);
+                      element.setAttribute("contenteditable", "false");
+                      element.textContent = `/${presentation.query}`;
+                      return element;
+                    },
+                    { side: -1 }
+                  )
+                );
+              } else {
+                decorations.push(
+                  Decoration.widget(
+                    queryPosition,
+                    () => {
+                      const slashElement = document.createElement("span");
+                      slashElement.className = "docsera-command-query-inline";
+                      slashElement.setAttribute("data-docsera-command-query-slash", "/");
+                      slashElement.setAttribute("contenteditable", "false");
+                      slashElement.textContent = "/";
+                      return slashElement;
+                    },
+                    { side: -1 }
+                  ),
+                  Decoration.widget(
+                    queryPosition,
+                    () => {
+                      const helperElement = document.createElement("span");
+                      helperElement.className = "docsera-command-query-inline docsera-command-query-inline--helper";
+                      helperElement.setAttribute("data-docsera-command-query-helper", "Type to search");
+                      helperElement.setAttribute("contenteditable", "false");
+                      helperElement.textContent = "Type to search";
+                      return helperElement;
+                    },
+                    { side: 1 }
+                  )
+                );
+              }
+
+              return DecorationSet.create(state.doc, decorations);
+            }
+          }
+        })
+      ];
+    }
+  });
+}
+
+export function getCommandQueryPresentationState(editor: Editor): CommandQueryPresentationState | null {
+  return COMMAND_QUERY_PRESENTATION_PLUGIN_KEY.getState(editor.state) ?? null;
+}
+
+function getSlashTriggerSelection(editor: Editor): SlashTriggerSelection | null {
   const { selection } = editor.state;
   if (!isTextSelection(selection) || !selection.empty || !editor.isEditable) {
     return null;
@@ -264,19 +480,19 @@ function getSlashQuery(editor: Editor): {
   }
 
   const text = parent.textBetween(0, $from.parentOffset, "", "");
-  if (!text.startsWith("/")) {
+  if (text.length > 0) {
     return null;
   }
 
-  const query = text.slice(1);
-  if (!/^[a-z0-9 -]*$/i.test(query)) {
+  const blockIndex = resolveTopLevelBlockIndexForPosition(editor, selection.from);
+  if (blockIndex === null) {
     return null;
   }
 
   return {
-    from: $from.start(),
-    to: selection.from,
-    query
+    blockIndex,
+    from: selection.from,
+    to: selection.to
   };
 }
 
@@ -315,29 +531,305 @@ function clampSurfacePosition(ownerDocument: Document, rect: DOMRect, width: num
   };
 }
 
-function getSlashCommandMatches(query: string): SlashCommand[] {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return SLASH_COMMANDS;
+function resolveCommandSelectorPlacement(ownerDocument: Document, rect: DOMRect, height: number): CommandSelectorPlacement {
+  const ownerWindow = ownerDocument.defaultView;
+  const viewportHeight = ownerWindow?.innerHeight ?? ownerDocument.documentElement.clientHeight;
+  const maxSurfaceHeight = Math.max(1, Math.min(height, viewportHeight - VIEWPORT_GUTTER * 2));
+  const belowRoom = Math.max(0, viewportHeight - VIEWPORT_GUTTER - rect.bottom - POPOVER_GAP);
+  const aboveRoom = Math.max(0, rect.top - VIEWPORT_GUTTER - POPOVER_GAP);
+
+  if (belowRoom >= maxSurfaceHeight) {
+    return "below";
+  }
+  if (aboveRoom >= maxSurfaceHeight) {
+    return "above";
   }
 
-  return SLASH_COMMANDS.filter((command) => {
-    const haystack = [command.label, ...command.keywords].join(" ").toLowerCase();
-    return haystack.includes(normalizedQuery);
-  });
+  return aboveRoom > belowRoom ? "above" : "below";
 }
 
-function buildSurfaceStyle(ownerDocument: Document, rect: DOMRect, width: number, height: number, preferAbove = false): CSSProperties {
+function resolveConstrainedSurfaceHeight(
+  ownerDocument: Document,
+  rect: DOMRect,
+  height: number,
+  placement: CommandSelectorPlacement
+) {
+  const ownerWindow = ownerDocument.defaultView;
+  const viewportHeight = ownerWindow?.innerHeight ?? ownerDocument.documentElement.clientHeight;
+  const viewportAvailableHeight = Math.max(1, viewportHeight - VIEWPORT_GUTTER * 2);
+  const sideAvailableHeight =
+    placement === "above"
+      ? Math.max(1, rect.top - VIEWPORT_GUTTER - POPOVER_GAP)
+      : Math.max(1, viewportHeight - VIEWPORT_GUTTER - rect.bottom - POPOVER_GAP);
+
+  return Math.max(1, Math.min(height, viewportAvailableHeight, sideAvailableHeight));
+}
+
+function buildSurfaceStyle(
+  ownerDocument: Document,
+  rect: DOMRect,
+  width: number,
+  height: number,
+  placement: CommandSelectorPlacement
+): CSSProperties {
   return {
     position: "fixed",
-    ...clampSurfacePosition(ownerDocument, rect, width, height, preferAbove)
+    ...clampSurfacePosition(
+      ownerDocument,
+      rect,
+      width,
+      resolveConstrainedSurfaceHeight(ownerDocument, rect, height, placement),
+      placement === "above"
+    )
   };
 }
 
-function SlashCommandIcon({ id }: { id: SlashCommandId }) {
+function buildRightAnchoredSurfaceStyle(
+  ownerDocument: Document,
+  rect: DOMRect,
+  width: number,
+  height: number,
+  placement: CommandSelectorPlacement
+): CSSProperties {
+  const ownerWindow = ownerDocument.defaultView;
+  const viewportWidth = ownerWindow?.innerWidth ?? ownerDocument.documentElement.clientWidth;
+  const viewportHeight = ownerWindow?.innerHeight ?? ownerDocument.documentElement.clientHeight;
+  const maxSurfaceWidth = Math.max(1, viewportWidth - VIEWPORT_GUTTER * 2);
+  const clampedWidth = Math.max(1, Math.min(width, maxSurfaceWidth));
+  const clampedHeight = resolveConstrainedSurfaceHeight(ownerDocument, rect, height, placement);
+  const left = Math.min(
+    Math.max(VIEWPORT_GUTTER, rect.right + BLOCK_SELECTOR_PLACEMENT_GAP),
+    Math.max(VIEWPORT_GUTTER, viewportWidth - clampedWidth - VIEWPORT_GUTTER)
+  );
+  const preferredTop = placement === "above" ? rect.top - clampedHeight - POPOVER_GAP : rect.bottom + POPOVER_GAP;
+  const top = Math.min(Math.max(VIEWPORT_GUTTER, preferredTop), Math.max(VIEWPORT_GUTTER, viewportHeight - clampedHeight - VIEWPORT_GUTTER));
+
+  return {
+    position: "fixed",
+    left,
+    top,
+    width: `${clampedWidth}px`,
+    maxWidth: `${maxSurfaceWidth}px`,
+    maxHeight: `${clampedHeight}px`
+  };
+}
+
+function buildQuickAddAnchorRect(targetRect: DOMRect): DOMRect {
+  return new DOMRect(
+    Math.max(VIEWPORT_GUTTER, targetRect.left - QUICK_ADD_BUTTON_SIZE - BLOCK_GUTTER_BUTTON_GAP),
+    Math.max(VIEWPORT_GUTTER, targetRect.top + BLOCK_TARGET_TOP_OFFSET),
+    QUICK_ADD_BUTTON_SIZE,
+    Math.max(1, targetRect.bottom - (targetRect.top + BLOCK_TARGET_TOP_OFFSET))
+  );
+}
+
+function buildGutterButtonStyle(targetRect: DOMRect): CSSProperties {
+  const anchorRect = buildQuickAddAnchorRect(targetRect);
+  return {
+    position: "fixed",
+    left: `${anchorRect.left}px`,
+    top: `${anchorRect.top}px`,
+    width: `${QUICK_ADD_BUTTON_SIZE}px`,
+    height: `${QUICK_ADD_BUTTON_SIZE}px`
+  };
+}
+
+function resolveEditorLaneGeometry(surfaceElement: HTMLElement, proseMirror: HTMLElement): EditorLaneGeometry {
+  const surfaceRect = surfaceElement.getBoundingClientRect();
+  const proseMirrorRect = proseMirror.getBoundingClientRect();
+
+  return {
+    surfaceRect,
+    laneRect: new DOMRect(
+      proseMirrorRect.left - BLOCK_GUTTER_WIDTH,
+      surfaceRect.top,
+      proseMirrorRect.width + BLOCK_GUTTER_WIDTH,
+      surfaceRect.height
+    )
+  };
+}
+
+function getTopLevelBlockLabel(element: HTMLElement): string {
+  switch (element.tagName) {
+    case "H1":
+      return "Heading 1";
+    case "H2":
+      return "Heading 2";
+    case "H3":
+      return "Heading 3";
+    case "UL":
+      return element.dataset.type === "taskList" ? "Task list" : "Bulleted List";
+    case "OL":
+      return "Numbered List";
+    case "BLOCKQUOTE":
+      return "Blockquote";
+    case "PRE":
+      return "Code Block";
+    case "HR":
+      return "Horizontal Rule";
+    case "P":
+    default:
+      return "Text";
+  }
+}
+
+function getTopLevelBlockElements(editor: Editor): HTMLElement[] {
+  const proseMirror = editor.view.dom;
+  if (!(proseMirror instanceof HTMLElement)) {
+    return [];
+  }
+
+  return Array.from(proseMirror.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+}
+
+function getTopLevelBlockRange(editor: Editor, blockIndex: number): { from: number; to: number } | null {
+  let blockRange: { from: number; to: number } | null = null;
+
+  editor.state.doc.forEach((node, offset, index) => {
+    if (index === blockIndex) {
+      blockRange = {
+        from: offset,
+        to: offset + node.nodeSize
+      };
+    }
+  });
+
+  return blockRange;
+}
+
+function getTopLevelBlockRect(editor: Editor, blockIndex: number): DOMRect | null {
+  const element = getTopLevelBlockElements(editor)[blockIndex];
+  return element ? element.getBoundingClientRect() : null;
+}
+
+function getTopLevelBlockElement(editor: Editor, blockIndex: number): HTMLElement | null {
+  return getTopLevelBlockElements(editor)[blockIndex] ?? null;
+}
+
+function resolveHoverTargetFromPointer(editor: Editor, surfaceElement: HTMLElement, clientX: number, clientY: number): HoverTarget | null {
+  const elements = getTopLevelBlockElements(editor);
+  const proseMirror = editor.view.dom;
+  if (!elements.length) {
+    return null;
+  }
+
+  if (!(proseMirror instanceof HTMLElement)) {
+    return null;
+  }
+
+  const { laneRect } = resolveEditorLaneGeometry(surfaceElement, proseMirror);
+  const targetIndex = resolveHoverTargetBlockIndex(
+    laneRect,
+    elements.map((element) => element.getBoundingClientRect()),
+    { clientX, clientY }
+  );
+  if (targetIndex === null) {
+    return null;
+  }
+
+  return {
+    accessibleLabel: getTopLevelBlockLabel(elements[targetIndex]),
+    blockIndex: targetIndex
+  };
+}
+
+function areHoverTargetsEqual(left: HoverTarget | null, right: HoverTarget | null): boolean {
+  return left?.blockIndex === right?.blockIndex && left?.accessibleLabel === right?.accessibleLabel;
+}
+
+function areDomRectsEqual(left: DOMRect, right: DOMRect): boolean {
+  return left.left === right.left && left.top === right.top && left.width === right.width && left.height === right.height;
+}
+
+function isGutterControlTarget(target: EventTarget | null): boolean {
+  const targetElement =
+    target instanceof HTMLElement ? target : target instanceof Node ? target.parentElement : null;
+  return targetElement?.closest("[data-docsera-block-gutter='true']") instanceof HTMLElement;
+}
+
+function getPointerEventPathNodes(event: PointerEvent): Node[] {
+  if (typeof event.composedPath !== "function") {
+    return [];
+  }
+
+  return event.composedPath().filter((entry): entry is Node => entry instanceof Node);
+}
+
+function resolvePointerEventTarget(event: PointerEvent): EventTarget | null {
+  const pathNodes = getPointerEventPathNodes(event);
+  if (pathNodes.length > 0) {
+    return pathNodes[0];
+  }
+
+  return event.target;
+}
+
+function isPointerEventInsideElement(event: PointerEvent, element: HTMLElement | null): boolean {
+  if (!element) {
+    return false;
+  }
+
+  const pathNodes = getPointerEventPathNodes(event);
+  if (pathNodes.some((node) => node === element || element.contains(node))) {
+    return true;
+  }
+
+  const target = event.target;
+  return target instanceof Node ? target === element || element.contains(target) : false;
+}
+
+function isPointerEventInsideEditorLane(
+  event: PointerEvent,
+  surfaceElement: HTMLElement
+): boolean {
+  const proseMirror = surfaceElement.querySelector(".ProseMirror");
+  if (proseMirror instanceof HTMLElement) {
+    const { laneRect } = resolveEditorLaneGeometry(surfaceElement, proseMirror);
+    if (
+      event.clientX >= laneRect.left &&
+      event.clientX <= laneRect.right &&
+      event.clientY >= laneRect.top &&
+      event.clientY <= laneRect.bottom
+    ) {
+      return true;
+    }
+  }
+
+  const pathNodes = getPointerEventPathNodes(event);
+  if (pathNodes.some((node) => surfaceElement.contains(node))) {
+    return true;
+  }
+
+  if (pathNodes.some((node) => isGutterControlTarget(node))) {
+    return true;
+  }
+
+  return false;
+}
+
+function resolvePointerOwnedHoverTarget(
+  editor: Editor,
+  surfaceElement: HTMLElement,
+  event: PointerEvent,
+  clientX: number,
+  clientY: number
+): HoverTarget | null {
+  if (isPointerEventInsideEditorLane(event, surfaceElement)) {
+    return resolveHoverTargetFromPointer(editor, surfaceElement, clientX, clientY);
+  }
+
+  const target = resolvePointerEventTarget(event);
+  if (!(target instanceof Node) || (!surfaceElement.contains(target) && !isGutterControlTarget(target))) {
+    return null;
+  }
+
+  return resolveHoverTargetFromPointer(editor, surfaceElement, clientX, clientY);
+}
+
+function BlockCommandIcon({ id }: { id: EditorBlockCommandId }) {
   switch (id) {
-    case "paragraph":
-      return <Type size={16} strokeWidth={2} />;
+    case "text":
+      return <Pilcrow size={16} strokeWidth={2} />;
     case "heading1":
       return <Heading1 size={16} strokeWidth={2} />;
     case "heading2":
@@ -348,8 +840,6 @@ function SlashCommandIcon({ id }: { id: SlashCommandId }) {
       return <List size={16} strokeWidth={2} />;
     case "numberedList":
       return <ListOrdered size={16} strokeWidth={2} />;
-    case "taskList":
-      return <CheckIcon />;
     case "blockquote":
       return <Quote size={16} strokeWidth={2} />;
     case "horizontalRule":
@@ -360,17 +850,155 @@ function SlashCommandIcon({ id }: { id: SlashCommandId }) {
   }
 }
 
-function CheckIcon() {
-  return (
-    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
-      <path d="M3 8.5 6.2 11.7 13 4.8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
+function applyBlockCommand(editor: Editor, command: EditorBlockCommand) {
+  command.run(editor);
 }
 
-function applySlashCommand(editor: Editor, command: SlashCommand, range: { from: number; to: number }) {
-  editor.chain().focus(undefined, { scrollIntoView: false }).deleteRange(range).run();
-  command.run(editor);
+function applyCommandSelectionOffset(
+  editor: Editor,
+  blockIndex: number,
+  selectionOffset: number | "continuation" | undefined
+): boolean {
+  if (selectionOffset === undefined) {
+    return true;
+  }
+
+  const blockRange = getTopLevelBlockRange(editor, blockIndex);
+  const targetNode = blockIndex >= 0 && blockIndex < editor.state.doc.childCount ? editor.state.doc.child(blockIndex) : null;
+  if (!blockRange || !targetNode) {
+    return false;
+  }
+
+  const selectionAnchor =
+    selectionOffset === "continuation"
+      ? Math.min(blockRange.from + targetNode.nodeSize + 1, Math.max(1, editor.state.doc.content.size))
+      : Math.min(blockRange.from + selectionOffset, Math.max(1, editor.state.doc.content.size));
+
+  let transaction = editor.state.tr.setMeta("addToHistory", false);
+  try {
+    transaction = transaction.setSelection(TextSelection.create(transaction.doc, selectionAnchor));
+  } catch {
+    transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(selectionAnchor), 1));
+  }
+  editor.view.dispatch(transaction);
+  return true;
+}
+
+function applySlashCommand(editor: Editor, ownerBlockIndex: number, command: EditorBlockCommand): boolean {
+  editor.commands.focus(undefined, { scrollIntoView: false });
+  applyBlockCommand(editor, command);
+  return applyCommandSelectionOffset(editor, ownerBlockIndex, command.slashSelectionOffset);
+}
+
+function replaceEmptyParagraphWithBlockquote(
+  editor: Editor,
+  blockIndex: number
+): boolean {
+  const blockRange = getTopLevelBlockRange(editor, blockIndex);
+  const targetNode = blockIndex >= 0 && blockIndex < editor.state.doc.childCount ? editor.state.doc.child(blockIndex) : null;
+  if (!blockRange || !targetNode || targetNode.type.name !== "paragraph" || targetNode.content.size !== 0) {
+    return false;
+  }
+
+  const blockquoteNode = editor.schema.nodeFromJSON({
+    type: "blockquote",
+    content: [{ type: "paragraph" }]
+  });
+  let transaction = editor.state.tr
+    .delete(blockRange.from, blockRange.to)
+    .insert(blockRange.from, blockquoteNode)
+    .setMeta(TIPTAP_SKIP_TRAILING_NODE_META, true);
+
+  const selectionAnchor = Math.min(blockRange.from + 2, Math.max(1, transaction.doc.content.size));
+  try {
+    transaction = transaction.setSelection(TextSelection.create(transaction.doc, selectionAnchor));
+  } catch {
+    transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(selectionAnchor), 1));
+  }
+
+  editor.view.dispatch(transaction);
+  return true;
+}
+
+function restoreEditorSelectionFocus(
+  editor: Editor,
+  selectionAnchor: number
+): void {
+  if (editor.isDestroyed) {
+    return;
+  }
+
+  const resolvedAnchor = Math.min(selectionAnchor, Math.max(1, editor.state.doc.content.size));
+  let transaction = editor.state.tr.setMeta("addToHistory", false);
+  try {
+    transaction = transaction.setSelection(TextSelection.create(transaction.doc, resolvedAnchor));
+  } catch {
+    transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(resolvedAnchor), 1));
+  }
+
+  if (!editor.state.selection.eq(transaction.selection)) {
+    editor.view.dispatch(transaction);
+  }
+
+  editor.view.focus();
+}
+
+function replaceQuickAddParagraph(
+  editor: Editor,
+  blockIndex: number,
+  command: EditorBlockCommand
+): boolean {
+  const blockRange = getTopLevelBlockRange(editor, blockIndex);
+  const targetNode = blockIndex >= 0 && blockIndex < editor.state.doc.childCount ? editor.state.doc.child(blockIndex) : null;
+  if (!blockRange || !targetNode || targetNode.type.name !== "paragraph" || targetNode.content.size !== 0) {
+    return false;
+  }
+
+  const nextNodes = command.quickAdd.content.map((node) => editor.schema.nodeFromJSON(node));
+  let transaction = editor.state.tr.delete(blockRange.from, blockRange.to).insert(blockRange.from, Fragment.fromArray(nextNodes));
+  if (command.quickAdd.selectionOffset !== "continuation") {
+    transaction = transaction.setMeta(TIPTAP_SKIP_TRAILING_NODE_META, true);
+  }
+  if (command.quickAdd.selectionOffset === "continuation") {
+    const continuationAnchor = Math.min(blockRange.from + nextNodes[0].nodeSize + 1, Math.max(1, transaction.doc.content.size));
+    try {
+      transaction = transaction.setSelection(TextSelection.create(transaction.doc, continuationAnchor));
+    } catch {
+      transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(continuationAnchor), 1));
+    }
+  } else {
+    const selectionAnchor = Math.min(
+      blockRange.from + command.quickAdd.selectionOffset,
+      Math.max(1, transaction.doc.content.size)
+    );
+    try {
+      transaction = transaction.setSelection(TextSelection.create(transaction.doc, selectionAnchor));
+    } catch {
+      transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(selectionAnchor), 1));
+    }
+  }
+
+  editor.view.dispatch(transaction);
+  return true;
+}
+
+function runEditorCommandWithHistoryTime(editor: Editor, historyTime: number, run: () => boolean | void): boolean {
+  const originalDispatch = editor.view.dispatch.bind(editor.view);
+  let didRun = false;
+
+  editor.view.dispatch = (transaction) => {
+    transaction.time = historyTime;
+    originalDispatch(transaction);
+  };
+
+  try {
+    const result = run();
+    didRun = result !== false;
+  } finally {
+    editor.view.dispatch = originalDispatch;
+  }
+
+  return didRun;
 }
 
 function normalizeDocument(document: DocseraTiptapDocument): DocseraTiptapDocument {
@@ -515,9 +1143,12 @@ export function PageEditorHostRuntime({
   theme
 }: PageEditorHostRuntimeProps) {
   const [errorMessage, setErrorMessage] = useState("");
-  const [slashActiveIndex, setSlashActiveIndex] = useState(0);
-  const [dismissedSlashKey, setDismissedSlashKey] = useState("");
-  const [, setLayoutTick] = useState(0);
+  const [hoverTarget, setHoverTarget] = useState<HoverTarget | null>(null);
+  const [commandSelector, setCommandSelector] = useState<CommandSelectorState | null>(null);
+  const [selectorScrollMetrics, setSelectorScrollMetrics] = useState({ hasOverflow: false, scrollbarWidth: 0 });
+  const [overlayMeasurementVersion, setOverlayMeasurementVersion] = useState(0);
+  const selectorListboxId = useId();
+  const selectorQueryStateId = useId();
   const incomingInitialEnvelope = useMemo(() => parseDocseraDocumentOrThrow(initialEnvelope), [initialEnvelope]);
   const incomingInitialSavedEnvelope = useMemo(
     () => parseDocseraDocumentOrThrow(initialSavedEnvelope ?? initialEnvelope),
@@ -536,7 +1167,10 @@ export function PageEditorHostRuntime({
   const initialDocumentKey = useMemo(() => serializeDocument(validatedInitialEnvelope.document), [validatedInitialEnvelope]);
   const initialSavedDocumentKey = useMemo(() => serializeDocument(validatedInitialSavedEnvelope.document), [validatedInitialSavedEnvelope]);
   const initialSessionIsClean = initialDocumentKey === initialSavedDocumentKey;
-  const editorExtensions = useMemo(() => createDocseraEditorExtensions(), []);
+  const editorExtensions = useMemo(
+    () => [...createDocseraEditorExtensions(), createCommandQueryPresentationExtension()],
+    []
+  );
   const editorProps = useMemo(
     () => ({
       transformPastedHTML: sanitizeDocseraPastedHTML,
@@ -558,48 +1192,123 @@ export function PageEditorHostRuntime({
           return true;
         }
 
-        const slashQuery = getSlashQuery(runtimeEditor);
-        const slashOptions = slashQuery ? getSlashCommandMatches(slashQuery.query) : [];
-        if (slashQuery) {
-          const currentSlashKey = `${slashQuery.from}:${slashQuery.to}:${slashQuery.query}`;
-          if (dismissedSlashKeyRef.current === currentSlashKey && event.key !== "Escape") {
-            return false;
+        const activeSelector = commandSelectorRef.current;
+        if (activeSelector) {
+          const selectorMatches = getEditorBlockCommandMatches(activeSelector.query);
+
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            setCommandSelector((current) =>
+              current
+                ? {
+                    ...current,
+                    activeIndex: selectorMatches.length
+                      ? event.key === "ArrowDown"
+                        ? (current.activeIndex + 1) % selectorMatches.length
+                        : (current.activeIndex - 1 + selectorMatches.length) % selectorMatches.length
+                      : 0
+                  }
+                : current
+            );
+            return true;
           }
 
-          if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter" || event.key === "Escape") {
+          if (event.key === "Enter" || event.key === "Tab") {
+            const activeCommand =
+              selectorMatches[Math.max(0, Math.min(activeSelector.activeIndex, selectorMatches.length - 1))] ?? selectorMatches[0];
+            if (activeCommand) {
+              event.preventDefault();
+              executeCommand(activeCommand);
+              return true;
+            }
+          }
+
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closeCommandSelector();
+          return true;
+        }
+
+        if (event.key === "Backspace") {
+          event.preventDefault();
+          if (!activeSelector.query.length) {
+            closeCommandSelector();
+          } else {
+            setCommandSelector((current) =>
+              current
+                  ? {
+                      ...current,
+                      activeIndex: 0,
+                      query: current.query.slice(0, -1)
+                    }
+                  : current
+              );
+            }
+            return true;
+          }
+
+          if (event.key.length === 1 && /^[a-z0-9 -]$/i.test(event.key)) {
             event.preventDefault();
-            if (event.key === "ArrowDown") {
-              const nextIndex = slashOptions.length ? (slashActiveIndexRef.current + 1) % slashOptions.length : -1;
-              setSlashActiveIndex(nextIndex);
-              return true;
-            }
-
-            if (event.key === "ArrowUp") {
-              const nextIndex = slashOptions.length
-                ? (slashActiveIndexRef.current - 1 + slashOptions.length) % slashOptions.length
-                : -1;
-              setSlashActiveIndex(nextIndex);
-              return true;
-            }
-
-            if (event.key === "Escape") {
-              setDismissedSlashKey(`${slashQuery.from}:${slashQuery.to}:${slashQuery.query}`);
-              return true;
-            }
-
-            if (event.key === "Enter") {
-              const activeCommand = slashOptions[Math.max(0, slashActiveIndexRef.current)] ?? slashOptions[0];
-              if (activeCommand) {
-                applySlashCommand(runtimeEditor, activeCommand, { from: slashQuery.from, to: slashQuery.to });
-                setSlashActiveIndex(0);
-                setDismissedSlashKey("");
-                return true;
-              }
-            }
+            setCommandSelector((current) =>
+              current
+                ? {
+                    ...current,
+                    activeIndex: 0,
+                    query: `${current.query}${event.key}`
+                  }
+                : current
+            );
+            return true;
           }
         }
 
+        if (event.key === "/") {
+          const triggerSelection = getSlashTriggerSelection(runtimeEditor);
+          if (triggerSelection) {
+            event.preventDefault();
+            return openSlashSelector(runtimeEditor, triggerSelection);
+          }
+        }
+
+        if (event.key === "Backspace" && handleBlockquoteExitBackspace(runtimeEditor)) {
+          event.preventDefault();
+          return true;
+        }
+
         return false;
+      },
+      handleClickOn: (
+        view: Editor["view"],
+        _incomingDocPos: number,
+        node: { type: { name: string }; childCount: number; firstChild?: { type: { name: string }; content: { size: number } } | null },
+        nodePos: number,
+        _event?: MouseEvent,
+        _direct?: boolean
+      ) => {
+        if (!editableRef.current) {
+          return false;
+        }
+
+        if (
+          node.type.name !== "blockquote" ||
+          node.childCount !== 1 ||
+          node.firstChild?.type.name !== "paragraph" ||
+          node.firstChild.content.size !== 0
+        ) {
+          return false;
+        }
+
+        const selectionAnchor = Math.min(nodePos + 2, Math.max(1, view.state.doc.content.size));
+        let transaction = view.state.tr.setMeta("addToHistory", false);
+        try {
+          transaction = transaction.setSelection(TextSelection.create(transaction.doc, selectionAnchor));
+        } catch {
+          transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(selectionAnchor), 1));
+        }
+
+        view.dispatch(transaction);
+        view.focus();
+        return true;
       }
     }),
     []
@@ -621,28 +1330,282 @@ export function PageEditorHostRuntime({
   const initializingRef = useRef(true);
   const editorRef = useRef<Editor | null>(null);
   const editableRef = useRef(false);
-  const slashActiveIndexRef = useRef(0);
-  const dismissedSlashKeyRef = useRef("");
+  const surfaceRef = useRef<HTMLDivElement | null>(null);
+  const selectorScrollRef = useRef<HTMLDivElement | null>(null);
+  const hoverTargetRef = useRef<HoverTarget | null>(null);
+  const commandSelectorRef = useRef<CommandSelectorState | null>(null);
+  const lastPointerSnapshotRef = useRef<{ clientX: number; clientY: number; insideEditorLane: boolean } | null>(null);
+  const overlayMeasurementFrameRef = useRef<number | null>(null);
   const onEditorReadyRef = useRef(onEditorReady);
   const onOutlineChangeRef = useRef(onOutlineChange);
   const isEditable = canEdit;
   const overlayOwnerDocument = overlayRoot.ownerDocument;
   const overlayOwnerWindow = overlayOwnerDocument.defaultView;
+  const commandGroups = useMemo(
+    () => (commandSelector ? getGroupedEditorBlockCommandMatches(commandSelector.query) : []),
+    [commandSelector]
+  );
+  const commandMatches = useMemo(
+    () => commandGroups.flatMap((group) => group.commands),
+    [commandGroups]
+  );
+
+  const scheduleOverlayMeasurement = useCallback(() => {
+    const requestAnimationFrameFn =
+      overlayOwnerWindow?.requestAnimationFrame?.bind(overlayOwnerWindow) ?? window.requestAnimationFrame.bind(window);
+    if (overlayMeasurementFrameRef.current !== null) {
+      return;
+    }
+
+    overlayMeasurementFrameRef.current = requestAnimationFrameFn(() => {
+      overlayMeasurementFrameRef.current = null;
+      setOverlayMeasurementVersion((current) => current + 1);
+    });
+  }, [overlayOwnerWindow]);
+
+  function setOwnedHoverTarget(nextTarget: HoverTarget | null) {
+    if (areHoverTargetsEqual(hoverTargetRef.current, nextTarget)) {
+      return;
+    }
+
+    hoverTargetRef.current = nextTarget;
+    setHoverTarget(nextTarget);
+  }
+
+  const syncHoverTargetFromLastPointer = useCallback(() => {
+    const runtimeEditor = editorRef.current;
+    const surfaceElement = surfaceRef.current;
+    const pointerSnapshot = lastPointerSnapshotRef.current;
+    if (!runtimeEditor || !surfaceElement || !pointerSnapshot?.insideEditorLane) {
+      setOwnedHoverTarget(null);
+      return;
+    }
+
+    setOwnedHoverTarget(
+      resolveHoverTargetFromPointer(
+        runtimeEditor,
+        surfaceElement,
+        pointerSnapshot.clientX,
+        pointerSnapshot.clientY
+      )
+    );
+  }, []);
+
+  const closeCommandSelector = useCallback(
+    (options: { syncHoverFromPointer?: boolean } = {}) => {
+      const { syncHoverFromPointer = true } = options;
+      setCommandSelector(null);
+      if (syncHoverFromPointer) {
+        syncHoverTargetFromLastPointer();
+      } else {
+        setOwnedHoverTarget(null);
+      }
+    },
+    [syncHoverTargetFromLastPointer]
+  );
+
+  function openSlashSelector(runtimeEditor: Editor, triggerSelection: SlashTriggerSelection) {
+    const anchorRect = getCaretBounds(runtimeEditor) ?? new DOMRect(12, 12, 1, 1);
+
+    setCommandSelector({
+      activeIndex: 0,
+      anchorRect,
+      ownerBlockIndex: triggerSelection.blockIndex,
+      placement: resolveCommandSelectorPlacement(overlayOwnerDocument, anchorRect, BLOCK_SELECTOR_HEIGHT),
+      query: "",
+      source: "slash"
+    });
+    return true;
+  }
+
+  function openQuickAddSelector(target: HoverTarget) {
+    const runtimeEditor = editorRef.current;
+    if (!runtimeEditor) {
+      return;
+    }
+
+    let afterPos = runtimeEditor.state.doc.content.size;
+    runtimeEditor.state.doc.forEach((node, offset, index) => {
+      if (index === target.blockIndex) {
+        afterPos = offset + node.nodeSize;
+      }
+    });
+
+    const targetRect = getTopLevelBlockRect(runtimeEditor, target.blockIndex);
+    if (!targetRect) {
+      return;
+    }
+    const insertedBlockIndex = target.blockIndex + 1;
+
+    const historyTime = Date.now();
+    if (
+      !runEditorCommandWithHistoryTime(runtimeEditor, historyTime, () =>
+        runtimeEditor
+          .chain()
+          .focus(undefined, { scrollIntoView: false })
+          .insertContentAt(afterPos, { type: "paragraph" })
+          .setTextSelection(afterPos + 1)
+          .run()
+      )
+    ) {
+      return;
+    }
+
+    const insertedBlockRect = getTopLevelBlockRect(runtimeEditor, insertedBlockIndex) ?? targetRect;
+    setCommandSelector({
+      activeIndex: 0,
+      fallbackAnchorRect: buildQuickAddAnchorRect(insertedBlockRect),
+      historyTime,
+      insertedBlockIndex,
+      ownerBlockIndex: insertedBlockIndex,
+      ownerLabel: target.accessibleLabel,
+      placement: resolveCommandSelectorPlacement(
+        overlayOwnerDocument,
+        buildQuickAddAnchorRect(insertedBlockRect),
+        BLOCK_SELECTOR_HEIGHT
+      ),
+      query: "",
+      source: "quickAdd"
+    });
+  }
+
+  const syncCommandQueryPresentation = useCallback(
+    (nextSelector: CommandSelectorState | null) => {
+      const runtimeEditor = editorRef.current;
+      if (!runtimeEditor) {
+        return;
+      }
+
+      const nextPresentation = resolveCommandQueryPresentationState(runtimeEditor, nextSelector);
+      const currentPresentation = getCommandQueryPresentationState(runtimeEditor);
+      if (
+        currentPresentation?.ownerPos === nextPresentation?.ownerPos &&
+        currentPresentation?.query === nextPresentation?.query &&
+        currentPresentation?.source === nextPresentation?.source
+      ) {
+        return;
+      }
+
+      runtimeEditor.view.dispatch(
+        runtimeEditor.state.tr
+          .setMeta(COMMAND_QUERY_PRESENTATION_PLUGIN_KEY, nextPresentation)
+          .setMeta("addToHistory", false)
+      );
+    },
+    []
+  );
+
+  function executeCommand(command: EditorBlockCommand) {
+    const runtimeEditor = editorRef.current;
+    const activeSelector = commandSelectorRef.current;
+    if (!runtimeEditor || !activeSelector) {
+      return;
+    }
+
+    let didExecute = false;
+    if (activeSelector.source === "quickAdd") {
+      didExecute = runEditorCommandWithHistoryTime(runtimeEditor, activeSelector.historyTime, () => {
+        if (command.id === "blockquote") {
+          return replaceEmptyParagraphWithBlockquote(runtimeEditor, activeSelector.insertedBlockIndex);
+        }
+        return replaceQuickAddParagraph(runtimeEditor, activeSelector.insertedBlockIndex, command);
+      });
+    } else {
+      didExecute =
+        command.id === "blockquote"
+          ? replaceEmptyParagraphWithBlockquote(runtimeEditor, activeSelector.ownerBlockIndex)
+          : applySlashCommand(runtimeEditor, activeSelector.ownerBlockIndex, command);
+    }
+    if (!didExecute) {
+      return;
+    }
+    const selectionAnchor = runtimeEditor.state.selection.from;
+    closeCommandSelector();
+    if (activeSelector.source === "quickAdd" || activeSelector.source === "slash") {
+      if (editorRef.current === runtimeEditor && !runtimeEditor.isDestroyed) {
+        restoreEditorSelectionFocus(runtimeEditor, selectionAnchor);
+      }
+    }
+  }
 
   useEffect(() => {
     editableRef.current = isEditable;
     if (!isEditable) {
       cancelPendingTimers();
+      setOwnedHoverTarget(null);
+      setCommandSelector(null);
     }
   }, [isEditable]);
 
   useEffect(() => {
-    slashActiveIndexRef.current = slashActiveIndex;
-  }, [slashActiveIndex]);
+    setOwnedHoverTarget(null);
+    setCommandSelector(null);
+  }, [pageSysId, sessionKey]);
 
   useEffect(() => {
-    dismissedSlashKeyRef.current = dismissedSlashKey;
-  }, [dismissedSlashKey]);
+    commandSelectorRef.current = commandSelector;
+  }, [commandSelector]);
+
+  useEffect(() => {
+    const runtimeEditor = editorRef.current;
+    if (!commandSelector || !runtimeEditor) {
+      return;
+    }
+
+    if (commandSelector.source === "slash") {
+      const nextAnchorRect = getCaretBounds(runtimeEditor) ?? commandSelector.anchorRect;
+      const nextPlacement = resolveCommandSelectorPlacement(overlayOwnerDocument, nextAnchorRect, BLOCK_SELECTOR_HEIGHT);
+
+      if (areDomRectsEqual(commandSelector.anchorRect, nextAnchorRect) && commandSelector.placement === nextPlacement) {
+        return;
+      }
+
+      setCommandSelector((current) =>
+        current && current.source === "slash"
+          ? {
+              ...current,
+              anchorRect: nextAnchorRect,
+              placement: nextPlacement
+            }
+          : current
+      );
+      return;
+    }
+
+    const insertedBlockRect = getTopLevelBlockRect(runtimeEditor, commandSelector.insertedBlockIndex);
+    if (!insertedBlockRect) {
+      return;
+    }
+
+    const nextFallbackAnchorRect = buildQuickAddAnchorRect(insertedBlockRect);
+    const nextPlacement = resolveCommandSelectorPlacement(overlayOwnerDocument, nextFallbackAnchorRect, BLOCK_SELECTOR_HEIGHT);
+    if (areDomRectsEqual(commandSelector.fallbackAnchorRect, nextFallbackAnchorRect) && commandSelector.placement === nextPlacement) {
+      return;
+    }
+
+    setCommandSelector((current) =>
+      current && current.source === "quickAdd"
+        ? {
+            ...current,
+            fallbackAnchorRect: nextFallbackAnchorRect,
+            placement: nextPlacement
+          }
+        : current
+    );
+  }, [commandSelector, overlayMeasurementVersion, overlayOwnerDocument]);
+
+  useEffect(() => {
+    const scrollElement = selectorScrollRef.current;
+    if (!commandSelector || !scrollElement) {
+      setSelectorScrollMetrics({ hasOverflow: false, scrollbarWidth: 0 });
+      return;
+    }
+
+    setSelectorScrollMetrics({
+      hasOverflow: scrollElement.scrollHeight > scrollElement.clientHeight + 1,
+      scrollbarWidth: Math.max(0, scrollElement.offsetWidth - scrollElement.clientWidth)
+    });
+  }, [commandGroups, commandSelector, overlayMeasurementVersion]);
 
   useEffect(() => {
     onEditorReadyRef.current = onEditorReady;
@@ -801,35 +1764,32 @@ export function PageEditorHostRuntime({
     () => (theme === "dark" ? "docsera-editor-runtime--dark" : "docsera-editor-runtime--light"),
     [theme]
   );
-  const slashContext = editor && isEditable ? getSlashQuery(editor) : null;
-  const slashMatches = slashContext ? getSlashCommandMatches(slashContext.query) : [];
-  const slashKey = slashContext ? `${slashContext.from}:${slashContext.to}:${slashContext.query}` : "";
-  const slashVisible = Boolean(slashContext) && slashKey !== dismissedSlashKey && isEditable;
   useEffect(() => {
-    if (!slashContext) {
-      setSlashActiveIndex(0);
-      setDismissedSlashKey("");
+    if (!commandSelector) {
       return;
     }
 
-    setSlashActiveIndex((currentIndex) => Math.min(currentIndex, Math.max(0, slashMatches.length - 1)));
-    if (!slashMatches.length) {
-      setSlashActiveIndex(-1);
-      return;
-    }
-
-    if (slashActiveIndexRef.current < 0 || slashActiveIndexRef.current >= slashMatches.length) {
-      setSlashActiveIndex(0);
-    }
-  }, [slashContext, slashMatches.length]);
+    setCommandSelector((current) =>
+      current
+        ? (() => {
+            const nextIndex = Math.max(0, Math.min(current.activeIndex, Math.max(0, commandMatches.length - 1)));
+            return nextIndex === current.activeIndex ? current : { ...current, activeIndex: nextIndex };
+          })()
+        : current
+    );
+  }, [commandMatches.length, commandSelector]);
 
   useEffect(() => {
-    if (!editor || !slashContext) {
+    syncCommandQueryPresentation(commandSelector);
+  }, [commandSelector, syncCommandQueryPresentation]);
+
+  useEffect(() => {
+    if (!editor || (!hoverTarget && !commandSelector)) {
       return;
     }
 
     const handleViewportChange = () => {
-      setLayoutTick((currentTick) => currentTick + 1);
+      scheduleOverlayMeasurement();
     };
 
     overlayOwnerDocument.addEventListener("scroll", handleViewportChange, true);
@@ -838,17 +1798,74 @@ export function PageEditorHostRuntime({
       overlayOwnerDocument.removeEventListener("scroll", handleViewportChange, true);
       overlayOwnerWindow?.removeEventListener("resize", handleViewportChange);
     };
-  }, [editor, overlayOwnerDocument, overlayOwnerWindow, slashContext]);
+  }, [commandSelector, editor, hoverTarget, overlayOwnerDocument, overlayOwnerWindow, scheduleOverlayMeasurement]);
 
-  function executeSlashCommand(command: SlashCommand) {
-    if (!editor || !slashContext) {
+  useEffect(() => {
+    if (!editor || !isEditable) {
       return;
     }
 
-    applySlashCommand(editor, command, { from: slashContext.from, to: slashContext.to });
-    setSlashActiveIndex(0);
-    setDismissedSlashKey("");
-  }
+    const handlePointerMove = (event: PointerEvent) => {
+      const surfaceElement = surfaceRef.current;
+      if (!surfaceElement) {
+        lastPointerSnapshotRef.current = null;
+        setOwnedHoverTarget(null);
+        return;
+      }
+
+      const insideEditorLane = isPointerEventInsideEditorLane(event, surfaceElement);
+      lastPointerSnapshotRef.current = {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        insideEditorLane
+      };
+
+      const nextTarget = resolvePointerOwnedHoverTarget(editor, surfaceElement, event, event.clientX, event.clientY);
+      const didChange = !areHoverTargetsEqual(hoverTargetRef.current, nextTarget);
+      setOwnedHoverTarget(nextTarget);
+      if (didChange) {
+        scheduleOverlayMeasurement();
+      }
+    };
+
+    overlayOwnerDocument.addEventListener("pointermove", handlePointerMove, true);
+    return () => {
+      overlayOwnerDocument.removeEventListener("pointermove", handlePointerMove, true);
+    };
+  }, [editor, isEditable, overlayOwnerDocument, scheduleOverlayMeasurement]);
+
+  useEffect(() => {
+    if (!commandSelector) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (isPointerEventInsideElement(event, overlayRoot)) {
+        return;
+      }
+
+      if (isPointerEventInsideElement(event, surfaceRef.current)) {
+        closeCommandSelector();
+        return;
+      }
+
+      closeCommandSelector();
+    };
+
+    overlayOwnerDocument.addEventListener("pointerdown", handlePointerDown, true);
+    return () => {
+      overlayOwnerDocument.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [closeCommandSelector, commandSelector, overlayOwnerDocument, overlayRoot]);
+
+  useEffect(() => () => {
+    if (overlayMeasurementFrameRef.current !== null) {
+      const cancelAnimationFrameFn =
+        overlayOwnerWindow?.cancelAnimationFrame?.bind(overlayOwnerWindow) ?? window.cancelAnimationFrame.bind(window);
+      cancelAnimationFrameFn(overlayMeasurementFrameRef.current);
+      overlayMeasurementFrameRef.current = null;
+    }
+  }, [overlayOwnerWindow]);
 
   function scheduleAutosave() {
     if (autosaveTimerRef.current !== null) {
@@ -1011,6 +2028,40 @@ export function PageEditorHostRuntime({
     }
   }
 
+  const hoverTargetRect = editor && hoverTarget ? getTopLevelBlockRect(editor, hoverTarget.blockIndex) : null;
+  const gutterButtonStyle = hoverTargetRect ? buildGutterButtonStyle(hoverTargetRect) : undefined;
+  const quickAddAnchorRect =
+    commandSelector && commandSelector.source === "quickAdd" && editor
+      ? getTopLevelBlockRect(editor, commandSelector.insertedBlockIndex)
+        ? buildQuickAddAnchorRect(getTopLevelBlockRect(editor, commandSelector.insertedBlockIndex)!)
+        : commandSelector.fallbackAnchorRect
+      : null;
+  const selectorStyle =
+    commandSelector && editor
+      ? commandSelector.source === "slash"
+        ? buildSurfaceStyle(
+            overlayOwnerDocument,
+            getCaretBounds(editor) ?? commandSelector.anchorRect,
+            BLOCK_SELECTOR_WIDTH,
+            BLOCK_SELECTOR_HEIGHT,
+            commandSelector.placement
+          )
+        : buildRightAnchoredSurfaceStyle(
+            overlayOwnerDocument,
+            quickAddAnchorRect ?? commandSelector.fallbackAnchorRect,
+            BLOCK_SELECTOR_WIDTH,
+            BLOCK_SELECTOR_HEIGHT,
+            commandSelector.placement
+          )
+      : undefined;
+  const selectorSurfaceStyle =
+    selectorStyle && commandSelector
+      ? {
+          ...selectorStyle,
+          "--docsera-block-selector-scrollbar-gap": selectorScrollMetrics.hasOverflow ? `${selectorScrollMetrics.scrollbarWidth}px` : "0px"
+        }
+      : undefined;
+
   return (
     <section className={`docsera-editor-runtime ${overlayThemeClass}`} aria-label="Draft editor">
       <style>{`
@@ -1035,7 +2086,7 @@ export function PageEditorHostRuntime({
         }
         .docsera-editor-runtime__surface {
           position: relative;
-          min-height: 340px;
+          width: 100%;
         }
         .docsera-editor-runtime__lock-banner {
           display: grid;
@@ -1115,11 +2166,10 @@ export function PageEditorHostRuntime({
           line-height: 1.2;
         }
         .docsera-editor-runtime__surface .ProseMirror {
-          min-height: 340px;
           color: var(--docsera-editor-text);
           caret-color: var(--docsera-editor-primary);
           font-size: 1rem;
-          line-height: 1.8;
+          line-height: 1.7;
           outline: none;
           scroll-padding-top: var(--docsera-workspace-heading-scroll-margin);
         }
@@ -1134,6 +2184,29 @@ export function PageEditorHostRuntime({
         }
         .docsera-editor-runtime__surface .ProseMirror p {
           margin: 0 0 1rem;
+        }
+        .docsera-editor-runtime__surface .ProseMirror > p[data-docsera-empty-paragraph="true"] {
+          position: relative;
+        }
+        .docsera-editor-runtime__surface .ProseMirror > p[data-placeholder]:not([data-docsera-command-query-owner])::before,
+        .docsera-editor-runtime__surface .ProseMirror > h1[data-placeholder]::before,
+        .docsera-editor-runtime__surface .ProseMirror > h2[data-placeholder]::before,
+        .docsera-editor-runtime__surface .ProseMirror > h3[data-placeholder]::before {
+          content: attr(data-placeholder);
+          float: left;
+          height: 0;
+          color: var(--docsera-editor-muted);
+          pointer-events: none;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-command-query-inline {
+          display: inline;
+          color: var(--docsera-editor-muted);
+          pointer-events: none;
+          user-select: none;
+          white-space: pre-wrap;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-command-query-inline--helper {
+          margin-left: 0.1ch;
         }
         .docsera-editor-runtime__surface .ProseMirror h1,
         .docsera-editor-runtime__surface .ProseMirror h2,
@@ -1167,6 +2240,14 @@ export function PageEditorHostRuntime({
           padding-left: 1rem;
           border-left: 3px solid color-mix(in srgb, var(--docsera-editor-primary) 24%, transparent);
           color: var(--docsera-editor-muted);
+        }
+        .docsera-editor-runtime__surface .ProseMirror blockquote > p[data-placeholder]::before {
+          content: attr(data-placeholder);
+          float: left;
+          height: 0;
+          color: var(--docsera-editor-muted);
+          font-style: italic;
+          pointer-events: none;
         }
         .docsera-editor-runtime__surface .ProseMirror pre {
           margin: 0 0 1rem;
@@ -1222,19 +2303,10 @@ export function PageEditorHostRuntime({
           pointer-events: none;
           z-index: 30;
         }
+        ${BLOCK_SELECTOR_STYLES}
+
         .docsera-editor-floating {
           pointer-events: auto;
-          display: grid;
-          gap: 10px;
-          padding: 12px;
-          border: 1px solid var(--docsera-editor-panel-border);
-          border-radius: 16px;
-          background: color-mix(in srgb, var(--docsera-editor-panel) 92%, transparent);
-          box-shadow: 0 16px 40px rgba(15, 23, 42, 0.18);
-          backdrop-filter: blur(14px);
-        }
-        .docsera-editor-floating--slash {
-          width: min(100vw - 24px, 320px);
         }
         .docsera-editor-floating--bubble {
           width: min(100vw - 24px, 456px);
@@ -1247,114 +2319,35 @@ export function PageEditorHostRuntime({
           letter-spacing: 0.08em;
           text-transform: uppercase;
         }
-        .docsera-editor-floating__list {
-          display: grid;
-          gap: 4px;
-          margin: 0;
-          padding: 0;
-          list-style: none;
-        }
-        .docsera-editor-floating__item-button {
-          display: flex;
+        .docsera-editor-floating__quick-add {
+          pointer-events: auto;
+          display: inline-flex;
           align-items: center;
-          gap: 10px;
-          width: 100%;
-          padding: 10px 11px;
-          border: 1px solid transparent;
-          border-radius: 12px;
+          justify-content: center;
+          width: ${QUICK_ADD_BUTTON_SIZE}px;
+          height: ${QUICK_ADD_BUTTON_SIZE}px;
+          padding: 0;
+          border: 0;
+          border-radius: 8px;
           background: transparent;
-          color: var(--docsera-editor-text);
-          font-size: 0.925rem;
-          font-weight: 600;
-          text-align: left;
+          color: var(--docsera-text-soft);
+          cursor: pointer;
+          box-shadow: none;
+          transition: background-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
         }
-        .docsera-editor-floating__item-button[aria-selected="true"],
-        .docsera-editor-floating__item-button:hover,
-        .docsera-editor-floating__item-button:focus-visible,
-        .docsera-editor-floating__action:hover,
-        .docsera-editor-floating__action:focus-visible {
-          border-color: rgba(1, 94, 194, 0.22);
-          background: rgba(1, 94, 194, 0.08);
+        .docsera-editor-floating__quick-add:hover,
+        .docsera-editor-floating__quick-add:focus-visible {
+          background: var(--docsera-surface-muted);
+          color: var(--docsera-primary);
           outline: none;
         }
-        .docsera-editor-floating__item-icon,
-        .docsera-editor-floating__chip-icon {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
+        .docsera-editor-floating__quick-add:focus-visible {
+          box-shadow: 0 0 0 2px color-mix(in srgb, var(--docsera-primary) 22%, transparent);
+        }
+        .docsera-editor-floating__quick-add svg {
+          width: ${QUICK_ADD_ICON_SIZE}px;
+          height: ${QUICK_ADD_ICON_SIZE}px;
           flex: 0 0 auto;
-          width: 24px;
-          height: 24px;
-          color: var(--docsera-editor-primary);
-        }
-        .docsera-editor-floating__item-copy {
-          display: grid;
-          gap: 2px;
-          min-width: 0;
-        }
-        .docsera-editor-floating__item-description {
-          color: var(--docsera-editor-muted);
-          font-size: 0.76rem;
-          font-weight: 500;
-          line-height: 1.4;
-        }
-        .docsera-editor-floating__empty {
-          margin: 0;
-          color: var(--docsera-editor-muted);
-          font-size: 0.875rem;
-          line-height: 1.5;
-        }
-        .docsera-editor-floating__row {
-          display: flex;
-          gap: 8px;
-          flex-wrap: wrap;
-        }
-        .docsera-editor-floating__menu {
-          display: grid;
-          gap: 4px;
-          padding: 6px;
-          border: 1px solid var(--docsera-editor-panel-border);
-          border-radius: 12px;
-          background: color-mix(in srgb, var(--docsera-editor-panel) 96%, transparent);
-        }
-        .docsera-editor-floating__menu-heading {
-          margin: 0;
-          padding: 0 4px 2px;
-          color: var(--docsera-editor-muted);
-          font-size: 0.72rem;
-          font-weight: 700;
-          letter-spacing: 0.08em;
-          text-transform: uppercase;
-        }
-        .docsera-editor-floating__menu-list {
-          display: grid;
-          gap: 2px;
-        }
-        .docsera-editor-floating__action,
-        .docsera-editor-floating__secondary {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          min-height: 36px;
-          padding: 8px 11px;
-          border: 1px solid var(--docsera-editor-panel-border);
-          border-radius: 12px;
-          background: var(--docsera-editor-panel);
-          color: var(--docsera-editor-text);
-          font-size: 0.875rem;
-          font-weight: 700;
-        }
-        .docsera-editor-floating__secondary {
-          min-width: 36px;
-          padding-inline: 10px;
-        }
-        .docsera-editor-floating__action {
-          border-color: rgba(1, 94, 194, 0.24);
-          background: linear-gradient(135deg, var(--docsera-editor-primary), #004fa8);
-          color: #ffffff;
-        }
-        .docsera-editor-floating__secondary {
-          background: transparent;
         }
         @keyframes docsera-editor-lock-pulse {
           0%, 100% {
@@ -1368,71 +2361,109 @@ export function PageEditorHostRuntime({
         }
       `}</style>
       <div
+        ref={surfaceRef}
         className="docsera-editor-runtime__surface"
         onClick={(event) => {
-        if (!editor || !isEditable || !(event.target instanceof HTMLElement)) return;
-        const proseMirror = event.currentTarget.querySelector(".ProseMirror");
-        if (!(proseMirror instanceof HTMLElement) || (event.target !== event.currentTarget && event.target !== proseMirror)) return;
-        if (event.target === proseMirror && !isBelowEditorContentCanvasClick(event, proseMirror)) return;
-        const lastChild = editor.state.doc.lastChild;
-        if (lastChild?.type.name === "paragraph" && lastChild.content.size === 0) {
-          editor.commands.focus("end", { scrollIntoView: false });
-          return;
-        }
-        editor.chain().insertContentAt(editor.state.doc.content.size, { type: "paragraph" }).focus("end", { scrollIntoView: false }).run();
-      }}
+          if (!editor || !isEditable || !(event.target instanceof HTMLElement)) return;
+          const proseMirror = event.currentTarget.querySelector(".ProseMirror");
+          if (!(proseMirror instanceof HTMLElement) || (event.target !== event.currentTarget && event.target !== proseMirror)) return;
+          if (event.target === proseMirror && !isBelowEditorContentCanvasClick(event, proseMirror)) return;
+          const lastChild = editor.state.doc.lastChild;
+          if (lastChild?.type.name === "paragraph" && lastChild.content.size === 0) {
+            editor.commands.focus("end", { scrollIntoView: false });
+            return;
+          }
+          editor.chain().insertContentAt(editor.state.doc.content.size, { type: "paragraph" }).focus("end", { scrollIntoView: false }).run();
+        }}
       >
         <EditorContent editor={editor} />
         {createPortal(
           <div className="docsera-editor-floating-layer" aria-hidden={!editor}>
-            {slashVisible && slashContext ? (
+            {hoverTarget && gutterButtonStyle && !commandSelector ? (
+              <button
+                type="button"
+                className="docsera-editor-floating__quick-add"
+                style={gutterButtonStyle}
+                aria-haspopup="listbox"
+                aria-controls={selectorListboxId}
+                aria-expanded={false}
+                aria-label={`Add block after ${hoverTarget.accessibleLabel}`}
+                data-docsera-block-gutter="true"
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                }}
+                onClick={() => {
+                  openQuickAddSelector(hoverTarget);
+                }}
+              >
+                <Plus size={QUICK_ADD_ICON_SIZE} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+              </button>
+            ) : null}
+
+            {commandSelector && selectorStyle ? (
               <div
-                className="docsera-editor-floating docsera-editor-floating--slash"
-                style={buildSurfaceStyle(
-                  overlayOwnerDocument,
-                  getCaretBounds(editor!) ?? new DOMRect(12, 12, 1, 1),
-                  SLASH_MENU_WIDTH,
-                  308
-                )}
+                className="docsera-editor-floating docsera-block-selector"
+                style={selectorSurfaceStyle}
                 role="listbox"
-                aria-label="Slash command menu"
-                aria-activedescendant={slashMatches[slashActiveIndex]?.id ? `slash-command-${slashMatches[slashActiveIndex].id}` : undefined}
+                id={selectorListboxId}
+                aria-label={commandSelector.source === "quickAdd" ? `Insert block after ${commandSelector.ownerLabel}` : "Slash command menu"}
+                aria-activedescendant={commandMatches[commandSelector.activeIndex]?.id ? `slash-command-${commandMatches[commandSelector.activeIndex].id}` : undefined}
                 data-surface="slash"
               >
-                <p className="docsera-editor-floating__label">Insert block</p>
-                {slashMatches.length ? (
-                  <ul className="docsera-editor-floating__list">
-                    {slashMatches.map((command, index) => (
-                      <li key={command.id}>
-                        <button
-                          id={`slash-command-${command.id}`}
-                          type="button"
-                          className="docsera-editor-floating__item-button"
-                          role="option"
-                          aria-selected={index === slashActiveIndex}
-                          onMouseDown={(event) => {
-                            event.preventDefault();
-                          }}
-                          onClick={() => {
-                            executeSlashCommand(command);
-                          }}
-                        >
-                          <span className="docsera-editor-floating__item-icon" aria-hidden="true">
-                            <SlashCommandIcon id={command.id} />
-                          </span>
-                          <span className="docsera-editor-floating__item-copy">
-                            <span>{command.label}</span>
-                            <span className="docsera-editor-floating__item-description">
-                              {command.keywords[0] ? `Keyword: ${command.keywords[0]}` : "Command"}
-                            </span>
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="docsera-editor-floating__empty">No commands match this query.</p>
-                )}
+                <div ref={selectorScrollRef} className="docsera-block-selector__scroll">
+                  <div id={selectorQueryStateId} aria-live="polite" aria-atomic="true" hidden>
+                    {commandSelector.query ? `Search query ${commandSelector.query}` : "Type to search"}
+                  </div>
+                  {commandGroups.length ? (
+                    commandGroups.map((group) => (
+                      <section key={group.category} className="docsera-block-selector__group" aria-label={group.category}>
+                        <p className="docsera-block-selector__heading">{group.category}</p>
+                        <div className="docsera-block-selector__options">
+                          {group.commands.map((command) => {
+                            const index = commandMatches.findIndex((candidate) => candidate.id === command.id);
+                            return (
+                              <button
+                                key={command.id}
+                                id={`slash-command-${command.id}`}
+                                type="button"
+                                className={`docsera-block-selector__item${index === commandSelector.activeIndex ? " docsera-block-selector__item--active" : ""}`}
+                                role="option"
+                                aria-label={command.label}
+                                aria-selected={index === commandSelector.activeIndex}
+                                onMouseDown={(event) => {
+                                  event.preventDefault();
+                                }}
+                                onMouseEnter={() => {
+                                  setCommandSelector((current) =>
+                                    current
+                                      ? {
+                                          ...current,
+                                          activeIndex: index
+                                        }
+                                      : current
+                                  );
+                                }}
+                                onClick={() => {
+                                  executeCommand(command);
+                                }}
+                              >
+                                <span className="docsera-block-selector__icon" aria-hidden="true">
+                                  <BlockCommandIcon id={command.id} />
+                                </span>
+                                <span className="docsera-block-selector__copy">
+                                  <span className="docsera-block-selector__title">{command.label}</span>
+                                  <span className="docsera-block-selector__description">{command.description}</span>
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    ))
+                  ) : (
+                    <p className="docsera-block-selector__empty">No matching commands</p>
+                  )}
+                </div>
               </div>
             ) : null}
 
