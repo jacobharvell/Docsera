@@ -3,7 +3,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { createPortal } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import * as React from "react";
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Fragment } from "@tiptap/pm/model";
 import type { DocseraDocumentEnvelope, DocseraTiptapDocument } from "../../shared/editor/document";
@@ -11,6 +11,7 @@ import { DOCSERA_DOCUMENT_SCHEMA_VERSION, parseDocseraDocumentOrThrow } from "..
 import { createDocseraEditorExtensions } from "../../shared/editor/schema";
 import { extractDocumentOutline, type EditorOutlineItem } from "./documentOutline";
 import {
+  EDITOR_BLOCK_COMMANDS,
   getEditorBlockCommandMatches,
   getGroupedEditorBlockCommandMatches,
   type EditorBlockCommand,
@@ -19,11 +20,14 @@ import {
 import { resolveHoverTargetBlockIndex } from "./editorBlockHover";
 import { sanitizeDocseraPastedHTML, sanitizeDocseraPastedText } from "./pasteSanitizer";
 import type { PageBodySaveResult } from "../shared/types/docsera";
-import { Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
+import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { CompactTextToolbar } from "./CompactTextToolbar";
 import {
+  Check,
   Code2,
+  Copy,
+  ChevronRight,
   Heading1,
   Heading2,
   Heading3,
@@ -34,6 +38,7 @@ import {
   Pilcrow,
   Plus,
   Quote,
+  Trash2,
 } from "lucide-react";
 import { BLOCK_SELECTOR_STYLES } from "./BlockSelectorStyles";
 
@@ -120,6 +125,22 @@ type CommandSelectorState =
       source: "slash";
     };
 
+type BlockActionMenuState = {
+  activeIndex: number;
+  anchorRect: DOMRect;
+  blockIndex: number;
+  placement: CommandSelectorPlacement;
+  source: "handle" | "keyboard";
+};
+
+type BlockTurnIntoMenuState = {
+  activeIndex: number;
+  anchorRect: DOMRect;
+  blockIndex: number;
+  placement: CommandSelectorPlacement;
+  source: "handle" | "keyboard";
+};
+
 type BlockSelectionState = {
   ownerPos: number;
 };
@@ -157,6 +178,10 @@ const BLOCK_SELECTOR_WIDTH = 320;
 const BLOCK_SELECTOR_PLACEMENT_GAP = 6;
 const BLOCK_TARGET_TOP_OFFSET = 1;
 const BLOCK_HANDLE_GESTURE_THRESHOLD_PX = 4;
+const BLOCK_ACTION_MENU_WIDTH = 182;
+const BLOCK_ACTION_MENU_HEIGHT = 144;
+const BLOCK_TURN_INTO_MENU_WIDTH = 198;
+const BLOCK_TURN_INTO_MENU_HEIGHT = 280;
 const TIPTAP_SKIP_TRAILING_NODE_META = "skipTrailingNode";
 const COMMAND_QUERY_PRESENTATION_PLUGIN_KEY = new PluginKey<CommandQueryPresentationState | null>("docseraCommandQueryPresentation");
 const BLOCK_SELECTION_PLUGIN_KEY = new PluginKey<BlockSelectionState | null>("docseraBlockSelection");
@@ -378,6 +403,125 @@ function getTopLevelBlockPositionFromDoc(doc: Editor["state"]["doc"], blockIndex
 
 function getTopLevelBlockPosition(editor: Editor, blockIndex: number): number | null {
   return getTopLevelBlockPositionFromDoc(editor.state.doc, blockIndex);
+}
+
+function getTopLevelBlockRangeFromDoc(
+  doc: Editor["state"]["doc"],
+  blockIndex: number
+): { from: number; to: number } | null {
+  if (blockIndex < 0 || blockIndex >= doc.childCount) {
+    return null;
+  }
+
+  let blockRange: { from: number; to: number } | null = null;
+  doc.forEach((node, offset, index) => {
+    if (index === blockIndex) {
+      blockRange = {
+        from: offset,
+        to: offset + node.nodeSize
+      };
+    }
+  });
+
+  return blockRange;
+}
+
+function getTopLevelBlockNodeFromDoc(
+  doc: Editor["state"]["doc"],
+  blockIndex: number
+): Editor["state"]["doc"]["content"]["content"][number] | null {
+  if (blockIndex < 0 || blockIndex >= doc.childCount) {
+    return null;
+  }
+
+  return doc.child(blockIndex);
+}
+
+function resolveBlockSelectionStateFromDoc(
+  doc: Editor["state"]["doc"],
+  blockIndex: number
+): BlockSelectionState | null {
+  const ownerPos = getTopLevelBlockPositionFromDoc(doc, blockIndex);
+  if (ownerPos === null) {
+    return null;
+  }
+
+  const ownerBlock = getTopLevelBlockNodeFromDoc(doc, blockIndex);
+  if (!ownerBlock || !ownerBlock.isBlock) {
+    return null;
+  }
+
+  return {
+    ownerPos
+  };
+}
+
+function getTopLevelBlockSelectionOffset(
+  node: Editor["state"]["doc"]["content"]["content"][number]
+): number | "continuation" {
+  switch (node.type.name) {
+    case "blockquote":
+      return 2;
+    case "bulletList":
+    case "orderedList":
+      return 3;
+    case "horizontalRule":
+      return "continuation";
+    default:
+      return 1;
+  }
+}
+
+function getTopLevelBlockInlineContent(
+  node: Editor["state"]["doc"]["content"]["content"][number]
+): Fragment {
+  if (node.type.name === "blockquote") {
+    const paragraph = node.firstChild;
+    if (paragraph?.type.name === "paragraph") {
+      return paragraph.content;
+    }
+  }
+
+  if (node.type.name === "bulletList" || node.type.name === "orderedList") {
+    const listItem = node.firstChild;
+    const paragraph = listItem?.firstChild;
+    if (paragraph?.type.name === "paragraph") {
+      return paragraph.content;
+    }
+  }
+
+  return node.content;
+}
+
+function applyTopLevelBlockSelectionToTransaction(
+  transaction: Transaction,
+  blockIndex: number
+): Transaction | null {
+  const blockRange = getTopLevelBlockRangeFromDoc(transaction.doc, blockIndex);
+  const targetNode = getTopLevelBlockNodeFromDoc(transaction.doc, blockIndex);
+  if (!blockRange || !targetNode) {
+    return null;
+  }
+
+  const selectionOffset = getTopLevelBlockSelectionOffset(targetNode);
+  let nextTransaction = transaction;
+  const nextSelection = resolveBlockSelectionStateFromDoc(transaction.doc, blockIndex);
+  if (nextSelection) {
+    nextTransaction = nextTransaction.setMeta(BLOCK_SELECTION_PLUGIN_KEY, nextSelection);
+  }
+
+  const selectionAnchor =
+    selectionOffset === "continuation"
+      ? Math.min(blockRange.from + targetNode.nodeSize + 1, Math.max(1, transaction.doc.content.size))
+      : Math.min(blockRange.from + selectionOffset, Math.max(1, transaction.doc.content.size));
+
+  try {
+    nextTransaction = nextTransaction.setSelection(TextSelection.create(nextTransaction.doc, selectionAnchor));
+  } catch {
+    nextTransaction = nextTransaction.setSelection(Selection.near(nextTransaction.doc.resolve(selectionAnchor), 1));
+  }
+
+  return nextTransaction;
 }
 
 function resolveBlockquoteExitBackspaceBoundary(editor: Editor): {
@@ -761,6 +905,83 @@ function buildBlockHandleButtonStyle(targetRect: DOMRect): CSSProperties {
   };
 }
 
+function buildBlockActionMenuSurfaceStyle(
+  ownerDocument: Document,
+  rect: DOMRect,
+  width: number,
+  height: number,
+  placement: CommandSelectorPlacement
+): CSSProperties {
+  const ownerWindow = ownerDocument.defaultView;
+  const viewportWidth = ownerWindow?.innerWidth ?? ownerDocument.documentElement.clientWidth;
+  const viewportHeight = ownerWindow?.innerHeight ?? ownerDocument.documentElement.clientHeight;
+  const maxSurfaceWidth = Math.max(1, viewportWidth - VIEWPORT_GUTTER * 2);
+  const clampedWidth = Math.max(1, Math.min(width, maxSurfaceWidth));
+  const clampedHeight = resolveConstrainedSurfaceHeight(ownerDocument, rect, height, placement);
+  const left = Math.min(
+    Math.max(VIEWPORT_GUTTER, rect.left - QUICK_ADD_BUTTON_SIZE),
+    Math.max(VIEWPORT_GUTTER, viewportWidth - clampedWidth - VIEWPORT_GUTTER)
+  );
+  const preferredTop = placement === "above" ? rect.top - clampedHeight - POPOVER_GAP : rect.bottom + POPOVER_GAP;
+  const top = Math.min(Math.max(VIEWPORT_GUTTER, preferredTop), Math.max(VIEWPORT_GUTTER, viewportHeight - clampedHeight - VIEWPORT_GUTTER));
+
+  return {
+    position: "fixed",
+    left,
+    top,
+    width: `${clampedWidth}px`,
+    maxWidth: `${maxSurfaceWidth}px`
+  };
+}
+
+function buildBlockTurnIntoMenuSurfaceStyle(
+  ownerDocument: Document,
+  rect: DOMRect,
+  width: number,
+  height: number,
+  placement: CommandSelectorPlacement,
+  parentRect?: DOMRect | null
+): CSSProperties {
+  const ownerWindow = ownerDocument.defaultView;
+  const viewportWidth = ownerWindow?.innerWidth ?? ownerDocument.documentElement.clientWidth;
+  const viewportHeight = ownerWindow?.innerHeight ?? ownerDocument.documentElement.clientHeight;
+  const maxSurfaceWidth = Math.max(1, viewportWidth - VIEWPORT_GUTTER * 2);
+  const clampedWidth = Math.max(1, Math.min(width, maxSurfaceWidth));
+  const clampedHeight = resolveConstrainedSurfaceHeight(ownerDocument, rect, height, placement);
+  const left = Math.min(
+    Math.max(VIEWPORT_GUTTER, (parentRect?.right ?? rect.right) + BLOCK_SELECTOR_PLACEMENT_GAP),
+    Math.max(VIEWPORT_GUTTER, viewportWidth - clampedWidth - VIEWPORT_GUTTER)
+  );
+  const preferredTop = parentRect ? parentRect.top : placement === "above" ? rect.top - clampedHeight - POPOVER_GAP : rect.bottom + POPOVER_GAP;
+  const top = Math.min(Math.max(VIEWPORT_GUTTER, preferredTop), Math.max(VIEWPORT_GUTTER, viewportHeight - clampedHeight - VIEWPORT_GUTTER));
+
+  return {
+    position: "fixed",
+    left,
+    top,
+    width: `${clampedWidth}px`,
+    maxWidth: `${maxSurfaceWidth}px`,
+    maxHeight: `${clampedHeight}px`
+  };
+}
+
+function buildBlockActionMenuAnchorRect(targetRect: DOMRect): DOMRect {
+  const anchorRect = buildQuickAddAnchorRect(targetRect);
+  return new DOMRect(
+    anchorRect.left + QUICK_ADD_BUTTON_SIZE + BLOCK_HANDLE_BUTTON_GAP,
+    anchorRect.top,
+    QUICK_ADD_BUTTON_SIZE,
+    Math.max(1, targetRect.bottom - (targetRect.top + BLOCK_TARGET_TOP_OFFSET))
+  );
+}
+
+function getTurnIntoBlockCommandIdFromNode(
+  node: Editor["state"]["doc"]["content"]["content"][number]
+): TurnIntoEditorBlockCommandId | null {
+  const sourceCommandId = getTopLevelBlockCommandId(node);
+  return sourceCommandId && isTurnIntoEditorBlockCommandId(sourceCommandId) ? sourceCommandId : null;
+}
+
 function resolveEditorLaneGeometry(surfaceElement: HTMLElement, proseMirror: HTMLElement): EditorLaneGeometry {
   const surfaceRect = surfaceElement.getBoundingClientRect();
   const proseMirrorRect = proseMirror.getBoundingClientRect();
@@ -1017,6 +1238,265 @@ function applySlashCommand(editor: Editor, ownerBlockIndex: number, command: Edi
   return applyCommandSelectionOffset(editor, ownerBlockIndex, command.slashSelectionOffset);
 }
 
+const TURN_INTO_EDITOR_BLOCK_COMMAND_IDS = [
+  "text",
+  "heading1",
+  "heading2",
+  "heading3",
+  "blockquote",
+  "bulletedList",
+  "numberedList"
+ ] as const;
+
+type TurnIntoEditorBlockCommandId = (typeof TURN_INTO_EDITOR_BLOCK_COMMAND_IDS)[number];
+
+type TurnIntoEditorBlockCommand = Omit<EditorBlockCommand, "id"> & {
+  id: TurnIntoEditorBlockCommandId;
+};
+
+function isTurnIntoEditorBlockCommandId(commandId: EditorBlockCommandId): commandId is TurnIntoEditorBlockCommandId {
+  return TURN_INTO_EDITOR_BLOCK_COMMAND_IDS.includes(commandId as TurnIntoEditorBlockCommandId);
+}
+
+function isTurnIntoEditorBlockCommand(command: EditorBlockCommand): command is TurnIntoEditorBlockCommand {
+  return isTurnIntoEditorBlockCommandId(command.id);
+}
+
+const TURN_INTO_EDITOR_BLOCK_COMMANDS = EDITOR_BLOCK_COMMANDS.filter(isTurnIntoEditorBlockCommand);
+
+function getTopLevelBlockCommandId(
+  node: Editor["state"]["doc"]["content"]["content"][number]
+): EditorBlockCommandId | null {
+  switch (node.type.name) {
+    case "paragraph":
+      return "text";
+    case "heading":
+      switch (node.attrs.level) {
+        case 1:
+          return "heading1";
+        case 2:
+          return "heading2";
+        case 3:
+          return "heading3";
+        default:
+          return null;
+      }
+    case "blockquote":
+      return "blockquote";
+    case "bulletList":
+      return "bulletedList";
+    case "orderedList":
+      return "numberedList";
+    case "codeBlock":
+      return "codeBlock";
+    case "horizontalRule":
+      return "horizontalRule";
+    default:
+      return null;
+  }
+}
+
+function getTopLevelBlockLabelFromNode(
+  node: Editor["state"]["doc"]["content"]["content"][number]
+): string {
+  switch (node.type.name) {
+    case "heading":
+      switch (node.attrs.level) {
+        case 1:
+          return "Heading 1";
+        case 2:
+          return "Heading 2";
+        case 3:
+          return "Heading 3";
+        default:
+          return "Heading";
+      }
+    case "bulletList":
+      return "Bulleted List";
+    case "orderedList":
+      return "Numbered List";
+    case "blockquote":
+      return "Blockquote";
+    case "codeBlock":
+      return "Code Block";
+    case "horizontalRule":
+      return "Horizontal Rule";
+    case "paragraph":
+    default:
+      return "Text";
+  }
+}
+
+function getTurnIntoBlockCommandsForBlock(
+  node: Editor["state"]["doc"]["content"]["content"][number]
+): TurnIntoEditorBlockCommand[] {
+  if (!getTurnIntoBlockCommandIdFromNode(node)) {
+    return [];
+  }
+
+  return TURN_INTO_EDITOR_BLOCK_COMMANDS;
+}
+
+type BlockActionMenuEntry =
+  | {
+      kind: "duplicate";
+    }
+  | {
+      kind: "delete";
+    }
+  | {
+      commands: TurnIntoEditorBlockCommand[];
+      kind: "turnInto";
+    };
+
+function getBlockActionMenuEntries(
+  node: Editor["state"]["doc"]["content"]["content"][number]
+): BlockActionMenuEntry[] {
+  const turnIntoCommands = getTurnIntoBlockCommandsForBlock(node);
+  const entries: BlockActionMenuEntry[] = [];
+  if (turnIntoCommands.length) {
+    entries.push({
+      kind: "turnInto",
+      commands: turnIntoCommands
+    });
+  }
+
+  entries.push(
+    {
+      kind: "duplicate"
+    },
+    {
+      kind: "delete"
+    }
+  );
+
+  return entries;
+}
+
+function createConvertedTopLevelBlockNode(
+  editor: Editor,
+  sourceNode: Editor["state"]["doc"]["content"]["content"][number],
+  targetCommandId: TurnIntoEditorBlockCommandId
+): Editor["state"]["doc"]["content"]["content"][number] | null {
+  const inlineContent = getTopLevelBlockInlineContent(sourceNode);
+
+  switch (targetCommandId) {
+    case "text":
+      return editor.schema.nodes.paragraph.create(null, inlineContent);
+    case "heading1":
+      return editor.schema.nodes.heading.create({ level: 1 }, inlineContent);
+    case "heading2":
+      return editor.schema.nodes.heading.create({ level: 2 }, inlineContent);
+    case "heading3":
+      return editor.schema.nodes.heading.create({ level: 3 }, inlineContent);
+    case "blockquote":
+      return editor.schema.nodes.blockquote.create(null, editor.schema.nodes.paragraph.create(null, inlineContent));
+    case "bulletedList":
+      return editor.schema.nodes.bulletList.create(
+        null,
+        editor.schema.nodes.listItem.create(null, editor.schema.nodes.paragraph.create(null, inlineContent))
+      );
+    case "numberedList":
+      return editor.schema.nodes.orderedList.create(
+        null,
+        editor.schema.nodes.listItem.create(null, editor.schema.nodes.paragraph.create(null, inlineContent))
+      );
+    default:
+      return null;
+  }
+}
+
+function applyTopLevelBlockConversion(
+  editor: Editor,
+  blockIndex: number,
+  targetCommandId: TurnIntoEditorBlockCommandId
+): boolean {
+  const blockRange = getTopLevelBlockRange(editor, blockIndex);
+  const sourceNode = blockIndex >= 0 && blockIndex < editor.state.doc.childCount ? editor.state.doc.child(blockIndex) : null;
+  const convertedNode = sourceNode ? createConvertedTopLevelBlockNode(editor, sourceNode, targetCommandId) : null;
+  if (!blockRange || !sourceNode || !convertedNode) {
+    return false;
+  }
+
+  if (getTopLevelBlockCommandId(sourceNode) === targetCommandId) {
+    return false;
+  }
+
+  const transaction = applyTopLevelBlockSelectionToTransaction(
+    editor.state.tr.delete(blockRange.from, blockRange.to).insert(blockRange.from, convertedNode),
+    blockIndex
+  );
+  if (!transaction) {
+    return false;
+  }
+
+  editor.view.dispatch(transaction);
+  return true;
+}
+
+function duplicateTopLevelBlock(editor: Editor, blockIndex: number): boolean {
+  const blockRange = getTopLevelBlockRange(editor, blockIndex);
+  const sourceNode = blockIndex >= 0 && blockIndex < editor.state.doc.childCount ? editor.state.doc.child(blockIndex) : null;
+  if (!blockRange || !sourceNode) {
+    return false;
+  }
+
+  const duplicateNode = editor.schema.nodeFromJSON(sourceNode.toJSON());
+  const transaction = applyTopLevelBlockSelectionToTransaction(
+    editor.state.tr.insert(blockRange.to, duplicateNode),
+    blockIndex + 1
+  );
+  if (!transaction) {
+    return false;
+  }
+
+  editor.view.dispatch(transaction);
+  return true;
+}
+
+function deleteTopLevelBlock(editor: Editor, blockIndex: number): boolean {
+  const blockRange = getTopLevelBlockRange(editor, blockIndex);
+  if (!blockRange) {
+    return false;
+  }
+
+  let transaction = editor.state.tr.delete(blockRange.from, blockRange.to);
+  let nextBlockIndex = blockIndex;
+
+  if (transaction.doc.childCount === 0) {
+    transaction = transaction.insert(0, editor.schema.nodes.paragraph.create());
+    nextBlockIndex = 0;
+  } else if (nextBlockIndex >= transaction.doc.childCount) {
+    nextBlockIndex = transaction.doc.childCount - 1;
+  }
+
+  const nextBlockRange = getTopLevelBlockRangeFromDoc(transaction.doc, nextBlockIndex);
+  const nextBlock = getTopLevelBlockNodeFromDoc(transaction.doc, nextBlockIndex);
+  if (!nextBlockRange || !nextBlock) {
+    return false;
+  }
+
+  const selectionOffset = getTopLevelBlockSelectionOffset(nextBlock);
+  const selectionAnchor =
+    selectionOffset === "continuation"
+      ? Math.min(nextBlockRange.from + nextBlock.nodeSize + 1, Math.max(1, transaction.doc.content.size))
+      : Math.min(nextBlockRange.from + selectionOffset, Math.max(1, transaction.doc.content.size));
+  let nextTransaction = transaction;
+  try {
+    nextTransaction = nextTransaction.setSelection(TextSelection.create(nextTransaction.doc, selectionAnchor));
+  } catch {
+    try {
+      nextTransaction = nextTransaction.setSelection(Selection.near(nextTransaction.doc.resolve(selectionAnchor), 1));
+    } catch {
+      return false;
+    }
+  }
+
+  editor.view.dispatch(nextTransaction);
+  editor.view.focus();
+  return true;
+}
+
 function replaceEmptyParagraphWithBlockquote(
   editor: Editor,
   blockIndex: number
@@ -1061,6 +1541,63 @@ function restoreEditorSelectionFocus(
     transaction = transaction.setSelection(TextSelection.create(transaction.doc, resolvedAnchor));
   } catch {
     transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(resolvedAnchor), 1));
+  }
+
+  if (!editor.state.selection.eq(transaction.selection)) {
+    editor.view.dispatch(transaction);
+  }
+
+  editor.view.focus();
+}
+
+function focusTopLevelBlockSelection(editor: Editor, blockIndex: number): void {
+  const blockRange = getTopLevelBlockRange(editor, blockIndex);
+  if (!blockRange) {
+    return;
+  }
+
+  if (editor.isDestroyed) {
+    return;
+  }
+
+  let transaction = editor.state.tr.setMeta("addToHistory", false);
+  try {
+    transaction = transaction.setSelection(NodeSelection.create(transaction.doc, blockRange.from));
+  } catch {
+    try {
+      transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(blockRange.from), 1));
+    } catch {
+      return;
+    }
+  }
+
+  if (!editor.state.selection.eq(transaction.selection)) {
+    editor.view.dispatch(transaction);
+  }
+
+  editor.view.focus();
+}
+
+function focusTopLevelBlockStart(editor: Editor, blockIndex: number): void {
+  const blockRange = getTopLevelBlockRange(editor, blockIndex);
+  if (!blockRange) {
+    return;
+  }
+
+  if (editor.isDestroyed) {
+    return;
+  }
+
+  const selectionAnchor = Math.min(blockRange.from + 1, Math.max(1, editor.state.doc.content.size));
+  let transaction = editor.state.tr.setMeta("addToHistory", false);
+  try {
+    transaction = transaction.setSelection(TextSelection.create(transaction.doc, selectionAnchor));
+  } catch {
+    try {
+      transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(selectionAnchor), 1));
+    } catch {
+      return;
+    }
   }
 
   if (!editor.state.selection.eq(transaction.selection)) {
@@ -1272,10 +1809,14 @@ export function PageEditorHostRuntime({
   const [errorMessage, setErrorMessage] = useState("");
   const [hoverTarget, setHoverTarget] = useState<HoverTarget | null>(null);
   const [commandSelector, setCommandSelector] = useState<CommandSelectorState | null>(null);
+  const [blockActionMenu, setBlockActionMenu] = useState<BlockActionMenuState | null>(null);
+  const [blockTurnIntoMenu, setBlockTurnIntoMenu] = useState<BlockTurnIntoMenuState | null>(null);
   const [selectorScrollMetrics, setSelectorScrollMetrics] = useState({ hasOverflow: false, scrollbarWidth: 0 });
   const [overlayMeasurementVersion, setOverlayMeasurementVersion] = useState(0);
   const selectorListboxId = useId();
   const selectorQueryStateId = useId();
+  const blockActionMenuId = useId();
+  const blockTurnIntoMenuId = useId();
   const incomingInitialEnvelope = useMemo(() => parseDocseraDocumentOrThrow(initialEnvelope), [initialEnvelope]);
   const incomingInitialSavedEnvelope = useMemo(
     () => parseDocseraDocumentOrThrow(initialSavedEnvelope ?? initialEnvelope),
@@ -1298,6 +1839,10 @@ export function PageEditorHostRuntime({
     () => [...createDocseraEditorExtensions(), createCommandQueryPresentationExtension(), createBlockSelectionExtension()],
     []
   );
+  const blockActionMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const blockTurnIntoMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const blockTurnIntoTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const blockActionMenuSurfaceRef = useRef<HTMLDivElement | null>(null);
   const editorProps = useMemo(
     () => ({
       transformPastedHTML: sanitizeDocseraPastedHTML,
@@ -1390,6 +1935,168 @@ export function PageEditorHostRuntime({
         }
 
         const activeBlockSelection = getBlockSelectionState(runtimeEditor);
+        if (activeBlockSelection && (event.key === "Delete" || event.key === "Backspace")) {
+          event.preventDefault();
+          const selectedBlockIndex = resolveTopLevelBlockIndexForPosition(runtimeEditor, activeBlockSelection.ownerPos);
+          if (selectedBlockIndex === null) {
+            closeAllBlockSurfaces({ focusEditor: true });
+            return true;
+          }
+
+          if (!deleteTopLevelBlock(runtimeEditor, selectedBlockIndex)) {
+            closeAllBlockSurfaces({ focusEditor: true });
+            return true;
+          }
+
+          closeAllBlockSurfaces({ focusEditor: false });
+          return true;
+        }
+
+        const activeBlockActionMenu = blockActionMenuRef.current;
+        const activeBlockTurnIntoMenu = blockTurnIntoMenuRef.current;
+        if (activeBlockTurnIntoMenu) {
+          const menuState = activeBlockTurnIntoMenu;
+          const menuNode = getTopLevelBlockNodeFromDoc(runtimeEditor.state.doc, menuState.blockIndex);
+          if (!menuNode) {
+            event.preventDefault();
+            closeAllBlockSurfaces({ focusEditor: true });
+            return true;
+          }
+
+          const submenuCommands = getTurnIntoBlockCommandsForBlock(menuNode);
+          if (!submenuCommands.length) {
+            event.preventDefault();
+            closeAllBlockSurfaces({ focusEditor: true });
+            return true;
+          }
+
+          const nextIndex = Math.max(0, Math.min(menuState.activeIndex, submenuCommands.length - 1));
+
+          if (event.key === "Escape" || event.key === "ArrowLeft") {
+            event.preventDefault();
+            closeBlockTurnIntoMenu({ focusParent: true });
+            return true;
+          }
+
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            setBlockTurnIntoMenu((current) =>
+              current
+                ? {
+                    ...current,
+                    activeIndex:
+                      submenuCommands.length > 0
+                        ? event.key === "ArrowDown"
+                          ? (current.activeIndex + 1) % submenuCommands.length
+                          : (current.activeIndex - 1 + submenuCommands.length) % submenuCommands.length
+                        : 0
+                  }
+                : current
+            );
+            return true;
+          }
+
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            const activeCommand = submenuCommands[nextIndex];
+            if (activeCommand && applyTopLevelBlockConversion(runtimeEditor, menuState.blockIndex, activeCommand.id)) {
+              closeBlockActionMenus({ focusEditor: true });
+            }
+            return true;
+          }
+
+          return true;
+        } else if (activeBlockActionMenu) {
+          const menuState = activeBlockActionMenu;
+          const menuNode = getTopLevelBlockNodeFromDoc(runtimeEditor.state.doc, menuState.blockIndex);
+          if (!menuNode) {
+            event.preventDefault();
+            closeAllBlockSurfaces({ focusEditor: true });
+            return true;
+          }
+
+          const menuEntries = getBlockActionMenuEntries(menuNode);
+          const nextIndex = Math.max(0, Math.min(menuState.activeIndex, menuEntries.length - 1));
+
+          if (event.key === "Escape") {
+            event.preventDefault();
+            closeAllBlockSurfaces({ focusEditor: true });
+            return true;
+          }
+
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            setBlockActionMenu((current) =>
+              current
+                ? {
+                    ...current,
+                    activeIndex:
+                      menuEntries.length > 0
+                        ? event.key === "ArrowDown"
+                          ? (current.activeIndex + 1) % menuEntries.length
+                          : (current.activeIndex - 1 + menuEntries.length) % menuEntries.length
+                        : 0
+                  }
+                : current
+            );
+            return true;
+          }
+
+          if (event.key === "ArrowRight") {
+            const activeEntry = menuEntries[nextIndex];
+            if (activeEntry?.kind === "turnInto") {
+              event.preventDefault();
+              openBlockTurnIntoMenu(menuState.blockIndex, menuState.source, menuState.anchorRect);
+              return true;
+            }
+          }
+
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            const activeEntry = menuEntries[nextIndex];
+            if (!activeEntry) {
+              return true;
+            }
+
+            if (activeEntry.kind === "turnInto") {
+              openBlockTurnIntoMenu(menuState.blockIndex, menuState.source, menuState.anchorRect);
+              return true;
+            }
+
+            if (activeEntry.kind === "duplicate") {
+              if (duplicateTopLevelBlock(runtimeEditor, menuState.blockIndex)) {
+                closeBlockActionMenus({ focusEditor: true });
+              }
+              return true;
+            }
+
+            if (activeEntry.kind === "delete") {
+              if (deleteTopLevelBlock(runtimeEditor, menuState.blockIndex)) {
+                closeBlockActionMenus({ focusEditor: true });
+              }
+              return true;
+            }
+          }
+
+          return true;
+        }
+
+        if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+          const selectedBlockIndex = activeBlockSelection
+            ? resolveTopLevelBlockIndexForPosition(runtimeEditor, activeBlockSelection.ownerPos)
+            : null;
+          const selectionBlockIndex =
+            selectedBlockIndex ??
+            (isTextSelection(runtimeEditor.state.selection)
+              ? resolveTopLevelBlockIndexForPosition(runtimeEditor, runtimeEditor.state.selection.from)
+              : null);
+          if (selectionBlockIndex !== null) {
+            event.preventDefault();
+            openBlockActionMenuFromSelection("keyboard");
+            return true;
+          }
+        }
+
         if (activeBlockSelection) {
           const isModifierOnlyKey = event.key === "Shift" || event.key === "Control" || event.key === "Alt" || event.key === "Meta";
           if (!isModifierOnlyKey) {
@@ -1475,6 +2182,8 @@ export function PageEditorHostRuntime({
   const selectorScrollRef = useRef<HTMLDivElement | null>(null);
   const hoverTargetRef = useRef<HoverTarget | null>(null);
   const commandSelectorRef = useRef<CommandSelectorState | null>(null);
+  const blockActionMenuRef = useRef<BlockActionMenuState | null>(null);
+  const blockTurnIntoMenuRef = useRef<BlockTurnIntoMenuState | null>(null);
   const blockHandleGestureRef = useRef<BlockHandleGestureState | null>(null);
   const lastPointerSnapshotRef = useRef<{ clientX: number; clientY: number; insideEditorLane: boolean } | null>(null);
   const overlayMeasurementFrameRef = useRef<number | null>(null);
@@ -1596,6 +2305,379 @@ export function PageEditorHostRuntime({
     [syncHoverTargetFromLastPointer]
   );
 
+  const closeBlockActionMenus = useCallback(
+    (options: { focusEditor?: boolean; syncHoverFromPointer?: boolean } = {}) => {
+      const { focusEditor = false, syncHoverFromPointer = true } = options;
+      setBlockTurnIntoMenu(null);
+      setBlockActionMenu(null);
+      if (syncHoverFromPointer) {
+        syncHoverTargetFromLastPointer();
+      } else {
+        setOwnedHoverTarget(null);
+      }
+      if (focusEditor) {
+        const runtimeEditor = editorRef.current;
+        if (runtimeEditor && !runtimeEditor.isDestroyed) {
+          runtimeEditor.view.focus();
+        }
+      }
+    },
+    [syncHoverTargetFromLastPointer]
+  );
+
+  const openBlockActionMenu = useCallback(
+    (blockIndex: number, source: BlockActionMenuState["source"], anchorRect?: DOMRect) => {
+      const runtimeEditor = editorRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed) {
+        return;
+      }
+
+      const targetRect = anchorRect ?? getTopLevelBlockRect(runtimeEditor, blockIndex);
+      if (!targetRect) {
+        return;
+      }
+
+      closeCommandSelector({ syncHoverFromPointer: false });
+      setBlockTurnIntoMenu(null);
+      setBlockActionMenu({
+        activeIndex: 0,
+        anchorRect: buildBlockActionMenuAnchorRect(targetRect),
+        blockIndex,
+        placement: resolveCommandSelectorPlacement(overlayOwnerDocument, buildBlockActionMenuAnchorRect(targetRect), BLOCK_ACTION_MENU_HEIGHT),
+        source
+      });
+    },
+    [closeCommandSelector, overlayOwnerDocument]
+  );
+
+  const openBlockTurnIntoMenu = useCallback(
+    (blockIndex: number, source: BlockTurnIntoMenuState["source"], anchorRect?: DOMRect) => {
+      const runtimeEditor = editorRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed) {
+        return;
+      }
+
+      const targetRect = blockTurnIntoTriggerRef.current?.getBoundingClientRect() ?? anchorRect ?? getTopLevelBlockRect(runtimeEditor, blockIndex);
+      const sourceNode = getTopLevelBlockNodeFromDoc(runtimeEditor.state.doc, blockIndex);
+      const sourceCommandId = sourceNode ? getTurnIntoBlockCommandIdFromNode(sourceNode) : null;
+      if (!targetRect) {
+        return;
+      }
+
+      const nextAnchorRect = targetRect;
+      setBlockTurnIntoMenu({
+        activeIndex: Math.max(0, TURN_INTO_EDITOR_BLOCK_COMMANDS.findIndex((command) => command.id === sourceCommandId)),
+        anchorRect: nextAnchorRect,
+        blockIndex,
+        placement: resolveCommandSelectorPlacement(overlayOwnerDocument, nextAnchorRect, BLOCK_TURN_INTO_MENU_HEIGHT),
+        source
+      });
+    },
+    [overlayOwnerDocument]
+  );
+
+  const closeBlockTurnIntoMenu = useCallback((options: { focusParent?: boolean } = {}) => {
+    const { focusParent = false } = options;
+    setBlockTurnIntoMenu(null);
+    if (focusParent) {
+      blockTurnIntoTriggerRef.current?.focus();
+    }
+  }, []);
+
+  const executeBlockTurnIntoCommand = useCallback(
+    (command: TurnIntoEditorBlockCommand) => {
+      const runtimeEditor = editorRef.current;
+      const activeMenu = blockTurnIntoMenuRef.current;
+      if (!runtimeEditor || !activeMenu) {
+        return;
+      }
+
+      if (applyTopLevelBlockConversion(runtimeEditor, activeMenu.blockIndex, command.id)) {
+        closeBlockActionMenus({ focusEditor: false });
+        focusTopLevelBlockSelection(runtimeEditor, activeMenu.blockIndex);
+      }
+    },
+    [closeBlockActionMenus]
+  );
+
+  const executeBlockActionMenuEntry = useCallback(
+    (entry: BlockActionMenuEntry) => {
+      const runtimeEditor = editorRef.current;
+      const activeMenu = blockActionMenuRef.current;
+      if (!runtimeEditor || !activeMenu) {
+        return;
+      }
+
+      if (entry.kind === "turnInto") {
+        openBlockTurnIntoMenu(activeMenu.blockIndex, activeMenu.source, activeMenu.anchorRect);
+        return;
+      }
+
+      const didExecute =
+        entry.kind === "duplicate"
+          ? duplicateTopLevelBlock(runtimeEditor, activeMenu.blockIndex)
+          : deleteTopLevelBlock(runtimeEditor, activeMenu.blockIndex);
+      if (didExecute) {
+        closeBlockActionMenus({ focusEditor: false });
+        if (entry.kind === "duplicate") {
+          focusTopLevelBlockSelection(runtimeEditor, activeMenu.blockIndex + 1);
+        }
+      }
+    },
+    [closeBlockActionMenus, openBlockTurnIntoMenu]
+  );
+
+  const openBlockActionMenuFromSelection = useCallback(
+    (source: BlockActionMenuState["source"]) => {
+      const runtimeEditor = editorRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed) {
+        return;
+      }
+
+      const activeSelection = getBlockSelectionState(runtimeEditor);
+      const blockIndex = activeSelection ? resolveTopLevelBlockIndexForPosition(runtimeEditor, activeSelection.ownerPos) : null;
+      const resolvedBlockIndex =
+        blockIndex ?? (isTextSelection(runtimeEditor.state.selection) ? resolveTopLevelBlockIndexForPosition(runtimeEditor, runtimeEditor.state.selection.from) : null);
+      if (resolvedBlockIndex === null) {
+        return;
+      }
+
+      setTransientBlockSelection(resolvedBlockIndex);
+      openBlockActionMenu(resolvedBlockIndex, source);
+    },
+    [openBlockActionMenu, setTransientBlockSelection]
+  );
+
+  const closeAllBlockSurfaces = useCallback(
+    (options: { focusEditor?: boolean; syncHoverFromPointer?: boolean } = {}) => {
+      const { focusEditor = false, syncHoverFromPointer = true } = options;
+      closeBlockActionMenus({ focusEditor, syncHoverFromPointer });
+      clearTransientBlockSelection();
+    },
+    [clearTransientBlockSelection, closeBlockActionMenus]
+  );
+
+  const handleBlockActionMenuKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLElement>) => {
+      const runtimeEditor = editorRef.current;
+      const activeMenu = blockActionMenuRef.current;
+      if (!runtimeEditor || !activeMenu) {
+        return;
+      }
+
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        if (!deleteTopLevelBlock(runtimeEditor, activeMenu.blockIndex)) {
+          closeAllBlockSurfaces({ focusEditor: true });
+          return true;
+        }
+
+        closeAllBlockSurfaces({ focusEditor: false });
+        return true;
+      }
+
+      const menuNode = getTopLevelBlockNodeFromDoc(runtimeEditor.state.doc, activeMenu.blockIndex);
+      if (!menuNode) {
+        event.preventDefault();
+        closeAllBlockSurfaces({ focusEditor: true });
+        return;
+      }
+
+      const menuEntries = getBlockActionMenuEntries(menuNode);
+      const nextIndex = Math.max(0, Math.min(activeMenu.activeIndex, menuEntries.length - 1));
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeAllBlockSurfaces({ focusEditor: true });
+        return;
+      }
+
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setBlockActionMenu((current) =>
+          current
+            ? {
+                ...current,
+                activeIndex:
+                  menuEntries.length > 0
+                    ? event.key === "ArrowDown"
+                      ? (current.activeIndex + 1) % menuEntries.length
+                      : (current.activeIndex - 1 + menuEntries.length) % menuEntries.length
+                    : 0
+              }
+            : current
+        );
+        return;
+      }
+
+      if (event.key === "ArrowRight") {
+        const activeEntry = menuEntries[nextIndex];
+        if (activeEntry?.kind === "turnInto") {
+          event.preventDefault();
+          openBlockTurnIntoMenu(activeMenu.blockIndex, activeMenu.source, activeMenu.anchorRect);
+        }
+        return;
+      }
+
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        const activeEntry = menuEntries[nextIndex];
+        if (activeEntry) {
+          executeBlockActionMenuEntry(activeEntry);
+        }
+      }
+    },
+    [closeAllBlockSurfaces, executeBlockActionMenuEntry, openBlockTurnIntoMenu]
+  );
+
+  const handleBlockTurnIntoMenuKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLElement>) => {
+      const runtimeEditor = editorRef.current;
+      const activeMenu = blockTurnIntoMenuRef.current;
+      if (!runtimeEditor || !activeMenu) {
+        return;
+      }
+
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        if (!deleteTopLevelBlock(runtimeEditor, activeMenu.blockIndex)) {
+          closeAllBlockSurfaces({ focusEditor: true });
+          return true;
+        }
+
+        closeAllBlockSurfaces({ focusEditor: false });
+        return true;
+      }
+
+      const menuNode = getTopLevelBlockNodeFromDoc(runtimeEditor.state.doc, activeMenu.blockIndex);
+      const turnIntoCommands = menuNode ? getTurnIntoBlockCommandsForBlock(menuNode) : [];
+      if (!turnIntoCommands.length) {
+        event.preventDefault();
+        closeAllBlockSurfaces({ focusEditor: true });
+        return;
+      }
+
+      const nextIndex = Math.max(0, Math.min(activeMenu.activeIndex, turnIntoCommands.length - 1));
+
+      if (event.key === "Escape" || event.key === "ArrowLeft") {
+        event.preventDefault();
+        closeBlockTurnIntoMenu({ focusParent: true });
+        return;
+      }
+
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setBlockTurnIntoMenu((current) =>
+          current
+            ? {
+                ...current,
+                activeIndex:
+                  turnIntoCommands.length > 0
+                    ? event.key === "ArrowDown"
+                      ? (current.activeIndex + 1) % turnIntoCommands.length
+                      : (current.activeIndex - 1 + turnIntoCommands.length) % turnIntoCommands.length
+                    : 0
+              }
+            : current
+        );
+        return;
+      }
+
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        const activeCommand = turnIntoCommands[nextIndex];
+        if (activeCommand) {
+          executeBlockTurnIntoCommand(activeCommand);
+        }
+      }
+    },
+    [closeAllBlockSurfaces, closeBlockTurnIntoMenu, executeBlockTurnIntoCommand]
+  );
+
+  useEffect(() => {
+    blockActionMenuRef.current = blockActionMenu;
+  }, [blockActionMenu]);
+
+  useEffect(() => {
+    blockTurnIntoMenuRef.current = blockTurnIntoMenu;
+  }, [blockTurnIntoMenu]);
+
+  useEffect(() => {
+    if (!blockActionMenu) {
+      return;
+    }
+
+    const runtimeEditor = editorRef.current;
+    if (!runtimeEditor) {
+      return;
+    }
+
+    const targetRect = getTopLevelBlockRect(runtimeEditor, blockActionMenu.blockIndex);
+    if (!targetRect) {
+      closeAllBlockSurfaces({ focusEditor: true });
+      return;
+    }
+
+    const nextAnchorRect = buildBlockActionMenuAnchorRect(targetRect);
+    const nextPlacement = resolveCommandSelectorPlacement(overlayOwnerDocument, nextAnchorRect, BLOCK_ACTION_MENU_HEIGHT);
+    if (areDomRectsEqual(blockActionMenu.anchorRect, nextAnchorRect) && blockActionMenu.placement === nextPlacement) {
+      return;
+    }
+
+    setBlockActionMenu((current) =>
+      current
+        ? {
+            ...current,
+            anchorRect: nextAnchorRect,
+            placement: nextPlacement
+          }
+        : current
+    );
+  }, [blockActionMenu, closeAllBlockSurfaces, overlayMeasurementVersion, overlayOwnerDocument]);
+
+  useEffect(() => {
+    if (!blockTurnIntoMenu) {
+      return;
+    }
+
+    const triggerElement = blockTurnIntoTriggerRef.current;
+    if (!triggerElement) {
+      return;
+    }
+
+    const nextAnchorRect = triggerElement.getBoundingClientRect();
+    const nextPlacement = resolveCommandSelectorPlacement(overlayOwnerDocument, nextAnchorRect, BLOCK_TURN_INTO_MENU_HEIGHT);
+    if (areDomRectsEqual(blockTurnIntoMenu.anchorRect, nextAnchorRect) && blockTurnIntoMenu.placement === nextPlacement) {
+      return;
+    }
+
+    setBlockTurnIntoMenu((current) =>
+      current
+        ? {
+            ...current,
+            anchorRect: nextAnchorRect,
+            placement: nextPlacement
+          }
+        : current
+    );
+  }, [blockTurnIntoMenu, overlayMeasurementVersion, overlayOwnerDocument]);
+
+  useLayoutEffect(() => {
+    if (!blockActionMenu) {
+      return;
+    }
+
+    blockActionMenuItemRefs.current[blockActionMenu.activeIndex]?.focus();
+  }, [blockActionMenu]);
+
+  useLayoutEffect(() => {
+    if (!blockTurnIntoMenu) {
+      return;
+    }
+
+    blockTurnIntoMenuItemRefs.current[blockTurnIntoMenu.activeIndex]?.focus();
+  }, [blockTurnIntoMenu]);
+
   function openSlashSelector(runtimeEditor: Editor, triggerSelection: SlashTriggerSelection) {
     clearTransientBlockSelection();
     const anchorRect = getCaretBounds(runtimeEditor) ?? new DOMRect(12, 12, 1, 1);
@@ -1617,6 +2699,7 @@ export function PageEditorHostRuntime({
       return;
     }
 
+    closeBlockActionMenus({ syncHoverFromPointer: false });
     clearTransientBlockSelection();
 
     let afterPos = runtimeEditor.state.doc.content.size;
@@ -1730,6 +2813,8 @@ export function PageEditorHostRuntime({
       cancelPendingTimers();
       setOwnedHoverTarget(null);
       setCommandSelector(null);
+      setBlockActionMenu(null);
+      setBlockTurnIntoMenu(null);
       clearTransientBlockSelection();
       clearBlockHandleGesture();
     }
@@ -1738,6 +2823,8 @@ export function PageEditorHostRuntime({
   useEffect(() => {
     setOwnedHoverTarget(null);
     setCommandSelector(null);
+    setBlockActionMenu(null);
+    setBlockTurnIntoMenu(null);
     clearTransientBlockSelection();
     clearBlockHandleGesture();
   }, [clearBlockHandleGesture, clearTransientBlockSelection, pageSysId, sessionKey]);
@@ -2081,7 +3168,7 @@ export function PageEditorHostRuntime({
   }, [editor, isEditable, overlayOwnerDocument, scheduleOverlayMeasurement]);
 
   useEffect(() => {
-    if (!commandSelector) {
+    if (!commandSelector && !blockActionMenu && !blockTurnIntoMenu) {
       return;
     }
 
@@ -2091,18 +3178,28 @@ export function PageEditorHostRuntime({
       }
 
       if (isPointerEventInsideElement(event, surfaceRef.current)) {
-        closeCommandSelector();
+        if (commandSelector) {
+          closeCommandSelector();
+        }
+        if (blockActionMenu || blockTurnIntoMenu) {
+          closeAllBlockSurfaces({ focusEditor: false, syncHoverFromPointer: false });
+        }
         return;
       }
 
-      closeCommandSelector();
+      if (commandSelector) {
+        closeCommandSelector();
+      }
+      if (blockActionMenu || blockTurnIntoMenu) {
+        closeAllBlockSurfaces({ focusEditor: false, syncHoverFromPointer: false });
+      }
     };
 
     overlayOwnerDocument.addEventListener("pointerdown", handlePointerDown, true);
     return () => {
       overlayOwnerDocument.removeEventListener("pointerdown", handlePointerDown, true);
     };
-  }, [closeCommandSelector, commandSelector, overlayOwnerDocument, overlayRoot]);
+  }, [blockActionMenu, blockTurnIntoMenu, closeAllBlockSurfaces, closeCommandSelector, commandSelector, overlayOwnerDocument, overlayRoot]);
 
   useEffect(() => () => {
     if (overlayMeasurementFrameRef.current !== null) {
@@ -2286,6 +3383,11 @@ export function PageEditorHostRuntime({
 
       clearBlockHandleGesture();
 
+      const targetRect = getTopLevelBlockRect(runtimeEditor, blockIndex);
+      if (!targetRect) {
+        return;
+      }
+
       const gesture: BlockHandleGestureState = {
         blockIndex,
         dragIntent: false,
@@ -2324,6 +3426,7 @@ export function PageEditorHostRuntime({
       const finishGesture = (shouldSelect: boolean) => {
         if (shouldSelect) {
           selectBlockFromHandle(gesture.blockIndex);
+          openBlockActionMenu(gesture.blockIndex, "handle", targetRect);
         }
 
         clearBlockHandleGesture();
@@ -2379,12 +3482,55 @@ export function PageEditorHostRuntime({
       ownerWindow?.addEventListener("blur", handleWindowBlur);
       blockHandleGestureCleanupRef.current = cleanup;
     },
-    [clearBlockHandleGesture, selectBlockFromHandle]
+    [clearBlockHandleGesture, openBlockActionMenu, selectBlockFromHandle]
   );
 
-  const hoverTargetRect = editor && hoverTarget ? getTopLevelBlockRect(editor, hoverTarget.blockIndex) : null;
+  const activeBlockControlTarget =
+    editor && (blockTurnIntoMenu || blockActionMenu)
+      ? (() => {
+          const menuBlockIndex = blockTurnIntoMenu?.blockIndex ?? blockActionMenu?.blockIndex ?? null;
+          if (menuBlockIndex === null) {
+            return hoverTarget;
+          }
+
+          const menuNode = getTopLevelBlockNodeFromDoc(editor.state.doc, menuBlockIndex);
+          return menuNode
+            ? {
+                accessibleLabel: getTopLevelBlockLabelFromNode(menuNode),
+                blockIndex: menuBlockIndex
+              }
+            : hoverTarget;
+        })()
+      : hoverTarget;
+  const hoverTargetRect = editor && activeBlockControlTarget ? getTopLevelBlockRect(editor, activeBlockControlTarget.blockIndex) : null;
   const gutterButtonStyle = hoverTargetRect ? buildGutterButtonStyle(hoverTargetRect) : undefined;
   const handleButtonStyle = hoverTargetRect ? buildBlockHandleButtonStyle(hoverTargetRect) : undefined;
+  const blockActionMenuNode = editor && blockActionMenu ? getTopLevelBlockNodeFromDoc(editor.state.doc, blockActionMenu.blockIndex) : null;
+  const blockActionMenuEntries = blockActionMenuNode ? getBlockActionMenuEntries(blockActionMenuNode) : [];
+  const blockActionMenuStyle =
+    editor && blockActionMenu
+      ? buildBlockActionMenuSurfaceStyle(
+          overlayOwnerDocument,
+          blockActionMenu.anchorRect,
+          BLOCK_ACTION_MENU_WIDTH,
+          BLOCK_ACTION_MENU_HEIGHT,
+          blockActionMenu.placement
+        )
+      : undefined;
+  const blockTurnIntoCommands = blockActionMenuNode ? getTurnIntoBlockCommandsForBlock(blockActionMenuNode) : [];
+  const blockTurnIntoSelectedCommandId = blockActionMenuNode ? getTurnIntoBlockCommandIdFromNode(blockActionMenuNode) : null;
+  const blockActionMenuSurfaceRect = blockActionMenuSurfaceRef.current?.getBoundingClientRect() ?? null;
+  const blockTurnIntoMenuStyle =
+    editor && blockTurnIntoMenu
+      ? buildBlockTurnIntoMenuSurfaceStyle(
+          overlayOwnerDocument,
+          blockTurnIntoMenu.anchorRect,
+          BLOCK_TURN_INTO_MENU_WIDTH,
+          BLOCK_TURN_INTO_MENU_HEIGHT,
+          blockTurnIntoMenu.placement,
+          blockActionMenuSurfaceRect
+        )
+      : undefined;
   const quickAddAnchorRect =
     commandSelector && commandSelector.source === "quickAdd" && editor
       ? getTopLevelBlockRect(editor, commandSelector.insertedBlockIndex)
@@ -2744,6 +3890,94 @@ export function PageEditorHostRuntime({
           height: ${QUICK_ADD_ICON_SIZE}px;
           flex: 0 0 auto;
         }
+        .docsera-block-action-menu,
+        .docsera-block-turn-into-menu {
+          border: 1px solid color-mix(in srgb, var(--docsera-border) 92%, white 8%);
+          border-radius: 12px;
+          background: color-mix(in srgb, var(--docsera-surface) 96%, white 4%);
+          box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16), 0 3px 12px rgba(15, 23, 42, 0.08);
+          overflow: hidden;
+        }
+        .docsera-block-action-menu__list,
+        .docsera-block-turn-into-menu__list {
+          display: grid;
+          gap: 0;
+          padding: 8px;
+        }
+        .docsera-block-menu__item {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          width: 100%;
+          min-height: 38px;
+          padding: 0 10px;
+          border: 0;
+          border-radius: 8px;
+          background: transparent;
+          color: var(--docsera-text-muted);
+          cursor: pointer;
+          text-align: left;
+          transition: background-color 0.16s ease, color 0.16s ease;
+        }
+        .docsera-block-menu__item:hover,
+        .docsera-block-menu__item:focus-visible,
+        .docsera-block-menu__item--active {
+          background: color-mix(in srgb, var(--docsera-primary) 10%, var(--docsera-surface));
+          color: var(--docsera-primary);
+          outline: none;
+        }
+        .docsera-block-menu__item--selected {
+          color: var(--docsera-primary);
+        }
+        .docsera-block-menu__item--selected .docsera-block-menu__label {
+          font-weight: 700;
+        }
+        .docsera-block-menu__item--destructive {
+          color: #d92d20;
+        }
+        .docsera-block-menu__item--destructive:hover,
+        .docsera-block-menu__item--destructive:focus-visible,
+        .docsera-block-menu__item--destructive.docsera-block-menu__item--active {
+          background: color-mix(in srgb, #d92d20 10%, var(--docsera-surface));
+          color: #d92d20;
+        }
+        .docsera-block-menu__icon,
+        .docsera-block-action-menu__chevron,
+        .docsera-block-menu__check {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex: 0 0 auto;
+          width: 18px;
+          height: 18px;
+          color: currentColor;
+        }
+        .docsera-block-action-menu__chevron,
+        .docsera-block-menu__check {
+          margin-left: auto;
+        }
+        .docsera-block-menu__label {
+          min-width: 0;
+          color: inherit;
+          display: inline-flex;
+          align-items: center;
+          min-height: 18px;
+          font-size: 14px;
+          font-weight: 500;
+          line-height: 1.2;
+        }
+        .docsera-block-action-menu__divider {
+          height: 1px;
+          margin: 6px 2px;
+          background: color-mix(in srgb, var(--docsera-border) 88%, transparent);
+        }
+        .docsera-block-menu__icon svg,
+        .docsera-block-action-menu__chevron svg,
+        .docsera-block-menu__check svg {
+          width: 16px;
+          height: 16px;
+          flex: 0 0 auto;
+        }
         @keyframes docsera-editor-lock-pulse {
           0%, 100% {
             opacity: 0.35;
@@ -2775,7 +4009,7 @@ export function PageEditorHostRuntime({
         <EditorContent editor={editor} />
         {createPortal(
           <div className="docsera-editor-floating-layer" aria-hidden={!editor}>
-            {hoverTarget && gutterButtonStyle && !commandSelector ? (
+            {activeBlockControlTarget && gutterButtonStyle && !commandSelector ? (
               <button
                 type="button"
                 className="docsera-editor-floating__quick-add"
@@ -2783,33 +4017,33 @@ export function PageEditorHostRuntime({
                 aria-haspopup="listbox"
                 aria-controls={selectorListboxId}
                 aria-expanded={false}
-                aria-label={`Add block after ${hoverTarget.accessibleLabel}`}
+                aria-label={`Add block after ${activeBlockControlTarget.accessibleLabel}`}
                 data-docsera-block-gutter="true"
                 onMouseDown={(event) => {
                   event.preventDefault();
                 }}
                 onClick={() => {
-                  openQuickAddSelector(hoverTarget);
+                  openQuickAddSelector(activeBlockControlTarget);
                 }}
               >
                 <Plus size={QUICK_ADD_ICON_SIZE} strokeWidth={2.2} aria-hidden="true" focusable="false" />
               </button>
             ) : null}
 
-            {hoverTarget && handleButtonStyle && !commandSelector ? (
+            {activeBlockControlTarget && handleButtonStyle && !commandSelector ? (
               <button
                 type="button"
                 className="docsera-editor-floating__handle"
                 style={handleButtonStyle}
                 tabIndex={-1}
                 draggable={false}
-                aria-label={`Select block: ${hoverTarget.accessibleLabel}`}
+                aria-label={`Select block: ${activeBlockControlTarget.accessibleLabel}`}
                 data-docsera-block-gutter="true"
                 onMouseDown={(event) => {
                   event.preventDefault();
                 }}
                 onPointerDown={(event) => {
-                  handleBlockHandlePointerDown(event, hoverTarget.blockIndex);
+                  handleBlockHandlePointerDown(event, activeBlockControlTarget.blockIndex);
                 }}
                 onClick={(event) => {
                   event.preventDefault();
@@ -2818,6 +4052,164 @@ export function PageEditorHostRuntime({
               >
                 <GripVertical size={QUICK_ADD_ICON_SIZE} strokeWidth={2.2} aria-hidden="true" focusable="false" />
               </button>
+            ) : null}
+
+            {blockActionMenu && blockActionMenuStyle && blockActionMenuNode ? (
+              <div
+                ref={blockActionMenuSurfaceRef}
+                className="docsera-editor-floating docsera-block-selector docsera-block-action-menu"
+                style={blockActionMenuStyle}
+                role="menu"
+                id={blockActionMenuId}
+                aria-label={`Block actions for ${getTopLevelBlockLabelFromNode(blockActionMenuNode)}`}
+                data-surface="block-actions"
+                onKeyDown={handleBlockActionMenuKeyDown}
+              >
+                <div className="docsera-block-action-menu__list">
+                  {blockActionMenuEntries.map((entry) => {
+                    if (entry.kind === "turnInto") {
+                      const turnIntoItemIndex = 0;
+                      return (
+                        <React.Fragment key="turnInto">
+                          <button
+                            ref={(element) => {
+                              blockActionMenuItemRefs.current[turnIntoItemIndex] = element;
+                              blockTurnIntoTriggerRef.current = element;
+                            }}
+                            type="button"
+                            className={`docsera-block-menu__item${blockActionMenu.activeIndex === turnIntoItemIndex ? " docsera-block-menu__item--active" : ""}`}
+                            role="menuitem"
+                            aria-label="Turn into"
+                            aria-haspopup="menu"
+                            aria-controls={blockTurnIntoMenuId}
+                            aria-expanded={blockTurnIntoMenu !== null}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                            }}
+                            onMouseEnter={() => {
+                              setBlockActionMenu((current) =>
+                                current
+                                  ? {
+                                      ...current,
+                                      activeIndex: turnIntoItemIndex
+                                    }
+                                  : current
+                              );
+                            }}
+                            onClick={() => {
+                              openBlockTurnIntoMenu(blockActionMenu.blockIndex, blockActionMenu.source, blockActionMenu.anchorRect);
+                            }}
+                          >
+                            <span className="docsera-block-menu__icon" aria-hidden="true">
+                              <Pilcrow size={15} strokeWidth={2.1} aria-hidden="true" focusable="false" />
+                            </span>
+                            <span className="docsera-block-menu__label">Turn into</span>
+                            <span className="docsera-block-action-menu__chevron" aria-hidden="true">
+                              <ChevronRight size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                            </span>
+                          </button>
+                          {blockActionMenuEntries.length > 1 ? <div className="docsera-block-action-menu__divider" role="separator" aria-orientation="horizontal" /> : null}
+                        </React.Fragment>
+                      );
+                    }
+
+                    const directActionIndex = entry.kind === "duplicate" ? (blockActionMenuEntries[0]?.kind === "turnInto" ? 1 : 0) : blockActionMenuEntries.length - 1;
+                    const icon = entry.kind === "duplicate" ? <Copy size={15} strokeWidth={2.2} aria-hidden="true" focusable="false" /> : <Trash2 size={15} strokeWidth={2.2} aria-hidden="true" focusable="false" />;
+                    const label = entry.kind === "duplicate" ? "Duplicate" : "Delete";
+
+                    return (
+                      <button
+                        key={entry.kind}
+                        ref={(element) => {
+                          blockActionMenuItemRefs.current[directActionIndex] = element;
+                        }}
+                        type="button"
+                        className={`docsera-block-menu__item${blockActionMenu.activeIndex === directActionIndex ? " docsera-block-menu__item--active" : ""}${entry.kind === "delete" ? " docsera-block-menu__item--destructive" : ""}`}
+                        role="menuitem"
+                        aria-label={label}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                        }}
+                        onMouseEnter={() => {
+                          setBlockActionMenu((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  activeIndex: directActionIndex
+                                }
+                              : current
+                          );
+                        }}
+                        onClick={() => {
+                          executeBlockActionMenuEntry(entry);
+                        }}
+                      >
+                        <span className="docsera-block-menu__icon" aria-hidden="true">
+                          {icon}
+                        </span>
+                        <span className="docsera-block-menu__label">{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+
+            {blockTurnIntoMenu && blockTurnIntoMenuStyle && blockActionMenuNode && blockTurnIntoCommands.length ? (
+              <div
+                className="docsera-editor-floating docsera-block-selector docsera-block-turn-into-menu"
+                style={blockTurnIntoMenuStyle}
+                role="menu"
+                id={blockTurnIntoMenuId}
+                aria-label={`Turn into ${getTopLevelBlockLabelFromNode(blockActionMenuNode)}`}
+                data-surface="block-turn-into"
+                onKeyDown={handleBlockTurnIntoMenuKeyDown}
+              >
+                <div className="docsera-block-turn-into-menu__list">
+                  {blockTurnIntoCommands.map((command, index) => {
+                    const isSelected = blockTurnIntoSelectedCommandId === command.id;
+                    return (
+                      <button
+                        key={command.id}
+                        ref={(element) => {
+                          blockTurnIntoMenuItemRefs.current[index] = element;
+                        }}
+                        type="button"
+                        className={`docsera-block-menu__item${blockTurnIntoMenu.activeIndex === index ? " docsera-block-menu__item--active" : ""}${isSelected ? " docsera-block-menu__item--selected" : ""}`}
+                        role="menuitemradio"
+                        aria-label={command.label}
+                        aria-checked={isSelected}
+                        onMouseDown={(event) => {
+                          event.preventDefault();
+                        }}
+                        onMouseEnter={() => {
+                          setBlockTurnIntoMenu((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  activeIndex: index
+                                }
+                              : current
+                          );
+                        }}
+                        onClick={() => {
+                          executeBlockTurnIntoCommand(command);
+                        }}
+                      >
+                        <span className="docsera-block-menu__icon" aria-hidden="true">
+                          <BlockCommandIcon id={command.id} />
+                        </span>
+                        <span className="docsera-block-menu__label">{command.label}</span>
+                        {isSelected ? (
+                          <span className="docsera-block-menu__check" aria-hidden="true">
+                            <Check size={14} strokeWidth={2.4} aria-hidden="true" focusable="false" />
+                          </span>
+                        ) : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             ) : null}
 
             {commandSelector && selectorStyle ? (

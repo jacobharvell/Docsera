@@ -40,7 +40,10 @@ function getButtonNames(container: HTMLElement): string[] {
     .map((button) => button.getAttribute("aria-label") ?? button.textContent?.trim() ?? "");
 }
 
-function getMenuItemNames(container: HTMLElement, role: "menuitemradio" | "menuitemcheckbox" = "menuitemradio"): string[] {
+function getMenuItemNames(
+  container: HTMLElement,
+  role: "menuitem" | "menuitemradio" | "menuitemcheckbox" = "menuitemradio"
+): string[] {
   return within(container)
     .getAllByRole(role)
     .map((item) => item.getAttribute("aria-label") ?? item.textContent?.trim() ?? "");
@@ -2562,7 +2565,8 @@ describe("PageEditorHostRuntime", () => {
 
     await dispatchOwnerPointerMove(surface.ownerDocument, document.body, { clientX: 20, clientY: 20 }, { composedPath: [document.body] });
 
-    expect(screen.queryByRole("button", { name: "Add block after Text" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Add block after Text" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Select block: Text" })).toBeInTheDocument();
     expect(getSelectedBlockElement(editor)).toHaveTextContent("Alpha");
 
     geometrySpy.mockRestore();
@@ -2810,6 +2814,656 @@ describe("PageEditorHostRuntime", () => {
       geometrySpy.mockRestore();
     }
   );
+
+  it("opens the block actions menu from the handle and dismisses it on Escape", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Alpha" }]
+        }
+      ]
+    };
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to be available.");
+    }
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+    const handle = await screen.findByRole("button", { name: "Select block: Text" });
+
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
+
+    const menu = await screen.findByRole("menu", { name: "Block actions for Text" });
+    expect(getMenuItemNames(menu, "menuitem")).toEqual(["Turn into", "Duplicate", "Delete"]);
+    expect(within(menu).queryByText("Block actions")).toBeNull();
+    expect(screen.getByRole("button", { name: "Add block after Text" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Select block: Text" })).toBeInTheDocument();
+    expect(getSelectedBlockElement(editor)).toHaveTextContent("Alpha");
+
+    fireEvent.keyDown(menu, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menu", { name: "Block actions for Text" })).toBeNull();
+    });
+    expect(screen.getByRole("button", { name: "Select block: Text" })).toBeInTheDocument();
+    expect(getSelectedBlockElement(editor)).toBeNull();
+
+    geometrySpy.mockRestore();
+  });
+
+  it("duplicates the selected block from the menu and keeps the duplicate focused", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Alpha" }]
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Omega" }]
+        }
+      ]
+    };
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [
+      new DOMRect(132, 52, 620, 28),
+      new DOMRect(132, 108, 620, 28)
+    ]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to be available.");
+    }
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+    const handle = await screen.findByRole("button", { name: "Select block: Text" });
+
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
+
+    const menu = await screen.findByRole("menu", { name: "Block actions for Text" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Duplicate" }));
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toEqual({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Alpha" }]
+          },
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Alpha" }]
+          },
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Omega" }]
+          }
+        ]
+      });
+    });
+    expect(resolveTopLevelBlockIndexFromPosition(editor, editor.state.selection.from)).toBe(1);
+    expect(screen.queryByRole("menu", { name: "Block actions for Text" })).toBeNull();
+
+    geometrySpy.mockRestore();
+  });
+
+  it("opens the Turn into submenu and converts the block from the submenu", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "Alpha",
+              marks: [{ type: "bold" }]
+            }
+          ]
+        }
+      ]
+    };
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to be available.");
+    }
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+    const handle = await screen.findByRole("button", { name: "Select block: Text" });
+
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
+
+    const menu = await screen.findByRole("menu", { name: "Block actions for Text" });
+    fireEvent.keyDown(menu, { key: "ArrowRight" });
+
+    const submenu = await screen.findByRole("menu", { name: "Turn into Text" });
+    expect(getMenuItemNames(submenu)).toEqual(["Text", "Heading 1", "Heading 2", "Heading 3", "Blockquote", "Bulleted List", "Numbered List"]);
+    expect(within(submenu).queryByText("Turn into")).toBeNull();
+    expect(within(submenu).getByRole("menuitemradio", { name: "Text" })).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.keyDown(submenu, { key: "ArrowDown" });
+    fireEvent.keyDown(submenu, { key: "ArrowDown" });
+    fireEvent.keyDown(submenu, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toEqual({
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            attrs: { level: 2 },
+            content: [
+              {
+                type: "text",
+                text: "Alpha",
+                marks: [{ type: "bold" }]
+              }
+            ]
+          }
+        ]
+      });
+    });
+    expect(resolveTopLevelBlockIndexFromPosition(editor, editor.state.selection.from)).toBe(0);
+    expect(screen.queryByRole("menu", { name: "Turn into Text" })).toBeNull();
+
+    geometrySpy.mockRestore();
+  });
+
+  it("deletes the final block from the menu and leaves one empty paragraph", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Solo" }]
+        }
+      ]
+    };
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to be available.");
+    }
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+    const handle = await screen.findByRole("button", { name: "Select block: Text" });
+
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
+
+    const menu = await screen.findByRole("menu", { name: "Block actions for Text" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toEqual({
+        type: "doc",
+        content: [{ type: "paragraph" }]
+      });
+    });
+    expect(editor.state.selection).toBeInstanceOf(TextSelection);
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.selection.$from.parent.type.name).toBe("paragraph");
+    expect(editor.state.selection.$from.parentOffset).toBe(0);
+    expect(screen.getByRole("button", { name: "Select block: Text" })).toBeInTheDocument();
+
+    geometrySpy.mockRestore();
+  });
+
+  it("deletes a selected block with Delete from the block-actions menu, keeps the following block focused, and preserves undo/autosave", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Alpha" }]
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Beta" }]
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Omega" }]
+        }
+      ]
+    };
+    const onSaveDraft = vi.fn(async ({ draftContentJson }: { draftContentJson: ReturnType<typeof createEmptyDocseraDocumentEnvelope> }) => ({
+      state: "succeeded" as const,
+      page: {
+        ...createSuccessPage(1),
+        draftContentJson
+      }
+    }));
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
+      onSaveDraft
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [
+      new DOMRect(132, 52, 620, 28),
+      new DOMRect(132, 108, 620, 28),
+      new DOMRect(132, 164, 620, 28)
+    ]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to be available.");
+    }
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+    const handle = await screen.findByRole("button", { name: "Select block: Text" });
+
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
+
+    const menu = await screen.findByRole("menu", { name: "Block actions for Text" });
+    const before = editor.getJSON();
+    const undoDepthBefore = undoDepth(editor.state);
+
+    fireEvent.keyDown(menu, { key: "Delete" });
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toEqual({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Beta" }]
+          },
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Omega" }]
+          }
+        ]
+      });
+    });
+
+    expect(screen.queryByRole("menu", { name: "Block actions for Text" })).toBeNull();
+    expect(screen.queryByRole("menu", { name: "Turn into Text" })).toBeNull();
+    expect(editor.state.selection).toBeInstanceOf(TextSelection);
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.selection.$from.parent.type.name).toBe("paragraph");
+    expect(editor.state.selection.$from.parentOffset).toBe(0);
+    expect(undoDepth(editor.state)).toBe(undoDepthBefore + 1);
+
+    await runAutosave();
+    await waitFor(() => {
+      expect(onSaveDraft).toHaveBeenCalledTimes(1);
+    });
+    expect(onSaveDraft.mock.calls[0]?.[0].draftContentJson.document).toEqual({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Beta" }]
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Omega" }]
+        }
+      ]
+    });
+
+    await act(async () => {
+      editor.commands.undo();
+    });
+    expect(editor.getJSON()).toEqual(before);
+    expect(undoDepth(editor.state)).toBe(undoDepthBefore);
+
+    geometrySpy.mockRestore();
+  });
+
+  it("deletes a selected block with Backspace from the Turn into submenu and keeps the preceding block focused", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Alpha" }]
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Omega" }]
+        }
+      ]
+    };
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28), new DOMRect(132, 108, 620, 28)]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to be available.");
+    }
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 120 });
+    const handle = await screen.findByRole("button", { name: "Select block: Text" });
+
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 120 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 120 }, { button: 0, buttons: 0 });
+
+    const menu = await screen.findByRole("menu", { name: "Block actions for Text" });
+    fireEvent.keyDown(menu, { key: "ArrowRight" });
+
+    const submenu = await screen.findByRole("menu", { name: "Turn into Text" });
+    fireEvent.keyDown(submenu, { key: "Backspace" });
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toEqual({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Alpha" }]
+          }
+        ]
+      });
+    });
+
+    expect(screen.queryByRole("menu", { name: "Block actions for Text" })).toBeNull();
+    expect(screen.queryByRole("menu", { name: "Turn into Text" })).toBeNull();
+    expect(editor.state.selection).toBeInstanceOf(TextSelection);
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.selection.$from.parent.type.name).toBe("paragraph");
+    expect(editor.state.selection.$from.parentOffset).toBe(0);
+
+    geometrySpy.mockRestore();
+  });
+
+  it("deletes the final selected block with Backspace and leaves one empty paragraph", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Solo" }]
+        }
+      ]
+    };
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to be available.");
+    }
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+    const handle = await screen.findByRole("button", { name: "Select block: Text" });
+
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
+
+    const menu = await screen.findByRole("menu", { name: "Block actions for Text" });
+    fireEvent.keyDown(menu, { key: "Backspace" });
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toEqual({
+        type: "doc",
+        content: [{ type: "paragraph" }]
+      });
+    });
+
+    expect(screen.queryByRole("menu", { name: "Block actions for Text" })).toBeNull();
+    expect(screen.queryByRole("menu", { name: "Turn into Text" })).toBeNull();
+    expect(editor.state.selection).toBeInstanceOf(TextSelection);
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.selection.$from.parent.type.name).toBe("paragraph");
+    expect(editor.state.selection.$from.parentOffset).toBe(0);
+
+    geometrySpy.mockRestore();
+  });
+
+  it("deletes the preceding block before a blockquote and places the caret at the quote start", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Alpha" }]
+        },
+        {
+          type: "blockquote",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "Quoted" }]
+            }
+          ]
+        }
+      ]
+    };
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [
+      new DOMRect(132, 52, 620, 28),
+      new DOMRect(132, 108, 620, 28)
+    ]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to be available.");
+    }
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+    const handle = await screen.findByRole("button", { name: "Select block: Text" });
+
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
+
+    const menu = await screen.findByRole("menu", { name: "Block actions for Text" });
+    fireEvent.keyDown(menu, { key: "Backspace" });
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toEqual({
+        type: "doc",
+        content: [
+          {
+            type: "blockquote",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "Quoted" }]
+              }
+            ]
+          }
+        ]
+      });
+    });
+
+    expect(editor.state.selection).toBeInstanceOf(TextSelection);
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.selection.$from.node(1).type.name).toBe("blockquote");
+    expect(editor.state.selection.$from.parent.type.name).toBe("paragraph");
+    expect(editor.state.selection.$from.parentOffset).toBe(0);
+
+    geometrySpy.mockRestore();
+  });
+
+  it("deletes the preceding block before a list and places the caret at the list start", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Alpha" }]
+        },
+        {
+          type: "bulletList",
+          content: [
+            {
+              type: "listItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Item" }]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [
+      new DOMRect(132, 52, 620, 28),
+      new DOMRect(132, 108, 620, 28)
+    ]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to be available.");
+    }
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+    const handle = await screen.findByRole("button", { name: "Select block: Text" });
+
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
+
+    const menu = await screen.findByRole("menu", { name: "Block actions for Text" });
+    fireEvent.keyDown(menu, { key: "Backspace" });
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toEqual({
+        type: "doc",
+        content: [
+          {
+            type: "bulletList",
+            content: [
+              {
+                type: "listItem",
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [{ type: "text", text: "Item" }]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      });
+    });
+
+    expect(editor.state.selection).toBeInstanceOf(TextSelection);
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.selection.$from.node(1).type.name).toBe("bulletList");
+    expect(editor.state.selection.$from.node(2).type.name).toBe("listItem");
+    expect(editor.state.selection.$from.parent.type.name).toBe("paragraph");
+    expect(editor.state.selection.$from.parentOffset).toBe(0);
+
+    geometrySpy.mockRestore();
+  });
+
+  it.each(["Delete", "Backspace"] as const)("leaves ordinary %s behavior unchanged when no whole-block selection exists", async (key) => {
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Alpha" }]
+          }
+        ]
+      } as DocseraTiptapDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await selectText(editor, 1, 6);
+    expect(getSelectedBlockElement(editor)).toBeNull();
+
+    fireEvent.keyDown(editor.view.dom, { key });
+
+    expect(editor.getJSON()).toEqual({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph"
+        }
+      ]
+    });
+    expect(getSelectedBlockElement(editor)).toBeNull();
+    expect(screen.queryByRole("menu", { name: "Block actions for Text" })).toBeNull();
+    expect(screen.queryByRole("menu", { name: "Turn into Text" })).toBeNull();
+  });
 
   it("maps the transient selected block through document changes and clears it when the owner disappears", async () => {
     const initial = {
