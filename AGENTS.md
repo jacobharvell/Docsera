@@ -144,6 +144,7 @@ Validation should match change risk and surface area.
 - When the established deployment or verification path fails, use the applicable runbook for a bounded diagnosis, report the exact failure, and stop instead of letting the product task become environment troubleshooting.
 - When the same operational workaround is needed a second time, identify it as process debt and propose a separate runbook or script-hardening task before a third recurrence. Do not perform that hardening as part of the current product task unless explicitly requested.
 
+- Validation must stay within the task worktree and must not create hidden task scope.
 - Docs-only edits:
   - Do not run builds or PDI deployment by default.
 - Configuration or metadata-only edits:
@@ -194,6 +195,8 @@ Regression coverage is part of the definition of done for coded behavior changes
 
 ## Git Branch and Merge Discipline
 
+- Treat `C:\Dev\Docsera` as merge-only: it must stay on clean `main` and is not the place for implementation, spikes, task docs, generated-file repair, temporary staging, unfinished conflict resolution, or validation that writes tracked files.
+- Every task, including documentation-only work, must use one dedicated branch and one dedicated worktree with a verified base SHA and a clean starting state.
 - Do not push directly to `main`.
 - Work on `feature/*` or `fix/*` branches.
 - Treat `main` as stable.
@@ -203,18 +206,30 @@ Regression coverage is part of the definition of done for coded behavior changes
 - Do not auto-merge.
 - Ask for explicit user approval before merge.
 - Default merge method is squash merge unless explicitly overridden.
+- Because this repository uses squash merges, ancestry alone does not prove that an old branch still contains missing work; evaluate old branches by patch equivalence, current `main` behavior, accepted requirements, later superseding implementations, and recorded manual acceptance.
+- Preservation branches, tags, patches, bundles, and backups are quarantine only; they are not backlog, merge candidates, or evidence that `main` is incomplete.
 
 ### Task Branch Start Invariant
 
 - Before implementation begins, fetch and prune remote refs and resolve the exact base stated in the implementation brief.
 - Create the task branch explicitly from the stated base ref, normally current `origin/main`. Do not create a task branch from the current worktree `HEAD` unless that `HEAD` has been verified to equal the stated base.
 - Before making changes, verify:
+  - repository path;
+  - worktree path;
+  - current branch;
+  - current HEAD;
+  - intended base branch and SHA;
+  - local and remote base alignment;
+  - staged changes;
+  - unstaged changes;
+  - untracked files;
   - the current branch is the intended task branch;
   - `HEAD` equals the stated base commit;
   - the merge base with the stated base is that same commit;
   - the new task branch is zero commits ahead and zero commits behind the stated base.
-- If the current worktree is dirty, detached, stale, or preserving unrelated changes, leave it intact and use a clean worktree for the new task branch.
-- If any branch-start check fails, correct the branch or worktree before implementation begins.
+- If the current worktree is dirty, detached, stale, divergent, or preserving unrelated changes, stop before editing and report the exact paths and status.
+- Do not stage, restore, stash, commit, normalize, or absorb unexpected state into the task.
+- If any branch-start check fails, correct the branch or worktree before implementation begins only when the task owns that state; otherwise stop and wait for explicit direction or a separate cleanup task.
 
 ## Project Runbooks
 
@@ -237,6 +252,8 @@ Do not re-run broad dependency/version experiments until the relevant runbook di
 - When uncertain, make the smallest reversible change that advances the current task.
 - Keep status reports concise. Do not repeat unchanged project context, full command inventories, or prior tool findings unless they affect the current decision, blocker, or validation result.
 - Every implementation task should end with a concise structured summary covering files created, files modified, behavior implemented, tests/checks run, validation notes, manual verification needed, requirement deviations or platform constraints, and known risks/follow-ups.
+- Before reporting completion, include worktree path, branch, HEAD SHA, base SHA, changed-file list, staged status, unstaged status, untracked status, validation run, validation intentionally skipped, commit SHA, push result, whether the worktree is clean, and any unexpected or preserved artifacts.
+- After an accepted squash merge, verify local and remote `main`, verify the merge worktree is clean, remove the task worktree, delete the local and remote task branch, prune worktree metadata, fetch and prune remote refs, and report the remaining worktrees and branches.
 
 ## Repo Documentation
 
