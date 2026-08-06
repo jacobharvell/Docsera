@@ -24,6 +24,12 @@ import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transa
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { CompactTextToolbar } from "./CompactTextToolbar";
 import {
+  buildTopLevelBlockDragFeedbackStyle,
+  buildTopLevelBlockDropIndicatorStyle,
+  isValidBlockDragDestinationIndex
+} from "./blockDragReorder";
+import { useTopLevelBlockDragSession } from "./useTopLevelBlockDragSession";
+import {
   Check,
   Code2,
   Copy,
@@ -145,15 +151,6 @@ type BlockSelectionState = {
   ownerPos: number;
 };
 
-type BlockHandleGestureState = {
-  blockIndex: number;
-  originX: number;
-  originY: number;
-  pointerId: number;
-  startedAt: number;
-  dragIntent: boolean;
-};
-
 type SlashTriggerSelection = {
   blockIndex: number;
   from: number;
@@ -177,6 +174,7 @@ const BLOCK_SELECTOR_HEIGHT = 288;
 const BLOCK_SELECTOR_WIDTH = 320;
 const BLOCK_SELECTOR_PLACEMENT_GAP = 6;
 const BLOCK_TARGET_TOP_OFFSET = 1;
+const BLOCK_DRAG_LINE_HEIGHT = 2;
 const BLOCK_HANDLE_GESTURE_THRESHOLD_PX = 4;
 const BLOCK_ACTION_MENU_WIDTH = 182;
 const BLOCK_ACTION_MENU_HEIGHT = 144;
@@ -894,7 +892,7 @@ function buildGutterButtonStyle(targetRect: DOMRect): CSSProperties {
   };
 }
 
-function buildBlockHandleButtonStyle(targetRect: DOMRect): CSSProperties {
+function buildGutterHandleStyle(targetRect: DOMRect): CSSProperties {
   const anchorRect = buildQuickAddAnchorRect(targetRect);
   return {
     position: "fixed",
@@ -1843,6 +1841,7 @@ export function PageEditorHostRuntime({
   const blockTurnIntoMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const blockTurnIntoTriggerRef = useRef<HTMLButtonElement | null>(null);
   const blockActionMenuSurfaceRef = useRef<HTMLDivElement | null>(null);
+
   const editorProps = useMemo(
     () => ({
       transformPastedHTML: sanitizeDocseraPastedHTML,
@@ -2184,7 +2183,6 @@ export function PageEditorHostRuntime({
   const commandSelectorRef = useRef<CommandSelectorState | null>(null);
   const blockActionMenuRef = useRef<BlockActionMenuState | null>(null);
   const blockTurnIntoMenuRef = useRef<BlockTurnIntoMenuState | null>(null);
-  const blockHandleGestureRef = useRef<BlockHandleGestureState | null>(null);
   const lastPointerSnapshotRef = useRef<{ clientX: number; clientY: number; insideEditorLane: boolean } | null>(null);
   const overlayMeasurementFrameRef = useRef<number | null>(null);
   const onEditorReadyRef = useRef(onEditorReady);
@@ -2200,7 +2198,6 @@ export function PageEditorHostRuntime({
     () => commandGroups.flatMap((group) => group.commands),
     [commandGroups]
   );
-  const blockHandleGestureCleanupRef = useRef<(() => void) | null>(null);
 
   const clearTransientBlockSelection = useCallback(() => {
     const runtimeEditor = editorRef.current;
@@ -2235,21 +2232,6 @@ export function PageEditorHostRuntime({
       runtimeEditor.state.tr.setMeta(BLOCK_SELECTION_PLUGIN_KEY, nextSelection).setMeta("addToHistory", false)
     );
   }, []);
-
-  const clearBlockHandleGesture = useCallback(() => {
-    blockHandleGestureRef.current = null;
-    if (blockHandleGestureCleanupRef.current) {
-      blockHandleGestureCleanupRef.current();
-      blockHandleGestureCleanupRef.current = null;
-    }
-  }, []);
-
-  const selectBlockFromHandle = useCallback(
-    (blockIndex: number) => {
-      setTransientBlockSelection(blockIndex);
-    },
-    [setTransientBlockSelection]
-  );
 
   const scheduleOverlayMeasurement = useCallback(() => {
     const requestAnimationFrameFn =
@@ -2349,6 +2331,26 @@ export function PageEditorHostRuntime({
     },
     [closeCommandSelector, overlayOwnerDocument]
   );
+
+  const {
+    blockHandleGesture,
+    blockDragState,
+    clearBlockDragSession,
+    handleBlockHandlePointerDown
+  } = useTopLevelBlockDragSession({
+    clearTransientBlockSelection,
+    closeBlockActionMenus,
+    closeCommandSelector,
+    editableRef,
+    editorRef,
+    focusTopLevelBlockSelection,
+    getTopLevelBlockRange,
+    gestureThresholdPx: BLOCK_HANDLE_GESTURE_THRESHOLD_PX,
+    gutterWidth: BLOCK_GUTTER_WIDTH,
+    openBlockActionMenu,
+    scheduleOverlayMeasurement,
+    selectBlockFromHandle: setTransientBlockSelection
+  });
 
   const openBlockTurnIntoMenu = useCallback(
     (blockIndex: number, source: BlockTurnIntoMenuState["source"], anchorRect?: DOMRect) => {
@@ -2816,9 +2818,9 @@ export function PageEditorHostRuntime({
       setBlockActionMenu(null);
       setBlockTurnIntoMenu(null);
       clearTransientBlockSelection();
-      clearBlockHandleGesture();
+      clearBlockDragSession();
     }
-  }, [clearBlockHandleGesture, clearTransientBlockSelection, isEditable]);
+  }, [clearBlockDragSession, clearTransientBlockSelection, isEditable]);
 
   useEffect(() => {
     setOwnedHoverTarget(null);
@@ -2826,8 +2828,8 @@ export function PageEditorHostRuntime({
     setBlockActionMenu(null);
     setBlockTurnIntoMenu(null);
     clearTransientBlockSelection();
-    clearBlockHandleGesture();
-  }, [clearBlockHandleGesture, clearTransientBlockSelection, pageSysId, sessionKey]);
+    clearBlockDragSession();
+  }, [clearBlockDragSession, clearTransientBlockSelection, pageSysId, sessionKey]);
 
   useEffect(() => {
     commandSelectorRef.current = commandSelector;
@@ -2944,7 +2946,7 @@ export function PageEditorHostRuntime({
     if (retryTimerRef.current !== null) {
       window.clearTimeout(retryTimerRef.current);
     }
-    clearBlockHandleGesture();
+    clearBlockDragSession();
   }, []);
 
   useEffect(() => {
@@ -3371,140 +3373,54 @@ export function PageEditorHostRuntime({
     }
   }
 
-  const handleBlockHandlePointerDown = useCallback(
-    (event: React.PointerEvent<HTMLButtonElement>, blockIndex: number) => {
-      event.preventDefault();
-      event.stopPropagation();
-
-      const runtimeEditor = editorRef.current;
-      if (!runtimeEditor || !editableRef.current || runtimeEditor.isDestroyed) {
-        return;
-      }
-
-      clearBlockHandleGesture();
-
-      const targetRect = getTopLevelBlockRect(runtimeEditor, blockIndex);
-      if (!targetRect) {
-        return;
-      }
-
-      const gesture: BlockHandleGestureState = {
-        blockIndex,
-        dragIntent: false,
-        originX: event.clientX,
-        originY: event.clientY,
-        pointerId: event.pointerId,
-        startedAt: Date.now()
-      };
-      blockHandleGestureRef.current = gesture;
-
-      const ownerDocument = event.currentTarget.ownerDocument;
-      const ownerWindow = ownerDocument.defaultView;
-
-      const handlePointerMove = (pointerEvent: PointerEvent) => {
-        const currentGesture = blockHandleGestureRef.current;
-        if (!currentGesture || currentGesture.pointerId !== pointerEvent.pointerId) {
-          return;
-        }
-
-        const distance = Math.hypot(pointerEvent.clientX - currentGesture.originX, pointerEvent.clientY - currentGesture.originY);
-        if (distance >= BLOCK_HANDLE_GESTURE_THRESHOLD_PX) {
-          currentGesture.dragIntent = true;
-        }
-      };
-
-      const cleanup = () => {
-        ownerDocument.removeEventListener("pointermove", handlePointerMove, true);
-        ownerDocument.removeEventListener("pointerup", handlePointerUp, true);
-        ownerDocument.removeEventListener("pointercancel", handlePointerCancel, true);
-        ownerDocument.removeEventListener("lostpointercapture", handleLostPointerCapture, true);
-        ownerDocument.removeEventListener("pagehide", handlePageHide, true);
-        ownerDocument.removeEventListener("visibilitychange", handleVisibilityChange, true);
-        ownerWindow?.removeEventListener("blur", handleWindowBlur);
-      };
-
-      const finishGesture = (shouldSelect: boolean) => {
-        if (shouldSelect) {
-          selectBlockFromHandle(gesture.blockIndex);
-          openBlockActionMenu(gesture.blockIndex, "handle", targetRect);
-        }
-
-        clearBlockHandleGesture();
-      };
-
-      const handlePointerUp = (pointerEvent: PointerEvent) => {
-        const currentGesture = blockHandleGestureRef.current;
-        if (!currentGesture || currentGesture.pointerId !== pointerEvent.pointerId) {
-          return;
-        }
-
-        finishGesture(!currentGesture.dragIntent);
-      };
-
-      const handlePointerCancel = (pointerEvent: PointerEvent) => {
-        const currentGesture = blockHandleGestureRef.current;
-        if (!currentGesture || currentGesture.pointerId !== pointerEvent.pointerId) {
-          return;
-        }
-
-        finishGesture(false);
-      };
-
-      const handleLostPointerCapture = (pointerEvent: PointerEvent) => {
-        const currentGesture = blockHandleGestureRef.current;
-        if (!currentGesture || currentGesture.pointerId !== pointerEvent.pointerId) {
-          return;
-        }
-
-        finishGesture(false);
-      };
-
-      const handleWindowBlur = () => {
-        finishGesture(false);
-      };
-
-      const handlePageHide = () => {
-        finishGesture(false);
-      };
-
-      const handleVisibilityChange = () => {
-        if (ownerDocument.visibilityState === "hidden") {
-          finishGesture(false);
-        }
-      };
-
-      ownerDocument.addEventListener("pointermove", handlePointerMove, true);
-      ownerDocument.addEventListener("pointerup", handlePointerUp, true);
-      ownerDocument.addEventListener("pointercancel", handlePointerCancel, true);
-      ownerDocument.addEventListener("lostpointercapture", handleLostPointerCapture, true);
-      ownerDocument.addEventListener("pagehide", handlePageHide, true);
-      ownerDocument.addEventListener("visibilitychange", handleVisibilityChange, true);
-      ownerWindow?.addEventListener("blur", handleWindowBlur);
-      blockHandleGestureCleanupRef.current = cleanup;
-    },
-    [clearBlockHandleGesture, openBlockActionMenu, selectBlockFromHandle]
-  );
-
   const activeBlockControlTarget =
-    editor && (blockTurnIntoMenu || blockActionMenu)
+    editor && blockHandleGesture && !blockDragState
       ? (() => {
-          const menuBlockIndex = blockTurnIntoMenu?.blockIndex ?? blockActionMenu?.blockIndex ?? null;
-          if (menuBlockIndex === null) {
-            return hoverTarget;
-          }
-
-          const menuNode = getTopLevelBlockNodeFromDoc(editor.state.doc, menuBlockIndex);
-          return menuNode
+          const gestureNode = getTopLevelBlockNodeFromDoc(editor.state.doc, blockHandleGesture.blockIndex);
+          return gestureNode
             ? {
-                accessibleLabel: getTopLevelBlockLabelFromNode(menuNode),
-                blockIndex: menuBlockIndex
+                accessibleLabel: getTopLevelBlockLabelFromNode(gestureNode),
+                blockIndex: blockHandleGesture.blockIndex
               }
             : hoverTarget;
         })()
-      : hoverTarget;
+      : editor && (blockTurnIntoMenu || blockActionMenu)
+        ? (() => {
+            const menuBlockIndex = blockTurnIntoMenu?.blockIndex ?? blockActionMenu?.blockIndex ?? null;
+            if (menuBlockIndex === null) {
+              return hoverTarget;
+            }
+
+            const menuNode = getTopLevelBlockNodeFromDoc(editor.state.doc, menuBlockIndex);
+            return menuNode
+              ? {
+                  accessibleLabel: getTopLevelBlockLabelFromNode(menuNode),
+                  blockIndex: menuBlockIndex
+                }
+              : hoverTarget;
+          })()
+        : hoverTarget;
   const hoverTargetRect = editor && activeBlockControlTarget ? getTopLevelBlockRect(editor, activeBlockControlTarget.blockIndex) : null;
   const gutterButtonStyle = hoverTargetRect ? buildGutterButtonStyle(hoverTargetRect) : undefined;
-  const handleButtonStyle = hoverTargetRect ? buildBlockHandleButtonStyle(hoverTargetRect) : undefined;
+  const gutterHandleStyle = hoverTargetRect ? buildGutterHandleStyle(hoverTargetRect) : undefined;
+  const blockDragDropIndicatorStyle =
+    editor &&
+    blockDragState &&
+    blockDragState.destinationIndex !== null &&
+    isValidBlockDragDestinationIndex(editor.state.doc.childCount, blockDragState.sourceBlockIndex, blockDragState.destinationIndex)
+      ? buildTopLevelBlockDropIndicatorStyle(editor, blockDragState.destinationIndex, {
+        lineHeight: BLOCK_DRAG_LINE_HEIGHT,
+        viewportGutter: VIEWPORT_GUTTER
+      })
+      : null;
+  const blockDragFeedbackStyle = blockDragState
+    ? buildTopLevelBlockDragFeedbackStyle({
+        clientX: blockDragState.clientX,
+        clientY: blockDragState.clientY
+      })
+    : null;
+  const isPressedHandleTarget =
+    Boolean(blockHandleGesture && activeBlockControlTarget && blockHandleGesture.blockIndex === activeBlockControlTarget.blockIndex && !blockDragState);
   const blockActionMenuNode = editor && blockActionMenu ? getTopLevelBlockNodeFromDoc(editor.state.doc, blockActionMenu.blockIndex) : null;
   const blockActionMenuEntries = blockActionMenuNode ? getBlockActionMenuEntries(blockActionMenuNode) : [];
   const blockActionMenuStyle =
@@ -3590,6 +3506,12 @@ export function PageEditorHostRuntime({
         .docsera-editor-runtime__surface {
           position: relative;
           width: 100%;
+        }
+        .docsera-editor-runtime__surface--block-dragging,
+        .docsera-editor-runtime__surface--block-dragging *,
+        .docsera-editor-overlay-root--block-dragging,
+        .docsera-editor-overlay-root--block-dragging * {
+          cursor: grabbing !important;
         }
         .docsera-editor-runtime__lock-banner {
           display: grid;
@@ -3811,6 +3733,10 @@ export function PageEditorHostRuntime({
           pointer-events: none;
           z-index: 30;
         }
+        .docsera-editor-floating-layer--block-dragging,
+        .docsera-editor-floating-layer--block-dragging * {
+          cursor: grabbing !important;
+        }
         ${BLOCK_SELECTOR_STYLES}
 
         .docsera-editor-floating {
@@ -3826,6 +3752,115 @@ export function PageEditorHostRuntime({
           font-weight: 700;
           letter-spacing: 0.08em;
           text-transform: uppercase;
+        }
+        .docsera-editor-floating__block-drag-feedback {
+          position: fixed;
+          pointer-events: none;
+          z-index: 2;
+          display: block;
+          max-width: min(24rem, calc(100vw - 24px));
+          border: 0;
+          background: transparent;
+          border-radius: 0;
+          color: var(--docsera-editor-text);
+          box-shadow: none;
+          font-size: 1rem;
+          font-weight: 400;
+          line-height: 1.7;
+          letter-spacing: 0;
+          user-select: none;
+          overflow: visible;
+        }
+        .docsera-editor-floating__block-drag-preview {
+          display: block;
+          max-width: 100%;
+          color: inherit;
+          font-size: 1rem;
+          font-weight: 400;
+          line-height: 1.7;
+          letter-spacing: 0;
+          overflow-wrap: anywhere;
+          word-break: normal;
+          opacity: 0.56;
+          filter: saturate(0.76);
+        }
+        .docsera-editor-floating__block-drag-preview > :first-child {
+          margin-top: 0;
+        }
+        .docsera-editor-floating__block-drag-preview > :last-child {
+          margin-bottom: 0;
+        }
+        .docsera-editor-floating__block-drag-preview p {
+          margin: 0 0 1rem;
+        }
+        .docsera-editor-floating__block-drag-preview h1,
+        .docsera-editor-floating__block-drag-preview h2,
+        .docsera-editor-floating__block-drag-preview h3 {
+          margin: 1.4rem 0 0.7rem;
+          line-height: 1.2;
+          scroll-margin-block-start: var(--docsera-workspace-heading-scroll-margin);
+          scroll-margin-top: var(--docsera-workspace-heading-scroll-margin);
+        }
+        .docsera-editor-floating__block-drag-preview h1 {
+          font-size: 1.9rem;
+          letter-spacing: -0.025em;
+        }
+        .docsera-editor-floating__block-drag-preview h2 {
+          font-size: 1.65rem;
+          letter-spacing: -0.02em;
+        }
+        .docsera-editor-floating__block-drag-preview h3 {
+          font-size: 1.25rem;
+        }
+        .docsera-editor-floating__block-drag-preview ul,
+        .docsera-editor-floating__block-drag-preview ol {
+          margin: 0 0 1rem;
+          padding-left: 1.5rem;
+        }
+        .docsera-editor-floating__block-drag-preview li + li {
+          margin-top: 0.35rem;
+        }
+        .docsera-editor-floating__block-drag-preview blockquote {
+          margin: 0 0 1rem;
+          padding-left: 1rem;
+          border-left: 3px solid color-mix(in srgb, var(--docsera-editor-primary) 24%, transparent);
+          color: var(--docsera-editor-muted);
+        }
+        .docsera-editor-floating__block-drag-preview pre {
+          margin: 0 0 1rem;
+          padding: 0.9rem 1rem;
+          border-radius: 14px;
+          background: color-mix(in srgb, var(--docsera-editor-panel) 86%, black 14%);
+          color: var(--docsera-editor-text);
+          overflow-x: auto;
+        }
+        .docsera-editor-floating__block-drag-preview code {
+          font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+          font-size: 0.92em;
+        }
+        .docsera-editor-floating__block-drag-preview p code {
+          padding: 0.12rem 0.35rem;
+          border-radius: 0.4rem;
+          background: color-mix(in srgb, var(--docsera-editor-panel) 88%, black 12%);
+        }
+        .docsera-editor-floating__block-drag-preview hr {
+          margin: 1.5rem 0;
+          border: 0;
+          border-top: 1px solid color-mix(in srgb, var(--docsera-editor-muted) 28%, transparent);
+        }
+        .docsera-editor-floating__block-drag-preview a {
+          color: var(--docsera-editor-primary);
+          text-decoration-thickness: 0.08em;
+          text-underline-offset: 0.12em;
+        }
+        .docsera-editor-floating__block-drag-preview mark {
+          background: color-mix(in srgb, var(--docsera-editor-primary) 16%, transparent);
+          color: inherit;
+        }
+        .docsera-editor-floating__block-drag-preview sup,
+        .docsera-editor-floating__block-drag-preview sub {
+          font-size: 0.72em;
+          line-height: 0;
         }
         .docsera-editor-floating__quick-add {
           pointer-events: auto;
@@ -3869,7 +3904,6 @@ export function PageEditorHostRuntime({
           border-radius: 8px;
           background: transparent;
           color: var(--docsera-text-soft);
-          cursor: grab;
           box-shadow: none;
           transition: background-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
         }
@@ -3882,13 +3916,16 @@ export function PageEditorHostRuntime({
         .docsera-editor-floating__handle:focus-visible {
           box-shadow: 0 0 0 2px color-mix(in srgb, var(--docsera-primary) 22%, transparent);
         }
-        .docsera-editor-floating__handle:active {
-          cursor: grabbing;
-        }
         .docsera-editor-floating__handle svg {
           width: ${QUICK_ADD_ICON_SIZE}px;
           height: ${QUICK_ADD_ICON_SIZE}px;
           flex: 0 0 auto;
+        }
+        .docsera-editor-floating__block-drop-indicator {
+          pointer-events: none;
+          border-radius: 999px;
+          background: var(--docsera-primary);
+          box-shadow: 0 0 0 1px color-mix(in srgb, var(--docsera-primary) 24%, transparent);
         }
         .docsera-block-action-menu,
         .docsera-block-turn-into-menu {
@@ -3991,7 +4028,7 @@ export function PageEditorHostRuntime({
       `}</style>
       <div
         ref={surfaceRef}
-        className="docsera-editor-runtime__surface"
+        className={`docsera-editor-runtime__surface${blockDragState ? " docsera-editor-runtime__surface--block-dragging" : ""}`}
         onClick={(event) => {
           if (!editor || !isEditable || !(event.target instanceof HTMLElement)) return;
           const proseMirror = event.currentTarget.querySelector(".ProseMirror");
@@ -4008,8 +4045,28 @@ export function PageEditorHostRuntime({
       >
         <EditorContent editor={editor} />
         {createPortal(
-          <div className="docsera-editor-floating-layer" aria-hidden={!editor}>
-            {activeBlockControlTarget && gutterButtonStyle && !commandSelector ? (
+          <div className={`docsera-editor-floating-layer${blockDragState ? " docsera-editor-floating-layer--block-dragging" : ""}`} aria-hidden={!editor}>
+            {blockDragDropIndicatorStyle ? (
+              <div
+                className="docsera-editor-floating__block-drop-indicator"
+                style={blockDragDropIndicatorStyle}
+                aria-hidden="true"
+              />
+            ) : null}
+            {blockDragState && blockDragFeedbackStyle ? (
+              <div
+                className="docsera-editor-floating__block-drag-feedback"
+                style={blockDragFeedbackStyle}
+                aria-hidden="true"
+              >
+                <div
+                  className="docsera-editor-floating__block-drag-preview"
+                  aria-hidden="true"
+                  dangerouslySetInnerHTML={{ __html: blockDragState.previewHtml }}
+                />
+              </div>
+            ) : null}
+            {activeBlockControlTarget && gutterButtonStyle && !commandSelector && !blockDragState ? (
               <button
                 type="button"
                 className="docsera-editor-floating__quick-add"
@@ -4030,11 +4087,14 @@ export function PageEditorHostRuntime({
               </button>
             ) : null}
 
-            {activeBlockControlTarget && handleButtonStyle && !commandSelector ? (
+            {activeBlockControlTarget && hoverTargetRect && gutterHandleStyle && !commandSelector && !blockDragState ? (
               <button
                 type="button"
                 className="docsera-editor-floating__handle"
-                style={handleButtonStyle}
+                style={{
+                  ...gutterHandleStyle,
+                  cursor: isPressedHandleTarget ? "grabbing" : "grab"
+                }}
                 tabIndex={-1}
                 draggable={false}
                 aria-label={`Select block: ${activeBlockControlTarget.accessibleLabel}`}
@@ -4043,7 +4103,11 @@ export function PageEditorHostRuntime({
                   event.preventDefault();
                 }}
                 onPointerDown={(event) => {
-                  handleBlockHandlePointerDown(event, activeBlockControlTarget.blockIndex);
+                  handleBlockHandlePointerDown({
+                    blockIndex: activeBlockControlTarget.blockIndex,
+                    event,
+                    targetRect: hoverTargetRect
+                  });
                 }}
                 onClick={(event) => {
                   event.preventDefault();

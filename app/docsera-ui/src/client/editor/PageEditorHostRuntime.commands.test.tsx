@@ -2549,13 +2549,12 @@ describe("PageEditorHostRuntime", () => {
     expect(132 - handleBox.right).toBe(15);
     expect(handleBox.right).toBeLessThan(132);
     expect(getRuntimeStyleText()).toContain(".docsera-editor-runtime__block--selected");
-    expect(getRuntimeStyleText()).toContain("cursor: grab;");
-    expect(getRuntimeStyleText()).toContain("cursor: grabbing;");
 
     const selectedBefore = editor.getJSON();
     const undoDepthBefore = undoDepth(editor.state);
 
     await dispatchOwnerPointerEvent(surface.ownerDocument, floatingButtons[1], "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
+    expect(getComputedStyle(handleButton).cursor).toBe("grabbing");
     await dispatchOwnerPointerEvent(surface.ownerDocument, floatingButtons[1], "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
 
     expect(getSelectedBlockElement(editor)).toHaveTextContent("Alpha");
@@ -2697,7 +2696,7 @@ describe("PageEditorHostRuntime", () => {
     }
   });
 
-  it("targets a nested blockquote descendant and only selects on handle release below the threshold", async () => {
+  it("targets a nested blockquote descendant and opens the block menu on an ordinary handle click", async () => {
     const initial = {
       type: "doc",
       content: [
@@ -2755,19 +2754,18 @@ describe("PageEditorHostRuntime", () => {
 
     const handle = screen.getByRole("button", { name: "Select block: Blockquote" });
     await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 68 }, { button: 0, buttons: 1 });
-    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointermove", { clientX: 162, clientY: 69 }, { button: 0, buttons: 1 });
-    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 162, clientY: 69 }, { button: 0, buttons: 0 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 68 }, { button: 0, buttons: 0 });
 
-    expect(getSelectedBlockElement(editor)).toHaveTextContent("Quoted");
+    await waitFor(() => expect(getSelectedBlockElement(editor)).toHaveTextContent("Quoted"));
 
     fireEvent.keyDown(editor.view.dom, { key: "Escape" });
     expect(getSelectedBlockElement(editor)).toBeNull();
 
     await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 68 }, { button: 0, buttons: 1 });
-    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointermove", { clientX: 172, clientY: 80 }, { button: 0, buttons: 1 });
-    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 172, clientY: 80 }, { button: 0, buttons: 0 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 68 }, { button: 0, buttons: 0 });
 
-    expect(getSelectedBlockElement(editor)).toBeNull();
+    await waitFor(() => expect(getSelectedBlockElement(editor)).toHaveTextContent("Quoted"));
+    expect(screen.getByRole("menu", { name: "Block actions for Blockquote" })).toBeInTheDocument();
     expect(editor.getJSON()).toEqual(initial);
 
     geometrySpy.mockRestore();
@@ -2807,6 +2805,7 @@ describe("PageEditorHostRuntime", () => {
       await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointermove", { clientX: 172, clientY: 76 }, { button: 0, buttons: 1 });
       await dispatchOwnerPointerEvent(surface.ownerDocument, handle, eventType, { clientX: 172, clientY: 76 }, { button: 0, buttons: 0 });
 
+      expect(screen.queryByRole("menu", { name: "Block actions for Text" })).not.toBeInTheDocument();
       expect(getSelectedBlockElement(editor)).toBeNull();
       expect(editor.getJSON()).toEqual(initial);
       expect(undoDepth(editor.state)).toBe(0);

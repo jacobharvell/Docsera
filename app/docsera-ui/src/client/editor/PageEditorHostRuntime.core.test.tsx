@@ -163,8 +163,6 @@ describe("PageEditorHostRuntime", () => {
     expect(source).toContain("background: var(--docsera-surface-muted);");
     expect(source).toContain("color: var(--docsera-primary);");
     expect(source).toContain(".docsera-editor-floating__handle {");
-    expect(source).toContain("cursor: grab;");
-    expect(source).toContain("cursor: grabbing;");
     expect(source).toContain(".docsera-editor-runtime__block--selected {");
     expect(source).toContain("background: var(--docsera-editor-block-selection);");
     expect(source).toContain("box-shadow: none;");
