@@ -104,8 +104,42 @@ type HoverTarget = {
 };
 
 type EditorLaneGeometry = {
+  gutterRect: DOMRect;
+  gutterWidth: number;
+  mainPaneRect: DOMRect;
+  mainPaneStyleTarget: HTMLElement | null;
+  hostContainerRect: DOMRect | null;
+  hostSurfaceRect: DOMRect | null;
   laneRect: DOMRect;
+  pageTitleRect: DOMRect | null;
+  pageTitleTextRects: DOMRect[];
+  proseMirrorRect: DOMRect;
   surfaceRect: DOMRect;
+};
+
+type PanelPointerZone =
+  | "panel-background"
+  | "title-text"
+  | "content-block"
+  | "caret-strip"
+  | "block-control"
+  | "overlay"
+  | "outside-panel";
+
+type TopLevelBlockEntry = {
+  accessibleLabel: string;
+  blockIndex: number;
+  node: Editor["state"]["doc"]["content"]["content"][number];
+  rect: DOMRect;
+};
+
+type PanelPointerClassification = {
+  anchorBlockIndex: number | null;
+  caretBlockIndex: number | null;
+  mainPaneRect: DOMRect;
+  pageTitleRect: DOMRect | null;
+  pageTitleTextRects: DOMRect[];
+  zone: PanelPointerZone;
 };
 
 type CommandSelectorPlacement = "above" | "below";
@@ -149,6 +183,7 @@ type BlockTurnIntoMenuState = {
 
 type BlockSelectionState = {
   ownerPos: number;
+  rangeEndPos?: number;
 };
 
 type SlashTriggerSelection = {
@@ -183,6 +218,20 @@ const BLOCK_TURN_INTO_MENU_HEIGHT = 280;
 const TIPTAP_SKIP_TRAILING_NODE_META = "skipTrailingNode";
 const COMMAND_QUERY_PRESENTATION_PLUGIN_KEY = new PluginKey<CommandQueryPresentationState | null>("docseraCommandQueryPresentation");
 const BLOCK_SELECTION_PLUGIN_KEY = new PluginKey<BlockSelectionState | null>("docseraBlockSelection");
+const EDITOR_MAIN_PANE_SELECTOR = "main.docsera-main";
+const EDITOR_SHELL_SURFACE_SELECTOR = ".docsera-main__surface--editor";
+const EDITOR_HOST_CONTAINER_SELECTOR = ".docsera-main__editor-host";
+const EDITOR_PAGE_TITLE_SELECTOR = "#docsera-page-title";
+const TITLE_TEXT_HITBOX_PADDING_X = 4;
+const TITLE_TEXT_HITBOX_PADDING_Y = 4;
+const FLOATING_THEME_TOKEN_NAMES = [
+  "--docsera-editor-muted",
+  "--docsera-editor-panel",
+  "--docsera-editor-panel-border",
+  "--docsera-editor-primary",
+  "--docsera-editor-block-selection",
+  "--docsera-editor-text"
+] as const;
 
 export function getAutosaveRetryDelay(attempt: number): number | null {
   return Number.isInteger(attempt) && attempt >= 0 && attempt < AUTOSAVE_RETRY_DELAYS_MS.length
@@ -255,10 +304,7 @@ function getBlockSelectionState(editor: Editor): BlockSelectionState | null {
   return BLOCK_SELECTION_PLUGIN_KEY.getState(editor.state) ?? null;
 }
 
-function resolveBlockSelectionState(
-  editor: Editor,
-  blockIndex: number
-): BlockSelectionState | null {
+function resolveBlockSelectionState(editor: Editor, blockIndex: number): BlockSelectionState | null {
   const ownerPos = getTopLevelBlockPosition(editor, blockIndex);
   if (ownerPos === null) {
     return null;
@@ -272,6 +318,66 @@ function resolveBlockSelectionState(
   return {
     ownerPos: ownerBlock.from
   };
+}
+
+function resolveBlockSelectionRangeState(
+  editor: Editor,
+  anchorBlockIndex: number,
+  focusBlockIndex: number
+): BlockSelectionState | null {
+  const anchorSelection = resolveBlockSelectionState(editor, anchorBlockIndex);
+  const focusSelection = resolveBlockSelectionState(editor, focusBlockIndex);
+  if (!anchorSelection || !focusSelection) {
+    return null;
+  }
+
+  if (anchorSelection.ownerPos === focusSelection.ownerPos) {
+    return anchorSelection;
+  }
+
+  return {
+    ownerPos: anchorSelection.ownerPos,
+    rangeEndPos: focusSelection.ownerPos
+  };
+}
+
+function isBlockSelectionRangeState(state: BlockSelectionState | null): state is BlockSelectionState & {
+  rangeEndPos: number;
+} {
+  return Boolean(state && typeof state.rangeEndPos === "number");
+}
+
+function resolveTopLevelBlockIndexFromDocPosition(doc: Editor["state"]["doc"], position: number): number | null {
+  let blockIndex: number | null = null;
+
+  doc.forEach((_node, offset, index) => {
+    if (offset === position) {
+      blockIndex = index;
+    }
+  });
+
+  return blockIndex;
+}
+
+function resolveTopLevelBlockSelectionBoundsFromState(
+  doc: Editor["state"]["doc"],
+  state: BlockSelectionState
+): { endBlockIndex: number; startBlockIndex: number } | null {
+  const ownerBlockIndex = resolveTopLevelBlockIndexFromDocPosition(doc, state.ownerPos);
+  if (ownerBlockIndex === null) {
+    return null;
+  }
+
+  const endBlockIndex = isBlockSelectionRangeState(state)
+    ? resolveTopLevelBlockIndexFromDocPosition(doc, state.rangeEndPos)
+    : ownerBlockIndex;
+  if (endBlockIndex === null) {
+    return null;
+  }
+
+  return ownerBlockIndex <= endBlockIndex
+    ? { startBlockIndex: ownerBlockIndex, endBlockIndex }
+    : { startBlockIndex: endBlockIndex, endBlockIndex: ownerBlockIndex };
 }
 
 function mapBlockSelectionState(
@@ -293,8 +399,26 @@ function mapBlockSelectionState(
     return null;
   }
 
+  if (!isBlockSelectionRangeState(state)) {
+    return {
+      ownerPos: mappedBlock.from
+    };
+  }
+
+  const mappedRangeEndPosResult = transaction.mapping.mapResult(state.rangeEndPos, 1);
+  if (mappedRangeEndPosResult.deleted) {
+    return null;
+  }
+
+  const mappedRangeEndPos = mappedRangeEndPosResult.pos;
+  const mappedRangeEndBlock = getTopLevelBlockAtPosition(transaction.doc, mappedRangeEndPos);
+  if (!mappedRangeEndBlock || !mappedRangeEndBlock.node.isBlock) {
+    return null;
+  }
+
   return {
-    ownerPos: mappedBlock.from
+    ownerPos: mappedBlock.from,
+    rangeEndPos: mappedRangeEndBlock.from
   };
 }
 
@@ -330,17 +454,27 @@ function createBlockSelectionExtension() {
                 return DecorationSet.empty;
               }
 
-              const selectedBlock = getTopLevelBlockAtPosition(state.doc, selection.ownerPos);
-              if (!selectedBlock || !selectedBlock.node.isBlock) {
+              const selectedBounds = resolveTopLevelBlockSelectionBoundsFromState(state.doc, selection);
+              if (!selectedBounds) {
                 return DecorationSet.empty;
               }
 
-              return DecorationSet.create(state.doc, [
-                Decoration.node(selectedBlock.from, selectedBlock.to, {
-                  class: "docsera-editor-runtime__block--selected",
-                  "data-docsera-block-selected": "true"
-                })
-              ]);
+              const decorations: Decoration[] = [];
+              for (let blockIndex = selectedBounds.startBlockIndex; blockIndex <= selectedBounds.endBlockIndex; blockIndex += 1) {
+                const selectedBlock = getTopLevelBlockRangeFromDoc(state.doc, blockIndex);
+                if (!selectedBlock) {
+                  return DecorationSet.empty;
+                }
+
+                decorations.push(
+                  Decoration.node(selectedBlock.from, selectedBlock.to, {
+                    class: "docsera-editor-runtime__block--selected",
+                    "data-docsera-block-selected": "true"
+                  })
+                );
+              }
+
+              return DecorationSet.create(state.doc, decorations);
             }
           }
         })
@@ -873,16 +1007,16 @@ function buildRightAnchoredSurfaceStyle(
 }
 
 function buildQuickAddAnchorRect(targetRect: DOMRect): DOMRect {
+  const gutterLeft = targetRect.left - BLOCK_GUTTER_WIDTH;
   return new DOMRect(
-    Math.max(VIEWPORT_GUTTER, targetRect.left - BLOCK_GUTTER_WIDTH),
+    Math.max(VIEWPORT_GUTTER, gutterLeft),
     Math.max(VIEWPORT_GUTTER, targetRect.top + BLOCK_TARGET_TOP_OFFSET),
     QUICK_ADD_BUTTON_SIZE,
     Math.max(1, targetRect.bottom - (targetRect.top + BLOCK_TARGET_TOP_OFFSET))
   );
 }
 
-function buildGutterButtonStyle(targetRect: DOMRect): CSSProperties {
-  const anchorRect = buildQuickAddAnchorRect(targetRect);
+function buildGutterButtonStyle(anchorRect: DOMRect): CSSProperties {
   return {
     position: "fixed",
     left: `${anchorRect.left}px`,
@@ -892,8 +1026,7 @@ function buildGutterButtonStyle(targetRect: DOMRect): CSSProperties {
   };
 }
 
-function buildGutterHandleStyle(targetRect: DOMRect): CSSProperties {
-  const anchorRect = buildQuickAddAnchorRect(targetRect);
+function buildGutterHandleStyle(anchorRect: DOMRect): CSSProperties {
   return {
     position: "fixed",
     left: `${anchorRect.left + QUICK_ADD_BUTTON_SIZE + BLOCK_HANDLE_BUTTON_GAP}px`,
@@ -980,18 +1113,138 @@ function getTurnIntoBlockCommandIdFromNode(
   return sourceCommandId && isTurnIntoEditorBlockCommandId(sourceCommandId) ? sourceCommandId : null;
 }
 
-function resolveEditorLaneGeometry(surfaceElement: HTMLElement, proseMirror: HTMLElement): EditorLaneGeometry {
-  const surfaceRect = surfaceElement.getBoundingClientRect();
-  const proseMirrorRect = proseMirror.getBoundingClientRect();
+function parsePixelValue(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function resolveLightDomEditorOwner(surfaceElement: HTMLElement): {
+  hostElement: HTMLElement | null;
+  hostContainerElement: HTMLElement | null;
+  mainPaneElement: HTMLElement | null;
+  pageTitleElement: HTMLElement | null;
+  shellSurfaceElement: HTMLElement | null;
+} {
+  const rootNode = surfaceElement.getRootNode();
+  const hostElement = rootNode instanceof ShadowRoot && rootNode.host instanceof HTMLElement ? rootNode.host : null;
+  const mainPaneCandidate = hostElement?.closest(EDITOR_MAIN_PANE_SELECTOR) ?? surfaceElement.closest(EDITOR_MAIN_PANE_SELECTOR);
+  const mainPaneElement =
+    mainPaneCandidate instanceof HTMLElement
+      ? mainPaneCandidate
+      : null;
+  const hostContainerCandidate = hostElement?.closest(EDITOR_HOST_CONTAINER_SELECTOR) ?? surfaceElement.closest(EDITOR_HOST_CONTAINER_SELECTOR);
+  const hostContainerElement =
+    hostContainerCandidate instanceof HTMLElement
+      ? hostContainerCandidate
+      : null;
+  const shellSurfaceCandidate = hostElement?.closest(EDITOR_SHELL_SURFACE_SELECTOR) ?? surfaceElement.closest(EDITOR_SHELL_SURFACE_SELECTOR);
+  const shellSurfaceElement =
+    shellSurfaceCandidate instanceof HTMLElement
+      ? shellSurfaceCandidate
+      : null;
+  const pageTitleElement =
+    shellSurfaceElement?.querySelector(EDITOR_PAGE_TITLE_SELECTOR) instanceof HTMLElement
+      ? (shellSurfaceElement.querySelector(EDITOR_PAGE_TITLE_SELECTOR) as HTMLElement)
+      : null;
 
   return {
+    hostElement,
+    hostContainerElement,
+    mainPaneElement,
+    pageTitleElement,
+    shellSurfaceElement
+  };
+}
+
+function resolveConfiguredGutterWidth(surfaceElement: HTMLElement): number {
+  const { hostElement, shellSurfaceElement } = resolveLightDomEditorOwner(surfaceElement);
+  const ownerWindow = surfaceElement.ownerDocument.defaultView ?? window;
+  const styleTargets = [shellSurfaceElement, hostElement, surfaceElement.ownerDocument.documentElement, surfaceElement];
+
+  for (const target of styleTargets) {
+    if (!(target instanceof HTMLElement)) {
+      continue;
+    }
+
+    const width = parsePixelValue(ownerWindow.getComputedStyle(target).getPropertyValue("--docsera-editor-block-gutter-width"));
+    if (width !== null && width > 0) {
+      return width;
+    }
+  }
+
+  return BLOCK_GUTTER_WIDTH;
+}
+
+function resolveEditorLaneGeometry(surfaceElement: HTMLElement, proseMirror: HTMLElement): EditorLaneGeometry {
+  const ownerWindow = surfaceElement.ownerDocument.defaultView ?? window;
+  const surfaceRect = surfaceElement.getBoundingClientRect();
+  const proseMirrorRect = proseMirror.getBoundingClientRect();
+  const gutterWidth = resolveConfiguredGutterWidth(surfaceElement);
+  const { hostContainerElement, mainPaneElement, pageTitleElement, shellSurfaceElement } = resolveLightDomEditorOwner(surfaceElement);
+  const hostContainerRect = hostContainerElement?.getBoundingClientRect() ?? null;
+  const mainPaneRect = mainPaneElement?.getBoundingClientRect() ?? null;
+  const hostSurfaceRect = shellSurfaceElement?.getBoundingClientRect() ?? null;
+  const pageTitleRect = pageTitleElement?.getBoundingClientRect() ?? null;
+  const pageTitleTextRects = resolvePageTitleTextRects(pageTitleElement);
+  const mainPaneStyleTarget = mainPaneElement ?? shellSurfaceElement;
+  const shellSurfaceStyle = mainPaneStyleTarget ? ownerWindow.getComputedStyle(mainPaneStyleTarget) : null;
+  const hostContainerStyle = hostContainerElement ? ownerWindow.getComputedStyle(hostContainerElement) : null;
+  const shellPaddingLeft = parsePixelValue(shellSurfaceStyle?.paddingLeft ?? null);
+  const shellPaddingRight = parsePixelValue(shellSurfaceStyle?.paddingRight ?? null);
+  const hostMarginTop = parsePixelValue(hostContainerStyle?.marginTop ?? null) ?? 0;
+  const hostMarginBottom = parsePixelValue(hostContainerStyle?.marginBottom ?? null) ?? 0;
+
+  const gutterLeftFallback = proseMirrorRect.left - gutterWidth;
+  const gutterLeftFromShell =
+    hostSurfaceRect && shellPaddingLeft !== null ? hostSurfaceRect.left + Math.max(0, shellPaddingLeft - gutterWidth) : null;
+  const laneLeft = gutterLeftFromShell ?? gutterLeftFallback;
+  const laneRight =
+    hostSurfaceRect && shellPaddingRight !== null ? hostSurfaceRect.right - shellPaddingRight : proseMirrorRect.right;
+  const laneTop = hostContainerRect ? Math.min(surfaceRect.top, hostContainerRect.top - hostMarginTop) : surfaceRect.top;
+  const laneBottom = hostContainerRect ? Math.max(surfaceRect.bottom, hostContainerRect.bottom + hostMarginBottom) : surfaceRect.bottom;
+  const laneHeight = Math.max(1, laneBottom - laneTop);
+  const gutterRect = new DOMRect(laneLeft, laneTop, Math.max(1, proseMirrorRect.left - laneLeft), laneHeight);
+
+  return {
+    gutterRect,
+    gutterWidth,
+    mainPaneRect: mainPaneRect ?? hostSurfaceRect ?? new DOMRect(laneLeft, laneTop, Math.max(1, laneRight - laneLeft), laneHeight),
+    mainPaneStyleTarget,
+    hostContainerRect,
+    hostSurfaceRect,
     surfaceRect,
-    laneRect: new DOMRect(
-      proseMirrorRect.left - BLOCK_GUTTER_WIDTH,
-      surfaceRect.top,
-      proseMirrorRect.width + BLOCK_GUTTER_WIDTH,
-      surfaceRect.height
-    )
+    laneRect: new DOMRect(laneLeft, laneTop, Math.max(1, laneRight - laneLeft), laneHeight),
+    pageTitleRect,
+    pageTitleTextRects,
+    proseMirrorRect
+  };
+}
+
+function resolveNearestVerticalBlockTarget(editor: Editor, clientY: number): HoverTarget | null {
+  const elements = getTopLevelBlockElements(editor);
+  if (!elements.length) {
+    return null;
+  }
+
+  const blockRects = elements.map((element) => element.getBoundingClientRect());
+  let targetIndex = blockRects.length - 1;
+  for (let index = 0; index < blockRects.length; index += 1) {
+    const currentRect = blockRects[index]!;
+    const nextRect = blockRects[index + 1] ?? null;
+    const boundary = nextRect ? currentRect.bottom + (nextRect.top - currentRect.bottom) / 2 : Number.POSITIVE_INFINITY;
+    if (clientY < boundary) {
+      targetIndex = index;
+      break;
+    }
+  }
+
+  return {
+    accessibleLabel: getTopLevelBlockLabel(elements[targetIndex]!),
+    blockIndex: targetIndex
   };
 }
 
@@ -1025,7 +1278,12 @@ function getTopLevelBlockElements(editor: Editor): HTMLElement[] {
     return [];
   }
 
-  return Array.from(proseMirror.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+  return Array.from(proseMirror.children).filter(
+    (child): child is HTMLElement =>
+      child instanceof HTMLElement &&
+      !child.classList.contains("ProseMirror-dropcursor") &&
+      !child.classList.contains("docsera-dropcursor")
+  );
 }
 
 function getTopLevelBlockRange(editor: Editor, blockIndex: number): { from: number; to: number } | null {
@@ -1052,7 +1310,211 @@ function getTopLevelBlockElement(editor: Editor, blockIndex: number): HTMLElemen
   return getTopLevelBlockElements(editor)[blockIndex] ?? null;
 }
 
-function resolveHoverTargetFromPointer(editor: Editor, surfaceElement: HTMLElement, clientX: number, clientY: number): HoverTarget | null {
+function getTopLevelBlockEntries(editor: Editor): TopLevelBlockEntry[] {
+  const elements = getTopLevelBlockElements(editor);
+  const entries: TopLevelBlockEntry[] = [];
+
+  editor.state.doc.forEach((node, _offset, index) => {
+    const element = elements[index];
+    if (!(element instanceof HTMLElement) || !node.isBlock) {
+      return;
+    }
+
+    entries.push({
+      accessibleLabel: getTopLevelBlockLabel(element),
+      blockIndex: index,
+      node,
+      rect: element.getBoundingClientRect()
+    });
+  });
+
+  return entries;
+}
+
+function isPointInsideRect(rect: DOMRect | null | undefined, clientX: number, clientY: number): boolean {
+  return Boolean(
+    rect &&
+      clientX >= rect.left &&
+      clientX <= rect.right &&
+      clientY >= rect.top &&
+      clientY <= rect.bottom
+  );
+}
+
+function inflateRect(rect: DOMRect, horizontalPadding: number, verticalPadding: number): DOMRect {
+  return new DOMRect(
+    rect.left - horizontalPadding,
+    rect.top - verticalPadding,
+    rect.width + horizontalPadding * 2,
+    rect.height + verticalPadding * 2
+  );
+}
+
+function getTextNodeClientRects(textNode: Text): DOMRect[] {
+  const ownerDocument = textNode.ownerDocument;
+  if (!ownerDocument) {
+    return [];
+  }
+
+  const range = ownerDocument.createRange();
+  range.selectNodeContents(textNode);
+  return Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0);
+}
+
+function resolvePageTitleTextRects(pageTitleElement: HTMLElement | null): DOMRect[] {
+  if (!pageTitleElement) {
+    return [];
+  }
+
+  const ownerDocument = pageTitleElement.ownerDocument;
+  const walker = ownerDocument.createTreeWalker(pageTitleElement, NodeFilter.SHOW_TEXT);
+  const rects: DOMRect[] = [];
+  let currentNode = walker.nextNode();
+  while (currentNode) {
+    if (
+      currentNode instanceof Text &&
+      currentNode.textContent?.trim()
+    ) {
+      for (const rect of getTextNodeClientRects(currentNode)) {
+        rects.push(inflateRect(rect, TITLE_TEXT_HITBOX_PADDING_X, TITLE_TEXT_HITBOX_PADDING_Y));
+      }
+    }
+    currentNode = walker.nextNode();
+  }
+
+  if (rects.length > 0) {
+    return rects;
+  }
+
+  const leafRects = Array.from(pageTitleElement.querySelectorAll("*"))
+    .filter((element): element is HTMLElement => element instanceof HTMLElement && !element.children.length && Boolean(element.textContent?.trim()))
+    .flatMap((element) =>
+      Array.from(element.getClientRects())
+        .filter((rect) => rect.width > 0 && rect.height > 0)
+        .map((rect) => inflateRect(rect, TITLE_TEXT_HITBOX_PADDING_X, TITLE_TEXT_HITBOX_PADDING_Y))
+    );
+
+  return leafRects;
+}
+
+function isPointInsideAnyRect(rects: readonly DOMRect[], clientX: number, clientY: number): boolean {
+  return rects.some((rect) => isPointInsideRect(rect, clientX, clientY));
+}
+
+function getTopLevelCaretSelectionOffset(
+  node: Editor["state"]["doc"]["content"]["content"][number]
+): number | null {
+  switch (node.type.name) {
+    case "blockquote":
+      return 2;
+    case "bulletList":
+    case "orderedList":
+    case "taskList":
+      return 3;
+    case "paragraph":
+    case "heading":
+    case "codeBlock":
+      return 1;
+    default:
+      return null;
+  }
+}
+
+function buildCaretStripRect(entry: TopLevelBlockEntry): DOMRect | null {
+  const caretOffset = getTopLevelCaretSelectionOffset(entry.node);
+  if (caretOffset === null) {
+    return null;
+  }
+
+  const stripLeft = entry.rect.left - BLOCK_GUTTER_CONTENT_GAP;
+  const stripRight = entry.rect.left;
+  if (stripRight <= stripLeft) {
+    return null;
+  }
+
+  return new DOMRect(stripLeft, entry.rect.top, stripRight - stripLeft, entry.rect.height);
+}
+
+function resolvePanelPointerClassification(
+  editor: Editor,
+  surfaceElement: HTMLElement,
+  clientX: number,
+  clientY: number
+): PanelPointerClassification {
+  const proseMirror = editor.view.dom;
+  if (!(proseMirror instanceof HTMLElement)) {
+    return {
+      anchorBlockIndex: null,
+      caretBlockIndex: null,
+      mainPaneRect: new DOMRect(clientX, clientY, 1, 1),
+      pageTitleRect: null,
+      pageTitleTextRects: [],
+      zone: "outside-panel"
+    };
+  }
+
+  const laneGeometry = resolveEditorLaneGeometry(surfaceElement, proseMirror);
+  const entries = getTopLevelBlockEntries(editor);
+  const nearestVerticalTarget = resolveNearestVerticalBlockTarget(editor, clientY);
+
+  if (!isPointInsideRect(laneGeometry.mainPaneRect, clientX, clientY)) {
+    return {
+      anchorBlockIndex: nearestVerticalTarget?.blockIndex ?? null,
+      caretBlockIndex: null,
+      mainPaneRect: laneGeometry.mainPaneRect,
+      pageTitleRect: laneGeometry.pageTitleRect,
+      pageTitleTextRects: laneGeometry.pageTitleTextRects,
+      zone: "outside-panel"
+    };
+  }
+
+  if (isPointInsideAnyRect(laneGeometry.pageTitleTextRects, clientX, clientY)) {
+    return {
+      anchorBlockIndex: null,
+      caretBlockIndex: null,
+      mainPaneRect: laneGeometry.mainPaneRect,
+      pageTitleRect: laneGeometry.pageTitleRect,
+      pageTitleTextRects: laneGeometry.pageTitleTextRects,
+      zone: "title-text"
+    };
+  }
+
+  for (const entry of entries) {
+    const caretStripRect = buildCaretStripRect(entry);
+    if (isPointInsideRect(caretStripRect, clientX, clientY)) {
+      return {
+        anchorBlockIndex: entry.blockIndex,
+        caretBlockIndex: entry.blockIndex,
+        mainPaneRect: laneGeometry.mainPaneRect,
+        pageTitleRect: laneGeometry.pageTitleRect,
+        pageTitleTextRects: laneGeometry.pageTitleTextRects,
+        zone: "caret-strip"
+      };
+    }
+
+    if (isPointInsideRect(entry.rect, clientX, clientY)) {
+      return {
+        anchorBlockIndex: entry.blockIndex,
+        caretBlockIndex: null,
+        mainPaneRect: laneGeometry.mainPaneRect,
+        pageTitleRect: laneGeometry.pageTitleRect,
+        pageTitleTextRects: laneGeometry.pageTitleTextRects,
+        zone: "content-block"
+      };
+    }
+  }
+
+  return {
+    anchorBlockIndex: nearestVerticalTarget?.blockIndex ?? null,
+    caretBlockIndex: null,
+    mainPaneRect: laneGeometry.mainPaneRect,
+    pageTitleRect: laneGeometry.pageTitleRect,
+    pageTitleTextRects: laneGeometry.pageTitleTextRects,
+    zone: "panel-background"
+  };
+}
+
+function resolveHoverTargetFromPointer(editor: Editor, clientX: number, clientY: number): HoverTarget | null {
   const elements = getTopLevelBlockElements(editor);
   const proseMirror = editor.view.dom;
   if (!elements.length) {
@@ -1063,12 +1525,7 @@ function resolveHoverTargetFromPointer(editor: Editor, surfaceElement: HTMLEleme
     return null;
   }
 
-  const { laneRect } = resolveEditorLaneGeometry(surfaceElement, proseMirror);
-  const targetIndex = resolveHoverTargetBlockIndex(
-    laneRect,
-    elements.map((element) => element.getBoundingClientRect()),
-    { clientX, clientY }
-  );
+  const targetIndex = resolveHoverTargetBlockIndex(elements.map((element) => element.getBoundingClientRect()), { clientX, clientY }, BLOCK_GUTTER_WIDTH);
   if (targetIndex === null) {
     return null;
   }
@@ -1077,6 +1534,33 @@ function resolveHoverTargetFromPointer(editor: Editor, surfaceElement: HTMLEleme
     accessibleLabel: getTopLevelBlockLabel(elements[targetIndex]),
     blockIndex: targetIndex
   };
+}
+
+function resolveBlankGutterSelectionAnchor(
+  editor: Editor,
+  surfaceElement: HTMLElement,
+  clientX: number,
+  clientY: number
+): HoverTarget | null {
+  const classification = resolvePanelPointerClassification(editor, surfaceElement, clientX, clientY);
+  if (classification.zone !== "panel-background" || classification.anchorBlockIndex === null) {
+    return null;
+  }
+
+  const node = getTopLevelBlockNodeFromDoc(editor.state.doc, classification.anchorBlockIndex);
+  return node
+    ? {
+        accessibleLabel: getTopLevelBlockLabelFromNode(node),
+        blockIndex: classification.anchorBlockIndex
+      }
+    : null;
+}
+
+function resolveActiveBlankGutterSelectionTarget(
+  editor: Editor,
+  clientY: number
+): HoverTarget | null {
+  return resolveNearestVerticalBlockTarget(editor, clientY);
 }
 
 function areHoverTargetsEqual(left: HoverTarget | null, right: HoverTarget | null): boolean {
@@ -1091,6 +1575,16 @@ function isGutterControlTarget(target: EventTarget | null): boolean {
   const targetElement =
     target instanceof HTMLElement ? target : target instanceof Node ? target.parentElement : null;
   return targetElement?.closest("[data-docsera-block-gutter='true']") instanceof HTMLElement;
+}
+
+function isInteractiveEditorOverlayTarget(target: EventTarget | null): boolean {
+  const targetElement =
+    target instanceof HTMLElement ? target : target instanceof Node ? target.parentElement : null;
+  return Boolean(
+    targetElement?.closest(
+      "[data-surface], [role='menu'], [role='listbox'], [role='toolbar'], button, input, select, textarea, [data-docsera-table-add-rail-kind]"
+    ) instanceof HTMLElement
+  );
 }
 
 function getPointerEventPathNodes(event: PointerEvent): Node[] {
@@ -1161,7 +1655,7 @@ function resolvePointerOwnedHoverTarget(
   clientY: number
 ): HoverTarget | null {
   if (isPointerEventInsideEditorLane(event, surfaceElement)) {
-    return resolveHoverTargetFromPointer(editor, surfaceElement, clientX, clientY);
+    return resolveHoverTargetFromPointer(editor, clientX, clientY);
   }
 
   const target = resolvePointerEventTarget(event);
@@ -1169,7 +1663,7 @@ function resolvePointerOwnedHoverTarget(
     return null;
   }
 
-  return resolveHoverTargetFromPointer(editor, surfaceElement, clientX, clientY);
+  return resolveHoverTargetFromPointer(editor, clientX, clientY);
 }
 
 function BlockCommandIcon({ id }: { id: EditorBlockCommandId }) {
@@ -1453,13 +1947,20 @@ function duplicateTopLevelBlock(editor: Editor, blockIndex: number): boolean {
 }
 
 function deleteTopLevelBlock(editor: Editor, blockIndex: number): boolean {
-  const blockRange = getTopLevelBlockRange(editor, blockIndex);
-  if (!blockRange) {
+  return deleteTopLevelBlockSelection(editor, blockIndex, blockIndex);
+}
+
+function deleteTopLevelBlockSelection(editor: Editor, startBlockIndex: number, endBlockIndex: number): boolean {
+  const start = Math.min(startBlockIndex, endBlockIndex);
+  const end = Math.max(startBlockIndex, endBlockIndex);
+  const startRange = getTopLevelBlockRange(editor, start);
+  const endRange = getTopLevelBlockRange(editor, end);
+  if (!startRange || !endRange) {
     return false;
   }
 
-  let transaction = editor.state.tr.delete(blockRange.from, blockRange.to);
-  let nextBlockIndex = blockIndex;
+  let transaction = editor.state.tr.delete(startRange.from, endRange.to);
+  let nextBlockIndex = start;
 
   if (transaction.doc.childCount === 0) {
     transaction = transaction.insert(0, editor.schema.nodes.paragraph.create());
@@ -1603,6 +2104,68 @@ function focusTopLevelBlockStart(editor: Editor, blockIndex: number): void {
   }
 
   editor.view.focus();
+}
+
+function focusTopLevelCaretIntent(editor: Editor, blockIndex: number): boolean {
+  const blockRange = getTopLevelBlockRange(editor, blockIndex);
+  const node = getTopLevelBlockNodeFromDoc(editor.state.doc, blockIndex);
+  const selectionOffset = node ? getTopLevelCaretSelectionOffset(node) : null;
+  if (!blockRange || selectionOffset === null || editor.isDestroyed) {
+    return false;
+  }
+
+  const selectionAnchor = Math.min(blockRange.from + selectionOffset, Math.max(1, editor.state.doc.content.size));
+  let transaction = editor.state.tr.setMeta("addToHistory", false);
+  try {
+    transaction = transaction.setSelection(TextSelection.create(transaction.doc, selectionAnchor));
+  } catch {
+    try {
+      transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(selectionAnchor), 1));
+    } catch {
+      return false;
+    }
+  }
+
+  if (!editor.state.selection.eq(transaction.selection)) {
+    editor.view.dispatch(transaction);
+  }
+  editor.view.focus();
+  return true;
+}
+
+function clampMarqueeRectToPanel(
+  originX: number,
+  originY: number,
+  currentX: number,
+  currentY: number,
+  boundaryRect: DOMRect
+): DOMRect {
+  const left = Math.max(boundaryRect.left, Math.min(originX, currentX));
+  const right = Math.min(boundaryRect.right, Math.max(originX, currentX));
+  const top = Math.max(boundaryRect.top, Math.min(originY, currentY));
+  const bottom = Math.min(boundaryRect.bottom, Math.max(originY, currentY));
+  return new DOMRect(left, top, Math.max(1, right - left), Math.max(1, bottom - top));
+}
+
+function setEditorPanelCursor(surfaceElement: HTMLElement | null, cursor: string): void {
+  if (!surfaceElement) {
+    return;
+  }
+
+  const { hostContainerElement, shellSurfaceElement } = resolveLightDomEditorOwner(surfaceElement);
+  const cursorValue = cursor.trim();
+  const targets = [surfaceElement, hostContainerElement, shellSurfaceElement];
+  for (const target of targets) {
+    if (!(target instanceof HTMLElement)) {
+      continue;
+    }
+
+    if (cursorValue) {
+      target.style.cursor = cursorValue;
+    } else {
+      target.style.removeProperty("cursor");
+    }
+  }
 }
 
 function replaceQuickAddParagraph(
@@ -1934,15 +2497,23 @@ export function PageEditorHostRuntime({
         }
 
         const activeBlockSelection = getBlockSelectionState(runtimeEditor);
+        const activeBlockSelectionBounds = activeBlockSelection
+          ? resolveTopLevelBlockSelectionBoundsFromState(runtimeEditor.state.doc, activeBlockSelection)
+          : null;
         if (activeBlockSelection && (event.key === "Delete" || event.key === "Backspace")) {
           event.preventDefault();
-          const selectedBlockIndex = resolveTopLevelBlockIndexForPosition(runtimeEditor, activeBlockSelection.ownerPos);
-          if (selectedBlockIndex === null) {
+          if (!activeBlockSelectionBounds) {
             closeAllBlockSurfaces({ focusEditor: true });
             return true;
           }
 
-          if (!deleteTopLevelBlock(runtimeEditor, selectedBlockIndex)) {
+          if (
+            !deleteTopLevelBlockSelection(
+              runtimeEditor,
+              activeBlockSelectionBounds.startBlockIndex,
+              activeBlockSelectionBounds.endBlockIndex
+            )
+          ) {
             closeAllBlockSurfaces({ focusEditor: true });
             return true;
           }
@@ -2081,6 +2652,11 @@ export function PageEditorHostRuntime({
         }
 
         if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+          if (activeBlockSelection && isBlockSelectionRangeState(activeBlockSelection)) {
+            event.preventDefault();
+            return true;
+          }
+
           const selectedBlockIndex = activeBlockSelection
             ? resolveTopLevelBlockIndexForPosition(runtimeEditor, activeBlockSelection.ownerPos)
             : null;
@@ -2105,7 +2681,18 @@ export function PageEditorHostRuntime({
               return true;
             }
 
-            clearTransientBlockSelection();
+            if (
+              event.key === "Enter" ||
+              event.key === "ArrowUp" ||
+              event.key === "ArrowDown" ||
+              event.key === "ArrowLeft" ||
+              event.key === "ArrowRight" ||
+              (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey)
+            ) {
+              event.preventDefault();
+              clearTransientBlockSelection();
+              return true;
+            }
           }
         }
 
@@ -2162,6 +2749,7 @@ export function PageEditorHostRuntime({
   );
   const [savedDocumentKey, setSavedDocumentKey] = useState(() => initialSavedDocumentKey);
   const [savedRevision, setSavedRevision] = useState(initialRevision);
+  const [activeRangeMarqueeRect, setActiveRangeMarqueeRect] = useState<DOMRect | null>(null);
   const [status, setStatus] = useState<RuntimeStatus>(() => (initialDocumentKey === initialSavedDocumentKey ? "saved" : "dirty"));
   const disposedRef = useRef(false);
   const saveInFlightRef = useRef(false);
@@ -2184,9 +2772,25 @@ export function PageEditorHostRuntime({
   const blockActionMenuRef = useRef<BlockActionMenuState | null>(null);
   const blockTurnIntoMenuRef = useRef<BlockTurnIntoMenuState | null>(null);
   const lastPointerSnapshotRef = useRef<{ clientX: number; clientY: number; insideEditorLane: boolean } | null>(null);
+  const gutterRangeGestureRef = useRef<{
+    activated: boolean;
+    anchorBlockIndex: number;
+    currentBlockIndex: number;
+    pointerId: number;
+    startClientX: number;
+    startClientY: number;
+  } | null>(null);
+  const gutterRangeGestureCleanupRef = useRef<(() => void) | null>(null);
+  const gutterRangeClickSuppressionReleaseTimerRef = useRef<number | null>(null);
+  const suppressSurfaceClickUntilPointerUpRef = useRef(false);
+  const panelCursorZoneRef = useRef<PanelPointerZone | null>(null);
   const overlayMeasurementFrameRef = useRef<number | null>(null);
   const onEditorReadyRef = useRef(onEditorReady);
   const onOutlineChangeRef = useRef(onOutlineChange);
+  const activeRangeMarqueeRectRef = useRef<DOMRect | null>(null);
+  const clearGutterRangeGestureUnmountRef = useRef<((options?: { clearSelection?: boolean; reason?: string; releaseClickSuppression?: boolean }) => void) | null>(null);
+  const clearSurfaceClickSuppressionReleaseTimerUnmountRef = useRef<(() => void) | null>(null);
+  const clearTransientBlockSelectionUnmountRef = useRef<((reason?: string) => void) | null>(null);
   const isEditable = canEdit;
   const overlayOwnerDocument = overlayRoot.ownerDocument;
   const overlayOwnerWindow = overlayOwnerDocument.defaultView;
@@ -2199,32 +2803,53 @@ export function PageEditorHostRuntime({
     [commandGroups]
   );
 
-  const clearTransientBlockSelection = useCallback(() => {
+  const clearTransientBlockSelection = useCallback((reason?: string) => {
     const runtimeEditor = editorRef.current;
     if (!runtimeEditor || runtimeEditor.isDestroyed) {
       return;
     }
 
-    if (!getBlockSelectionState(runtimeEditor)) {
+    const currentSelection = getBlockSelectionState(runtimeEditor);
+    if (!currentSelection) {
       return;
     }
 
     runtimeEditor.view.dispatch(runtimeEditor.state.tr.setMeta(BLOCK_SELECTION_PLUGIN_KEY, null).setMeta("addToHistory", false));
   }, []);
 
-  const setTransientBlockSelection = useCallback((blockIndex: number) => {
+  const clearSurfaceClickSuppressionReleaseTimer = useCallback(() => {
+    if (gutterRangeClickSuppressionReleaseTimerRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(gutterRangeClickSuppressionReleaseTimerRef.current);
+    gutterRangeClickSuppressionReleaseTimerRef.current = null;
+  }, []);
+
+  const scheduleSurfaceClickSuppressionRelease = useCallback(() => {
+    clearSurfaceClickSuppressionReleaseTimer();
+    gutterRangeClickSuppressionReleaseTimerRef.current = window.requestAnimationFrame(() => {
+      gutterRangeClickSuppressionReleaseTimerRef.current = null;
+      suppressSurfaceClickUntilPointerUpRef.current = false;
+    });
+  }, [clearSurfaceClickSuppressionReleaseTimer]);
+
+  const setTransientBlockSelectionRange = useCallback((anchorBlockIndex: number, focusBlockIndex: number) => {
     const runtimeEditor = editorRef.current;
     if (!runtimeEditor || runtimeEditor.isDestroyed) {
       return;
     }
 
-    const nextSelection = resolveBlockSelectionState(runtimeEditor, blockIndex);
+    const nextSelection = resolveBlockSelectionRangeState(runtimeEditor, anchorBlockIndex, focusBlockIndex);
     if (!nextSelection) {
       return;
     }
 
     const currentSelection = getBlockSelectionState(runtimeEditor);
-    if (currentSelection?.ownerPos === nextSelection.ownerPos) {
+    if (
+      currentSelection?.ownerPos === nextSelection.ownerPos &&
+      currentSelection?.rangeEndPos === nextSelection.rangeEndPos
+    ) {
       return;
     }
 
@@ -2232,6 +2857,10 @@ export function PageEditorHostRuntime({
       runtimeEditor.state.tr.setMeta(BLOCK_SELECTION_PLUGIN_KEY, nextSelection).setMeta("addToHistory", false)
     );
   }, []);
+
+  const setTransientBlockSelection = useCallback((blockIndex: number) => {
+    setTransientBlockSelectionRange(blockIndex, blockIndex);
+  }, [setTransientBlockSelectionRange]);
 
   const scheduleOverlayMeasurement = useCallback(() => {
     const requestAnimationFrameFn =
@@ -2265,12 +2894,7 @@ export function PageEditorHostRuntime({
     }
 
     setOwnedHoverTarget(
-      resolveHoverTargetFromPointer(
-        runtimeEditor,
-        surfaceElement,
-        pointerSnapshot.clientX,
-        pointerSnapshot.clientY
-      )
+      resolveHoverTargetFromPointer(runtimeEditor, pointerSnapshot.clientX, pointerSnapshot.clientY)
     );
   }, []);
 
@@ -2437,6 +3061,10 @@ export function PageEditorHostRuntime({
       }
 
       const activeSelection = getBlockSelectionState(runtimeEditor);
+      if (activeSelection && isBlockSelectionRangeState(activeSelection)) {
+        return;
+      }
+
       const blockIndex = activeSelection ? resolveTopLevelBlockIndexForPosition(runtimeEditor, activeSelection.ownerPos) : null;
       const resolvedBlockIndex =
         blockIndex ?? (isTextSelection(runtimeEditor.state.selection) ? resolveTopLevelBlockIndexForPosition(runtimeEditor, runtimeEditor.state.selection.from) : null);
@@ -2732,22 +3360,231 @@ export function PageEditorHostRuntime({
     }
 
     const insertedBlockRect = getTopLevelBlockRect(runtimeEditor, insertedBlockIndex) ?? targetRect;
+    const fallbackAnchorRect = buildQuickAddAnchorRect(insertedBlockRect);
     setCommandSelector({
       activeIndex: 0,
-      fallbackAnchorRect: buildQuickAddAnchorRect(insertedBlockRect),
+      fallbackAnchorRect,
       historyTime,
       insertedBlockIndex,
       ownerBlockIndex: insertedBlockIndex,
       ownerLabel: target.accessibleLabel,
-      placement: resolveCommandSelectorPlacement(
-        overlayOwnerDocument,
-        buildQuickAddAnchorRect(insertedBlockRect),
-        BLOCK_SELECTOR_HEIGHT
-      ),
+      placement: resolveCommandSelectorPlacement(overlayOwnerDocument, fallbackAnchorRect, BLOCK_SELECTOR_HEIGHT),
       query: "",
       source: "quickAdd"
     });
   }
+
+  const clearGutterRangeGesture = useCallback(
+    (options: { clearSelection?: boolean; reason?: string; releaseClickSuppression?: boolean } = {}) => {
+      const { clearSelection = true, reason = "session-change", releaseClickSuppression = false } = options;
+      const runtimeEditor = editorRef.current;
+      const surfaceElement = surfaceRef.current;
+      const cleanup = gutterRangeGestureCleanupRef.current;
+      gutterRangeGestureCleanupRef.current = null;
+      gutterRangeGestureRef.current = null;
+      cleanup?.();
+      setActiveRangeMarqueeRect(null);
+      panelCursorZoneRef.current = null;
+      setEditorPanelCursor(surfaceElement, "");
+      if (clearSelection) {
+        clearTransientBlockSelection(reason);
+      }
+      if (releaseClickSuppression) {
+        scheduleSurfaceClickSuppressionRelease();
+      } else {
+        clearSurfaceClickSuppressionReleaseTimer();
+        suppressSurfaceClickUntilPointerUpRef.current = false;
+      }
+    },
+    [clearSurfaceClickSuppressionReleaseTimer, clearTransientBlockSelection, scheduleSurfaceClickSuppressionRelease]
+  );
+
+  useEffect(() => {
+    activeRangeMarqueeRectRef.current = activeRangeMarqueeRect;
+  }, [activeRangeMarqueeRect]);
+
+  useEffect(() => {
+    clearGutterRangeGestureUnmountRef.current = clearGutterRangeGesture;
+  }, [clearGutterRangeGesture]);
+
+  useEffect(() => {
+    clearSurfaceClickSuppressionReleaseTimerUnmountRef.current = clearSurfaceClickSuppressionReleaseTimer;
+  }, [clearSurfaceClickSuppressionReleaseTimer]);
+
+  useEffect(() => {
+    clearTransientBlockSelectionUnmountRef.current = clearTransientBlockSelection;
+  }, [clearTransientBlockSelection]);
+
+  const startBlankGutterRangeGesture = useCallback(
+    (event: PointerEvent, anchorBlockIndex: number) => {
+      const runtimeEditor = editorRef.current;
+      const surfaceElement = surfaceRef.current;
+      if (!runtimeEditor || !surfaceElement) {
+        return false;
+      }
+
+      clearGutterRangeGesture({ clearSelection: false, reason: "session-change" });
+      closeCommandSelector({ syncHoverFromPointer: false });
+      closeBlockActionMenus({ focusEditor: false, syncHoverFromPointer: false });
+      suppressSurfaceClickUntilPointerUpRef.current = true;
+      clearSurfaceClickSuppressionReleaseTimer();
+
+      const ownerDocument = surfaceElement.ownerDocument;
+      const ownerWindow = ownerDocument.defaultView;
+      const cleanup = () => {
+        ownerDocument.removeEventListener("pointermove", handlePointerMove, true);
+        ownerDocument.removeEventListener("pointerup", handlePointerUp, true);
+        ownerDocument.removeEventListener("pointercancel", handlePointerCancel, true);
+        ownerDocument.removeEventListener("gotpointercapture", handleGotPointerCapture, true);
+        ownerDocument.removeEventListener("lostpointercapture", handleLostPointerCapture, true);
+        ownerWindow?.removeEventListener("pagehide", handlePageHide);
+        ownerWindow?.removeEventListener("visibilitychange", handleVisibilityChange);
+        ownerWindow?.removeEventListener("blur", handleWindowBlur);
+      };
+
+      const handlePointerMove = (pointerEvent: PointerEvent) => {
+        const gesture = gutterRangeGestureRef.current;
+        const pointerIdMatches = gesture?.pointerId === pointerEvent.pointerId;
+        if (!gesture || !pointerIdMatches) {
+          return;
+        }
+
+        if (pointerEvent.buttons === 0) {
+          clearGutterRangeGesture({ clearSelection: true, reason: "pointerup-nonactivated" });
+          return;
+        }
+
+        pointerEvent.preventDefault();
+        const target = resolveActiveBlankGutterSelectionTarget(runtimeEditor, pointerEvent.clientY);
+        if (target === null) {
+          return;
+        }
+
+        const distance = Math.max(
+          Math.abs(pointerEvent.clientX - gesture.startClientX),
+          Math.abs(pointerEvent.clientY - gesture.startClientY)
+        );
+        if (!gesture.activated && distance < BLOCK_HANDLE_GESTURE_THRESHOLD_PX) {
+          return;
+        }
+
+        if (!gesture.activated) {
+          gesture.activated = true;
+          setActiveRangeMarqueeRect(
+            clampMarqueeRectToPanel(
+              gesture.startClientX,
+              gesture.startClientY,
+              pointerEvent.clientX,
+              pointerEvent.clientY,
+              resolveEditorLaneGeometry(surfaceElement, runtimeEditor.view.dom as HTMLElement).mainPaneRect
+            )
+          );
+          runtimeEditor.view.focus();
+        }
+
+        if (gesture.activated && runtimeEditor.view.dom instanceof HTMLElement) {
+          setActiveRangeMarqueeRect(
+            clampMarqueeRectToPanel(
+              gesture.startClientX,
+              gesture.startClientY,
+              pointerEvent.clientX,
+              pointerEvent.clientY,
+              resolveEditorLaneGeometry(surfaceElement, runtimeEditor.view.dom).mainPaneRect
+            )
+          );
+        }
+
+        if (gesture.currentBlockIndex !== target.blockIndex || getBlockSelectionState(runtimeEditor) === null) {
+          gesture.currentBlockIndex = target.blockIndex;
+          setTransientBlockSelectionRange(gesture.anchorBlockIndex, target.blockIndex);
+        }
+      };
+
+      const handlePointerUp = (pointerEvent: PointerEvent) => {
+        const gesture = gutterRangeGestureRef.current;
+        if (!gesture || gesture.pointerId !== pointerEvent.pointerId) {
+          return;
+        }
+
+        pointerEvent.preventDefault();
+        clearGutterRangeGesture({
+          clearSelection: !gesture.activated,
+          reason: "pointerup",
+          releaseClickSuppression: true
+        });
+      };
+
+      const handlePointerCancel = (pointerEvent: PointerEvent) => {
+        const gesture = gutterRangeGestureRef.current;
+        if (!gesture || gesture.pointerId !== pointerEvent.pointerId) {
+          return;
+        }
+
+        pointerEvent.preventDefault();
+        clearGutterRangeGesture({ clearSelection: true, reason: "pointercancel" });
+      };
+
+      const handleGotPointerCapture = (pointerEvent: PointerEvent) => {
+        if (pointerEvent.pointerId !== event.pointerId) {
+          return;
+        }
+      };
+
+      const handleLostPointerCapture = (pointerEvent: PointerEvent) => {
+        const gesture = gutterRangeGestureRef.current;
+        if (!gesture || gesture.pointerId !== pointerEvent.pointerId) {
+          return;
+        }
+
+        pointerEvent.preventDefault();
+        clearGutterRangeGesture({ clearSelection: true, reason: "lostpointercapture" });
+      };
+
+      const handlePageHide = () => {
+        clearGutterRangeGesture({ clearSelection: true, reason: "pagehide" });
+      };
+
+      const handleVisibilityChange = () => {
+        if (ownerDocument.visibilityState === "hidden") {
+          clearGutterRangeGesture({ clearSelection: true, reason: "visibility-hidden" });
+        }
+      };
+
+      const handleWindowBlur = () => {
+        clearGutterRangeGesture({ clearSelection: true, reason: "window-blur" });
+      };
+
+      gutterRangeGestureRef.current = {
+        activated: false,
+        anchorBlockIndex,
+        currentBlockIndex: anchorBlockIndex,
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY
+      };
+      gutterRangeGestureCleanupRef.current = cleanup;
+
+      ownerDocument.addEventListener("pointermove", handlePointerMove, true);
+      ownerDocument.addEventListener("pointerup", handlePointerUp, true);
+      ownerDocument.addEventListener("pointercancel", handlePointerCancel, true);
+      ownerDocument.addEventListener("gotpointercapture", handleGotPointerCapture, true);
+      ownerDocument.addEventListener("lostpointercapture", handleLostPointerCapture, true);
+      ownerWindow?.addEventListener("pagehide", handlePageHide);
+      ownerWindow?.addEventListener("visibilitychange", handleVisibilityChange);
+      ownerWindow?.addEventListener("blur", handleWindowBlur);
+
+      event.preventDefault();
+      return true;
+    },
+    [
+      clearGutterRangeGesture,
+      clearSurfaceClickSuppressionReleaseTimer,
+      closeBlockActionMenus,
+      closeCommandSelector,
+      scheduleSurfaceClickSuppressionRelease,
+      setTransientBlockSelectionRange
+    ]
+  );
 
   const syncCommandQueryPresentation = useCallback(
     (nextSelector: CommandSelectorState | null) => {
@@ -3024,6 +3861,7 @@ export function PageEditorHostRuntime({
 
   useEffect(() => {
     if (!editor || !isEditable) {
+      clearGutterRangeGesture({ clearSelection: true, reason: "access-loss" });
       return;
     }
 
@@ -3033,7 +3871,7 @@ export function PageEditorHostRuntime({
 
     const handleTransaction = ({ transaction }: { transaction: Transaction }) => {
       if (transaction.selectionSet && transaction.getMeta(BLOCK_SELECTION_PLUGIN_KEY) === undefined) {
-        clearTransientBlockSelection();
+        clearTransientBlockSelection("transaction-selection-set");
       }
     };
 
@@ -3041,10 +3879,11 @@ export function PageEditorHostRuntime({
     return () => {
       editor.off("transaction", handleTransaction);
     };
-  }, [clearTransientBlockSelection, editor, isEditable]);
+  }, [clearGutterRangeGesture, clearTransientBlockSelection, editor, isEditable]);
 
   useEffect(() => {
     if (!editor || !isEditable) {
+      clearGutterRangeGesture({ clearSelection: true, reason: "access-loss" });
       return;
     }
 
@@ -3054,18 +3893,83 @@ export function PageEditorHostRuntime({
         return;
       }
 
-      if (isPointerEventInsideElement(event, surfaceElement) || isPointerEventInsideElement(event, overlayRoot)) {
+      if (event.button !== 0) {
         return;
       }
 
-      clearTransientBlockSelection();
+      const runtimeEditor = editorRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed) {
+        return;
+      }
+
+      const insideOverlay = isPointerEventInsideElement(event, overlayRoot);
+      const insideEditorLane = isPointerEventInsideEditorLane(event, surfaceElement);
+      const insideRuntimeSurfaceByPath = isPointerEventInsideElement(event, surfaceElement);
+      const target = resolvePointerEventTarget(event);
+      const insideRuntimeSurfaceByTarget = target instanceof Node ? surfaceElement.contains(target) : false;
+      const insideProseMirror = isPointerEventInsideElement(event, runtimeEditor.view.dom as HTMLElement);
+      const gutterControlTarget = isGutterControlTarget(target);
+      const interactiveOverlayTarget = isInteractiveEditorOverlayTarget(target);
+      const classification = resolvePanelPointerClassification(runtimeEditor, surfaceElement, event.clientX, event.clientY);
+      const anchorTarget = resolveBlankGutterSelectionAnchor(runtimeEditor, surfaceElement, event.clientX, event.clientY);
+      const resolvedZone: PanelPointerZone = insideOverlay
+        ? "overlay"
+        : gutterControlTarget
+          ? "block-control"
+          : interactiveOverlayTarget
+            ? "overlay"
+            : classification.zone;
+      const finalDecision = resolvedZone === "panel-background" && anchorTarget ? "arm" : "ignore-zone";
+
+      if (insideOverlay) {
+        return;
+      }
+
+      if (resolvedZone === "outside-panel") {
+        clearGutterRangeGesture({ clearSelection: true, reason: "outside-editor" });
+        clearTransientBlockSelection("outside-editor");
+        return;
+      }
+
+      if (resolvedZone === "block-control") {
+        clearTransientBlockSelection("control-pointerdown");
+        return;
+      }
+
+      if (resolvedZone === "overlay") {
+        return;
+      }
+
+      if (resolvedZone === "caret-strip") {
+        clearTransientBlockSelection("caret-strip-pointerdown");
+        if (classification.caretBlockIndex !== null && focusTopLevelCaretIntent(runtimeEditor, classification.caretBlockIndex)) {
+          event.preventDefault();
+        }
+        return;
+      }
+
+      if (anchorTarget) {
+        startBlankGutterRangeGesture(event, anchorTarget.blockIndex);
+        return;
+      }
+
+      clearTransientBlockSelection(resolvedZone === "content-block" ? "content-pointerdown" : resolvedZone);
     };
 
     overlayOwnerDocument.addEventListener("pointerdown", handlePointerDown, true);
     return () => {
       overlayOwnerDocument.removeEventListener("pointerdown", handlePointerDown, true);
+      clearGutterRangeGesture({ clearSelection: true, reason: "listener-disposal" });
     };
-  }, [clearTransientBlockSelection, editor, isEditable, overlayOwnerDocument, overlayRoot]);
+  }, [
+    clearGutterRangeGesture,
+    clearTransientBlockSelection,
+    editor,
+    isEditable,
+    overlayOwnerDocument,
+    overlayRoot,
+    startBlankGutterRangeGesture
+  ]);
 
   useEffect(() => {
     disposedRef.current = false;
@@ -3073,6 +3977,10 @@ export function PageEditorHostRuntime({
       disposedRef.current = true;
       initializingRef.current = false;
       cancelPendingTimers();
+      clearGutterRangeGestureUnmountRef.current?.({ clearSelection: true, reason: "runtime-teardown" });
+      clearSurfaceClickSuppressionReleaseTimerUnmountRef.current?.();
+      suppressSurfaceClickUntilPointerUpRef.current = false;
+      clearTransientBlockSelectionUnmountRef.current?.("runtime-teardown");
       editorRef.current = null;
     };
   }, []);
@@ -3144,16 +4052,23 @@ export function PageEditorHostRuntime({
       const surfaceElement = surfaceRef.current;
       if (!surfaceElement) {
         lastPointerSnapshotRef.current = null;
+        panelCursorZoneRef.current = null;
+        setEditorPanelCursor(null, "");
         setOwnedHoverTarget(null);
         return;
       }
 
       const insideEditorLane = isPointerEventInsideEditorLane(event, surfaceElement);
+      const classification = resolvePanelPointerClassification(editor, surfaceElement, event.clientX, event.clientY);
       lastPointerSnapshotRef.current = {
         clientX: event.clientX,
         clientY: event.clientY,
         insideEditorLane
       };
+      if (panelCursorZoneRef.current !== classification.zone) {
+        panelCursorZoneRef.current = classification.zone;
+        setEditorPanelCursor(surfaceElement, classification.zone === "caret-strip" ? "text" : "");
+      }
 
       const nextTarget = resolvePointerOwnedHoverTarget(editor, surfaceElement, event, event.clientX, event.clientY);
       const didChange = !areHoverTargetsEqual(hoverTargetRef.current, nextTarget);
@@ -3401,8 +4316,9 @@ export function PageEditorHostRuntime({
           })()
         : hoverTarget;
   const hoverTargetRect = editor && activeBlockControlTarget ? getTopLevelBlockRect(editor, activeBlockControlTarget.blockIndex) : null;
-  const gutterButtonStyle = hoverTargetRect ? buildGutterButtonStyle(hoverTargetRect) : undefined;
-  const gutterHandleStyle = hoverTargetRect ? buildGutterHandleStyle(hoverTargetRect) : undefined;
+  const gutterAnchorRect = hoverTargetRect ? buildQuickAddAnchorRect(hoverTargetRect) : null;
+  const gutterButtonStyle = gutterAnchorRect ? buildGutterButtonStyle(gutterAnchorRect) : undefined;
+  const gutterHandleStyle = gutterAnchorRect ? buildGutterHandleStyle(gutterAnchorRect) : undefined;
   const blockDragDropIndicatorStyle =
     editor &&
     blockDragState &&
@@ -3927,6 +4843,12 @@ export function PageEditorHostRuntime({
           background: var(--docsera-primary);
           box-shadow: 0 0 0 1px color-mix(in srgb, var(--docsera-primary) 24%, transparent);
         }
+        .docsera-editor-floating__selection-marquee {
+          pointer-events: none;
+          border: 1px solid color-mix(in srgb, var(--docsera-editor-primary) 58%, white 18%);
+          background: color-mix(in srgb, var(--docsera-editor-primary) 12%, transparent);
+          box-shadow: inset 0 0 0 1px color-mix(in srgb, white 22%, transparent);
+        }
         .docsera-block-action-menu,
         .docsera-block-turn-into-menu {
           border: 1px solid color-mix(in srgb, var(--docsera-border) 92%, white 8%);
@@ -4031,10 +4953,21 @@ export function PageEditorHostRuntime({
         className={`docsera-editor-runtime__surface${blockDragState ? " docsera-editor-runtime__surface--block-dragging" : ""}`}
         onClick={(event) => {
           if (!editor || !isEditable || !(event.target instanceof HTMLElement)) return;
+          if (suppressSurfaceClickUntilPointerUpRef.current) {
+            event.preventDefault();
+            event.stopPropagation();
+            clearSurfaceClickSuppressionReleaseTimer();
+            suppressSurfaceClickUntilPointerUpRef.current = false;
+            return;
+          }
           const proseMirror = event.currentTarget.querySelector(".ProseMirror");
           if (!(proseMirror instanceof HTMLElement) || (event.target !== event.currentTarget && event.target !== proseMirror)) return;
-          if (event.target === proseMirror && !isBelowEditorContentCanvasClick(event, proseMirror)) return;
           clearTransientBlockSelection();
+          const { shellSurfaceElement } = resolveLightDomEditorOwner(event.currentTarget);
+          if (event.target === event.currentTarget && shellSurfaceElement) {
+            return;
+          }
+          if (event.target === proseMirror && !isBelowEditorContentCanvasClick(event, proseMirror)) return;
           const lastChild = editor.state.doc.lastChild;
           if (lastChild?.type.name === "paragraph" && lastChild.content.size === 0) {
             editor.commands.focus("end", { scrollIntoView: false });
@@ -4045,11 +4978,27 @@ export function PageEditorHostRuntime({
       >
         <EditorContent editor={editor} />
         {createPortal(
-          <div className={`docsera-editor-floating-layer${blockDragState ? " docsera-editor-floating-layer--block-dragging" : ""}`} aria-hidden={!editor}>
+          <div
+            className={`docsera-editor-floating-layer ${overlayThemeClass}${blockDragState ? " docsera-editor-floating-layer--block-dragging" : ""}`}
+            aria-hidden={!editor}
+          >
             {blockDragDropIndicatorStyle ? (
               <div
                 className="docsera-editor-floating__block-drop-indicator"
                 style={blockDragDropIndicatorStyle}
+                aria-hidden="true"
+              />
+            ) : null}
+            {activeRangeMarqueeRect ? (
+              <div
+                className="docsera-editor-floating__selection-marquee"
+                style={{
+                  position: "fixed",
+                  left: activeRangeMarqueeRect.left,
+                  top: activeRangeMarqueeRect.top,
+                  width: activeRangeMarqueeRect.width,
+                  height: activeRangeMarqueeRect.height
+                }}
                 aria-hidden="true"
               />
             ) : null}

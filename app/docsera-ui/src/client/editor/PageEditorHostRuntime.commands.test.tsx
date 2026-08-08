@@ -224,8 +224,8 @@ function mockTopLevelBlockGeometry(editor: Editor, blockRects: DOMRect[]) {
 
   const proseMirror = editor.view.dom;
   const proseMirrorChildren = Array.from(proseMirror.children);
-  const surfaceRect = new DOMRect(72, 36, 760, 540);
-  const proseMirrorRect = new DOMRect(132, 52, 620, 420);
+  let surfaceRect = new DOMRect(72, 36, 760, 540);
+  let proseMirrorRect = new DOMRect(132, 52, 620, 420);
   const restore = [
     mockElementRect(surface, surfaceRect),
     mockElementRect(proseMirror, proseMirrorRect),
@@ -233,6 +233,18 @@ function mockTopLevelBlockGeometry(editor: Editor, blockRects: DOMRect[]) {
   ];
 
   return {
+    setLayoutRects(nextRects: {
+      hostRect?: DOMRect;
+      mainPaneRect?: DOMRect;
+      panelRect?: DOMRect;
+      proseMirrorRect?: DOMRect;
+      surfaceRect?: DOMRect;
+    }) {
+      surfaceRect = nextRects.surfaceRect ?? surfaceRect;
+      proseMirrorRect = nextRects.proseMirrorRect ?? proseMirrorRect;
+      mockElementRect(surface, surfaceRect);
+      mockElementRect(proseMirror, proseMirrorRect);
+    },
     mockRestore() {
       for (const reset of restore.reverse()) {
         reset();
@@ -2550,6 +2562,35 @@ describe("PageEditorHostRuntime", () => {
     expect(handleBox.right).toBeLessThan(132);
     expect(getRuntimeStyleText()).toContain(".docsera-editor-runtime__block--selected");
 
+    geometrySpy.setLayoutRects({
+      hostRect: new DOMRect(96, 96, 920, 540),
+      mainPaneRect: new DOMRect(24, 32, 1180, 680),
+      panelRect: new DOMRect(168, 32, 860, 680),
+      proseMirrorRect: new DOMRect(168, 100, 620, 420),
+      surfaceRect: new DOMRect(96, 96, 920, 540)
+    });
+
+    await act(async () => {
+      window.dispatchEvent(new Event("resize"));
+    });
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+
+    expect(readInlineBox(quickAddButton)).toMatchObject({
+      height: 24,
+      left: 63,
+      right: 87,
+      top: 53,
+      width: 24
+    });
+    expect(readInlineBox(handleButton)).toMatchObject({
+      height: 24,
+      left: 93,
+      right: 117,
+      top: 53,
+      width: 24
+    });
+
     const selectedBefore = editor.getJSON();
     const undoDepthBefore = undoDepth(editor.state);
 
@@ -2567,6 +2608,67 @@ describe("PageEditorHostRuntime", () => {
     expect(screen.getByRole("button", { name: "Add block after Text" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Select block: Text" })).toBeInTheDocument();
     expect(getSelectedBlockElement(editor)).toHaveTextContent("Alpha");
+
+    geometrySpy.mockRestore();
+  });
+
+  it("keeps hover ownership bounded to the first, middle, and final block rows", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Alpha" }]
+        },
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [{ type: "text", text: "Bravo" }]
+        },
+        {
+          type: "blockquote",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "Charlie" }]
+            }
+          ]
+        }
+      ]
+    };
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [
+      new DOMRect(132, 100, 620, 40),
+      new DOMRect(132, 180, 620, 40),
+      new DOMRect(132, 260, 620, 40)
+    ]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to be available.");
+    }
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 99 });
+    expect(screen.queryByRole("button", { name: /Add block after/i })).toBeNull();
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 100 });
+    expect(await screen.findByRole("button", { name: "Add block after Text" })).toBeInTheDocument();
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 160 });
+    expect(await screen.findByRole("button", { name: "Add block after Heading 2" })).toBeInTheDocument();
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 240 });
+    expect(await screen.findByRole("button", { name: "Add block after Blockquote" })).toBeInTheDocument();
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 301 });
+    expect(screen.queryByRole("button", { name: /Add block after/i })).toBeNull();
 
     geometrySpy.mockRestore();
   });
@@ -4585,6 +4687,31 @@ describe("PageEditorHostRuntime", () => {
     expect(getToolbarTooltip()).toBeNull();
   });
 
+  it("keeps the toolbar open for pointerdown inside its own surface and dismisses it on outside pointerdown", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await setParagraphText(editor, "Toolbar dismissal");
+    await selectText(editor, 1, 8);
+
+    const toolbar = await screen.findByRole("toolbar", { name: "Text formatting" });
+    const before = editor.getJSON();
+    const boldButton = within(toolbar).getByRole("button", { name: "Bold" });
+
+    fireEvent.pointerDown(boldButton);
+    expect(screen.getByRole("toolbar", { name: "Text formatting" })).toBeInTheDocument();
+
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => {
+      expect(screen.queryByRole("toolbar", { name: "Text formatting" })).toBeNull();
+    });
+    expect(editor.getJSON()).toEqual(before);
+  });
+
   it("keeps Mod+K available and preserves distinct Escape behavior for toolbar and direct-click link popups", async () => {
     const { editorReady } = renderRuntime();
 
@@ -5569,7 +5696,7 @@ describe("PageEditorHostRuntime", () => {
     });
   });
 
-  it("dismisses the link surface when the editor receives another pointer action and keeps the replacement selection", async () => {
+  it("dismisses the link surface and toolbar when the editor receives another pointer action and keeps the replacement selection", async () => {
     const { editorReady } = renderRuntime();
 
     await waitFor(() => {
@@ -5590,6 +5717,9 @@ describe("PageEditorHostRuntime", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "Create link" })).toBeNull();
+    });
+    await waitFor(() => {
+      expect(screen.queryByRole("toolbar", { name: "Text formatting" })).toBeNull();
     });
     expect(editor.state.selection.from).toBe(7);
     expect(editor.state.selection.to).toBe(11);
@@ -5620,7 +5750,7 @@ describe("PageEditorHostRuntime", () => {
     });
   });
 
-  it("closes the link surface on an outside-shell pointerdown without changing content", async () => {
+  it("closes the link surface and toolbar on an outside-shell pointerdown without changing content", async () => {
     const { editorReady } = renderRuntime();
 
     await waitFor(() => {
@@ -5640,8 +5770,10 @@ describe("PageEditorHostRuntime", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "Create link" })).toBeNull();
     });
+    await waitFor(() => {
+      expect(screen.queryByRole("toolbar", { name: "Text formatting" })).toBeNull();
+    });
     expect(editor.getJSON()).toEqual(before);
-    expect(screen.getByRole("toolbar", { name: "Text formatting" })).toBeInTheDocument();
   });
 
   it.each([

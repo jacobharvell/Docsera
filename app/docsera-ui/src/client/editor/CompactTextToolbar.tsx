@@ -1672,19 +1672,38 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
       return;
     }
 
+    const isPointerEventInsideOwnedElement = (event: PointerEvent, element: HTMLElement | null) => {
+      if (!element) {
+        return false;
+      }
+
+      const pathNodes = getEventPathNodes(event, ownerWindow);
+      if (pathNodes.some((node) => node === element || element.contains(node))) {
+        return true;
+      }
+
+      const target = resolveEventTargetNode(event, ownerWindow);
+      return target instanceof Node ? target === element || element.contains(target) : false;
+    };
+
     const handlePointerDown = (event: PointerEvent) => {
       const target = resolveEventTargetNode(event, ownerWindow);
       if (!target) {
         return;
       }
 
-      if (overlayRoot.contains(target)) {
+      if (
+        isPointerEventInsideOwnedElement(event, toolbarRef.current) ||
+        isPointerEventInsideOwnedElement(event, blockMenuRef.current) ||
+        isPointerEventInsideOwnedElement(event, moreMenuRef.current) ||
+        isPointerEventInsideOwnedElement(event, linkSurfaceRef.current) ||
+        isPointerEventInsideOwnedElement(event, tooltipRef.current)
+      ) {
         return;
       }
 
       if (tooltip) {
         clearTooltip();
-        return;
       }
 
       if (linkSurface) {
@@ -1694,12 +1713,15 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
         } else {
           dismissLinkSurface();
         }
-        return;
       }
 
       if (openMenu) {
         setOpenMenu(null);
         clearInteractionSelection();
+      }
+
+      if (toolbarVisible) {
+        dismissToolbarForCurrentSelection();
       }
     };
 
@@ -1707,7 +1729,19 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
     return () => {
       ownerDocument.removeEventListener("pointerdown", handlePointerDown, true);
     };
-  }, [dismissLinkSurface, editor, linkSurface, openMenu, ownerDocument, ownerWindow, overlayRoot, toolbarVisible, tooltip]);
+  }, [
+    clearTooltip,
+    clearInteractionSelection,
+    dismissLinkSurface,
+    dismissToolbarForCurrentSelection,
+    editor,
+    linkSurface,
+    openMenu,
+    ownerDocument,
+    ownerWindow,
+    toolbarVisible,
+    tooltip
+  ]);
 
   useEffect(() => {
     if (!editor || !canEdit || !editor.isEditable) {

@@ -102,7 +102,8 @@ describe("PageEditorHostRuntime", () => {
     expect(source).not.toContain("margin-left: -${BLOCK_GUTTER_WIDTH}px;");
     expect(source).not.toContain("padding-left: ${BLOCK_GUTTER_WIDTH}px;");
     expect(source).toContain("resolveEditorLaneGeometry(surfaceElement, proseMirror)");
-    expect(source).toContain("proseMirrorRect.left - BLOCK_GUTTER_WIDTH");
+    expect(source).toContain('const gutterWidth = resolveConfiguredGutterWidth(surfaceElement);');
+    expect(source).toContain('hostElement?.closest(EDITOR_SHELL_SURFACE_SELECTOR)');
   });
 
   it("uses a dedicated grouped block selector contract and removes the legacy 340px editor minimum height", () => {

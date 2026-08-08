@@ -25,7 +25,7 @@
   --docsera-workspace-nav-resizer-width: 8px;
   --docsera-sidebar-width: var(--docsera-workspace-nav-width);
   --docsera-toc-panel-width: 240px;
-  --docsera-editor-block-gutter-width: 60px;
+  --docsera-editor-block-gutter-width: 69px;
   --docsera-main-surface-max-width: 768px;
   font-family: Inter, "Segoe UI", sans-serif;
   background: var(--docsera-bg);
