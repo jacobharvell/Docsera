@@ -122,6 +122,7 @@ Deliberate deviations or improvements are allowed only when they remain compatib
 - Do not casually replace Tiptap/ProseMirror without explicit approval.
 - Be careful with complex editor features such as tables, columns, drag/drop, slash commands, image handling, and Markdown round-tripping.
 - When adding editor behavior, document expected keyboard/mouse interactions and edge cases.
+- Before implementing or diagnosing editor pointer, gutter/control, drag, range-selection, overlay, portal, focus, or transient-selection behavior, consult `docs/process/Editor Runtime Interaction Contract.md` and the relevant feature implementation note so previously established runtime contracts are not rediscovered or contradicted.
 
 ## Root Cause Discipline
 
