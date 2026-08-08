@@ -231,6 +231,10 @@ Regression coverage is part of the definition of done for coded behavior changes
 - If the current worktree is dirty, detached, stale, divergent, or preserving unrelated changes, stop before editing and report the exact paths and status.
 - Do not stage, restore, stash, commit, normalize, or absorb unexpected state into the task.
 - If any branch-start check fails, correct the branch or worktree before implementation begins only when the task owns that state; otherwise stop and wait for explicit direction or a separate cleanup task.
+- Before task-file inspection or edits in a task worktree, run the checked-in guard command `npm run ensure:task-worktree -- --task-branch <branch> --original-base <base> --expected-head <head> [--mode new|continuation]` from the intended dedicated worktree.
+- Use `--mode new` when starting a new task branch and require the supplied expected head to equal the stated base.
+- Use `--mode continuation` when resuming an existing task worktree and require the supplied expected head to match the current task HEAD without resetting the branch back to the original base.
+- Root-checkout merge and maintenance work remains a separate workflow in `C:\Dev\Docsera`; it does not invoke the task guard.
 
 ## Project Runbooks
 

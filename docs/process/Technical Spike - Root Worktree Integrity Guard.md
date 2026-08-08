@@ -201,3 +201,23 @@ The follow-up should be validated by two checks:
 ## Exact Follow-Up Implementation Task
 
 Create `scripts/ensure-task-worktree.mjs` and a narrow repo script wrapper for it, then update the task-start instructions so Codex runs that guard before inspecting or editing task files.
+
+## Implemented Contract
+
+The guard is now exposed through the repository command surface as:
+
+- `npm run ensure:task-worktree -- --task-branch <branch> --original-base <base> --expected-head <head> [--mode new|continuation]`
+
+Behavior:
+
+- primary/root checkout detection uses Git worktree metadata, not a literal filesystem path check;
+- the primary/root checkout is rejected for task validation;
+- `--mode new` requires the current branch to equal the intended task branch, the current HEAD to equal the stated base, the merge base to equal that base, the branch to be zero commits ahead and behind the base, and the worktree to be clean;
+- `--mode continuation` requires the current branch to equal the intended task branch, the current HEAD to equal the explicitly supplied expected head, the merge base with the original base to remain that original base, and the worktree to be clean;
+- failures are read-only and do not repair branches, reset HEAD, clean the index, or register worktrees;
+- successful output reports the active worktree, primary worktree, branch, original base, expected head, current head, and merge base for auditability.
+
+Validation evidence:
+
+- disposable Git fixtures covered primary/root rejection, clean new-task pass, clean continuation pass, stale expected head failure, wrong-branch failure, dirty-worktree failure, invalid merge-base failure, and the npm wrapper path;
+- the Docsera root checkout remained clean during validation.
