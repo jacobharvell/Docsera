@@ -130,6 +130,24 @@ function mockElementProperty<T>(element: Element, property: string, value: T) {
   };
 }
 
+function mockElementAccessor<T>(element: Element, property: string, descriptor: { get: () => T; set?: (value: T) => void }) {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(element, property);
+  Object.defineProperty(element, property, {
+    configurable: true,
+    get: descriptor.get,
+    set: descriptor.set
+  });
+
+  return () => {
+    if (originalDescriptor) {
+      Object.defineProperty(element, property, originalDescriptor);
+      return;
+    }
+
+    Reflect.deleteProperty(element, property);
+  };
+}
+
 function defineSyntheticPointerEventProperties(
   event: Event,
   point: { clientX: number; clientY: number },
@@ -308,6 +326,40 @@ function mockTopLevelBlockGeometry(editor: Editor, blockRects: DOMRect[]) {
   };
 }
 
+function mockScrollableMainPaneGeometry(
+  editor: Editor,
+  geometry: ReturnType<typeof mockTopLevelBlockGeometry>,
+  baseBlockRects: DOMRect[]
+) {
+  let scrollTop = 0;
+  const proseMirrorChildren = Array.from(editor.view.dom.children);
+  const restore = [
+    mockElementProperty(geometry.elements.mainPane, "clientHeight", 620),
+    mockElementProperty(geometry.elements.mainPane, "scrollHeight", 1600),
+    mockElementAccessor(geometry.elements.mainPane, "scrollTop", {
+      get: () => scrollTop,
+      set: (value) => {
+        scrollTop = Number(value);
+      }
+    }),
+    ...proseMirrorChildren.map((child, index) =>
+      mockElementProperty(child, "getBoundingClientRect", () => {
+        const rect = baseBlockRects[index] ?? new DOMRect(132, 100 + index * 48, 620, 36);
+        return new DOMRect(rect.left, rect.top - scrollTop, rect.width, rect.height);
+      })
+    )
+  ];
+
+  return {
+    getScrollTop: () => scrollTop,
+    mockRestore() {
+      for (const reset of restore.reverse()) {
+        reset();
+      }
+    }
+  };
+}
+
 async function dispatchOwnerPointerEvent(
   ownerDocument: Document,
   target: EventTarget,
@@ -453,6 +505,88 @@ afterEach(() => {
 });
 
 describe("PageEditorHostRuntime gutter range selection", () => {
+  it("auto-scrolls panel-background range selection with a fixed anchor and no document mutation", async () => {
+    const callbacks: FrameRequestCallback[] = [];
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callbacks.push(callback);
+      return callbacks.length;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    const { editorReady, onSaveDraft } = renderRuntime();
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0]!;
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: Array.from({ length: 14 }, (_, index) => ({
+          type: "paragraph",
+          content: [{ type: "text", text: `Block ${index + 1}` }]
+        }))
+      });
+    });
+    const baseRects = Array.from({ length: 14 }, (_, index) => new DOMRect(132, 100 + index * 48, 620, 36));
+    const geometry = mockTopLevelBlockGeometry(editor, baseRects);
+    const scrollGeometry = mockScrollableMainPaneGeometry(editor, geometry, baseRects);
+
+    try {
+      await runAutosave();
+      onSaveDraft.mockClear();
+      const startingDocument = editor.getJSON();
+      const undoDepthBeforeSelection = undoDepth(editor.state);
+      const surface = getEditorSurface(editor);
+      await dispatchOwnerPointerEvent(surface.ownerDocument, geometry.elements.mainPane, "pointerdown", { clientX: 80, clientY: 164 }, {
+        button: 0,
+        buttons: 1,
+        composedPath: [geometry.elements.mainPane, geometry.elements.workspace, document.body],
+        pointerId: 1
+      });
+      await dispatchOwnerPointerEvent(surface.ownerDocument, geometry.elements.mainPane, "pointermove", { clientX: 80, clientY: 620 }, {
+        buttons: 1,
+        composedPath: [geometry.elements.mainPane, geometry.elements.workspace, document.body],
+        pointerId: 1
+      });
+
+      const selectedBeforeScroll = getSelectedBlockElements(editor).length;
+      expect(selectedBeforeScroll).toBeGreaterThan(1);
+
+      await act(async () => {
+        for (let index = 0; index < 4 && scrollGeometry.getScrollTop() === 0; index += 1) {
+          callbacks.shift()?.(index * 16);
+        }
+      });
+
+      expect(scrollGeometry.getScrollTop()).toBeGreaterThan(0);
+      expect(getSelectedBlockElements(editor).length).toBeGreaterThanOrEqual(selectedBeforeScroll);
+      expect(getSelectedBlockElements(editor)[0]).toHaveTextContent("Block 2");
+
+      await dispatchOwnerPointerEvent(surface.ownerDocument, geometry.elements.mainPane, "pointermove", { clientX: 80, clientY: 84 }, {
+        buttons: 1,
+        composedPath: [geometry.elements.mainPane, geometry.elements.workspace, document.body],
+        pointerId: 1
+      });
+      const scrolledDown = scrollGeometry.getScrollTop();
+      await act(async () => {
+        for (let index = 0; index < 4 && scrollGeometry.getScrollTop() >= scrolledDown; index += 1) {
+          callbacks.shift()?.(64 + index * 16);
+        }
+      });
+
+      expect(scrollGeometry.getScrollTop()).toBeLessThan(scrolledDown);
+      expect(getSelectedBlockElements(editor)[0]).toHaveTextContent("Block 1");
+      expect(editor.getJSON()).toEqual(startingDocument);
+      expect(undoDepth(editor.state)).toBe(undoDepthBeforeSelection);
+      await runAutosave();
+      expect(onSaveDraft).toHaveBeenCalledTimes(0);
+
+      fireEvent.keyDown(surface.ownerDocument, { key: "Escape" });
+      expect(getSelectionMarquee()).toBeNull();
+    } finally {
+      scrollGeometry.mockRestore();
+      geometry.mockRestore();
+      vi.restoreAllMocks();
+    }
+  });
+
   it("arms only after a blank-gutter drag crosses the intent threshold, preserves the range on release, and stays outside autosave and undo", async () => {
     const initialEnvelope = createSelectionEnvelope();
     const { editorReady, onSaveDraft } = renderRuntime({ initialEnvelope });

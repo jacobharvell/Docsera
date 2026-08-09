@@ -28,6 +28,11 @@ import {
   buildTopLevelBlockDropIndicatorStyle,
   isValidBlockDragDestinationIndex
 } from "./blockDragReorder";
+import {
+  createEditorAutoScrollSession,
+  resolveEditorAutoScrollTopClearancePx,
+  resolveEditorDocumentAutoScrollViewport
+} from "./editorAutoScroll";
 import { useTopLevelBlockDragSession } from "./useTopLevelBlockDragSession";
 import {
   Check,
@@ -2807,11 +2812,14 @@ export function PageEditorHostRuntime({
     activated: boolean;
     anchorBlockIndex: number;
     currentBlockIndex: number;
+    lastClientX: number;
+    lastClientY: number;
     pointerId: number;
     startClientX: number;
     startClientY: number;
   } | null>(null);
   const gutterRangeGestureCleanupRef = useRef<(() => void) | null>(null);
+  const gutterRangeAutoScrollRef = useRef<ReturnType<typeof createEditorAutoScrollSession> | null>(null);
   const gutterRangeClickSuppressionReleaseTimerRef = useRef<number | null>(null);
   const suppressSurfaceClickUntilPointerUpRef = useRef(false);
   const panelCursorZoneRef = useRef<PanelPointerZone | null>(null);
@@ -2987,6 +2995,36 @@ export function PageEditorHostRuntime({
     [closeCommandSelector, overlayOwnerDocument]
   );
 
+  const getEditorAutoScrollViewport = useCallback(() => {
+    const surfaceElement = surfaceRef.current;
+    const runtimeEditor = editorRef.current;
+    if (!surfaceElement || !runtimeEditor || !(runtimeEditor.view.dom instanceof HTMLElement)) {
+      return null;
+    }
+
+    const { mainPaneElement } = resolveLightDomEditorOwner(surfaceElement);
+    return resolveEditorDocumentAutoScrollViewport({
+      mainPaneElement,
+      ownerDocument: surfaceElement.ownerDocument
+    });
+  }, []);
+
+  const getEditorAutoScrollTopClearancePx = useCallback(() => {
+    const surfaceElement = surfaceRef.current;
+    if (!surfaceElement) {
+      return 0;
+    }
+
+    const { mainPaneStyleTarget } =
+      surfaceElement.querySelector(".ProseMirror") instanceof HTMLElement
+        ? resolveEditorLaneGeometry(surfaceElement, surfaceElement.querySelector(".ProseMirror") as HTMLElement)
+        : { mainPaneStyleTarget: null };
+    return resolveEditorAutoScrollTopClearancePx({
+      ownerDocument: surfaceElement.ownerDocument,
+      styleTarget: mainPaneStyleTarget
+    });
+  }, []);
+
   const {
     blockHandleGesture,
     blockDragState,
@@ -2999,6 +3037,8 @@ export function PageEditorHostRuntime({
     editableRef,
     editorRef,
     focusTopLevelBlockSelection,
+    getAutoScrollTopClearancePx: getEditorAutoScrollTopClearancePx,
+    getAutoScrollViewport: getEditorAutoScrollViewport,
     getTopLevelBlockRange,
     gestureThresholdPx: BLOCK_HANDLE_GESTURE_THRESHOLD_PX,
     gutterWidth: BLOCK_GUTTER_WIDTH,
@@ -3407,6 +3447,11 @@ export function PageEditorHostRuntime({
     });
   }
 
+  const stopGutterRangeAutoScroll = useCallback(() => {
+    gutterRangeAutoScrollRef.current?.stop();
+    gutterRangeAutoScrollRef.current = null;
+  }, []);
+
   const clearGutterRangeGesture = useCallback(
     (options: { clearSelection?: boolean; reason?: string; releaseClickSuppression?: boolean } = {}) => {
       const { clearSelection = true, reason = "session-change", releaseClickSuppression = false } = options;
@@ -3415,6 +3460,7 @@ export function PageEditorHostRuntime({
       const cleanup = gutterRangeGestureCleanupRef.current;
       gutterRangeGestureCleanupRef.current = null;
       gutterRangeGestureRef.current = null;
+      stopGutterRangeAutoScroll();
       cleanup?.();
       setActiveRangeMarqueeRect(null);
       panelCursorZoneRef.current = null;
@@ -3429,7 +3475,7 @@ export function PageEditorHostRuntime({
         suppressSurfaceClickUntilPointerUpRef.current = false;
       }
     },
-    [clearSurfaceClickSuppressionReleaseTimer, clearTransientBlockSelection, scheduleSurfaceClickSuppressionRelease]
+    [clearSurfaceClickSuppressionReleaseTimer, clearTransientBlockSelection, scheduleSurfaceClickSuppressionRelease, stopGutterRangeAutoScroll]
   );
 
   useEffect(() => {
@@ -3464,7 +3510,81 @@ export function PageEditorHostRuntime({
 
       const ownerDocument = surfaceElement.ownerDocument;
       const ownerWindow = ownerDocument.defaultView;
+      const applyRangeGesturePoint = (clientX: number, clientY: number) => {
+        const gesture = gutterRangeGestureRef.current;
+        if (!gesture) {
+          return;
+        }
+
+        gesture.lastClientX = clientX;
+        gesture.lastClientY = clientY;
+        const target = resolveActiveBlankGutterSelectionTarget(runtimeEditor, clientY);
+        if (target === null) {
+          return;
+        }
+
+        const distance = Math.max(
+          Math.abs(clientX - gesture.startClientX),
+          Math.abs(clientY - gesture.startClientY)
+        );
+        if (!gesture.activated && distance < BLOCK_HANDLE_GESTURE_THRESHOLD_PX) {
+          return;
+        }
+
+        if (!gesture.activated) {
+          gesture.activated = true;
+          setActiveRangeMarqueeRect(
+            clampMarqueeRectToPanel(
+              gesture.startClientX,
+              gesture.startClientY,
+              clientX,
+              clientY,
+              resolveEditorLaneGeometry(surfaceElement, runtimeEditor.view.dom as HTMLElement).mainPaneRect
+            )
+          );
+          runtimeEditor.view.focus();
+        }
+
+        if (gesture.activated && runtimeEditor.view.dom instanceof HTMLElement) {
+          setActiveRangeMarqueeRect(
+            clampMarqueeRectToPanel(
+              gesture.startClientX,
+              gesture.startClientY,
+              clientX,
+              clientY,
+              resolveEditorLaneGeometry(surfaceElement, runtimeEditor.view.dom).mainPaneRect
+            )
+          );
+        }
+
+        if (gesture.currentBlockIndex !== target.blockIndex || getBlockSelectionState(runtimeEditor) === null) {
+          gesture.currentBlockIndex = target.blockIndex;
+          setTransientBlockSelectionRange(gesture.anchorBlockIndex, target.blockIndex);
+        }
+      };
+      const ensureRangeAutoScroll = () => {
+        if (gutterRangeAutoScrollRef.current) {
+          return gutterRangeAutoScrollRef.current;
+        }
+
+        gutterRangeAutoScrollRef.current = createEditorAutoScrollSession({
+          getPointerY: () => gutterRangeGestureRef.current?.lastClientY ?? null,
+          getTopClearancePx: getEditorAutoScrollTopClearancePx,
+          getViewport: getEditorAutoScrollViewport,
+          onScroll: () => {
+            const gesture = gutterRangeGestureRef.current;
+            if (!gesture?.activated) {
+              return;
+            }
+            applyRangeGesturePoint(gesture.lastClientX, gesture.lastClientY);
+            scheduleOverlayMeasurement();
+          },
+          ownerWindow
+        });
+        return gutterRangeAutoScrollRef.current;
+      };
       const cleanup = () => {
+        ownerDocument.removeEventListener("keydown", handleKeyDown, true);
         ownerDocument.removeEventListener("pointermove", handlePointerMove, true);
         ownerDocument.removeEventListener("pointerup", handlePointerUp, true);
         ownerDocument.removeEventListener("pointercancel", handlePointerCancel, true);
@@ -3488,49 +3608,21 @@ export function PageEditorHostRuntime({
         }
 
         pointerEvent.preventDefault();
-        const target = resolveActiveBlankGutterSelectionTarget(runtimeEditor, pointerEvent.clientY);
-        if (target === null) {
+        applyRangeGesturePoint(pointerEvent.clientX, pointerEvent.clientY);
+        if (gutterRangeGestureRef.current?.activated) {
+          ensureRangeAutoScroll().update();
+        }
+      };
+
+      const handleKeyDown = (keyEvent: KeyboardEvent) => {
+        const gesture = gutterRangeGestureRef.current;
+        if (!gesture || keyEvent.key !== "Escape") {
           return;
         }
 
-        const distance = Math.max(
-          Math.abs(pointerEvent.clientX - gesture.startClientX),
-          Math.abs(pointerEvent.clientY - gesture.startClientY)
-        );
-        if (!gesture.activated && distance < BLOCK_HANDLE_GESTURE_THRESHOLD_PX) {
-          return;
-        }
-
-        if (!gesture.activated) {
-          gesture.activated = true;
-          setActiveRangeMarqueeRect(
-            clampMarqueeRectToPanel(
-              gesture.startClientX,
-              gesture.startClientY,
-              pointerEvent.clientX,
-              pointerEvent.clientY,
-              resolveEditorLaneGeometry(surfaceElement, runtimeEditor.view.dom as HTMLElement).mainPaneRect
-            )
-          );
-          runtimeEditor.view.focus();
-        }
-
-        if (gesture.activated && runtimeEditor.view.dom instanceof HTMLElement) {
-          setActiveRangeMarqueeRect(
-            clampMarqueeRectToPanel(
-              gesture.startClientX,
-              gesture.startClientY,
-              pointerEvent.clientX,
-              pointerEvent.clientY,
-              resolveEditorLaneGeometry(surfaceElement, runtimeEditor.view.dom).mainPaneRect
-            )
-          );
-        }
-
-        if (gesture.currentBlockIndex !== target.blockIndex || getBlockSelectionState(runtimeEditor) === null) {
-          gesture.currentBlockIndex = target.blockIndex;
-          setTransientBlockSelectionRange(gesture.anchorBlockIndex, target.blockIndex);
-        }
+        keyEvent.preventDefault();
+        keyEvent.stopPropagation();
+        clearGutterRangeGesture({ clearSelection: true, reason: "escape" });
       };
 
       const handlePointerUp = (pointerEvent: PointerEvent) => {
@@ -3591,6 +3683,8 @@ export function PageEditorHostRuntime({
         activated: false,
         anchorBlockIndex,
         currentBlockIndex: anchorBlockIndex,
+        lastClientX: event.clientX,
+        lastClientY: event.clientY,
         pointerId: event.pointerId,
         startClientX: event.clientX,
         startClientY: event.clientY
@@ -3602,6 +3696,7 @@ export function PageEditorHostRuntime({
       ownerDocument.addEventListener("pointercancel", handlePointerCancel, true);
       ownerDocument.addEventListener("gotpointercapture", handleGotPointerCapture, true);
       ownerDocument.addEventListener("lostpointercapture", handleLostPointerCapture, true);
+      ownerDocument.addEventListener("keydown", handleKeyDown, true);
       ownerWindow?.addEventListener("pagehide", handlePageHide);
       ownerWindow?.addEventListener("visibilitychange", handleVisibilityChange);
       ownerWindow?.addEventListener("blur", handleWindowBlur);
@@ -3614,6 +3709,9 @@ export function PageEditorHostRuntime({
       clearSurfaceClickSuppressionReleaseTimer,
       closeBlockActionMenus,
       closeCommandSelector,
+      getEditorAutoScrollTopClearancePx,
+      getEditorAutoScrollViewport,
+      scheduleOverlayMeasurement,
       scheduleSurfaceClickSuppressionRelease,
       setTransientBlockSelectionRange
     ]

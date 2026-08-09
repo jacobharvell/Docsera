@@ -9,6 +9,7 @@ import {
   moveTopLevelBlocks,
   resolveTopLevelBlockDropIndex
 } from "./blockDragReorder";
+import { createEditorAutoScrollSession, type EditorAutoScrollViewport } from "./editorAutoScroll";
 
 type BlockHandleGestureState = {
   blockIndex: number;
@@ -27,6 +28,8 @@ type UseTopLevelBlockDragSessionInput = {
   editableRef: RefObject<boolean>;
   editorRef: RefObject<Editor | null>;
   focusTopLevelBlockSelection: (editor: Editor, blockIndex: number) => void;
+  getAutoScrollTopClearancePx: () => number;
+  getAutoScrollViewport: () => EditorAutoScrollViewport | null;
   getTopLevelBlockRange: (editor: Editor, blockIndex: number) => { from: number; to: number } | null;
   gestureThresholdPx: number;
   gutterWidth: number;
@@ -51,6 +54,8 @@ export function useTopLevelBlockDragSession(input: UseTopLevelBlockDragSessionIn
     editableRef,
     editorRef,
     focusTopLevelBlockSelection,
+    getAutoScrollTopClearancePx,
+    getAutoScrollViewport,
     getTopLevelBlockRange,
     gestureThresholdPx,
     gutterWidth,
@@ -65,6 +70,7 @@ export function useTopLevelBlockDragSession(input: UseTopLevelBlockDragSessionIn
   const blockDragStateRef = useRef<BlockDragState | null>(null);
   const blockHandleGestureRef = useRef<BlockHandleGestureState | null>(null);
   const blockHandleGestureCleanupRef = useRef<(() => void) | null>(null);
+  const blockDragAutoScrollRef = useRef<ReturnType<typeof createEditorAutoScrollSession> | null>(null);
 
   useEffect(() => {
     blockDragStateRef.current = blockDragState;
@@ -79,17 +85,23 @@ export function useTopLevelBlockDragSession(input: UseTopLevelBlockDragSessionIn
     }
   }, []);
 
+  const stopBlockDragAutoScroll = useCallback(() => {
+    blockDragAutoScrollRef.current?.stop();
+    blockDragAutoScrollRef.current = null;
+  }, []);
+
   const clearBlockDragSession = useCallback(
     (options: { clearSelection?: boolean } = {}) => {
       const { clearSelection = true } = options;
       blockDragStateRef.current = null;
       setBlockDragState(null);
+      stopBlockDragAutoScroll();
       clearBlockHandleGesture();
       if (clearSelection) {
         clearTransientBlockSelection();
       }
     },
-    [clearBlockHandleGesture, clearTransientBlockSelection]
+    [clearBlockHandleGesture, clearTransientBlockSelection, stopBlockDragAutoScroll]
   );
 
   const startBlockDragSession = useCallback(
@@ -160,6 +172,43 @@ export function useTopLevelBlockDragSession(input: UseTopLevelBlockDragSessionIn
     blockDragStateRef.current = nextDragState;
     setBlockDragState(nextDragState);
   }, []);
+
+  const refreshBlockDragDestinationFromCurrentPointer = useCallback(() => {
+    const runtimeEditor = editorRef.current;
+    const currentGesture = blockHandleGestureRef.current;
+    const currentDragState = blockDragStateRef.current;
+    if (!runtimeEditor || runtimeEditor.isDestroyed || !currentGesture || !currentDragState) {
+      return;
+    }
+
+    const destinationIndex = isPointWithinTopLevelBlockDropZone(runtimeEditor, currentGesture.lastClientX, gutterWidth)
+      ? resolveTopLevelBlockDropIndex(runtimeEditor, currentGesture.lastClientY)
+      : null;
+    updateBlockDragSession({
+      clientX: currentGesture.lastClientX,
+      clientY: currentGesture.lastClientY,
+      destinationIndex
+    });
+    scheduleOverlayMeasurement();
+  }, [editorRef, gutterWidth, scheduleOverlayMeasurement, updateBlockDragSession]);
+
+  const ensureBlockDragAutoScroll = useCallback(
+    (ownerWindow: Window | null) => {
+      if (blockDragAutoScrollRef.current) {
+        return blockDragAutoScrollRef.current;
+      }
+
+      blockDragAutoScrollRef.current = createEditorAutoScrollSession({
+        getPointerY: () => blockHandleGestureRef.current?.lastClientY ?? null,
+        getTopClearancePx: getAutoScrollTopClearancePx,
+        getViewport: getAutoScrollViewport,
+        onScroll: refreshBlockDragDestinationFromCurrentPointer,
+        ownerWindow
+      });
+      return blockDragAutoScrollRef.current;
+    },
+    [getAutoScrollTopClearancePx, getAutoScrollViewport, refreshBlockDragDestinationFromCurrentPointer]
+  );
 
   const finishBlockDragSession = useCallback(
     (options: { clientX: number; clientY: number; cancelled?: boolean }) => {
@@ -307,6 +356,7 @@ export function useTopLevelBlockDragSession(input: UseTopLevelBlockDragSessionIn
             clientY: pointerEvent.clientY,
             destinationIndex
           });
+          ensureBlockDragAutoScroll(ownerWindow).update();
         }
       };
 
@@ -377,11 +427,15 @@ export function useTopLevelBlockDragSession(input: UseTopLevelBlockDragSessionIn
       openBlockActionMenu,
       selectBlockFromHandle,
       startBlockDragSession,
+      ensureBlockDragAutoScroll,
       updateBlockDragSession
     ]
   );
 
-  useEffect(() => () => clearBlockHandleGesture(), [clearBlockHandleGesture]);
+  useEffect(() => () => {
+    stopBlockDragAutoScroll();
+    clearBlockHandleGesture();
+  }, [clearBlockHandleGesture, stopBlockDragAutoScroll]);
 
   return {
     blockDragState,

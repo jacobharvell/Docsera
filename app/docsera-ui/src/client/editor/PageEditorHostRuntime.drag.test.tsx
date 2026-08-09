@@ -4,13 +4,20 @@ import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, screen, waitFor } from "@testing-library/react";
 import type { Editor } from "@tiptap/core";
 import { undoDepth } from "@tiptap/pm/history";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createEmptyDocseraDocumentEnvelope } from "../../shared/editor/document";
 import {
   buildTopLevelBlockDragFeedbackStyle,
   buildTopLevelBlockDropIndicatorStyleFromRects,
   moveTopLevelBlocks
 } from "./blockDragReorder";
+import {
+  createEditorAutoScrollSession,
+  resolveEditorAutoScrollRequest,
+  resolveEditorAutoScrollTopClearancePx,
+  resolveEditorDocumentAutoScrollViewport,
+  type EditorAutoScrollViewport
+} from "./editorAutoScroll";
 import { PageEditorHostRuntime } from "./PageEditorHostRuntime";
 import { renderRuntime, runAutosave } from "./PageEditorHostRuntime.testUtils";
 
@@ -41,6 +48,24 @@ function mockElementProperty<T>(element: Element, property: string, value: T) {
   Object.defineProperty(element, property, {
     configurable: true,
     value
+  });
+
+  return () => {
+    if (originalDescriptor) {
+      Object.defineProperty(element, property, originalDescriptor);
+      return;
+    }
+
+    Reflect.deleteProperty(element, property);
+  };
+}
+
+function mockElementAccessor<T>(element: Element, property: string, descriptor: { get: () => T; set?: (value: T) => void }) {
+  const originalDescriptor = Object.getOwnPropertyDescriptor(element, property);
+  Object.defineProperty(element, property, {
+    configurable: true,
+    get: descriptor.get,
+    set: descriptor.set
   });
 
   return () => {
@@ -425,6 +450,56 @@ function mockRangeSelectionGeometry(editor: Editor, blockRects: DOMRect[]) {
   };
 }
 
+function mockScrollableMainPaneGeometry(
+  editor: Editor,
+  geometry: ReturnType<typeof mockRangeSelectionGeometry>,
+  baseBlockRects: DOMRect[]
+) {
+  let scrollTop = 0;
+  const proseMirrorChildren = Array.from(editor.view.dom.children);
+  const restore = [
+    mockElementProperty(geometry.elements.mainPane, "clientHeight", 620),
+    mockElementProperty(geometry.elements.mainPane, "scrollHeight", 1600),
+    mockElementAccessor(geometry.elements.mainPane, "scrollTop", {
+      get: () => scrollTop,
+      set: (value) => {
+        scrollTop = Number(value);
+      }
+    }),
+    ...proseMirrorChildren.map((child, index) =>
+      mockElementProperty(child, "getBoundingClientRect", () => {
+        const rect = baseBlockRects[index] ?? new DOMRect(132, 100 + index * 48, 620, 36);
+        return new DOMRect(rect.left, rect.top - scrollTop, rect.width, rect.height);
+      })
+    )
+  ];
+
+  return {
+    getScrollTop: () => scrollTop,
+    mockRestore() {
+      for (const reset of restore.reverse()) {
+        reset();
+      }
+    }
+  };
+}
+
+async function runQueuedAnimationFramesUntil(
+  callbacks: FrameRequestCallback[],
+  predicate: () => boolean,
+  maxFrames = 8
+) {
+  await act(async () => {
+    for (let index = 0; index < maxFrames && !predicate(); index += 1) {
+      const callback = callbacks.shift();
+      if (!callback) {
+        break;
+      }
+      callback(index * 16);
+    }
+  });
+}
+
 async function dispatchBlankGutterDrag(
   editor: Editor,
   geometry: ReturnType<typeof mockRangeSelectionGeometry>,
@@ -566,6 +641,119 @@ async function runCapturedBlockMove(
 }
 
 describe("block drag geometry helpers", () => {
+  it("resolves vertical auto-scroll requests only inside top and bottom edge regions", () => {
+    const viewport: EditorAutoScrollViewport = {
+      clientHeight: 500,
+      element: null,
+      rect: new DOMRect(0, 80, 800, 500),
+      scrollBy: () => undefined,
+      scrollHeight: 1200,
+      scrollTop: 300
+    };
+
+    expect(resolveEditorAutoScrollRequest(viewport, 250)).toEqual({ deltaY: 0, direction: "none" });
+    expect(resolveEditorAutoScrollRequest(viewport, 96).direction).toBe("up");
+    expect(resolveEditorAutoScrollRequest(viewport, 564).direction).toBe("down");
+  });
+
+  it("accelerates near the edge, ignores horizontal position, and clamps to remaining scroll range", () => {
+    const viewport: EditorAutoScrollViewport = {
+      clientHeight: 500,
+      element: null,
+      rect: new DOMRect(0, 80, 800, 500),
+      scrollBy: () => undefined,
+      scrollHeight: 1200,
+      scrollTop: 300
+    };
+
+    const farDown = resolveEditorAutoScrollRequest(viewport, 512);
+    const nearDown = resolveEditorAutoScrollRequest(viewport, 579);
+    expect(nearDown.deltaY).toBeGreaterThan(farDown.deltaY);
+    expect(resolveEditorAutoScrollRequest({ ...viewport, scrollTop: 700 }, 579).deltaY).toBe(0);
+    expect(resolveEditorAutoScrollRequest({ ...viewport, scrollTop: 0 }, 81).deltaY).toBe(0);
+  });
+
+  it("respects fixed-header top clearance when resolving the top edge zone", () => {
+    const viewport: EditorAutoScrollViewport = {
+      clientHeight: 700,
+      element: null,
+      rect: new DOMRect(0, 0, 900, 700),
+      scrollBy: () => undefined,
+      scrollHeight: 1400,
+      scrollTop: 300
+    };
+
+    expect(resolveEditorAutoScrollRequest(viewport, 86, { topClearancePx: 72 }).direction).toBe("up");
+    expect(resolveEditorAutoScrollRequest(viewport, 150, { topClearancePx: 72 }).direction).toBe("none");
+  });
+
+  it("resolves the measured main pane as the scroll owner and reads header clearance from runtime styles", () => {
+    const mainPane = document.createElement("main");
+    mainPane.className = "docsera-main";
+    mainPane.style.scrollPaddingTop = "68px";
+    document.body.append(mainPane);
+    const restore = [
+      mockElementRect(mainPane, new DOMRect(40, 72, 900, 640)),
+      mockElementProperty(mainPane, "clientHeight", 640),
+      mockElementProperty(mainPane, "scrollHeight", 1400)
+    ];
+
+    try {
+      const viewport = resolveEditorDocumentAutoScrollViewport({
+        mainPaneElement: mainPane,
+        ownerDocument: document
+      });
+
+      expect(viewport?.element).toBe(mainPane);
+      expect(viewport?.rect.top).toBe(72);
+      expect(resolveEditorAutoScrollTopClearancePx({ ownerDocument: document, styleTarget: mainPane })).toBe(68);
+    } finally {
+      for (const reset of restore.reverse()) {
+        reset();
+      }
+      mainPane.remove();
+    }
+  });
+
+  it("continues auto-scroll on animation frames and stops deterministically", () => {
+    const callbacks: FrameRequestCallback[] = [];
+    let frameId = 0;
+    const requestAnimationFrameSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callbacks.push(callback);
+      frameId += 1;
+      return frameId;
+    });
+    const cancelAnimationFrameSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    let scrollTop = 120;
+    const onScroll = vi.fn();
+    const session = createEditorAutoScrollSession({
+      getPointerY: () => 578,
+      getViewport: () => ({
+        clientHeight: 500,
+        element: null,
+        rect: new DOMRect(0, 80, 800, 500),
+        scrollBy: (deltaY) => {
+          scrollTop += deltaY;
+        },
+        scrollHeight: 1200,
+        scrollTop
+      }),
+      onScroll,
+      ownerWindow: window
+    });
+
+    session.update();
+    callbacks.shift()?.(0);
+    expect(scrollTop).toBeGreaterThan(120);
+    expect(onScroll).toHaveBeenCalledTimes(1);
+    expect(requestAnimationFrameSpy).toHaveBeenCalledTimes(2);
+
+    session.stop();
+    expect(cancelAnimationFrameSpy).toHaveBeenCalledWith(2);
+    requestAnimationFrameSpy.mockRestore();
+    cancelAnimationFrameSpy.mockRestore();
+  });
+
   it("centers a shared boundary line between blocks", () => {
     const indicatorStyle = buildTopLevelBlockDropIndicatorStyleFromRects({
       blockRects: [
@@ -1396,6 +1584,104 @@ describe("PageEditorHostRuntime block drag", () => {
       expect(feedback?.style.top).toBe("190px");
     } finally {
       geometry.mockRestore();
+    }
+  });
+
+  it("continues scrolling near the bottom edge with a stationary pointer and advances the destination", async () => {
+    const callbacks: FrameRequestCallback[] = [];
+    let frameId = 0;
+    const requestAnimationFrameSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callbacks.push(callback);
+      frameId += 1;
+      return frameId;
+    });
+    const cancelAnimationFrameSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    const { editorReady } = renderRuntime();
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0]!;
+    await setBlocks(editor, Array.from({ length: 14 }, (_, index) => `Block ${index + 1}`));
+    const baseRects = Array.from({ length: 14 }, (_, index) => new DOMRect(132, 100 + index * 48, 620, 36));
+    const geometry = mockRangeSelectionGeometry(editor, baseRects);
+    const scrollGeometry = mockScrollableMainPaneGeometry(editor, geometry, baseRects);
+
+    try {
+      const ownerDocument = getEditorSurface(editor).ownerDocument;
+      const handle = await hoverFirstVisibleHandle(editor, 160, 116);
+
+      await dispatchOwnerPointerEvent(ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 116 }, { button: 0, buttons: 1, pointerId: 1 });
+      await dispatchOwnerPointerEvent(ownerDocument, ownerDocument, "pointermove", { clientX: 160, clientY: 620 }, { buttons: 1, pointerId: 1 });
+
+      const firstIndicator = getFloatingBlockDropIndicator();
+      expect(firstIndicator).toBeInTheDocument();
+      const firstTop = Number.parseFloat(firstIndicator?.style.top ?? "0");
+
+      await runQueuedAnimationFramesUntil(callbacks, () => scrollGeometry.getScrollTop() > 0);
+
+      expect(scrollGeometry.getScrollTop()).toBeGreaterThan(0);
+      const nextIndicator = getFloatingBlockDropIndicator();
+      expect(nextIndicator).toBeInTheDocument();
+      expect(Number.parseFloat(nextIndicator?.style.top ?? "0")).toBeLessThan(firstTop);
+      expect(getFloatingBlockDragFeedback()).toBeInTheDocument();
+
+      await dispatchOwnerPointerEvent(ownerDocument, ownerDocument, "pointermove", { clientX: 160, clientY: 300 }, { buttons: 1, pointerId: 1 });
+      const scrollAfterLeavingEdge = scrollGeometry.getScrollTop();
+      await runQueuedAnimationFramesUntil(callbacks, () => callbacks.length === 0);
+      expect(scrollGeometry.getScrollTop()).toBe(scrollAfterLeavingEdge);
+
+      await dispatchOwnerPointerEvent(ownerDocument, ownerDocument, "pointerup", { clientX: 160, clientY: 300 }, { button: 0, buttons: 0, pointerId: 1 });
+      expect(getFloatingBlockDragFeedback()).toBeNull();
+      const scrollAfterRelease = scrollGeometry.getScrollTop();
+      await runQueuedAnimationFramesUntil(callbacks, () => callbacks.length === 0);
+      expect(scrollGeometry.getScrollTop()).toBe(scrollAfterRelease);
+      expect(getFloatingBlockDragFeedback()).toBeNull();
+    } finally {
+      scrollGeometry.mockRestore();
+      geometry.mockRestore();
+      requestAnimationFrameSpy.mockRestore();
+      cancelAnimationFrameSpy.mockRestore();
+    }
+  });
+
+  it("continues scrolling near the top edge with a stationary pointer and keeps the drag source selected", async () => {
+    const callbacks: FrameRequestCallback[] = [];
+    let frameId = 0;
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callbacks.push(callback);
+      frameId += 1;
+      return frameId;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    const { editorReady } = renderRuntime();
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0]!;
+    await setBlocks(editor, Array.from({ length: 12 }, (_, index) => `Block ${index + 1}`));
+    const baseRects = Array.from({ length: 12 }, (_, index) => new DOMRect(132, 100 + index * 48, 620, 36));
+    const geometry = mockRangeSelectionGeometry(editor, baseRects);
+    const scrollGeometry = mockScrollableMainPaneGeometry(editor, geometry, baseRects);
+
+    try {
+      const ownerDocument = getEditorSurface(editor).ownerDocument;
+      const handle = await hoverFirstVisibleHandle(editor, 160, 356);
+      await dispatchOwnerPointerEvent(ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 356 }, { button: 0, buttons: 1, pointerId: 1 });
+      await dispatchOwnerPointerEvent(ownerDocument, ownerDocument, "pointermove", { clientX: 160, clientY: 620 }, { buttons: 1, pointerId: 1 });
+      await runQueuedAnimationFramesUntil(callbacks, () => scrollGeometry.getScrollTop() > 0);
+
+      const scrolledDown = scrollGeometry.getScrollTop();
+      expect(scrolledDown).toBeGreaterThan(0);
+
+      await dispatchOwnerPointerEvent(ownerDocument, ownerDocument, "pointermove", { clientX: 160, clientY: 84 }, { buttons: 1, pointerId: 1 });
+      await runQueuedAnimationFramesUntil(callbacks, () => scrollGeometry.getScrollTop() < scrolledDown);
+
+      expect(scrollGeometry.getScrollTop()).toBeLessThan(scrolledDown);
+      expect(getSelectedBlockElement(editor)).toHaveTextContent("Block 6");
+      expect(getFloatingBlockDragFeedback()).toBeInTheDocument();
+
+      await dispatchOwnerPointerEvent(ownerDocument, ownerDocument, "pointercancel", { clientX: 160, clientY: 84 }, { button: 0, buttons: 0, pointerId: 1 });
+      expect(getFloatingBlockDragFeedback()).toBeNull();
+    } finally {
+      scrollGeometry.mockRestore();
+      geometry.mockRestore();
+      vi.restoreAllMocks();
     }
   });
 
