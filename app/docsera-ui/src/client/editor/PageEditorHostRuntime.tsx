@@ -341,6 +341,31 @@ function resolveBlockSelectionRangeState(
   };
 }
 
+function resolveTopLevelBlockDragSourceRange(
+  editor: Editor,
+  blockIndex: number
+): {
+  endBlockIndex: number;
+  startBlockIndex: number;
+} {
+  const activeSelection = getBlockSelectionState(editor);
+  if (activeSelection) {
+    const selectedBounds = resolveTopLevelBlockSelectionBoundsFromState(editor.state.doc, activeSelection);
+    if (
+      selectedBounds &&
+      blockIndex >= selectedBounds.startBlockIndex &&
+      blockIndex <= selectedBounds.endBlockIndex
+    ) {
+      return selectedBounds;
+    }
+  }
+
+  return {
+    endBlockIndex: blockIndex,
+    startBlockIndex: blockIndex
+  };
+}
+
 function isBlockSelectionRangeState(state: BlockSelectionState | null): state is BlockSelectionState & {
   rangeEndPos: number;
 } {
@@ -1575,6 +1600,12 @@ function isGutterControlTarget(target: EventTarget | null): boolean {
   const targetElement =
     target instanceof HTMLElement ? target : target instanceof Node ? target.parentElement : null;
   return targetElement?.closest("[data-docsera-block-gutter='true']") instanceof HTMLElement;
+}
+
+function isBlockHandleTarget(target: EventTarget | null): boolean {
+  const targetElement =
+    target instanceof HTMLElement ? target : target instanceof Node ? target.parentElement : null;
+  return targetElement?.closest(".docsera-editor-floating__handle") instanceof HTMLElement;
 }
 
 function isInteractiveEditorOverlayTarget(target: EventTarget | null): boolean {
@@ -2971,9 +3002,11 @@ export function PageEditorHostRuntime({
     getTopLevelBlockRange,
     gestureThresholdPx: BLOCK_HANDLE_GESTURE_THRESHOLD_PX,
     gutterWidth: BLOCK_GUTTER_WIDTH,
+    resolveDragSourceRange: resolveTopLevelBlockDragSourceRange,
     openBlockActionMenu,
     scheduleOverlayMeasurement,
-    selectBlockFromHandle: setTransientBlockSelection
+    selectBlockFromHandle: setTransientBlockSelection,
+    selectTopLevelBlockRange: setTransientBlockSelectionRange
   });
 
   const openBlockTurnIntoMenu = useCallback(
@@ -3932,6 +3965,9 @@ export function PageEditorHostRuntime({
       }
 
       if (resolvedZone === "block-control") {
+        if (isBlockHandleTarget(target)) {
+          return;
+        }
         clearTransientBlockSelection("control-pointerdown");
         return;
       }
@@ -4323,7 +4359,12 @@ export function PageEditorHostRuntime({
     editor &&
     blockDragState &&
     blockDragState.destinationIndex !== null &&
-    isValidBlockDragDestinationIndex(editor.state.doc.childCount, blockDragState.sourceBlockIndex, blockDragState.destinationIndex)
+    isValidBlockDragDestinationIndex(
+      editor.state.doc.childCount,
+      blockDragState.sourceBlockIndex,
+      blockDragState.sourceBlockEndIndex,
+      blockDragState.destinationIndex
+    )
       ? buildTopLevelBlockDropIndicatorStyle(editor, blockDragState.destinationIndex, {
         lineHeight: BLOCK_DRAG_LINE_HEIGHT,
         viewportGutter: VIEWPORT_GUTTER

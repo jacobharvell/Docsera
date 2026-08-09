@@ -76,12 +76,13 @@ The contract below was consolidated from:
 | Classification | Contract |
 | --- | --- |
 | current durable contract | Pointer sessions are short-lived and must survive ordinary React rerenders. Session identity belongs to the runtime gesture state, not to a particular render pass. |
-| current durable contract | Move, up, and cancel handling must run on the correct owner document or explicit capture owner for the gesture that started the session. |
+| current durable contract | Move, up, and cancel handling must run on the correct owner document for the gesture that started the session. Derive that owner from the event-owned element or validated runtime surface instead of assuming the global document. |
 | current durable contract | Pointer identity and cleanup paths must remain deterministic. A lost pointer, pointer cancel, blur, page hide, access loss, or teardown ends the gesture. |
 | current durable contract | Do not introduce competing native HTML5 drag machinery and pointer-session machinery for the same behavior. |
 | current durable contract | Do not add retry loops, timing delays, or duplicate fallback gesture paths without demonstrated need. |
+| current durable contract | A handle press on an already-selected contiguous range may keep that transient range alive until the handle resolves click-versus-drag. Other block-control presses keep their own established behavior and must not be coupled to the handle's drag-disambiguation path. |
 | current durable contract | Do not generalize a single pointer-capture rule across all editor gestures. Single-block drag, handle selection, and range selection are related but not the same proof. |
-| historical root-cause evidence | The handle drag path is already proven with owner-document listeners and deterministic cleanup on pointer cancel, lost pointer, blur, page hide, and visibility loss. Range selection was proven through a different panel-background contract and should not be forced into the same lifecycle model without evidence. |
+| historical root-cause evidence | The handle drag path is already proven with owner-document listeners and deterministic cleanup on pointer cancel, lost pointer, blur, page hide, and visibility loss. Range selection was proven through a different panel-background contract and should not be forced into the same lifecycle model without evidence. An E4-T2C1 browser trace disproved the temporary owning-window/`dragend` release hypothesis: trusted `pointerup` reached the release handler, and the stuck drag was caused by a ProseMirror move exception before transaction completion and cleanup. |
 
 ## ProseMirror Focus And Transient State
 

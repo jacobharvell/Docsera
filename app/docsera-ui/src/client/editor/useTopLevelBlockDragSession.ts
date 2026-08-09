@@ -1,12 +1,12 @@
 import type { Editor } from "@tiptap/core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
-import type { BlockDragState } from "./blockDragReorder";
+import type { BlockDragState, TopLevelBlockDragSourceRange } from "./blockDragReorder";
 import {
   getTopLevelBlockDragPreview,
   isPointWithinTopLevelBlockDropZone,
   isValidBlockDragDestinationIndex,
-  moveTopLevelBlock,
+  moveTopLevelBlocks,
   resolveTopLevelBlockDropIndex
 } from "./blockDragReorder";
 
@@ -30,8 +30,10 @@ type UseTopLevelBlockDragSessionInput = {
   getTopLevelBlockRange: (editor: Editor, blockIndex: number) => { from: number; to: number } | null;
   gestureThresholdPx: number;
   gutterWidth: number;
+  resolveDragSourceRange: (editor: Editor, blockIndex: number) => TopLevelBlockDragSourceRange;
   openBlockActionMenu: (blockIndex: number, source: "handle" | "keyboard", anchorRect: DOMRect) => void;
   scheduleOverlayMeasurement: () => void;
+  selectTopLevelBlockRange: (startBlockIndex: number, endBlockIndex: number) => void;
   selectBlockFromHandle: (blockIndex: number) => void;
 };
 
@@ -52,8 +54,10 @@ export function useTopLevelBlockDragSession(input: UseTopLevelBlockDragSessionIn
     getTopLevelBlockRange,
     gestureThresholdPx,
     gutterWidth,
+    resolveDragSourceRange,
     openBlockActionMenu,
     scheduleOverlayMeasurement,
+    selectTopLevelBlockRange,
     selectBlockFromHandle
   } = input;
   const [blockDragState, setBlockDragState] = useState<BlockDragState | null>(null);
@@ -95,7 +99,12 @@ export function useTopLevelBlockDragSession(input: UseTopLevelBlockDragSessionIn
         return false;
       }
 
-      const preview = getTopLevelBlockDragPreview(runtimeEditor, blockIndex);
+      const dragSourceRange = resolveDragSourceRange(runtimeEditor, blockIndex);
+      const preview = getTopLevelBlockDragPreview(
+        runtimeEditor,
+        dragSourceRange.startBlockIndex,
+        dragSourceRange.endBlockIndex
+      );
       if (!preview) {
         return false;
       }
@@ -106,7 +115,7 @@ export function useTopLevelBlockDragSession(input: UseTopLevelBlockDragSessionIn
 
       closeBlockActionMenus({ focusEditor: false, syncHoverFromPointer: true });
       closeCommandSelector({ syncHoverFromPointer: true });
-      selectBlockFromHandle(blockIndex);
+      selectTopLevelBlockRange(dragSourceRange.startBlockIndex, dragSourceRange.endBlockIndex);
 
       const nextDragState: BlockDragState = {
         clientX,
@@ -116,14 +125,15 @@ export function useTopLevelBlockDragSession(input: UseTopLevelBlockDragSessionIn
         pointerOffsetY: Math.max(0, clientY - preview.sourceBlockRect.top),
         previewHtml: preview.previewHtml,
         previewLabel: preview.previewLabel,
+        sourceBlockEndIndex: dragSourceRange.endBlockIndex,
         sourceBlockRect: preview.sourceBlockRect,
-        sourceBlockIndex: blockIndex
+        sourceBlockIndex: dragSourceRange.startBlockIndex
       };
       blockDragStateRef.current = nextDragState;
       setBlockDragState(nextDragState);
       return true;
     },
-    [closeBlockActionMenus, closeCommandSelector, editorRef, selectBlockFromHandle]
+    [closeBlockActionMenus, closeCommandSelector, editorRef, resolveDragSourceRange, selectTopLevelBlockRange]
   );
 
   const updateBlockDragSession = useCallback((inputUpdate: {
@@ -166,22 +176,37 @@ export function useTopLevelBlockDragSession(input: UseTopLevelBlockDragSessionIn
           : resolveTopLevelBlockDropIndex(runtimeEditor, options.clientY);
       if (
         destinationIndex === null ||
-        !isValidBlockDragDestinationIndex(runtimeEditor.state.doc.childCount, currentDragState.sourceBlockIndex, destinationIndex)
+        !isValidBlockDragDestinationIndex(
+          runtimeEditor.state.doc.childCount,
+          currentDragState.sourceBlockIndex,
+          currentDragState.sourceBlockEndIndex,
+          destinationIndex
+        )
       ) {
         clearBlockDragSession();
         return false;
       }
 
-      const didMove = moveTopLevelBlock(runtimeEditor, currentDragState.sourceBlockIndex, destinationIndex, {
-        focusTopLevelBlockSelection,
-        getTopLevelBlockRange,
-        selectTopLevelBlock: selectBlockFromHandle
-      });
-      clearBlockDragSession({ clearSelection: !didMove });
-      if (didMove) {
-        scheduleOverlayMeasurement();
+      let didMove = false;
+      try {
+        didMove = moveTopLevelBlocks(
+          runtimeEditor,
+          currentDragState.sourceBlockIndex,
+          currentDragState.sourceBlockEndIndex,
+          destinationIndex,
+          {
+            focusTopLevelBlockSelection,
+            getTopLevelBlockRange,
+            selectTopLevelBlockRange
+          }
+        );
+        return didMove;
+      } finally {
+        clearBlockDragSession({ clearSelection: !didMove });
+        if (didMove) {
+          scheduleOverlayMeasurement();
+        }
       }
-      return didMove;
     },
     [
       clearBlockDragSession,
@@ -190,7 +215,7 @@ export function useTopLevelBlockDragSession(input: UseTopLevelBlockDragSessionIn
       getTopLevelBlockRange,
       gutterWidth,
       scheduleOverlayMeasurement,
-      selectBlockFromHandle
+      selectTopLevelBlockRange
     ]
   );
 

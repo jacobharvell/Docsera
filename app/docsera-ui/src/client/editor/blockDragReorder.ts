@@ -1,14 +1,20 @@
 import type { Editor } from "@tiptap/core";
 import type { CSSProperties } from "react";
 
+export type TopLevelBlockDragSourceRange = {
+  endBlockIndex: number;
+  startBlockIndex: number;
+};
+
 export type BlockDragState = {
   clientX: number;
   clientY: number;
   destinationIndex: number | null;
   previewLabel: string;
   previewHtml: string;
-  sourceBlockRect: DOMRect;
+  sourceBlockEndIndex: number;
   sourceBlockIndex: number;
+  sourceBlockRect: DOMRect;
   pointerOffsetX: number;
   pointerOffsetY: number;
 };
@@ -44,20 +50,27 @@ export function resolveTopLevelBlockDropIndex(editor: Editor, clientY: number): 
   );
 }
 
-export function getTopLevelBlockDragPreview(editor: Editor, blockIndex: number): {
+export function getTopLevelBlockDragPreview(
+  editor: Editor,
+  blockIndex: number,
+  blockEndIndex = blockIndex
+): {
   previewLabel: string;
   previewHtml: string;
   sourceBlockRect: DOMRect;
 } | null {
-  const sourceElement = getTopLevelBlockElements(editor)[blockIndex];
-  if (!(sourceElement instanceof HTMLElement)) {
+  const sourceElements = getTopLevelBlockElements(editor).slice(Math.min(blockIndex, blockEndIndex), Math.max(blockIndex, blockEndIndex) + 1);
+  if (sourceElements.length === 0) {
     return null;
   }
 
+  const sourceBlockRect = resolveBoundingRect(sourceElements.map((element) => element.getBoundingClientRect()));
   return {
-    previewLabel: sourceElement.textContent?.replace(/\s+/g, " ").trim() || "Moving block",
-    previewHtml: createInertTopLevelBlockPreviewHtml(sourceElement),
-    sourceBlockRect: sourceElement.getBoundingClientRect()
+    previewLabel:
+      sourceElements.map((element) => element.textContent?.replace(/\s+/g, " ").trim() || "").filter(Boolean).join(" ") ||
+      `Moving ${sourceElements.length} blocks`,
+    previewHtml: createInertTopLevelBlockPreviewHtml(sourceElements),
+    sourceBlockRect
   };
 }
 
@@ -79,15 +92,15 @@ export function isPointWithinTopLevelBlockDropZone(
 export function isValidBlockDragDestinationIndex(
   childCount: number,
   sourceBlockIndex: number,
+  sourceBlockEndIndex: number,
   destinationIndex: number | null
 ): boolean {
-  if (destinationIndex === null || childCount <= 0) {
+  if (destinationIndex === null || childCount <= 0 || sourceBlockIndex < 0 || sourceBlockEndIndex < sourceBlockIndex || sourceBlockEndIndex >= childCount) {
     return false;
   }
 
   const normalizedDestinationIndex = Math.max(0, Math.min(destinationIndex, childCount));
-  const adjustedDestinationIndex = normalizedDestinationIndex > sourceBlockIndex ? normalizedDestinationIndex - 1 : normalizedDestinationIndex;
-  return adjustedDestinationIndex !== sourceBlockIndex;
+  return normalizedDestinationIndex < sourceBlockIndex || normalizedDestinationIndex > sourceBlockEndIndex + 1;
 }
 
 export function getTopLevelBlockInsertionPositionFromDoc(
@@ -186,40 +199,77 @@ export function moveTopLevelBlock(
     selectTopLevelBlock: (blockIndex: number) => void;
   }
 ): boolean {
-  const sourceRange = input.getTopLevelBlockRange(editor, sourceBlockIndex);
-  const sourceNode = sourceBlockIndex >= 0 && sourceBlockIndex < editor.state.doc.childCount ? editor.state.doc.child(sourceBlockIndex) : null;
-  if (!sourceRange || !sourceNode) {
+  return moveTopLevelBlocks(editor, sourceBlockIndex, sourceBlockIndex, destinationIndex, {
+    ...input,
+    selectTopLevelBlockRange: (startBlockIndex) => input.selectTopLevelBlock(startBlockIndex)
+  });
+}
+
+export function moveTopLevelBlocks(
+  editor: Editor,
+  sourceStartBlockIndex: number,
+  sourceEndBlockIndex: number,
+  destinationIndex: number,
+  input: {
+    focusTopLevelBlockSelection: (editor: Editor, blockIndex: number) => void;
+    getTopLevelBlockRange: (editor: Editor, blockIndex: number) => { from: number; to: number } | null;
+    selectTopLevelBlockRange: (startBlockIndex: number, endBlockIndex: number) => void;
+  }
+): boolean {
+  const normalizedSourceStartBlockIndex = Math.min(sourceStartBlockIndex, sourceEndBlockIndex);
+  const normalizedSourceEndBlockIndex = Math.max(sourceStartBlockIndex, sourceEndBlockIndex);
+  if (
+    normalizedSourceStartBlockIndex < 0 ||
+    normalizedSourceEndBlockIndex < normalizedSourceStartBlockIndex ||
+    normalizedSourceEndBlockIndex >= editor.state.doc.childCount
+  ) {
+    return false;
+  }
+
+  const sourceStartRange = input.getTopLevelBlockRange(editor, normalizedSourceStartBlockIndex);
+  const sourceEndRange = input.getTopLevelBlockRange(editor, normalizedSourceEndBlockIndex);
+  if (!sourceStartRange || !sourceEndRange) {
     return false;
   }
 
   const normalizedDestinationIndex = Math.max(0, Math.min(destinationIndex, editor.state.doc.childCount));
-  const adjustedDestinationIndex =
-    normalizedDestinationIndex > sourceBlockIndex ? normalizedDestinationIndex - 1 : normalizedDestinationIndex;
-  if (adjustedDestinationIndex === sourceBlockIndex) {
+  if (normalizedDestinationIndex >= normalizedSourceStartBlockIndex && normalizedDestinationIndex <= normalizedSourceEndBlockIndex + 1) {
     return false;
   }
 
-  const draftTransaction = editor.state.tr.delete(sourceRange.from, sourceRange.to);
+  const sourceContent = editor.state.doc.slice(sourceStartRange.from, sourceEndRange.to).content;
+  const sourceBlockCount = normalizedSourceEndBlockIndex - normalizedSourceStartBlockIndex + 1;
+  const adjustedDestinationIndex =
+    normalizedDestinationIndex > normalizedSourceEndBlockIndex + 1
+      ? normalizedDestinationIndex - sourceBlockCount
+      : normalizedDestinationIndex;
+  const draftTransaction = editor.state.tr.delete(sourceStartRange.from, sourceEndRange.to);
   const insertionPosition = getTopLevelBlockInsertionPositionFromDoc(draftTransaction.doc, adjustedDestinationIndex);
   if (insertionPosition === null) {
     return false;
   }
 
-  const movedNode = editor.schema.nodeFromJSON(sourceNode.toJSON());
-  editor.view.dispatch(draftTransaction.insert(insertionPosition, movedNode));
+  editor.view.dispatch(draftTransaction.insert(insertionPosition, sourceContent));
   input.focusTopLevelBlockSelection(editor, adjustedDestinationIndex);
-  input.selectTopLevelBlock(adjustedDestinationIndex);
+  input.selectTopLevelBlockRange(adjustedDestinationIndex, adjustedDestinationIndex + sourceBlockCount - 1);
   return true;
 }
 
-function createInertTopLevelBlockPreviewHtml(sourceElement: HTMLElement): string {
-  const previewElement = sourceElement.cloneNode(true);
-  if (!(previewElement instanceof HTMLElement)) {
-    return sourceElement.outerHTML;
+function createInertTopLevelBlockPreviewHtml(sourceElements: HTMLElement[]): string {
+  const previewHtmlParts: string[] = [];
+
+  for (const sourceElement of sourceElements) {
+    const previewBlock = sourceElement.cloneNode(true);
+    if (!(previewBlock instanceof HTMLElement)) {
+      previewHtmlParts.push(sourceElement.outerHTML);
+      continue;
+    }
+
+    sanitizeTopLevelBlockPreviewElement(previewBlock);
+    previewHtmlParts.push(previewBlock.outerHTML);
   }
 
-  sanitizeTopLevelBlockPreviewElement(previewElement);
-  return previewElement.outerHTML;
+  return previewHtmlParts.join("");
 }
 
 function sanitizeTopLevelBlockPreviewElement(root: HTMLElement) {
@@ -268,3 +318,23 @@ function sanitizeTopLevelBlockPreviewElement(root: HTMLElement) {
 
 const VIEWPORT_GUTTER_FALLBACK = 12;
 const FOCUSABLE_TAG_NAMES = new Set(["BUTTON", "INPUT", "SELECT", "TEXTAREA", "SUMMARY", "IFRAME", "OBJECT", "EMBED", "VIDEO", "AUDIO"]);
+
+function resolveBoundingRect(rects: DOMRect[]): DOMRect {
+  const firstRect = rects[0];
+  if (!firstRect) {
+    return new DOMRect(0, 0, 0, 0);
+  }
+
+  let left = firstRect.left;
+  let top = firstRect.top;
+  let right = firstRect.right;
+  let bottom = firstRect.bottom;
+  for (const rect of rects.slice(1)) {
+    left = Math.min(left, rect.left);
+    top = Math.min(top, rect.top);
+    right = Math.max(right, rect.right);
+    bottom = Math.max(bottom, rect.bottom);
+  }
+
+  return new DOMRect(left, top, right - left, bottom - top);
+}

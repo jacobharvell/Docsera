@@ -1034,6 +1034,59 @@ describe("PageEditorHostRuntime gutter range selection", () => {
     }
   });
 
+  it("keeps Quick Add out of the drag path while the handle preserves a selected range for click-versus-drag disambiguation", async () => {
+    const initialEnvelope = createSelectionEnvelope();
+    const { editorReady } = renderRuntime({ initialEnvelope });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0]!;
+    const geometry = mockTopLevelBlockGeometry(editor, [
+      new DOMRect(132, 100, 620, 36),
+      new DOMRect(132, 148, 620, 36),
+      new DOMRect(132, 196, 620, 36),
+      new DOMRect(132, 244, 620, 36),
+      new DOMRect(132, 292, 620, 36),
+      new DOMRect(132, 340, 620, 36),
+      new DOMRect(132, 388, 620, 36)
+    ]);
+
+    try {
+      const surface = getEditorSurface(editor);
+      const startingDocument = editor.getJSON();
+      await dispatchBlankGutterDrag(editor, { clientX: 80, clientY: 164 }, [{ clientX: 84, clientY: 228 }]);
+      expect(getSelectedBlockTags(editor)).toEqual(["H2", "UL"]);
+
+      const quickAdd = await screen.findByRole("button", { name: "Add block after Bulleted List" });
+
+      await dispatchOwnerPointerEvent(surface.ownerDocument, quickAdd, "pointerdown", { clientX: 82, clientY: 162 }, {
+        button: 0,
+        buttons: 1,
+        pointerId: 1
+      });
+      expect(getSelectedBlockTags(editor)).toEqual(["H2", "UL"]);
+
+      const freshHandle = await screen.findByRole("button", { name: "Select block: Bulleted List" });
+
+      await dispatchOwnerPointerEvent(surface.ownerDocument, freshHandle, "pointerdown", { clientX: 108, clientY: 162 }, {
+        button: 0,
+        buttons: 1,
+        pointerId: 2
+      });
+      expect(getSelectedBlockTags(editor)).toEqual(["H2", "UL"]);
+
+      await dispatchOwnerPointerEvent(surface.ownerDocument, freshHandle, "pointerup", { clientX: 108, clientY: 162 }, {
+        button: 0,
+        buttons: 0,
+        pointerId: 2
+      });
+
+      expect(screen.getByRole("menu", { name: "Block actions for Bulleted List" })).toBeInTheDocument();
+      expect(getSelectedBlockTags(editor)).toEqual(["UL"]);
+      expect(editor.getJSON()).toEqual(startingDocument);
+    } finally {
+      geometry.mockRestore();
+    }
+  });
+
   it("clears a persisted range on a blank-gutter click without opening the menu or mutating the document", async () => {
     const initialEnvelope = createSelectionEnvelope();
     const { editorReady } = renderRuntime({ initialEnvelope });
