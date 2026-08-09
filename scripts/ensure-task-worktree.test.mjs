@@ -44,18 +44,32 @@ function runGuardWithNode(cwd, args) {
 }
 
 function runGuardWithNpm(cwd, args) {
+  return runGuardWithNpmInShell(cwd, args, process.platform === "win32" ? "cmd" : "direct");
+}
+
+function runGuardWithNpmInShell(cwd, args, shell) {
   const npmCommand = `npm run ensure:task-worktree -- ${args.join(" ")}`;
-  const result = process.platform === "win32"
-    ? spawnSync("cmd.exe", ["/d", "/s", "/c", npmCommand], {
-        cwd,
-        encoding: "utf8",
-        windowsHide: true
-      })
-    : spawnSync("npm", ["run", "ensure:task-worktree", "--", ...args], {
-        cwd,
-        encoding: "utf8",
-        windowsHide: true
-      });
+  let result;
+
+  if (shell === "cmd") {
+    result = spawnSync("cmd.exe", ["/d", "/s", "/c", npmCommand], {
+      cwd,
+      encoding: "utf8",
+      windowsHide: true
+    });
+  } else if (shell === "powershell") {
+    result = spawnSync("powershell.exe", ["-NoLogo", "-NoProfile", "-Command", npmCommand], {
+      cwd,
+      encoding: "utf8",
+      windowsHide: true
+    });
+  } else {
+    result = spawnSync("npm", ["run", "ensure:task-worktree", "--", ...args], {
+      cwd,
+      encoding: "utf8",
+      windowsHide: true
+    });
+  }
 
   return {
     code: result.status,
@@ -328,6 +342,34 @@ describe("ensure-task-worktree", () => {
         "--mode",
         "new"
       ]);
+      assert.equal(result.code, 0);
+      assert.match(result.stdout, /Task worktree guard passed\./);
+      assert.match(result.stdout, /mode: new/);
+      assert.deepEqual(snapshotWorktree(fixture.taskWorktree), before);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("accepts the PowerShell-forwarded positional npm wrapper arguments used by real Windows task worktrees", async () => {
+    if (process.platform !== "win32") {
+      return;
+    }
+
+    const fixture = await createRepoFixture({ copyWrapperFilesToRepo: true });
+    const before = snapshotWorktree(fixture.taskWorktree);
+
+    try {
+      const result = runGuardWithNpmInShell(fixture.taskWorktree, [
+        "--task-branch",
+        "fix/task-worktree-preflight-guard",
+        "--original-base",
+        fixture.baseHead,
+        "--expected-head",
+        fixture.baseHead,
+        "--mode",
+        "new"
+      ], "powershell");
       assert.equal(result.code, 0);
       assert.match(result.stdout, /Task worktree guard passed\./);
       assert.match(result.stdout, /mode: new/);

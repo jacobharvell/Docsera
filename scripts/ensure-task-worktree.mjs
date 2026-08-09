@@ -100,6 +100,8 @@ function parseArgs(argv) {
   const options = {
     mode: "new"
   };
+  const positionalArgs = [];
+  let sawNamedOption = false;
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -110,80 +112,113 @@ function parseArgs(argv) {
     }
 
     if (arg === "--continuation") {
+      sawNamedOption = true;
       options.mode = "continuation";
       continue;
     }
 
     if (arg === "--new-task") {
+      sawNamedOption = true;
       options.mode = "new";
       continue;
     }
 
     if (arg === "--mode") {
+      sawNamedOption = true;
       index += 1;
       options.mode = argv[index];
       continue;
     }
 
     if (arg.startsWith("--mode=")) {
+      sawNamedOption = true;
       options.mode = arg.slice("--mode=".length);
       continue;
     }
 
     if (arg === "--task-branch" || arg === "--branch") {
+      sawNamedOption = true;
       index += 1;
       options.taskBranch = argv[index];
       continue;
     }
 
     if (arg.startsWith("--task-branch=")) {
+      sawNamedOption = true;
       options.taskBranch = arg.slice("--task-branch=".length);
       continue;
     }
 
     if (arg.startsWith("--branch=")) {
+      sawNamedOption = true;
       options.taskBranch = arg.slice("--branch=".length);
       continue;
     }
 
     if (arg === "--original-base" || arg === "--base") {
+      sawNamedOption = true;
       index += 1;
       options.originalBase = argv[index];
       continue;
     }
 
     if (arg.startsWith("--original-base=")) {
+      sawNamedOption = true;
       options.originalBase = arg.slice("--original-base=".length);
       continue;
     }
 
     if (arg.startsWith("--base=")) {
+      sawNamedOption = true;
       options.originalBase = arg.slice("--base=".length);
       continue;
     }
 
     if (arg === "--expected-head" || arg === "--head" || arg === "--expected-current-head") {
+      sawNamedOption = true;
       index += 1;
       options.expectedHead = argv[index];
       continue;
     }
 
     if (arg.startsWith("--expected-head=")) {
+      sawNamedOption = true;
       options.expectedHead = arg.slice("--expected-head=".length);
       continue;
     }
 
     if (arg.startsWith("--expected-current-head=")) {
+      sawNamedOption = true;
       options.expectedHead = arg.slice("--expected-current-head=".length);
       continue;
     }
 
     if (arg.startsWith("--head=")) {
+      sawNamedOption = true;
       options.expectedHead = arg.slice("--head=".length);
       continue;
     }
 
+    if (!arg.startsWith("--")) {
+      positionalArgs.push(arg);
+      continue;
+    }
+
     throw new Error(`Unknown argument: ${arg}`);
+  }
+
+  if (positionalArgs.length > 0) {
+    if (sawNamedOption || options.help) {
+      throw new Error("Positional task-worktree arguments cannot be mixed with named options.");
+    }
+
+    if (positionalArgs.length !== 4) {
+      throw new Error(
+        "Expected four positional task-worktree arguments in branch/base/head/mode order."
+      );
+    }
+
+    [options.taskBranch, options.originalBase, options.expectedHead, options.mode] = positionalArgs;
   }
 
   if (!options.mode) {
