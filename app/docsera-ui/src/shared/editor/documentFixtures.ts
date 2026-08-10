@@ -625,7 +625,6 @@ export function createStandardTableDocseraDocumentEnvelope(): DocseraDocumentEnv
                           type: "text",
                           text: "launch",
                           marks: [
-                            { type: "italic" },
                             {
                               type: "link",
                               attrs: {
@@ -635,7 +634,8 @@ export function createStandardTableDocseraDocumentEnvelope(): DocseraDocumentEnv
                                 class: null,
                                 title: null
                               }
-                            }
+                            },
+                            { type: "italic" }
                           ]
                         }
                       ]
@@ -663,6 +663,87 @@ export function createStandardTableDocseraDocumentEnvelope(): DocseraDocumentEnv
                     {
                       type: "paragraph",
                       content: [{ type: "text", text: "Beta" }]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  };
+}
+
+export function createNestedTableDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
+  return {
+    schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+    document: {
+      type: "doc",
+      content: [
+        {
+          type: "blockquote",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "Quote before table" }]
+            },
+            {
+              type: "table",
+              content: [
+                {
+                  type: "tableRow",
+                  content: [
+                    {
+                      type: "tableCell",
+                      attrs: { colspan: 1, rowspan: 1, colwidth: null },
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [{ type: "text", text: "Nested quote table" }]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          type: "table",
+          content: [
+            {
+              type: "tableRow",
+              content: [
+                {
+                  type: "tableCell",
+                  attrs: { colspan: 1, rowspan: 1, colwidth: null },
+                  content: [
+                    {
+                      type: "blockquote",
+                      content: [
+                        {
+                          type: "table",
+                          content: [
+                            {
+                              type: "tableRow",
+                              content: [
+                                {
+                                  type: "tableCell",
+                                  attrs: { colspan: 1, rowspan: 1, colwidth: null },
+                                  content: [
+                                    {
+                                      type: "paragraph",
+                                      content: [{ type: "text", text: "Nested cell table" }]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
                     }
                   ]
                 }
@@ -826,6 +907,14 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
       }
     },
     {
+      input: createNestedTableDocseraDocumentEnvelope(),
+      label: "nested table document",
+      expected: {
+        ok: true,
+        migratedLegacyDocument: false
+      }
+    },
+    {
       input: {
         schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
         document: {
@@ -952,8 +1041,8 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
       },
       label: "table inside blockquote",
       expected: {
-        ok: false,
-        reason: "invalid-document"
+        ok: true,
+        migratedLegacyDocument: false
       }
     },
     {
@@ -1006,8 +1095,8 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
       },
       label: "table cell blockquote containing table",
       expected: {
-        ok: false,
-        reason: "invalid-document"
+        ok: true,
+        migratedLegacyDocument: false
       }
     },
     {

@@ -40,7 +40,8 @@ const DOCSERA_NESTED_BLOCK_CHILD_TYPES = new Set([
   "taskList",
   "blockquote",
   "horizontalRule",
-  "codeBlock"
+  "codeBlock",
+  "table"
 ]);
 const DOCSERA_TABLE_CELL_TYPES = new Set(["tableCell", "tableHeader"]);
 

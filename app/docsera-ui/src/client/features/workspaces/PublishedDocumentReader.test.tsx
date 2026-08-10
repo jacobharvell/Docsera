@@ -12,6 +12,7 @@ import {
   createEmptyHeadingHierarchyDocseraDocumentEnvelope,
   createExpandedTextFormattingDocseraDocumentEnvelope,
   createHeadingHierarchyDocseraDocumentEnvelope,
+  createNestedTableDocseraDocumentEnvelope,
   createRelativeLinkDocseraDocumentEnvelope,
   createStandardTableDocseraDocumentEnvelope,
   createSupportedE2DocseraDocumentEnvelope
@@ -196,6 +197,19 @@ describe("PublishedDocumentReader", () => {
     expect(within(table).getByRole("link", { name: "launch" })).toHaveAttribute("href", "https://example.com/launch");
     expect(within(table).getByText("launch").closest("em")).not.toBeNull();
     expect(within(table).getByText("Nested block").closest("ul")).toHaveClass("docsera-main__list");
+  });
+
+  it("renders supported nested tables recursively inside their containing blocks", () => {
+    const envelope = createNestedTableDocseraDocumentEnvelope();
+
+    renderReader(envelope);
+
+    const reader = screen.getByLabelText("Published page content");
+    const blockquote = reader.querySelector("blockquote.docsera-main__blockquote");
+    expect(blockquote).not.toBeNull();
+    expect(within(blockquote as HTMLElement).getByRole("table")).toHaveTextContent("Nested quote table");
+    expect(within(reader).getByText("Nested cell table").closest("table")).toHaveClass("docsera-main__table");
+    expect(reader.querySelectorAll(".docsera-main__table-wrapper")).toHaveLength(3);
   });
 
   it("shares duplicate heading anchors with the TOC and skips empty headings", () => {

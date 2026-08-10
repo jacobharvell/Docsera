@@ -48,7 +48,7 @@ describe("resolveHoverTargetBlockIndex", () => {
     expect(resolveHoverTargetBlockIndex(blockRects, { clientX: 220, clientY: 305 })).toBeNull();
   });
 
-  it("resolves nested content to the top-level block that owns its geometry", () => {
+  it("resolves nested descendants such as in-block tables to the top-level block that owns their geometry", () => {
     expect(resolveHoverTargetBlockIndex(blockRects, { clientX: 260, clientY: 200 })).toBe(1);
   });
 

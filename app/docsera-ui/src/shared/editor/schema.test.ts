@@ -1,4 +1,5 @@
 import { isAllowedUri } from "@tiptap/extension-link";
+import { DOMParser, Fragment } from "@tiptap/pm/model";
 import { describe, expect, it } from "vitest";
 import {
   createCodeBlockWhitespaceDocseraDocumentEnvelope,
@@ -6,11 +7,12 @@ import {
   createDuplicateHeadingDocseraDocumentEnvelope,
   createEmptyHeadingDocseraDocumentEnvelope,
   createExpandedTextFormattingDocseraDocumentEnvelope,
+  createNestedTableDocseraDocumentEnvelope,
   createNestedTaskListDocseraDocumentEnvelope,
   createSupportedE2DocseraDocumentEnvelope,
   createTaskCheckedStateDocseraDocumentEnvelope
 } from "./documentFixtures";
-import { isDocseraAllowedLinkHref, validateDocseraStructuredDocument } from "./schema";
+import { getDocseraEditorSchema, isDocseraAllowedLinkHref, validateDocseraStructuredDocument } from "./schema";
 
 describe("Docsera structured document validation", () => {
   it.each([
@@ -22,7 +24,8 @@ describe("Docsera structured document validation", () => {
     ["combined inline marks document", createCombinedInlineMarksDocseraDocumentEnvelope().document],
     ["duplicate heading document", createDuplicateHeadingDocseraDocumentEnvelope().document],
     ["empty heading document", createEmptyHeadingDocseraDocumentEnvelope().document],
-    ["expanded text formatting document", createExpandedTextFormattingDocseraDocumentEnvelope().document]
+    ["expanded text formatting document", createExpandedTextFormattingDocseraDocumentEnvelope().document],
+    ["nested table document", createNestedTableDocseraDocumentEnvelope().document]
   ])("accepts %s at the raw validation boundary", (_label, document) => {
     expect(validateDocseraStructuredDocument(document)).toEqual({ ok: true });
   });
@@ -300,6 +303,108 @@ describe("Docsera structured document validation", () => {
     expect(validateDocseraStructuredDocument(document)).toEqual({
       ok: false,
       message: "The stored page content does not contain a valid TipTap document."
+    });
+  });
+});
+
+describe("Docsera active table schema", () => {
+  it("registers the canonical table node family without Docsera-specific alignment attributes", () => {
+    const schema = getDocseraEditorSchema();
+    const cell = schema.nodes.tableCell.createAndFill();
+    const header = schema.nodes.tableHeader.createAndFill();
+
+    expect(schema.nodes.table).toBeDefined();
+    expect(schema.nodes.tableRow).toBeDefined();
+    expect(cell?.attrs).toEqual({
+      colspan: 1,
+      rowspan: 1,
+      colwidth: null
+    });
+    expect(header?.attrs).toEqual({
+      colspan: 1,
+      rowspan: 1,
+      colwidth: null
+    });
+  });
+
+  it("keeps tables in the standard block group so supported containers can nest them", () => {
+    const schema = getDocseraEditorSchema();
+    const table = schema.nodes.table.createAndFill();
+    const paragraph = schema.nodes.paragraph.create();
+
+    expect(table).not.toBeNull();
+    if (!table) {
+      throw new Error("Expected table schema to create a default table.");
+    }
+
+    expect(table.type.spec.group).toBe("block");
+    expect(schema.nodes.doc.validContent(Fragment.from(table))).toBe(true);
+    expect(schema.nodes.blockquote.validContent(Fragment.from(paragraph))).toBe(true);
+    expect(schema.nodes.blockquote.validContent(Fragment.from(table))).toBe(true);
+    expect(schema.nodes.listItem.validContent(Fragment.from(paragraph))).toBe(true);
+    expect(schema.nodes.listItem.validContent(Fragment.fromArray([paragraph, table]))).toBe(true);
+    expect(schema.nodes.taskItem.validContent(Fragment.from(paragraph))).toBe(true);
+    expect(schema.nodes.taskItem.validContent(Fragment.fromArray([paragraph, table]))).toBe(true);
+    expect(schema.nodes.tableCell.validContent(Fragment.from(table))).toBe(true);
+  });
+
+  it("accepts indirect nested table structures allowed by the standard block schema", () => {
+    const schema = getDocseraEditorSchema();
+    const table = schema.nodes.table.createAndFill();
+    const paragraph = schema.nodes.paragraph.create();
+    const blockquoteWithParagraph = schema.nodes.blockquote.create(null, paragraph);
+
+    expect(table).not.toBeNull();
+    if (!table) {
+      throw new Error("Expected table schema to create a default table.");
+    }
+
+    expect(schema.nodes.tableCell.validContent(Fragment.from(blockquoteWithParagraph))).toBe(true);
+    expect(schema.nodes.blockquote.validContent(Fragment.from(table))).toBe(true);
+    expect(() =>
+      schema
+        .nodeFromJSON({
+          type: "doc",
+          content: [
+            {
+              type: "table",
+              content: [
+                {
+                  type: "tableRow",
+                  content: [
+                    {
+                      type: "tableCell",
+                      attrs: { colspan: 1, rowspan: 1, colwidth: null },
+                      content: [
+                        {
+                          type: "blockquote",
+                          content: [table.toJSON()]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        })
+        .check()
+    ).not.toThrow();
+  });
+
+  it("drops malformed pasted table column widths instead of producing non-canonical cell attrs", () => {
+    const schema = getDocseraEditorSchema();
+    const container = window.document.createElement("div");
+    container.innerHTML = "<table><tbody><tr><td colwidth=\"bad\">Cell</td></tr></tbody></table>";
+
+    const document = DOMParser.fromSchema(schema).parse(container);
+    const tableCell = document.firstChild?.firstChild?.firstChild;
+
+    expect(tableCell?.type.name).toBe("tableCell");
+    expect(tableCell?.attrs).toEqual({
+      colspan: 1,
+      rowspan: 1,
+      colwidth: null
     });
   });
 });

@@ -16,6 +16,7 @@ import {
   createExpandedTextFormattingDocseraDocumentEnvelope,
   createLargeCanonicalDocseraDocumentEnvelope,
   createLegacyDocseraDocument,
+  createNestedTableDocseraDocumentEnvelope,
   createNestedTaskListDocseraDocumentEnvelope,
   createStandardTableDocseraDocumentEnvelope,
   createTaskCheckedStateDocseraDocumentEnvelope,
@@ -272,6 +273,19 @@ describe("Docsera document envelope", () => {
       envelope,
       migratedLegacyDocument: false
     });
+  });
+
+  it("round-trips supported nested table structures without flattening or dropping them", () => {
+    const envelope = createNestedTableDocseraDocumentEnvelope();
+    const parsed = parseDocseraDocument(serializeDocseraDocument(envelope));
+
+    expect(parsed).toEqual({
+      ok: true,
+      envelope,
+      migratedLegacyDocument: false
+    });
+    expect(JSON.stringify(parsed.ok ? parsed.envelope.document : {})).toContain("Nested quote table");
+    expect(JSON.stringify(parsed.ok ? parsed.envelope.document : {})).toContain("Nested cell table");
   });
 
   it("collects table cell and header content in extracted plain text", () => {

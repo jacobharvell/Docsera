@@ -87,12 +87,12 @@ This keeps slash and Quick Add on the same command registry while also keeping t
 Slash and Quick Add now share one editor-owned transient query presentation path.
 
 - `PageEditorHostRuntime.tsx` registers one ProseMirror plugin keyed by `docseraCommandQueryPresentation`
-- opening either selector dispatches transaction metadata that records the owner top-level paragraph position, current query, and selector source
-- the plugin renders one owner paragraph marker plus inline widget decorations at the real caret position instead of relying on paragraph pseudo-elements
+- opening either selector dispatches transaction metadata that records the owner textblock position, current query, and selector source
+- the plugin renders one owner textblock marker plus inline widget decorations at the real caret position instead of relying on paragraph pseudo-elements
 - the empty-query state renders `/` before the caret and `Type to search` after the caret
 - the typed-query state renders one transient `/<query>` inline widget so the real typed query remains visible in the installed runtime
 - query changes replace the same decoration state; they do not append additional decorations, mutate editor JSON, add undo depth, dirty the session, or trigger autosave
-- document transactions map the stored owner position through ProseMirror transaction mapping and drop the presentation if the mapped node is no longer a top-level paragraph
+- document transactions map the stored owner position through ProseMirror transaction mapping and drop the presentation if the mapped owner textblock no longer resolves
 
 The installed-runtime failure traced back to the previous correction using a paragraph pseudo-element path that could not reliably surface the helper text and typed query inside the deployed shadow runtime. The correction moves the full visible slash/query/helper presentation into the shared ProseMirror plugin instead of repairing the DOM from React or depending on global CSS behavior.
 

@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import type { Editor } from "@tiptap/core";
+import type { Editor, JSONContent } from "@tiptap/core";
 import { undoDepth } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
 import type { DocseraTiptapDocument } from "../../shared/editor/document";
@@ -26,6 +26,7 @@ import {
   createSuccessPage,
   openLinkSurface,
   openSlashQuery,
+  openSlashQueryAtSelection,
   pasteIntoEditor,
   renderRuntime,
   runAutosave,
@@ -258,6 +259,179 @@ function expectCanonicalDocument(editor: Editor, expected: unknown) {
   expect(parsed.document).toEqual(expected);
 }
 
+function createCanonicalDefaultTableNode() {
+  return {
+    type: "table",
+    content: Array.from({ length: 3 }, () => ({
+      type: "tableRow",
+      content: Array.from({ length: 3 }, () => ({
+        type: "tableCell",
+        attrs: {
+          colspan: 1,
+          rowspan: 1,
+          colwidth: null
+        },
+        content: [{ type: "paragraph" }]
+      }))
+    }))
+  };
+}
+
+function createNestedTableDocument() {
+  return {
+    type: "doc",
+    content: [
+      {
+        type: "table",
+        content: [
+          {
+            type: "tableRow",
+            content: [
+              {
+                type: "tableCell",
+                attrs: {
+                  colspan: 1,
+                  rowspan: 1,
+                  colwidth: null
+                },
+                content: [createCanonicalDefaultTableNode()]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  };
+}
+
+function getFirstTableCellParagraphPosition(editor: Editor): number {
+  let position: number | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (position === null && node.type.name === "paragraph") {
+      const $pos = editor.state.doc.resolve(pos);
+      for (let depth = $pos.depth; depth > 0; depth -= 1) {
+        const nodeName = $pos.node(depth).type.name;
+        if (nodeName === "tableCell" || nodeName === "tableHeader") {
+          position = pos;
+          return false;
+        }
+      }
+    }
+
+    return true;
+  });
+
+  if (position === null) {
+    throw new Error("Expected a paragraph inside the first table cell.");
+  }
+
+  return position;
+}
+
+function getFirstTextblockPositionInsideNode(editor: Editor, ancestorTypeName: string): number {
+  let position: number | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (position !== null || !node.isTextblock) {
+      return position === null;
+    }
+
+    const $pos = editor.state.doc.resolve(pos);
+    for (let depth = $pos.depth; depth > 0; depth -= 1) {
+      if ($pos.node(depth).type.name === ancestorTypeName) {
+        position = pos;
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  if (position === null) {
+    throw new Error(`Expected a textblock inside ${ancestorTypeName}.`);
+  }
+
+  return position;
+}
+
+function getFirstTextblockPositionInsideNestedTable(editor: Editor): number {
+  let position: number | null = null;
+  editor.state.doc.descendants((node, pos) => {
+    if (position !== null || !node.isTextblock) {
+      return position === null;
+    }
+
+    const $pos = editor.state.doc.resolve(pos);
+    let tableDepth = 0;
+    for (let depth = $pos.depth; depth > 0; depth -= 1) {
+      if ($pos.node(depth).type.name === "table") {
+        tableDepth += 1;
+      }
+    }
+
+    if (tableDepth >= 2) {
+      position = pos;
+      return false;
+    }
+
+    return true;
+  });
+
+  if (position === null) {
+    throw new Error("Expected a textblock inside a nested table cell.");
+  }
+
+  return position;
+}
+
+async function selectFirstTableCellText(editor: Editor, text: string) {
+  const paragraphPosition = getFirstTableCellParagraphPosition(editor);
+  await act(async () => {
+    editor.commands.setTextSelection({
+      from: paragraphPosition + 1,
+      to: paragraphPosition + 1 + text.length
+    });
+  });
+}
+
+function getJsonContentChildren(node: JSONContent): JSONContent[] {
+  return Array.isArray(node.content) ? node.content : [];
+}
+
+function getFirstTableCellParagraphContent(editor: Editor): JSONContent[] {
+  const table = editor.getJSON().content?.find((node) => node.type === "table");
+  for (const row of table ? getJsonContentChildren(table) : []) {
+    if (row.type !== "tableRow") {
+      continue;
+    }
+
+    for (const cell of getJsonContentChildren(row)) {
+      if (cell.type !== "tableCell" && cell.type !== "tableHeader") {
+        continue;
+      }
+
+      const paragraph = getJsonContentChildren(cell).find((node) => node.type === "paragraph");
+      if (paragraph) {
+        return getJsonContentChildren(paragraph);
+      }
+    }
+  }
+
+  throw new Error("Expected paragraph content inside the first table cell.");
+}
+
+function documentContainsTopLevelTable(document: DocseraTiptapDocument): boolean {
+  return document.content?.some((node) => {
+    return typeof node === "object" && node !== null && "type" in node && node.type === "table";
+  }) === true;
+}
+
+function getTopLevelNodeType(document: DocseraTiptapDocument, index: number): string | null {
+  const node = document.content?.[index];
+  return typeof node === "object" && node !== null && "type" in node && typeof node.type === "string"
+    ? node.type
+    : null;
+}
+
 async function openQuickAdd(editor: Editor, pointer: { clientX: number; clientY: number }, buttonName: string) {
   const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
   if (!(surface instanceof HTMLElement)) {
@@ -280,7 +454,7 @@ async function dispatchOwnerPointerEvent(
     pointerId?: number;
     pointerType?: string;
   } = {}
-) {
+): Promise<boolean> {
   const event = new Event(type, { bubbles: true, cancelable: true });
   Object.defineProperties(event, {
     clientX: {
@@ -321,6 +495,7 @@ async function dispatchOwnerPointerEvent(
       target instanceof Node && target.isConnected && target.ownerDocument === ownerDocument ? target : ownerDocument;
     dispatchTarget.dispatchEvent(event);
   });
+  return event.defaultPrevented;
 }
 
 async function dispatchOwnerPointerMove(
@@ -330,6 +505,42 @@ async function dispatchOwnerPointerMove(
   options: { composedPath?: Array<EventTarget | null | undefined>; pointerId?: number; pointerType?: string } = {}
 ) {
   await dispatchOwnerPointerEvent(ownerDocument, target, "pointermove", point, options);
+}
+
+async function activateCommandOptionWithBrowserPointer(
+  editor: Editor,
+  option: HTMLElement,
+  point: { clientX: number; clientY: number } = { clientX: 180, clientY: 120 },
+  options: { beforeClick?: () => void } = {}
+) {
+  const pointerDefaultPrevented = await dispatchOwnerPointerEvent(
+    option.ownerDocument,
+    option,
+    "pointerdown",
+    point,
+    { button: 0, buttons: 1 }
+  );
+
+  expect(pointerDefaultPrevented).toBe(true);
+
+  if (!pointerDefaultPrevented) {
+    await act(async () => {
+      editor.view.dom.blur();
+      option.focus();
+    });
+  }
+
+  if (options.beforeClick) {
+    await act(async () => {
+      options.beforeClick?.();
+    });
+  }
+
+  await act(async () => {
+    fireEvent.mouseDown(option, { button: 0, buttons: 1, ...point });
+    fireEvent.mouseUp(option, { button: 0, buttons: 0, ...point });
+    fireEvent.click(option, { button: 0, buttons: 0, ...point });
+  });
 }
 
 function createCanonicalOrderedListNode(content: Array<Record<string, unknown>>) {
@@ -545,6 +756,56 @@ describe("PageEditorHostRuntime", () => {
     expect(getCommandQueryPresentationState(editor)).toBeNull();
     expect(editor.getJSON()).toEqual(before);
     expect(undoDepth(editor.state)).toBe(beforeUndoDepth);
+  });
+
+  it("renders nested slash query presentation in owned textblocks and removes it on execute", async () => {
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createNestedTableDocument() as DocseraTiptapDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const nestedTableParagraphPosition = getFirstTextblockPositionInsideNestedTable(editor);
+
+    await act(async () => {
+      editor.commands.setTextSelection(nestedTableParagraphPosition + 1);
+      editor.commands.focus(undefined, { scrollIntoView: false });
+    });
+
+    const before = editor.getJSON();
+
+    await openSlashQueryAtSelection(editor);
+    await waitFor(() => {
+      expect(getCommandQueryParagraph(editor)).toBeInTheDocument();
+      expect(getCommandQuerySlash(editor)).toHaveTextContent("/");
+      expect(getCommandQueryHelper(editor)).toHaveTextContent("Type to search");
+      expect(getCommandQueryInline(editor)).toBeNull();
+    });
+    expect(editor.getJSON()).toEqual(before);
+
+    for (const character of "tab") {
+      fireEvent.keyDown(editor.view.dom, { key: character });
+    }
+
+    await waitFor(() => {
+      const slashMenu = screen.getByRole("listbox", { name: "Slash command menu" });
+      expect(getCommandQueryInline(editor)).toHaveTextContent("/tab");
+      expect(getCommandQuerySlash(editor)).toBeNull();
+      expect(getCommandQueryHelper(editor)).toBeNull();
+      expect(getOptionNames(slashMenu)).toContain("Table");
+    });
+
+    fireEvent.keyDown(editor.view.dom, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: "Slash command menu" })).toBeNull();
+      expect(getCommandQueryPresentationState(editor)).toBeNull();
+      expect(getCommandQueryParagraph(editor)).toBeNull();
+    });
+    expect(editor.getJSON()).not.toEqual(before);
   });
 
   it("supports arrow navigation, Enter execution, and pointer execution for slash commands", async () => {
@@ -1204,7 +1465,8 @@ describe("PageEditorHostRuntime", () => {
       "Bulleted List",
       "Numbered List",
       "Code Block",
-      "Horizontal Rule"
+      "Horizontal Rule",
+      "Table"
     ]);
     fireEvent.keyDown(editor.view.dom, { key: "h" });
     fireEvent.keyDown(editor.view.dom, { key: "e" });
@@ -3752,6 +4014,445 @@ describe("PageEditorHostRuntime", () => {
     if (label === "Horizontal Rule") {
       expect(editor.getJSON().content?.[1]).toMatchObject(expected.content[1]);
     }
+  });
+
+  it("creates the same 3 x 3 no-header table through Slash and Quick Add with focus in the first cell", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await openSlashQuery(editor, "table");
+    await activateCommandOptionWithBrowserPointer(editor, await screen.findByRole("option", { name: /Table/ }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: "Slash command menu" })).toBeNull();
+    });
+    expectCanonicalDocument(editor, {
+      type: "doc",
+      content: [createCanonicalDefaultTableNode()]
+    });
+    expect(editor.state.selection.from).toBe(getFirstTableCellParagraphPosition(editor) + 1);
+    expect(editor.view.dom.children).toHaveLength(1);
+
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [{ type: "paragraph" }]
+      });
+    });
+
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    await openQuickAdd(editor, { clientX: 120, clientY: 64 }, "Add block after Text");
+    const quickAddMenu = await screen.findByRole("listbox", { name: "Insert block after Text" });
+    await activateCommandOptionWithBrowserPointer(editor, within(quickAddMenu).getByRole("option", { name: /Table/ }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: "Insert block after Text" })).toBeNull();
+    });
+    expectCanonicalDocument(editor, {
+      type: "doc",
+      content: [{ type: "paragraph" }, createCanonicalDefaultTableNode()]
+    });
+    expect(editor.state.selection.from).toBe(getFirstTableCellParagraphPosition(editor) + 1);
+    expect(editor.view.dom.children).toHaveLength(2);
+    const quickAddPointerJson = editor.getJSON();
+
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [{ type: "paragraph" }]
+      });
+    });
+
+    await openQuickAdd(editor, { clientX: 120, clientY: 64 }, "Add block after Text");
+    for (const character of "table") {
+      fireEvent.keyDown(editor.view.dom, { key: character });
+    }
+    const quickAddKeyboardMenu = await screen.findByRole("listbox", { name: "Insert block after Text" });
+    expect(within(quickAddKeyboardMenu).getByRole("option", { name: /Table/ })).toBeInTheDocument();
+    fireEvent.keyDown(editor.view.dom, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: "Insert block after Text" })).toBeNull();
+    });
+    expectCanonicalDocument(editor, {
+      type: "doc",
+      content: [{ type: "paragraph" }, createCanonicalDefaultTableNode()]
+    });
+    expect(editor.state.selection.from).toBe(getFirstTableCellParagraphPosition(editor) + 1);
+    expect(editor.getJSON()).toEqual(quickAddPointerJson);
+
+    geometrySpy.mockRestore();
+  });
+
+  it.each([
+    [
+      "Heading 1",
+      "heading",
+      {
+        type: "doc",
+        content: [{ type: "heading", attrs: { level: 1 } }]
+      }
+    ],
+    [
+      "Blockquote",
+      "quote",
+      {
+        type: "doc",
+        content: [{ type: "blockquote", content: [{ type: "paragraph" }] }]
+      }
+    ],
+    [
+      "Table",
+      "table",
+      {
+        type: "doc",
+        content: [createCanonicalDefaultTableNode()]
+      }
+    ]
+  ])("keeps Slash pointer activation equivalent to Enter for %s", async (label, query, expected) => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await openSlashQuery(editor, query);
+    fireEvent.keyDown(editor.view.dom, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: "Slash command menu" })).toBeNull();
+    });
+    expectCanonicalDocument(editor, expected);
+    const keyboardJson = editor.getJSON();
+
+    await act(async () => {
+      editor.commands.setContent({ type: "doc", content: [{ type: "paragraph" }] });
+    });
+
+    await openSlashQuery(editor, query);
+    const option = await screen.findByRole("option", { name: new RegExp(label, "i") });
+    await activateCommandOptionWithBrowserPointer(editor, option);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: "Slash command menu" })).toBeNull();
+    });
+    expect(editor.getJSON()).toEqual(keyboardJson);
+    expectCanonicalDocument(editor, expected);
+  });
+
+  it("creates a nested table from Slash when the active schema permits that context", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "blockquote",
+          content: [{ type: "paragraph" }]
+        }
+      ]
+    };
+    const expected = {
+      type: "doc",
+      content: [
+        {
+          type: "blockquote",
+          content: [createCanonicalDefaultTableNode()]
+        }
+      ]
+    };
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setTextSelection(getFirstTextblockPositionInsideNode(editor, "blockquote") + 1);
+    });
+    await openSlashQuery(editor, "table");
+    expect(await screen.findByRole("option", { name: /Table/ })).toBeInTheDocument();
+    fireEvent.keyDown(editor.view.dom, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: "Slash command menu" })).toBeNull();
+    });
+    expectCanonicalDocument(editor, expected);
+
+    await act(async () => {
+      editor.commands.setContent(initial);
+      editor.commands.setTextSelection(getFirstTextblockPositionInsideNode(editor, "blockquote") + 1);
+    });
+
+    await openSlashQuery(editor, "table");
+    const option = await screen.findByRole("option", { name: /Table/ });
+    await activateCommandOptionWithBrowserPointer(editor, option);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: "Slash command menu" })).toBeNull();
+    });
+    expectCanonicalDocument(editor, expected);
+  });
+
+  it.each([
+    [
+      "Heading 1",
+      "heading",
+      {
+        type: "doc",
+        content: [{ type: "paragraph" }, { type: "heading", attrs: { level: 1 } }]
+      }
+    ],
+    [
+      "Blockquote",
+      "quote",
+      {
+        type: "doc",
+        content: [{ type: "paragraph" }, { type: "blockquote", content: [{ type: "paragraph" }] }]
+      }
+    ],
+    [
+      "Table",
+      "table",
+      {
+        type: "doc",
+        content: [{ type: "paragraph" }, createCanonicalDefaultTableNode()]
+      }
+    ]
+  ])("keeps Quick Add pointer activation equivalent to Enter for %s", async (label, query, expected) => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+
+    await openQuickAdd(editor, { clientX: 120, clientY: 64 }, "Add block after Text");
+    for (const character of query) {
+      fireEvent.keyDown(editor.view.dom, { key: character });
+    }
+    fireEvent.keyDown(editor.view.dom, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: "Insert block after Text" })).toBeNull();
+    });
+    expectCanonicalDocument(editor, expected);
+    const keyboardJson = editor.getJSON();
+
+    await act(async () => {
+      editor.commands.setContent({ type: "doc", content: [{ type: "paragraph" }] });
+    });
+
+    await openQuickAdd(editor, { clientX: 120, clientY: 64 }, "Add block after Text");
+    for (const character of query) {
+      fireEvent.keyDown(editor.view.dom, { key: character });
+    }
+    const quickAddMenu = await screen.findByRole("listbox", { name: "Insert block after Text" });
+    const option = within(quickAddMenu).getByRole("option", { name: new RegExp(label, "i") });
+    await activateCommandOptionWithBrowserPointer(editor, option);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: "Insert block after Text" })).toBeNull();
+    });
+    expect(editor.getJSON()).toEqual(keyboardJson);
+    expectCanonicalDocument(editor, expected);
+
+    geometrySpy.mockRestore();
+  });
+
+  it("exposes Table in top-level Slash, Quick Add, and schema-valid nested Slash contexts", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await openSlashQuery(editor, "table");
+    expect(await screen.findByRole("option", { name: /Table/ })).toBeInTheDocument();
+    fireEvent.keyDown(editor.view.dom, { key: "Escape" });
+
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    await openQuickAdd(editor, { clientX: 120, clientY: 64 }, "Add block after Text");
+    const quickAddMenu = await screen.findByRole("listbox", { name: "Insert block after Text" });
+    expect(within(quickAddMenu).getByRole("option", { name: /Table/ })).toBeInTheDocument();
+    fireEvent.keyDown(editor.view.dom, { key: "Escape" });
+    geometrySpy.mockRestore();
+
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [{ type: "blockquote", content: [{ type: "paragraph" }] }]
+      });
+      editor.commands.setTextSelection(getFirstTextblockPositionInsideNode(editor, "blockquote") + 1);
+    });
+    fireEvent.keyDown(editor.view.dom, { key: "/" });
+    let slashMenu = await screen.findByRole("listbox", { name: "Slash command menu" });
+    expect(getOptionNames(slashMenu)).toContain("Table");
+    fireEvent.keyDown(editor.view.dom, { key: "Escape" });
+
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "bulletList",
+            content: [{ type: "listItem", content: [{ type: "paragraph" }] }]
+          }
+        ]
+      });
+      editor.commands.setTextSelection(getFirstTextblockPositionInsideNode(editor, "listItem") + 1);
+    });
+    fireEvent.keyDown(editor.view.dom, { key: "/" });
+    slashMenu = await screen.findByRole("listbox", { name: "Slash command menu" });
+    expect(getOptionNames(slashMenu)).toContain("Table");
+  });
+
+  it("suppresses empty-cell placeholders and keeps Table available from in-cell Slash when schema-valid", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await openSlashQuery(editor, "table");
+    fireEvent.click(await screen.findByRole("option", { name: /Table/ }));
+
+    const firstCellParagraph = editor.view.dom.querySelector(".tableWrapper td p");
+    expect(firstCellParagraph).not.toHaveAttribute("data-placeholder");
+
+    await act(async () => {
+      editor.commands.setTextSelection(getFirstTableCellParagraphPosition(editor) + 1);
+    });
+    fireEvent.keyDown(editor.view.dom, { key: "/" });
+    const slashMenu = await screen.findByRole("listbox", { name: "Slash command menu" });
+    const optionNames = getOptionNames(slashMenu);
+    expect(optionNames).toContain("Table");
+    expect(optionNames).toContain("Blockquote");
+    expect(optionNames).toContain("Code Block");
+  });
+
+  it("preserves text formatting and link controls inside table cells", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await openSlashQuery(editor, "table");
+    fireEvent.click(await screen.findByRole("option", { name: /Table/ }));
+
+    await act(async () => {
+      editor.commands.insertContent("Cell link");
+    });
+    await selectFirstTableCellText(editor, "Cell");
+    const toolbar = await screen.findByRole("toolbar", { name: "Text formatting" });
+    fireEvent.click(within(toolbar).getByRole("button", { name: "Bold" }));
+
+    await selectFirstTableCellText(editor, "Cell");
+    fireEvent.click((await screen.findByRole("toolbar", { name: "Text formatting" })).querySelector("[aria-label='Link']") as HTMLElement);
+    const dialog = await screen.findByRole("dialog", { name: "Create link" });
+    const linkInput = getLinkInput(dialog);
+    await act(async () => {
+      fireEvent.change(linkInput, { target: { value: "https://example.com/table-cell" } });
+    });
+    fireEvent.keyDown(linkInput, { key: "Enter" });
+
+    const firstCellContent = getFirstTableCellParagraphContent(editor);
+    expect(firstCellContent[0]).toMatchObject({
+      type: "text",
+      text: "Cell",
+      marks: expect.arrayContaining([
+        { type: "bold" },
+        expect.objectContaining({
+          type: "link",
+          attrs: expect.objectContaining({ href: "https://example.com/table-cell" })
+        })
+      ])
+    });
+  });
+
+  it("pastes ordinary sanitized HTML tables and preserves supported nested table content", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await pasteIntoEditor(
+      editor,
+      "<table><tbody><tr><th>Head</th><th>Unsafe<script>alert(1)</script></th></tr><tr><td colspan=\"2\"><a href=\"javascript:alert(1)\">bad</a></td></tr></tbody></table>"
+    );
+
+    const parsed = parseDocseraDocumentOrThrow(editor.getJSON());
+    expect(documentContainsTopLevelTable(parsed.document)).toBe(true);
+    expect(JSON.stringify(parsed.document)).not.toContain("script");
+    expect(JSON.stringify(parsed.document)).not.toContain("javascript:alert");
+    expect(getTopLevelNodeType(parsed.document, 0)).toBe("table");
+
+    await act(async () => {
+      editor.commands.setContent({ type: "doc", content: [{ type: "paragraph" }] });
+    });
+    await pasteIntoEditor(editor, "<table><tr><td>Outer<table><tr><td>Inner</td></tr></table></td></tr></table>");
+    const nestedParsed = parseDocseraDocumentOrThrow(editor.getJSON());
+    const nestedJson = JSON.stringify(nestedParsed.document);
+    expect(nestedJson.match(/"type":"table"/g)).toHaveLength(2);
+    expect(nestedJson).toContain("Inner");
+  });
+
+  it("duplicates and deletes a complete table through existing whole-block actions", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await openSlashQuery(editor, "table");
+    fireEvent.click(await screen.findByRole("option", { name: /Table/ }));
+
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 96)]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to be available.");
+    }
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+    expect(await screen.findByRole("button", { name: "Add block after Table" })).toBeInTheDocument();
+    const handle = await screen.findByRole("button", { name: "Select block: Table" });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
+    let menu = await screen.findByRole("menu", { name: "Block actions for Table" });
+    expect(getMenuItemNames(menu, "menuitem")).toEqual(["Duplicate", "Delete"]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Duplicate" }));
+
+    await waitFor(() => {
+      expect(editor.getJSON().content?.filter((node) => node.type === "table")).toHaveLength(2);
+    });
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+    const duplicateHandle = await screen.findByRole("button", { name: "Select block: Table" });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, duplicateHandle, "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, duplicateHandle, "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
+    menu = await screen.findByRole("menu", { name: "Block actions for Table" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(editor.getJSON().content?.filter((node) => node.type === "table")).toHaveLength(1);
+    });
+
+    geometrySpy.mockRestore();
   });
 
   it("renders the compact toolbar in the accepted order with platform-aware tooltip labels", async () => {

@@ -240,6 +240,31 @@ async function setDocument(editor: Editor, document: Parameters<Editor["commands
   });
 }
 
+function createCanonicalDefaultTableNode(cellText = "Cell") {
+  return {
+    type: "table",
+    content: Array.from({ length: 3 }, (_row, rowIndex) => ({
+      type: "tableRow",
+      content: Array.from({ length: 3 }, (_cell, columnIndex) => ({
+        type: "tableCell",
+        attrs: {
+          colspan: 1,
+          rowspan: 1,
+          colwidth: null
+        },
+        content: [
+          rowIndex === 0 && columnIndex === 0 && cellText
+            ? {
+                type: "paragraph",
+                content: [{ type: "text", text: cellText }]
+              }
+            : { type: "paragraph" }
+        ]
+      }))
+    }))
+  };
+}
+
 async function setRangeDragDocument(editor: Editor) {
   await setDocument(editor, {
     type: "doc",
@@ -1582,6 +1607,58 @@ describe("PageEditorHostRuntime block drag", () => {
       expect(feedback?.innerHTML).not.toContain("data-docsera-block-gutter");
       expect(feedback?.style.left).toBe("172px");
       expect(feedback?.style.top).toBe("190px");
+    } finally {
+      geometry.mockRestore();
+    }
+  });
+
+  it("moves a tableWrapper as one top-level block through the generic drag handle", async () => {
+    const { editorReady } = renderRuntime();
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0]!;
+    await setDocument(editor, {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Alpha" }]
+        },
+        createCanonicalDefaultTableNode("Cell"),
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Omega" }]
+        }
+      ]
+    });
+    const geometry = mockTopLevelBlockGeometry(editor, [
+      new DOMRect(132, 100, 620, 36),
+      new DOMRect(132, 148, 620, 96),
+      new DOMRect(132, 292, 620, 36)
+    ]);
+
+    try {
+      const ownerDocument = getEditorSurface(editor).ownerDocument;
+      const handle = await hoverFirstVisibleHandle(editor, 160, 180);
+
+      expect(handle).toHaveAccessibleName("Select block: Table");
+
+      await dispatchOwnerPointerEvent(ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 180 }, { button: 0, buttons: 1, pointerId: 1 });
+      await dispatchOwnerPointerEvent(ownerDocument, ownerDocument, "pointermove", { clientX: 160, clientY: 360 }, { buttons: 1, pointerId: 1 });
+
+      const preview = getFloatingBlockDragPreview();
+      expect(preview).toBeInTheDocument();
+      expect(preview?.childElementCount).toBe(1);
+      expect(preview?.querySelector(".tableWrapper")).toBeInstanceOf(HTMLElement);
+      expect(preview).toHaveTextContent("Cell");
+      expect(getFloatingBlockDropIndicator()).toBeInTheDocument();
+
+      await dispatchOwnerPointerEvent(ownerDocument, ownerDocument, "pointerup", { clientX: 160, clientY: 360 }, { button: 0, buttons: 0, pointerId: 1 });
+
+      expect(getTopLevelBlockSignatures(editor)).toEqual(["P:Alpha", "P:Omega", "DIV:Cell"]);
+      expect(getSelectedBlockTags(editor)).toEqual(["DIV"]);
+      expect(getSelectedBlockElement(editor)?.classList.contains("tableWrapper")).toBe(true);
+      expect(getFloatingBlockDragFeedback()).toBeNull();
+      expect(getFloatingBlockDropIndicator()).toBeNull();
     } finally {
       geometry.mockRestore();
     }

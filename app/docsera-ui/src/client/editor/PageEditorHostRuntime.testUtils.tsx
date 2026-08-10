@@ -320,6 +320,13 @@ async function openSlashQuery(editor: Editor, query = "") {
   }
 }
 
+async function openSlashQueryAtSelection(editor: Editor, query = "") {
+  fireEvent.keyDown(editor.view.dom, { key: "/" });
+  for (const character of query) {
+    fireEvent.keyDown(editor.view.dom, { key: character });
+  }
+}
+
 async function openLinkSurface(editor: Editor) {
   await act(async () => {
     editor.commands.focus(undefined, { scrollIntoView: false });
@@ -370,6 +377,7 @@ export {
   createSuccessPage,
   openLinkSurface,
   openSlashQuery,
+  openSlashQueryAtSelection,
   pasteIntoEditor,
   renderRuntime,
   runAutosave,

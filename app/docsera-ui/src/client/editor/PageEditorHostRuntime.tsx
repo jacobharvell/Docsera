@@ -1,4 +1,4 @@
-import { Extension, type Editor } from "@tiptap/core";
+import { Extension, type Editor, type JSONContent } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { createPortal } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
@@ -49,6 +49,7 @@ import {
   Pilcrow,
   Plus,
   Quote,
+  Table2,
   Trash2,
 } from "lucide-react";
 import { BLOCK_SELECTOR_STYLES } from "./BlockSelectorStyles";
@@ -168,6 +169,7 @@ type CommandSelectorState =
       placement: CommandSelectorPlacement;
       query: string;
       source: "slash";
+      ownerPos: number;
     };
 
 type BlockActionMenuState = {
@@ -194,6 +196,7 @@ type BlockSelectionState = {
 type SlashTriggerSelection = {
   blockIndex: number;
   from: number;
+  ownerPos: number;
   to: number;
 };
 
@@ -248,7 +251,6 @@ const VIEWPORT_GUTTER = 12;
 
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
 const AUTOSAVE_IDLE_MS = 700;
-
 class RuntimeBoundary extends React.Component<RuntimeBoundaryProps, RuntimeBoundaryState> {
   state: RuntimeBoundaryState = { hasError: false };
 
@@ -624,6 +626,8 @@ function getTopLevelBlockSelectionOffset(
   switch (node.type.name) {
     case "blockquote":
       return 2;
+    case "table":
+      return 4;
     case "bulletList":
     case "orderedList":
       return 3;
@@ -754,13 +758,14 @@ function resolveCommandQueryPresentationState(
     return null;
   }
 
-  const ownerPos = getTopLevelBlockPosition(editor, selector.ownerBlockIndex);
+  const ownerPos =
+    selector.source === "slash" ? selector.ownerPos : getTopLevelBlockPosition(editor, selector.ownerBlockIndex);
   if (ownerPos === null) {
     return null;
   }
 
-  const ownerBlock = getTopLevelBlockAtPosition(editor.state.doc, ownerPos);
-  if (!ownerBlock || ownerBlock.node.type.name !== "paragraph") {
+  const ownerBlock = getCommandQueryPresentationOwnerAtPosition(editor.state.doc, ownerPos);
+  if (!ownerBlock) {
     return null;
   }
 
@@ -780,14 +785,14 @@ function mapCommandQueryPresentationState(
   }
 
   const mappedOwnerPos = transaction.mapping.map(state.ownerPos, -1);
-  const mappedBlock = getTopLevelBlockAtPosition(transaction.doc, mappedOwnerPos);
-  if (!mappedBlock || mappedBlock.node.type.name !== "paragraph") {
+  const mappedOwnerBlock = getCommandQueryPresentationOwnerAtPosition(transaction.doc, mappedOwnerPos);
+  if (!mappedOwnerBlock) {
     return null;
   }
 
   return {
     ...state,
-    ownerPos: mappedBlock.from
+    ownerPos: mappedOwnerPos
   };
 }
 
@@ -819,8 +824,8 @@ function createCommandQueryPresentationExtension() {
                 return DecorationSet.empty;
               }
 
-              const ownerBlock = getTopLevelBlockAtPosition(state.doc, presentation.ownerPos);
-              if (!ownerBlock || ownerBlock.node.type.name !== "paragraph") {
+              const ownerBlock = getCommandQueryPresentationOwnerAtPosition(state.doc, presentation.ownerPos);
+              if (!ownerBlock) {
                 return DecorationSet.empty;
               }
 
@@ -889,6 +894,26 @@ export function getCommandQueryPresentationState(editor: Editor): CommandQueryPr
   return COMMAND_QUERY_PRESENTATION_PLUGIN_KEY.getState(editor.state) ?? null;
 }
 
+function getCommandQueryPresentationOwnerAtPosition(
+  doc: Editor["state"]["doc"],
+  position: number
+): {
+  from: number;
+  node: (typeof doc)["content"]["content"][number];
+  to: number;
+} | null {
+  const node = doc.nodeAt(position);
+  if (!node || !node.isTextblock) {
+    return null;
+  }
+
+  return {
+    from: position,
+    node,
+    to: position + node.nodeSize
+  };
+}
+
 function getSlashTriggerSelection(editor: Editor): SlashTriggerSelection | null {
   const { selection } = editor.state;
   if (!isTextSelection(selection) || !selection.empty || !editor.isEditable) {
@@ -913,6 +938,7 @@ function getSlashTriggerSelection(editor: Editor): SlashTriggerSelection | null 
 
   return {
     blockIndex,
+    ownerPos: $from.before($from.depth),
     from: selection.from,
     to: selection.to
   };
@@ -1279,6 +1305,10 @@ function resolveNearestVerticalBlockTarget(editor: Editor, clientY: number): Hov
 }
 
 function getTopLevelBlockLabel(element: HTMLElement): string {
+  if (element.classList.contains("tableWrapper")) {
+    return "Table";
+  }
+
   switch (element.tagName) {
     case "H1":
       return "Heading 1";
@@ -1720,6 +1750,8 @@ function BlockCommandIcon({ id }: { id: EditorBlockCommandId }) {
       return <Quote size={16} strokeWidth={2} />;
     case "horizontalRule":
       return <Minus size={16} strokeWidth={2} />;
+    case "table":
+      return <Table2 size={16} strokeWidth={2} />;
     case "codeBlock":
     default:
       return <Code2 size={16} strokeWidth={2} />;
@@ -1760,10 +1792,15 @@ function applyCommandSelectionOffset(
   return true;
 }
 
-function applySlashCommand(editor: Editor, ownerBlockIndex: number, command: EditorBlockCommand): boolean {
+function applySlashCommand(editor: Editor, selector: Extract<CommandSelectorState, { source: "slash" }>, command: EditorBlockCommand): boolean {
   editor.commands.focus(undefined, { scrollIntoView: false });
   applyBlockCommand(editor, command);
-  return applyCommandSelectionOffset(editor, ownerBlockIndex, command.slashSelectionOffset);
+  const topLevelOwnerPos = getTopLevelBlockPositionFromDoc(editor.state.doc, selector.ownerBlockIndex);
+  if (topLevelOwnerPos !== selector.ownerPos) {
+    return true;
+  }
+
+  return applyCommandSelectionOffset(editor, selector.ownerBlockIndex, command.slashSelectionOffset);
 }
 
 const TURN_INTO_EDITOR_BLOCK_COMMAND_IDS = [
@@ -1849,6 +1886,8 @@ function getTopLevelBlockLabelFromNode(
       return "Code Block";
     case "horizontalRule":
       return "Horizontal Rule";
+    case "table":
+      return "Table";
     case "paragraph":
     default:
       return "Text";
@@ -2036,26 +2075,58 @@ function replaceEmptyParagraphWithBlockquote(
   editor: Editor,
   blockIndex: number
 ): boolean {
+  return replaceEmptyParagraphWithCommandOutput(
+    editor,
+    blockIndex,
+    [
+      {
+        type: "blockquote",
+        content: [{ type: "paragraph" }]
+      }
+    ],
+    2
+  );
+}
+
+function replaceEmptyParagraphWithCommandOutput(
+  editor: Editor,
+  blockIndex: number,
+  content: JSONContent[],
+  selectionOffset: number | "continuation" | undefined
+): boolean {
   const blockRange = getTopLevelBlockRange(editor, blockIndex);
   const targetNode = blockIndex >= 0 && blockIndex < editor.state.doc.childCount ? editor.state.doc.child(blockIndex) : null;
-  if (!blockRange || !targetNode || targetNode.type.name !== "paragraph" || targetNode.content.size !== 0) {
+  if (
+    !blockRange ||
+    !targetNode ||
+    targetNode.type.name !== "paragraph" ||
+    targetNode.content.size !== 0 ||
+    selectionOffset === undefined
+  ) {
     return false;
   }
 
-  const blockquoteNode = editor.schema.nodeFromJSON({
-    type: "blockquote",
-    content: [{ type: "paragraph" }]
-  });
-  let transaction = editor.state.tr
-    .delete(blockRange.from, blockRange.to)
-    .insert(blockRange.from, blockquoteNode)
-    .setMeta(TIPTAP_SKIP_TRAILING_NODE_META, true);
+  const nextNodes = content.map((node) => editor.schema.nodeFromJSON(node));
 
-  const selectionAnchor = Math.min(blockRange.from + 2, Math.max(1, transaction.doc.content.size));
-  try {
-    transaction = transaction.setSelection(TextSelection.create(transaction.doc, selectionAnchor));
-  } catch {
-    transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(selectionAnchor), 1));
+  let transaction = editor.state.tr.delete(blockRange.from, blockRange.to).insert(blockRange.from, Fragment.fromArray(nextNodes));
+  if (selectionOffset !== "continuation") {
+    transaction = transaction.setMeta(TIPTAP_SKIP_TRAILING_NODE_META, true);
+  }
+
+  if (selectionOffset === "continuation") {
+    const continuationAnchor = Math.min(blockRange.from + nextNodes[0].nodeSize + 1, Math.max(1, transaction.doc.content.size));
+    try {
+      transaction = transaction.setSelection(TextSelection.create(transaction.doc, continuationAnchor));
+    } catch {
+      transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(continuationAnchor), 1));
+    }
+  } else {
+    const selectionAnchor = Math.min(blockRange.from + selectionOffset, Math.max(1, transaction.doc.content.size));
+    try {
+      transaction = transaction.setSelection(TextSelection.create(transaction.doc, selectionAnchor));
+    } catch {
+      transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(selectionAnchor), 1));
+    }
   }
 
   editor.view.dispatch(transaction);
@@ -2209,38 +2280,7 @@ function replaceQuickAddParagraph(
   blockIndex: number,
   command: EditorBlockCommand
 ): boolean {
-  const blockRange = getTopLevelBlockRange(editor, blockIndex);
-  const targetNode = blockIndex >= 0 && blockIndex < editor.state.doc.childCount ? editor.state.doc.child(blockIndex) : null;
-  if (!blockRange || !targetNode || targetNode.type.name !== "paragraph" || targetNode.content.size !== 0) {
-    return false;
-  }
-
-  const nextNodes = command.quickAdd.content.map((node) => editor.schema.nodeFromJSON(node));
-  let transaction = editor.state.tr.delete(blockRange.from, blockRange.to).insert(blockRange.from, Fragment.fromArray(nextNodes));
-  if (command.quickAdd.selectionOffset !== "continuation") {
-    transaction = transaction.setMeta(TIPTAP_SKIP_TRAILING_NODE_META, true);
-  }
-  if (command.quickAdd.selectionOffset === "continuation") {
-    const continuationAnchor = Math.min(blockRange.from + nextNodes[0].nodeSize + 1, Math.max(1, transaction.doc.content.size));
-    try {
-      transaction = transaction.setSelection(TextSelection.create(transaction.doc, continuationAnchor));
-    } catch {
-      transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(continuationAnchor), 1));
-    }
-  } else {
-    const selectionAnchor = Math.min(
-      blockRange.from + command.quickAdd.selectionOffset,
-      Math.max(1, transaction.doc.content.size)
-    );
-    try {
-      transaction = transaction.setSelection(TextSelection.create(transaction.doc, selectionAnchor));
-    } catch {
-      transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(selectionAnchor), 1));
-    }
-  }
-
-  editor.view.dispatch(transaction);
-  return true;
+  return replaceEmptyParagraphWithCommandOutput(editor, blockIndex, command.quickAdd.content, command.quickAdd.selectionOffset);
 }
 
 function runEditorCommandWithHistoryTime(editor: Editor, historyTime: number, run: () => boolean | void): boolean {
@@ -2834,14 +2874,16 @@ export function PageEditorHostRuntime({
   const overlayOwnerDocument = overlayRoot.ownerDocument;
   const overlayOwnerWindow = overlayOwnerDocument.defaultView;
   const commandGroups = useMemo(
-    () => (commandSelector ? getGroupedEditorBlockCommandMatches(commandSelector.query) : []),
+    () =>
+      commandSelector
+        ? getGroupedEditorBlockCommandMatches(commandSelector.query)
+        : [],
     [commandSelector]
   );
   const commandMatches = useMemo(
     () => commandGroups.flatMap((group) => group.commands),
     [commandGroups]
   );
-
   const clearTransientBlockSelection = useCallback((reason?: string) => {
     const runtimeEditor = editorRef.current;
     if (!runtimeEditor || runtimeEditor.isDestroyed) {
@@ -3391,7 +3433,8 @@ export function PageEditorHostRuntime({
       ownerBlockIndex: triggerSelection.blockIndex,
       placement: resolveCommandSelectorPlacement(overlayOwnerDocument, anchorRect, BLOCK_SELECTOR_HEIGHT),
       query: "",
-      source: "slash"
+      source: "slash",
+      ownerPos: triggerSelection.ownerPos
     });
     return true;
   }
@@ -3750,19 +3793,24 @@ export function PageEditorHostRuntime({
       return;
     }
 
-    let didExecute = false;
-    if (activeSelector.source === "quickAdd") {
-      didExecute = runEditorCommandWithHistoryTime(runtimeEditor, activeSelector.historyTime, () => {
-        if (command.id === "blockquote") {
-          return replaceEmptyParagraphWithBlockquote(runtimeEditor, activeSelector.insertedBlockIndex);
-        }
-        return replaceQuickAddParagraph(runtimeEditor, activeSelector.insertedBlockIndex, command);
-      });
-    } else {
-      didExecute =
-        command.id === "blockquote"
-          ? replaceEmptyParagraphWithBlockquote(runtimeEditor, activeSelector.ownerBlockIndex)
-          : applySlashCommand(runtimeEditor, activeSelector.ownerBlockIndex, command);
+  let didExecute = false;
+  if (activeSelector.source === "quickAdd") {
+    didExecute = runEditorCommandWithHistoryTime(runtimeEditor, activeSelector.historyTime, () => {
+      if (command.id === "blockquote") {
+        return replaceEmptyParagraphWithBlockquote(runtimeEditor, activeSelector.insertedBlockIndex);
+      }
+      if (command.id === "table") {
+        command.run(runtimeEditor);
+        return true;
+      }
+      return replaceQuickAddParagraph(runtimeEditor, activeSelector.insertedBlockIndex, command);
+    });
+  } else {
+      if (command.id === "blockquote") {
+        didExecute = replaceEmptyParagraphWithBlockquote(runtimeEditor, activeSelector.ownerBlockIndex);
+      } else {
+        didExecute = applySlashCommand(runtimeEditor, activeSelector, command);
+      }
     }
     if (!didExecute) {
       return;
@@ -4782,6 +4830,61 @@ export function PageEditorHostRuntime({
           font-size: 0.72em;
           line-height: 0;
         }
+        .docsera-editor-runtime__surface .ProseMirror .tableWrapper {
+          overflow-x: auto;
+          overflow-y: visible;
+          margin: 1rem 0;
+          scrollbar-width: thin;
+          scrollbar-color: color-mix(in srgb, var(--docsera-editor-muted) 72%, transparent)
+            color-mix(in srgb, var(--docsera-editor-panel-border) 70%, transparent);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .tableWrapper::-webkit-scrollbar {
+          height: 8px;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .tableWrapper::-webkit-scrollbar-track {
+          border-radius: 999px;
+          background: color-mix(in srgb, var(--docsera-editor-panel-border) 70%, transparent);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .tableWrapper::-webkit-scrollbar-thumb {
+          border-radius: 999px;
+          background: color-mix(in srgb, var(--docsera-editor-muted) 72%, transparent);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .tableWrapper::-webkit-scrollbar-thumb:hover {
+          background: color-mix(in srgb, var(--docsera-editor-muted) 88%, var(--docsera-editor-text));
+        }
+        .docsera-editor-runtime__surface .ProseMirror table {
+          width: max-content;
+          margin: 0;
+          border-collapse: collapse;
+          table-layout: auto;
+          font-size: inherit;
+          line-height: inherit;
+        }
+        .docsera-editor-runtime__surface .ProseMirror table td,
+        .docsera-editor-runtime__surface .ProseMirror table th {
+          position: relative;
+          min-width: 80px;
+          padding: 0.38rem 0.75rem;
+          border: 1px solid color-mix(in srgb, var(--docsera-editor-panel-border) 82%, var(--docsera-editor-muted));
+          color: var(--docsera-editor-text);
+          text-align: left;
+          vertical-align: top;
+        }
+        .docsera-editor-runtime__surface .ProseMirror table th {
+          font-weight: 700;
+        }
+        .docsera-editor-runtime__surface .ProseMirror table td > :first-child,
+        .docsera-editor-runtime__surface .ProseMirror table th > :first-child {
+          margin-top: 0;
+        }
+        .docsera-editor-runtime__surface .ProseMirror table td > :last-child,
+        .docsera-editor-runtime__surface .ProseMirror table th > :last-child {
+          margin-bottom: 0;
+        }
+        .docsera-editor-runtime__surface .ProseMirror table td.docsera-table-cell-active,
+        .docsera-editor-runtime__surface .ProseMirror table th.docsera-table-cell-active {
+          box-shadow: inset 0 0 0 1.5px var(--docsera-editor-primary);
+        }
         .docsera-editor-floating-layer {
           position: fixed;
           inset: 0;
@@ -5394,6 +5497,9 @@ export function PageEditorHostRuntime({
                                 role="option"
                                 aria-label={command.label}
                                 aria-selected={index === commandSelector.activeIndex}
+                                onPointerDown={(event) => {
+                                  event.preventDefault();
+                                }}
                                 onMouseDown={(event) => {
                                   event.preventDefault();
                                 }}

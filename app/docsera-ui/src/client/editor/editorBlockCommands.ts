@@ -9,7 +9,8 @@ export type EditorBlockCommandId =
   | "bulletedList"
   | "numberedList"
   | "codeBlock"
-  | "horizontalRule";
+  | "horizontalRule"
+  | "table";
 
 export type EditorBlockCommand = {
   category: "Basic Blocks";
@@ -60,6 +61,24 @@ function createListNode(type: "bulletList" | "orderedList"): JSONContent {
 function createCodeBlockNode(): JSONContent {
   return {
     type: "codeBlock"
+  };
+}
+
+export function createDefaultTableNode(): JSONContent {
+  return {
+    type: "table",
+    content: Array.from({ length: 3 }, () => ({
+      type: "tableRow",
+      content: Array.from({ length: 3 }, () => ({
+        type: "tableCell",
+        attrs: {
+          colspan: 1,
+          rowspan: 1,
+          colwidth: null
+        },
+        content: [createParagraphNode()]
+      }))
+    }))
   };
 }
 
@@ -198,10 +217,27 @@ export const EDITOR_BLOCK_COMMANDS: EditorBlockCommand[] = [
     run: (editor) => {
       editor.chain().focus(undefined, { scrollIntoView: false }).insertContent([{ type: "horizontalRule" }, { type: "paragraph" }]).run();
     }
+  },
+  {
+    category: "Basic Blocks",
+    id: "table",
+    label: "Table",
+    description: "Create a simple table",
+    keywords: ["table", "grid", "cells", "rows", "columns"],
+    quickAdd: {
+      content: [createDefaultTableNode()],
+      selectionOffset: 4
+    },
+    slashSelectionOffset: 4,
+    run: (editor) => {
+      editor.chain().focus(undefined, { scrollIntoView: false }).insertTable({ rows: 3, cols: 3, withHeaderRow: false }).run();
+    }
   }
 ];
 
-export function getEditorBlockCommandMatches(query: string): EditorBlockCommand[] {
+export function getEditorBlockCommandMatches(
+  query: string
+): EditorBlockCommand[] {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) {
     return EDITOR_BLOCK_COMMANDS;
