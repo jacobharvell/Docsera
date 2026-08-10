@@ -2,10 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   DOCSERA_DOCUMENT_SCHEMA_VERSION,
   createEmptyDocseraDocumentEnvelope,
+  extractPlainTextFromServerDocument,
   parseDocseraDocument,
   parseDocseraDocumentOrThrow,
   serializeDocseraDocument
-} from "./document";
+} from "../../server/pages/serverEditorDocument";
 import {
   createDocseraDocumentFixtureCorpus,
   createCodeBlockWhitespaceDocseraDocumentEnvelope,
@@ -16,6 +17,7 @@ import {
   createLargeCanonicalDocseraDocumentEnvelope,
   createLegacyDocseraDocument,
   createNestedTaskListDocseraDocumentEnvelope,
+  createStandardTableDocseraDocumentEnvelope,
   createTaskCheckedStateDocseraDocumentEnvelope,
   createSupportedE2DocseraDocumentEnvelope
 } from "./documentFixtures";
@@ -190,5 +192,95 @@ describe("Docsera document envelope", () => {
       envelope,
       migratedLegacyDocument: false
     });
+  });
+
+  it("canonicalizes standard table structural defaults and preserves table round trips", () => {
+    const input = {
+      schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+      document: {
+        type: "doc",
+        content: [
+          {
+            type: "table",
+            content: [
+              {
+                type: "tableRow",
+                content: [
+                  {
+                    type: "tableCell",
+                    content: [
+                      {
+                        type: "paragraph",
+                        content: [{ type: "text", text: "Defaulted" }]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    };
+
+    const parsed = parseDocseraDocument(input);
+
+    expect(parsed).toEqual({
+      ok: true,
+      envelope: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "table",
+              content: [
+                {
+                  type: "tableRow",
+                  content: [
+                    {
+                      type: "tableCell",
+                      attrs: { colspan: 1, rowspan: 1, colwidth: null },
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [{ type: "text", text: "Defaulted" }]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      migratedLegacyDocument: false
+    });
+
+    if (parsed.ok) {
+      expect(parseDocseraDocument(serializeDocseraDocument(parsed.envelope))).toEqual(parsed);
+    }
+  });
+
+  it("round-trips standard table cells, headers, spans, nested blocks, and inline marks", () => {
+    const envelope = createStandardTableDocseraDocumentEnvelope();
+    const parsed = parseDocseraDocument(serializeDocseraDocument(envelope));
+
+    expect(parsed).toEqual({
+      ok: true,
+      envelope,
+      migratedLegacyDocument: false
+    });
+  });
+
+  it("collects table cell and header content in extracted plain text", () => {
+    const text = extractPlainTextFromServerDocument(createStandardTableDocseraDocumentEnvelope());
+
+    expect(text).toContain("Plan");
+    expect(text).toContain("Owner");
+    expect(text).toContain("Alpha launch");
+    expect(text).toContain("Nested block");
+    expect(text).toContain("Beta");
   });
 });

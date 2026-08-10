@@ -570,6 +570,111 @@ export function createOrderedListDefaultAttrsDocseraDocumentEnvelope(): DocseraD
   };
 }
 
+export function createStandardTableDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
+  return {
+    schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+    document: {
+      type: "doc",
+      content: [
+        {
+          type: "table",
+          content: [
+            {
+              type: "tableRow",
+              content: [
+                {
+                  type: "tableHeader",
+                  attrs: { colspan: 2, rowspan: 1, colwidth: [120, 140] },
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [
+                        {
+                          type: "text",
+                          text: "Plan",
+                          marks: [{ type: "bold" }]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  type: "tableHeader",
+                  attrs: { colspan: 1, rowspan: 2, colwidth: null },
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "Owner" }]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              type: "tableRow",
+              content: [
+                {
+                  type: "tableCell",
+                  attrs: { colspan: 1, rowspan: 1, colwidth: null },
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [
+                        { type: "text", text: "Alpha " },
+                        {
+                          type: "text",
+                          text: "launch",
+                          marks: [
+                            { type: "italic" },
+                            {
+                              type: "link",
+                              attrs: {
+                                href: "https://example.com/launch",
+                                target: "_blank",
+                                rel: "noopener noreferrer nofollow",
+                                class: null,
+                                title: null
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      type: "bulletList",
+                      content: [
+                        {
+                          type: "listItem",
+                          content: [
+                            {
+                              type: "paragraph",
+                              content: [{ type: "text", text: "Nested block" }]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  type: "tableCell",
+                  attrs: { colspan: 1, rowspan: 1, colwidth: null },
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "Beta" }]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  };
+}
+
 export function createLargeCanonicalDocseraDocumentEnvelope(paragraphCount = 1200): DocseraDocumentEnvelope {
   return {
     schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
@@ -713,6 +818,52 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
       }
     },
     {
+      input: createStandardTableDocseraDocumentEnvelope(),
+      label: "standard table document",
+      expected: {
+        ok: true,
+        migratedLegacyDocument: false
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "blockquote",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Ordinary quote" }]
+                },
+                {
+                  type: "bulletList",
+                  content: [
+                    {
+                      type: "listItem",
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [{ type: "text", text: "Nested quote list item" }]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "ordinary blockquote document",
+      expected: {
+        ok: true,
+        migratedLegacyDocument: false
+      }
+    },
+    {
       input: "not-json",
       label: "malformed JSON",
       expected: {
@@ -766,6 +917,94 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
         }
       },
       label: "unknown node type",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "blockquote",
+              content: [
+                {
+                  type: "table",
+                  content: [
+                    {
+                      type: "tableRow",
+                      content: [
+                        {
+                          type: "tableCell",
+                          content: [{ type: "paragraph", content: [{ type: "text", text: "Nested table" }] }]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "table inside blockquote",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "table",
+              content: [
+                {
+                  type: "tableRow",
+                  content: [
+                    {
+                      type: "tableCell",
+                      content: [
+                        {
+                          type: "blockquote",
+                          content: [
+                            {
+                              type: "table",
+                              content: [
+                                {
+                                  type: "tableRow",
+                                  content: [
+                                    {
+                                      type: "tableCell",
+                                      content: [
+                                        {
+                                          type: "paragraph",
+                                          content: [{ type: "text", text: "Indirect nested table" }]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "table cell blockquote containing table",
       expected: {
         ok: false,
         reason: "invalid-document"
@@ -1170,6 +1409,84 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
         }
       },
       label: "invalid nested task list content",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [{ type: "table" }]
+        }
+      },
+      label: "table without rows",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "table",
+              content: [
+                {
+                  type: "tableRow",
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "Invalid row child" }]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "invalid table row child",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "table",
+              content: [
+                {
+                  type: "tableRow",
+                  content: [
+                    {
+                      type: "tableCell",
+                      attrs: { colspan: 2, rowspan: 1, colwidth: [120] },
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [{ type: "text", text: "Invalid span attrs" }]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "invalid table structural attributes",
       expected: {
         ok: false,
         reason: "invalid-document"

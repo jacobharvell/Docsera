@@ -13,6 +13,7 @@ import {
   createExpandedTextFormattingDocseraDocumentEnvelope,
   createHeadingHierarchyDocseraDocumentEnvelope,
   createRelativeLinkDocseraDocumentEnvelope,
+  createStandardTableDocseraDocumentEnvelope,
   createSupportedE2DocseraDocumentEnvelope
 } from "../../../shared/editor/documentFixtures";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
@@ -173,6 +174,30 @@ describe("PublishedDocumentReader", () => {
     expect(reader.textContent).toContain("after break");
   });
 
+  it("renders canonical tables with semantic headers, spans, nested blocks, marks, and reader classes", () => {
+    const envelope = createStandardTableDocseraDocumentEnvelope();
+
+    renderReader(envelope);
+
+    const reader = screen.getByLabelText("Published page content");
+    const wrapper = reader.querySelector(".docsera-main__table-wrapper");
+    const table = within(reader).getByRole("table");
+    const headerCells = within(table).getAllByRole("columnheader");
+    const cells = within(table).getAllByRole("cell");
+
+    expect(wrapper).not.toBeNull();
+    expect(table).toHaveClass("docsera-main__table");
+    expect(headerCells).toHaveLength(2);
+    expect(headerCells[0]).toHaveTextContent("Plan");
+    expect(headerCells[0]).toHaveAttribute("colspan", "2");
+    expect(headerCells[1]).toHaveTextContent("Owner");
+    expect(headerCells[1]).toHaveAttribute("rowspan", "2");
+    expect(cells).toHaveLength(2);
+    expect(within(table).getByRole("link", { name: "launch" })).toHaveAttribute("href", "https://example.com/launch");
+    expect(within(table).getByText("launch").closest("em")).not.toBeNull();
+    expect(within(table).getByText("Nested block").closest("ul")).toHaveClass("docsera-main__list");
+  });
+
   it("shares duplicate heading anchors with the TOC and skips empty headings", () => {
     const duplicateEnvelope = createDuplicateHeadingDocseraDocumentEnvelope();
     const duplicatePage = buildWorkspacePageView(createPageRecord(duplicateEnvelope), "live");
@@ -270,6 +295,26 @@ describe("PublishedDocumentReader", () => {
                 {
                   type: "paragraph",
                   content: [{ type: "text", text: "not code" }]
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ],
+    [
+      "invalid table structure",
+      {
+        schemaVersion: 1,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "table",
+              content: [
+                {
+                  type: "tableRow",
+                  content: []
                 }
               ]
             }

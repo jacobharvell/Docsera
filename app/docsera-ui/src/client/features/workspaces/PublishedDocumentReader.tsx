@@ -346,6 +346,59 @@ function renderBlockquote(node: Record<string, unknown>, path: string, context: 
   );
 }
 
+function getPositiveIntegerAttr(attrs: Record<string, unknown>, key: "colspan" | "rowspan"): number | undefined {
+  const value = Number(attrs[key]);
+  return Number.isInteger(value) && value > 1 ? value : undefined;
+}
+
+function renderTableCell(node: Record<string, unknown>, path: string, context: ReaderContext): ReactNode {
+  const attrs = getNodeAttrs(node);
+  const Tag = node.type === "tableHeader" ? "th" : "td";
+
+  return (
+    <Tag
+      key={path}
+      className="docsera-main__table-cell"
+      colSpan={getPositiveIntegerAttr(attrs, "colspan")}
+      rowSpan={getPositiveIntegerAttr(attrs, "rowspan")}
+    >
+      {renderBlockChildren(getNodeContent(node), `${path}-child`, context)}
+    </Tag>
+  );
+}
+
+function renderTableRow(node: Record<string, unknown>, path: string, context: ReaderContext): ReactNode {
+  const cells = getNodeContent(node);
+  return (
+    <tr key={path} className="docsera-main__table-row">
+      {cells.map((cell, index) => {
+        if (!isRecord(cell) || (cell.type !== "tableCell" && cell.type !== "tableHeader")) {
+          throw new Error("The published page content contains an unsupported table structure.");
+        }
+
+        return renderTableCell(cell, `${path}-${index}`, context);
+      })}
+    </tr>
+  );
+}
+
+function renderTable(node: Record<string, unknown>, path: string, context: ReaderContext): ReactNode {
+  const rows = getNodeContent(node);
+  return (
+    <div key={path} className="docsera-main__table-wrapper">
+      <table className="docsera-main__table">
+        <tbody>{rows.map((row, index) => {
+          if (!isRecord(row) || row.type !== "tableRow") {
+            throw new Error("The published page content contains an unsupported table structure.");
+          }
+
+          return renderTableRow(row, `${path}-${index}`, context);
+        })}</tbody>
+      </table>
+    </div>
+  );
+}
+
 function renderBlockNode(node: unknown, path: string, context: ReaderContext): ReactNode {
   if (!isRecord(node) || typeof node.type !== "string") {
     throw new Error("The published page content contains an unsupported block node: non-object.");
@@ -368,6 +421,8 @@ function renderBlockNode(node: unknown, path: string, context: ReaderContext): R
       return renderOrderedList(node, path, context);
     case "taskList":
       return renderTaskList(node, path, context);
+    case "table":
+      return renderTable(node, path, context);
     default:
       throw new Error(`The published page content contains an unsupported block node: ${String(node.type)}.`);
   }

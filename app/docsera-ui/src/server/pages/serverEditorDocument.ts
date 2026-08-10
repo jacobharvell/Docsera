@@ -14,7 +14,11 @@ const DOCSERA_BLOCK_NODE_TYPES = new Set([
   "taskItem",
   "blockquote",
   "horizontalRule",
-  "codeBlock"
+  "codeBlock",
+  "table",
+  "tableRow",
+  "tableCell",
+  "tableHeader"
 ]);
 const DOCSERA_INLINE_NODE_TYPES = new Set(["text", "hardBreak"]);
 const DOCSERA_DOC_CHILD_TYPES = new Set([
@@ -25,8 +29,20 @@ const DOCSERA_DOC_CHILD_TYPES = new Set([
   "taskList",
   "blockquote",
   "horizontalRule",
+  "codeBlock",
+  "table"
+]);
+const DOCSERA_NESTED_BLOCK_CHILD_TYPES = new Set([
+  "paragraph",
+  "heading",
+  "bulletList",
+  "orderedList",
+  "taskList",
+  "blockquote",
+  "horizontalRule",
   "codeBlock"
 ]);
+const DOCSERA_TABLE_CELL_TYPES = new Set(["tableCell", "tableHeader"]);
 
 export const DOCSERA_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const DOCSERA_BODY_HEADING_LEVELS = [1, 2, 3] as const;
@@ -260,7 +276,35 @@ function validateNodeAttrs(type: string, attrs: unknown): DocseraStructuredDocum
     case "blockquote":
     case "horizontalRule":
     case "hardBreak":
+    case "table":
+    case "tableRow":
       return Object.keys(attrs).length === 0 ? { ok: true } : createValidationFailure();
+    case "tableCell":
+    case "tableHeader": {
+      if (!hasOnlyAllowedKeys(attrs, ["colspan", "rowspan", "colwidth"])) {
+        return createValidationFailure();
+      }
+
+      const colspan = attrs.colspan ?? 1;
+      const rowspan = attrs.rowspan ?? 1;
+      const colwidth = attrs.colwidth ?? null;
+
+      if (!Number.isInteger(colspan) || Number(colspan) < 1 || !Number.isInteger(rowspan) || Number(rowspan) < 1) {
+        return createValidationFailure();
+      }
+
+      if (colwidth === null) {
+        return { ok: true };
+      }
+
+      if (!Array.isArray(colwidth) || colwidth.length !== Number(colspan)) {
+        return createValidationFailure();
+      }
+
+      return colwidth.every((width) => Number.isInteger(width) && Number(width) > 0)
+        ? { ok: true }
+        : createValidationFailure();
+    }
     case "heading":
       return hasOnlyAllowedKeys(attrs, ["level"]) && DOCSERA_BODY_HEADING_LEVELS.includes(attrs.level as 1 | 2 | 3)
         ? { ok: true }
@@ -385,7 +429,7 @@ function validateStructuredNode(node: unknown): DocseraStructuredDocumentValidat
     case "blockquote":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
-        allowedChildTypes: DOCSERA_DOC_CHILD_TYPES
+        allowedChildTypes: DOCSERA_NESTED_BLOCK_CHILD_TYPES
       });
     case "bulletList":
     case "orderedList":
@@ -402,8 +446,24 @@ function validateStructuredNode(node: unknown): DocseraStructuredDocumentValidat
     case "taskItem":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
-        allowedChildTypes: DOCSERA_DOC_CHILD_TYPES,
+        allowedChildTypes: DOCSERA_NESTED_BLOCK_CHILD_TYPES,
         requireLeadingParagraph: true
+      });
+    case "table":
+      return validateChildNodes(content ?? [], {
+        allowEmpty: false,
+        allowedChildTypes: new Set(["tableRow"])
+      });
+    case "tableRow":
+      return validateChildNodes(content ?? [], {
+        allowEmpty: false,
+        allowedChildTypes: DOCSERA_TABLE_CELL_TYPES
+      });
+    case "tableCell":
+    case "tableHeader":
+      return validateChildNodes(content ?? [], {
+        allowEmpty: false,
+        allowedChildTypes: DOCSERA_NESTED_BLOCK_CHILD_TYPES
       });
     case "codeBlock":
       return validateChildNodes(content ?? [], {
@@ -457,6 +517,13 @@ function canonicalizeNode(node: Record<string, unknown>): Record<string, unknown
     canonicalNode.attrs = {
       start: Number.isInteger(attrs.start) ? Number(attrs.start) : 1,
       type: attrs.type ?? null
+    };
+  } else if (node.type === "tableCell" || node.type === "tableHeader") {
+    const attrs = isRecord(node.attrs) ? node.attrs : {};
+    canonicalNode.attrs = {
+      colspan: Number.isInteger(attrs.colspan) ? Number(attrs.colspan) : 1,
+      rowspan: Number.isInteger(attrs.rowspan) ? Number(attrs.rowspan) : 1,
+      colwidth: Array.isArray(attrs.colwidth) ? attrs.colwidth.map((width) => Number(width)) : null
     };
   } else if (node.attrs !== undefined) {
     canonicalNode.attrs = cloneJson(node.attrs);
@@ -619,6 +686,10 @@ export function extractPlainTextFromServerDocument(value: unknown): string {
       case "blockquote":
       case "listItem":
       case "taskItem":
+      case "table":
+      case "tableRow":
+      case "tableCell":
+      case "tableHeader":
       case "doc":
         if (Array.isArray(node.content)) {
           node.content.forEach(visitNode);

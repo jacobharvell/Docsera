@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { WorkspaceRecord } from "../workspaces/serverWorkspaceDomain.ts";
 import type { PageRecord } from "./serverPageDomain.ts";
+import { createStandardTableDocseraDocumentEnvelope } from "../../shared/editor/documentFixtures.ts";
 import { createPageBodyContentJsonFromText } from "./serviceNowPagePersistence.ts";
 import { createPagePublishService } from "./serviceNowPagePublishing.ts";
 
@@ -476,6 +477,92 @@ describe("page publish service", () => {
           publishedSlugNormalized: "published-title",
           publishedContentJson: createPageBodyContentJsonFromText("Published body"),
           publishedBodyText: "Published body"
+        })
+      ],
+      publishPage
+    });
+
+    const result = await service.publishPage({
+      workspaceSlug: "product-docs",
+      pageSysId: "page-001",
+      expectedRevision: 4
+    });
+
+    expect(result).toEqual({
+      kind: "failed",
+      errorMessage: "The current draft content cannot be published.",
+      status: 400
+    });
+    expect(publishPage).not.toHaveBeenCalled();
+  });
+
+  it("accepts a valid canonical table envelope when publishing persisted draft content", async () => {
+    const tableEnvelope = createStandardTableDocseraDocumentEnvelope();
+    const publishPage = vi.fn(async (page: PageRecord) => page);
+    const service = createPagePublishService({
+      currentTimestamp: () => "2026-07-15 09:45:00",
+      evaluateWorkspaceCapabilities: () => ({
+        canAdminWorkspace: false,
+        canEditWorkspace: true,
+        canManageWorkspaceMembers: false,
+        canViewWorkspace: true
+      }),
+      getCurrentUser: () => ({
+        displayName: "Priya Writer",
+        sysId: "user-123"
+      }),
+      loadWorkspaceBySlug: async () => createWorkspace(),
+      loadWorkspaceBySysId: async () => createWorkspace(),
+      listWorkspacePages: async () => [
+        createPage({
+          draftContentJson: tableEnvelope,
+          draftBodyText: "Plan\nOwner\nAlpha launch\nNested block\nBeta"
+        })
+      ],
+      publishPage
+    });
+
+    const result = await service.publishPage({
+      workspaceSlug: "product-docs",
+      pageSysId: "page-001",
+      expectedRevision: 4
+    });
+
+    expect(result.kind).toBe("succeeded");
+    expect(publishPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        publishedContentJson: tableEnvelope,
+        publishedBodyText: "Plan\nOwner\nAlpha launch\nNested block\nBeta"
+      }),
+      4
+    );
+  });
+
+  it("rejects malformed table draft content through the existing invalid-document publish path", async () => {
+    const publishPage = vi.fn(async (page: PageRecord) => page);
+    const service = createPagePublishService({
+      currentTimestamp: () => "2026-07-15 09:45:00",
+      evaluateWorkspaceCapabilities: () => ({
+        canAdminWorkspace: false,
+        canEditWorkspace: true,
+        canManageWorkspaceMembers: false,
+        canViewWorkspace: true
+      }),
+      getCurrentUser: () => ({
+        displayName: "Priya Writer",
+        sysId: "user-123"
+      }),
+      loadWorkspaceBySlug: async () => createWorkspace(),
+      loadWorkspaceBySysId: async () => createWorkspace(),
+      listWorkspacePages: async () => [
+        createPage({
+          draftContentJson: {
+            schemaVersion: 1,
+            document: {
+              type: "doc",
+              content: [{ type: "table", content: [] }]
+            }
+          } as never
         })
       ],
       publishPage

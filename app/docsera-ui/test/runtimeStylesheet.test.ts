@@ -32,7 +32,7 @@ test("keeps launcher background ownership explicit without changing workspace ba
   expect(css).toContain("background: var(--docsera-workspace-bg, var(--docsera-surface));");
   expect(css).toContain("--docsera-workspace-heading-scroll-margin: calc(var(--docsera-header-height) + 16px);");
   expect(css).toContain("--docsera-workspace-toc-top-gap: 8px;");
-  expect(css).toContain("--docsera-editor-block-gutter-width: 60px;");
+  expect(css).toContain("--docsera-editor-block-gutter-width: 69px;");
   expect(css).toContain("align-items: stretch;");
   expect(css).toContain(".docsera-workspace__aside {");
   expect(css).toContain("display: flex;");
@@ -48,7 +48,7 @@ test("keeps launcher background ownership explicit without changing workspace ba
   expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*margin-inline-start:\s*clamp\([^}]*var\(--docsera-toc-panel-width\)/s);
   expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*display:\s*grid;[^}]*align-content:\s*start;[^}]*gap:\s*28px;/s);
   expect(css).toMatch(/\.docsera-main__surface--editor\s*{[^}]*gap:\s*0;[^}]*padding-left:\s*calc\(24px \+ var\(--docsera-editor-block-gutter-width\)\);/s);
-  expect(css).toMatch(/\.docsera-main__editor-host\s*{[^}]*margin-top:\s*72px;/s);
+  expect(css).toMatch(/\.docsera-main__editor-host\s*{[^}]*margin-top:\s*40px;/s);
 });
 
 test("keeps the same main-surface anchor contract when the ToC auto-hides at the responsive breakpoint", () => {
@@ -87,4 +87,15 @@ test("keeps the publish success toast as a layered header card with viewport-saf
   expect(css).toMatch(/\.docsera-header__publish-toast-dismiss\s*{[^}]*width:\s*26px;[^}]*height:\s*26px;[^}]*background:\s*transparent;/s);
   expect(css).toMatch(/\.docsera-header__publish-toast-dismiss:hover\s*{[^}]*background:/s);
   expect(css).toMatch(/\.docsera-header__publish-toast-dismiss:focus-visible\s*{[^}]*box-shadow:/s);
+});
+
+test("keeps reader table styling aligned to the E5 Legacy geometry without advanced-control spacing", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+
+  expect(css).toMatch(/\.docsera-main__table-wrapper\s*{[^}]*overflow-x:\s*auto;[^}]*overflow-y:\s*visible;[^}]*margin:\s*1rem 0;/s);
+  expect(css).not.toMatch(/\.docsera-main__table-wrapper\s*{[^}]*padding-bottom:/s);
+  expect(css).toMatch(/\.docsera-main__table\s*{[^}]*width:\s*max-content;[^}]*border-collapse:\s*collapse;[^}]*table-layout:\s*auto;/s);
+  expect(css).toMatch(/\.docsera-main__table\s*{[^}]*font-size:\s*inherit;[^}]*line-height:\s*inherit;/s);
+  expect(css).toMatch(/\.docsera-main__table-cell\s*{[^}]*min-width:\s*80px;[^}]*padding:\s*0\.38rem 0\.75rem;[^}]*border:\s*1px solid/s);
+  expect(css).toMatch(/\.docsera-main__table-cell\s*{[^}]*vertical-align:\s*top;/s);
 });
