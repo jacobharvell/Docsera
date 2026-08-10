@@ -121,6 +121,17 @@ The shared selector now measures its own overflow state instead of reserving scr
 
 The stray pixel reported in the second feedback pass came from the previous slash/query presentation fragment rather than from the selector container itself. Removing the pseudo-element slash path eliminated that artifact without adding a cover patch.
 
+## Keyboard Active-Row Visibility
+
+The shared Slash and Quick Add selector now keeps the keyboard-active option visible inside the selector's own scroll viewport.
+
+- Arrow Up and Arrow Down still only change the shared active index
+- the active option now calls native browser `scrollIntoView({ block: "nearest", inline: "nearest" })` on the selector row element that owns the current session
+- if the active row is already fully visible, the scroll position is left alone
+- this behavior is shared by Slash and Quick Add and remains transient UI state only
+
+The missing link was between the already-updated active index and the existing scrollable selector surface. The fix connects those two responsibilities directly instead of introducing a second keyboard navigation path or a custom scroll state machine.
+
 ## Placement Contract
 
 Slash and Quick Add now share one stable above-or-below placement contract.

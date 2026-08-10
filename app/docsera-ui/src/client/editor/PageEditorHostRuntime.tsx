@@ -2476,6 +2476,7 @@ export function PageEditorHostRuntime({
     () => [...createDocseraEditorExtensions(), createCommandQueryPresentationExtension(), createBlockSelectionExtension()],
     []
   );
+  const commandSelectorItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const blockActionMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const blockTurnIntoMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const blockTurnIntoTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -3422,6 +3423,15 @@ export function PageEditorHostRuntime({
 
     blockTurnIntoMenuItemRefs.current[blockTurnIntoMenu.activeIndex]?.focus();
   }, [blockTurnIntoMenu]);
+
+  useLayoutEffect(() => {
+    if (!commandSelector) {
+      commandSelectorItemRefs.current = [];
+      return;
+    }
+
+    commandSelectorItemRefs.current[commandSelector.activeIndex]?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [commandMatches, commandSelector]);
 
   function openSlashSelector(runtimeEditor: Editor, triggerSelection: SlashTriggerSelection) {
     clearTransientBlockSelection();
@@ -5497,6 +5507,9 @@ export function PageEditorHostRuntime({
                                 role="option"
                                 aria-label={command.label}
                                 aria-selected={index === commandSelector.activeIndex}
+                                ref={(element) => {
+                                  commandSelectorItemRefs.current[index] = element;
+                                }}
                                 onPointerDown={(event) => {
                                   event.preventDefault();
                                 }}

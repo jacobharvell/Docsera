@@ -56,6 +56,85 @@ function getOptionNames(container: HTMLElement): string[] {
     .map((option) => option.getAttribute("aria-label") ?? option.textContent?.trim() ?? "");
 }
 
+function installSelectorScrollModel(menu: HTMLElement) {
+  const scrollElement = menu.querySelector(".docsera-block-selector__scroll");
+  if (!(scrollElement instanceof HTMLElement)) {
+    throw new Error("Expected the selector scroll container to be available.");
+  }
+
+  const options = within(menu).getAllByRole("option") as HTMLElement[];
+  const viewportHeight = 112;
+  const rowHeight = 56;
+  const optionHeight = 40;
+  let scrollTop = 0;
+  const originalScrollTopDescriptor = Object.getOwnPropertyDescriptor(scrollElement, "scrollTop");
+  Object.defineProperty(scrollElement, "scrollTop", {
+    configurable: true,
+    get: () => scrollTop,
+    set: (next: number) => {
+      scrollTop = next;
+    }
+  });
+
+  const restoreSteps = [
+    mockElementMetric(scrollElement, "clientHeight", viewportHeight),
+    mockElementMetric(scrollElement, "clientWidth", 304),
+    mockElementMetric(scrollElement, "offsetWidth", 304),
+    mockElementMetric(scrollElement, "scrollHeight", rowHeight * options.length),
+    ...options.map((option, index) => {
+      const originalDescriptor = Object.getOwnPropertyDescriptor(option, "scrollIntoView");
+      Object.defineProperty(option, "scrollIntoView", {
+        configurable: true,
+        value: vi.fn(() => {
+          const top = index * rowHeight;
+          const bottom = top + optionHeight;
+
+          if (top < scrollTop) {
+            scrollTop = top;
+            return;
+          }
+
+          if (bottom > scrollTop + viewportHeight) {
+            scrollTop = bottom - viewportHeight;
+          }
+        })
+      });
+
+      return () => {
+        if (originalDescriptor) {
+          Object.defineProperty(option, "scrollIntoView", originalDescriptor);
+          return;
+        }
+
+        Reflect.deleteProperty(option, "scrollIntoView");
+      };
+    })
+  ];
+
+  return {
+    getScrollTop() {
+      return scrollTop;
+    },
+    options,
+    scrollElement,
+    setScrollTop(next: number) {
+      scrollElement.scrollTop = next;
+    },
+    restore() {
+      for (const restoreStep of restoreSteps.reverse()) {
+        restoreStep();
+      }
+
+      if (originalScrollTopDescriptor) {
+        Object.defineProperty(scrollElement, "scrollTop", originalScrollTopDescriptor);
+        return;
+      }
+
+      Reflect.deleteProperty(scrollElement, "scrollTop");
+    }
+  };
+}
+
 function getCommandQueryParagraph(editor: Editor): HTMLElement | null {
   return editor.view.dom.querySelector("[data-docsera-command-query-owner]");
 }
@@ -868,6 +947,149 @@ describe("PageEditorHostRuntime", () => {
         }
       ]
     });
+  });
+
+  it.each([
+    {
+      label: "Slash",
+      menuLabel: "Slash command menu",
+      openMenu: async (editor: Editor) => {
+        await openSlashQuery(editor);
+      },
+      expectedAfterEnter: {
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            attrs: { level: 3 }
+          }
+        ]
+      }
+    },
+    {
+      label: "Quick Add",
+      menuLabel: "Insert block after Text",
+      openMenu: async (editor: Editor) => {
+        await openQuickAdd(editor, { clientX: 120, clientY: 64 }, "Add block after Text");
+      },
+      expectedAfterEnter: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph"
+          },
+          {
+            type: "heading",
+            attrs: { level: 3 }
+          }
+        ]
+      }
+    }
+  ])("keeps the active %s selector option visible while arrowing and still executes Enter", async ({ menuLabel, openMenu, expectedAfterEnter }) => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+
+    await openMenu(editor);
+    const menu = await screen.findByRole("listbox", { name: menuLabel });
+    const scrollModel = installSelectorScrollModel(menu);
+    const options = within(menu).getAllByRole("option");
+
+    expect(scrollModel.getScrollTop()).toBe(0);
+    expect(options[0]).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(editor.view.dom, { key: "ArrowDown" });
+    fireEvent.keyDown(editor.view.dom, { key: "ArrowDown" });
+    fireEvent.keyDown(editor.view.dom, { key: "ArrowDown" });
+    fireEvent.keyDown(editor.view.dom, { key: "ArrowDown" });
+
+    await waitFor(() => {
+      expect(options[4]).toHaveAttribute("aria-selected", "true");
+      expect(scrollModel.getScrollTop()).toBeGreaterThan(0);
+    });
+
+    scrollModel.setScrollTop(260);
+    fireEvent.keyDown(editor.view.dom, { key: "ArrowUp" });
+
+    await waitFor(() => {
+      expect(options[3]).toHaveAttribute("aria-selected", "true");
+      expect(scrollModel.getScrollTop()).toBe(168);
+    });
+
+    const beforeEnter = editor.getJSON();
+    fireEvent.keyDown(editor.view.dom, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox", { name: menuLabel })).toBeNull();
+      expect(editor.getJSON()).toEqual(expectedAfterEnter);
+    });
+    expect(editor.getJSON()).not.toEqual(beforeEnter);
+
+    scrollModel.restore();
+    geometrySpy.mockRestore();
+  });
+
+  it.each([
+    {
+      label: "Slash",
+      menuLabel: "Slash command menu",
+      openMenu: async (editor: Editor) => {
+        await openSlashQuery(editor);
+      }
+    },
+    {
+      label: "Quick Add",
+      menuLabel: "Insert block after Text",
+      openMenu: async (editor: Editor) => {
+        await openQuickAdd(editor, { clientX: 120, clientY: 64 }, "Add block after Text");
+      }
+    }
+  ])("keeps the shared %s selector wrapped item visible when moving from last to first and first to last", async ({ menuLabel, openMenu }) => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+
+    await openMenu(editor);
+    const menu = await screen.findByRole("listbox", { name: menuLabel });
+    const scrollModel = installSelectorScrollModel(menu);
+    const options = within(menu).getAllByRole("option");
+
+    for (let index = 0; index < options.length - 1; index += 1) {
+      fireEvent.keyDown(editor.view.dom, { key: "ArrowDown" });
+    }
+
+    await waitFor(() => {
+      expect(options[options.length - 1]).toHaveAttribute("aria-selected", "true");
+      expect(scrollModel.getScrollTop()).toBeGreaterThan(0);
+    });
+
+    fireEvent.keyDown(editor.view.dom, { key: "ArrowDown" });
+    await waitFor(() => {
+      expect(options[0]).toHaveAttribute("aria-selected", "true");
+      expect(scrollModel.getScrollTop()).toBe(0);
+    });
+
+    fireEvent.keyDown(editor.view.dom, { key: "ArrowUp" });
+    await waitFor(() => {
+      expect(options[options.length - 1]).toHaveAttribute("aria-selected", "true");
+      expect(scrollModel.getScrollTop()).toBeGreaterThan(0);
+    });
+
+    fireEvent.keyDown(editor.view.dom, { key: "Escape" });
+    expect(screen.queryByRole("listbox", { name: menuLabel })).toBeNull();
+
+    scrollModel.restore();
+    geometrySpy.mockRestore();
   });
 
   it.each(["light", "dark"] as const)("uses the floated empty-blockquote placeholder contract in %s mode", async (theme) => {
