@@ -2771,6 +2771,7 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 
 .docsera-main__surface {
   width: min(100%, var(--docsera-main-surface-max-width));
+  min-width: 0;
   margin: 0;
   margin-inline-start: clamp(
     24px,
@@ -2865,6 +2866,7 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 
 .docsera-main__editor-host {
   margin-top: 40px;
+  min-width: 0;
 }
 
 .docsera-main__lede {

@@ -279,7 +279,11 @@ function mockElementRect(element: Element, rect: DOMRect) {
   };
 }
 
-function mockElementMetric(element: Element, property: "clientHeight" | "clientWidth" | "offsetWidth" | "scrollHeight", value: number) {
+function mockElementMetric(
+  element: Element,
+  property: "clientHeight" | "clientWidth" | "offsetHeight" | "offsetWidth" | "scrollHeight" | "scrollWidth",
+  value: number
+) {
   const originalDescriptor = Object.getOwnPropertyDescriptor(element, property);
   Object.defineProperty(element, property, {
     configurable: true,
@@ -295,6 +299,8 @@ function mockElementMetric(element: Element, property: "clientHeight" | "clientW
     Reflect.deleteProperty(element, property);
   };
 }
+
+const DEFAULT_TABLE_MAIN_PANE_RECT = new DOMRect(24, 32, 1180, 680);
 
 function mockTopLevelBlockGeometry(editor: Editor, blockRects: DOMRect[]) {
   const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
@@ -356,6 +362,31 @@ function createCanonicalDefaultTableNode() {
   };
 }
 
+function createTextTableNode(rows: string[][]) {
+  return {
+    type: "table",
+    content: rows.map((row) => ({
+      type: "tableRow",
+      content: row.map((text) => ({
+        type: "tableCell",
+        attrs: {
+          colspan: 1,
+          rowspan: 1,
+          colwidth: null
+        },
+        content: text
+          ? [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text }]
+              }
+            ]
+          : [{ type: "paragraph" }]
+      }))
+    }))
+  };
+}
+
 function createNestedTableDocument() {
   return {
     type: "doc",
@@ -383,6 +414,37 @@ function createNestedTableDocument() {
   };
 }
 
+function createTableContextDocument(cellType: "tableCell" | "tableHeader", cellContent: JSONContent[]): JSONContent {
+  return {
+    type: "doc",
+    content: [
+      {
+        type: "table",
+        content: [
+          {
+            type: "tableRow",
+            content: [
+              {
+                type: cellType,
+                attrs: {
+                  colspan: 1,
+                  rowspan: 1,
+                  colwidth: null
+                },
+                content: cellContent
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  };
+}
+
+function createTableHeaderDocument() {
+  return createTableContextDocument("tableHeader", [{ type: "paragraph" }]);
+}
+
 function getFirstTableCellParagraphPosition(editor: Editor): number {
   let position: number | null = null;
   editor.state.doc.descendants((node, pos) => {
@@ -402,6 +464,39 @@ function getFirstTableCellParagraphPosition(editor: Editor): number {
 
   if (position === null) {
     throw new Error("Expected a paragraph inside the first table cell.");
+  }
+
+  return position;
+}
+
+function getTableCellParagraphPositions(editor: Editor): number[] {
+  const positions: number[] = [];
+
+  editor.state.doc.descendants((node, pos) => {
+    if (node.type.name !== "paragraph") {
+      return true;
+    }
+
+    const $pos = editor.state.doc.resolve(pos);
+    for (let depth = $pos.depth; depth > 0; depth -= 1) {
+      const nodeName = $pos.node(depth).type.name;
+      if (nodeName === "tableCell" || nodeName === "tableHeader") {
+        positions.push(pos);
+        break;
+      }
+    }
+
+    return true;
+  });
+
+  return positions;
+}
+
+function getTableCellParagraphPosition(editor: Editor, cellIndex: number): number {
+  const positions = getTableCellParagraphPositions(editor);
+  const position = positions[cellIndex];
+  if (typeof position !== "number") {
+    throw new Error(`Expected table cell paragraph at index ${cellIndex}.`);
   }
 
   return position;
@@ -464,12 +559,7 @@ function getFirstTextblockPositionInsideNestedTable(editor: Editor): number {
 
 async function selectFirstTableCellText(editor: Editor, text: string) {
   const paragraphPosition = getFirstTableCellParagraphPosition(editor);
-  await act(async () => {
-    editor.commands.setTextSelection({
-      from: paragraphPosition + 1,
-      to: paragraphPosition + 1 + text.length
-    });
-  });
+  await selectText(editor, paragraphPosition + 1, paragraphPosition + 1 + text.length);
 }
 
 function getJsonContentChildren(node: JSONContent): JSONContent[] {
@@ -502,6 +592,271 @@ function documentContainsTopLevelTable(document: DocseraTiptapDocument): boolean
   return document.content?.some((node) => {
     return typeof node === "object" && node !== null && "type" in node && node.type === "table";
   }) === true;
+}
+
+function getTableElement(editor: Editor): HTMLTableElement | null {
+  const table = editor.view.dom.querySelector(".tableWrapper table");
+  return table instanceof HTMLTableElement ? table : null;
+}
+
+function getTableWrapperElement(editor: Editor): HTMLElement | null {
+  const wrapper = editor.view.dom.querySelector(".tableWrapper");
+  return wrapper instanceof HTMLElement ? wrapper : null;
+}
+
+function getTableOverlayRoot(overlayRoot: HTMLElement): HTMLElement | null {
+  const root = overlayRoot.querySelector("[data-docsera-table-overlay-root='true']");
+  return root instanceof HTMLElement ? root : null;
+}
+
+function getTableRailButton(overlayRoot: HTMLElement, kind: "column" | "row"): HTMLButtonElement | null {
+  const selector = `[data-docsera-table-add-rail-kind='${kind}']`;
+  const ownerDocument = overlayRoot.ownerDocument as Document & {
+    querySelector?: (selectors: string) => Element | null;
+  };
+  const documentQuery =
+    (typeof ownerDocument.querySelector === "function" ? ownerDocument.querySelector(selector) : null) ??
+    ownerDocument.body?.querySelector(selector) ??
+    ownerDocument.documentElement?.querySelector(selector) ??
+    null;
+  return documentQuery instanceof HTMLButtonElement ? documentQuery : null;
+}
+
+function getTableHandleButton(
+  overlayRoot: HTMLElement,
+  kind: "column" | "row",
+  index: number
+): HTMLButtonElement | null {
+  const selector = `[data-docsera-table-handle-kind='${kind}'][data-docsera-table-handle-index='${index}']`;
+  const handle = overlayRoot.ownerDocument.querySelector(selector);
+  return handle instanceof HTMLButtonElement ? handle : null;
+}
+
+function getTableHandleShell(
+  overlayRoot: HTMLElement,
+  kind: "column" | "row",
+  index: number
+): HTMLElement | null {
+  const handle = getTableHandleButton(overlayRoot, kind, index);
+  if (!handle) {
+    return null;
+  }
+
+  const shell = handle.querySelector("[data-docsera-table-handle-pill='true']");
+  return shell instanceof HTMLElement ? shell : null;
+}
+
+function getTableHandleEllipsisLayer(
+  overlayRoot: HTMLElement,
+  kind: "column" | "row",
+  index: number
+): HTMLElement | null {
+  const handle = getTableHandleButton(overlayRoot, kind, index);
+  if (!handle) {
+    return null;
+  }
+
+  const ellipsisLayer = handle.querySelector("[data-docsera-table-handle-ellipsis='true']");
+  return ellipsisLayer instanceof HTMLElement ? ellipsisLayer : null;
+}
+
+function getTableMenu(overlayRoot: HTMLElement, kind: "column" | "row"): HTMLElement | null {
+  const selector = `[data-docsera-table-menu='true'][data-docsera-table-menu-kind='${kind}']`;
+  const menu = overlayRoot.ownerDocument.querySelector(selector);
+  return menu instanceof HTMLElement ? menu : null;
+}
+
+function getTableShape(editor: Editor): { columns: number; rows: number } {
+  const table = editor.getJSON().content?.find((node) => node.type === "table");
+  if (!table) {
+    throw new Error("Expected a top-level table.");
+  }
+
+  const rows = getJsonContentChildren(table).filter((node) => node.type === "tableRow");
+  const columns =
+    rows.length > 0
+      ? getJsonContentChildren(rows[0]!).filter((node) => node.type === "tableCell" || node.type === "tableHeader").length
+      : 0;
+
+  return {
+    columns,
+    rows: rows.length
+  };
+}
+
+function getTableTextGrid(editor: Editor): string[][] {
+  const table = editor.getJSON().content?.find((node) => node.type === "table");
+  if (!table) {
+    throw new Error("Expected a top-level table.");
+  }
+
+  return getJsonContentChildren(table)
+    .filter((node) => node.type === "tableRow")
+    .map((row) =>
+      getJsonContentChildren(row)
+        .filter((node) => node.type === "tableCell" || node.type === "tableHeader")
+        .map((cell) => {
+          const paragraph = getJsonContentChildren(cell).find((node) => node.type === "paragraph");
+          if (!paragraph) {
+            return "";
+          }
+
+          const text = getJsonContentChildren(paragraph)
+            .filter((node) => node.type === "text" && typeof node.text === "string")
+            .map((node) => node.text ?? "")
+            .join("");
+          return text;
+        })
+    );
+}
+
+function getNativeSelectionState() {
+  const selection = window.getSelection();
+  return selection
+    ? {
+        anchorNode: selection.anchorNode,
+        anchorOffset: selection.anchorOffset,
+        focusNode: selection.focusNode,
+        focusOffset: selection.focusOffset,
+        rangeCount: selection.rangeCount,
+        text: selection.toString()
+      }
+    : null;
+}
+
+function mockTableGeometry(
+  editor: Editor,
+  geometry: {
+    editorSurfaceRect?: DOMRect;
+    mainPaneRect?: DOMRect;
+    cellRectLeftOffset?: number;
+    rowRectTopOffset?: number;
+    tableRect: DOMRect;
+    wrapperClientHeight: number;
+    wrapperClientWidth: number;
+    wrapperOffsetHeight: number;
+    wrapperOffsetWidth: number;
+    wrapperRect: DOMRect;
+    wrapperScrollLeft?: number;
+    wrapperScrollWidth: number;
+  }
+) {
+  const table = getTableElement(editor);
+  const wrapper = getTableWrapperElement(editor);
+  if (!(table instanceof HTMLTableElement) || !(wrapper instanceof HTMLElement)) {
+    throw new Error("Expected the table wrapper and table element to be available.");
+  }
+
+  const editorPane =
+    getEditorPaneElement(editor) ??
+    (() => {
+      throw new Error("Expected the editor pane to be available.");
+    })();
+  let editorSurfaceRect = geometry.editorSurfaceRect ?? geometry.mainPaneRect ?? DEFAULT_TABLE_MAIN_PANE_RECT;
+  let tableRect = geometry.tableRect;
+  let wrapperBaseRect = geometry.wrapperRect;
+  let wrapperClientHeight = geometry.wrapperClientHeight;
+  let wrapperClientWidth = geometry.wrapperClientWidth;
+  let wrapperOffsetHeight = geometry.wrapperOffsetHeight;
+  let wrapperOffsetWidth = geometry.wrapperOffsetWidth;
+  let wrapperScrollLeft = geometry.wrapperScrollLeft ?? 0;
+  let wrapperScrollWidth = geometry.wrapperScrollWidth;
+  const restoreSteps: Array<() => void> = [];
+
+  const restoreRect = (element: Element, getRect: () => DOMRect) => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(element, "getBoundingClientRect");
+    Object.defineProperty(element, "getBoundingClientRect", {
+      configurable: true,
+      value: () => getRect()
+    });
+
+    restoreSteps.push(() => {
+      if (originalDescriptor) {
+        Object.defineProperty(element, "getBoundingClientRect", originalDescriptor);
+        return;
+      }
+
+      Reflect.deleteProperty(element, "getBoundingClientRect");
+    });
+  };
+
+  restoreRect(table, () => tableRect);
+  restoreRect(editorPane, () => editorSurfaceRect);
+  restoreRect(wrapper, () => wrapperBaseRect);
+
+  const rowElements = Array.from(table.querySelectorAll("tr"));
+  const rowHeight = rowElements.length > 0 ? tableRect.height / rowElements.length : tableRect.height;
+  for (const [rowIndex, rowElement] of rowElements.entries()) {
+    const rowTop = tableRect.top + rowIndex * rowHeight + (geometry.rowRectTopOffset ?? 0);
+    restoreRect(
+      rowElement,
+      () =>
+        new DOMRect(tableRect.left, rowTop, tableRect.width, rowHeight)
+    );
+
+    const cellElements = Array.from(rowElement.querySelectorAll(":scope > th, :scope > td"));
+    const cellWidth = cellElements.length > 0 ? tableRect.width / cellElements.length : tableRect.width;
+    for (const [columnIndex, cellElement] of cellElements.entries()) {
+      const cellLeft = tableRect.left + columnIndex * cellWidth + (geometry.cellRectLeftOffset ?? 0);
+      restoreRect(
+        cellElement,
+        () =>
+          new DOMRect(cellLeft, rowTop, cellWidth, rowHeight)
+      );
+    }
+  }
+
+  const restoreMetric = (
+    property: "clientHeight" | "clientWidth" | "offsetHeight" | "offsetWidth" | "scrollLeft" | "scrollWidth",
+    getValue: () => number
+  ) => {
+    const originalDescriptor = Object.getOwnPropertyDescriptor(wrapper, property);
+    Object.defineProperty(wrapper, property, {
+      configurable: true,
+      get: () => getValue()
+    });
+
+    restoreSteps.push(() => {
+      if (originalDescriptor) {
+        Object.defineProperty(wrapper, property, originalDescriptor);
+        return;
+      }
+
+      Reflect.deleteProperty(wrapper, property);
+    });
+  };
+
+  restoreMetric("clientHeight", () => wrapperClientHeight);
+  restoreMetric("clientWidth", () => wrapperClientWidth);
+  restoreMetric("offsetHeight", () => wrapperOffsetHeight);
+  restoreMetric("offsetWidth", () => wrapperOffsetWidth);
+  restoreMetric("scrollLeft", () => wrapperScrollLeft);
+  restoreMetric("scrollWidth", () => wrapperScrollWidth);
+
+  return {
+    restore() {
+      for (const restore of restoreSteps.reverse()) {
+        restore();
+      }
+    },
+    setLayoutRects(nextGeometry: Partial<typeof geometry>) {
+      tableRect = nextGeometry.tableRect ?? tableRect;
+      wrapperBaseRect = nextGeometry.wrapperRect ?? wrapperBaseRect;
+      editorSurfaceRect = nextGeometry.editorSurfaceRect ?? nextGeometry.mainPaneRect ?? editorSurfaceRect;
+      wrapperClientHeight = nextGeometry.wrapperClientHeight ?? wrapperClientHeight;
+      wrapperClientWidth = nextGeometry.wrapperClientWidth ?? wrapperClientWidth;
+      wrapperOffsetHeight = nextGeometry.wrapperOffsetHeight ?? wrapperOffsetHeight;
+      wrapperOffsetWidth = nextGeometry.wrapperOffsetWidth ?? wrapperOffsetWidth;
+      wrapperScrollLeft = nextGeometry.wrapperScrollLeft ?? wrapperScrollLeft;
+      wrapperScrollWidth = nextGeometry.wrapperScrollWidth ?? wrapperScrollWidth;
+    }
+  };
+}
+
+function getEditorPaneElement(editor: Editor) {
+  const editorSurface = editor.view.dom;
+  const surfaceElement = editorSurface.closest(".docsera-editor-runtime__surface");
+  return surfaceElement instanceof HTMLElement ? surfaceElement : null;
 }
 
 function getTopLevelNodeType(document: DocseraTiptapDocument, index: number): string | null {
@@ -837,7 +1192,7 @@ describe("PageEditorHostRuntime", () => {
     expect(undoDepth(editor.state)).toBe(beforeUndoDepth);
   });
 
-  it("renders nested slash query presentation in owned textblocks and removes it on execute", async () => {
+  it("renders nested slash query presentation in owned textblocks and suppresses Table from nested table-cell search", async () => {
     const { editorReady } = renderRuntime({
       initialEnvelope: createEnvelopeFromDocument(createNestedTableDocument() as DocseraTiptapDocument)
     });
@@ -874,17 +1229,17 @@ describe("PageEditorHostRuntime", () => {
       expect(getCommandQueryInline(editor)).toHaveTextContent("/tab");
       expect(getCommandQuerySlash(editor)).toBeNull();
       expect(getCommandQueryHelper(editor)).toBeNull();
-      expect(getOptionNames(slashMenu)).toContain("Table");
+      expect(within(slashMenu).queryByRole("option", { name: /Table/ })).toBeNull();
     });
 
-    fireEvent.keyDown(editor.view.dom, { key: "Enter" });
+    fireEvent.keyDown(editor.view.dom, { key: "Escape" });
 
     await waitFor(() => {
       expect(screen.queryByRole("listbox", { name: "Slash command menu" })).toBeNull();
       expect(getCommandQueryPresentationState(editor)).toBeNull();
       expect(getCommandQueryParagraph(editor)).toBeNull();
     });
-    expect(editor.getJSON()).not.toEqual(before);
+    expect(editor.getJSON()).toEqual(before);
   });
 
   it("supports arrow navigation, Enter execution, and pointer execution for slash commands", async () => {
@@ -4310,6 +4665,1396 @@ describe("PageEditorHostRuntime", () => {
     geometrySpy.mockRestore();
   });
 
+  it("hides the table overlay outside a table and reveals the rails inside a table", async () => {
+    const { editorReady, overlayRoot } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Outside table" }]
+          }
+        ]
+      });
+    });
+
+    const overlay = getTableOverlayRoot(overlayRoot);
+    expect(overlay).toBeInstanceOf(HTMLElement);
+    expect(getTableRailButton(overlayRoot, "column")).toBeNull();
+    expect(getTableRailButton(overlayRoot, "row")).toBeNull();
+
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [createCanonicalDefaultTableNode()]
+      });
+    });
+
+    await waitFor(() => {
+      expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+    });
+
+    const geometry = mockTableGeometry(editor, {
+      tableRect: new DOMRect(120, 140, 420, 160),
+      wrapperClientHeight: 180,
+      wrapperClientWidth: 420,
+      wrapperOffsetHeight: 192,
+      wrapperOffsetWidth: 460,
+      wrapperRect: new DOMRect(100, 120, 460, 200),
+      wrapperScrollWidth: 520
+    });
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(getFirstTableCellParagraphPosition(editor) + 1);
+      });
+
+      await waitFor(() => {
+        expect(getTableRailButton(overlayRoot, "column")).toBeInstanceOf(HTMLButtonElement);
+        expect(getTableRailButton(overlayRoot, "row")).toBeInstanceOf(HTMLButtonElement);
+      });
+
+      expect(getTableOverlayRoot(overlayRoot)).toHaveAttribute("data-docsera-table-overflow-x", "true");
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it("keeps the column rail beside the actual narrow table edge without reserving page space", async () => {
+    const { editorReady, overlayRoot } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [createTextTableNode([["R1C1", "R1C2"], ["R2C1", "R2C2"]])]
+      });
+    });
+
+    const wrapper = getTableWrapperElement(editor);
+    if (!(wrapper instanceof HTMLElement)) {
+      throw new Error("Expected the table wrapper to be available.");
+    }
+
+    await waitFor(() => {
+      expect(wrapper).toBeInstanceOf(HTMLElement);
+    });
+
+    const ownerWindow = editor.view.dom.ownerDocument.defaultView;
+    if (!ownerWindow) {
+      throw new Error("Expected the editor owner window to be available.");
+    }
+
+    const geometry = mockTableGeometry(editor, {
+      editorSurfaceRect: new DOMRect(24, 32, 640, 680),
+      tableRect: new DOMRect(120, 140, 220, 120),
+      wrapperClientHeight: 180,
+      wrapperClientWidth: 360,
+      wrapperOffsetHeight: 192,
+      wrapperOffsetWidth: 360,
+      wrapperRect: new DOMRect(100, 120, 360, 200),
+      wrapperScrollWidth: 360
+    });
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 0) + 1);
+      });
+
+      await waitFor(() => {
+        expect(getTableRailButton(overlayRoot, "column")).toBeInstanceOf(HTMLButtonElement);
+        expect(getTableRailButton(overlayRoot, "row")).toBeInstanceOf(HTMLButtonElement);
+      });
+
+      const columnRail = getTableRailButton(overlayRoot, "column");
+      const rowRail = getTableRailButton(overlayRoot, "row");
+      if (!(columnRail instanceof HTMLButtonElement) || !(rowRail instanceof HTMLButtonElement)) {
+        throw new Error("Expected both table rails to be available.");
+      }
+
+      const columnRailBox = readInlineBox(columnRail.parentElement as HTMLElement);
+      const rowRailBox = readInlineBox(rowRail.parentElement as HTMLElement);
+
+      expect(getTableOverlayRoot(overlayRoot)).toHaveAttribute("data-docsera-table-overflow-x", "false");
+      expect(columnRailBox.left).toBe(244);
+      expect(columnRailBox.right).toBe(266);
+      expect(rowRailBox.left).toBe(120);
+      expect(rowRailBox.right).toBe(340);
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it("keeps the table wrapper bounded when the table grows beyond the editor lane", async () => {
+    const { editorReady, overlayRoot } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [createTextTableNode([["R1C1", "R1C2"], ["R2C1", "R2C2"]])]
+      });
+    });
+
+    const wrapper = getTableWrapperElement(editor);
+    if (!(wrapper instanceof HTMLElement)) {
+      throw new Error("Expected the table wrapper to be available.");
+    }
+
+    await waitFor(() => {
+      expect(wrapper).toBeInstanceOf(HTMLElement);
+    });
+
+    const geometry = mockTableGeometry(editor, {
+      editorSurfaceRect: new DOMRect(24, 32, 640, 680),
+      tableRect: new DOMRect(120, 140, 220, 120),
+      wrapperClientHeight: 180,
+      wrapperClientWidth: 360,
+      wrapperOffsetHeight: 192,
+      wrapperOffsetWidth: 360,
+      wrapperRect: new DOMRect(100, 120, 460, 200),
+      wrapperScrollWidth: 360
+    });
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 0) + 1);
+      });
+
+      await waitFor(() => {
+        expect(getTableRailButton(overlayRoot, "column")).toBeInstanceOf(HTMLButtonElement);
+      });
+
+      const columnRail = getTableRailButton(overlayRoot, "column");
+      const rowRail = getTableRailButton(overlayRoot, "row");
+      if (!(columnRail instanceof HTMLButtonElement) || !(rowRail instanceof HTMLButtonElement)) {
+        throw new Error("Expected both table rails to be available.");
+      }
+
+      const initialColumnRailBox = readInlineBox(columnRail.parentElement as HTMLElement);
+      const initialRowRailBox = readInlineBox(rowRail.parentElement as HTMLElement);
+      expect(initialColumnRailBox.left).toBe(244);
+      expect(initialColumnRailBox.right).toBe(266);
+      expect(initialRowRailBox.right).toBe(340);
+      expect(wrapper.clientWidth).toBe(360);
+      expect(wrapper.scrollWidth).toBe(360);
+
+      expect(getTableOverlayRoot(overlayRoot)).toHaveAttribute("data-docsera-table-overflow-x", "false");
+
+      const ownerWindow = editor.view.dom.ownerDocument.defaultView;
+      if (!ownerWindow) {
+        throw new Error("Expected the editor owner window to be available.");
+      }
+
+      geometry.setLayoutRects({
+        tableRect: new DOMRect(120, 140, 760, 120),
+        wrapperScrollWidth: 806
+      });
+
+      await act(async () => {
+        ownerWindow.dispatchEvent(new Event("resize"));
+      });
+
+      await waitFor(() => {
+        const updatedColumnRailBox = readInlineBox(columnRail.parentElement as HTMLElement);
+        const updatedRowRailBox = readInlineBox(rowRail.parentElement as HTMLElement);
+        expect(updatedColumnRailBox.left).toBe(784);
+        expect(updatedColumnRailBox.right).toBe(806);
+        expect(updatedColumnRailBox.left).toBeGreaterThan(wrapper.clientWidth);
+        expect(updatedRowRailBox.left).toBe(120);
+        expect(updatedRowRailBox.right).toBe(560);
+        expect(wrapper.clientWidth).toBe(360);
+        expect(wrapper.scrollWidth).toBe(806);
+      });
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it("keeps the Add Column rail in scroll-content coordinates and reveals it at the far-right scroll position", async () => {
+    const { editorReady, overlayRoot } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [createTextTableNode([["R1C1", "R1C2"], ["R2C1", "R2C2"]])]
+      });
+    });
+
+    const wrapper = getTableWrapperElement(editor);
+    if (!(wrapper instanceof HTMLElement)) {
+      throw new Error("Expected the table wrapper to be available.");
+    }
+
+    await waitFor(() => {
+      expect(wrapper).toBeInstanceOf(HTMLElement);
+    });
+
+    const geometry = mockTableGeometry(editor, {
+      editorSurfaceRect: new DOMRect(24, 32, 1180, 680),
+      tableRect: new DOMRect(120, 140, 760, 120),
+      wrapperClientHeight: 180,
+      wrapperClientWidth: 360,
+      wrapperOffsetHeight: 192,
+      wrapperOffsetWidth: 360,
+      wrapperRect: new DOMRect(100, 120, 360, 200),
+      wrapperScrollWidth: 806
+    });
+
+    const ownerWindow = editor.view.dom.ownerDocument.defaultView;
+    if (!ownerWindow) {
+      throw new Error("Expected the editor owner window to be available.");
+    }
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 0) + 1);
+      });
+
+      await waitFor(() => {
+        expect(getTableRailButton(overlayRoot, "column")).toBeInstanceOf(HTMLButtonElement);
+      });
+
+      const columnRail = getTableRailButton(overlayRoot, "column");
+      const rowRail = getTableRailButton(overlayRoot, "row");
+      if (!(columnRail instanceof HTMLButtonElement) || !(rowRail instanceof HTMLButtonElement)) {
+        throw new Error("Expected both table rails to be available.");
+      }
+
+      const initialColumnRailBox = readInlineBox(columnRail.parentElement as HTMLElement);
+      const initialRowRailBox = readInlineBox(rowRail.parentElement as HTMLElement);
+      expect(getTableOverlayRoot(overlayRoot)).toHaveAttribute("data-docsera-table-overflow-x", "true");
+      expect(initialColumnRailBox.left).toBe(784);
+      expect(initialColumnRailBox.right).toBe(806);
+      expect(initialColumnRailBox.height).toBe(120);
+      expect(initialColumnRailBox.left).toBeGreaterThan(wrapper.clientWidth);
+      expect(initialRowRailBox.left).toBe(120);
+      expect(initialRowRailBox.right).toBe(460);
+      expect(initialRowRailBox.height).toBe(22);
+
+      geometry.setLayoutRects({
+        tableRect: new DOMRect(-326, 140, 760, 160),
+        wrapperScrollLeft: 446
+      });
+
+      await act(async () => {
+        overlayRoot.ownerDocument.dispatchEvent(new Event("scroll"));
+      });
+
+      await waitFor(() => {
+        const revealedColumnRail = getTableRailButton(overlayRoot, "column");
+        const revealedRowRail = getTableRailButton(overlayRoot, "row");
+        if (!(revealedColumnRail instanceof HTMLButtonElement) || !(revealedRowRail instanceof HTMLButtonElement)) {
+          throw new Error("Expected both table rails to remain available.");
+        }
+        const revealedColumnRailBox = readInlineBox(revealedColumnRail.parentElement as HTMLElement);
+        const revealedRowRailBox = readInlineBox(revealedRowRail.parentElement as HTMLElement);
+        expect(revealedColumnRailBox.left).toBe(784);
+        expect(revealedColumnRailBox.right).toBe(806);
+        expect(revealedColumnRailBox.height).toBe(160);
+        expect(revealedColumnRailBox.left - wrapper.scrollLeft).toBe(338);
+        expect(revealedColumnRailBox.right - wrapper.scrollLeft).toBe(360);
+        expect(revealedRowRailBox.height).toBe(22);
+        expect(revealedRowRailBox.right).toBe(434);
+      });
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it("centers compact row and column pills on the table borders and expands them in place on hover", async () => {
+    const { editorReady, overlayRoot } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [createCanonicalDefaultTableNode()]
+      });
+    });
+
+    await waitFor(() => {
+      expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+    });
+
+    const geometry = mockTableGeometry(editor, {
+      tableRect: new DOMRect(120, 140, 420, 180),
+      cellRectLeftOffset: 3,
+      rowRectTopOffset: 3,
+      wrapperClientHeight: 180,
+      wrapperClientWidth: 420,
+      wrapperOffsetHeight: 192,
+      wrapperOffsetWidth: 460,
+      wrapperRect: new DOMRect(100, 120, 460, 220),
+      wrapperScrollWidth: 520
+    });
+
+    let firstRowFirstCell: HTMLTableCellElement | null = null;
+    let previousBorderLeftWidth = "";
+    let previousBorderTopWidth = "";
+    try {
+      const table = getTableElement(editor);
+      if (!(table instanceof HTMLTableElement)) {
+        throw new Error("Expected the table element to be available.");
+      }
+
+      firstRowFirstCell = table.querySelector("tr:first-child > th, tr:first-child > td");
+      if (!(firstRowFirstCell instanceof HTMLTableCellElement)) {
+        throw new Error("Expected the first table cell to be available.");
+      }
+
+      previousBorderLeftWidth = firstRowFirstCell.style.borderLeftWidth;
+      previousBorderTopWidth = firstRowFirstCell.style.borderTopWidth;
+      firstRowFirstCell.style.borderLeftWidth = "3px";
+      firstRowFirstCell.style.borderTopWidth = "5px";
+
+      await act(async () => {
+        editor.commands.setTextSelection(getFirstTableCellParagraphPosition(editor) + 1);
+      });
+
+      await waitFor(() => {
+        expect(getTableHandleButton(overlayRoot, "row", 0)).toBeInstanceOf(HTMLButtonElement);
+        expect(getTableHandleButton(overlayRoot, "column", 0)).toBeInstanceOf(HTMLButtonElement);
+      });
+
+      const rowButton = getTableHandleButton(overlayRoot, "row", 0);
+      const columnButton = getTableHandleButton(overlayRoot, "column", 0);
+      const rowShell = getTableHandleShell(overlayRoot, "row", 0);
+      const columnShell = getTableHandleShell(overlayRoot, "column", 0);
+      const rowEllipsisLayer = getTableHandleEllipsisLayer(overlayRoot, "row", 0);
+      const columnEllipsisLayer = getTableHandleEllipsisLayer(overlayRoot, "column", 0);
+      const rowRail = getTableRailButton(overlayRoot, "row");
+      const columnRail = getTableRailButton(overlayRoot, "column");
+      if (
+        !(rowButton instanceof HTMLButtonElement) ||
+        !(columnButton instanceof HTMLButtonElement) ||
+        !(rowShell instanceof HTMLElement) ||
+        !(columnShell instanceof HTMLElement) ||
+        !(rowEllipsisLayer instanceof HTMLElement) ||
+        !(columnEllipsisLayer instanceof HTMLElement) ||
+        !(rowRail instanceof HTMLButtonElement) ||
+        !(columnRail instanceof HTMLButtonElement)
+      ) {
+        throw new Error("Expected both table pills to be available.");
+      }
+
+      if (rowShell.parentElement !== rowButton || columnShell.parentElement !== columnButton) {
+        throw new Error("Expected the shell layers to be direct children of their buttons.");
+      }
+      if (rowEllipsisLayer.parentElement !== rowButton || columnEllipsisLayer.parentElement !== columnButton) {
+        throw new Error("Expected the ellipsis layers to be direct children of their buttons.");
+      }
+      if (rowShell.contains(rowEllipsisLayer) || columnShell.contains(columnEllipsisLayer)) {
+        throw new Error("Expected the ellipsis layers to be siblings of the animated shells.");
+      }
+
+      const rowEllipsisSvg = rowEllipsisLayer.querySelector("svg");
+      const columnEllipsisSvg = columnEllipsisLayer.querySelector("svg");
+      if (!(rowEllipsisSvg instanceof SVGElement) || !(columnEllipsisSvg instanceof SVGElement)) {
+        throw new Error("Expected pill icons to be available.");
+      }
+
+      const rowButtonBox = readInlineBox(rowButton);
+      const columnButtonBox = readInlineBox(columnButton);
+      const firstCellRect = firstRowFirstCell.getBoundingClientRect();
+      const computedCellStyle = getComputedStyle(firstRowFirstCell);
+      const renderedLeftBorderWidth = Number.parseFloat(computedCellStyle.borderLeftWidth);
+      const renderedTopBorderWidth = Number.parseFloat(computedCellStyle.borderTopWidth);
+      expect(rowButtonBox).toMatchObject({
+        left: 111.5,
+        top: 152,
+        width: 26,
+        height: 42
+      });
+      expect(columnButtonBox).toMatchObject({
+        left: 172,
+        top: 132.5,
+        width: 42,
+        height: 26
+      });
+      expect(rowButtonBox.left + rowButtonBox.width / 2).toBeCloseTo(firstCellRect.left + renderedLeftBorderWidth / 2, 5);
+      expect(rowButtonBox.top + rowButtonBox.height / 2).toBe(173);
+      expect(columnButtonBox.left + columnButtonBox.width / 2).toBe(193);
+      expect(columnButtonBox.top + columnButtonBox.height / 2).toBeCloseTo(firstCellRect.top + renderedTopBorderWidth / 2, 5);
+      expect(rowEllipsisLayer.style.position).toBe("");
+      expect(columnEllipsisLayer.style.position).toBe("");
+      expect(getComputedStyle(rowEllipsisLayer).display).toBe("grid");
+      expect(getComputedStyle(columnEllipsisLayer).display).toBe("grid");
+      expect(getComputedStyle(rowEllipsisLayer).pointerEvents).toBe("none");
+      expect(getComputedStyle(columnEllipsisLayer).pointerEvents).toBe("none");
+      expect(getComputedStyle(rowEllipsisLayer).width).toBe("12px");
+      expect(getComputedStyle(rowEllipsisLayer).height).toBe("12px");
+      expect(getComputedStyle(columnEllipsisLayer).width).toBe("12px");
+      expect(getComputedStyle(columnEllipsisLayer).height).toBe("12px");
+      expect(getComputedStyle(rowShell).zIndex).toBe("0");
+      expect(getComputedStyle(columnShell).zIndex).toBe("0");
+      expect(getComputedStyle(rowEllipsisLayer).zIndex).toBe("1");
+      expect(getComputedStyle(columnEllipsisLayer).zIndex).toBe("1");
+      expect(readInlineBox(rowShell)).toMatchObject({
+        height: 18,
+        width: 8
+      });
+      expect(readInlineBox(columnShell)).toMatchObject({
+        height: 8,
+        width: 18
+      });
+      expect(getComputedStyle(rowButton).display).toBe("grid");
+      expect(getComputedStyle(columnButton).display).toBe("grid");
+      expect(getComputedStyle(rowRail).cursor).toBe("pointer");
+      expect(getComputedStyle(columnRail).cursor).toBe("pointer");
+      expect(rowEllipsisLayer.style.opacity).toBe("");
+      expect(columnEllipsisLayer.style.opacity).toBe("");
+      expect(getComputedStyle(rowEllipsisLayer).opacity).toBe("0");
+      expect(getComputedStyle(columnEllipsisLayer).opacity).toBe("0");
+
+      fireEvent.mouseEnter(rowButton);
+      await waitFor(() => {
+        const hoveredRowShell = getTableHandleShell(overlayRoot, "row", 0);
+        const hoveredRowEllipsisLayer = getTableHandleEllipsisLayer(overlayRoot, "row", 0);
+        if (!(hoveredRowShell instanceof HTMLElement)) {
+          throw new Error("Expected the hovered row pill to remain available.");
+        }
+        if (!(hoveredRowEllipsisLayer instanceof HTMLElement)) {
+          throw new Error("Expected the row ellipsis layer to remain available.");
+        }
+        expect(readInlineBox(hoveredRowShell)).toMatchObject({
+          height: 28,
+          width: 8
+        });
+        expect(readInlineBox(rowButton)).toMatchObject(rowButtonBox);
+        expect(getComputedStyle(hoveredRowEllipsisLayer).width).toBe("12px");
+        expect(getComputedStyle(hoveredRowEllipsisLayer).height).toBe("12px");
+        expect(hoveredRowEllipsisLayer.style.position).toBe("");
+        expect(getComputedStyle(hoveredRowEllipsisLayer).display).toBe("grid");
+        expect(hoveredRowEllipsisLayer.style.opacity).toBe("");
+        expect(getComputedStyle(hoveredRowEllipsisLayer).opacity).toBe("1");
+      });
+
+      fireEvent.mouseLeave(rowButton);
+      fireEvent.mouseEnter(columnButton);
+      await waitFor(() => {
+        const hoveredColumnShell = getTableHandleShell(overlayRoot, "column", 0);
+        const hoveredColumnEllipsisLayer = getTableHandleEllipsisLayer(overlayRoot, "column", 0);
+        if (!(hoveredColumnShell instanceof HTMLElement)) {
+          throw new Error("Expected the hovered column pill to remain available.");
+        }
+        if (!(hoveredColumnEllipsisLayer instanceof HTMLElement)) {
+          throw new Error("Expected the column ellipsis layer to remain available.");
+        }
+        expect(readInlineBox(hoveredColumnShell)).toMatchObject({
+          height: 8,
+          width: 28
+        });
+        expect(readInlineBox(columnButton)).toMatchObject(columnButtonBox);
+        expect(getComputedStyle(hoveredColumnEllipsisLayer).width).toBe("12px");
+        expect(getComputedStyle(hoveredColumnEllipsisLayer).height).toBe("12px");
+        expect(hoveredColumnEllipsisLayer.style.position).toBe("");
+        expect(getComputedStyle(hoveredColumnEllipsisLayer).display).toBe("grid");
+        expect(hoveredColumnEllipsisLayer.style.opacity).toBe("");
+        expect(getComputedStyle(hoveredColumnEllipsisLayer).opacity).toBe("1");
+      });
+    } finally {
+      if (firstRowFirstCell) {
+        firstRowFirstCell.style.borderLeftWidth = previousBorderLeftWidth;
+        firstRowFirstCell.style.borderTopWidth = previousBorderTopWidth;
+      }
+      geometry.restore();
+    }
+  });
+
+  it("keeps table-control chrome on current Docsera tokens and off legacy utility-only assumptions", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/TableControlsOverlay.tsx`,
+      "utf8"
+    );
+
+    expect(source).toContain("docsera-table-controls-overlay__pill-shell");
+    expect(source).toContain("docsera-table-controls-overlay__pill-icon");
+    expect(source).toContain("docsera-table-controls-overlay__rail");
+    expect(source).toContain("docsera-table-controls-overlay__rail-button");
+    expect(source).toContain(".docsera-table-controls-overlay__pill:hover .docsera-table-controls-overlay__pill-icon");
+    expect(source).toContain(
+      ".docsera-table-controls-overlay__pill[data-docsera-table-handle-expanded=\"true\"] .docsera-table-controls-overlay__pill-icon"
+    );
+    expect(source).toContain(".docsera-table-controls-overlay__pill:focus-visible .docsera-table-controls-overlay__pill-icon");
+    expect(source).toContain("display: grid;");
+    expect(source).toContain("place-items: center;");
+    expect(source).toContain("position: relative;");
+    expect(source).toContain("z-index: 0;");
+    expect(source).toContain("z-index: 1;");
+    expect(source).toContain("pointer-events: none;");
+    expect(source).toContain("cursor: pointer;");
+    expect(source).toContain("grid-area: 1 / 1;");
+    expect(source).toContain("var(--docsera-editor-panel-border)");
+    expect(source).toContain("var(--docsera-editor-panel)");
+    expect(source).toContain("var(--docsera-editor-muted)");
+    expect(source).toContain("var(--docsera-editor-primary)");
+    expect(source).toContain("var(--docsera-error)");
+    expect(source).not.toContain("--docsera-border-strong");
+    expect(source).not.toContain("--docsera-surface-overlay");
+    expect(source).not.toContain("--docsera-surface-base");
+    expect(source).not.toContain("--docsera-text-secondary");
+    expect(source).not.toContain("rounded-full border border-[color:var(--docsera-border-strong)]");
+    expect(source).not.toContain("bg-[var(--docsera-surface-overlay)]");
+    expect(source).not.toContain("text-[var(--docsera-text-secondary)]");
+    expect(source).not.toContain("pointer-events-none inline-flex items-center justify-center");
+    expect(source).not.toContain("opacity: isHovered || isMenuOpen ? 1 : 0,");
+  });
+
+  it("appends a column at the far-right edge even when the active cell is not the last column", async () => {
+    const { editorReady, overlayRoot, onSaveDraft } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          createTextTableNode([
+            ["R1C1", "R1C2", "R1C3"],
+            ["R2C1", "R2C2", "R2C3"],
+            ["R3C1", "R3C2", "R3C3"]
+          ])
+        ]
+      });
+    });
+
+    await waitFor(() => {
+      expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+    });
+
+    const geometry = mockTableGeometry(editor, {
+      tableRect: new DOMRect(120, 140, 420, 160),
+      wrapperClientHeight: 180,
+      wrapperClientWidth: 420,
+      wrapperOffsetHeight: 192,
+      wrapperOffsetWidth: 460,
+      wrapperRect: new DOMRect(100, 120, 460, 200),
+      wrapperScrollWidth: 520
+    });
+
+    try {
+      await runAutosave();
+      onSaveDraft.mockClear();
+      const startingDocument = editor.getJSON();
+      const undoDepthBeforeAppend = undoDepth(editor.state);
+
+      await act(async () => {
+        editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 7) + 1);
+      });
+
+      await waitFor(() => {
+        expect(getTableRailButton(overlayRoot, "column")).toBeInstanceOf(HTMLButtonElement);
+      });
+
+      const columnButton = getTableRailButton(overlayRoot, "column");
+      if (!(columnButton instanceof HTMLButtonElement)) {
+        throw new Error("Expected the add column button to be available.");
+      }
+
+      fireEvent.click(columnButton);
+      await waitFor(() => {
+        expect(getTableTextGrid(editor)).toEqual([
+          ["R1C1", "R1C2", "R1C3", ""],
+          ["R2C1", "R2C2", "R2C3", ""],
+          ["R3C1", "R3C2", "R3C3", ""]
+        ]);
+      });
+      expect(undoDepth(editor.state)).toBe(undoDepthBeforeAppend + 1);
+      await runAutosave();
+      expect(onSaveDraft).toHaveBeenCalledTimes(1);
+      expect(getTableShape(editor)).toEqual({ columns: 4, rows: 3 });
+
+      await act(async () => {
+        editor.commands.undo();
+      });
+      expect(editor.getJSON()).toEqual(startingDocument);
+      expect(getTableShape(editor)).toEqual({ columns: 3, rows: 3 });
+      expect(undoDepth(editor.state)).toBe(undoDepthBeforeAppend);
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it("appends a row at the bottom edge even when the active cell is not the last row", async () => {
+    const { editorReady, overlayRoot, onSaveDraft } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          createTextTableNode([
+            ["R1C1", "R1C2", "R1C3"],
+            ["R2C1", "R2C2", "R2C3"],
+            ["R3C1", "R3C2", "R3C3"]
+          ])
+        ]
+      });
+    });
+
+    await waitFor(() => {
+      expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+    });
+
+    const geometry = mockTableGeometry(editor, {
+      tableRect: new DOMRect(120, 140, 420, 160),
+      wrapperClientHeight: 180,
+      wrapperClientWidth: 420,
+      wrapperOffsetHeight: 192,
+      wrapperOffsetWidth: 460,
+      wrapperRect: new DOMRect(100, 120, 460, 200),
+      wrapperScrollWidth: 520
+    });
+
+    try {
+      await runAutosave();
+      onSaveDraft.mockClear();
+      const startingDocument = editor.getJSON();
+      const undoDepthBeforeAppend = undoDepth(editor.state);
+
+      await act(async () => {
+        editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 4) + 1);
+      });
+
+      await waitFor(() => {
+        expect(getTableRailButton(overlayRoot, "row")).toBeInstanceOf(HTMLButtonElement);
+      });
+
+      const rowButton = getTableRailButton(overlayRoot, "row");
+      if (!(rowButton instanceof HTMLButtonElement)) {
+        throw new Error("Expected the add row button to be available.");
+      }
+
+      fireEvent.click(rowButton);
+      await waitFor(() => {
+        expect(getTableTextGrid(editor)).toEqual([
+          ["R1C1", "R1C2", "R1C3"],
+          ["R2C1", "R2C2", "R2C3"],
+          ["R3C1", "R3C2", "R3C3"],
+          ["", "", ""]
+        ]);
+      });
+      expect(undoDepth(editor.state)).toBe(undoDepthBeforeAppend + 1);
+      await runAutosave();
+      expect(onSaveDraft).toHaveBeenCalledTimes(1);
+      expect(getTableShape(editor)).toEqual({ columns: 3, rows: 4 });
+
+      await act(async () => {
+        editor.commands.undo();
+      });
+      expect(editor.getJSON()).toEqual(startingDocument);
+      expect(getTableShape(editor)).toEqual({ columns: 3, rows: 3 });
+      expect(undoDepth(editor.state)).toBe(undoDepthBeforeAppend);
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it("binds table rail listeners and viewport measurements to the overlay owner's document and window", async () => {
+    const harness = createOverlayOwnerDocumentHarness(240, 160);
+    const overlayRoot = document.createElement("div");
+    Object.defineProperty(overlayRoot, "ownerDocument", {
+      configurable: true,
+      value: harness.ownerDocument
+    });
+
+    const { editorReady } = renderRuntime({}, { overlayRoot });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          createTextTableNode([
+            ["R1C1", "R1C2", "R1C3"],
+            ["R2C1", "R2C2", "R2C3"],
+            ["R3C1", "R3C2", "R3C3"]
+          ])
+        ]
+      });
+    });
+
+    await waitFor(() => {
+      expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+    });
+
+    const geometry = mockTableGeometry(editor, {
+      tableRect: new DOMRect(120, 40, 420, 240),
+      wrapperClientHeight: 260,
+      wrapperClientWidth: 420,
+      wrapperOffsetHeight: 272,
+      wrapperOffsetWidth: 460,
+      wrapperRect: new DOMRect(100, 20, 460, 280),
+      wrapperScrollWidth: 520
+    });
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 7) + 1);
+      });
+
+      await waitFor(() => {
+        expect(getTableRailButton(overlayRoot, "column")).toBeInstanceOf(HTMLButtonElement);
+        expect(getTableRailButton(overlayRoot, "row")).toBeInstanceOf(HTMLButtonElement);
+      });
+
+      expect(harness.ownerDocumentAddEventListener).toHaveBeenCalledWith("scroll", expect.any(Function), true);
+      expect(harness.ownerWindowAddEventListener).toHaveBeenCalledWith("resize", expect.any(Function));
+      expect(window.innerHeight).not.toBe(harness.ownerWindow.innerHeight);
+
+      const rowRail = getTableRailButton(overlayRoot, "row");
+      if (!(rowRail instanceof HTMLButtonElement)) {
+        throw new Error("Expected the add row button to be available.");
+      }
+
+      expect(getTableHandleButton(overlayRoot, "row", 2)).toBeNull();
+
+      setOverlayOwnerViewport(harness.ownerWindow, 240, 260);
+
+      act(() => {
+        harness.triggerScroll();
+        harness.triggerResize();
+      });
+
+      await waitFor(() => {
+        expect(getTableRailButton(overlayRoot, "row")).toBeInstanceOf(HTMLButtonElement);
+        expect(getTableHandleButton(overlayRoot, "row", 2)).toBeInstanceOf(HTMLButtonElement);
+      });
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it("keeps rail pointerdown from moving the ProseMirror or native selection", async () => {
+    const { editorReady, overlayRoot } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [createCanonicalDefaultTableNode()]
+      });
+    });
+
+    await waitFor(() => {
+      expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+    });
+
+    const geometry = mockTableGeometry(editor, {
+      tableRect: new DOMRect(120, 140, 420, 160),
+      wrapperClientHeight: 180,
+      wrapperClientWidth: 420,
+      wrapperOffsetHeight: 192,
+      wrapperOffsetWidth: 460,
+      wrapperRect: new DOMRect(100, 120, 460, 200),
+      wrapperScrollWidth: 520
+    });
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(getFirstTableCellParagraphPosition(editor) + 1);
+      });
+
+      await waitFor(() => {
+        expect(getTableRailButton(overlayRoot, "column")).toBeInstanceOf(HTMLButtonElement);
+      });
+
+      const beforeSelection = {
+        from: editor.state.selection.from,
+        to: editor.state.selection.to
+      };
+      const beforeNativeSelection = getNativeSelectionState();
+      const columnButton = getTableRailButton(overlayRoot, "column");
+      if (!(columnButton instanceof HTMLButtonElement)) {
+        throw new Error("Expected the add column button to be available.");
+      }
+
+      fireEvent.pointerDown(columnButton, { button: 0 });
+      fireEvent.mouseDown(columnButton, { button: 0 });
+
+      expect(editor.state.selection.from).toBe(beforeSelection.from);
+      expect(editor.state.selection.to).toBe(beforeSelection.to);
+      expect(getNativeSelectionState()).toEqual(beforeNativeSelection);
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it("tracks the visible table edges and the scrollbar lane when horizontal scroll changes", async () => {
+    const { editorReady, overlayRoot } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [createCanonicalDefaultTableNode()]
+      });
+    });
+
+    await waitFor(() => {
+      expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+    });
+
+    const geometry = mockTableGeometry(editor, {
+      mainPaneRect: DEFAULT_TABLE_MAIN_PANE_RECT,
+      tableRect: new DOMRect(80, 140, 460, 160),
+      wrapperClientHeight: 180,
+      wrapperClientWidth: 420,
+      wrapperOffsetHeight: 192,
+      wrapperOffsetWidth: 420,
+      wrapperRect: new DOMRect(120, 120, 420, 200),
+      wrapperScrollWidth: 520
+    });
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(getFirstTableCellParagraphPosition(editor) + 1);
+      });
+
+      await waitFor(() => {
+        expect(getTableRailButton(overlayRoot, "column")).toBeInstanceOf(HTMLButtonElement);
+      });
+
+      const columnRail = getTableRailButton(overlayRoot, "column");
+      const rowRail = getTableRailButton(overlayRoot, "row");
+      if (!(columnRail instanceof HTMLButtonElement) || !(rowRail instanceof HTMLButtonElement)) {
+        throw new Error("Expected both table rails to be available.");
+      }
+
+      const columnRailBox = readInlineBox(columnRail.parentElement as HTMLElement);
+      const rowRailBox = readInlineBox(rowRail.parentElement as HTMLElement);
+
+      expect(columnRailBox.left).toBe(424);
+      expect(columnRailBox.right).toBe(446);
+      expect(rowRailBox.left).toBe(120);
+      expect(rowRailBox.right).toBe(540);
+      expect(getTableOverlayRoot(overlayRoot)).toHaveAttribute("data-docsera-table-overflow-x", "true");
+
+      geometry.setLayoutRects({
+        tableRect: new DOMRect(70, 140, 440, 160)
+      });
+
+      await act(async () => {
+        overlayRoot.ownerDocument.dispatchEvent(new Event("scroll"));
+      });
+
+      await waitFor(() => {
+        const updatedColumnRail = getTableRailButton(overlayRoot, "column");
+        const updatedRowRail = getTableRailButton(overlayRoot, "row");
+        if (!(updatedColumnRail instanceof HTMLButtonElement) || !(updatedRowRail instanceof HTMLButtonElement)) {
+          throw new Error("Expected both table rails to remain available.");
+        }
+        const updatedColumnRailBox = readInlineBox(updatedColumnRail.parentElement as HTMLElement);
+        const updatedRowRailBox = readInlineBox(updatedRowRail.parentElement as HTMLElement);
+        expect(updatedColumnRailBox.left).toBe(394);
+        expect(updatedColumnRailBox.right).toBe(416);
+        expect(updatedRowRailBox.left).toBe(120);
+        expect(updatedRowRailBox.right).toBe(510);
+      });
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it("keeps adjacent editor chrome out of the column rail geometry", async () => {
+    const { editorReady, overlayRoot } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [createCanonicalDefaultTableNode()]
+      });
+    });
+
+    await waitFor(() => {
+      expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+    });
+
+    const wrapper = getTableWrapperElement(editor);
+    if (!(wrapper instanceof HTMLElement)) {
+      throw new Error("Expected the table wrapper to be available.");
+    }
+
+    const geometry = mockTableGeometry(editor, {
+      editorSurfaceRect: new DOMRect(24, 32, 560, 680),
+      tableRect: new DOMRect(100, 140, 620, 160),
+      wrapperClientHeight: 180,
+      wrapperClientWidth: 500,
+      wrapperOffsetHeight: 192,
+      wrapperOffsetWidth: 500,
+      wrapperRect: new DOMRect(80, 120, 500, 200),
+      wrapperScrollWidth: 760
+    });
+
+    const ownerWindow = editor.view.dom.ownerDocument.defaultView;
+    if (!ownerWindow) {
+      throw new Error("Expected the editor owner window to be available.");
+    }
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(getFirstTableCellParagraphPosition(editor) + 1);
+      });
+
+      await waitFor(() => {
+        expect(getTableRailButton(overlayRoot, "column")).toBeInstanceOf(HTMLButtonElement);
+        expect(getTableRailButton(overlayRoot, "row")).toBeInstanceOf(HTMLButtonElement);
+      });
+
+      const columnRail = getTableRailButton(overlayRoot, "column");
+      const rowRail = getTableRailButton(overlayRoot, "row");
+      if (!(columnRail instanceof HTMLButtonElement) || !(rowRail instanceof HTMLButtonElement)) {
+        throw new Error("Expected both table rails to be available.");
+      }
+
+      const initialColumnRailBox = readInlineBox(columnRail.parentElement as HTMLElement);
+      const initialRowRailBox = readInlineBox(rowRail.parentElement as HTMLElement);
+
+      expect(initialColumnRailBox.left).toBe(644);
+      expect(initialColumnRailBox.right).toBe(666);
+      expect(initialRowRailBox.right).toBe(580);
+      expect(getTableOverlayRoot(overlayRoot)).toHaveAttribute("data-docsera-table-overflow-x", "true");
+
+      geometry.setLayoutRects({
+        editorSurfaceRect: new DOMRect(24, 32, 760, 680)
+      });
+
+      await act(async () => {
+        ownerWindow.dispatchEvent(new Event("resize"));
+      });
+
+      await waitFor(() => {
+        const unchangedColumnRailBox = readInlineBox(columnRail.parentElement as HTMLElement);
+        expect(unchangedColumnRailBox.left).toBe(644);
+        expect(unchangedColumnRailBox.right).toBe(666);
+      });
+
+      geometry.setLayoutRects({
+        wrapperRect: new DOMRect(80, 120, 700, 200)
+      });
+
+      await act(async () => {
+        ownerWindow.dispatchEvent(new Event("resize"));
+      });
+
+      await waitFor(() => {
+        const expandedColumnRailBox = readInlineBox(columnRail.parentElement as HTMLElement);
+        const expandedRowRailBox = readInlineBox(rowRail.parentElement as HTMLElement);
+
+        expect(expandedColumnRailBox.left).toBe(644);
+        expect(expandedColumnRailBox.right).toBe(666);
+        expect(expandedRowRailBox.right).toBe(720);
+      });
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it("shows the active row and column pills for a table cell and retargets them when the selection changes", async () => {
+    const { editorReady, overlayRoot } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [createCanonicalDefaultTableNode()]
+      });
+    });
+
+    await waitFor(() => {
+      expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+    });
+
+    const geometry = mockTableGeometry(editor, {
+      tableRect: new DOMRect(120, 140, 420, 180),
+      wrapperClientHeight: 180,
+      wrapperClientWidth: 420,
+      wrapperOffsetHeight: 192,
+      wrapperOffsetWidth: 460,
+      wrapperRect: new DOMRect(100, 120, 460, 220),
+      wrapperScrollWidth: 520
+    });
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(getFirstTableCellParagraphPosition(editor) + 1);
+      });
+
+      await waitFor(() => {
+        expect(getTableHandleButton(overlayRoot, "row", 0)).toBeInstanceOf(HTMLButtonElement);
+        expect(getTableHandleButton(overlayRoot, "column", 0)).toBeInstanceOf(HTMLButtonElement);
+      });
+
+      expect(getTableHandleButton(overlayRoot, "row", 0)).toHaveAttribute("aria-expanded", "false");
+      expect(getTableHandleButton(overlayRoot, "column", 0)).toHaveAttribute("aria-expanded", "false");
+
+      await act(async () => {
+        editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 4) + 1);
+      });
+
+      await waitFor(() => {
+        expect(getTableHandleButton(overlayRoot, "row", 0)).toBeNull();
+        expect(getTableHandleButton(overlayRoot, "column", 0)).toBeNull();
+        expect(getTableHandleButton(overlayRoot, "row", 1)).toBeInstanceOf(HTMLButtonElement);
+        expect(getTableHandleButton(overlayRoot, "column", 1)).toBeInstanceOf(HTMLButtonElement);
+      });
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it("keeps the active row pill visible while its menu is open, switches menu kinds, and closes on Escape or outside pointerdown", async () => {
+    const { editorReady, overlayRoot } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [createCanonicalDefaultTableNode()]
+      });
+    });
+
+    await waitFor(() => {
+      expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+    });
+
+    const geometry = mockTableGeometry(editor, {
+      tableRect: new DOMRect(120, 140, 420, 180),
+      wrapperClientHeight: 180,
+      wrapperClientWidth: 420,
+      wrapperOffsetHeight: 192,
+      wrapperOffsetWidth: 460,
+      wrapperRect: new DOMRect(100, 120, 460, 220),
+      wrapperScrollWidth: 520
+    });
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 4) + 1);
+      });
+
+      const rowButton = await screen.findByRole("button", { name: "Table row 2 options" });
+      const columnButton = await screen.findByRole("button", { name: "Table column 2 options" });
+      fireEvent.click(rowButton);
+
+      await waitFor(() => {
+        expect(screen.getByRole("menu", { name: "Table row menu" })).toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Table row 2 options" })).toHaveAttribute("aria-expanded", "true");
+      });
+
+      const rowEllipsisLayer = getTableHandleEllipsisLayer(overlayRoot, "row", 1);
+      if (!(rowEllipsisLayer instanceof HTMLElement)) {
+        throw new Error("Expected the active row ellipsis layer to remain available while the menu is open.");
+      }
+      expect(rowEllipsisLayer.style.opacity).toBe("");
+      expect(getComputedStyle(rowEllipsisLayer).opacity).toBe("1");
+
+      fireEvent.click(columnButton);
+
+      await waitFor(() => {
+        expect(screen.queryByRole("menu", { name: "Table row menu" })).toBeNull();
+        expect(screen.getByRole("menu", { name: "Table column menu" })).toBeInTheDocument();
+      });
+
+      fireEvent.keyDown(document, { key: "Escape" });
+
+      await waitFor(() => {
+        expect(screen.queryByRole("menu", { name: "Table column menu" })).toBeNull();
+      });
+
+      fireEvent.click(rowButton);
+      await screen.findByRole("menu", { name: "Table row menu" });
+      fireEvent.pointerDown(document.body);
+
+      await waitFor(() => {
+        expect(screen.queryByRole("menu", { name: "Table row menu" })).toBeNull();
+      });
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it.each([
+    {
+      expectedGrid: [
+        ["R1C1", "R1C2", "R1C3"],
+        ["", "", ""],
+        ["R2C1", "R2C2", "R2C3"],
+        ["R3C1", "R3C2", "R3C3"]
+      ],
+      itemLabel: "Insert before"
+    },
+    {
+      expectedGrid: [
+        ["R1C1", "R1C2", "R1C3"],
+        ["R2C1", "R2C2", "R2C3"],
+        ["", "", ""],
+        ["R3C1", "R3C2", "R3C3"]
+      ],
+      itemLabel: "Insert after"
+    },
+    {
+      expectedGrid: [
+        ["R1C1", "R1C2", "R1C3"],
+        ["R3C1", "R3C2", "R3C3"]
+      ],
+      itemLabel: "Delete row"
+    }
+  ] as const)(
+    "runs the row menu action %s and restores the table on undo",
+    async ({ expectedGrid, itemLabel }) => {
+      const harness = createOverlayOwnerDocumentHarness(1280, 720);
+      const overlayRoot = document.createElement("div");
+      Object.defineProperty(overlayRoot, "ownerDocument", {
+        configurable: true,
+        value: harness.ownerDocument
+      });
+      const { editorReady, onSaveDraft } = renderRuntime({}, { overlayRoot });
+
+      await waitFor(() => {
+        expect(editorReady[0]).toBeDefined();
+      });
+
+      const editor = editorReady[0];
+      await act(async () => {
+        editor.commands.setContent({
+          type: "doc",
+          content: [
+            createTextTableNode([
+              ["R1C1", "R1C2", "R1C3"],
+              ["R2C1", "R2C2", "R2C3"],
+              ["R3C1", "R3C2", "R3C3"]
+            ])
+          ]
+        });
+      });
+
+      await waitFor(() => {
+        expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+      });
+
+      const geometry = mockTableGeometry(editor, {
+        tableRect: new DOMRect(120, 140, 420, 180),
+        wrapperClientHeight: 180,
+        wrapperClientWidth: 420,
+        wrapperOffsetHeight: 192,
+        wrapperOffsetWidth: 460,
+        wrapperRect: new DOMRect(100, 120, 460, 220),
+        wrapperScrollWidth: 520
+      });
+
+      try {
+        const startingDocument = editor.getJSON();
+        const undoDepthBefore = undoDepth(editor.state);
+        await act(async () => {
+          editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 4) + 1);
+        });
+
+        const rowButton = await screen.findByRole("button", { name: "Table row 2 options" });
+        fireEvent.click(rowButton);
+        const menu = await screen.findByRole("menu", { name: "Table row menu" });
+        const menuItem = within(menu).getByRole("menuitem", { name: itemLabel });
+        try {
+          await act(async () => {
+            fireEvent.pointerDown(menuItem, { button: 0, buttons: 1 });
+            fireEvent.mouseDown(menuItem, { button: 0, buttons: 1 });
+            fireEvent.mouseUp(menuItem, { button: 0, buttons: 0 });
+            fireEvent.click(menuItem, { button: 0, buttons: 0 });
+          });
+
+          expect(getTableMenu(overlayRoot, "row")).toBeNull();
+          expect(getTableTextGrid(editor)).toEqual(expectedGrid);
+          expect(harness.ownerWindowSetTimeout).not.toHaveBeenCalled();
+        } finally {
+          harness.ownerWindowSetTimeout.mockClear();
+        }
+
+        expect(undoDepth(editor.state)).toBe(undoDepthBefore + 1);
+        await runAutosave();
+        expect(onSaveDraft).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+          editor.commands.undo();
+        });
+
+        expect(editor.getJSON()).toEqual(startingDocument);
+        expect(undoDepth(editor.state)).toBe(undoDepthBefore);
+      } finally {
+        geometry.restore();
+      }
+    }
+  );
+
+  it.each([
+    {
+      expectedGrid: [
+        ["R1C1", "", "R1C2", "R1C3"],
+        ["R2C1", "", "R2C2", "R2C3"],
+        ["R3C1", "", "R3C2", "R3C3"]
+      ],
+      itemLabel: "Insert before"
+    },
+    {
+      expectedGrid: [
+        ["R1C1", "R1C2", "", "R1C3"],
+        ["R2C1", "R2C2", "", "R2C3"],
+        ["R3C1", "R3C2", "", "R3C3"]
+      ],
+      itemLabel: "Insert after"
+    },
+    {
+      expectedGrid: [
+        ["R1C1", "R1C3"],
+        ["R2C1", "R2C3"],
+        ["R3C1", "R3C3"]
+      ],
+      itemLabel: "Delete column"
+    }
+  ] as const)(
+    "runs the column menu action %s and restores the table on undo",
+    async ({ expectedGrid, itemLabel }) => {
+      const harness = createOverlayOwnerDocumentHarness(1280, 720);
+      const overlayRoot = document.createElement("div");
+      Object.defineProperty(overlayRoot, "ownerDocument", {
+        configurable: true,
+        value: harness.ownerDocument
+      });
+      const { editorReady, onSaveDraft } = renderRuntime({}, { overlayRoot });
+
+      await waitFor(() => {
+        expect(editorReady[0]).toBeDefined();
+      });
+
+      const editor = editorReady[0];
+      await act(async () => {
+        editor.commands.setContent({
+          type: "doc",
+          content: [
+            createTextTableNode([
+              ["R1C1", "R1C2", "R1C3"],
+              ["R2C1", "R2C2", "R2C3"],
+              ["R3C1", "R3C2", "R3C3"]
+            ])
+          ]
+        });
+      });
+
+      await waitFor(() => {
+        expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+      });
+
+      const geometry = mockTableGeometry(editor, {
+        tableRect: new DOMRect(120, 140, 420, 180),
+        wrapperClientHeight: 180,
+        wrapperClientWidth: 420,
+        wrapperOffsetHeight: 192,
+        wrapperOffsetWidth: 460,
+        wrapperRect: new DOMRect(100, 120, 460, 220),
+        wrapperScrollWidth: 520
+      });
+
+      try {
+        const startingDocument = editor.getJSON();
+        const undoDepthBefore = undoDepth(editor.state);
+        await act(async () => {
+          editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 4) + 1);
+        });
+
+        const columnButton = await screen.findByRole("button", { name: "Table column 2 options" });
+        fireEvent.click(columnButton);
+        const menu = await screen.findByRole("menu", { name: "Table column menu" });
+        const menuItem = within(menu).getByRole("menuitem", { name: itemLabel });
+        try {
+          await act(async () => {
+            fireEvent.pointerDown(menuItem, { button: 0, buttons: 1 });
+            fireEvent.mouseDown(menuItem, { button: 0, buttons: 1 });
+            fireEvent.mouseUp(menuItem, { button: 0, buttons: 0 });
+            fireEvent.click(menuItem, { button: 0, buttons: 0 });
+          });
+
+          expect(getTableMenu(overlayRoot, "column")).toBeNull();
+          expect(getTableTextGrid(editor)).toEqual(expectedGrid);
+          expect(harness.ownerWindowSetTimeout).not.toHaveBeenCalled();
+        } finally {
+          harness.ownerWindowSetTimeout.mockClear();
+        }
+
+        expect(undoDepth(editor.state)).toBe(undoDepthBefore + 1);
+        await runAutosave();
+        expect(onSaveDraft).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+          editor.commands.undo();
+        });
+
+        expect(editor.getJSON()).toEqual(startingDocument);
+        expect(undoDepth(editor.state)).toBe(undoDepthBefore);
+      } finally {
+        geometry.restore();
+      }
+    }
+  );
   it.each([
     [
       "Heading 1",
@@ -4538,30 +6283,110 @@ describe("PageEditorHostRuntime", () => {
     expect(getOptionNames(slashMenu)).toContain("Table");
   });
 
-  it("suppresses empty-cell placeholders and keeps Table available from in-cell Slash when schema-valid", async () => {
-    const { editorReady } = renderRuntime();
+  it.each([
+    {
+      label: "tableCell",
+      expectedAfterBlockquote: createTableContextDocument("tableCell", [
+        {
+          type: "codeBlock",
+          attrs: {
+            language: null
+          }
+        }
+      ]),
+      getSelectionPosition: getFirstTableCellParagraphPosition,
+      initialEnvelope: createTableContextDocument("tableCell", [{ type: "paragraph" }])
+    },
+    {
+      label: "tableHeader",
+      expectedAfterBlockquote: createTableContextDocument("tableHeader", [
+        {
+          type: "codeBlock",
+          attrs: {
+            language: null
+          }
+        }
+      ]),
+      getSelectionPosition: (editor: Editor) => getFirstTextblockPositionInsideNode(editor, "tableHeader"),
+      initialEnvelope: createTableHeaderDocument()
+    }
+  ])(
+    "hides Table from in-%s Slash searches, preserves nested command execution, and leaves editor state untouched while filtering",
+    async ({ expectedAfterBlockquote, getSelectionPosition, initialEnvelope }) => {
+      const { editorReady, onSaveDraft, onStatusChange } = renderRuntime({
+        initialEnvelope: createEnvelopeFromDocument(initialEnvelope as DocseraTiptapDocument)
+      });
 
-    await waitFor(() => {
-      expect(editorReady[0]).toBeDefined();
-    });
+      await waitFor(() => {
+        expect(editorReady[0]).toBeDefined();
+      });
 
-    const editor = editorReady[0];
-    await openSlashQuery(editor, "table");
-    fireEvent.click(await screen.findByRole("option", { name: /Table/ }));
+      const editor = editorReady[0];
+      const before = editor.getJSON();
+      const beforeUndoDepth = undoDepth(editor.state);
+      const beforeStatusCalls = onStatusChange.mock.calls.length;
+      const beforeSaveCalls = onSaveDraft.mock.calls.length;
 
-    const firstCellParagraph = editor.view.dom.querySelector(".tableWrapper td p");
-    expect(firstCellParagraph).not.toHaveAttribute("data-placeholder");
+      await act(async () => {
+        editor.commands.setTextSelection(getSelectionPosition(editor) + 1);
+      });
 
-    await act(async () => {
-      editor.commands.setTextSelection(getFirstTableCellParagraphPosition(editor) + 1);
-    });
-    fireEvent.keyDown(editor.view.dom, { key: "/" });
-    const slashMenu = await screen.findByRole("listbox", { name: "Slash command menu" });
-    const optionNames = getOptionNames(slashMenu);
-    expect(optionNames).toContain("Table");
-    expect(optionNames).toContain("Blockquote");
-    expect(optionNames).toContain("Code Block");
-  });
+      fireEvent.keyDown(editor.view.dom, { key: "/" });
+      const slashMenu = await screen.findByRole("listbox", { name: "Slash command menu" });
+      expect(getOptionNames(slashMenu)).not.toContain("Table");
+      expect(getOptionNames(slashMenu)).toContain("Blockquote");
+      expect(getOptionNames(slashMenu)).toContain("Code Block");
+
+      fireEvent.keyDown(editor.view.dom, { key: "t" });
+      fireEvent.keyDown(editor.view.dom, { key: "a" });
+      fireEvent.keyDown(editor.view.dom, { key: "b" });
+      fireEvent.keyDown(editor.view.dom, { key: "l" });
+      fireEvent.keyDown(editor.view.dom, { key: "e" });
+
+      await waitFor(() => {
+        expect(within(slashMenu).queryByRole("option", { name: /Table/ })).toBeNull();
+      });
+
+      fireEvent.keyDown(editor.view.dom, { key: "Escape" });
+      await waitFor(() => {
+        expect(screen.queryByRole("listbox", { name: "Slash command menu" })).toBeNull();
+      });
+
+      expect(editor.getJSON()).toEqual(before);
+      expect(undoDepth(editor.state)).toBe(beforeUndoDepth);
+      expect(onStatusChange.mock.calls.length).toBe(beforeStatusCalls);
+      expect(onSaveDraft.mock.calls.length).toBe(beforeSaveCalls);
+
+      await runAutosave();
+      expect(onSaveDraft.mock.calls.length).toBe(beforeSaveCalls);
+      expect(onStatusChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          isDirty: false,
+          status: "Saved"
+        })
+      );
+
+      await act(async () => {
+        editor.commands.setTextSelection(getSelectionPosition(editor) + 1);
+      });
+
+      fireEvent.keyDown(editor.view.dom, { key: "/" });
+      fireEvent.keyDown(editor.view.dom, { key: "c" });
+      fireEvent.keyDown(editor.view.dom, { key: "o" });
+      fireEvent.keyDown(editor.view.dom, { key: "d" });
+      fireEvent.keyDown(editor.view.dom, { key: "e" });
+
+      const codeMenu = await screen.findByRole("listbox", { name: "Slash command menu" });
+      expect(getOptionNames(codeMenu)).toContain("Code Block");
+      await activateCommandOptionWithBrowserPointer(editor, within(codeMenu).getByRole("option", { name: "Code Block" }));
+
+      await waitFor(() => {
+        expect(screen.queryByRole("listbox", { name: "Slash command menu" })).toBeNull();
+      });
+
+      expectCanonicalDocument(editor, expectedAfterBlockquote);
+    }
+  );
 
   it("preserves text formatting and link controls inside table cells", async () => {
     const { editorReady } = renderRuntime();

@@ -86,6 +86,46 @@ function getFloatingLayer(): HTMLElement | null {
   return document.querySelector(".docsera-editor-floating-layer");
 }
 
+type AnimationFrameEntry = {
+  callback: FrameRequestCallback;
+  id: number;
+};
+
+function createAnimationFrameHarness() {
+  const queuedFrames: AnimationFrameEntry[] = [];
+  const canceledFrameIds = new Set<number>();
+  let nextFrameId = 0;
+  const requestAnimationFrameSpy = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+    const id = nextFrameId + 1;
+    nextFrameId = id;
+    queuedFrames.push({ callback, id });
+    return id;
+  });
+  const cancelAnimationFrameSpy = vi.spyOn(window, "cancelAnimationFrame").mockImplementation((frameId) => {
+    canceledFrameIds.add(frameId);
+  });
+
+  return {
+    cancelAnimationFrameSpy,
+    requestAnimationFrameSpy,
+    shiftNextFrame(): FrameRequestCallback | undefined {
+      while (queuedFrames.length > 0) {
+        const nextFrame = queuedFrames.shift();
+        if (!nextFrame) {
+          return undefined;
+        }
+        if (canceledFrameIds.has(nextFrame.id)) {
+          canceledFrameIds.delete(nextFrame.id);
+          continue;
+        }
+        return nextFrame.callback;
+      }
+
+      return undefined;
+    }
+  };
+}
+
 function getSelectedBlockElements(editor: Editor): HTMLElement[] {
   return Array.from(editor.view.dom.querySelectorAll("[data-docsera-block-selected='true']")).filter(
     (element): element is HTMLElement => element instanceof HTMLElement
@@ -257,7 +297,8 @@ function mockTopLevelBlockGeometry(editor: Editor, blockRects: DOMRect[]) {
   document.createRange = (() => {
     const nativeRange = originalCreateRange();
     const originalSelectNodeContents = nativeRange.selectNodeContents.bind(nativeRange);
-    const originalGetClientRects = nativeRange.getClientRects.bind(nativeRange);
+    const originalGetClientRects =
+      typeof nativeRange.getClientRects === "function" ? nativeRange.getClientRects.bind(nativeRange) : () => [];
     let selectedNode: Node | null = null;
 
     return new Proxy(nativeRange, {
@@ -506,12 +547,7 @@ afterEach(() => {
 
 describe("PageEditorHostRuntime gutter range selection", () => {
   it("auto-scrolls panel-background range selection with a fixed anchor and no document mutation", async () => {
-    const callbacks: FrameRequestCallback[] = [];
-    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
-      callbacks.push(callback);
-      return callbacks.length;
-    });
-    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => undefined);
+    const animationFrames = createAnimationFrameHarness();
     const { editorReady, onSaveDraft } = renderRuntime();
     await waitFor(() => expect(editorReady[0]).toBeDefined());
     const editor = editorReady[0]!;
@@ -551,7 +587,7 @@ describe("PageEditorHostRuntime gutter range selection", () => {
 
       await act(async () => {
         for (let index = 0; index < 4 && scrollGeometry.getScrollTop() === 0; index += 1) {
-          callbacks.shift()?.(index * 16);
+          animationFrames.shiftNextFrame()?.(index * 16);
         }
       });
 
@@ -567,7 +603,7 @@ describe("PageEditorHostRuntime gutter range selection", () => {
       const scrolledDown = scrollGeometry.getScrollTop();
       await act(async () => {
         for (let index = 0; index < 4 && scrollGeometry.getScrollTop() >= scrolledDown; index += 1) {
-          callbacks.shift()?.(64 + index * 16);
+          animationFrames.shiftNextFrame()?.(64 + index * 16);
         }
       });
 
@@ -1099,6 +1135,11 @@ describe("PageEditorHostRuntime gutter range selection", () => {
   });
 
   it("does not arm from Quick Add, the drag handle, document content, the slash menu, the text toolbar, or shell space", async () => {
+    const originalScrollIntoView = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {
+      configurable: true,
+      value: () => undefined
+    });
     const initialEnvelope = createSelectionEnvelope();
     const { editorReady } = renderRuntime({ initialEnvelope });
     await waitFor(() => expect(editorReady[0]).toBeDefined());
@@ -1165,6 +1206,11 @@ describe("PageEditorHostRuntime gutter range selection", () => {
       expect(editor.state.selection.empty).toBe(false);
     } finally {
       geometry.mockRestore();
+      if (originalScrollIntoView) {
+        Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScrollIntoView);
+      } else {
+        Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+      }
     }
   });
 

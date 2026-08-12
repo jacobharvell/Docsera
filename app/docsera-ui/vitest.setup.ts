@@ -51,13 +51,24 @@ beforeAll(() => {
     });
   }
 
+  const scrollIntoView = () => undefined;
   const elementPrototype = Element.prototype as Element & {
     scrollIntoView?: () => void;
   };
-  if (!elementPrototype.scrollIntoView) {
+  if (typeof elementPrototype.scrollIntoView !== "function") {
     Object.defineProperty(elementPrototype, "scrollIntoView", {
       configurable: true,
-      value: () => undefined
+      value: scrollIntoView
+    });
+  }
+
+  const htmlElementPrototype = HTMLElement.prototype as HTMLElement & {
+    scrollIntoView?: () => void;
+  };
+  if (typeof htmlElementPrototype.scrollIntoView !== "function") {
+    Object.defineProperty(htmlElementPrototype, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView
     });
   }
 

@@ -131,6 +131,8 @@ The verifier proves:
 - no uncaught browser runtime errors occur
 - the authenticated REST ping still returns the expected scoped payload
 
+The verifier currently proves installed freshness for `main.jsdbx`, which remains the shell/lazy-import bundle. The lazily loaded `PageEditorHostRuntime.jsdbx` chunk is validated locally by build and boundary checks, but the installed-runtime verifier does not yet prove that chunk's freshness directly. That gap remains process debt for a follow-up verifier improvement.
+
 ## `uxpcb` Propagation Retry Behavior
 
 The live page can briefly continue serving a prior `uxpcb` / `main.jsdbx` after install.

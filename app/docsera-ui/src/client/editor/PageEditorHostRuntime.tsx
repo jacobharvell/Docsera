@@ -14,6 +14,7 @@ import {
   EDITOR_BLOCK_COMMANDS,
   getEditorBlockCommandMatches,
   getGroupedEditorBlockCommandMatches,
+  type EditorBlockCommandContext,
   type EditorBlockCommand,
   type EditorBlockCommandId
 } from "./editorBlockCommands";
@@ -53,6 +54,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { BLOCK_SELECTOR_STYLES } from "./BlockSelectorStyles";
+import TableControlsOverlay from "./TableControlsOverlay";
 
 type PageEditorHostRuntimeProps = {
   canEdit: boolean;
@@ -159,6 +161,7 @@ type CommandSelectorState =
       ownerBlockIndex: number;
       ownerLabel: string;
       placement: CommandSelectorPlacement;
+      surfaceContext: EditorBlockCommandContext;
       query: string;
       source: "quickAdd";
     }
@@ -167,6 +170,7 @@ type CommandSelectorState =
       anchorRect: DOMRect;
       ownerBlockIndex: number;
       placement: CommandSelectorPlacement;
+      surfaceContext: EditorBlockCommandContext;
       query: string;
       source: "slash";
       ownerPos: number;
@@ -305,6 +309,21 @@ function cloneEnvelope(envelope: DocseraDocumentEnvelope): DocseraDocumentEnvelo
 
 function isTextSelection(selection: unknown): selection is TextSelection {
   return selection instanceof TextSelection;
+}
+
+function resolveEditorBlockCommandContext(selection: TextSelection): EditorBlockCommandContext {
+  for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
+    const nodeName = selection.$from.node(depth).type.name;
+    if (nodeName === "tableCell" || nodeName === "tableHeader") {
+      return {
+        isInsideTableCellOrHeader: true
+      };
+    }
+  }
+
+  return {
+    isInsideTableCellOrHeader: false
+  };
 }
 
 function getBlockSelectionState(editor: Editor): BlockSelectionState | null {
@@ -2505,7 +2524,7 @@ export function PageEditorHostRuntime({
 
         const activeSelector = commandSelectorRef.current;
         if (activeSelector) {
-          const selectorMatches = getEditorBlockCommandMatches(activeSelector.query);
+          const selectorMatches = getEditorBlockCommandMatches(activeSelector.query, activeSelector.surfaceContext);
 
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
@@ -2877,7 +2896,7 @@ export function PageEditorHostRuntime({
   const commandGroups = useMemo(
     () =>
       commandSelector
-        ? getGroupedEditorBlockCommandMatches(commandSelector.query)
+        ? getGroupedEditorBlockCommandMatches(commandSelector.query, commandSelector.surfaceContext)
         : [],
     [commandSelector]
   );
@@ -3430,7 +3449,10 @@ export function PageEditorHostRuntime({
       return;
     }
 
-    commandSelectorItemRefs.current[commandSelector.activeIndex]?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const activeCommandSelectorItem = commandSelectorItemRefs.current[commandSelector.activeIndex];
+    if (typeof activeCommandSelectorItem?.scrollIntoView === "function") {
+      activeCommandSelectorItem.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
   }, [commandMatches, commandSelector]);
 
   function openSlashSelector(runtimeEditor: Editor, triggerSelection: SlashTriggerSelection) {
@@ -3441,6 +3463,7 @@ export function PageEditorHostRuntime({
       activeIndex: 0,
       anchorRect,
       ownerBlockIndex: triggerSelection.blockIndex,
+      surfaceContext: resolveEditorBlockCommandContext(runtimeEditor.state.selection as TextSelection),
       placement: resolveCommandSelectorPlacement(overlayOwnerDocument, anchorRect, BLOCK_SELECTOR_HEIGHT),
       query: "",
       source: "slash",
@@ -3494,6 +3517,9 @@ export function PageEditorHostRuntime({
       insertedBlockIndex,
       ownerBlockIndex: insertedBlockIndex,
       ownerLabel: target.accessibleLabel,
+      surfaceContext: {
+        isInsideTableCellOrHeader: false
+      },
       placement: resolveCommandSelectorPlacement(overlayOwnerDocument, fallbackAnchorRect, BLOCK_SELECTOR_HEIGHT),
       query: "",
       source: "quickAdd"
@@ -3868,7 +3894,12 @@ export function PageEditorHostRuntime({
     }
 
     if (commandSelector.source === "slash") {
-      const nextAnchorRect = getCaretBounds(runtimeEditor) ?? commandSelector.anchorRect;
+      let nextAnchorRect: DOMRect;
+      try {
+        nextAnchorRect = getCaretBounds(runtimeEditor) ?? commandSelector.anchorRect;
+      } catch {
+        return;
+      }
       const nextPlacement = resolveCommandSelectorPlacement(overlayOwnerDocument, nextAnchorRect, BLOCK_SELECTOR_HEIGHT);
 
       if (areDomRectsEqual(commandSelector.anchorRect, nextAnchorRect) && commandSelector.placement === nextPlacement) {
@@ -3887,7 +3918,12 @@ export function PageEditorHostRuntime({
       return;
     }
 
-    const insertedBlockRect = getTopLevelBlockRect(runtimeEditor, commandSelector.insertedBlockIndex);
+    let insertedBlockRect: DOMRect | null;
+    try {
+      insertedBlockRect = getTopLevelBlockRect(runtimeEditor, commandSelector.insertedBlockIndex);
+    } catch {
+      return;
+    }
     if (!insertedBlockRect) {
       return;
     }
@@ -4619,6 +4655,7 @@ export function PageEditorHostRuntime({
         .docsera-editor-runtime__surface {
           position: relative;
           width: 100%;
+          min-width: 0;
         }
         .docsera-editor-runtime__surface--block-dragging,
         .docsera-editor-runtime__surface--block-dragging *,
@@ -4709,6 +4746,7 @@ export function PageEditorHostRuntime({
           font-size: 1rem;
           line-height: 1.7;
           outline: none;
+          min-width: 0;
           scroll-padding-top: var(--docsera-workspace-heading-scroll-margin);
         }
         .docsera-editor-runtime__surface .ProseMirror ::selection {
@@ -4841,9 +4879,19 @@ export function PageEditorHostRuntime({
           line-height: 0;
         }
         .docsera-editor-runtime__surface .ProseMirror .tableWrapper {
+          --docsera-table-scrollbar-height: 8px;
+          --docsera-table-row-rail-height: 22px;
+          --docsera-table-rail-gap: 4px;
+          --docsera-table-bottom-lane: calc(
+            var(--docsera-table-row-rail-height) + var(--docsera-table-scrollbar-height) + var(--docsera-table-rail-gap) * 2
+          );
+          position: relative;
           overflow-x: auto;
           overflow-y: visible;
+          min-width: 0;
           margin: 1rem 0;
+          padding-bottom: var(--docsera-table-bottom-lane);
+          scrollbar-gutter: stable;
           scrollbar-width: thin;
           scrollbar-color: color-mix(in srgb, var(--docsera-editor-muted) 72%, transparent)
             color-mix(in srgb, var(--docsera-editor-panel-border) 70%, transparent);
@@ -5557,6 +5605,7 @@ export function PageEditorHostRuntime({
               ownerWindow={overlayOwnerWindow}
               overlayRoot={overlayRoot}
             />
+            <TableControlsOverlay editor={editor} overlayRoot={overlayRoot} />
           </div>,
           overlayRoot
         )}

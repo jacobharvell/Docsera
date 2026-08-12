@@ -232,6 +232,8 @@ function createOverlayOwnerDocumentHarness(width: number, height: number) {
     innerHeight: height,
     getComputedStyle: window.getComputedStyle.bind(window),
     open: vi.fn(() => ({ opener: null } as Window)),
+    setTimeout: vi.fn((handler: TimerHandler, timeout?: number) => window.setTimeout(handler, timeout)),
+    clearTimeout: vi.fn((handle?: number) => window.clearTimeout(handle)),
     Node: window.Node,
     addEventListener: ownerWindowAddEventListener,
     removeEventListener: ownerWindowRemoveEventListener
@@ -245,6 +247,8 @@ function createOverlayOwnerDocumentHarness(width: number, height: number) {
     body: document.body,
     documentElement: document.documentElement,
     hasFocus: () => true,
+    querySelector: document.querySelector.bind(document),
+    querySelectorAll: document.querySelectorAll.bind(document),
     addEventListener: ownerDocumentAddEventListener,
     removeEventListener: ownerDocumentRemoveEventListener,
     dispatchEvent: (event: Event) => dispatchListeners(ownerDocumentListeners, event)
@@ -260,6 +264,7 @@ function createOverlayOwnerDocumentHarness(width: number, height: number) {
     ownerDocumentRemoveEventListener,
     ownerWindowAddEventListener,
     ownerWindowRemoveEventListener,
+    ownerWindowSetTimeout: ownerWindow.setTimeout as unknown as ReturnType<typeof vi.fn>,
     triggerScroll() {
       scrollHandler?.(new Event("scroll") as never);
     },
@@ -306,7 +311,111 @@ async function runAutosave() {
 
 async function selectText(editor: Editor, from: number, to: number) {
   await act(async () => {
+    editor.view.dom.focus();
     editor.commands.setTextSelection({ from, to });
+
+    const ownerDocument = editor.view.dom.ownerDocument;
+    const selection = ownerDocument.getSelection();
+    if (!selection) {
+      return;
+    }
+
+    const start = Math.min(from, to);
+    const end = Math.max(from, to);
+    const startPos = editor.view.domAtPos(start);
+    const endPos = editor.view.domAtPos(end);
+
+    selection.removeAllRanges();
+    const range = ownerDocument.createRange();
+    range.setStart(startPos.node, startPos.offset);
+    range.setEnd(endPos.node, endPos.offset);
+
+    const selectionRect = (() => {
+      try {
+        const startRect = editor.view.coordsAtPos(start);
+        const endRect = editor.view.coordsAtPos(end);
+        const left = Math.min(startRect.left, endRect.left);
+        const right = Math.max(startRect.right, endRect.right);
+        const top = Math.min(startRect.top, endRect.top);
+        const bottom = Math.max(startRect.bottom, endRect.bottom);
+        return new DOMRect(left, top, Math.max(1, right - left), Math.max(1, bottom - top));
+      } catch {
+        return new DOMRect(12, 12, 1, 20);
+      }
+    })();
+
+    Object.defineProperty(range, "getClientRects", {
+      configurable: true,
+      value: () => [selectionRect]
+    });
+    Object.defineProperty(range, "getBoundingClientRect", {
+      configurable: true,
+      value: () => selectionRect
+    });
+
+    const originalAddRange = selection.addRange.bind(selection);
+    const originalGetRangeAt = selection.getRangeAt.bind(selection);
+    const originalRemoveAllRanges = selection.removeAllRanges.bind(selection);
+    const selectionState = {
+      anchorNode: startPos.node,
+      anchorOffset: startPos.offset,
+      focusNode: endPos.node,
+      focusOffset: endPos.offset,
+      range: range as Range | null
+    };
+
+    Object.defineProperties(selection, {
+      addRange: {
+        configurable: true,
+        value: (nextRange: Range) => {
+          selectionState.range = nextRange;
+          return originalAddRange(nextRange);
+        }
+      },
+      anchorNode: {
+        configurable: true,
+        get: () => selectionState.range ? selectionState.anchorNode : null
+      },
+      anchorOffset: {
+        configurable: true,
+        get: () => selectionState.range ? selectionState.anchorOffset : 0
+      },
+      focusNode: {
+        configurable: true,
+        get: () => selectionState.range ? selectionState.focusNode : null
+      },
+      focusOffset: {
+        configurable: true,
+        get: () => selectionState.range ? selectionState.focusOffset : 0
+      },
+      getRangeAt: {
+        configurable: true,
+        value: (index: number) => {
+          if (index !== 0 || !selectionState.range) {
+            return originalGetRangeAt(index);
+          }
+
+          return selectionState.range;
+        }
+      },
+      rangeCount: {
+        configurable: true,
+        get: () => (selectionState.range ? 1 : 0)
+      },
+      removeAllRanges: {
+        configurable: true,
+        value: () => {
+          selectionState.range = null;
+          return originalRemoveAllRanges();
+        }
+      },
+      toString: {
+        configurable: true,
+        value: () => (selectionState.range ? selectionState.range.toString() : "")
+      }
+    });
+
+    selection.addRange(range);
   });
 }
 

@@ -12,12 +12,17 @@ export type EditorBlockCommandId =
   | "horizontalRule"
   | "table";
 
+export type EditorBlockCommandContext = {
+  isInsideTableCellOrHeader: boolean;
+};
+
 export type EditorBlockCommand = {
   category: "Basic Blocks";
   description: string;
   id: EditorBlockCommandId;
   keywords: string[];
   label: string;
+  isAvailable?: (context: EditorBlockCommandContext) => boolean;
   quickAdd: {
     content: JSONContent[];
     selectionOffset: number | "continuation";
@@ -224,6 +229,7 @@ export const EDITOR_BLOCK_COMMANDS: EditorBlockCommand[] = [
     label: "Table",
     description: "Create a simple table",
     keywords: ["table", "grid", "cells", "rows", "columns"],
+    isAvailable: (context) => !context.isInsideTableCellOrHeader,
     quickAdd: {
       content: [createDefaultTableNode()],
       selectionOffset: 4
@@ -236,24 +242,32 @@ export const EDITOR_BLOCK_COMMANDS: EditorBlockCommand[] = [
 ];
 
 export function getEditorBlockCommandMatches(
-  query: string
+  query: string,
+  context: EditorBlockCommandContext = { isInsideTableCellOrHeader: false }
 ): EditorBlockCommand[] {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) {
-    return EDITOR_BLOCK_COMMANDS;
+    return EDITOR_BLOCK_COMMANDS.filter((command) => command.isAvailable?.(context) ?? true);
   }
 
   return EDITOR_BLOCK_COMMANDS.filter((command) => {
+    if (!(command.isAvailable?.(context) ?? true)) {
+      return false;
+    }
+
     const haystack = [command.label, command.description, ...command.keywords].join(" ").toLowerCase();
     return haystack.includes(normalizedQuery);
   });
 }
 
-export function getGroupedEditorBlockCommandMatches(query: string): Array<{
+export function getGroupedEditorBlockCommandMatches(
+  query: string,
+  context: EditorBlockCommandContext = { isInsideTableCellOrHeader: false }
+): Array<{
   category: EditorBlockCommand["category"];
   commands: EditorBlockCommand[];
 }> {
-  const matches = getEditorBlockCommandMatches(query);
+  const matches = getEditorBlockCommandMatches(query, context);
   return matches.length
     ? [
         {

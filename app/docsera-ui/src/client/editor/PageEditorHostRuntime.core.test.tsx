@@ -145,6 +145,34 @@ describe("PageEditorHostRuntime", () => {
     expect(runtimeShellSource).toContain("margin-top: 40px;");
   });
 
+  it("keeps the editor content lane shrinkable so wide tables stay inside the existing shell width", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const runtimeShellSource = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/PageEditorHostRuntime.tsx`,
+      "utf8"
+    );
+
+    expect(runtimeShellSource).toMatch(
+      /\.docsera-main__surface \{\s*width: min\(100%, var\(--docsera-main-surface-max-width\)\);\s*min-width: 0;/s
+    );
+    expect(runtimeShellSource).toMatch(/\.docsera-main__editor-host \{\s*margin-top: 40px;\s*min-width: 0;/s);
+    expect(source).toMatch(/\.docsera-editor-runtime__surface \{\s*position: relative;\s*width: 100%;\s*min-width: 0;/s);
+    expect(source).toMatch(
+      /\.docsera-editor-runtime__surface \.ProseMirror \{\s*color: var\(--docsera-editor-text\);\s*caret-color: var\(--docsera-editor-primary\);\s*font-size: 1rem;\s*line-height: 1\.7;\s*outline: none;\s*min-width: 0;/s
+    );
+    expect(source).toMatch(
+      /\.docsera-editor-runtime__surface \.ProseMirror \.tableWrapper \{[\s\S]*?overflow-x: auto;[\s\S]*?min-width: 0;/s
+    );
+    expect(source).toMatch(/\.docsera-editor-runtime__surface \.ProseMirror table \{\s*[\s\S]*?width: max-content;/s);
+  });
+
   it("keeps the Quick Add control transparent by default and applies token-based hover chrome only on hover or focus", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;
