@@ -21,6 +21,7 @@ const resolveDropGeometry = vi.mocked(resolvePageTreeDropGeometry);
 beforeEach(() => {
   resolveDropDestination.mockReset();
   resolveDropGeometry.mockReset();
+  vi.restoreAllMocks();
 });
 
 function page(overrides: Partial<WorkspacePageView> & Pick<WorkspacePageView, "id" | "title">): WorkspacePageView {
@@ -213,12 +214,20 @@ function searchInput() {
   return element;
 }
 
-function newPageButton() {
+function sidebarNewPageButton() {
   const element = screen
     .getAllByRole("button", { name: "New page" })
     .find((candidate) => candidate instanceof HTMLButtonElement && candidate.classList.contains("docsera-sidebar__icon-button"));
   if (!(element instanceof HTMLButtonElement)) {
-    throw new Error("Missing New page button.");
+    throw new Error("Missing header New page button.");
+  }
+  return element;
+}
+
+function treeNewPageButton() {
+  const element = document.querySelector(".docsera-page-tree__new-page");
+  if (!(element instanceof HTMLButtonElement)) {
+    throw new Error("Missing tree New page button.");
   }
   return element;
 }
@@ -283,7 +292,7 @@ describe("WorkspaceSidebar page tree drag surface", () => {
     fireEvent.change(searchInput(), { target: { value: "Updated filter" } });
     expect(onTreeFilterChange).toHaveBeenCalledWith("Updated filter");
 
-    fireEvent.click(newPageButton());
+    fireEvent.click(treeNewPageButton());
     expect(onShowCreatePage).toHaveBeenCalledTimes(1);
   });
 

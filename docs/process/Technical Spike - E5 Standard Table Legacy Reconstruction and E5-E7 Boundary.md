@@ -519,7 +519,7 @@ Scope:
 - Verify wrapper/table/cell dimensions and spacing.
 - Map light/dark colors to current tokens.
 - Confirm horizontal overflow behavior.
-- Confirm active-cell cue.
+- Confirm selected-cell-driven structural pill activation rather than caret-driven active-cell logic.
 - Remove any accidental E7 visual affordances.
 
 Validation:

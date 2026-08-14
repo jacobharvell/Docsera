@@ -22,8 +22,10 @@ import { resolveHoverTargetBlockIndex } from "./editorBlockHover";
 import { sanitizeDocseraPastedHTML, sanitizeDocseraPastedText } from "./pasteSanitizer";
 import type { PageBodySaveResult } from "../shared/types/docsera";
 import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
+import { CellSelection } from "@tiptap/pm/tables";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { CompactTextToolbar } from "./CompactTextToolbar";
+import { subscribeToPageOwnershipHandoff } from "../pageOwnershipHandoff";
 import {
   buildTopLevelBlockDragFeedbackStyle,
   buildTopLevelBlockDropIndicatorStyle,
@@ -249,6 +251,62 @@ export function getAutosaveRetryDelay(attempt: number): number | null {
   return Number.isInteger(attempt) && attempt >= 0 && attempt < AUTOSAVE_RETRY_DELAYS_MS.length
     ? AUTOSAVE_RETRY_DELAYS_MS[attempt]
     : null;
+}
+
+function clearEditorNativeSelection(editor: Editor): void {
+  const selection = editor.view.dom.ownerDocument.getSelection();
+  if (selection && selection.rangeCount > 0) {
+    selection.removeAllRanges();
+  }
+}
+
+function resolveStructuralCellCaretSelection(editor: Editor, selection: CellSelection): Selection | null {
+  const cellNode = selection.$headCell.nodeAfter;
+  const cellContentStart = Math.min(selection.$headCell.pos + 1, Math.max(1, editor.state.doc.content.size));
+  if (!cellNode) {
+    return Selection.findFrom(editor.state.doc.resolve(cellContentStart), 1, true)
+      ?? Selection.near(editor.state.doc.resolve(cellContentStart), 1);
+  }
+
+  let resolvedSelection: Selection | null = null;
+  cellNode.descendants((node, pos) => {
+    if (!node.isTextblock) {
+      return true;
+    }
+
+    const candidate = Math.min(cellContentStart + pos + 1, editor.state.doc.content.size);
+    resolvedSelection = Selection.findFrom(editor.state.doc.resolve(candidate), 1, true);
+    return resolvedSelection === null;
+  });
+
+  if (resolvedSelection) {
+    return resolvedSelection;
+  }
+
+  return Selection.findFrom(editor.state.doc.resolve(cellContentStart), 1, true)
+    ?? Selection.near(editor.state.doc.resolve(cellContentStart), 1);
+}
+
+function releaseStructuralCellSelectionOwnership(editor: Editor): boolean {
+  const selection = editor.state.selection;
+  if (!(selection instanceof CellSelection)) {
+    return false;
+  }
+
+  const nextSelection = resolveStructuralCellCaretSelection(editor, selection);
+  if (!nextSelection) {
+    return false;
+  }
+
+  let transaction = editor.state.tr.setMeta("addToHistory", false);
+  transaction = transaction.setSelection(nextSelection.map(transaction.doc, transaction.mapping));
+
+  editor.view.dispatch(transaction);
+  clearEditorNativeSelection(editor);
+  if (editor.view.dom === editor.view.dom.ownerDocument.activeElement) {
+    editor.view.dom.blur();
+  }
+  return true;
 }
 const POPOVER_GAP = 10;
 const VIEWPORT_GUTTER = 12;
@@ -4218,6 +4276,25 @@ export function PageEditorHostRuntime({
       return;
     }
 
+    const ownerDocument = overlayRoot.ownerDocument;
+    return subscribeToPageOwnershipHandoff(ownerDocument, (detail) => {
+      if (detail.reason !== "page-create-inline-title" || detail.pageSysId !== pageSysId) {
+        return;
+      }
+
+      if (!(editor.state.selection instanceof CellSelection)) {
+        return;
+      }
+
+      releaseStructuralCellSelectionOwnership(editor);
+    });
+  }, [editor, overlayRoot, pageSysId]);
+
+  useEffect(() => {
+    if (!editor) {
+      return;
+    }
+
     editor.setEditable(isEditable);
     if (trySetEditorTabIndex(editor, isEditable)) {
       return;
@@ -4642,6 +4719,8 @@ export function PageEditorHostRuntime({
           --docsera-editor-panel-border: rgba(140, 156, 178, 0.22);
           --docsera-editor-text: #16212f;
           --docsera-editor-primary: #015ec2;
+          --docsera-table-control-primary: #4648D4;
+          --docsera-table-control-active-icon: var(--docsera-editor-panel);
           --docsera-editor-block-selection: color-mix(in srgb, var(--docsera-editor-primary) 7%, transparent);
         }
         .docsera-editor-runtime--dark {
@@ -4650,6 +4729,8 @@ export function PageEditorHostRuntime({
           --docsera-editor-panel-border: rgba(122, 139, 167, 0.22);
           --docsera-editor-text: #eef2f8;
           --docsera-editor-primary: #58a6ff;
+          --docsera-table-control-primary: #7C83FA;
+          --docsera-table-control-active-icon: #ffffff;
           --docsera-editor-block-selection: color-mix(in srgb, var(--docsera-editor-primary) 12%, transparent);
         }
         .docsera-editor-runtime__surface {
@@ -4931,6 +5012,48 @@ export function PageEditorHostRuntime({
         .docsera-editor-runtime__surface .ProseMirror table th {
           font-weight: 700;
         }
+        .docsera-editor-runtime__surface .ProseMirror .tableWrapper[data-docsera-table-drag-selection-active="true"],
+        .docsera-editor-runtime__surface .ProseMirror .tableWrapper[data-docsera-table-drag-selection-active="true"] * {
+          -webkit-user-select: none;
+          user-select: none;
+        }
+        .docsera-editor-runtime__surface .ProseMirror table td.selectedCell::after,
+        .docsera-editor-runtime__surface .ProseMirror table th.selectedCell::after,
+        .docsera-editor-runtime__surface .ProseMirror table td.docsera-table-selection-outline::after,
+        .docsera-editor-runtime__surface .ProseMirror table th.docsera-table-selection-outline::after {
+          content: none;
+        }
+        .docsera-editor-runtime__surface .ProseMirror table td.docsera-table-selection-outline::before,
+        .docsera-editor-runtime__surface .ProseMirror table th.docsera-table-selection-outline::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 2;
+          box-sizing: border-box;
+          border-style: solid;
+          border-color: var(--docsera-table-control-primary);
+          border-top-width: 0;
+          border-right-width: 0;
+          border-bottom-width: 0;
+          border-left-width: 0;
+        }
+        .docsera-editor-runtime__surface .ProseMirror table td.docsera-table-selection-outline--top::before,
+        .docsera-editor-runtime__surface .ProseMirror table th.docsera-table-selection-outline--top::before {
+          border-top-width: 1.5px;
+        }
+        .docsera-editor-runtime__surface .ProseMirror table td.docsera-table-selection-outline--right::before,
+        .docsera-editor-runtime__surface .ProseMirror table th.docsera-table-selection-outline--right::before {
+          border-right-width: 1.5px;
+        }
+        .docsera-editor-runtime__surface .ProseMirror table td.docsera-table-selection-outline--bottom::before,
+        .docsera-editor-runtime__surface .ProseMirror table th.docsera-table-selection-outline--bottom::before {
+          border-bottom-width: 1.5px;
+        }
+        .docsera-editor-runtime__surface .ProseMirror table td.docsera-table-selection-outline--left::before,
+        .docsera-editor-runtime__surface .ProseMirror table th.docsera-table-selection-outline--left::before {
+          border-left-width: 1.5px;
+        }
         .docsera-editor-runtime__surface .ProseMirror table td > :first-child,
         .docsera-editor-runtime__surface .ProseMirror table th > :first-child {
           margin-top: 0;
@@ -4941,7 +5064,7 @@ export function PageEditorHostRuntime({
         }
         .docsera-editor-runtime__surface .ProseMirror table td.docsera-table-cell-active,
         .docsera-editor-runtime__surface .ProseMirror table th.docsera-table-cell-active {
-          box-shadow: inset 0 0 0 1.5px var(--docsera-editor-primary);
+          box-shadow: inset 0 0 0 1.5px var(--docsera-table-control-primary);
         }
         .docsera-editor-floating-layer {
           position: fixed;

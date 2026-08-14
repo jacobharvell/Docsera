@@ -698,6 +698,10 @@ describe("App workspace state integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Queued workspace page" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Queued workspace page" })).toHaveAttribute("aria-current", "page");
+      expect(latestMockEditorHost().pageSysId).toBe("page-new");
+    });
     expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "queued-workspace-page" });
   });
 

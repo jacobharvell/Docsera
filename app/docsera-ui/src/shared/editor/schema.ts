@@ -4,9 +4,9 @@ import { Highlight } from "@tiptap/extension-highlight";
 import { Link } from "@tiptap/extension-link";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import { Table, TableCell as BaseTableCell, TableHeader as BaseTableHeader, TableRow } from "@tiptap/extension-table";
-import { Plugin } from "@tiptap/pm/state";
+import { EditorState, Plugin } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { findTable, selectedRect, TableMap } from "@tiptap/pm/tables";
+import { CellSelection, findTable, selectedRect, TableMap } from "@tiptap/pm/tables";
 import { Subscript } from "@tiptap/extension-subscript";
 import { Superscript } from "@tiptap/extension-superscript";
 import { Underline } from "@tiptap/extension-underline";
@@ -135,6 +135,82 @@ const TableHeader = BaseTableHeader.extend({
   }
 });
 
+type CellOutlineEdges = {
+  bottom: boolean;
+  left: boolean;
+  right: boolean;
+  top: boolean;
+};
+
+function createEmptyCellOutlineEdges(): CellOutlineEdges {
+  return {
+    bottom: false,
+    left: false,
+    right: false,
+    top: false
+  };
+}
+
+function buildPerimeterDecorations(
+  state: EditorState,
+  activeTable: NonNullable<ReturnType<typeof findTable>>,
+  currentRect: NonNullable<ReturnType<typeof selectedRect>>
+): DecorationSet {
+  const map = TableMap.get(activeTable.node);
+  const outlineEdgesByCellPos = new Map<number, CellOutlineEdges>();
+
+  for (let rowIndex = currentRect.top; rowIndex < currentRect.bottom; rowIndex += 1) {
+    for (let columnIndex = currentRect.left; columnIndex < currentRect.right; columnIndex += 1) {
+      const relativeCellPos = map.map[rowIndex * map.width + columnIndex];
+      if (typeof relativeCellPos !== "number") {
+        continue;
+      }
+
+      const cellPos = activeTable.start + relativeCellPos;
+      const nextEdges = outlineEdgesByCellPos.get(cellPos) ?? createEmptyCellOutlineEdges();
+      if (rowIndex === currentRect.top) {
+        nextEdges.top = true;
+      }
+      if (rowIndex === currentRect.bottom - 1) {
+        nextEdges.bottom = true;
+      }
+      if (columnIndex === currentRect.left) {
+        nextEdges.left = true;
+      }
+      if (columnIndex === currentRect.right - 1) {
+        nextEdges.right = true;
+      }
+      outlineEdgesByCellPos.set(cellPos, nextEdges);
+    }
+  }
+
+  const decorations: Decoration[] = [];
+  for (const [cellPos, edges] of outlineEdgesByCellPos.entries()) {
+    const classNames = ["docsera-table-selection-outline"];
+    if (edges.top) classNames.push("docsera-table-selection-outline--top");
+    if (edges.right) classNames.push("docsera-table-selection-outline--right");
+    if (edges.bottom) classNames.push("docsera-table-selection-outline--bottom");
+    if (edges.left) classNames.push("docsera-table-selection-outline--left");
+
+    if (classNames.length === 1) {
+      continue;
+    }
+
+    const cellNode = state.doc.nodeAt(cellPos);
+    if (!cellNode) {
+      continue;
+    }
+
+    decorations.push(
+      Decoration.node(cellPos, cellPos + cellNode.nodeSize, {
+        class: classNames.join(" ")
+      })
+    );
+  }
+
+  return decorations.length ? DecorationSet.create(state.doc, decorations) : DecorationSet.empty;
+}
+
 const ActiveTableCellHighlight = Extension.create({
   name: "docseraActiveTableCellHighlight",
 
@@ -153,6 +229,17 @@ const ActiveTableCellHighlight = Extension.create({
               rect = selectedRect(state);
             } catch {
               return DecorationSet.empty;
+            }
+
+            if (!rect) {
+              return DecorationSet.empty;
+            }
+
+            if (
+              state.selection instanceof CellSelection &&
+              (rect.bottom - rect.top > 1 || rect.right - rect.left > 1)
+            ) {
+              return buildPerimeterDecorations(state, activeTable, rect);
             }
 
             const map = TableMap.get(activeTable.node);

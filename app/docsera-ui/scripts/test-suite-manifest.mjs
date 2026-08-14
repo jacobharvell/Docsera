@@ -81,6 +81,7 @@ export const testSuites = [
       "src/client/editor/PageEditorHostRuntime.commands.test.tsx",
       "src/client/editor/PageEditorHostRuntime.drag.test.tsx",
       "src/client/editor/PageEditorHostRuntime.selection.test.tsx",
+      "src/client/editor/PageEditorHostRuntime.tableSelection.test.tsx",
       "src/client/editor/session/editorSessionGeneration.test.ts",
       "src/client/editor/shadowRootContract.test.tsx",
       "src/client/editor/spikes/EditorRuntimeSpikeOutlet.test.tsx",

@@ -23,11 +23,11 @@ vi.mock("../editor/PageEditorHost", () => ({
   }: {
     canEdit: boolean;
     onEditorFailureChange?: (failure: null) => void;
-    onStatusChange?: (state: { isDirty: boolean; isSaving: boolean }) => void;
+    onStatusChange?: (state: { isDirty: boolean; isSaving: boolean; status: "Saved" }) => void;
   }) {
     useEffect(() => {
       onEditorFailureChange?.(null);
-      onStatusChange?.({ isDirty: false, isSaving: false });
+      onStatusChange?.({ isDirty: false, isSaving: false, status: "Saved" });
     }, [onEditorFailureChange, onStatusChange]);
 
     return canEdit ? <div data-docsera-page-editor-host="true" /> : null;
@@ -216,9 +216,44 @@ function renderApp(path: string, clientOverrides: Partial<ServiceNowClient> = {}
   };
 }
 
+function sidebarNewPageButton(): HTMLButtonElement {
+  const button = document.querySelector(".docsera-sidebar__icon-button[aria-label='New page']");
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error("Missing sidebar New page button.");
+  }
+  return button;
+}
+
+function sidebarNewPageIcon(): SVGElement {
+  const icon = sidebarNewPageButton().querySelector("svg");
+  if (!(icon instanceof SVGElement)) {
+    throw new Error("Missing sidebar New page icon.");
+  }
+  return icon;
+}
+
+function treeNewPageButton(): HTMLButtonElement {
+  const button = document.querySelector(".docsera-page-tree__new-page");
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error("Missing tree New page button.");
+  }
+  return button;
+}
+
+function mainEmptyNewPageButton(): HTMLButtonElement {
+  const button = document.querySelector(".docsera-main__empty-action");
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error("Missing empty-state New page button.");
+  }
+  return button;
+}
+
 describe("App page model integration", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    window.sessionStorage.clear();
+    window.history.replaceState({}, "", "/");
+    vi.restoreAllMocks();
   });
 
   it("creates a new page only after entering edit mode", async () => {
@@ -259,9 +294,11 @@ describe("App page model integration", () => {
     await act(async () => {
       fireEvent.click(editButton);
     });
-    const newPageButton = (await screen.findAllByRole("button", { name: "New page" }))[0]!;
+    await waitFor(() => {
+      expect(treeNewPageButton()).not.toBeDisabled();
+    });
     await act(async () => {
-      fireEvent.click(newPageButton);
+      fireEvent.click(treeNewPageButton());
     });
     const newPageTitle = screen.getByRole("textbox", { name: "New page title" });
     await act(async () => {
@@ -292,14 +329,104 @@ describe("App page model integration", () => {
     renderApp("/?workspace=product-docs&mode=edit", { createPage, listPages });
 
     expect(await screen.findByRole("heading", { name: "No pages yet" })).toBeInTheDocument();
-    const newPageButtons = screen.getAllByRole("button", { name: "New page" });
-    expect(newPageButtons.length).toBeGreaterThan(0);
-
-    fireEvent.click(newPageButtons[0]);
+    await waitFor(() => {
+      expect(mainEmptyNewPageButton()).not.toBeDisabled();
+    });
+    fireEvent.click(mainEmptyNewPageButton());
 
     expect(await screen.findByRole("textbox", { name: "New page title" })).toBeInTheDocument();
     expect(createPage).not.toHaveBeenCalled();
     expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
+  });
+
+  it.each([
+    [sidebarNewPageButton] as const,
+    [treeNewPageButton] as const
+  ])("routes the New page trigger through the canonical inline-create flow", async (getButton) => {
+    const createPage = vi.fn(async ({ title }: { parentPageSysId?: string | null; workspaceSlug: string; title: string }) => ({
+      page: createPageRecord({
+        sysId: "page-002",
+        draftTitle: title,
+        draftSlug: "fresh-page",
+        draftSlugNormalized: "fresh-page",
+        publishedTitle: null,
+        publishedSlug: null,
+        publishedSlugNormalized: null,
+        publicationState: "draft"
+      }),
+      state: "succeeded" as const
+    }));
+
+    renderApp("/?workspace=product-docs&page=overview&mode=edit", { createPage });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(getButton()).not.toBeDisabled();
+    });
+
+    await act(async () => {
+      fireEvent.click(getButton());
+    });
+
+    const newPageTitle = screen.getByRole("textbox", { name: "New page title" });
+    await act(async () => {
+      fireEvent.change(newPageTitle, { target: { value: "Fresh Page" } });
+      fireEvent.keyDown(newPageTitle, { key: "Enter", code: "Enter" });
+    });
+
+    expect(await screen.findByRole("heading", { name: "Fresh Page" })).toBeInTheDocument();
+    expect(createPage).toHaveBeenCalledWith({
+      title: "Fresh Page",
+      workspaceAuthority: {
+        changeSetId: "change-set-001",
+        changeSetRevision: 9
+      },
+      workspaceLeaseToken: "workspace-lease-token",
+      workspaceSlug: "product-docs"
+    });
+    expect(createPage.mock.calls[0]?.[0]).not.toHaveProperty("parentPageSysId");
+  });
+
+  it("routes the header SVG click target through the canonical inline-create flow", async () => {
+    const createPage = vi.fn(async ({ title }: { parentPageSysId?: string | null; workspaceSlug: string; title: string }) => ({
+      page: createPageRecord({
+        sysId: "page-002",
+        draftTitle: title,
+        draftSlug: "fresh-page",
+        draftSlugNormalized: "fresh-page",
+        publishedTitle: null,
+        publishedSlug: null,
+        publishedSlugNormalized: null,
+        publicationState: "draft"
+      }),
+      state: "succeeded" as const
+    }));
+
+    renderApp("/?workspace=product-docs&page=overview&mode=edit", { createPage });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(sidebarNewPageButton()).not.toBeDisabled();
+    });
+
+    Object.defineProperty(sidebarNewPageIcon(), "className", {
+      configurable: true,
+      value: { baseVal: " docsera-icon   docsera-icon--plus " }
+    });
+
+    expect(() => {
+      fireEvent.click(sidebarNewPageIcon());
+    }).not.toThrow();
+
+    const newPageTitle = screen.getByRole("textbox", { name: "New page title" });
+    expect(newPageTitle).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.change(newPageTitle, { target: { value: "Fresh Page" } });
+      fireEvent.keyDown(newPageTitle, { key: "Enter", code: "Enter" });
+    });
+
+    expect(await screen.findByRole("heading", { name: "Fresh Page" })).toBeInTheDocument();
+    expect(createPage).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the create-page control visible but disabled when page loading fails fatally in edit mode", async () => {

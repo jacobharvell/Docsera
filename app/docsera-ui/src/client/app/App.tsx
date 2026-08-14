@@ -27,6 +27,7 @@ import {
   type WorkspacePageView
 } from "../features/workspaces/workspaceViewModels";
 import { buildLauncherHref, buildWorkspaceHref, readAppRoute, type DocseraAppRoute } from "../features/workspaces/workspaceRouting";
+import { requestPageOwnershipHandoff } from "../pageOwnershipHandoff";
 import {
   collectPageSubtreeSysIds,
   removePageSubtree,
@@ -3533,7 +3534,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
-    if (shouldGuardTransition(transition.href)) {
+    const guarded = shouldGuardTransition(transition.href);
+
+    if (guarded) {
       const guardedTransition: RequestedRouteTransition = {
         ...transition,
         discardRestoredBodyCapture: getRestoredBodyCaptureForSession(editorSessionState.sessionKey)
@@ -3753,11 +3756,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     if (route.mode !== "workspace") {
       return;
     }
-    if (workspaceCommandBlocksCurrentWorkspaceWrites) {
-      return;
-    }
 
     void _parentPageTitle;
+    requestPageOwnershipHandoff({
+      pageSysId: cleanText(selectedWorkspacePageId),
+      reason: "page-create-inline-title"
+    });
     inlinePageCreateFocusTokenRef.current += 1;
     setInlinePageCreateState(createInlinePageCreateState(parentPageSysId, inlinePageCreateFocusTokenRef.current));
   }
@@ -4570,6 +4574,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   function finalizePageCreation(page: WorkspacePageRecord) {
     const currentWorkspace = workspaceState.status === "success" ? workspaceState.data.slug : currentWorkspaceSlug;
     const workspaceIdentity = getWorkspaceRecoveryIdentity();
+    const nextPageSysId = cleanText(page.sysId);
+    const nextPageSlug = cleanText(page.draftSlug);
 
     if (
       restoredInlineCreateCaptureRef.current &&
@@ -4579,7 +4585,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       bumpRecoveryVersion();
     }
     restoredInlineCreateCaptureRef.current = null;
-
     setInlinePageCreateState(null);
     setWorkspacePagesState((current) => {
       if (current.status !== "success" || current.workspaceSlug !== currentWorkspace || current.mode !== activeWorkspaceMode) {
@@ -4595,14 +4600,14 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     requestRouteTransition({
       href: buildWorkspaceHref(currentWorkspace, {
         mode: "edit",
-        pageSlug: cleanText(page.draftSlug) || undefined
+        pageSlug: nextPageSlug || undefined
       }),
       replace: false,
       beforeCommit: () => {
         pendingSelectionTargetRef.current = {
           fallbackAncestorPageSysIds: [],
           mode: "edit",
-          pageSysId: cleanText(page.sysId)
+          pageSysId: nextPageSysId
         };
       }
     });
@@ -6058,7 +6063,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               onSelectPage={openWorkspacePage}
               onMovePage={moveWorkspacePage}
               onShowChildPageCreate={openCreatePageModal}
-              onShowCreatePage={openCreatePageModal}
+              onShowCreatePage={() => openCreatePageModal()}
               onTogglePageSettings={requestTogglePageSettings}
               onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
               outlinePage={displayedOutlinePage}

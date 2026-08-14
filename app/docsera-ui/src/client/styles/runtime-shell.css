@@ -3220,6 +3220,7 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 }
 
 .docsera-main__table-cell {
+  position: relative;
   min-width: 80px;
   padding: 0.38rem 0.75rem;
   border: 1px solid color-mix(in srgb, var(--docsera-border) 82%, var(--docsera-text-soft));
@@ -3231,6 +3232,55 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 .docsera-main__table th.docsera-main__table-cell {
   color: var(--docsera-text);
   font-weight: 700;
+}
+
+.docsera-main__table-wrapper[data-docsera-table-drag-selection-active="true"],
+.docsera-main__table-wrapper[data-docsera-table-drag-selection-active="true"] * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.docsera-main__table td.selectedCell::after,
+.docsera-main__table th.selectedCell::after,
+.docsera-main__table td.docsera-table-selection-outline::after,
+.docsera-main__table th.docsera-table-selection-outline::after {
+  content: none;
+}
+
+.docsera-main__table td.docsera-table-selection-outline::before,
+.docsera-main__table th.docsera-table-selection-outline::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  box-sizing: border-box;
+  border-style: solid;
+  border-color: var(--docsera-primary);
+  border-top-width: 0;
+  border-right-width: 0;
+  border-bottom-width: 0;
+  border-left-width: 0;
+}
+
+.docsera-main__table td.docsera-table-selection-outline--top::before,
+.docsera-main__table th.docsera-table-selection-outline--top::before {
+  border-top-width: 1.5px;
+}
+
+.docsera-main__table td.docsera-table-selection-outline--right::before,
+.docsera-main__table th.docsera-table-selection-outline--right::before {
+  border-right-width: 1.5px;
+}
+
+.docsera-main__table td.docsera-table-selection-outline--bottom::before,
+.docsera-main__table th.docsera-table-selection-outline--bottom::before {
+  border-bottom-width: 1.5px;
+}
+
+.docsera-main__table td.docsera-table-selection-outline--left::before,
+.docsera-main__table th.docsera-table-selection-outline--left::before {
+  border-left-width: 1.5px;
 }
 
 .docsera-main__table-cell > :first-child {

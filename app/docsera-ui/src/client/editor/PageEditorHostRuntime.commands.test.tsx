@@ -3,6 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { Editor, JSONContent } from "@tiptap/core";
+import { CellSelection, findTable, TableMap } from "@tiptap/pm/tables";
 import { undoDepth } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
 import type { DocseraTiptapDocument } from "../../shared/editor/document";
@@ -722,6 +723,23 @@ function getNativeSelectionState() {
         text: selection.toString()
       }
     : null;
+}
+
+function getCellSelectionRect(editor: Editor): { bottom: number; left: number; right: number; top: number } | null {
+  const selection = editor.state.selection;
+  if (!(selection instanceof CellSelection)) {
+    return null;
+  }
+
+  const table = findTable(selection.$anchorCell);
+  if (!table) {
+    return null;
+  }
+
+  return TableMap.get(table.node).rectBetween(
+    selection.$anchorCell.pos - table.start,
+    selection.$headCell.pos - table.start
+  );
 }
 
 function mockTableGeometry(
@@ -5114,14 +5132,12 @@ describe("PageEditorHostRuntime", () => {
       expect(getComputedStyle(columnShell).zIndex).toBe("0");
       expect(getComputedStyle(rowEllipsisLayer).zIndex).toBe("1");
       expect(getComputedStyle(columnEllipsisLayer).zIndex).toBe("1");
-      expect(readInlineBox(rowShell)).toMatchObject({
-        height: 18,
-        width: 8
-      });
-      expect(readInlineBox(columnShell)).toMatchObject({
-        height: 8,
-        width: 18
-      });
+      expect(getComputedStyle(rowShell).height).toBe("18px");
+      expect(getComputedStyle(rowShell).width).toBe("8px");
+      expect(getComputedStyle(columnShell).height).toBe("8px");
+      expect(getComputedStyle(columnShell).width).toBe("18px");
+      expect(rowShell.style.transition).toContain("height");
+      expect(columnShell.style.transition).toContain("width");
       expect(getComputedStyle(rowButton).display).toBe("grid");
       expect(getComputedStyle(columnButton).display).toBe("grid");
       expect(getComputedStyle(rowRail).cursor).toBe("pointer");
@@ -5141,10 +5157,8 @@ describe("PageEditorHostRuntime", () => {
         if (!(hoveredRowEllipsisLayer instanceof HTMLElement)) {
           throw new Error("Expected the row ellipsis layer to remain available.");
         }
-        expect(readInlineBox(hoveredRowShell)).toMatchObject({
-          height: 28,
-          width: 8
-        });
+        expect(getComputedStyle(hoveredRowShell).height).toBe("28px");
+        expect(getComputedStyle(hoveredRowShell).width).toBe("8px");
         expect(readInlineBox(rowButton)).toMatchObject(rowButtonBox);
         expect(getComputedStyle(hoveredRowEllipsisLayer).width).toBe("12px");
         expect(getComputedStyle(hoveredRowEllipsisLayer).height).toBe("12px");
@@ -5165,10 +5179,8 @@ describe("PageEditorHostRuntime", () => {
         if (!(hoveredColumnEllipsisLayer instanceof HTMLElement)) {
           throw new Error("Expected the column ellipsis layer to remain available.");
         }
-        expect(readInlineBox(hoveredColumnShell)).toMatchObject({
-          height: 8,
-          width: 28
-        });
+        expect(getComputedStyle(hoveredColumnShell).height).toBe("8px");
+        expect(getComputedStyle(hoveredColumnShell).width).toBe("28px");
         expect(readInlineBox(columnButton)).toMatchObject(columnButtonBox);
         expect(getComputedStyle(hoveredColumnEllipsisLayer).width).toBe("12px");
         expect(getComputedStyle(hoveredColumnEllipsisLayer).height).toBe("12px");
@@ -5195,6 +5207,10 @@ describe("PageEditorHostRuntime", () => {
       `${nodeProcess.cwd()}/src/client/editor/TableControlsOverlay.tsx`,
       "utf8"
     );
+    const runtimeSource = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/PageEditorHostRuntime.tsx`,
+      "utf8"
+    );
 
     expect(source).toContain("docsera-table-controls-overlay__pill-shell");
     expect(source).toContain("docsera-table-controls-overlay__pill-icon");
@@ -5205,6 +5221,17 @@ describe("PageEditorHostRuntime", () => {
       ".docsera-table-controls-overlay__pill[data-docsera-table-handle-expanded=\"true\"] .docsera-table-controls-overlay__pill-icon"
     );
     expect(source).toContain(".docsera-table-controls-overlay__pill:focus-visible .docsera-table-controls-overlay__pill-icon");
+    expect(source).toContain(".docsera-table-controls-overlay__pill[data-docsera-table-handle-kind=\"row\"] .docsera-table-controls-overlay__pill-shell");
+    expect(source).toContain(
+      ".docsera-table-controls-overlay__pill[data-docsera-table-handle-kind=\"row\"][data-docsera-table-handle-expanded=\"true\"] .docsera-table-controls-overlay__pill-shell"
+    );
+    expect(source).toContain(".docsera-table-controls-overlay__pill[data-docsera-table-handle-kind=\"column\"] .docsera-table-controls-overlay__pill-shell");
+    expect(source).toContain(
+      ".docsera-table-controls-overlay__pill[data-docsera-table-handle-kind=\"column\"][data-docsera-table-handle-expanded=\"true\"] .docsera-table-controls-overlay__pill-shell"
+    );
+    expect(source).toContain("var(--docsera-table-control-primary)");
+    expect(source).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(source).toContain("transition: none;");
     expect(source).toContain("display: grid;");
     expect(source).toContain("place-items: center;");
     expect(source).toContain("position: relative;");
@@ -5218,6 +5245,14 @@ describe("PageEditorHostRuntime", () => {
     expect(source).toContain("var(--docsera-editor-muted)");
     expect(source).toContain("var(--docsera-editor-primary)");
     expect(source).toContain("var(--docsera-error)");
+    expect(source).toContain("resolveTableControlActiveIconColor(editor)");
+    expect(source).toContain("#ffffff");
+    expect(runtimeSource).toContain("--docsera-table-control-primary: #4648D4");
+    expect(runtimeSource).toContain("--docsera-table-control-primary: #7C83FA");
+    expect(runtimeSource).toContain("--docsera-table-control-active-icon: var(--docsera-editor-panel);");
+    expect(runtimeSource).toContain("--docsera-table-control-active-icon: #ffffff;");
+    expect(runtimeSource).toContain("border-color: var(--docsera-table-control-primary);");
+    expect(runtimeSource).toContain("box-shadow: inset 0 0 0 1.5px var(--docsera-table-control-primary);");
     expect(source).not.toContain("--docsera-border-strong");
     expect(source).not.toContain("--docsera-surface-overlay");
     expect(source).not.toContain("--docsera-surface-base");
@@ -5290,6 +5325,8 @@ describe("PageEditorHostRuntime", () => {
           ["R2C1", "R2C2", "R2C3", ""],
           ["R3C1", "R3C2", "R3C3", ""]
         ]);
+        expect(editor.state.selection instanceof CellSelection).toBe(true);
+        expect(getNativeSelectionState()?.rangeCount ?? 0).toBe(0);
       });
       expect(undoDepth(editor.state)).toBe(undoDepthBeforeAppend + 1);
       await runAutosave();
@@ -5369,6 +5406,8 @@ describe("PageEditorHostRuntime", () => {
           ["R3C1", "R3C2", "R3C3"],
           ["", "", ""]
         ]);
+        expect(editor.state.selection instanceof CellSelection).toBe(true);
+        expect(getNativeSelectionState()?.rangeCount ?? 0).toBe(0);
       });
       expect(undoDepth(editor.state)).toBe(undoDepthBeforeAppend + 1);
       await runAutosave();
@@ -5791,30 +5830,40 @@ describe("PageEditorHostRuntime", () => {
 
     try {
       await act(async () => {
-        editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 4) + 1);
+        editor.commands.setTextSelection(getFirstTableCellParagraphPosition(editor) + 1);
       });
 
-      const rowButton = await screen.findByRole("button", { name: "Table row 2 options" });
-      const columnButton = await screen.findByRole("button", { name: "Table column 2 options" });
+      const rowButton = await screen.findByRole("button", { name: "Table row 1 options" });
+      const columnButton = await screen.findByRole("button", { name: "Table column 1 options" });
       fireEvent.click(rowButton);
 
       await waitFor(() => {
         expect(screen.getByRole("menu", { name: "Table row menu" })).toBeInTheDocument();
-        expect(screen.getByRole("button", { name: "Table row 2 options" })).toHaveAttribute("aria-expanded", "true");
+        expect(screen.getByRole("button", { name: "Table row 1 options" })).toHaveAttribute("aria-expanded", "true");
+        expect(getCellSelectionRect(editor)).toEqual({
+          bottom: 1,
+          left: 0,
+          right: 3,
+          top: 0
+        });
       });
 
-      const rowEllipsisLayer = getTableHandleEllipsisLayer(overlayRoot, "row", 1);
-      if (!(rowEllipsisLayer instanceof HTMLElement)) {
-        throw new Error("Expected the active row ellipsis layer to remain available while the menu is open.");
-      }
-      expect(rowEllipsisLayer.style.opacity).toBe("");
-      expect(getComputedStyle(rowEllipsisLayer).opacity).toBe("1");
+      expect(screen.getByRole("button", { name: "Table row 1 options" })).toHaveAttribute(
+        "data-docsera-table-handle-expanded",
+        "false"
+      );
 
       fireEvent.click(columnButton);
 
       await waitFor(() => {
         expect(screen.queryByRole("menu", { name: "Table row menu" })).toBeNull();
         expect(screen.getByRole("menu", { name: "Table column menu" })).toBeInTheDocument();
+        expect(getCellSelectionRect(editor)).toEqual({
+          bottom: 3,
+          left: 0,
+          right: 1,
+          top: 0
+        });
       });
 
       fireEvent.keyDown(document, { key: "Escape" });

@@ -23,11 +23,15 @@ vi.mock("../editor/PageEditorHost", () => ({
   }: {
     canEdit: boolean;
     onEditorFailureChange?: (failure: null) => void;
-    onStatusChange?: (state: { isDirty: boolean; isSaving: boolean }) => void;
+    onStatusChange?: (state: { isDirty: boolean; isSaving: boolean; status: "Saved" }) => void;
   }) {
     useEffect(() => {
       onEditorFailureChange?.(null);
-      onStatusChange?.({ isDirty: false, isSaving: false });
+      onStatusChange?.({
+        isDirty: false,
+        isSaving: false,
+        status: "Saved"
+      });
     }, [onEditorFailureChange, onStatusChange]);
 
     return canEdit ? <div data-docsera-page-editor-host="true" /> : null;

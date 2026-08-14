@@ -3,15 +3,16 @@ import {
   CellSelection,
   findCellPos,
   findTable,
-  selectionCell,
   selectedRect,
   TableMap,
 } from "@tiptap/pm/tables";
 import { EllipsisVertical, MoreHorizontal, Plus } from "lucide-react";
 import { createPortal } from "react-dom";
+import type { CSSProperties } from "react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { closeHistory } from "prosemirror-history";
 import { COMPACT_MENU_STYLES } from "./CompactMenuStyles";
+import useTableDragSelectionController from "./useTableDragSelectionController";
 
 type TableControlsOverlayProps = {
   editor: TiptapEditor | null;
@@ -42,6 +43,8 @@ type TableLayout = {
 };
 
 type TableOverlayState = TableLayout & {
+  accentedColumnIndexes: number[];
+  accentedRowIndexes: number[];
   selectedColumnIndexes: number[];
   selectedRowIndexes: number[];
 };
@@ -57,6 +60,12 @@ type TableMenuState =
       kind: "column";
       tablePos: number;
     };
+
+type TableHandleState = {
+  index: number;
+  kind: "row" | "column";
+};
+
 
 const ROW_PILL_WIDTH_PX = 8;
 const ROW_PILL_COMPACT_HEIGHT_PX = 18;
@@ -83,6 +92,14 @@ const WRAPPER_SCROLLBAR_HEIGHT_FALLBACK_PX = 8;
 const HANDLE_ICON_SIZE_PX = 12;
 const HANDLE_ICON_SLOT_SIZE_PX = 12;
 const HANDLE_ICON_STROKE_WIDTH = 2.2;
+const LIGHT_TABLE_CONTROL_PRIMARY_COLOR = "#4648D4";
+const DARK_TABLE_CONTROL_PRIMARY_COLOR = "#7C83FA";
+const TABLE_OVERLAY_EXCLUSION_SELECTOR = [
+  "[data-docsera-table-handle='true']",
+  "[data-docsera-table-add-rail-kind='row']",
+  "[data-docsera-table-add-rail-kind='column']",
+  "[data-docsera-table-menu='true']",
+].join(", ");
 
 const TABLE_CONTROLS_OVERLAY_STYLES = `
   .docsera-table-controls-overlay {
@@ -130,20 +147,34 @@ const TABLE_CONTROLS_OVERLAY_STYLES = `
       box-shadow ${PILL_TRANSITION_DURATION_MS}ms ease;
   }
 
-  .docsera-table-controls-overlay__pill[data-docsera-table-handle-accented="true"] .docsera-table-controls-overlay__pill-shell {
-    border-color: color-mix(in srgb, var(--docsera-editor-primary) 72%, var(--docsera-editor-panel-border));
-    background: color-mix(in srgb, var(--docsera-editor-panel) 88%, var(--docsera-editor-primary) 12%);
-    box-shadow:
-      0 1px 2px color-mix(in srgb, var(--docsera-editor-text) 10%, transparent),
-      0 0 0 1px color-mix(in srgb, var(--docsera-editor-primary) 28%, transparent);
+  .docsera-table-controls-overlay__pill[data-docsera-table-handle-kind="row"] .docsera-table-controls-overlay__pill-shell {
+    width: ${ROW_PILL_WIDTH_PX}px;
+    height: ${ROW_PILL_COMPACT_HEIGHT_PX}px;
   }
 
-  .docsera-table-controls-overlay__pill[data-docsera-table-handle-expanded="true"] .docsera-table-controls-overlay__pill-shell,
-  .docsera-table-controls-overlay__pill:hover .docsera-table-controls-overlay__pill-shell,
-  .docsera-table-controls-overlay__pill:focus-visible .docsera-table-controls-overlay__pill-shell {
+  .docsera-table-controls-overlay__pill[data-docsera-table-handle-kind="row"][data-docsera-table-handle-expanded="true"] .docsera-table-controls-overlay__pill-shell,
+  .docsera-table-controls-overlay__pill[data-docsera-table-handle-kind="row"]:hover .docsera-table-controls-overlay__pill-shell,
+  .docsera-table-controls-overlay__pill[data-docsera-table-handle-kind="row"]:focus-visible .docsera-table-controls-overlay__pill-shell {
+    height: ${ROW_PILL_EXPANDED_HEIGHT_PX}px;
+  }
+
+  .docsera-table-controls-overlay__pill[data-docsera-table-handle-kind="column"] .docsera-table-controls-overlay__pill-shell {
+    width: ${COLUMN_PILL_COMPACT_WIDTH_PX}px;
+    height: ${COLUMN_PILL_HEIGHT_PX}px;
+  }
+
+  .docsera-table-controls-overlay__pill[data-docsera-table-handle-kind="column"][data-docsera-table-handle-expanded="true"] .docsera-table-controls-overlay__pill-shell,
+  .docsera-table-controls-overlay__pill[data-docsera-table-handle-kind="column"]:hover .docsera-table-controls-overlay__pill-shell,
+  .docsera-table-controls-overlay__pill[data-docsera-table-handle-kind="column"]:focus-visible .docsera-table-controls-overlay__pill-shell {
+    width: ${COLUMN_PILL_EXPANDED_WIDTH_PX}px;
+  }
+
+  .docsera-table-controls-overlay__pill[data-docsera-table-handle-accented="false"][data-docsera-table-handle-expanded="true"] .docsera-table-controls-overlay__pill-shell,
+  .docsera-table-controls-overlay__pill[data-docsera-table-handle-accented="false"]:hover .docsera-table-controls-overlay__pill-shell,
+  .docsera-table-controls-overlay__pill[data-docsera-table-handle-accented="false"]:focus-visible .docsera-table-controls-overlay__pill-shell {
     box-shadow:
       0 1px 2px color-mix(in srgb, var(--docsera-editor-text) 10%, transparent),
-      0 0 0 1px color-mix(in srgb, var(--docsera-editor-primary) 28%, transparent);
+      0 0 0 1px color-mix(in srgb, var(--docsera-table-control-primary) 28%, transparent);
   }
 
   .docsera-table-controls-overlay__pill-icon {
@@ -222,22 +253,288 @@ const TABLE_CONTROLS_OVERLAY_STYLES = `
     border-color: color-mix(in srgb, var(--docsera-error) 20%, var(--docsera-border));
     background: color-mix(in srgb, var(--docsera-error) 10%, var(--docsera-surface));
   }
-`;
 
-const uniqueSorted = (values: number[]): number[] =>
-  Array.from(new Set(values)).sort((left, right) => left - right);
+  @media (prefers-reduced-motion: reduce) {
+    .docsera-table-controls-overlay__pill-shell,
+    .docsera-table-controls-overlay__pill-icon,
+    .docsera-table-controls-overlay__rail-button {
+      transition: none;
+    }
+  }
+`;
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(value, max));
 
 const getOverlayOwnerWindow = (overlayRoot: HTMLElement): Window | null => overlayRoot.ownerDocument.defaultView;
 
+function resolveTableControlTheme(editor: TiptapEditor | null): "light" | "dark" {
+  let editorDom: HTMLElement | null = null;
+  try {
+    editorDom = editor?.view?.dom instanceof HTMLElement ? editor.view.dom : null;
+  } catch {
+    editorDom = null;
+  }
+
+  const editorRoot = editorDom?.closest(".docsera-editor-runtime");
+  return editorRoot instanceof HTMLElement && editorRoot.classList.contains("docsera-editor-runtime--dark")
+    ? "dark"
+    : "light";
+}
+
+function resolveTableControlPrimaryColor(editor: TiptapEditor | null): string {
+  return resolveTableControlTheme(editor) === "dark"
+    ? DARK_TABLE_CONTROL_PRIMARY_COLOR
+    : LIGHT_TABLE_CONTROL_PRIMARY_COLOR;
+}
+
+function resolveTableControlActiveIconColor(editor: TiptapEditor | null): string {
+  return resolveTableControlTheme(editor) === "dark" ? "#ffffff" : "var(--docsera-editor-panel)";
+}
+
+function isEditableTableCellEventTarget(target: EventTarget | null): target is HTMLElement {
+  return target instanceof HTMLElement && !target.closest(TABLE_OVERLAY_EXCLUSION_SELECTOR) && Boolean(target.closest("td, th"));
+}
+
+function clearNativeSelectionIfCellSelection(editor: TiptapEditor | null): void {
+  if (!editor || editor.isDestroyed || !(editor.state.selection instanceof CellSelection)) {
+    return;
+  }
+
+  const selection = editor.view.dom.ownerDocument.getSelection();
+  if (selection && selection.rangeCount > 0) {
+    selection.removeAllRanges();
+  }
+}
+
+function normalizeCellRect(cellRect: {
+  bottom: number;
+  left: number;
+  right: number;
+  top: number;
+}): {
+  bottom: number;
+  left: number;
+  right: number;
+  top: number;
+} {
+  return {
+    bottom: Number(cellRect.bottom),
+    left: Number(cellRect.left),
+    right: Number(cellRect.right),
+    top: Number(cellRect.top),
+  };
+}
+
+type SelectedTableCellCoordinate = {
+  columnIndex: number;
+  rowIndex: number;
+};
+
+function normalizeSelectedTableCellCoordinates(
+  coordinates: SelectedTableCellCoordinate[]
+): SelectedTableCellCoordinate[] {
+  const uniqueCoordinates = new Map<string, SelectedTableCellCoordinate>();
+  for (const coordinate of coordinates) {
+    const rowIndex = Number(coordinate.rowIndex);
+    const columnIndex = Number(coordinate.columnIndex);
+    if (!Number.isFinite(rowIndex) || !Number.isFinite(columnIndex)) {
+      continue;
+    }
+
+    uniqueCoordinates.set(`${rowIndex}:${columnIndex}`, { columnIndex, rowIndex });
+  }
+
+  return Array.from(uniqueCoordinates.values()).sort((left, right) =>
+    left.rowIndex === right.rowIndex
+      ? left.columnIndex - right.columnIndex
+      : left.rowIndex - right.rowIndex
+  );
+}
+
+function buildSelectedTableCellCoordinates(
+  cellRect: {
+    bottom: number;
+    left: number;
+    right: number;
+    top: number;
+  },
+): SelectedTableCellCoordinate[] {
+  const normalizedCellRect = normalizeCellRect(cellRect);
+  const coordinates: SelectedTableCellCoordinate[] = [];
+
+  for (let rowIndex = normalizedCellRect.top; rowIndex < normalizedCellRect.bottom; rowIndex += 1) {
+    for (let columnIndex = normalizedCellRect.left; columnIndex < normalizedCellRect.right; columnIndex += 1) {
+      coordinates.push({ columnIndex, rowIndex });
+    }
+  }
+
+  return normalizeSelectedTableCellCoordinates(coordinates);
+}
+
+function buildPillShellStyle(input: { isActive: boolean; primaryColor: string }): CSSProperties {
+  const mutedRing =
+    "0 1px 2px color-mix(in srgb, var(--docsera-editor-text) 10%, transparent), 0 0 0 1px color-mix(in srgb, var(--docsera-editor-panel-border) 58%, transparent)";
+  const activeRing =
+    "0 1px 2px color-mix(in srgb, var(--docsera-editor-text) 10%, transparent)";
+
+  return {
+    borderColor: input.isActive ? input.primaryColor : "var(--docsera-editor-panel-border)",
+    backgroundColor: input.isActive
+      ? input.primaryColor
+      : "color-mix(in srgb, var(--docsera-editor-panel) 94%, var(--docsera-editor-primary) 6%)",
+    boxShadow: input.isActive ? activeRing : mutedRing,
+    transition:
+      `width ${PILL_TRANSITION_DURATION_MS}ms ease, ` +
+      `height ${PILL_TRANSITION_DURATION_MS}ms ease, ` +
+      `opacity ${PILL_TRANSITION_DURATION_MS}ms ease, ` +
+      `border-color ${PILL_TRANSITION_DURATION_MS}ms ease, ` +
+      `background-color ${PILL_TRANSITION_DURATION_MS}ms ease, ` +
+      `box-shadow ${PILL_TRANSITION_DURATION_MS}ms ease`,
+    willChange: "width, height, opacity",
+  };
+}
+
+function buildSelectedTableHandleIndexes(
+  selectedCells: SelectedTableCellCoordinate[]
+): {
+  accentedColumnIndexes: number[];
+  accentedRowIndexes: number[];
+  selectedColumnIndexes: number[];
+  selectedRowIndexes: number[];
+} {
+  if (selectedCells.length === 1) {
+    const [selectedCell] = selectedCells;
+    return {
+      accentedColumnIndexes: selectedCell.rowIndex === 0 ? [selectedCell.columnIndex] : [],
+      accentedRowIndexes: selectedCell.columnIndex === 0 ? [selectedCell.rowIndex] : [],
+      selectedColumnIndexes: [selectedCell.columnIndex],
+      selectedRowIndexes: [selectedCell.rowIndex],
+    };
+  }
+
+  const activeColumnIndexes = new Set<number>();
+  const activeRowIndexes = new Set<number>();
+
+  for (const cellCoordinate of selectedCells) {
+    if (cellCoordinate.rowIndex === 0) {
+      activeColumnIndexes.add(cellCoordinate.columnIndex);
+    }
+    if (cellCoordinate.columnIndex === 0) {
+      activeRowIndexes.add(cellCoordinate.rowIndex);
+    }
+  }
+
+  const selectedColumnIndexes = Array.from(activeColumnIndexes).sort((left, right) => left - right);
+  const selectedRowIndexes = Array.from(activeRowIndexes).sort((left, right) => left - right);
+  return {
+    accentedColumnIndexes: selectedColumnIndexes,
+    accentedRowIndexes: selectedRowIndexes,
+    selectedColumnIndexes,
+    selectedRowIndexes,
+  };
+}
+
+function resolveSelectedTableCells(editor: TiptapEditor): SelectedTableCellCoordinate[] {
+  const selection = editor.state.selection;
+  if (selection instanceof CellSelection) {
+    let selectedRectRange:
+      | {
+          bottom: number;
+          left: number;
+          right: number;
+          top: number;
+        }
+      | null = null;
+
+    try {
+      selectedRectRange = normalizeCellRect(selectedRect(editor.state));
+    } catch {
+      selectedRectRange = null;
+    }
+
+    if (selectedRectRange) {
+      return buildSelectedTableCellCoordinates(selectedRectRange);
+    }
+
+    const selectedTableContext = getLiveTableContext(editor);
+    const liveCellSelectionRect = selectedTableContext
+      ? resolveLiveCellSelectionRect(editor, selectedTableContext)
+      : null;
+    return liveCellSelectionRect ? buildSelectedTableCellCoordinates(liveCellSelectionRect) : [];
+  }
+
+  const textSelection = selection as { $from?: any } | null | undefined;
+  let currentRect:
+    | {
+        left: number;
+        right: number;
+        top: number;
+        bottom: number;
+      }
+    | null = null;
+  try {
+    currentRect = selectedRect(editor.state);
+  } catch {
+    currentRect = null;
+  }
+
+  if (!textSelection?.$from) {
+    return currentRect ? [{ columnIndex: currentRect.left, rowIndex: currentRect.top }] : [];
+  }
+
+  const tableContext = getLiveTableContext(editor);
+  if (tableContext) {
+    const cellAnchor = findCellPos(editor.state.doc, textSelection.$from.pos);
+    if (cellAnchor) {
+      const relativeCellPos = cellAnchor.pos - tableContext.tablePos;
+      try {
+        const cellRect = tableContext.map.findCell(relativeCellPos);
+        return [{ columnIndex: cellRect.left, rowIndex: cellRect.top }];
+      } catch {
+        // Fall through to the manual ancestry scan below.
+      }
+    }
+
+    const $from = textSelection.$from;
+    for (let depth = $from.depth; depth > 0; depth -= 1) {
+      const node = $from.node(depth);
+      if (node.type.name !== "tableCell" && node.type.name !== "tableHeader") {
+        continue;
+      }
+
+      const candidateCellPositions = [$from.before(depth) - tableContext.tablePos, $from.start(depth) - tableContext.tablePos];
+
+      for (const relativeCellPos of candidateCellPositions) {
+        if (relativeCellPos < 0) {
+          continue;
+        }
+
+        try {
+          const cellRect = tableContext.map.findCell(relativeCellPos);
+          return [{ columnIndex: cellRect.left, rowIndex: cellRect.top }];
+        } catch {
+          // Try the alternate cell boundary offset before giving up on the current ancestor.
+        }
+      }
+    }
+  }
+
+  if (currentRect) {
+    return [{ columnIndex: currentRect.left, rowIndex: currentRect.top }];
+  }
+
+  return [];
+}
+
 const getLiveTableContext = (
   editor: TiptapEditor
 ): TableContext | null => {
-  const selection = editor.state.selection as { $from?: unknown } | null | undefined;
-  if (!selection?.$from) return null;
+  const selection = editor.state.selection as { $anchorCell?: unknown; $from?: unknown } | null | undefined;
+  const selectionAnchor =
+    selection instanceof CellSelection ? selection.$anchorCell : selection?.$from;
+  if (!selectionAnchor) return null;
 
-  const currentTable = findTable(selection.$from as Parameters<typeof findTable>[0]);
+  const currentTable = findTable(selectionAnchor as Parameters<typeof findTable>[0]);
   if (!currentTable) return null;
 
   return {
@@ -263,24 +560,41 @@ const getLiveTableContextFromTablePos = (
   };
 };
 
+function areHandleStatesEqual(left: TableHandleState | null, right: TableHandleState | null): boolean {
+  return left?.kind === right?.kind && left?.index === right?.index;
+}
+
+function resolveHandleStateFromTarget(target: EventTarget | null): TableHandleState | null {
+  if (!(target instanceof Element)) {
+    return null;
+  }
+
+  const handle = target.closest("[data-docsera-table-handle='true']");
+  if (!(handle instanceof HTMLElement)) {
+    return null;
+  }
+
+  const kind = handle.dataset.docseraTableHandleKind;
+  const index = Number(handle.dataset.docseraTableHandleIndex);
+  if ((kind !== "row" && kind !== "column") || Number.isNaN(index)) {
+    return null;
+  }
+
+  return { kind, index };
+}
+
 export default function TableControlsOverlay({
   editor,
   overlayRoot,
 }: TableControlsOverlayProps) {
   const [overlayState, setOverlayState] = useState<TableOverlayState | null>(null);
   const [menuState, setMenuState] = useState<TableMenuState | null>(null);
-  const [hoveredCellIndexes, setHoveredCellIndexes] = useState<{
-    rowIndex: number | null;
-    columnIndex: number | null;
-  }>({
-    rowIndex: null,
-    columnIndex: null,
-  });
-  const [hoveredHandle, setHoveredHandle] = useState<{ kind: "row" | "column"; index: number } | null>(
-    null
-  );
+  const [hoveredHandle, setHoveredHandle] = useState<TableHandleState | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const structuralSelectionClickHandoffRef = useRef<number | null>(null);
   const ownerWindow = getOverlayOwnerWindow(overlayRoot);
+  const tableControlPrimaryColor = resolveTableControlPrimaryColor(editor);
+  const activeTableIconColor = resolveTableControlActiveIconColor(editor);
 
   const refreshOverlayState = useCallback(() => {
     if (!editor || editor.isDestroyed) {
@@ -300,11 +614,148 @@ export default function TableControlsOverlay({
       return;
     }
 
-    setOverlayState({
+    const selectedCellCoordinates = resolveSelectedTableCells(editor);
+    const nextOverlayState = {
       ...layout,
-      ...resolveSelectedTableIndexes(editor),
-    });
+      ...buildSelectedTableIndexesFromCells(selectedCellCoordinates),
+    };
+    setOverlayState(nextOverlayState);
   }, [editor]);
+  useTableDragSelectionController(editor, Boolean(editor));
+
+  useEffect(() => {
+    if (!editor || !ownerWindow) {
+      return;
+    }
+
+    const ownerDocument = overlayRoot.ownerDocument;
+    const hasRequestAnimationFrame = typeof ownerWindow.requestAnimationFrame === "function";
+    if (!hasRequestAnimationFrame) {
+      clearNativeSelectionIfCellSelection(editor);
+      return;
+    }
+
+    let animationFrameId: number | null = null;
+
+    const clearStructuralSelection = () => {
+      if (animationFrameId !== null) {
+        ownerWindow.cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
+
+      if (!(editor.state.selection instanceof CellSelection)) {
+        return;
+      }
+
+      animationFrameId = ownerWindow.requestAnimationFrame(() => {
+        animationFrameId = null;
+        if (structuralSelectionClickHandoffRef.current !== null) {
+          return;
+        }
+        clearNativeSelectionIfCellSelection(editor);
+      });
+    };
+
+    const beginStructuralSelectionClickHandoff = (event: PointerEvent) => {
+      if (!(editor.state.selection instanceof CellSelection)) {
+        structuralSelectionClickHandoffRef.current = null;
+        return;
+      }
+
+      if (!isEditableTableCellEventTarget(event.target)) {
+        structuralSelectionClickHandoffRef.current = null;
+        return;
+      }
+
+      structuralSelectionClickHandoffRef.current = event.pointerId;
+    };
+
+    const endStructuralSelectionClickHandoff = (pointerId: number | null) => {
+      if (
+        structuralSelectionClickHandoffRef.current === null ||
+        (pointerId !== null && structuralSelectionClickHandoffRef.current !== pointerId)
+      ) {
+        return;
+      }
+
+      structuralSelectionClickHandoffRef.current = null;
+      clearStructuralSelection();
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      endStructuralSelectionClickHandoff(event.pointerId);
+    };
+
+    const handlePointerCancel = (event: PointerEvent) => {
+      endStructuralSelectionClickHandoff(event.pointerId);
+    };
+
+    const handleWindowBlur = () => {
+      endStructuralSelectionClickHandoff(null);
+    };
+
+    clearStructuralSelection();
+
+    if (typeof editor.on !== "function" || typeof editor.off !== "function") {
+      return () => {
+        if (animationFrameId !== null) {
+          ownerWindow.cancelAnimationFrame(animationFrameId);
+        }
+      };
+    }
+
+    editor.on("selectionUpdate", clearStructuralSelection);
+    ownerDocument.addEventListener("pointerdown", beginStructuralSelectionClickHandoff, true);
+    ownerDocument.addEventListener("pointerup", handlePointerUp, true);
+    ownerDocument.addEventListener("pointercancel", handlePointerCancel, true);
+    ownerWindow.addEventListener("blur", handleWindowBlur);
+
+    return () => {
+      editor.off("selectionUpdate", clearStructuralSelection);
+      ownerDocument.removeEventListener("pointerdown", beginStructuralSelectionClickHandoff, true);
+      ownerDocument.removeEventListener("pointerup", handlePointerUp, true);
+      ownerDocument.removeEventListener("pointercancel", handlePointerCancel, true);
+      ownerWindow.removeEventListener("blur", handleWindowBlur);
+      if (animationFrameId !== null) {
+        ownerWindow.cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, [editor, ownerWindow, overlayRoot]);
+
+  useEffect(() => {
+    if (!editor || !ownerWindow) {
+      return;
+    }
+
+    const ownerDocument = overlayRoot.ownerDocument;
+    const handleSelectionChange = () => {
+      if (structuralSelectionClickHandoffRef.current !== null) {
+        return;
+      }
+
+      if (!(editor.state.selection instanceof CellSelection)) {
+        return;
+      }
+
+      if (typeof ownerWindow.requestAnimationFrame === "function") {
+        ownerWindow.requestAnimationFrame(() => {
+          if (structuralSelectionClickHandoffRef.current !== null) {
+            return;
+          }
+
+          clearNativeSelectionIfCellSelection(editor);
+        });
+        return;
+      }
+
+      clearNativeSelectionIfCellSelection(editor);
+    };
+
+    ownerDocument.addEventListener("selectionchange", handleSelectionChange);
+    return () => {
+      ownerDocument.removeEventListener("selectionchange", handleSelectionChange);
+    };
+  }, [editor, ownerWindow, overlayRoot]);
 
   useLayoutEffect(() => {
     if (!editor || !ownerWindow) {
@@ -366,35 +817,20 @@ export default function TableControlsOverlay({
     if (!ownerWindow) return;
     const ownerDocument = overlayRoot.ownerDocument;
 
-    const updateHoveredCellIndexes = (next: {
-      rowIndex: number | null;
-      columnIndex: number | null;
-    }) => {
-      setHoveredCellIndexes((previous) => {
-        if (
-          previous.rowIndex === next.rowIndex &&
-          previous.columnIndex === next.columnIndex
-        ) {
-          return previous;
-        }
-        return next;
-      });
+    const updateHoveredHandle = (next: TableHandleState | null) => {
+      setHoveredHandle((previous) => (areHandleStatesEqual(previous, next) ? previous : next));
     };
 
     const handlePointerMove = (event: MouseEvent) => {
       const target = event.target;
-      if (!(target instanceof HTMLElement)) {
-        updateHoveredCellIndexes({ rowIndex: null, columnIndex: null });
-        return;
-      }
+      updateHoveredHandle(resolveHandleStateFromTarget(target));
 
-      if (target.closest("[data-docsera-table-handle='true'], [data-docsera-table-menu='true']")) {
+      if (!(target instanceof HTMLElement) || target.closest("[data-docsera-table-handle='true'], [data-docsera-table-menu='true']")) {
         return;
       }
 
       const activeContext = getLiveTableContext(editor);
       if (!activeContext) {
-        updateHoveredCellIndexes({ rowIndex: null, columnIndex: null });
         return;
       }
 
@@ -406,13 +842,11 @@ export default function TableControlsOverlay({
           ? activeNodeDom.querySelector("table")
           : null;
       if (!(activeTableElement instanceof HTMLTableElement)) {
-        updateHoveredCellIndexes({ rowIndex: null, columnIndex: null });
         return;
       }
 
       const targetTable = target.closest("table");
       if (targetTable !== activeTableElement) {
-        updateHoveredCellIndexes({ rowIndex: null, columnIndex: null });
         return;
       }
 
@@ -425,34 +859,50 @@ export default function TableControlsOverlay({
       if (!(rowElement instanceof HTMLTableRowElement)) {
         return;
       }
-
-      const rowElements = Array.from(activeTableElement.querySelectorAll("tr"));
-      const rowIndex = rowElements.indexOf(rowElement);
-      const rowCells = Array.from(rowElement.querySelectorAll(":scope > th, :scope > td"));
-      const columnIndex = rowCells.indexOf(cellElement);
-      if (rowIndex < 0 || columnIndex < 0) {
-        return;
-      }
-
-      updateHoveredCellIndexes({
-        rowIndex: columnIndex === 0 ? rowIndex : null,
-        columnIndex: rowIndex === 0 ? columnIndex : null,
-      });
     };
 
     const handlePointerLeaveDocument = () => {
-      updateHoveredCellIndexes({ rowIndex: null, columnIndex: null });
+      updateHoveredHandle(null);
     };
 
+    const handlePointerDown = (event: MouseEvent | PointerEvent) => {
+      updateHoveredHandle(resolveHandleStateFromTarget(event.target));
+    };
+
+    ownerDocument.addEventListener("pointermove", handlePointerMove, true);
     ownerDocument.addEventListener("mousemove", handlePointerMove, true);
+    ownerDocument.addEventListener("pointerdown", handlePointerDown, true);
+    ownerDocument.addEventListener("mousedown", handlePointerDown, true);
     ownerDocument.addEventListener("mouseleave", handlePointerLeaveDocument, true);
     ownerWindow.addEventListener("blur", handlePointerLeaveDocument);
     return () => {
+      ownerDocument.removeEventListener("pointermove", handlePointerMove, true);
       ownerDocument.removeEventListener("mousemove", handlePointerMove, true);
+      ownerDocument.removeEventListener("pointerdown", handlePointerDown, true);
+      ownerDocument.removeEventListener("mousedown", handlePointerDown, true);
       ownerDocument.removeEventListener("mouseleave", handlePointerLeaveDocument, true);
       ownerWindow.removeEventListener("blur", handlePointerLeaveDocument);
     };
   }, [editor, overlayRoot, ownerWindow]);
+
+  useEffect(() => {
+    if (!editor || typeof editor.on !== "function" || typeof editor.off !== "function") {
+      return;
+    }
+
+    const clearHoveredHandle = () => {
+      setHoveredHandle(null);
+    };
+
+    editor.on("selectionUpdate", clearHoveredHandle);
+    return () => {
+      editor.off("selectionUpdate", clearHoveredHandle);
+    };
+  }, [editor]);
+
+  useEffect(() => {
+    setHoveredHandle(null);
+  }, [menuState]);
 
   useEffect(() => {
     const ownerDocument = overlayRoot.ownerDocument;
@@ -463,6 +913,7 @@ export default function TableControlsOverlay({
       if (!(target instanceof Node)) return;
       if (menuRef.current?.contains(target)) return;
       if ((target as HTMLElement).closest("[data-docsera-table-handle='true']")) return;
+      if (!editor?.isDestroyed && editor?.view.dom.contains(target)) return;
       setMenuState(null);
     };
 
@@ -508,9 +959,13 @@ export default function TableControlsOverlay({
 
   const menuLayout = menuState && editor ? resolveTableLayoutFromTablePos(editor, menuState.tablePos) : null;
   const renderLayout = menuState ? menuLayout : overlayState;
+  const selectedCellCoordinates = editor ? resolveSelectedTableCells(editor) : [];
   const selectionIndexes:
-    | Pick<TableOverlayState, "selectedColumnIndexes" | "selectedRowIndexes">
-    | null = editor ? resolveSelectedTableIndexes(editor) : null;
+    | Pick<
+        TableOverlayState,
+        "accentedColumnIndexes" | "accentedRowIndexes" | "selectedColumnIndexes" | "selectedRowIndexes"
+      >
+    | null = editor ? buildSelectedTableIndexesFromCells(selectedCellCoordinates) : null;
   const visibleRowIndexes =
     menuState?.kind === "row"
       ? [menuState.index]
@@ -519,6 +974,8 @@ export default function TableControlsOverlay({
     menuState?.kind === "column"
       ? [menuState.index]
       : selectionIndexes?.selectedColumnIndexes ?? [];
+  const accentedRowIndexes = selectionIndexes?.accentedRowIndexes ?? [];
+  const accentedColumnIndexes = selectionIndexes?.accentedColumnIndexes ?? [];
   const visibleTableLeft = renderLayout ? Math.max(renderLayout.tableRect.left, renderLayout.wrapperRect.left) : 0;
   const visibleTableRight = renderLayout ? Math.min(renderLayout.tableRect.right, renderLayout.wrapperRect.right) : 0;
   const visibleTableBottom = renderLayout
@@ -549,12 +1006,17 @@ export default function TableControlsOverlay({
           ? clamp(index, 0, context.map.height - 1)
           : clamp(index, 0, context.map.width - 1);
 
+      if (kind === "row") {
+        selectRow(editor, context, boundedIndex);
+      } else {
+        selectColumn(editor, context, boundedIndex);
+      }
+
       setMenuState({
         kind,
         index: boundedIndex,
         tablePos: context.tablePos,
       });
-      setHoveredHandle({ kind, index: boundedIndex });
     },
     [editor]
   );
@@ -638,16 +1100,14 @@ export default function TableControlsOverlay({
               if (!isInViewport) return null;
 
               const isHovered = hoveredHandle?.kind === "row" && hoveredHandle.index === rowIndex;
-              const isVisibleByHover = hoveredCellIndexes.rowIndex === rowIndex;
               const isVisibleBySelection = visibleRowIndexes.includes(rowIndex);
+              const isAccentedBySelection = accentedRowIndexes.includes(rowIndex);
               const isMenuOpen = menuState?.kind === "row" && menuState.index === rowIndex;
-              const isVisible = isVisibleBySelection || isVisibleByHover || isHovered || isMenuOpen;
+              const isVisible = isVisibleBySelection || isHovered || isMenuOpen;
               if (!isVisible) return null;
 
-              const isAccented = isVisibleBySelection || isVisibleByHover || isMenuOpen;
-              const handleHeightPx = isHovered || isMenuOpen
-                ? ROW_PILL_EXPANDED_HEIGHT_PX
-                : ROW_PILL_COMPACT_HEIGHT_PX;
+              const isAccented = isAccentedBySelection || isMenuOpen;
+              const isExpanded = isHovered;
               const handleLeft =
                 (renderLayout.rowLeftBorderAnchorXs[rowIndex] ?? renderLayout.tableRect.left) -
                 ROW_PILL_HITBOX_WIDTH_PX / 2;
@@ -659,8 +1119,9 @@ export default function TableControlsOverlay({
                   data-docsera-table-handle="true"
                   data-docsera-table-handle-kind="row"
                   data-docsera-table-handle-index={rowIndex}
-                  data-docsera-table-handle-expanded={isHovered || isMenuOpen ? "true" : "false"}
+                  data-docsera-table-handle-expanded={isExpanded ? "true" : "false"}
                   data-docsera-table-handle-accented={isAccented ? "true" : "false"}
+                  data-docsera-table-handle-visual-state={isAccented ? "active" : "muted"}
                   aria-label={`Table row ${rowIndex + 1} options`}
                   aria-haspopup="menu"
                   aria-expanded={isMenuOpen}
@@ -692,10 +1153,7 @@ export default function TableControlsOverlay({
                   <span
                     className="docsera-table-controls-overlay__pill-shell"
                     data-docsera-table-handle-pill="true"
-                    style={{
-                      width: `${ROW_PILL_WIDTH_PX}px`,
-                      height: `${handleHeightPx}px`,
-                    }}
+                    style={buildPillShellStyle({ isActive: isAccented, primaryColor: tableControlPrimaryColor })}
                   />
                   <span
                     className="docsera-table-controls-overlay__pill-icon"
@@ -704,7 +1162,7 @@ export default function TableControlsOverlay({
                     <EllipsisVertical
                       size={HANDLE_ICON_SIZE_PX}
                       strokeWidth={HANDLE_ICON_STROKE_WIDTH}
-                      color={isAccented ? "var(--docsera-editor-primary)" : "var(--docsera-editor-muted)"}
+                      color={isAccented ? activeTableIconColor : "var(--docsera-editor-muted)"}
                     />
                   </span>
                 </button>
@@ -723,16 +1181,14 @@ export default function TableControlsOverlay({
 
               const isHovered =
                 hoveredHandle?.kind === "column" && hoveredHandle.index === columnIndex;
-              const isVisibleByHover = hoveredCellIndexes.columnIndex === columnIndex;
               const isVisibleBySelection = visibleColumnIndexes.includes(columnIndex);
+              const isAccentedBySelection = accentedColumnIndexes.includes(columnIndex);
               const isMenuOpen = menuState?.kind === "column" && menuState.index === columnIndex;
-              const isVisible = isVisibleBySelection || isVisibleByHover || isHovered || isMenuOpen;
+              const isVisible = isVisibleBySelection || isHovered || isMenuOpen;
               if (!isVisible) return null;
 
-              const isAccented = isVisibleBySelection || isVisibleByHover || isMenuOpen;
-              const handleWidthPx = isHovered || isMenuOpen
-                ? COLUMN_PILL_EXPANDED_WIDTH_PX
-                : COLUMN_PILL_COMPACT_WIDTH_PX;
+              const isAccented = isAccentedBySelection || isMenuOpen;
+              const isExpanded = isHovered;
               const handleLeft = columnCenterX - COLUMN_PILL_HITBOX_WIDTH_PX / 2;
               const handleTop =
                 (renderLayout.columnTopBorderAnchorYs[columnIndex] ?? renderLayout.tableRect.top) -
@@ -744,8 +1200,9 @@ export default function TableControlsOverlay({
                   data-docsera-table-handle="true"
                   data-docsera-table-handle-kind="column"
                   data-docsera-table-handle-index={columnIndex}
-                  data-docsera-table-handle-expanded={isHovered || isMenuOpen ? "true" : "false"}
+                  data-docsera-table-handle-expanded={isExpanded ? "true" : "false"}
                   data-docsera-table-handle-accented={isAccented ? "true" : "false"}
+                  data-docsera-table-handle-visual-state={isAccented ? "active" : "muted"}
                   aria-label={`Table column ${columnIndex + 1} options`}
                   aria-haspopup="menu"
                   aria-expanded={isMenuOpen}
@@ -777,10 +1234,7 @@ export default function TableControlsOverlay({
                   <span
                     className="docsera-table-controls-overlay__pill-shell"
                     data-docsera-table-handle-pill="true"
-                    style={{
-                      width: `${handleWidthPx}px`,
-                      height: `${COLUMN_PILL_HEIGHT_PX}px`,
-                    }}
+                    style={buildPillShellStyle({ isActive: isAccented, primaryColor: tableControlPrimaryColor })}
                   />
                   <span
                     className="docsera-table-controls-overlay__pill-icon"
@@ -789,7 +1243,7 @@ export default function TableControlsOverlay({
                     <MoreHorizontal
                       size={HANDLE_ICON_SIZE_PX}
                       strokeWidth={HANDLE_ICON_STROKE_WIDTH}
-                      color={isAccented ? "var(--docsera-editor-primary)" : "var(--docsera-editor-muted)"}
+                      color={isAccented ? activeTableIconColor : "var(--docsera-editor-muted)"}
                     />
                   </span>
                 </button>
@@ -1084,6 +1538,9 @@ function resolveTableLayoutFromContext(
       return tableRect.top + ((rowIndex + 0.5) / Math.max(1, context.map.height)) * tableRect.height;
     }
     const rowRect = rowElement.getBoundingClientRect();
+    if (rowRect.width <= 0 || rowRect.height <= 0) {
+      return tableRect.top + ((rowIndex + 0.5) / Math.max(1, context.map.height)) * tableRect.height;
+    }
     return rowRect.top + rowRect.height / 2;
   });
   const rowLeftBorderAnchorXs = Array.from({ length: context.map.height }).map((_, rowIndex) => {
@@ -1153,104 +1610,58 @@ function resolveTableLayoutFromTablePos(editor: TiptapEditor, tablePos: number):
   return resolveTableLayoutFromContext(editor, tableContext);
 }
 
+function resolveLiveCellSelectionRect(
+  editor: TiptapEditor,
+  tableContext: TableContext
+):
+  | {
+      bottom: number;
+      left: number;
+      right: number;
+      top: number;
+    }
+  | null {
+  const selection = editor.state.selection;
+  if (!(selection instanceof CellSelection)) {
+    return null;
+  }
+
+  return normalizeCellRect(
+    tableContext.map.rectBetween(
+      selection.$anchorCell.pos - tableContext.tableStart,
+      selection.$headCell.pos - tableContext.tableStart
+    )
+  );
+}
+
 function resolveSelectedTableIndexes(editor: TiptapEditor): {
+  accentedColumnIndexes: number[];
+  accentedRowIndexes: number[];
   selectedColumnIndexes: number[];
   selectedRowIndexes: number[];
 } {
-  let currentRect:
-    | {
-        left: number;
-        right: number;
-        top: number;
-        bottom: number;
-      }
-    | null = null;
-  try {
-    currentRect = selectedRect(editor.state);
-  } catch {
-    currentRect = null;
-  }
+  const selectedCells = resolveSelectedTableCells(editor);
+  return buildSelectedTableIndexesFromCells(selectedCells);
+}
 
-  if (currentRect && editor.state.selection instanceof CellSelection) {
+function buildSelectedTableIndexesFromCells(
+  selectedCells: SelectedTableCellCoordinate[]
+): {
+  accentedColumnIndexes: number[];
+  accentedRowIndexes: number[];
+  selectedColumnIndexes: number[];
+  selectedRowIndexes: number[];
+} {
+  if (!selectedCells.length) {
     return {
-      selectedColumnIndexes: uniqueSorted(
-        Array.from({ length: Math.max(0, currentRect.right - currentRect.left) }).map(
-          (_, index) => currentRect.left + index
-        )
-      ),
-      selectedRowIndexes: uniqueSorted(
-        Array.from({ length: Math.max(0, currentRect.bottom - currentRect.top) }).map(
-          (_, index) => currentRect.top + index
-        )
-      ),
+      accentedColumnIndexes: [],
+      accentedRowIndexes: [],
+      selectedColumnIndexes: [],
+      selectedRowIndexes: [],
     };
   }
 
-  const selection = editor.state.selection as { $from?: any } | null | undefined;
-  if (!selection?.$from) {
-    if (currentRect) {
-      return {
-        selectedColumnIndexes: [currentRect.left],
-        selectedRowIndexes: [currentRect.top],
-      };
-    }
-    return { selectedColumnIndexes: [], selectedRowIndexes: [] };
-  }
-
-  const tableContext = getLiveTableContext(editor);
-  if (tableContext) {
-    const cellAnchor = findCellPos(editor.state.doc, selection.$from.pos);
-    if (cellAnchor) {
-      const relativeCellPos = cellAnchor.pos - tableContext.tablePos;
-      try {
-        const cellRect = tableContext.map.findCell(relativeCellPos);
-        return {
-          selectedColumnIndexes: [cellRect.left],
-          selectedRowIndexes: [cellRect.top],
-        };
-      } catch {
-        // Fall through to the manual ancestry scan below.
-      }
-    }
-
-    const $from = selection.$from;
-    for (let depth = $from.depth; depth > 0; depth -= 1) {
-      const node = $from.node(depth);
-      if (node.type.name !== "tableCell" && node.type.name !== "tableHeader") {
-        continue;
-      }
-
-      const candidateCellPositions = [
-        $from.before(depth) - tableContext.tablePos,
-        $from.start(depth) - tableContext.tablePos,
-      ];
-
-      for (const relativeCellPos of candidateCellPositions) {
-        if (relativeCellPos < 0) {
-          continue;
-        }
-
-        try {
-          const cellRect = tableContext.map.findCell(relativeCellPos);
-          return {
-            selectedColumnIndexes: [cellRect.left],
-            selectedRowIndexes: [cellRect.top],
-          };
-        } catch {
-          // Try the alternate cell boundary offset before giving up on the current ancestor.
-        }
-      }
-    }
-  }
-
-  if (currentRect) {
-    return {
-      selectedColumnIndexes: [currentRect.left],
-      selectedRowIndexes: [currentRect.top],
-    };
-  }
-
-  return { selectedColumnIndexes: [], selectedRowIndexes: [] };
+  return buildSelectedTableHandleIndexes(selectedCells);
 }
 
 function addColumnAtEnd(
@@ -1330,6 +1741,7 @@ function selectColumn(editor: TiptapEditor, context: TableContext, columnIndex: 
   );
   editor.view.dispatch(tr);
   editor.view.focus();
+  clearNativeSelectionIfCellSelection(editor);
 }
 
 function selectRow(editor: TiptapEditor, context: TableContext, rowIndex: number): void {
@@ -1345,6 +1757,7 @@ function selectRow(editor: TiptapEditor, context: TableContext, rowIndex: number
   );
   editor.view.dispatch(tr);
   editor.view.focus();
+  clearNativeSelectionIfCellSelection(editor);
 }
 
 function shouldFlipRowMenu(layout: TableLayout, rowIndex: number, ownerWindow: Window): boolean {
