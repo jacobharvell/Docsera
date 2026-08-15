@@ -7,9 +7,8 @@ import {
   TableMap,
 } from "@tiptap/pm/tables";
 import { EllipsisVertical, MoreHorizontal, Plus } from "lucide-react";
-import { createPortal } from "react-dom";
 import type { CSSProperties } from "react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { closeHistory } from "prosemirror-history";
 import { COMPACT_MENU_STYLES } from "./CompactMenuStyles";
 import useTableDragSelectionController from "./useTableDragSelectionController";
@@ -29,8 +28,10 @@ type TableContext = {
 type TableLayout = {
   columnCenters: number[];
   columnTopBorderAnchorYs: number[];
+  columnWidths: number[];
   map: TableMap;
   rowCenters: number[];
+  rowHeights: number[];
   rowLeftBorderAnchorXs: number[];
   tableNode: TiptapEditor["state"]["doc"];
   tablePos: number;
@@ -66,7 +67,6 @@ type TableHandleState = {
   kind: "row" | "column";
 };
 
-
 const ROW_PILL_WIDTH_PX = 8;
 const ROW_PILL_COMPACT_HEIGHT_PX = 18;
 const ROW_PILL_EXPANDED_HEIGHT_PX = 28;
@@ -79,6 +79,7 @@ const COLUMN_PILL_HITBOX_WIDTH_PX = 42;
 const COLUMN_PILL_HITBOX_HEIGHT_PX = 26;
 const COLUMN_ADD_RAIL_WIDTH_PX = 22;
 const ROW_ADD_RAIL_HEIGHT_PX = 22;
+const TABLE_RAIL_DRAG_THRESHOLD_PX = 4;
 const TABLE_CONTROL_MENU_GAP_PX = 10;
 const TABLE_CONTROL_RAIL_GAP_PX = 4;
 const TABLE_CONTROL_VIEWPORT_EDGE_PX = 12;
@@ -100,6 +101,7 @@ const TABLE_OVERLAY_EXCLUSION_SELECTOR = [
   "[data-docsera-table-add-rail-kind='column']",
   "[data-docsera-table-menu='true']",
 ].join(", ");
+const TABLE_RAIL_CURSOR_LOCK_ATTRIBUTE = "data-docsera-table-rail-cursor-lock";
 
 const TABLE_CONTROLS_OVERLAY_STYLES = `
   .docsera-table-controls-overlay {
@@ -230,7 +232,29 @@ const TABLE_CONTROLS_OVERLAY_STYLES = `
   .docsera-table-controls-overlay__rail-button:hover,
   .docsera-table-controls-overlay__rail-button:focus-visible {
     background: color-mix(in srgb, var(--docsera-editor-panel) 84%, var(--docsera-editor-primary) 16%);
-    color: var(--docsera-editor-primary);
+  }
+
+  .docsera-table-controls-overlay__rail-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--docsera-editor-muted);
+    transition: color 120ms ease;
+  }
+
+  .docsera-table-controls-overlay__rail-button:hover .docsera-table-controls-overlay__rail-icon,
+  .docsera-table-controls-overlay__rail-button:focus-visible .docsera-table-controls-overlay__rail-icon {
+    color: var(--docsera-table-control-primary);
+  }
+
+  html[data-docsera-table-rail-cursor-lock="row"],
+  html[data-docsera-table-rail-cursor-lock="row"] * {
+    cursor: row-resize !important;
+  }
+
+  html[data-docsera-table-rail-cursor-lock="column"],
+  html[data-docsera-table-rail-cursor-lock="column"] * {
+    cursor: col-resize !important;
   }
 
   .docsera-table-controls-overlay__menu {
@@ -590,11 +614,13 @@ export default function TableControlsOverlay({
   const [overlayState, setOverlayState] = useState<TableOverlayState | null>(null);
   const [menuState, setMenuState] = useState<TableMenuState | null>(null);
   const [hoveredHandle, setHoveredHandle] = useState<TableHandleState | null>(null);
+  const [hoveredRailKind, setHoveredRailKind] = useState<TableRailResizeKind | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const structuralSelectionClickHandoffRef = useRef<number | null>(null);
   const ownerWindow = getOverlayOwnerWindow(overlayRoot);
   const tableControlPrimaryColor = resolveTableControlPrimaryColor(editor);
   const activeTableIconColor = resolveTableControlActiveIconColor(editor);
+  const { handleRailClick, handleRailPointerDown } = useTableRailResizeSession(editor, setOverlayState);
 
   const refreshOverlayState = useCallback(() => {
     if (!editor || editor.isDestroyed) {
@@ -978,21 +1004,25 @@ export default function TableControlsOverlay({
   const accentedColumnIndexes = selectionIndexes?.accentedColumnIndexes ?? [];
   const visibleTableLeft = renderLayout ? Math.max(renderLayout.tableRect.left, renderLayout.wrapperRect.left) : 0;
   const visibleTableRight = renderLayout ? Math.min(renderLayout.tableRect.right, renderLayout.wrapperRect.right) : 0;
-  const visibleTableBottom = renderLayout
-    ? Math.min(renderLayout.tableRect.bottom, renderLayout.wrapperRect.bottom)
+  const visibleTableTop = renderLayout ? Math.max(renderLayout.tableRect.top, renderLayout.wrapperRect.top) : 0;
+  const visibleTableBottom = renderLayout ? Math.min(renderLayout.tableRect.bottom, renderLayout.wrapperRect.bottom) : 0;
+  const wrapperScrollbarLaneHeightPx = renderLayout?.wrapperOverflowX
+    ? Math.max(renderLayout.wrapperScrollbarHeightPx, WRAPPER_SCROLLBAR_HEIGHT_FALLBACK_PX)
     : 0;
   const rowRailBottom = renderLayout
     ? Math.min(
-        renderLayout.wrapperRect.bottom -
-          Math.max(renderLayout.wrapperScrollbarHeightPx, WRAPPER_SCROLLBAR_HEIGHT_FALLBACK_PX) -
-          TABLE_CONTROL_RAIL_GAP_PX,
+        renderLayout.wrapperRect.bottom - wrapperScrollbarLaneHeightPx - TABLE_CONTROL_RAIL_GAP_PX,
         ownerWindow ? ownerWindow.innerHeight - TABLE_CONTROL_RAIL_GAP_PX : 0
       )
     : 0;
-  const rowRailTop = renderLayout
-    ? Math.max(visibleTableBottom - ROW_ADD_RAIL_HEIGHT_PX, rowRailBottom - ROW_ADD_RAIL_HEIGHT_PX)
-    : 0;
+  const rowRailTop = renderLayout ? Math.max(visibleTableBottom - ROW_ADD_RAIL_HEIGHT_PX, rowRailBottom - ROW_ADD_RAIL_HEIGHT_PX) : 0;
   const rowRailWidth = renderLayout ? Math.max(0, visibleTableRight - visibleTableLeft) : 0;
+  const columnRailLeft = visibleTableRight;
+  const columnRailTop = visibleTableTop;
+  const viewportBottom = ownerWindow?.innerHeight ?? renderLayout?.tableRect.bottom ?? 0;
+  const columnRailHeight = renderLayout
+    ? Math.max(0, Math.min(renderLayout.tableRect.bottom, viewportBottom) - columnRailTop)
+    : 0;
 
   const openMenu = useCallback(
     (kind: "row" | "column", index: number) => {
@@ -1271,84 +1301,127 @@ export default function TableControlsOverlay({
                       data-docsera-table-add-rail-kind="row"
                       aria-label="Add rows"
                       className="docsera-table-controls-overlay__rail-button"
-                      onMouseDown={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                      }}
-                      onPointerDown={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                      }}
-                      onDragStart={(event) => {
-                        event.preventDefault();
-                      }}
-                      onClick={() => {
-                        addRowAtEnd(editor, setOverlayState);
-                      }}
                       style={{
                         alignItems: "center",
+                        cursor: "row-resize",
                         display: "flex",
                         height: "100%",
                         justifyContent: "center",
                         padding: 0,
                         width: "100%",
                       }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRailClick("row");
+                      }}
+                      onMouseDown={(event) => {
+                        event.stopPropagation();
+                      }}
+                      onMouseEnter={() => {
+                        setHoveredRailKind("row");
+                      }}
+                      onMouseLeave={() => {
+                        setHoveredRailKind((previous) => (previous === "row" ? null : previous));
+                      }}
+                      onFocus={() => {
+                        setHoveredRailKind("row");
+                      }}
+                      onBlur={() => {
+                        setHoveredRailKind((previous) => (previous === "row" ? null : previous));
+                      }}
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                        handleRailPointerDown("row", event);
+                      }}
+                      onDragStart={(event) => {
+                        event.preventDefault();
+                      }}
                     >
-                      <Plus size={13} strokeWidth={2.2} />
+                      <span
+                        className="docsera-table-controls-overlay__rail-icon"
+                        data-docsera-table-rail-icon="true"
+                        style={{
+                          color:
+                            hoveredRailKind === "row"
+                              ? tableControlPrimaryColor
+                              : "var(--docsera-editor-muted)",
+                        }}
+                      >
+                        <Plus size={13} strokeWidth={2.2} />
+                      </span>
                     </button>
                   </div>
                 </div>
-                {renderLayout.tableWrapper ? (
-                  createPortal(
-                    <div data-docsera-table-column-rail="true">
-                      <div
-                        className="docsera-table-controls-overlay__rail"
+                <div data-docsera-table-column-rail="true">
+                  <div
+                    className="docsera-table-controls-overlay__rail"
+                    style={{
+                      height: `${columnRailHeight}px`,
+                      left: `${columnRailLeft}px`,
+                      pointerEvents: "auto",
+                      position: "fixed",
+                      top: `${columnRailTop}px`,
+                      width: `${COLUMN_ADD_RAIL_WIDTH_PX}px`,
+                      zIndex: TABLE_CONTROL_OVERLAY_Z_INDEX + 1,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      data-docsera-table-add-column="true"
+                      data-docsera-table-add-rail-kind="column"
+                      aria-label="Add columns"
+                      className="docsera-table-controls-overlay__rail-button"
+                      style={{
+                        alignItems: "center",
+                        cursor: "col-resize",
+                        display: "flex",
+                        height: "100%",
+                        justifyContent: "center",
+                        padding: 0,
+                        width: "100%",
+                      }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleRailClick("column");
+                      }}
+                      onMouseDown={(event) => {
+                        event.stopPropagation();
+                      }}
+                      onMouseEnter={() => {
+                        setHoveredRailKind("column");
+                      }}
+                      onMouseLeave={() => {
+                        setHoveredRailKind((previous) => (previous === "column" ? null : previous));
+                      }}
+                      onFocus={() => {
+                        setHoveredRailKind("column");
+                      }}
+                      onBlur={() => {
+                        setHoveredRailKind((previous) => (previous === "column" ? null : previous));
+                      }}
+                      onPointerDown={(event) => {
+                        event.stopPropagation();
+                        handleRailPointerDown("column", event);
+                      }}
+                      onDragStart={(event) => {
+                        event.preventDefault();
+                      }}
+                    >
+                      <span
+                        className="docsera-table-controls-overlay__rail-icon"
+                        data-docsera-table-rail-icon="true"
                         style={{
-                          height: `${Math.max(COLUMN_ADD_RAIL_WIDTH_PX, renderLayout.tableRect.height)}px`,
-                          left: `${renderLayout.tableRect.right + renderLayout.tableWrapper.scrollLeft + TABLE_CONTROL_RAIL_GAP_PX - renderLayout.wrapperRect.left}px`,
-                          pointerEvents: "auto",
-                          position: "absolute",
-                          top: `${Math.max(0, renderLayout.tableRect.top - renderLayout.wrapperRect.top)}px`,
-                          width: `${COLUMN_ADD_RAIL_WIDTH_PX}px`,
-                          zIndex: TABLE_CONTROL_OVERLAY_Z_INDEX + 1,
+                          color:
+                            hoveredRailKind === "column"
+                              ? tableControlPrimaryColor
+                              : "var(--docsera-editor-muted)",
                         }}
                       >
-                        <button
-                          type="button"
-                          data-docsera-table-add-column="true"
-                          data-docsera-table-add-rail-kind="column"
-                          aria-label="Add columns"
-                          className="docsera-table-controls-overlay__rail-button"
-                          onMouseDown={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                          }}
-                          onPointerDown={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                          }}
-                          onDragStart={(event) => {
-                            event.preventDefault();
-                          }}
-                          onClick={() => {
-                            addColumnAtEnd(editor, setOverlayState);
-                          }}
-                          style={{
-                            alignItems: "center",
-                            display: "flex",
-                            height: "100%",
-                            justifyContent: "center",
-                            padding: 0,
-                            width: "100%",
-                          }}
-                        >
-                          <Plus size={13} strokeWidth={2.2} />
-                        </button>
-                      </div>
-                    </div>,
-                    renderLayout.tableWrapper
-                  )
-                ) : null}
+                        <Plus size={13} strokeWidth={2.2} />
+                      </span>
+                    </button>
+                  </div>
+                </div>
               </>
             ) : null}
 
@@ -1532,6 +1605,15 @@ function resolveTableLayoutFromContext(
   const ownerWindow = tableElement.ownerDocument.defaultView;
 
   const rowElements = Array.from(tableElement.querySelectorAll("tr"));
+  const rowHeights = Array.from({ length: context.map.height }).map((_, rowIndex) => {
+    const rowElement = rowElements[rowIndex];
+    if (!(rowElement instanceof HTMLTableRowElement)) {
+      return Math.max(1, tableRect.height / Math.max(1, context.map.height));
+    }
+
+    const rowRect = rowElement.getBoundingClientRect();
+    return rowRect.height > 0 ? rowRect.height : Math.max(1, tableRect.height / Math.max(1, context.map.height));
+  });
   const rowCenters = Array.from({ length: context.map.height }).map((_, rowIndex) => {
     const rowElement = rowElements[rowIndex];
     if (!rowElement) {
@@ -1564,6 +1646,15 @@ function resolveTableLayoutFromContext(
   const firstRowCells = rowElements[0]
     ? Array.from(rowElements[0].querySelectorAll(":scope > th, :scope > td"))
     : [];
+  const columnWidths = Array.from({ length: context.map.width }).map((_, columnIndex) => {
+    const columnCell = firstRowCells[columnIndex];
+    if (!(columnCell instanceof HTMLTableCellElement)) {
+      return Math.max(1, tableRect.width / Math.max(1, context.map.width));
+    }
+
+    const columnRect = columnCell.getBoundingClientRect();
+    return columnRect.width > 0 ? columnRect.width : Math.max(1, tableRect.width / Math.max(1, context.map.width));
+  });
   const columnCenters = Array.from({ length: context.map.width }).map((_, columnIndex) => {
     const columnCell = firstRowCells[columnIndex];
     if (!columnCell) {
@@ -1587,8 +1678,10 @@ function resolveTableLayoutFromContext(
   return {
     columnCenters,
     columnTopBorderAnchorYs,
+    columnWidths,
     map: context.map,
     rowCenters,
+    rowHeights,
     rowLeftBorderAnchorXs,
     tableNode: context.tableNode,
     tablePos: context.tablePos,
@@ -1667,19 +1760,19 @@ function buildSelectedTableIndexesFromCells(
 function addColumnAtEnd(
   editor: TiptapEditor | null,
   setState: (nextState: TableOverlayState | null) => void
-): void {
+): boolean {
   if (!editor) {
-    return;
+    return false;
   }
 
   const context = getLiveTableContext(editor);
   if (!context) {
-    return;
+    return false;
   }
 
   selectColumn(editor, context, context.map.width - 1);
   if (!editor.commands.addColumnAfter()) {
-    return;
+    return false;
   }
 
   const refreshedContext = getLiveTableContext(editor) ?? getLiveTableContextFromTablePos(editor, context.tablePos);
@@ -1694,24 +1787,26 @@ function addColumnAtEnd(
       ...resolveSelectedTableIndexes(editor),
     });
   }
+
+  return true;
 }
 
 function addRowAtEnd(
   editor: TiptapEditor | null,
   setState: (nextState: TableOverlayState | null) => void
-): void {
+): boolean {
   if (!editor) {
-    return;
+    return false;
   }
 
   const context = getLiveTableContext(editor);
   if (!context) {
-    return;
+    return false;
   }
 
   selectRow(editor, context, context.map.height - 1);
   if (!editor.commands.addRowAfter()) {
-    return;
+    return false;
   }
 
   const refreshedContext = getLiveTableContext(editor) ?? getLiveTableContextFromTablePos(editor, context.tablePos);
@@ -1726,6 +1821,570 @@ function addRowAtEnd(
       ...resolveSelectedTableIndexes(editor),
     });
   }
+
+  return true;
+}
+
+function removeColumnAtEnd(
+  editor: TiptapEditor | null,
+  setState: (nextState: TableOverlayState | null) => void
+): boolean {
+  if (!editor) {
+    return false;
+  }
+
+  const context = getLiveTableContext(editor);
+  if (!context || context.map.width <= 1) {
+    return false;
+  }
+
+  selectColumn(editor, context, context.map.width - 1);
+  if (!editor.commands.deleteColumn()) {
+    return false;
+  }
+
+  const refreshedContext = getLiveTableContext(editor) ?? getLiveTableContextFromTablePos(editor, context.tablePos);
+  if (refreshedContext) {
+    selectColumn(editor, refreshedContext, refreshedContext.map.width - 1);
+  }
+
+  const nextLayout = resolveTableLayoutFromContext(editor, refreshedContext ?? context);
+  if (nextLayout) {
+    setState({
+      ...nextLayout,
+      ...resolveSelectedTableIndexes(editor),
+    });
+  }
+
+  return true;
+}
+
+function removeRowAtEnd(
+  editor: TiptapEditor | null,
+  setState: (nextState: TableOverlayState | null) => void
+): boolean {
+  if (!editor) {
+    return false;
+  }
+
+  const context = getLiveTableContext(editor);
+  if (!context || context.map.height <= 1) {
+    return false;
+  }
+
+  selectRow(editor, context, context.map.height - 1);
+  if (!editor.commands.deleteRow()) {
+    return false;
+  }
+
+  const refreshedContext = getLiveTableContext(editor) ?? getLiveTableContextFromTablePos(editor, context.tablePos);
+  if (refreshedContext) {
+    selectRow(editor, refreshedContext, refreshedContext.map.height - 1);
+  }
+
+  const nextLayout = resolveTableLayoutFromContext(editor, refreshedContext ?? context);
+  if (nextLayout) {
+    setState({
+      ...nextLayout,
+      ...resolveSelectedTableIndexes(editor),
+    });
+  }
+
+  return true;
+}
+
+function runTableMutationWithHistoryTime(editor: TiptapEditor, historyTime: number, run: () => boolean): boolean {
+  const originalDispatch = editor.view.dispatch.bind(editor.view);
+  let didRun = false;
+
+  editor.view.dispatch = (transaction) => {
+    transaction.time = historyTime;
+    originalDispatch(transaction);
+  };
+
+  try {
+    const result = run();
+    didRun = result !== false;
+  } finally {
+    editor.view.dispatch = originalDispatch;
+  }
+
+  return didRun;
+}
+
+function getTrailingRowStepPx(layout: TableLayout): number {
+  return Math.max(1, layout.rowHeights[layout.rowHeights.length - 1] ?? layout.tableRect.height / Math.max(1, layout.map.height));
+}
+
+function getTrailingColumnStepPx(layout: TableLayout): number {
+  return Math.max(1, layout.columnWidths[layout.columnWidths.length - 1] ?? layout.tableRect.width / Math.max(1, layout.map.width));
+}
+
+type TableRailResizeKind = "row" | "column";
+
+type TableRailResizeSession = {
+  dragActivated: boolean;
+  historyClosed: boolean;
+  historyTime: number;
+  originBoundaryAxis: number;
+  originCount: number;
+  originStepPx: number;
+  kind: TableRailResizeKind;
+  originClientX: number;
+  originClientY: number;
+  lastClientX: number;
+  lastClientY: number;
+  ownerDocument: Document;
+  pointerId: number;
+  pointerCaptureTarget: HTMLButtonElement | null;
+  tablePos: number;
+};
+
+function useTableRailResizeSession(
+  editor: TiptapEditor | null,
+  setOverlayState: (nextState: TableOverlayState | null) => void
+): {
+  handleRailClick: (kind: TableRailResizeKind) => boolean;
+  handleRailPointerDown: (
+    kind: TableRailResizeKind,
+    event: ReactPointerEvent<HTMLButtonElement>
+  ) => void;
+} {
+  const sessionRef = useRef<TableRailResizeSession | null>(null);
+  const suppressNextClickRef = useRef<TableRailResizeKind | null>(null);
+
+  const getEditorOwnerDocument = useCallback((): Document | null => {
+    if (!editor || editor.isDestroyed) {
+      return null;
+    }
+
+    try {
+      return editor.view.dom.ownerDocument;
+    } catch {
+      return null;
+    }
+  }, [editor]);
+
+  const clearNativeSelectionRanges = useCallback(() => {
+    const ownerDocument = getEditorOwnerDocument();
+    const selection = ownerDocument?.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      return;
+    }
+
+    selection.removeAllRanges();
+  }, [getEditorOwnerDocument]);
+
+  const clearTableRailCursorLock = useCallback((ownerDocument: Document | null) => {
+    ownerDocument?.documentElement.removeAttribute(TABLE_RAIL_CURSOR_LOCK_ATTRIBUTE);
+  }, []);
+
+  const lockTableRailCursor = useCallback((ownerDocument: Document, kind: TableRailResizeKind) => {
+    ownerDocument.documentElement.setAttribute(TABLE_RAIL_CURSOR_LOCK_ATTRIBUTE, kind);
+  }, []);
+
+  const syncLiveTableState = useCallback(
+    (session: TableRailResizeSession | null): TableLayout | null => {
+      const runtimeEditor = editor;
+      if (!runtimeEditor || runtimeEditor.isDestroyed) {
+        setOverlayState(null);
+        return null;
+      }
+
+      if (!session) {
+        return null;
+      }
+
+      const tableContext = getLiveTableContextFromTablePos(runtimeEditor, session.tablePos);
+      if (!tableContext) {
+        setOverlayState(null);
+        return null;
+      }
+
+      const layout = resolveTableLayoutFromContext(runtimeEditor, tableContext);
+      if (!layout) {
+        setOverlayState(null);
+        return null;
+      }
+
+      setOverlayState({
+        ...layout,
+        ...resolveSelectedTableIndexes(runtimeEditor),
+      });
+      return layout;
+    },
+    [editor, setOverlayState]
+  );
+
+  const ensureTrailingColumnContentVisibility = useCallback(
+    (layout: TableLayout): boolean => {
+      const maxScrollLeft = Math.max(0, layout.tableWrapper.scrollWidth - layout.tableWrapper.clientWidth);
+      if (layout.tableWrapper.scrollLeft > maxScrollLeft) {
+        layout.tableWrapper.scrollLeft = maxScrollLeft;
+        return true;
+      }
+
+      if (layout.tableWrapper.scrollWidth <= layout.tableWrapper.clientWidth) {
+        return false;
+      }
+
+      const overflow = layout.tableRect.right - layout.wrapperRect.right;
+      if (overflow <= 0) {
+        return false;
+      }
+
+      const nextScrollLeft = clamp(layout.tableWrapper.scrollLeft + overflow, 0, maxScrollLeft);
+      if (nextScrollLeft === layout.tableWrapper.scrollLeft) {
+        return false;
+      }
+
+      layout.tableWrapper.scrollLeft = nextScrollLeft;
+      return true;
+    },
+    []
+  );
+
+  const clearSession = useCallback(
+    (options: { suppressClick?: boolean } = {}) => {
+      const { suppressClick = false } = options;
+      const session = sessionRef.current;
+      if (session && suppressClick) {
+        suppressNextClickRef.current = session.kind;
+      }
+
+      if (session?.pointerCaptureTarget) {
+        try {
+          const hasPointerCapture =
+            typeof session.pointerCaptureTarget.hasPointerCapture === "function" &&
+            session.pointerCaptureTarget.hasPointerCapture(session.pointerId);
+          if (typeof session.pointerCaptureTarget.releasePointerCapture === "function" && hasPointerCapture) {
+            session.pointerCaptureTarget.releasePointerCapture(session.pointerId);
+          }
+        } catch {
+          // Ignore pointer-capture cleanup failures during teardown or lost-capture paths.
+        }
+      }
+
+      clearTableRailCursorLock(session?.ownerDocument ?? null);
+      sessionRef.current = null;
+    },
+    [clearTableRailCursorLock]
+  );
+
+  const activateSession = useCallback(
+    (session: TableRailResizeSession) => {
+      if (session.dragActivated) {
+        return;
+      }
+
+      session.dragActivated = true;
+      lockTableRailCursor(session.ownerDocument, session.kind);
+      if (session.pointerCaptureTarget && typeof session.pointerCaptureTarget.setPointerCapture === "function") {
+        try {
+          session.pointerCaptureTarget.setPointerCapture(session.pointerId);
+        } catch {
+          // Pointer capture is an enhancement for browser fidelity; the document listeners remain the source of truth.
+        }
+      }
+      if (!session.historyClosed && editor && !editor.isDestroyed) {
+        editor.view.dispatch(closeHistory(editor.state.tr));
+        session.historyClosed = true;
+      }
+      clearNativeSelectionRanges();
+      syncLiveTableState(session);
+    },
+    [clearNativeSelectionRanges, editor, lockTableRailCursor, syncLiveTableState]
+  );
+
+  const applySessionResizeAtPoint = useCallback(
+    (pointerX: number, pointerY: number) => {
+      const runtimeEditor = editor;
+      const session = sessionRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed || !session) {
+        return false;
+      }
+
+      const liveLayout = syncLiveTableState(session);
+      if (!liveLayout) {
+        clearSession({ suppressClick: session.dragActivated });
+        return false;
+      }
+
+      const currentCount = session.kind === "row" ? liveLayout.map.height : liveLayout.map.width;
+      const delta =
+        session.kind === "row"
+          ? pointerY - session.originBoundaryAxis
+          : pointerX - session.originBoundaryAxis;
+      const targetCount = Math.max(1, session.originCount + Math.trunc(delta / session.originStepPx));
+      if (targetCount === currentCount) {
+        return true;
+      }
+
+      let safety = 0;
+      while (safety < 200) {
+        safety += 1;
+        const nextLiveLayout = syncLiveTableState(session);
+        if (!nextLiveLayout) {
+          clearSession({ suppressClick: session.dragActivated });
+          return false;
+        }
+
+        const nextCurrentCount = session.kind === "row" ? nextLiveLayout.map.height : nextLiveLayout.map.width;
+        if (nextCurrentCount === targetCount) {
+          if (session.kind === "column" && ensureTrailingColumnContentVisibility(nextLiveLayout)) {
+            syncLiveTableState(session);
+          }
+          return true;
+        }
+
+        const runMutation =
+          targetCount > nextCurrentCount
+            ? () => {
+                if (session.kind === "row") {
+                  return addRowAtEnd(runtimeEditor, setOverlayState);
+                }
+
+                return addColumnAtEnd(runtimeEditor, setOverlayState);
+              }
+            : () => {
+                if (session.kind === "row") {
+                  return removeRowAtEnd(runtimeEditor, setOverlayState);
+                }
+
+                return removeColumnAtEnd(runtimeEditor, setOverlayState);
+              };
+
+        if (!session.historyClosed) {
+          editor.view.dispatch(closeHistory(editor.state.tr));
+          session.historyClosed = true;
+        }
+
+        const didMutate = runTableMutationWithHistoryTime(runtimeEditor, session.historyTime, runMutation);
+        if (!didMutate) {
+          clearSession({ suppressClick: session.dragActivated });
+          return false;
+        }
+
+        const mutatedLayout = syncLiveTableState(session);
+        if (mutatedLayout && session.kind === "column" && ensureTrailingColumnContentVisibility(mutatedLayout)) {
+          syncLiveTableState(session);
+        }
+      }
+
+      return true;
+    },
+    [clearSession, editor, ensureTrailingColumnContentVisibility, syncLiveTableState, setOverlayState]
+  );
+
+  const handleRailPointerDown = useCallback(
+    (kind: TableRailResizeKind, event: ReactPointerEvent<HTMLButtonElement>) => {
+      if (event.button !== 0) {
+        return;
+      }
+
+      event.stopPropagation();
+
+      if (!editor || editor.isDestroyed) {
+        return;
+      }
+
+      const ownerDocument = event.currentTarget.ownerDocument;
+      const context = getLiveTableContext(editor);
+      if (!context) {
+        return;
+      }
+
+      const layout = resolveTableLayoutFromContext(editor, context);
+      if (!layout) {
+        return;
+      }
+
+      const originCount = kind === "row" ? layout.map.height : layout.map.width;
+      const originBoundaryAxis = kind === "row" ? layout.tableRect.bottom : layout.tableRect.right;
+      const originStepPx = kind === "row" ? getTrailingRowStepPx(layout) : getTrailingColumnStepPx(layout);
+
+      suppressNextClickRef.current = null;
+      clearSession();
+      lockTableRailCursor(ownerDocument, kind);
+      sessionRef.current = {
+        dragActivated: false,
+        historyClosed: false,
+        historyTime: Date.now(),
+        originBoundaryAxis,
+        originCount,
+        originStepPx,
+        kind,
+        originClientX: event.clientX,
+        originClientY: event.clientY,
+        lastClientX: event.clientX,
+        lastClientY: event.clientY,
+        ownerDocument,
+        pointerId: event.pointerId,
+        pointerCaptureTarget: event.currentTarget,
+        tablePos: context.tablePos,
+      };
+    },
+    [clearSession, editor]
+  );
+
+  const handleRailClick = useCallback(
+    (kind: TableRailResizeKind) => {
+      if (suppressNextClickRef.current === kind) {
+        suppressNextClickRef.current = null;
+        return false;
+      }
+
+      if (!editor || editor.isDestroyed) {
+        return false;
+      }
+
+      return kind === "row" ? addRowAtEnd(editor, setOverlayState) : addColumnAtEnd(editor, setOverlayState);
+    },
+    [editor, setOverlayState]
+  );
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) {
+      clearSession();
+      return;
+    }
+
+    const ownerDocument = getEditorOwnerDocument();
+    if (!ownerDocument) {
+      clearSession();
+      return;
+    }
+
+    const ownerWindow = ownerDocument.defaultView;
+    if (!ownerWindow) {
+      clearSession();
+      return;
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      const session = sessionRef.current;
+      if (!session || session.pointerId !== event.pointerId) {
+        return;
+      }
+
+      session.lastClientX = event.clientX;
+      session.lastClientY = event.clientY;
+
+      const deltaX = event.clientX - session.originClientX;
+      const deltaY = event.clientY - session.originClientY;
+      const primaryDelta = session.kind === "row" ? deltaY : deltaX;
+      const orthogonalDelta = session.kind === "row" ? deltaX : deltaY;
+      const isAxisAligned = Math.abs(primaryDelta) >= TABLE_RAIL_DRAG_THRESHOLD_PX && Math.abs(primaryDelta) >= Math.abs(orthogonalDelta);
+      if (!session.dragActivated) {
+        if (!isAxisAligned) {
+          return;
+        }
+
+        activateSession(session);
+      }
+
+      event.preventDefault();
+      clearNativeSelectionRanges();
+      applySessionResizeAtPoint(event.clientX, event.clientY);
+    };
+
+    const handlePointerUp = (event: PointerEvent) => {
+      const session = sessionRef.current;
+      if (!session || session.pointerId !== event.pointerId) {
+        return;
+      }
+
+      if (session.dragActivated) {
+        event.preventDefault();
+        applySessionResizeAtPoint(event.clientX, event.clientY);
+        clearSession({ suppressClick: true });
+        return;
+      }
+
+      clearSession();
+    };
+
+    const handlePointerCancel = (event: PointerEvent) => {
+      const session = sessionRef.current;
+      if (!session || session.pointerId !== event.pointerId) {
+        return;
+      }
+
+      clearSession();
+    };
+
+    const handleLostPointerCapture = (event: PointerEvent) => {
+      const session = sessionRef.current;
+      if (!session || session.pointerId !== event.pointerId) {
+        return;
+      }
+
+      clearSession();
+    };
+
+    const handleSelectStart = (event: Event) => {
+      if (!sessionRef.current?.dragActivated) {
+        return;
+      }
+
+      event.preventDefault();
+      clearNativeSelectionRanges();
+    };
+
+    const handleVisibilityChange = () => {
+      if (ownerDocument.visibilityState === "hidden") {
+        clearSession();
+      }
+    };
+
+    const handleWindowBlur = () => {
+      clearSession();
+    };
+
+    const handleTransaction = () => {
+      const session = sessionRef.current;
+      if (!session || editor.isDestroyed) {
+        return;
+      }
+
+      if (!getLiveTableContextFromTablePos(editor, session.tablePos)) {
+        clearSession();
+      }
+    };
+
+    const canSubscribeToEditorEvents =
+      typeof editor.on === "function" && typeof editor.off === "function";
+
+    ownerDocument.addEventListener("pointermove", handlePointerMove, true);
+    ownerDocument.addEventListener("pointerup", handlePointerUp, true);
+    ownerDocument.addEventListener("pointercancel", handlePointerCancel, true);
+    ownerDocument.addEventListener("lostpointercapture", handleLostPointerCapture, true);
+    ownerDocument.addEventListener("selectstart", handleSelectStart, true);
+    ownerDocument.addEventListener("visibilitychange", handleVisibilityChange);
+    ownerWindow.addEventListener("blur", handleWindowBlur);
+    if (canSubscribeToEditorEvents) {
+      editor.on("transaction", handleTransaction);
+    }
+
+    return () => {
+      ownerDocument.removeEventListener("pointermove", handlePointerMove, true);
+      ownerDocument.removeEventListener("pointerup", handlePointerUp, true);
+      ownerDocument.removeEventListener("pointercancel", handlePointerCancel, true);
+      ownerDocument.removeEventListener("lostpointercapture", handleLostPointerCapture, true);
+      ownerDocument.removeEventListener("selectstart", handleSelectStart, true);
+      ownerDocument.removeEventListener("visibilitychange", handleVisibilityChange);
+      ownerWindow.removeEventListener("blur", handleWindowBlur);
+      if (canSubscribeToEditorEvents) {
+        editor.off("transaction", handleTransaction);
+      }
+      clearSession();
+    };
+  }, [activateSession, applySessionResizeAtPoint, clearNativeSelectionRanges, clearSession, editor, getEditorOwnerDocument]);
+
+  return {
+    handleRailClick,
+    handleRailPointerDown,
+  };
 }
 
 function selectColumn(editor: TiptapEditor, context: TableContext, columnIndex: number): void {
