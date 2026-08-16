@@ -69,3 +69,7 @@ An alternative would be teaching the SDK save path to preserve the file's existi
 ## Follow-Up Task
 
 Implement one durable newline policy for `keys.ts`, then rerun the build path and verify the file stays clean after repeated SDK runs.
+
+## Repository Correction
+
+The repository-side newline policy has been implemented in `.gitattributes` for `app/docsera-ui/src/fluent/generated/keys.ts`, pinning the generated registry to LF.
