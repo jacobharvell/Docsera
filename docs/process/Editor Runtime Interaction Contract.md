@@ -35,6 +35,7 @@ The contract below was consolidated from:
 - `docs/process/Implementation Notes - E4-T1B2 Direct Block Actions Menu.md`
 - `docs/process/Implementation Notes - E4-T2A Single-Block Drag and Canonical Drop Boundaries.md`
 - `docs/process/Implementation Notes - E4-T2B Gutter Multi-Block Selection and Range Delete.md`
+- `docs/process/Implementation Notes - E5-T1.6A Legacy Row and Column Move Actions.md`
 - current editor runtime code and focused tests in `app/docsera-ui/src/client/editor`
 
 ## Event Ownership And Shadow Boundaries
@@ -44,8 +45,10 @@ The contract below was consolidated from:
 | current durable contract | Derive the owning `Document` and `Window` from the actual surface or element that owns the interaction rather than assuming global `document` or `window`. The current runtime may derive that realm from the editor surface, overlay root, event-owned element, or another validated owner. |
 | current durable contract | Browser events are retargeted across shadow and light DOM boundaries. A visible event target or composed path does not need to expose the shadow runtime itself when shell-owned geometry already proves which surface owns the interaction. |
 | current durable contract | Use `composedPath()` only where explicit ownership needs to be checked, especially for controls, overlays, and dismissal surfaces. Do not require the composed path to contain the runtime for every gesture. |
+| current durable contract | When owned surfaces live inside an open ShadowRoot, document-level dismissal and ownership checks must not rely on `event.target` containment alone. Use the real composed path for cross-boundary checks so internal menu, overlay, and editor surfaces remain recognizable after retargeting. |
 | current durable contract | Do not suppress global events outside the gesture or surface that actually owns the interaction. Ownership should be narrow and local. |
 | historical root-cause evidence | Earlier failures involved shadow-boundary retargeting and light-DOM shell ownership obscuring the real interaction surface. The fix was to use the correct owner realm plus measured geometry, not to invent broader suppression. |
+| historical root-cause evidence | E5-T1.6A confirmed that a document-level outside-dismiss handler can misclassify an internal menu-item `pointerdown` when an open ShadowRoot retargets `event.target` at the document boundary. The durable correction is to read ownership from the real composed path before dismissing. |
 
 ## Interaction Surfaces Are Separate Contracts
 
@@ -102,6 +105,7 @@ The contract below was consolidated from:
 | current durable contract | Floating surfaces may be portaled outside the runtime theme subtree. Portal placement alone does not guarantee runtime token inheritance. |
 | current durable contract | Runtime-scoped CSS variables do not automatically cross a portal boundary. Portaled surfaces that need runtime tokens require an explicit theme/token contract. |
 | current durable contract | Outside-dismissal listeners must use the correct owner document and must recognize nested owned toolbar, menu, and overlay surfaces before dismissing. |
+| current durable contract | Portaled menu actions must be validated through the real overlay root, the real owner-document dismissal listener, and the browser event order the installed runtime emits. Tests should exercise the protected `pointerdown` that may suppress compatibility mouse events, then the real `click` that owns the action boundary. Do not depend on a fabricated compatibility `mousedown` path that production may suppress. |
 | current durable contract | Overlay event ownership must not preempt the underlying editor interaction incorrectly. |
 | historical root-cause evidence | E4-T2B exposed an invisible marquee token issue caused by a portaled floating layer missing the runtime theme class. The compact toolbar outside-dismissal work also showed why owned nested surfaces must be checked before dismissal. |
 
@@ -122,6 +126,7 @@ The contract below was consolidated from:
 | known validation limitation | Jsdom is useful for deterministic state, transaction, geometry-helper, and interaction-regression tests. |
 | known validation limitation | Jsdom does not faithfully reproduce every installed-browser behavior, especially shadow retargeting, native selection synchronization, portal styling, pointer capture, and geometry derived from the real shell hierarchy. |
 | current durable contract | When those behaviors caused prior failures, tests should model the real shell hierarchy and the exposed target/composed-path conditions that the browser actually produced. |
+| current durable contract | Jsdom has browser-fidelity limits in general, but the current environment can reproduce this specific Shadow DOM retargeting behavior when tests use an actual ShadowRoot and composed events. Prefer that real boundary over fabricated targets or paths when it is supported. |
 | current durable contract | A passing jsdom test suite is not installed-browser acceptance. |
 | current durable contract | Jacob remains the live browser and PDI verifier under the existing project policy. |
 

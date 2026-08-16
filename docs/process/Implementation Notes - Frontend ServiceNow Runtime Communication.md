@@ -26,6 +26,7 @@ Document-level outside-click handlers, especially `pointerdown`, can run before 
 * Portals or dialogs rendered outside an overlay subtree must be included in containment checks or explicitly marked safe.
 * A confirm button must not be treated as an outside click.
 * Regression coverage should model realistic ordering, including `pointerdown`, timer boundaries, and `click`.
+* When a portaled menu or dialog owns a user action, the regression harness must render through the real container, install the real owner-document dismissal listener, and exercise the actual activation event used by the component. Do not require a fabricated compatibility `mousedown` step when the production handler runs on `click`.
 
 ### Async Mutation UI Contract
 
@@ -63,6 +64,7 @@ For a new or fixed ServiceNow mutation, coverage should prove:
 * the dialog or panel does not close before success
 * failure preserves visible error state
 * successful server response reconciles local or refetched state
+* portaled menu actions execute once against the real transaction path when the installed runtime can dismiss the surface before `click`
 
 ### PDI Manual Validation
 

@@ -76,6 +76,7 @@ E5-T1.3C layers the legacy row/column control affordances onto the live overlay 
 - clicking a pill opens a compact menu with `Insert before`, `Insert after`, and `Delete row` or `Delete column` actions;
 - the active pill remains visible while its menu is open, and Escape or an outside pointerdown closes the menu without mutating the table;
 - row and column structural menu clicks capture the current target, run the TipTap mutation synchronously, and close the menu deterministically without delayed replay;
+- E5-T1.6A later extends those same menus with `Move up`, `Move down`, `Move left`, and `Move right` actions while preserving the accepted row/column selection-on-open behavior;
 - the menu surface keeps using the live row and column centers derived from the active table DOM, so offscreen controls stay hidden when horizontal scrolling clips them;
 - the Add Row and Add Column rails from T1.3B remain in place and continue to honor wrapper scroll-content coordinates.
 
@@ -110,7 +111,6 @@ The table-control surface now uses explicit current Docsera runtime tokens and l
 The following remain deferred to later standard-operation or E7 tasks:
 
 - header toggle UI
-- row/column move
 - structured row/column/table clipboard
 - cross-cell drag selection
 - advanced multi-cell selection presentation

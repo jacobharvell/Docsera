@@ -3,7 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { Editor, JSONContent } from "@tiptap/core";
-import { CellSelection, findTable, TableMap } from "@tiptap/pm/tables";
+import { CellSelection, findTable, moveTableColumn, moveTableRow, TableMap } from "@tiptap/pm/tables";
 import { undoDepth } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
 import type { DocseraTiptapDocument } from "../../shared/editor/document";
@@ -385,6 +385,100 @@ function createTextTableNode(rows: string[][]) {
           : [{ type: "paragraph" }]
       }))
     }))
+  };
+}
+
+type TableCellSpec = {
+  cellType: "tableCell" | "tableHeader";
+  colwidth: number[] | null;
+  text: string;
+};
+
+function createMoveTableCell(spec: TableCellSpec): JSONContent {
+  return {
+    type: spec.cellType,
+    attrs: {
+      colspan: 1,
+      colwidth: spec.colwidth,
+      rowspan: 1
+    },
+    content: [
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: spec.text }]
+      }
+    ]
+  };
+}
+
+function createMoveTableNode(rows: TableCellSpec[][]): JSONContent {
+  return {
+    type: "table",
+    content: rows.map((row) => ({
+      type: "tableRow",
+      content: row.map((cell) => createMoveTableCell(cell))
+    }))
+  };
+}
+
+function createMoveTableDocument(rows: TableCellSpec[][]): JSONContent {
+  return {
+    type: "doc",
+    content: [createMoveTableNode(rows)]
+  };
+}
+
+function createRichMoveTableRows(): TableCellSpec[][] {
+  return [
+    [
+      { cellType: "tableHeader", colwidth: null, text: "H1" },
+      { cellType: "tableCell", colwidth: null, text: "A1" },
+      { cellType: "tableHeader", colwidth: null, text: "H3" }
+    ],
+    [
+      { cellType: "tableCell", colwidth: null, text: "B1" },
+      { cellType: "tableHeader", colwidth: null, text: "H2" },
+      { cellType: "tableCell", colwidth: null, text: "B3" }
+    ],
+    [
+      { cellType: "tableHeader", colwidth: null, text: "H4" },
+      { cellType: "tableCell", colwidth: null, text: "C2" },
+      { cellType: "tableHeader", colwidth: null, text: "H6" }
+    ]
+  ];
+}
+
+type PreviewMoveTableTransaction = {
+  doc: {
+    toJSON: () => JSONContent;
+  };
+  docChanged: boolean;
+};
+
+function previewMoveTableDocument(
+  editor: Editor,
+  command: (state: Editor["state"], dispatch?: (tr: PreviewMoveTableTransaction) => void) => boolean
+): {
+  commandResult: boolean;
+  docChanged: boolean;
+  document: JSONContent;
+} {
+  let previewDocument: JSONContent | null = null;
+  let previewTransaction: PreviewMoveTableTransaction | null = null;
+  const commandResult = command(editor.state, (nextTransaction) => {
+    previewTransaction = nextTransaction;
+    previewDocument = nextTransaction.doc.toJSON();
+  });
+
+  if (!commandResult || !previewTransaction || !previewDocument) {
+    throw new Error("Expected the move command to produce a preview transaction.");
+  }
+
+  const resolvedTransaction = previewTransaction as PreviewMoveTableTransaction;
+  return {
+    commandResult,
+    docChanged: resolvedTransaction.docChanged,
+    document: previewDocument
   };
 }
 
@@ -1024,6 +1118,21 @@ async function activateCommandOptionWithBrowserPointer(
     fireEvent.mouseUp(option, { button: 0, buttons: 0, ...point });
     fireEvent.click(option, { button: 0, buttons: 0, ...point });
   });
+}
+
+async function activateTableMenuItemWithBrowserPointer(
+  menuItem: HTMLElement,
+  point: { clientX: number; clientY: number } = { clientX: 180, clientY: 120 }
+) {
+  const pointerDefaultPrevented = await dispatchOwnerPointerEvent(
+    menuItem.ownerDocument,
+    menuItem,
+    "pointerdown",
+    point,
+    { button: 0, buttons: 1 }
+  );
+
+  expect(pointerDefaultPrevented).toBe(true);
 }
 
 function createCanonicalOrderedListNode(content: Array<Record<string, unknown>>) {
@@ -6678,13 +6787,27 @@ describe("PageEditorHostRuntime", () => {
         const rowButton = await screen.findByRole("button", { name: "Table row 2 options" });
         fireEvent.click(rowButton);
         const menu = await screen.findByRole("menu", { name: "Table row menu" });
+        expect(getMenuItemNames(menu, "menuitem")).toEqual([
+          "Insert before",
+          "Insert after",
+          "Move up",
+          "Move down",
+          "Delete row"
+        ]);
         const menuItem = within(menu).getByRole("menuitem", { name: itemLabel });
+        const beforeDocument = editor.getJSON();
+        const beforeSelection = getCellSelectionRect(editor);
         try {
           await act(async () => {
-            fireEvent.pointerDown(menuItem, { button: 0, buttons: 1 });
-            fireEvent.mouseDown(menuItem, { button: 0, buttons: 1 });
-            fireEvent.mouseUp(menuItem, { button: 0, buttons: 0 });
-            fireEvent.click(menuItem, { button: 0, buttons: 0 });
+            await activateTableMenuItemWithBrowserPointer(menuItem);
+          });
+
+          expect(editor.getJSON()).toEqual(beforeDocument);
+          expect(getCellSelectionRect(editor)).toEqual(beforeSelection);
+          expect(getTableMenu(overlayRoot, "row")).not.toBeNull();
+
+          await act(async () => {
+            fireEvent.click(menuItem);
           });
 
           expect(getTableMenu(overlayRoot, "row")).toBeNull();
@@ -6788,12 +6911,26 @@ describe("PageEditorHostRuntime", () => {
         const columnButton = await screen.findByRole("button", { name: "Table column 2 options" });
         fireEvent.click(columnButton);
         const menu = await screen.findByRole("menu", { name: "Table column menu" });
+        expect(getMenuItemNames(menu, "menuitem")).toEqual([
+          "Insert before",
+          "Insert after",
+          "Move left",
+          "Move right",
+          "Delete column"
+        ]);
         const menuItem = within(menu).getByRole("menuitem", { name: itemLabel });
+        const beforeDocument = editor.getJSON();
+        const beforeSelection = getCellSelectionRect(editor);
         try {
           await act(async () => {
-            fireEvent.pointerDown(menuItem, { button: 0, buttons: 1 });
-            fireEvent.mouseDown(menuItem, { button: 0, buttons: 1 });
-            fireEvent.mouseUp(menuItem, { button: 0, buttons: 0 });
+            await activateTableMenuItemWithBrowserPointer(menuItem);
+          });
+
+          expect(editor.getJSON()).toEqual(beforeDocument);
+          expect(getCellSelectionRect(editor)).toEqual(beforeSelection);
+          expect(getTableMenu(overlayRoot, "column")).not.toBeNull();
+
+          await act(async () => {
             fireEvent.click(menuItem, { button: 0, buttons: 0 });
           });
 
@@ -6819,6 +6956,513 @@ describe("PageEditorHostRuntime", () => {
       }
     }
   );
+
+  it.each([
+    {
+      itemLabel: "Move up",
+      menuItemName: "Table row 2 options",
+      expectedGrid: [
+        ["B1", "H2", "B3"],
+        ["H1", "A1", "H3"],
+        ["H4", "C2", "H6"]
+      ],
+      selectionRect: {
+        bottom: 1,
+        left: 0,
+        right: 3,
+        top: 0
+      },
+      targetIndex: 0
+    },
+    {
+      itemLabel: "Move down",
+      menuItemName: "Table row 2 options",
+      expectedGrid: [
+        ["H1", "A1", "H3"],
+        ["H4", "C2", "H6"],
+        ["B1", "H2", "B3"]
+      ],
+      selectionRect: {
+        bottom: 3,
+        left: 0,
+        right: 3,
+        top: 2
+      },
+      targetIndex: 2
+    }
+  ] as const)(
+    "moves a middle row %s, keeps the moved row selected, and restores the table on undo",
+    async ({ itemLabel, menuItemName, expectedGrid, selectionRect, targetIndex }) => {
+      const harness = createOverlayOwnerDocumentHarness(1280, 720);
+      const overlayRoot = document.createElement("div");
+      Object.defineProperty(overlayRoot, "ownerDocument", {
+        configurable: true,
+        value: harness.ownerDocument
+      });
+      const { editorReady, onSaveDraft } = renderRuntime({}, { overlayRoot });
+
+      await waitFor(() => {
+        expect(editorReady[0]).toBeDefined();
+      });
+
+      const editor = editorReady[0];
+      await act(async () => {
+        editor.commands.setContent(createMoveTableDocument(createRichMoveTableRows()));
+      });
+
+      await waitFor(() => {
+        expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+      });
+
+      const startingDocument = editor.getJSON();
+      const undoDepthBefore = undoDepth(editor.state);
+      const geometry = mockTableGeometry(editor, {
+        tableRect: new DOMRect(120, 140, 420, 180),
+        wrapperClientHeight: 180,
+        wrapperClientWidth: 420,
+        wrapperOffsetHeight: 192,
+        wrapperOffsetWidth: 460,
+        wrapperRect: new DOMRect(100, 120, 460, 220),
+        wrapperScrollWidth: 520
+      });
+
+      try {
+        await act(async () => {
+          editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 4) + 1);
+        });
+
+        expect(getTableTextGrid(editor)).toEqual([
+          ["H1", "A1", "H3"],
+          ["B1", "H2", "B3"],
+          ["H4", "C2", "H6"]
+        ]);
+
+        const rowButton = await screen.findByRole("button", { name: menuItemName });
+        fireEvent.click(rowButton);
+        const menu = await screen.findByRole("menu", { name: "Table row menu" });
+        expect(getMenuItemNames(menu, "menuitem")).toEqual([
+          "Insert before",
+          "Insert after",
+          "Move up",
+          "Move down",
+          "Delete row"
+        ]);
+        expect(getCellSelectionRect(editor)).toEqual({
+          top: 1,
+          bottom: 2,
+          left: 0,
+          right: 3
+        });
+
+        const selection = editor.state.selection;
+        if (!(selection instanceof CellSelection)) {
+          throw new Error("Expected a row CellSelection before moving the table row.");
+        }
+        const tableContext = findTable(selection.$anchorCell);
+        if (!tableContext) {
+          throw new Error("Expected the active table context before moving the table row.");
+        }
+        const preview = previewMoveTableDocument(editor, (state, dispatch) =>
+          moveTableRow({
+            from: 1,
+            pos: tableContext.start,
+            select: true,
+            to: targetIndex
+          })(state, dispatch)
+        );
+        expect(preview.commandResult).toBe(true);
+        expect(preview.docChanged).toBe(true);
+
+        const menuItem = within(menu).getByRole("menuitem", { name: itemLabel });
+        const beforeDocument = editor.getJSON();
+        const beforeSelection = getCellSelectionRect(editor);
+        let transactions: Array<{
+          addToHistory: unknown;
+          docChanged: boolean;
+          selectionSet: boolean;
+          steps: number;
+        }> = [];
+        try {
+          await act(async () => {
+            await activateTableMenuItemWithBrowserPointer(menuItem);
+          });
+
+          expect(editor.getJSON()).toEqual(beforeDocument);
+          expect(getCellSelectionRect(editor)).toEqual(beforeSelection);
+          expect(getTableMenu(overlayRoot, "row")).not.toBeNull();
+
+          await act(async () => {
+            transactions = captureCommandTransactions(editor, () => {
+              fireEvent.click(menuItem);
+            });
+          });
+
+          await waitFor(() => {
+            expect(getTableMenu(overlayRoot, "row")).toBeNull();
+            expect(document.activeElement).toBe(editor.view.dom);
+          });
+
+          expect(transactions.length).toBeGreaterThanOrEqual(2);
+          expect(transactions.some((transaction) => transaction.docChanged)).toBe(true);
+          expect(transactions.filter((transaction) => transaction.docChanged)).toHaveLength(1);
+          expect(editor.getJSON()).toEqual(preview.document);
+          expect(getTableTextGrid(editor)).toEqual(expectedGrid);
+          expect(getCellSelectionRect(editor)).toEqual(selectionRect);
+          expect(harness.ownerWindowSetTimeout).not.toHaveBeenCalled();
+        } finally {
+          harness.ownerWindowSetTimeout.mockClear();
+        }
+
+        expect(undoDepth(editor.state)).toBe(undoDepthBefore + 1);
+        await runAutosave();
+        expect(onSaveDraft).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+          editor.commands.undo();
+        });
+
+        expect(editor.getJSON()).toEqual(startingDocument);
+        expect(undoDepth(editor.state)).toBe(undoDepthBefore);
+      } finally {
+        geometry.restore();
+      }
+    }
+  );
+
+  it.each([
+    {
+      itemLabel: "Move left",
+      menuItemName: "Table column 2 options",
+      expectedGrid: [
+        ["A1", "H1", "H3"],
+        ["H2", "B1", "B3"],
+        ["C2", "H4", "H6"]
+      ],
+      selectionRect: {
+        bottom: 3,
+        left: 0,
+        right: 1,
+        top: 0
+      },
+      targetIndex: 0,
+      wrapperScrollLeft: 136
+    },
+    {
+      itemLabel: "Move right",
+      menuItemName: "Table column 2 options",
+      expectedGrid: [
+        ["H1", "H3", "A1"],
+        ["B1", "B3", "H2"],
+        ["H4", "H6", "C2"]
+      ],
+      selectionRect: {
+        bottom: 3,
+        left: 2,
+        right: 3,
+        top: 0
+      },
+      targetIndex: 2,
+      wrapperScrollLeft: 136
+    }
+  ] as const)(
+    "moves a middle column %s without losing the selected structural target, and restores the table on undo",
+    async ({ itemLabel, menuItemName, expectedGrid, selectionRect, targetIndex, wrapperScrollLeft }) => {
+      const harness = createOverlayOwnerDocumentHarness(1280, 720);
+      const overlayRoot = document.createElement("div");
+      Object.defineProperty(overlayRoot, "ownerDocument", {
+        configurable: true,
+        value: harness.ownerDocument
+      });
+      const { editorReady, onSaveDraft } = renderRuntime({}, { overlayRoot });
+
+      await waitFor(() => {
+        expect(editorReady[0]).toBeDefined();
+      });
+
+      const editor = editorReady[0];
+      await act(async () => {
+        editor.commands.setContent(createMoveTableDocument(createRichMoveTableRows()));
+      });
+
+      await waitFor(() => {
+        expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+      });
+
+      const startingDocument = editor.getJSON();
+      const undoDepthBefore = undoDepth(editor.state);
+      const geometry = mockTableGeometry(editor, {
+        tableRect: new DOMRect(120, 140, 420, 180),
+        wrapperClientHeight: 180,
+        wrapperClientWidth: 420,
+        wrapperOffsetHeight: 192,
+        wrapperOffsetWidth: 460,
+        wrapperRect: new DOMRect(100, 120, 460, 220),
+        wrapperScrollLeft,
+        wrapperScrollWidth: 720
+      });
+
+      try {
+        await act(async () => {
+          editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 4) + 1);
+        });
+
+        expect(getTableTextGrid(editor)).toEqual([
+          ["H1", "A1", "H3"],
+          ["B1", "H2", "B3"],
+          ["H4", "C2", "H6"]
+        ]);
+
+        const columnButton = await screen.findByRole("button", { name: menuItemName });
+        fireEvent.click(columnButton);
+        const menu = await screen.findByRole("menu", { name: "Table column menu" });
+        expect(getMenuItemNames(menu, "menuitem")).toEqual([
+          "Insert before",
+          "Insert after",
+          "Move left",
+          "Move right",
+          "Delete column"
+        ]);
+        expect(getCellSelectionRect(editor)).toEqual({
+          top: 0,
+          bottom: 3,
+          left: 1,
+          right: 2
+        });
+
+        const selection = editor.state.selection;
+        if (!(selection instanceof CellSelection)) {
+          throw new Error("Expected a column CellSelection before moving the table column.");
+        }
+        const tableContext = findTable(selection.$anchorCell);
+        if (!tableContext) {
+          throw new Error("Expected the active table context before moving the table column.");
+        }
+        const preview = previewMoveTableDocument(editor, (state, dispatch) =>
+          moveTableColumn({
+            from: 1,
+            pos: tableContext.start,
+            select: true,
+            to: targetIndex
+          })(state, dispatch)
+        );
+        expect(preview.commandResult).toBe(true);
+        expect(preview.docChanged).toBe(true);
+
+        const menuItem = within(menu).getByRole("menuitem", { name: itemLabel });
+        const beforeDocument = editor.getJSON();
+        const beforeSelection = getCellSelectionRect(editor);
+        let transactions: Array<{
+          addToHistory: unknown;
+          docChanged: boolean;
+          selectionSet: boolean;
+          steps: number;
+        }> = [];
+        try {
+          await act(async () => {
+            await activateTableMenuItemWithBrowserPointer(menuItem);
+          });
+
+          expect(editor.getJSON()).toEqual(beforeDocument);
+          expect(getCellSelectionRect(editor)).toEqual(beforeSelection);
+          expect(getTableMenu(overlayRoot, "column")).not.toBeNull();
+
+          await act(async () => {
+            transactions = captureCommandTransactions(editor, () => {
+              fireEvent.click(menuItem);
+            });
+          });
+
+          await waitFor(() => {
+            expect(getTableMenu(overlayRoot, "column")).toBeNull();
+            expect(document.activeElement).toBe(editor.view.dom);
+          });
+
+          expect(transactions.length).toBeGreaterThanOrEqual(2);
+          expect(transactions.some((transaction) => transaction.docChanged)).toBe(true);
+          expect(transactions.filter((transaction) => transaction.docChanged)).toHaveLength(1);
+          expect(editor.getJSON()).toEqual(preview.document);
+          expect(getTableTextGrid(editor)).toEqual(expectedGrid);
+          expect(getCellSelectionRect(editor)).toEqual(selectionRect);
+          expect(harness.ownerWindowSetTimeout).not.toHaveBeenCalled();
+        } finally {
+          harness.ownerWindowSetTimeout.mockClear();
+        }
+
+        expect(undoDepth(editor.state)).toBe(undoDepthBefore + 1);
+        await runAutosave();
+        expect(onSaveDraft).toHaveBeenCalledTimes(1);
+
+        await act(async () => {
+          editor.commands.undo();
+        });
+
+        expect(editor.getJSON()).toEqual(startingDocument);
+        expect(undoDepth(editor.state)).toBe(undoDepthBefore);
+      } finally {
+        geometry.restore();
+      }
+    }
+  );
+
+  it.each([
+    {
+      disabledItemLabel: "Move up",
+      menuItemName: "Table row 1 options",
+      selectionPosition: 1
+    },
+    {
+      disabledItemLabel: "Move down",
+      menuItemName: "Table row 3 options",
+      selectionPosition: 7
+    }
+  ] as const)(
+    "renders the row boundary move action %s as disabled and ignores clicks",
+    async ({ disabledItemLabel, menuItemName, selectionPosition }) => {
+      const harness = createOverlayOwnerDocumentHarness(1280, 720);
+      const overlayRoot = document.createElement("div");
+      Object.defineProperty(overlayRoot, "ownerDocument", {
+        configurable: true,
+        value: harness.ownerDocument
+      });
+      const { editorReady } = renderRuntime({}, { overlayRoot });
+
+      await waitFor(() => {
+        expect(editorReady[0]).toBeDefined();
+      });
+
+      const editor = editorReady[0];
+      await act(async () => {
+        editor.commands.setContent(createMoveTableDocument(createRichMoveTableRows()));
+      });
+
+      await waitFor(() => {
+        expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+      });
+
+      const geometry = mockTableGeometry(editor, {
+        tableRect: new DOMRect(120, 140, 420, 180),
+        wrapperClientHeight: 180,
+        wrapperClientWidth: 420,
+        wrapperOffsetHeight: 192,
+        wrapperOffsetWidth: 460,
+        wrapperRect: new DOMRect(100, 120, 460, 220),
+        wrapperScrollWidth: 520
+      });
+
+      try {
+        await act(async () => {
+          editor.commands.setTextSelection(getTableCellParagraphPosition(editor, selectionPosition) + 1);
+        });
+
+        const rowButton = await screen.findByRole("button", { name: menuItemName });
+        fireEvent.click(rowButton);
+        const menu = await screen.findByRole("menu", { name: "Table row menu" });
+        expect(getMenuItemNames(menu, "menuitem")).toEqual([
+          "Insert before",
+          "Insert after",
+          "Move up",
+          "Move down",
+          "Delete row"
+        ]);
+
+        const disabledItem = within(menu).getByRole("menuitem", { name: disabledItemLabel });
+        expect(disabledItem).toBeDisabled();
+
+        const beforeDocument = editor.getJSON();
+        const beforeSelection = getCellSelectionRect(editor);
+        const beforeUndoDepth = undoDepth(editor.state);
+        fireEvent.click(disabledItem);
+
+        expect(editor.getJSON()).toEqual(beforeDocument);
+        expect(getCellSelectionRect(editor)).toEqual(beforeSelection);
+        expect(undoDepth(editor.state)).toBe(beforeUndoDepth);
+        expect(getTableMenu(overlayRoot, "row")).not.toBeNull();
+      } finally {
+        geometry.restore();
+      }
+    }
+  );
+
+  it.each([
+    {
+      disabledItemLabel: "Move left",
+      menuItemName: "Table column 1 options",
+      selectionPosition: 0
+    },
+    {
+      disabledItemLabel: "Move right",
+      menuItemName: "Table column 3 options",
+      selectionPosition: 2
+    }
+  ] as const)(
+    "renders the column boundary move action %s as disabled and ignores clicks",
+    async ({ disabledItemLabel, menuItemName, selectionPosition }) => {
+      const harness = createOverlayOwnerDocumentHarness(1280, 720);
+      const overlayRoot = document.createElement("div");
+      Object.defineProperty(overlayRoot, "ownerDocument", {
+        configurable: true,
+        value: harness.ownerDocument
+      });
+      const { editorReady } = renderRuntime({}, { overlayRoot });
+
+      await waitFor(() => {
+        expect(editorReady[0]).toBeDefined();
+      });
+
+      const editor = editorReady[0];
+      await act(async () => {
+        editor.commands.setContent(createMoveTableDocument(createRichMoveTableRows()));
+      });
+
+      await waitFor(() => {
+        expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+      });
+
+      const geometry = mockTableGeometry(editor, {
+        tableRect: new DOMRect(120, 140, 420, 180),
+        wrapperClientHeight: 180,
+        wrapperClientWidth: 420,
+        wrapperOffsetHeight: 192,
+        wrapperOffsetWidth: 460,
+        wrapperRect: new DOMRect(100, 120, 460, 220),
+        wrapperScrollLeft: 136,
+        wrapperScrollWidth: 720
+      });
+
+      try {
+        await act(async () => {
+          editor.commands.setTextSelection(getTableCellParagraphPosition(editor, selectionPosition) + 1);
+        });
+
+        const columnButton = await screen.findByRole("button", { name: menuItemName });
+        fireEvent.click(columnButton);
+        const menu = await screen.findByRole("menu", { name: "Table column menu" });
+        expect(getMenuItemNames(menu, "menuitem")).toEqual([
+          "Insert before",
+          "Insert after",
+          "Move left",
+          "Move right",
+          "Delete column"
+        ]);
+
+        const disabledItem = within(menu).getByRole("menuitem", { name: disabledItemLabel });
+        expect(disabledItem).toBeDisabled();
+
+        const beforeDocument = editor.getJSON();
+        const beforeSelection = getCellSelectionRect(editor);
+        const beforeUndoDepth = undoDepth(editor.state);
+        fireEvent.click(disabledItem);
+
+        expect(editor.getJSON()).toEqual(beforeDocument);
+        expect(getCellSelectionRect(editor)).toEqual(beforeSelection);
+        expect(undoDepth(editor.state)).toBe(beforeUndoDepth);
+        expect(getTableMenu(overlayRoot, "column")).not.toBeNull();
+      } finally {
+        geometry.restore();
+      }
+    }
+  );
+
   it.each([
     [
       "Heading 1",

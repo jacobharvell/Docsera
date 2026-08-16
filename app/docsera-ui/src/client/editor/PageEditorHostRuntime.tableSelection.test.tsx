@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Editor } from "@tiptap/core";
 import { CellSelection, findTable, TableMap } from "@tiptap/pm/tables";
 import { useMemo, useState } from "react";
@@ -278,6 +278,7 @@ function dispatchPointerEvent(
   const eventInit = {
     bubbles: true,
     cancelable: true,
+    composed: true,
     button: input.button ?? 0,
     buttons: input.buttons ?? 0,
     clientX: input.clientX,
@@ -288,7 +289,7 @@ function dispatchPointerEvent(
   const event =
     typeof window.PointerEvent === "function"
       ? new window.PointerEvent(type, eventInit)
-      : new Event(type, { bubbles: true, cancelable: true });
+      : new window.MouseEvent(type, eventInit);
 
   Object.defineProperties(event, {
     button: { configurable: true, value: eventInit.button },
@@ -363,7 +364,7 @@ function getTableHandleButton(
   index: number
 ): HTMLButtonElement | null {
   const selector = `[data-docsera-table-handle-kind="${kind}"][data-docsera-table-handle-index="${index}"]`;
-  const handle = overlayRoot.ownerDocument.querySelector(selector);
+  const handle = overlayRoot.querySelector(selector) ?? overlayRoot.ownerDocument.querySelector(selector);
   return handle instanceof HTMLButtonElement ? handle : null;
 }
 
@@ -467,6 +468,15 @@ function getCellSelectionRect(editor: Editor): {
 
   const map = TableMap.get(table.node);
   return map.rectBetween(selection.$anchorCell.pos - table.start, selection.$headCell.pos - table.start);
+}
+
+function getTableRowCount(editor: Editor): number {
+  const table = editor.state.doc.firstChild;
+  if (!table || table.type.name !== "table") {
+    throw new Error("Expected the document to contain a table.");
+  }
+
+  return table.childCount;
 }
 
 function getNormalizedSelectedTableCellCoordinates(editor: Editor): Array<{
@@ -592,13 +602,16 @@ async function dragTableSelection(
   });
 }
 
-async function clickWithPointer(target: HTMLElement, pointerId: number): Promise<void> {
+async function clickWithPointer(
+  target: HTMLElement,
+  pointerId: number
+): Promise<void> {
   const rect = target.getBoundingClientRect();
   const clientX = rect.left + Math.max(8, rect.width / 2);
   const clientY = rect.top + Math.max(8, rect.height / 2);
 
   await act(async () => {
-    fireEvent.pointerDown(target, {
+    dispatchPointerEvent(target, "pointerdown", {
       button: 0,
       buttons: 1,
       clientX,
@@ -609,7 +622,7 @@ async function clickWithPointer(target: HTMLElement, pointerId: number): Promise
   });
 
   await act(async () => {
-    fireEvent.pointerUp(target, {
+    dispatchPointerEvent(target, "pointerup", {
       button: 0,
       buttons: 0,
       clientX,
@@ -1949,6 +1962,142 @@ describe("PageEditorHostRuntime table drag selection", () => {
       expectTableHandleVisualState(overlayRoot, { index: 1, kind: "column", state: "muted" });
     } finally {
       geometry.restore();
+    }
+  });
+
+  it("keeps a shadow-root table menu item owned on pointerdown, runs its click once, and dismisses on outside pointerdown", async () => {
+    const { editorReady, overlayRoot } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createTableDocument(2, 2))
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const shadowHost = document.createElement("div");
+    document.body.append(shadowHost);
+    const shadowRoot = shadowHost.attachShadow({ mode: "open" });
+    shadowRoot.append(overlayRoot);
+    const ownerDocument = overlayRoot.ownerDocument;
+    const captureEvents: Array<{ path: EventTarget[]; target: EventTarget | null }> = [];
+    const captureListener = (event: Event) => {
+      captureEvents.push({
+        path: event.composedPath().filter((entry): entry is EventTarget => entry !== null && entry !== undefined),
+        target: event.target
+      });
+    };
+
+    const geometry = installTableGeometry({
+      editor: editor.view.dom,
+      left: 120,
+      top: 140,
+      rows: 2,
+      columns: 2,
+      cellWidth: 120,
+      cellHeight: 56
+    });
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(getTableCellTextPosition(editor, 1, 1, 1));
+      });
+
+      await waitFor(() => {
+        expect(getTableHandleButton(overlayRoot, "row", 0)).toBeInstanceOf(HTMLButtonElement);
+      });
+
+      const rowButton = getTableHandleButton(overlayRoot, "row", 0);
+      if (!(rowButton instanceof HTMLButtonElement)) {
+        throw new Error("Expected the first row pill to be available.");
+      }
+
+      await act(async () => {
+        dispatchPointerEvent(rowButton, "pointerdown", {
+          button: 0,
+          buttons: 1,
+          clientX: rowButton.getBoundingClientRect().left + 8,
+          clientY: rowButton.getBoundingClientRect().top + 8,
+          pointerId: 10,
+          pointerType: "mouse"
+        });
+      });
+
+      const rowMenuSelector = '[data-docsera-table-menu="true"][data-docsera-table-menu-kind="row"][data-docsera-table-menu-index="0"]';
+      await waitFor(() => {
+        expect(overlayRoot.querySelector(rowMenuSelector)).toBeInstanceOf(HTMLElement);
+      });
+
+      const rowMenu = overlayRoot.querySelector(rowMenuSelector);
+      if (!(rowMenu instanceof HTMLElement)) {
+        throw new Error("Expected the row menu to remain available.");
+      }
+
+      ownerDocument.addEventListener("pointerdown", captureListener, true);
+      const insertAfterItem = within(rowMenu).getByRole("menuitem", { name: "Insert after" });
+      expect(insertAfterItem.getRootNode()).toBe(shadowRoot);
+
+      await act(async () => {
+        dispatchPointerEvent(insertAfterItem, "pointerdown", {
+          button: 0,
+          buttons: 1,
+          clientX: insertAfterItem.getBoundingClientRect().left + 8,
+          clientY: insertAfterItem.getBoundingClientRect().top + 8,
+          pointerId: 11,
+          pointerType: "mouse"
+        });
+      });
+
+      expect(captureEvents).toHaveLength(1);
+      expect(captureEvents[0]?.target).toBe(shadowHost);
+      expect(captureEvents[0]?.path[0]).toBe(insertAfterItem);
+      expect(captureEvents[0]?.path).toEqual(expect.arrayContaining([insertAfterItem, rowMenu, shadowRoot, shadowHost, ownerDocument]));
+      await waitFor(() => {
+        expect(overlayRoot.querySelector(rowMenuSelector)).toBeInstanceOf(HTMLElement);
+      });
+
+      await act(async () => {
+        fireEvent.click(insertAfterItem);
+      });
+
+      await waitFor(() => {
+        expect(getTableRowCount(editor)).toBe(3);
+        expect(overlayRoot.querySelector(rowMenuSelector)).toBeNull();
+      });
+
+      await act(async () => {
+        dispatchPointerEvent(rowButton, "pointerdown", {
+          button: 0,
+          buttons: 1,
+          clientX: rowButton.getBoundingClientRect().left + 8,
+          clientY: rowButton.getBoundingClientRect().top + 8,
+          pointerId: 12,
+          pointerType: "mouse"
+        });
+      });
+
+      await waitFor(() => {
+        expect(overlayRoot.querySelector(rowMenuSelector)).toBeInstanceOf(HTMLElement);
+      });
+
+      await act(async () => {
+        dispatchPointerEvent(document.body, "pointerdown", {
+          button: 0,
+          buttons: 1,
+          clientX: 12,
+          clientY: 12,
+          pointerId: 13,
+          pointerType: "mouse"
+        });
+      });
+
+      await waitFor(() => {
+        expect(overlayRoot.querySelector(rowMenuSelector)).toBeNull();
+      });
+    } finally {
+      ownerDocument.removeEventListener("pointerdown", captureListener, true);
+      geometry.restore();
+      shadowHost.remove();
     }
   });
 

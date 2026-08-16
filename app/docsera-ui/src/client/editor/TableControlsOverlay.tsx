@@ -3,6 +3,8 @@ import {
   CellSelection,
   findCellPos,
   findTable,
+  moveTableColumn,
+  moveTableRow,
   selectedRect,
   TableMap,
 } from "@tiptap/pm/tables";
@@ -65,6 +67,16 @@ type TableMenuState =
 type TableHandleState = {
   index: number;
   kind: "row" | "column";
+};
+
+type TableRowMenuCommand = "insertBefore" | "insertAfter" | "moveUp" | "moveDown" | "delete";
+type TableColumnMenuCommand = "insertBefore" | "insertAfter" | "moveLeft" | "moveRight" | "delete";
+
+type TableMenuAction<TCommand extends string> = {
+  command: TCommand;
+  disabled?: boolean;
+  destructive?: boolean;
+  label: string;
 };
 
 const ROW_PILL_WIDTH_PX = 8;
@@ -317,6 +329,56 @@ function resolveTableControlActiveIconColor(editor: TiptapEditor | null): string
 
 function isEditableTableCellEventTarget(target: EventTarget | null): target is HTMLElement {
   return target instanceof HTMLElement && !target.closest(TABLE_OVERLAY_EXCLUSION_SELECTOR) && Boolean(target.closest("td, th"));
+}
+
+function getEventComposedPath(event: Event): EventTarget[] {
+  if (typeof event.composedPath === "function") {
+    return event.composedPath().filter((entry): entry is EventTarget => entry !== null && entry !== undefined);
+  }
+
+  return event.target ? [event.target] : [];
+}
+
+function isEditableTableCellEvent(event: Event): boolean {
+  return getEventComposedPath(event).some((entry) => isEditableTableCellEventTarget(entry));
+}
+
+function resolveHandleStateFromEvent(event: Event): TableHandleState | null {
+  for (const entry of getEventComposedPath(event)) {
+    const handleState = resolveHandleStateFromTarget(entry);
+    if (handleState) {
+      return handleState;
+    }
+  }
+
+  return resolveHandleStateFromTarget(event.target);
+}
+
+function isEventInsideOwnedTableSurface(
+  event: Event,
+  menuElement: HTMLElement | null,
+  overlayRoot: HTMLElement,
+  editor: TiptapEditor | null
+): boolean {
+  for (const entry of getEventComposedPath(event)) {
+    if (!(entry instanceof Node)) {
+      continue;
+    }
+
+    if (menuElement?.contains(entry)) {
+      return true;
+    }
+
+    if (overlayRoot.contains(entry)) {
+      return true;
+    }
+
+    if (editor && !editor.isDestroyed && editor.view.dom.contains(entry)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function clearNativeSelectionIfCellSelection(editor: TiptapEditor | null): void {
@@ -688,7 +750,7 @@ export default function TableControlsOverlay({
         return;
       }
 
-      if (!isEditableTableCellEventTarget(event.target)) {
+      if (!isEditableTableCellEvent(event)) {
         structuralSelectionClickHandoffRef.current = null;
         return;
       }
@@ -849,7 +911,7 @@ export default function TableControlsOverlay({
 
     const handlePointerMove = (event: MouseEvent) => {
       const target = event.target;
-      updateHoveredHandle(resolveHandleStateFromTarget(target));
+      updateHoveredHandle(resolveHandleStateFromEvent(event));
 
       if (!(target instanceof HTMLElement) || target.closest("[data-docsera-table-handle='true'], [data-docsera-table-menu='true']")) {
         return;
@@ -892,7 +954,7 @@ export default function TableControlsOverlay({
     };
 
     const handlePointerDown = (event: MouseEvent | PointerEvent) => {
-      updateHoveredHandle(resolveHandleStateFromTarget(event.target));
+      updateHoveredHandle(resolveHandleStateFromEvent(event));
     };
 
     ownerDocument.addEventListener("pointermove", handlePointerMove, true);
@@ -935,11 +997,7 @@ export default function TableControlsOverlay({
     if (!ownerWindow) return;
 
     const handleOutsidePointerDown = (event: MouseEvent | PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (menuRef.current?.contains(target)) return;
-      if ((target as HTMLElement).closest("[data-docsera-table-handle='true']")) return;
-      if (!editor?.isDestroyed && editor?.view.dom.contains(target)) return;
+      if (isEventInsideOwnedTableSurface(event, menuRef.current, overlayRoot, editor)) return;
       setMenuState(null);
     };
 
@@ -1023,6 +1081,34 @@ export default function TableControlsOverlay({
   const columnRailHeight = renderLayout
     ? Math.max(0, Math.min(renderLayout.tableRect.bottom, viewportBottom) - columnRailTop)
     : 0;
+  const rowMenuActions: TableMenuAction<TableRowMenuCommand>[] | null =
+    renderLayout && menuState?.kind === "row"
+      ? [
+          { label: "Insert before", command: "insertBefore" },
+          { label: "Insert after", command: "insertAfter" },
+          { label: "Move up", command: "moveUp", disabled: menuState.index <= 0 },
+          {
+            label: "Move down",
+            command: "moveDown",
+            disabled: menuState.index >= renderLayout.map.height - 1,
+          },
+          { label: "Delete row", command: "delete", destructive: true },
+        ]
+      : null;
+  const columnMenuActions: TableMenuAction<TableColumnMenuCommand>[] | null =
+    renderLayout && menuState?.kind === "column"
+      ? [
+          { label: "Insert before", command: "insertBefore" },
+          { label: "Insert after", command: "insertAfter" },
+          { label: "Move left", command: "moveLeft", disabled: menuState.index <= 0 },
+          {
+            label: "Move right",
+            command: "moveRight",
+            disabled: menuState.index >= renderLayout.map.width - 1,
+          },
+          { label: "Delete column", command: "delete", destructive: true },
+        ]
+      : null;
 
   const openMenu = useCallback(
     (kind: "row" | "column", index: number) => {
@@ -1054,26 +1140,50 @@ export default function TableControlsOverlay({
   const executeRowMenuCommand = useCallback(
     (
       target: Extract<TableMenuState, { kind: "row" }>,
-      command: "insertBefore" | "insertAfter" | "delete"
+      command: TableRowMenuCommand
     ) => {
-      if (!editor || editor.isDestroyed) return false;
 
-      const context = getLiveTableContextFromTablePos(editor, target.tablePos);
-      if (!context) return false;
+      try {
+        if (!editor || editor.isDestroyed) return false;
 
-      editor.view.dispatch(closeHistory(editor.state.tr));
-      selectRow(editor, context, target.index);
-      let result = false;
-      if (command === "insertBefore") result = editor.commands.addRowBefore();
-      else if (command === "insertAfter") result = editor.commands.addRowAfter();
-      else result = editor.commands.deleteRow();
-      if (!result) return false;
+        const context = getLiveTableContextFromTablePos(editor, target.tablePos);
+        if (!context) return false;
 
-      const refreshedContext = getLiveTableContext(editor) ?? getLiveTableContextFromTablePos(editor, target.tablePos);
-      if (refreshedContext) {
-        selectRow(editor, refreshedContext, Math.min(target.index, refreshedContext.map.height - 1));
+        if (command === "moveUp" || command === "moveDown") {
+          const nextIndex = command === "moveUp" ? target.index - 1 : target.index + 1;
+          if (nextIndex < 0 || nextIndex >= context.map.height) return false;
+          editor.view.dispatch(closeHistory(editor.state.tr));
+          const beforeDoc = editor.state.doc;
+          const didMove = moveTableRow({
+            from: target.index,
+            to: nextIndex,
+            pos: context.tableStart,
+            select: true,
+          })(editor.state, (tr) => {
+            editor.view.dispatch(tr);
+          });
+          if (!didMove) return false;
+
+          editor.view.focus();
+          clearNativeSelectionIfCellSelection(editor);
+          return true;
+        }
+        editor.view.dispatch(closeHistory(editor.state.tr));
+        selectRow(editor, context, target.index);
+        let result = false;
+        if (command === "insertBefore") result = editor.commands.addRowBefore();
+        else if (command === "insertAfter") result = editor.commands.addRowAfter();
+        else result = editor.commands.deleteRow();
+        if (!result) return false;
+
+        const refreshedContext = getLiveTableContext(editor) ?? getLiveTableContextFromTablePos(editor, target.tablePos);
+        if (refreshedContext) {
+          selectRow(editor, refreshedContext, Math.min(target.index, refreshedContext.map.height - 1));
+        }
+        return true;
+      } catch (error) {
+        throw error;
       }
-      return true;
     },
     [editor]
   );
@@ -1081,26 +1191,50 @@ export default function TableControlsOverlay({
   const executeColumnMenuCommand = useCallback(
     (
       target: Extract<TableMenuState, { kind: "column" }>,
-      command: "insertBefore" | "insertAfter" | "delete"
+      command: TableColumnMenuCommand
     ) => {
-      if (!editor || editor.isDestroyed) return false;
 
-      const context = getLiveTableContextFromTablePos(editor, target.tablePos);
-      if (!context) return false;
+      try {
+        if (!editor || editor.isDestroyed) return false;
 
-      editor.view.dispatch(closeHistory(editor.state.tr));
-      selectColumn(editor, context, target.index);
-      let result = false;
-      if (command === "insertBefore") result = editor.commands.addColumnBefore();
-      else if (command === "insertAfter") result = editor.commands.addColumnAfter();
-      else result = editor.commands.deleteColumn();
-      if (!result) return false;
+        const context = getLiveTableContextFromTablePos(editor, target.tablePos);
+        if (!context) return false;
 
-      const refreshedContext = getLiveTableContext(editor) ?? getLiveTableContextFromTablePos(editor, target.tablePos);
-      if (refreshedContext) {
-        selectColumn(editor, refreshedContext, Math.min(target.index, refreshedContext.map.width - 1));
+        if (command === "moveLeft" || command === "moveRight") {
+          const nextIndex = command === "moveLeft" ? target.index - 1 : target.index + 1;
+          if (nextIndex < 0 || nextIndex >= context.map.width) return false;
+          editor.view.dispatch(closeHistory(editor.state.tr));
+          const beforeDoc = editor.state.doc;
+          const didMove = moveTableColumn({
+            from: target.index,
+            to: nextIndex,
+            pos: context.tableStart,
+            select: true,
+          })(editor.state, (tr) => {
+            editor.view.dispatch(tr);
+          });
+          if (!didMove) return false;
+
+          editor.view.focus();
+          clearNativeSelectionIfCellSelection(editor);
+          return true;
+        }
+        editor.view.dispatch(closeHistory(editor.state.tr));
+        selectColumn(editor, context, target.index);
+        let result = false;
+        if (command === "insertBefore") result = editor.commands.addColumnBefore();
+        else if (command === "insertAfter") result = editor.commands.addColumnAfter();
+        else result = editor.commands.deleteColumn();
+        if (!result) return false;
+
+        const refreshedContext = getLiveTableContext(editor) ?? getLiveTableContextFromTablePos(editor, target.tablePos);
+        if (refreshedContext) {
+          selectColumn(editor, refreshedContext, Math.min(target.index, refreshedContext.map.width - 1));
+        }
+        return true;
+      } catch (error) {
+        throw error;
       }
-      return true;
     },
     [editor]
   );
@@ -1466,95 +1600,42 @@ export default function TableControlsOverlay({
                   zIndex: TABLE_CONTROL_MENU_Z_INDEX,
                 }}
               >
-                {menuState.kind === "row"
-                  ? [
-                      {
-                        label: "Insert before",
-                        command: "insertBefore" as const,
-                      },
-                      {
-                        label: "Insert after",
-                        command: "insertAfter" as const,
-                      },
-                      {
-                        label: "Delete row",
-                        command: "delete" as const,
-                        destructive: true,
-                      },
-                    ].map((item) => (
-                      <button
-                        key={item.label}
-                        type="button"
-                        role="menuitem"
-                        className={`docsera-compact-menu__item${
-                          item.destructive ? " docsera-table-controls-overlay__menu-item--destructive" : ""
-                        }`}
-                        onPointerDown={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                        }}
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                        }}
-                        onClick={() => {
-                          const target = menuState;
-                          if (!target || target.kind !== "row") return;
-
-                          try {
-                            executeRowMenuCommand(target, item.command);
-                          } finally {
-                            setMenuState(null);
-                          }
-                        }}
-                      >
-                        <span>{item.label}</span>
-                      </button>
-                    ))
-                  : [
-                      {
-                        label: "Insert before",
-                        command: "insertBefore" as const,
-                      },
-                      {
-                        label: "Insert after",
-                        command: "insertAfter" as const,
-                      },
-                      {
-                        label: "Delete column",
-                        command: "delete" as const,
-                        destructive: true,
-                      },
-                    ].map((item) => (
-                      <button
-                        key={item.label}
-                        type="button"
-                        role="menuitem"
-                        className={`docsera-compact-menu__item${
-                          item.destructive ? " docsera-table-controls-overlay__menu-item--destructive" : ""
-                        }`}
-                        onPointerDown={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                        }}
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          event.stopPropagation();
-                        }}
-                        onClick={() => {
-                          const target = menuState;
-                          if (!target || target.kind !== "column") return;
-
-                          try {
-                            executeColumnMenuCommand(target, item.command);
-                          } finally {
-                            setMenuState(null);
-                          }
-                        }}
-                      >
-                        <span>{item.label}</span>
-                      </button>
-                    ))}
+                {(menuState.kind === "row" ? rowMenuActions : columnMenuActions)?.map((item) => (
+                  <button
+                    key={item.label}
+                    type="button"
+                    role="menuitem"
+                    disabled={item.disabled}
+                    className={`docsera-compact-menu__item${
+                      item.destructive ? " docsera-table-controls-overlay__menu-item--destructive" : ""
+                    }`}
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                    onClick={() => {
+                      const target = menuState;
+                      if (!target || target.kind !== menuState.kind || item.disabled) return;
+                      try {
+                        if (target.kind === "row") {
+                          executeRowMenuCommand(target, item.command as TableRowMenuCommand);
+                        } else {
+                          executeColumnMenuCommand(target, item.command as TableColumnMenuCommand);
+                        }
+                      } catch (error) {
+                        throw error;
+                      } finally {
+                        setMenuState(null);
+                      }
+                    }}
+                  >
+                    <span>{item.label}</span>
+                  </button>
+                ))}
               </div>
             ) : null}
           </>
