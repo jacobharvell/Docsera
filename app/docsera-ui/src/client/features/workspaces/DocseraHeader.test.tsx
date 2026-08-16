@@ -132,6 +132,73 @@ describe("DocseraHeader publishing changes", () => {
     expect(screen.queryByRole("dialog", { name: "Changes Center" })).not.toBeInTheDocument();
   });
 
+  it("portals the Changes Center to the document body as a top-level shell surface", () => {
+    render(
+      <DocseraHeader
+        {...baseProps}
+        onDiscardAllPendingChanges={vi.fn()}
+        onPublishPendingChanges={vi.fn()}
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          }
+        ])}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Changes Center" });
+    const header = screen.getAllByRole("banner")[0];
+    expect(dialog).toHaveClass("docsera-changes-center--portal");
+    expect(dialog.parentElement).toBe(document.body);
+    expect(header).not.toContainElement(dialog);
+    expect(dialog.style.position).toBe("fixed");
+  });
+
+  it("keeps the portaled Changes Center mounted through inside pointerdown and dismisses on outside pointerdown", () => {
+    const onPublishPendingChanges = vi.fn();
+    render(
+      <DocseraHeader
+        {...baseProps}
+        onDiscardAllPendingChanges={vi.fn()}
+        onPublishPendingChanges={onPublishPendingChanges}
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          }
+        ])}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Changes Center" });
+    const publishButton = within(dialog).getByRole("button", { name: "Publish" });
+
+    fireEvent.pointerDown(publishButton);
+    expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
+
+    fireEvent.click(publishButton);
+    expect(onPublishPendingChanges).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
+
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("dialog", { name: "Changes Center" })).toBeNull();
+  });
+
   it("keeps the Changes Center open with a spinner and disabled controls while publishing", () => {
     const onOpenPendingPage = vi.fn();
     const onWorkspaceModeChange = vi.fn();

@@ -74,6 +74,8 @@ test("centers workspace mode control and keeps the save status in the header bef
   expect(css).not.toMatch(/\.docsera-main__page-header \.docsera-main__title\s*{[^}]*vw/s);
   expect(css).not.toMatch(/\.docsera-main__page-header \.docsera-main__title\s*{[^}]*clamp\(/s);
   expect(css).toContain(".docsera-header__publish-button");
+  expect(css).toContain(".docsera-changes-center--portal {");
+  expect(css).toMatch(/\.docsera-changes-center--portal\s*{[^}]*z-index:\s*140;/s);
   expect(css).toContain(".docsera-changes-center__list");
 });
 
@@ -87,6 +89,17 @@ test("keeps the publish success toast as a layered header card with viewport-saf
   expect(css).toMatch(/\.docsera-header__publish-toast-dismiss\s*{[^}]*width:\s*26px;[^}]*height:\s*26px;[^}]*background:\s*transparent;/s);
   expect(css).toMatch(/\.docsera-header__publish-toast-dismiss:hover\s*{[^}]*background:/s);
   expect(css).toMatch(/\.docsera-header__publish-toast-dismiss:focus-visible\s*{[^}]*box-shadow:/s);
+});
+
+test("keeps modal surfaces above the Changes Center portal and the Changes Center portal above table overlays", () => {
+  const shellCss = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+  const tableOverlaySource = readFileSync("src/client/editor/TableControlsOverlay.tsx", "utf8");
+
+  expect(shellCss).toMatch(/\.docsera-modal\s*{[^}]*z-index:\s*150;/s);
+  expect(shellCss).toMatch(/\.docsera-changes-center--portal\s*{[^}]*z-index:\s*140;/s);
+  expect(shellCss).toContain(".docsera-modal__panel {");
+  expect(tableOverlaySource).toContain("const TABLE_CONTROL_OVERLAY_Z_INDEX = 126;");
+  expect(tableOverlaySource).toContain("const TABLE_CONTROL_MENU_Z_INDEX = 130;");
 });
 
 test("keeps reader table styling aligned to the E5 Legacy geometry without advanced-control spacing", () => {

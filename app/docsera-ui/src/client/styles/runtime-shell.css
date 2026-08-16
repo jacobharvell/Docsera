@@ -745,7 +745,7 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
 .docsera-modal {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: 150;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1852,6 +1852,10 @@ html[data-docsera-theme="dark"] .docsera-header__publish-toast {
   border-radius: 8px;
   background: var(--docsera-surface);
   box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
+}
+
+.docsera-changes-center--portal {
+  z-index: 140;
 }
 
 .docsera-changes-center__header,

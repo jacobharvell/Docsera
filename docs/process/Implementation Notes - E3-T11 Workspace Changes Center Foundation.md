@@ -42,7 +42,7 @@ In Edit mode for users with authoring capability, the header shows a stable Publ
 
 The Live/Edit toggle is centered in the workspace header area outside the navigation-pane segment. A vertical divider separates Publish from the right-side theme/settings/profile controls. The Publish chevron rotates smoothly between closed and open states.
 
-The Changes Center dropdown is anchored to Publish and contains:
+The Changes Center dropdown is anchored to Publish and is portaled to `document.body` as a shell-level overlay surface so it can render above editor-owned table controls and other editor-local overlays. The portal placement is measured from the Publish trigger and fixed relative to the viewport. The dropdown contains:
 
 - fixed header: `Changes 1 page` or `Changes N pages`;
 - internally scrolling pending-row list;

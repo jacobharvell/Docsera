@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import type { WorkspaceMode, WorkspacePendingChangesResult, WorkspaceViewRecord } from "../../shared/types/docsera";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
@@ -254,8 +254,10 @@ export function DocseraHeader({
   const [changesOpen, setChangesOpen] = useState(false);
   const [discardAllModalOpen, setDiscardAllModalOpen] = useState(false);
   const [discardPageTarget, setDiscardPageTarget] = useState<{ pageSysId: string; title: string } | null>(null);
+  const [changesCenterStyle, setChangesCenterStyle] = useState<CSSProperties | undefined>(undefined);
   const menuRef = useRef<HTMLDivElement>(null);
-  const changesRef = useRef<HTMLDivElement>(null);
+  const publishPanelRef = useRef<HTMLDivElement>(null);
+  const changesCenterRef = useRef<HTMLElement>(null);
   const publishButtonRef = useRef<HTMLButtonElement>(null);
   const discardActionRef = useRef<HTMLButtonElement>(null);
   const discardPrimaryButtonRef = useRef<HTMLButtonElement>(null);
@@ -324,6 +326,37 @@ export function DocseraHeader({
 
   const showCurrentPageSaveStatus = showPublishControl && Boolean(saveStatus);
 
+  useLayoutEffect(() => {
+    if (!changesOpen || typeof window === "undefined") {
+      setChangesCenterStyle(undefined);
+      return;
+    }
+
+    const updateChangesCenterStyle = () => {
+      const publishButton = publishButtonRef.current;
+      if (!publishButton) {
+        setChangesCenterStyle(undefined);
+        return;
+      }
+
+      const buttonRect = publishButton.getBoundingClientRect();
+      const right = Math.max(16, window.innerWidth - buttonRect.right);
+      setChangesCenterStyle({
+        position: "fixed",
+        right: `${right}px`,
+        top: `${Math.max(0, buttonRect.bottom + 8)}px`
+      });
+    };
+
+    updateChangesCenterStyle();
+    window.addEventListener("resize", updateChangesCenterStyle);
+    window.addEventListener("scroll", updateChangesCenterStyle, true);
+    return () => {
+      window.removeEventListener("resize", updateChangesCenterStyle);
+      window.removeEventListener("scroll", updateChangesCenterStyle, true);
+    };
+  }, [changesOpen, pendingChangesPublishToastMessage, showCurrentPageSaveStatus]);
+
   useEffect(() => {
     if (!menuOpen) {
       return;
@@ -357,7 +390,14 @@ export function DocseraHeader({
     }
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (changesRef.current?.contains(event.target as Node)) {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-docsera-changes-center-trigger='true']")) {
+        return;
+      }
+      if (publishPanelRef.current?.contains(event.target as Node)) {
+        return;
+      }
+      if (changesCenterRef.current?.contains(event.target as Node)) {
         return;
       }
       if (pendingChangesPublishing || pendingChangesAnyDiscarding || discardModalOpen) {
@@ -609,7 +649,7 @@ export function DocseraHeader({
             )}
           </div>
           {showPublishControl ? (
-            <div className="docsera-header__publish-panel" ref={changesRef}>
+            <div className="docsera-header__publish-panel" ref={publishPanelRef}>
               {showCurrentPageSaveStatus && saveStatus ? (
                 <>
                   <CurrentPageSaveStatusIndicator status={saveStatus} />
@@ -656,147 +696,159 @@ export function DocseraHeader({
                 <PublishChevron open={changesOpen} />
               </button>
               {changesOpen ? (
-                <section className="docsera-changes-center" data-docsera-changes-center="true" role="dialog" aria-label="Changes Center">
-                  <header className="docsera-changes-center__header">
-                    <div>
-                      <strong>Changes</strong> <span>{countText}</span>
-                    </div>
-                    <div className="docsera-changes-center__header-actions">
-                      {pendingChangesRefreshing ? <span className="docsera-changes-center__refreshing" role="status">Refreshing</span> : null}
-                      <button
-                        ref={discardActionRef}
-                        type="button"
-                        className="docsera-changes-center__header-action"
-                        disabled={!canOpenDiscardAllModal}
-                        onClick={(event) => {
-                          if (!canOpenDiscardAllModal) {
-                            return;
-                          }
-                          discardModalOriginRef.current = event.currentTarget;
-                          setDiscardPageTarget(null);
-                          setDiscardAllModalOpen(true);
-                        }}
+                typeof document !== "undefined"
+                  ? createPortal(
+                      <section
+                        ref={changesCenterRef}
+                        className="docsera-changes-center docsera-changes-center--portal"
+                        data-docsera-changes-center="true"
+                        role="dialog"
+                        aria-label="Changes Center"
+                        style={changesCenterStyle}
                       >
-                        <UndoIcon />
-                        <span>Discard all</span>
-                      </button>
-                    </div>
-                  </header>
-                  {pendingChangesErrorMessage || pendingChanges?.state === "failed" ? (
-                    <div className="docsera-changes-center__state" role="alert">
-                      <p>{pendingChangesErrorMessage || (pendingChanges?.state === "failed" ? pendingChanges.errorMessage : "Unable to load pending changes.")}</p>
-                      {onRetryPendingChanges ? (
-                        <button type="button" className="docsera-changes-center__retry" onClick={onRetryPendingChanges}>
-                          Retry
-                        </button>
-                      ) : null}
-                    </div>
-                  ) : pendingChangesLoading ? (
-                    <div className="docsera-changes-center__state" role="status">Loading changes</div>
-                  ) : (
-                    <div className="docsera-changes-center__list" role="list" aria-label="Pending pages">
-                      {pendingRows.map((row) => {
-                        const rowReadinessBlocked = Boolean(pendingChangesReadinessMessage) && pendingChangesUndoBlockedPageSysId === row.pageSysId;
-                        const canUndoRow =
-                          Boolean(onDiscardPendingPage) &&
-                          !pendingChangesPublishing &&
-                          !pendingChangesAnyDiscarding &&
-                          !rowReadinessBlocked;
-                        const canNavigateRow =
-                          row.navigable &&
-                          !pendingChangesPublishing &&
-                          !pendingChangesAnyDiscarding &&
-                          Boolean(onOpenPendingPage);
-
-                        return (
-                          <div key={row.pageSysId} className="docsera-changes-center__row-item" role="listitem">
-                            {row.navigable ? (
-                              <button
-                                type="button"
-                                className="docsera-changes-center__row"
-                                disabled={!canNavigateRow}
-                                onClick={() => {
-                                  if (!canNavigateRow) {
-                                    return;
-                                  }
-                                  setChangesOpen(false);
-                                  onOpenPendingPage?.(row.pageSysId);
-                                }}
-                              >
-                                <span className="docsera-changes-center__row-copy">
-                                  <span className="docsera-changes-center__row-title">{row.title}</span>
-                                  <span className="docsera-changes-center__row-meta" title={row.attribution.fullDisplayName} aria-label={row.attribution.accessibleLabel}>
-                                    {row.attribution.displayName}
-                                  </span>
-                                </span>
-                              </button>
-                            ) : (
-                              <div className="docsera-changes-center__row docsera-changes-center__row--static" aria-disabled="true">
-                                <span className="docsera-changes-center__row-copy">
-                                  <span className="docsera-changes-center__row-title">{row.title}</span>
-                                  <span className="docsera-changes-center__row-meta" title={row.attribution.fullDisplayName} aria-label={row.attribution.accessibleLabel}>
-                                    {row.attribution.displayName}
-                                  </span>
-                                </span>
-                              </div>
-                            )}
-                            <div className="docsera-changes-center__row-action">
-                              <span className="docsera-changes-center__row-category" aria-hidden={canUndoRow ? "true" : undefined}>{row.category}</span>
-                              <button
-                                type="button"
-                                className="docsera-changes-center__row-undo"
-                                aria-label={`Undo changes to ${row.title}`}
-                                disabled={!canUndoRow}
-                                onClick={(event) => {
-                                  event.preventDefault();
-                                  event.stopPropagation();
-                                  if (!canUndoRow) {
-                                    return;
-                                  }
-                                  discardModalOriginRef.current = event.currentTarget;
-                                  setDiscardAllModalOpen(false);
-                                  setDiscardPageTarget({ pageSysId: row.pageSysId, title: row.title });
-                                }}
-                              >
-                                <span className="docsera-changes-center__row-undo-icon" aria-hidden="true">
-                                  <UndoIcon />
-                                </span>
-                              </button>
-                            </div>
+                        <header className="docsera-changes-center__header">
+                          <div>
+                            <strong>Changes</strong> <span>{countText}</span>
                           </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {pendingChangesPublishErrorMessage ? (
-                    <div className="docsera-changes-center__publish-error" role="alert">{pendingChangesPublishErrorMessage}</div>
-                  ) : null}
-                  {pendingChangesDiscardAllErrorMessage && !discardModalOpen ? (
-                    <div className="docsera-changes-center__publish-error" role="alert">{pendingChangesDiscardAllErrorMessage}</div>
-                  ) : null}
-                  {pendingChangesDiscardPageErrorMessage && !discardModalOpen ? (
-                    <div className="docsera-changes-center__publish-error" role="alert">{pendingChangesDiscardPageErrorMessage}</div>
-                  ) : null}
-                  {pendingChangesReadinessMessage ? (
-                    <div className="docsera-changes-center__blocked" role="status">{pendingChangesReadinessMessage}</div>
-                  ) : null}
-                  <footer className="docsera-changes-center__footer">
-                    <button
-                      type="button"
-                      className="docsera-modal__primary docsera-changes-center__footer-primary"
-                      aria-busy={pendingChangesPublishing || pendingChangesAnyDiscarding}
-                      disabled={!canPublishChanges}
-                      onClick={onPublishPendingChanges}
-                    >
-                      <span className="docsera-changes-center__footer-primary-label">
-                        {pendingChangesPublishing ? (
-                          <span className="docsera-changes-center__spinner" aria-hidden="true" />
+                          <div className="docsera-changes-center__header-actions">
+                            {pendingChangesRefreshing ? <span className="docsera-changes-center__refreshing" role="status">Refreshing</span> : null}
+                            <button
+                              ref={discardActionRef}
+                              type="button"
+                              className="docsera-changes-center__header-action"
+                              disabled={!canOpenDiscardAllModal}
+                              onClick={(event) => {
+                                if (!canOpenDiscardAllModal) {
+                                  return;
+                                }
+                                discardModalOriginRef.current = event.currentTarget;
+                                setDiscardPageTarget(null);
+                                setDiscardAllModalOpen(true);
+                              }}
+                            >
+                              <UndoIcon />
+                              <span>Discard all</span>
+                            </button>
+                          </div>
+                        </header>
+                        {pendingChangesErrorMessage || pendingChanges?.state === "failed" ? (
+                          <div className="docsera-changes-center__state" role="alert">
+                            <p>{pendingChangesErrorMessage || (pendingChanges?.state === "failed" ? pendingChanges.errorMessage : "Unable to load pending changes.")}</p>
+                            {onRetryPendingChanges ? (
+                              <button type="button" className="docsera-changes-center__retry" onClick={onRetryPendingChanges}>
+                                Retry
+                              </button>
+                            ) : null}
+                          </div>
+                        ) : pendingChangesLoading ? (
+                          <div className="docsera-changes-center__state" role="status">Loading changes</div>
+                        ) : (
+                          <div className="docsera-changes-center__list" role="list" aria-label="Pending pages">
+                            {pendingRows.map((row) => {
+                              const rowReadinessBlocked = Boolean(pendingChangesReadinessMessage) && pendingChangesUndoBlockedPageSysId === row.pageSysId;
+                              const canUndoRow =
+                                Boolean(onDiscardPendingPage) &&
+                                !pendingChangesPublishing &&
+                                !pendingChangesAnyDiscarding &&
+                                !rowReadinessBlocked;
+                              const canNavigateRow =
+                                row.navigable &&
+                                !pendingChangesPublishing &&
+                                !pendingChangesAnyDiscarding &&
+                                Boolean(onOpenPendingPage);
+
+                              return (
+                                <div key={row.pageSysId} className="docsera-changes-center__row-item" role="listitem">
+                                  {row.navigable ? (
+                                    <button
+                                      type="button"
+                                      className="docsera-changes-center__row"
+                                      disabled={!canNavigateRow}
+                                      onClick={() => {
+                                        if (!canNavigateRow) {
+                                          return;
+                                        }
+                                        setChangesOpen(false);
+                                        onOpenPendingPage?.(row.pageSysId);
+                                      }}
+                                    >
+                                      <span className="docsera-changes-center__row-copy">
+                                        <span className="docsera-changes-center__row-title">{row.title}</span>
+                                        <span className="docsera-changes-center__row-meta" title={row.attribution.fullDisplayName} aria-label={row.attribution.accessibleLabel}>
+                                          {row.attribution.displayName}
+                                        </span>
+                                      </span>
+                                    </button>
+                                  ) : (
+                                    <div className="docsera-changes-center__row docsera-changes-center__row--static" aria-disabled="true">
+                                      <span className="docsera-changes-center__row-copy">
+                                        <span className="docsera-changes-center__row-title">{row.title}</span>
+                                        <span className="docsera-changes-center__row-meta" title={row.attribution.fullDisplayName} aria-label={row.attribution.accessibleLabel}>
+                                          {row.attribution.displayName}
+                                        </span>
+                                      </span>
+                                    </div>
+                                  )}
+                                  <div className="docsera-changes-center__row-action">
+                                    <span className="docsera-changes-center__row-category" aria-hidden={canUndoRow ? "true" : undefined}>{row.category}</span>
+                                    <button
+                                      type="button"
+                                      className="docsera-changes-center__row-undo"
+                                      aria-label={`Undo changes to ${row.title}`}
+                                      disabled={!canUndoRow}
+                                      onClick={(event) => {
+                                        event.preventDefault();
+                                        event.stopPropagation();
+                                        if (!canUndoRow) {
+                                          return;
+                                        }
+                                        discardModalOriginRef.current = event.currentTarget;
+                                        setDiscardAllModalOpen(false);
+                                        setDiscardPageTarget({ pageSysId: row.pageSysId, title: row.title });
+                                      }}
+                                    >
+                                      <span className="docsera-changes-center__row-undo-icon" aria-hidden="true">
+                                        <UndoIcon />
+                                      </span>
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {pendingChangesPublishErrorMessage ? (
+                          <div className="docsera-changes-center__publish-error" role="alert">{pendingChangesPublishErrorMessage}</div>
                         ) : null}
-                        <span>Publish</span>
-                      </span>
-                    </button>
-                  </footer>
-                </section>
+                        {pendingChangesDiscardAllErrorMessage && !discardModalOpen ? (
+                          <div className="docsera-changes-center__publish-error" role="alert">{pendingChangesDiscardAllErrorMessage}</div>
+                        ) : null}
+                        {pendingChangesDiscardPageErrorMessage && !discardModalOpen ? (
+                          <div className="docsera-changes-center__publish-error" role="alert">{pendingChangesDiscardPageErrorMessage}</div>
+                        ) : null}
+                        {pendingChangesReadinessMessage ? (
+                          <div className="docsera-changes-center__blocked" role="status">{pendingChangesReadinessMessage}</div>
+                        ) : null}
+                        <footer className="docsera-changes-center__footer">
+                          <button
+                            type="button"
+                            className="docsera-modal__primary docsera-changes-center__footer-primary"
+                            aria-busy={pendingChangesPublishing || pendingChangesAnyDiscarding}
+                            disabled={!canPublishChanges}
+                            onClick={onPublishPendingChanges}
+                          >
+                            <span className="docsera-changes-center__footer-primary-label">
+                              {pendingChangesPublishing ? (
+                                <span className="docsera-changes-center__spinner" aria-hidden="true" />
+                              ) : null}
+                              <span>Publish</span>
+                            </span>
+                          </button>
+                        </footer>
+                      </section>,
+                      document.body
+                    )
+                  : null
               ) : null}
             </div>
           ) : null}
