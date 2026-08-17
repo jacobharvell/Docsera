@@ -308,7 +308,7 @@ describe("Docsera structured document validation", () => {
 });
 
 describe("Docsera active table schema", () => {
-  it("registers the canonical table node family without Docsera-specific alignment attributes", () => {
+  it("registers the canonical table node family with upstream cell and header alignment attributes", () => {
     const schema = getDocseraEditorSchema();
     const cell = schema.nodes.tableCell.createAndFill();
     const header = schema.nodes.tableHeader.createAndFill();
@@ -318,12 +318,14 @@ describe("Docsera active table schema", () => {
     expect(cell?.attrs).toEqual({
       colspan: 1,
       rowspan: 1,
-      colwidth: null
+      colwidth: null,
+      align: null
     });
     expect(header?.attrs).toEqual({
       colspan: 1,
       rowspan: 1,
-      colwidth: null
+      colwidth: null,
+      align: null
     });
   });
 
@@ -392,10 +394,10 @@ describe("Docsera active table schema", () => {
     ).not.toThrow();
   });
 
-  it("drops malformed pasted table column widths instead of producing non-canonical cell attrs", () => {
+  it("preserves native table alignment attrs while dropping malformed pasted column widths", () => {
     const schema = getDocseraEditorSchema();
     const container = window.document.createElement("div");
-    container.innerHTML = "<table><tbody><tr><td colwidth=\"bad\">Cell</td></tr></tbody></table>";
+    container.innerHTML = "<table><tbody><tr><td align=\"center\" colwidth=\"bad\">Cell</td></tr></tbody></table>";
 
     const document = DOMParser.fromSchema(schema).parse(container);
     const tableCell = document.firstChild?.firstChild?.firstChild;
@@ -404,7 +406,8 @@ describe("Docsera active table schema", () => {
     expect(tableCell?.attrs).toEqual({
       colspan: 1,
       rowspan: 1,
-      colwidth: null
+      colwidth: null,
+      align: "center"
     });
   });
 });

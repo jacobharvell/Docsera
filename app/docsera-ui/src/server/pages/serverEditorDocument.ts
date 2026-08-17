@@ -44,6 +44,7 @@ const DOCSERA_NESTED_BLOCK_CHILD_TYPES = new Set([
   "table"
 ]);
 const DOCSERA_TABLE_CELL_TYPES = new Set(["tableCell", "tableHeader"]);
+const DOCSERA_TABLE_CELL_ALIGNMENTS = new Set(["left", "center", "right"]);
 
 export const DOCSERA_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const DOCSERA_BODY_HEADING_LEVELS = [1, 2, 3] as const;
@@ -132,6 +133,10 @@ function hasOnlyAllowedKeys(value: Record<string, unknown>, allowedKeys: readonl
 
 function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === "string";
+}
+
+function isDocseraTableCellAlignment(value: unknown): value is "left" | "center" | "right" {
+  return typeof value === "string" && DOCSERA_TABLE_CELL_ALIGNMENTS.has(value);
 }
 
 function hasSchemaVersion(value: Record<string, unknown>): boolean {
@@ -282,15 +287,20 @@ function validateNodeAttrs(type: string, attrs: unknown): DocseraStructuredDocum
       return Object.keys(attrs).length === 0 ? { ok: true } : createValidationFailure();
     case "tableCell":
     case "tableHeader": {
-      if (!hasOnlyAllowedKeys(attrs, ["colspan", "rowspan", "colwidth"])) {
+      if (!hasOnlyAllowedKeys(attrs, ["colspan", "rowspan", "colwidth", "align"])) {
         return createValidationFailure();
       }
 
       const colspan = attrs.colspan ?? 1;
       const rowspan = attrs.rowspan ?? 1;
       const colwidth = attrs.colwidth ?? null;
+      const align = attrs.align;
 
       if (!Number.isInteger(colspan) || Number(colspan) < 1 || !Number.isInteger(rowspan) || Number(rowspan) < 1) {
+        return createValidationFailure();
+      }
+
+      if (align !== undefined && align !== null && !isDocseraTableCellAlignment(align)) {
         return createValidationFailure();
       }
 
@@ -521,11 +531,15 @@ function canonicalizeNode(node: Record<string, unknown>): Record<string, unknown
     };
   } else if (node.type === "tableCell" || node.type === "tableHeader") {
     const attrs = isRecord(node.attrs) ? node.attrs : {};
-    canonicalNode.attrs = {
+    const canonicalAttrs: Record<string, unknown> = {
       colspan: Number.isInteger(attrs.colspan) ? Number(attrs.colspan) : 1,
       rowspan: Number.isInteger(attrs.rowspan) ? Number(attrs.rowspan) : 1,
       colwidth: Array.isArray(attrs.colwidth) ? attrs.colwidth.map((width) => Number(width)) : null
     };
+    if (isDocseraTableCellAlignment(attrs.align)) {
+      canonicalAttrs.align = attrs.align;
+    }
+    canonicalNode.attrs = canonicalAttrs;
   } else if (node.attrs !== undefined) {
     canonicalNode.attrs = cloneJson(node.attrs);
   }

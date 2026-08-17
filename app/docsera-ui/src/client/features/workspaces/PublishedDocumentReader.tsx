@@ -354,6 +354,7 @@ function getPositiveIntegerAttr(attrs: Record<string, unknown>, key: "colspan" |
 function renderTableCell(node: Record<string, unknown>, path: string, context: ReaderContext): ReactNode {
   const attrs = getNodeAttrs(node);
   const Tag = node.type === "tableHeader" ? "th" : "td";
+  const alignment = attrs.align === "left" || attrs.align === "center" || attrs.align === "right" ? attrs.align : null;
 
   return (
     <Tag
@@ -361,6 +362,7 @@ function renderTableCell(node: Record<string, unknown>, path: string, context: R
       className="docsera-main__table-cell"
       colSpan={getPositiveIntegerAttr(attrs, "colspan")}
       rowSpan={getPositiveIntegerAttr(attrs, "rowspan")}
+      style={alignment ? { textAlign: alignment } : undefined}
     >
       {renderBlockChildren(getNodeContent(node), `${path}-child`, context)}
     </Tag>

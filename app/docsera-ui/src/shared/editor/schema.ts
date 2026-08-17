@@ -35,6 +35,66 @@ export const DOCSERA_EMPTY_HEADING_PLACEHOLDERS: Record<number, string> = {
 };
 export const DOCSERA_EMPTY_BLOCKQUOTE_PLACEHOLDER = "Enter a quote";
 
+function normalizeTableColumnWidths(value: unknown): number[] | null {
+  if (!Array.isArray(value) || value.length === 0) {
+    return null;
+  }
+
+  return value.every((width) => Number.isInteger(width) && Number(width) > 0) ? (value as number[]) : null;
+}
+
+const TableCell = BaseTableCell.extend({
+  addAttributes() {
+    const parentAttributes = (this.parent?.() ?? {}) as {
+      colwidth?: {
+        default?: unknown;
+        parseHTML?: (element: HTMLElement) => unknown;
+      };
+    };
+    const parentColwidth = parentAttributes.colwidth as
+      | {
+          default?: unknown;
+          parseHTML?: (element: HTMLElement) => unknown;
+        }
+      | undefined;
+
+    return {
+      ...parentAttributes,
+      colwidth: {
+        ...parentColwidth,
+        default: null,
+        parseHTML: (element: HTMLElement) => normalizeTableColumnWidths(parentColwidth?.parseHTML?.(element))
+      }
+    };
+  }
+});
+
+const TableHeader = BaseTableHeader.extend({
+  addAttributes() {
+    const parentAttributes = (this.parent?.() ?? {}) as {
+      colwidth?: {
+        default?: unknown;
+        parseHTML?: (element: HTMLElement) => unknown;
+      };
+    };
+    const parentColwidth = parentAttributes.colwidth as
+      | {
+          default?: unknown;
+          parseHTML?: (element: HTMLElement) => unknown;
+        }
+      | undefined;
+
+    return {
+      ...parentAttributes,
+      colwidth: {
+        ...parentColwidth,
+        default: null,
+        parseHTML: (element: HTMLElement) => normalizeTableColumnWidths(parentColwidth?.parseHTML?.(element))
+      }
+    };
+  }
+});
+
 const EmptyParagraphPlaceholder = Extension.create({
   name: "docseraEmptyParagraphPlaceholder",
   addProseMirrorPlugins() {
@@ -88,50 +148,6 @@ const EmptyParagraphPlaceholder = Extension.create({
         }
       })
     ];
-  }
-});
-
-function parseTableColumnWidths(element: HTMLElement): number[] | null {
-  const colwidth = element.getAttribute("colwidth");
-  if (!colwidth) {
-    return null;
-  }
-
-  const widths = colwidth.split(",").map((width) => Number.parseInt(width, 10));
-  return widths.length > 0 && widths.every((width) => Number.isInteger(width) && width > 0) ? widths : null;
-}
-
-const TableCell = BaseTableCell.extend({
-  addAttributes() {
-    return {
-      colspan: {
-        default: 1
-      },
-      rowspan: {
-        default: 1
-      },
-      colwidth: {
-        default: null,
-        parseHTML: parseTableColumnWidths
-      }
-    };
-  }
-});
-
-const TableHeader = BaseTableHeader.extend({
-  addAttributes() {
-    return {
-      colspan: {
-        default: 1
-      },
-      rowspan: {
-        default: 1
-      },
-      colwidth: {
-        default: null,
-        parseHTML: parseTableColumnWidths
-      }
-    };
   }
 });
 

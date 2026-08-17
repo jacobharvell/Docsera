@@ -9,7 +9,7 @@ import {
   selectedRect,
   TableMap,
 } from "@tiptap/pm/tables";
-import { EllipsisVertical, MoreHorizontal, Plus } from "lucide-react";
+import { Check, EllipsisVertical, MoreHorizontal, Plus } from "lucide-react";
 import type { CSSProperties } from "react";
 import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { closeHistory } from "prosemirror-history";
@@ -71,14 +71,27 @@ type TableHandleState = {
 };
 
 type TableRowMenuCommand = "insertBefore" | "insertAfter" | "moveUp" | "moveDown" | "copy" | "delete";
-type TableColumnMenuCommand = "insertBefore" | "insertAfter" | "moveLeft" | "moveRight" | "copy" | "delete";
+type TableColumnMenuCommand =
+  | "insertBefore"
+  | "insertAfter"
+  | "moveLeft"
+  | "moveRight"
+  | "copy"
+  | "delete"
+  | "alignLeft"
+  | "alignCenter"
+  | "alignRight";
 
 type TableMenuAction<TCommand extends string> = {
   command: TCommand;
   disabled?: boolean;
   destructive?: boolean;
   label: string;
+  selected?: boolean;
+  showSelectionIcon?: boolean;
 };
+
+type DocseraTableCellAlignment = "left" | "center" | "right";
 
 const ROW_PILL_WIDTH_PX = 8;
 const ROW_PILL_COMPACT_HEIGHT_PX = 18;
@@ -662,6 +675,36 @@ function resolveHandleStateFromTarget(target: EventTarget | null): TableHandleSt
   return { kind, index };
 }
 
+function resolveTableCellAlignmentFromNode(node: ProseMirrorNode | null | undefined): DocseraTableCellAlignment {
+  const alignment = node?.attrs?.align;
+  return alignment === "left" || alignment === "center" || alignment === "right" ? alignment : "left";
+}
+
+function resolveTableColumnAlignment(editor: TiptapEditor, context: TableContext, columnIndex: number): DocseraTableCellAlignment {
+  const boundedColumnIndex = Math.max(0, Math.min(columnIndex, context.map.width - 1));
+  let resolvedAlignment: DocseraTableCellAlignment | null = null;
+
+  for (let rowIndex = 0; rowIndex < context.map.height; rowIndex += 1) {
+    const relativeCellPos = context.map.map[rowIndex * context.map.width + boundedColumnIndex];
+    if (typeof relativeCellPos !== "number") {
+      continue;
+    }
+
+    const cellNode = editor.state.doc.nodeAt(context.tableStart + relativeCellPos);
+    const nextAlignment = resolveTableCellAlignmentFromNode(cellNode);
+    if (resolvedAlignment === null) {
+      resolvedAlignment = nextAlignment;
+      continue;
+    }
+
+    if (resolvedAlignment !== nextAlignment) {
+      return "left";
+    }
+  }
+
+  return resolvedAlignment ?? "left";
+}
+
 export default function TableControlsOverlay({
   editor,
   onStructuredTableClipboardCopy,
@@ -899,15 +942,15 @@ export default function TableControlsOverlay({
     }
   }, [editor, menuState]);
 
-  const menuLayout = menuState && editor ? resolveTableLayoutFromTablePos(editor, menuState.tablePos) : null;
-  const renderLayout = menuState ? menuLayout : overlayState;
-  const selectedCellCoordinates = editor ? resolveSelectedTableCells(editor) : [];
+  const menuLayout = menuState && editor && !editor.isDestroyed ? resolveTableLayoutFromTablePos(editor, menuState.tablePos) : null;
+  const renderLayout = menuState ? menuLayout ?? overlayState : overlayState;
+  const selectedCellCoordinates = editor && !editor.isDestroyed ? resolveSelectedTableCells(editor) : [];
   const selectionIndexes:
     | Pick<
         TableOverlayState,
         "accentedColumnIndexes" | "accentedRowIndexes" | "selectedColumnIndexes" | "selectedRowIndexes"
       >
-    | null = editor ? buildSelectedTableIndexesFromCells(selectedCellCoordinates) : null;
+    | null = editor && !editor.isDestroyed ? buildSelectedTableIndexesFromCells(selectedCellCoordinates) : null;
   const visibleRowIndexes =
     menuState?.kind === "row"
       ? [menuState.index]
@@ -954,6 +997,10 @@ export default function TableControlsOverlay({
           { label: "Delete row", command: "delete", destructive: true },
         ]
       : null;
+  const activeColumnAlignment =
+    editor && !editor.isDestroyed && renderLayout && menuState?.kind === "column"
+      ? resolveTableColumnAlignment(editor, renderLayout, menuState.index)
+      : null;
   const columnMenuActions: TableMenuAction<TableColumnMenuCommand>[] | null =
     renderLayout && menuState?.kind === "column"
       ? [
@@ -964,6 +1011,24 @@ export default function TableControlsOverlay({
             label: "Move right",
             command: "moveRight",
             disabled: menuState.index >= renderLayout.map.width - 1,
+          },
+          {
+            command: "alignLeft",
+            label: "Align left",
+            selected: activeColumnAlignment === "left",
+            showSelectionIcon: true
+          },
+          {
+            command: "alignCenter",
+            label: "Align center",
+            selected: activeColumnAlignment === "center",
+            showSelectionIcon: true
+          },
+          {
+            command: "alignRight",
+            label: "Align right",
+            selected: activeColumnAlignment === "right",
+            showSelectionIcon: true
           },
           { label: "Copy column", command: "copy" },
           { label: "Delete column", command: "delete", destructive: true },
@@ -1092,6 +1157,19 @@ export default function TableControlsOverlay({
             cells: collectColumnClipboardCells(editor, context, target.index),
             kind: "column"
           });
+          editor.view.focus();
+          clearNativeSelectionIfCellSelection(editor);
+          return true;
+        }
+        if (command === "alignLeft" || command === "alignCenter" || command === "alignRight") {
+          const alignment: DocseraTableCellAlignment =
+            command === "alignCenter" ? "center" : command === "alignRight" ? "right" : "left";
+          editor.view.dispatch(closeHistory(editor.state.tr));
+          selectColumn(editor, context, target.index);
+          if (!editor.commands.setCellAttribute("align", alignment)) {
+            return false;
+          }
+
           editor.view.focus();
           clearNativeSelectionIfCellSelection(editor);
           return true;
@@ -1485,8 +1563,8 @@ export default function TableControlsOverlay({
                     role="menuitem"
                     disabled={item.disabled}
                     className={`docsera-compact-menu__item${
-                      item.destructive ? " docsera-table-controls-overlay__menu-item--destructive" : ""
-                    }`}
+                      item.selected ? " docsera-compact-menu__item--active" : ""
+                    }${item.destructive ? " docsera-table-controls-overlay__menu-item--destructive" : ""}`}
                     onPointerDown={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
@@ -1511,7 +1589,14 @@ export default function TableControlsOverlay({
                       }
                     }}
                   >
-                    <span>{item.label}</span>
+                    <span className="docsera-compact-menu__item-copy">
+                      <span className="docsera-compact-menu__item-title">{item.label}</span>
+                    </span>
+                    {item.showSelectionIcon ? (
+                      <span className="docsera-compact-menu__item-icon" aria-hidden="true">
+                        {item.selected ? <Check size={14} strokeWidth={2.4} aria-hidden="true" focusable="false" /> : null}
+                      </span>
+                    ) : null}
                   </button>
                 ))}
               </div>

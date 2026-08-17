@@ -199,6 +199,76 @@ describe("PublishedDocumentReader", () => {
     expect(within(table).getByText("Nested block").closest("ul")).toHaveClass("docsera-main__list");
   });
 
+  it("renders table cell and header alignment styles from canonical attrs", () => {
+    const envelope: DocseraDocumentEnvelope = {
+      schemaVersion: 1,
+      document: {
+        type: "doc",
+        content: [
+          {
+            type: "table",
+            content: [
+              {
+                type: "tableRow",
+                content: [
+                  {
+                    type: "tableHeader",
+                    attrs: { colspan: 1, rowspan: 1, colwidth: null, align: "left" },
+                    content: [{ type: "paragraph", content: [{ type: "text", text: "Left header" }] }]
+                  },
+                  {
+                    type: "tableHeader",
+                    attrs: { colspan: 1, rowspan: 1, colwidth: null, align: "center" },
+                    content: [{ type: "paragraph", content: [{ type: "text", text: "Center header" }] }]
+                  },
+                  {
+                    type: "tableHeader",
+                    attrs: { colspan: 1, rowspan: 1, colwidth: null, align: "right" },
+                    content: [{ type: "paragraph", content: [{ type: "text", text: "Right header" }] }]
+                  }
+                ]
+              },
+              {
+                type: "tableRow",
+                content: [
+                  {
+                    type: "tableCell",
+                    attrs: { colspan: 1, rowspan: 1, colwidth: null, align: "left" },
+                    content: [{ type: "paragraph", content: [{ type: "text", text: "Left body" }] }]
+                  },
+                  {
+                    type: "tableCell",
+                    attrs: { colspan: 1, rowspan: 1, colwidth: null, align: "center" },
+                    content: [{ type: "paragraph", content: [{ type: "text", text: "Center body" }] }]
+                  },
+                  {
+                    type: "tableCell",
+                    attrs: { colspan: 1, rowspan: 1, colwidth: null, align: "right" },
+                    content: [{ type: "paragraph", content: [{ type: "text", text: "Right body" }] }]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    };
+
+    renderReader(envelope);
+
+    const reader = screen.getByLabelText("Published page content");
+    const table = within(reader).getByRole("table");
+    const headers = within(table).getAllByRole("columnheader");
+    const cells = within(table).getAllByRole("cell");
+
+    expect(headers[0]).toHaveStyle({ textAlign: "left" });
+    expect(headers[1]).toHaveStyle({ textAlign: "center" });
+    expect(headers[2]).toHaveStyle({ textAlign: "right" });
+    expect(cells[0]).toHaveStyle({ textAlign: "left" });
+    expect(cells[1]).toHaveStyle({ textAlign: "center" });
+    expect(cells[2]).toHaveStyle({ textAlign: "right" });
+  });
+
   it("renders supported nested tables recursively inside their containing blocks", () => {
     const envelope = createNestedTableDocseraDocumentEnvelope();
 

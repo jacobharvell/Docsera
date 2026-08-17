@@ -264,6 +264,49 @@ describe("Docsera document envelope", () => {
     }
   });
 
+  it("preserves table cell and header alignment through canonical round trips", () => {
+    const envelope = {
+      schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+      document: {
+        type: "doc",
+        content: [
+          {
+            type: "table",
+            content: [
+              {
+                type: "tableRow",
+                content: [
+                  {
+                    type: "tableHeader",
+                    attrs: { colspan: 1, rowspan: 1, colwidth: null, align: "center" },
+                    content: [{ type: "paragraph", content: [{ type: "text", text: "Aligned header" }] }]
+                  },
+                  {
+                    type: "tableCell",
+                    attrs: { colspan: 1, rowspan: 1, colwidth: null, align: "right" },
+                    content: [{ type: "paragraph", content: [{ type: "text", text: "Aligned cell" }] }]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    } as const;
+
+    const parsed = parseDocseraDocument(envelope);
+
+    expect(parsed).toEqual({
+      ok: true,
+      envelope,
+      migratedLegacyDocument: false
+    });
+
+    if (parsed.ok) {
+      expect(parseDocseraDocument(serializeDocseraDocument(parsed.envelope))).toEqual(parsed);
+    }
+  });
+
   it("round-trips standard table cells, headers, spans, nested blocks, and inline marks", () => {
     const envelope = createStandardTableDocseraDocumentEnvelope();
     const parsed = parseDocseraDocument(serializeDocseraDocument(envelope));

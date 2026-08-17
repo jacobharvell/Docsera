@@ -1020,6 +1020,74 @@ function getTableCellContent(editor: Editor, rowIndex: number, columnIndex: numb
   return paragraph ? getJsonContentChildren(paragraph) : [];
 }
 
+function getTableCellAttrs(editor: Editor, rowIndex: number, columnIndex: number): Record<string, unknown> {
+  const table = editor.getJSON().content?.find((node) => node.type === "table");
+  if (!table) {
+    throw new Error("Expected a top-level table.");
+  }
+
+  const row = getJsonContentChildren(table).filter((node) => node.type === "tableRow")[rowIndex - 1];
+  if (!row) {
+    throw new Error(`Expected table row ${rowIndex}.`);
+  }
+
+  const cell = getJsonContentChildren(row).filter((node) => node.type === "tableCell" || node.type === "tableHeader")[
+    columnIndex - 1
+  ];
+  if (!cell || typeof cell !== "object" || Array.isArray(cell)) {
+    throw new Error(`Expected table cell ${rowIndex},${columnIndex}.`);
+  }
+
+  return typeof cell.attrs === "object" && cell.attrs && !Array.isArray(cell.attrs) ? (cell.attrs as Record<string, unknown>) : {};
+}
+
+function getTableColumnAlignments(editor: Editor, columnIndex: number): Array<string | null> {
+  const table = editor.getJSON().content?.find((node) => node.type === "table");
+  if (!table) {
+    throw new Error("Expected a top-level table.");
+  }
+
+  return getJsonContentChildren(table)
+    .filter((node) => node.type === "tableRow")
+    .map((row, rowIndex) => {
+      const attrs = getTableCellAttrs(editor, rowIndex + 1, columnIndex);
+      return typeof attrs.align === "string" ? attrs.align : null;
+    });
+}
+
+function createAlignedTableDocument(
+  rows: Array<Array<{ align?: "left" | "center" | "right" | null; cellType?: "tableCell" | "tableHeader"; text: string }>>
+): JSONContent {
+  return {
+    type: "table",
+    content: rows.map((row) => ({
+      type: "tableRow",
+      content: row.map((cell) => {
+        const attrs: Record<string, unknown> = {
+          colspan: 1,
+          colwidth: null,
+          rowspan: 1
+        };
+
+        if (cell.align) {
+          attrs.align = cell.align;
+        }
+
+        return {
+          type: cell.cellType ?? "tableCell",
+          attrs,
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: cell.text }]
+            }
+          ]
+        };
+      })
+    }))
+  };
+}
+
 function getFirstTableCellParagraphContent(editor: Editor): JSONContent[] {
   const table = editor.getJSON().content?.find((node) => node.type === "table");
   for (const row of table ? getJsonContentChildren(table) : []) {
@@ -7343,6 +7411,9 @@ describe("PageEditorHostRuntime", () => {
           "Insert after",
           "Move left",
           "Move right",
+          "Align left",
+          "Align center",
+          "Align right",
           "Copy column",
           "Delete column"
         ]);
@@ -7384,6 +7455,293 @@ describe("PageEditorHostRuntime", () => {
       }
     }
   );
+
+  it.each([
+    {
+      activeLabel: "Align left",
+      columnAlignments: [null, null, null],
+      description: "default column alignment"
+    },
+    {
+      activeLabel: "Align left",
+      columnAlignments: ["center", "left", "right"],
+      description: "mixed column alignment"
+    },
+    {
+      activeLabel: "Align center",
+      columnAlignments: ["center", "center", "center"],
+      description: "uniform center column alignment"
+    },
+    {
+      activeLabel: "Align right",
+      columnAlignments: ["right", "right", "right"],
+      description: "uniform right column alignment"
+    }
+  ] as const)("shows the active %s state for %s", async ({ activeLabel, columnAlignments }) => {
+    const harness = createOverlayOwnerDocumentHarness(1280, 720);
+    const overlayRoot = document.createElement("div");
+    Object.defineProperty(overlayRoot, "ownerDocument", {
+      configurable: true,
+      value: harness.ownerDocument
+    });
+    const { editorReady } = renderRuntime({}, { overlayRoot });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          createAlignedTableDocument([
+            [
+              { cellType: "tableHeader", text: "H1" },
+              { cellType: "tableHeader", text: "H2", align: columnAlignments[0] ?? null }
+            ],
+            [
+              { text: "A1" },
+              { text: "A2", align: columnAlignments[1] ?? null }
+            ],
+            [
+              { text: "B1" },
+              { text: "B2", align: columnAlignments[2] ?? null }
+            ]
+          ])
+        ]
+      });
+    });
+
+    await waitFor(() => {
+      expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+    });
+
+    const geometry = mockTableGeometry(editor, {
+      tableRect: new DOMRect(120, 140, 420, 180),
+      wrapperClientHeight: 180,
+      wrapperClientWidth: 420,
+      wrapperOffsetHeight: 192,
+      wrapperOffsetWidth: 460,
+      wrapperRect: new DOMRect(100, 120, 460, 220),
+      wrapperScrollWidth: 520
+    });
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 5) + 1);
+      });
+
+      const columnButton = await screen.findByRole("button", { name: "Table column 2 options" });
+      fireEvent.click(columnButton);
+      const menu = await screen.findByRole("menu", { name: "Table column menu" });
+
+      expect(within(menu).getByRole("menuitem", { name: activeLabel })).toHaveClass(
+        "docsera-compact-menu__item--active"
+      );
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it.each([
+    { commandLabel: "Align left", alignment: "left" as const },
+    { commandLabel: "Align center", alignment: "center" as const },
+    { commandLabel: "Align right", alignment: "right" as const }
+  ])(
+    "applies %s across the entire column, keeps header cells included, and survives undo plus round-trip persistence",
+    async ({ commandLabel, alignment }) => {
+      const harness = createOverlayOwnerDocumentHarness(1280, 720);
+      const overlayRoot = document.createElement("div");
+      Object.defineProperty(overlayRoot, "ownerDocument", {
+        configurable: true,
+        value: harness.ownerDocument
+      });
+      const { editorReady, onSaveDraft } = renderRuntime({}, { overlayRoot });
+
+      await waitFor(() => {
+        expect(editorReady[0]).toBeDefined();
+      });
+
+      const editor = editorReady[0];
+      await act(async () => {
+        editor.commands.setContent({
+          type: "doc",
+          content: [
+            createAlignedTableDocument([
+              [
+                { cellType: "tableHeader", text: "H1" },
+                { cellType: "tableHeader", text: "H2" },
+                { cellType: "tableHeader", text: "H3" }
+              ],
+              [
+                { text: "A1" },
+                { text: "A2" },
+                { text: "A3" }
+              ],
+              [
+                { text: "B1" },
+                { text: "B2" },
+                { text: "B3" }
+              ]
+            ])
+          ]
+        });
+      });
+
+      await waitFor(() => {
+        expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+      });
+
+      const geometry = mockTableGeometry(editor, {
+        tableRect: new DOMRect(120, 140, 420, 180),
+        wrapperClientHeight: 180,
+        wrapperClientWidth: 420,
+        wrapperOffsetHeight: 192,
+        wrapperOffsetWidth: 460,
+        wrapperRect: new DOMRect(100, 120, 460, 220),
+        wrapperScrollWidth: 520
+      });
+
+      try {
+      const startingDocument = editor.getJSON();
+      const undoDepthBefore = undoDepth(editor.state);
+      await act(async () => {
+        editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 4) + 1);
+      });
+
+        const columnButton = await screen.findByRole("button", { name: "Table column 2 options" });
+        fireEvent.click(columnButton);
+        const menu = await screen.findByRole("menu", { name: "Table column menu" });
+        const menuItem = within(menu).getByRole("menuitem", { name: commandLabel });
+
+        await act(async () => {
+          fireEvent.click(menuItem);
+        });
+
+        await waitFor(() => {
+          expect(getTableMenu(overlayRoot, "column")).toBeNull();
+          expect(document.activeElement).toBe(editor.view.dom);
+        });
+
+        expect(getTableColumnAlignments(editor, 2)).toEqual([alignment, alignment, alignment]);
+        expect(undoDepth(editor.state)).toBe(undoDepthBefore + 1);
+
+        await runAutosave();
+        expect(onSaveDraft).toHaveBeenCalledTimes(1);
+
+        const persistedEnvelope = createEnvelopeFromDocument(editor.getJSON());
+        const reloadOverlayRoot = document.createElement("div");
+        Object.defineProperty(reloadOverlayRoot, "ownerDocument", {
+          configurable: true,
+          value: harness.ownerDocument
+        });
+        const reloaded = renderRuntime({ initialEnvelope: persistedEnvelope }, { overlayRoot: reloadOverlayRoot });
+        try {
+          await waitFor(() => {
+            expect(reloaded.editorReady[0]).toBeDefined();
+          });
+
+          expect(getTableColumnAlignments(reloaded.editorReady[0], 2)).toEqual([alignment, alignment, alignment]);
+        } finally {
+          reloaded.unmount();
+        }
+
+        await act(async () => {
+          editor.commands.undo();
+        });
+
+        expect(editor.getJSON()).toEqual(startingDocument);
+        expect(getTableColumnAlignments(editor, 2)).toEqual([null, null, null]);
+        expect(undoDepth(editor.state)).toBe(undoDepthBefore);
+      } finally {
+        geometry.restore();
+      }
+    }
+  );
+
+  it("does not throw when the editor is destroyed while a column menu is open and the overlay refreshes", async () => {
+    const harness = createOverlayOwnerDocumentHarness(1280, 720);
+    const overlayRoot = document.createElement("div");
+    Object.defineProperty(overlayRoot, "ownerDocument", {
+      configurable: true,
+      value: harness.ownerDocument
+    });
+    const { editorReady } = renderRuntime({}, { overlayRoot });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          createAlignedTableDocument([
+            [
+              { cellType: "tableHeader", text: "H1" },
+              { cellType: "tableHeader", text: "H2" },
+              { cellType: "tableHeader", text: "H3" }
+            ],
+            [
+              { text: "A1" },
+              { text: "A2" },
+              { text: "A3" }
+            ],
+            [
+              { text: "B1" },
+              { text: "B2" },
+              { text: "B3" }
+            ]
+          ])
+        ]
+      });
+    });
+
+    await waitFor(() => {
+      expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+    });
+
+    const geometry = mockTableGeometry(editor, {
+      tableRect: new DOMRect(120, 140, 420, 180),
+      wrapperClientHeight: 180,
+      wrapperClientWidth: 420,
+      wrapperOffsetHeight: 192,
+      wrapperOffsetWidth: 460,
+      wrapperRect: new DOMRect(100, 120, 460, 220),
+      wrapperScrollWidth: 520
+    });
+    let geometryRestored = false;
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 4) + 1);
+      });
+
+      const columnButton = await screen.findByRole("button", { name: "Table column 2 options" });
+      fireEvent.click(columnButton);
+      expect(await screen.findByRole("menu", { name: "Table column menu" })).toBeInTheDocument();
+
+      geometry.restore();
+      geometryRestored = true;
+
+      await act(async () => {
+        editor.destroy();
+      });
+      await waitFor(() => {
+        expect(editor.isDestroyed).toBe(true);
+      });
+
+      await act(async () => {
+        harness.triggerResize();
+      });
+    } finally {
+      if (!geometryRestored) {
+        geometry.restore();
+      }
+    }
+  });
 
   it.each([
     {
@@ -7649,6 +8007,9 @@ describe("PageEditorHostRuntime", () => {
           "Insert after",
           "Move left",
           "Move right",
+          "Align left",
+          "Align center",
+          "Align right",
           "Copy column",
           "Delete column"
         ]);
@@ -8492,6 +8853,9 @@ describe("PageEditorHostRuntime", () => {
           "Insert after",
           "Move left",
           "Move right",
+          "Align left",
+          "Align center",
+          "Align right",
           "Copy column",
           "Delete column"
         ]);

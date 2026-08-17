@@ -5,7 +5,7 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import { useEffect } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { createDocseraEditorExtensions } from "../../shared/editor/schema";
-import { parseDocseraDocument } from "../../shared/editor/document";
+import { DOCSERA_DOCUMENT_SCHEMA_VERSION, parseDocseraDocument } from "../../shared/editor/document";
 import { createDocseraDocumentFixtureCorpus, createSupportedE2DocseraDocumentEnvelope } from "../../shared/editor/documentFixtures";
 import type { JSONContent } from "@tiptap/core";
 
@@ -70,7 +70,15 @@ describe("TipTap runtime compatibility", () => {
         content: parsed.envelope.document as JSONContent
       });
 
-      expect(editor.getJSON()).toEqual(parsed.envelope.document);
+      expect(
+        parseDocseraDocument({
+          schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+          document: editor.getJSON() as typeof parsed.envelope.document
+        })
+      ).toMatchObject({
+        ok: true,
+        envelope: parsed.envelope
+      });
 
       editor.destroy();
     }
