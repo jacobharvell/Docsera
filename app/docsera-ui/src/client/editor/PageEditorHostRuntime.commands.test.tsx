@@ -24,6 +24,7 @@ import { EDITOR_BLOCK_COMMANDS } from "./editorBlockCommands";
 import {
   createEnvelopeFromDocument,
   createOverlayOwnerDocumentHarness,
+  createClipboardData,
   createSuccessPage,
   openLinkSurface,
   openSlashQuery,
@@ -35,6 +36,7 @@ import {
   setOverlayOwnerViewport,
   setParagraphText
 } from "./PageEditorHostRuntime.testUtils";
+import { STRUCTURED_TABLE_CLIPBOARD_PROVENANCE_MIME } from "./tableStructuredClipboard";
 
 function getButtonNames(container: HTMLElement): string[] {
   return within(container)
@@ -55,6 +57,77 @@ function getOptionNames(container: HTMLElement): string[] {
   return within(container)
     .getAllByRole("option")
     .map((option) => option.getAttribute("aria-label") ?? option.textContent?.trim() ?? "");
+}
+
+class MockClipboardItem {
+  data: Record<string, Blob>;
+
+  types: string[];
+
+  static supports(type: string): boolean {
+    if (type === "text/plain" || type === "text/html" || type === "image/png") {
+      return true;
+    }
+
+    if (!type.startsWith("web ")) {
+      return false;
+    }
+
+    const customType = type.slice(4);
+    return customType.includes("/") && !customType.includes(" ");
+  }
+
+  constructor(data: Record<string, Blob>) {
+    this.data = data;
+    this.types = Object.keys(data);
+
+    for (const type of this.types) {
+      if (!MockClipboardItem.supports(type)) {
+        throw new TypeError(`Unsupported clipboard item type: ${type}`);
+      }
+    }
+  }
+}
+
+function installStructuredClipboardWriteHarness() {
+  const clipboardWrite = vi.fn(async (_items: MockClipboardItem[]) => undefined);
+  const clipboardWriteText = vi.fn(async () => undefined);
+  const previousClipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  const previousClipboardItem = (globalThis as { ClipboardItem?: unknown }).ClipboardItem;
+
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: {
+      write: clipboardWrite,
+      writeText: clipboardWriteText
+    }
+  });
+
+  Object.defineProperty(globalThis, "ClipboardItem", {
+    configurable: true,
+    value: MockClipboardItem
+  });
+
+  return {
+    clipboardWrite,
+    clipboardWriteText,
+    restore() {
+      if (previousClipboardDescriptor) {
+        Object.defineProperty(navigator, "clipboard", previousClipboardDescriptor);
+      } else {
+        Reflect.deleteProperty(navigator, "clipboard");
+      }
+
+      if (previousClipboardItem) {
+        Object.defineProperty(globalThis, "ClipboardItem", {
+          configurable: true,
+          value: previousClipboardItem
+        });
+      } else {
+        Reflect.deleteProperty(globalThis, "ClipboardItem");
+      }
+    }
+  };
 }
 
 function installSelectorScrollModel(menu: HTMLElement) {
@@ -182,6 +255,15 @@ function readInlineBox(element: HTMLElement) {
     top,
     width
   };
+}
+
+async function pasteIntoEditorAtCurrentSelection(editor: Editor, html: string, text = html) {
+  await act(async () => {
+    editor.commands.focus(undefined, { scrollIntoView: false });
+    fireEvent.paste(editor.view.dom, {
+      clipboardData: createClipboardData(html, text)
+    } as never);
+  });
 }
 
 async function typeTextThroughBrowserInput(editor: Editor, text: string) {
@@ -849,6 +931,41 @@ function getCellSelectionRect(editor: Editor): { bottom: number; left: number; r
     selection.$anchorCell.pos - table.start,
     selection.$headCell.pos - table.start
   );
+}
+
+function getFirstStructuredTableContext(editor: Editor) {
+  const selection = editor.state.selection;
+  const table = findTable(selection.$from);
+  if (!table) {
+    throw new Error("Expected the selection to be inside a table.");
+  }
+
+  return {
+    ...table,
+    map: TableMap.get(table.node)
+  };
+}
+
+function selectStructuredTableRow(editor: Editor, rowIndex: number) {
+  const table = getFirstStructuredTableContext(editor);
+  const boundedRowIndex = Math.max(0, Math.min(rowIndex, table.map.height - 1));
+  const firstCellPos = table.start + table.map.positionAt(boundedRowIndex, 0, table.node);
+  const lastCellPos = table.start + table.map.positionAt(boundedRowIndex, table.map.width - 1, table.node);
+  const tr = editor.state.tr;
+
+  tr.setSelection(CellSelection.rowSelection(tr.doc.resolve(firstCellPos), tr.doc.resolve(lastCellPos)));
+  editor.view.dispatch(tr);
+}
+
+function selectStructuredTableColumn(editor: Editor, columnIndex: number) {
+  const table = getFirstStructuredTableContext(editor);
+  const boundedColumnIndex = Math.max(0, Math.min(columnIndex, table.map.width - 1));
+  const firstCellPos = table.start + table.map.positionAt(0, boundedColumnIndex, table.node);
+  const lastCellPos = table.start + table.map.positionAt(table.map.height - 1, boundedColumnIndex, table.node);
+  const tr = editor.state.tr;
+
+  tr.setSelection(CellSelection.colSelection(tr.doc.resolve(firstCellPos), tr.doc.resolve(lastCellPos)));
+  editor.view.dispatch(tr);
 }
 
 function mockTableGeometry(
@@ -6792,6 +6909,7 @@ describe("PageEditorHostRuntime", () => {
           "Insert after",
           "Move up",
           "Move down",
+          "Copy row",
           "Delete row"
         ]);
         const menuItem = within(menu).getByRole("menuitem", { name: itemLabel });
@@ -6916,6 +7034,7 @@ describe("PageEditorHostRuntime", () => {
           "Insert after",
           "Move left",
           "Move right",
+          "Copy column",
           "Delete column"
         ]);
         const menuItem = within(menu).getByRole("menuitem", { name: itemLabel });
@@ -7045,6 +7164,7 @@ describe("PageEditorHostRuntime", () => {
           "Insert after",
           "Move up",
           "Move down",
+          "Copy row",
           "Delete row"
         ]);
         expect(getCellSelectionRect(editor)).toEqual({
@@ -7220,6 +7340,7 @@ describe("PageEditorHostRuntime", () => {
           "Insert after",
           "Move left",
           "Move right",
+          "Copy column",
           "Delete column"
         ]);
         expect(getCellSelectionRect(editor)).toEqual({
@@ -7304,6 +7425,354 @@ describe("PageEditorHostRuntime", () => {
     }
   );
 
+  it("copies a row as structured clipboard data, truncates on paste into a smaller row, and falls back to ordinary paste after expiry", async () => {
+    const clipboardHarness = installStructuredClipboardWriteHarness();
+    const harness = createOverlayOwnerDocumentHarness(1280, 720);
+    const overlayRoot = document.createElement("div");
+    Object.defineProperty(overlayRoot, "ownerDocument", {
+      configurable: true,
+      value: harness.ownerDocument
+    });
+    const { editorReady } = renderRuntime({}, { overlayRoot });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    let currentTime = 1_700_000_000_000;
+    const dateNowSpy = vi.spyOn(Date, "now").mockImplementation(() => currentTime);
+    const rowProvenanceToken = "11111111-1111-4111-8111-111111111111";
+    const randomUUIDSpy = vi.spyOn(crypto, "randomUUID").mockReturnValue(rowProvenanceToken);
+
+    try {
+      await act(async () => {
+        editor.commands.setContent({
+          type: "doc",
+          content: [
+            createTextTableNode([["Src1", "Src2", "Src3", "Src4"]])
+          ]
+        });
+      });
+
+      await waitFor(() => {
+        expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+      });
+
+      const geometry = mockTableGeometry(editor, {
+        tableRect: new DOMRect(120, 140, 560, 96),
+        wrapperClientHeight: 96,
+        wrapperClientWidth: 560,
+        wrapperOffsetHeight: 108,
+        wrapperOffsetWidth: 600,
+        wrapperRect: new DOMRect(100, 120, 600, 160),
+        wrapperScrollWidth: 640
+      });
+
+      const prepareRowDestination = async () => {
+        await act(async () => {
+          editor.commands.setContent({
+            type: "doc",
+            content: [
+              createTextTableNode([["Dst1", "Dst2"]])
+            ]
+          });
+        });
+
+        await waitFor(() => {
+          expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+        });
+
+        await act(async () => {
+          editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 0) + 1);
+        });
+        selectStructuredTableRow(editor, 0);
+        await act(async () => {
+          editor.commands.focus(undefined, { scrollIntoView: false });
+        });
+      };
+
+      try {
+        await act(async () => {
+          editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 0) + 1);
+        });
+
+        const rowButton = await screen.findByRole("button", { name: "Table row 1 options" });
+        fireEvent.click(rowButton);
+        const menu = await screen.findByRole("menu", { name: "Table row menu" });
+        const copyRowItem = within(menu).getByRole("menuitem", { name: "Copy row" });
+        const sourceDocument = editor.getJSON();
+        const sourceUndoDepth = undoDepth(editor.state);
+        fireEvent.click(copyRowItem);
+
+        await waitFor(() => {
+          expect(clipboardHarness.clipboardWrite).toHaveBeenCalledTimes(1);
+        });
+
+        const writtenClipboardItems = clipboardHarness.clipboardWrite.mock.calls[0]?.[0] as MockClipboardItem[] | undefined;
+        const writtenClipboardItem = writtenClipboardItems?.[0];
+        if (!writtenClipboardItem) {
+          throw new Error("Expected structured row copy to write a clipboard item.");
+        }
+
+        expect(writtenClipboardItem.types).toContain(STRUCTURED_TABLE_CLIPBOARD_PROVENANCE_MIME);
+        expect(writtenClipboardItem.types).toContain("text/plain");
+        expect(MockClipboardItem.supports(STRUCTURED_TABLE_CLIPBOARD_PROVENANCE_MIME)).toBe(true);
+        expect(editor.getJSON()).toEqual(sourceDocument);
+        expect(undoDepth(editor.state)).toBe(sourceUndoDepth);
+        expect(getTableMenu(overlayRoot, "row")).toBeNull();
+        await prepareRowDestination();
+
+        const matchingClipboardText = "Src1\nSrc2\nSrc3\nSrc4";
+        const beforeDocument = editor.getJSON();
+        const beforeUndoDepth = undoDepth(editor.state);
+        const matchingTransactions = captureCommandTransactions(editor, () => {
+          fireEvent.paste(editor.view.dom, {
+            clipboardData: createClipboardData("<p>Src1</p>", matchingClipboardText, {
+              [STRUCTURED_TABLE_CLIPBOARD_PROVENANCE_MIME]: rowProvenanceToken
+            })
+          } as never);
+        });
+
+        expect(matchingTransactions.some((transaction) => transaction.docChanged)).toBe(true);
+        expect(matchingTransactions.filter((transaction) => transaction.docChanged)).toHaveLength(1);
+        expect(getTableTextGrid(editor)).toEqual([["Src1", "Src2"]]);
+        expect(undoDepth(editor.state)).toBe(beforeUndoDepth + 1);
+
+        await act(async () => {
+          editor.commands.undo();
+        });
+
+        expect(editor.getJSON()).toEqual(beforeDocument);
+
+        await prepareRowDestination();
+
+        const beforeDifferentTextDocument = editor.getJSON();
+        const differentTextTransactions = captureCommandTransactions(editor, () => {
+          fireEvent.paste(editor.view.dom, {
+            clipboardData: createClipboardData("<p>Ignored different text</p>", "Different plain text")
+          } as never);
+        });
+
+        expect(differentTextTransactions.some((transaction) => transaction.docChanged)).toBe(true);
+        expect(differentTextTransactions.filter((transaction) => transaction.docChanged)).toHaveLength(1);
+        expect(editor.state.doc.textContent).toContain("Ignored different text");
+        expect(JSON.stringify(editor.getJSON())).not.toContain("Src1");
+        expect(JSON.stringify(editor.getJSON())).not.toContain("Src2");
+
+        await act(async () => {
+          editor.commands.undo();
+        });
+
+        expect(editor.getJSON()).toEqual(beforeDifferentTextDocument);
+
+        await prepareRowDestination();
+
+        const beforeSameTextDocument = editor.getJSON();
+        const sameTextWithoutProvenanceTransactions = captureCommandTransactions(editor, () => {
+          fireEvent.paste(editor.view.dom, {
+            clipboardData: createClipboardData("<p>Ignored same text</p>", matchingClipboardText)
+          } as never);
+        });
+
+        expect(sameTextWithoutProvenanceTransactions.some((transaction) => transaction.docChanged)).toBe(true);
+        expect(sameTextWithoutProvenanceTransactions.filter((transaction) => transaction.docChanged)).toHaveLength(1);
+        expect(editor.state.doc.textContent).toContain("Ignored same text");
+        expect(JSON.stringify(editor.getJSON())).not.toContain("Src1");
+        expect(JSON.stringify(editor.getJSON())).not.toContain("Src2");
+
+        await act(async () => {
+          editor.commands.undo();
+        });
+
+        expect(editor.getJSON()).toEqual(beforeSameTextDocument);
+
+        await prepareRowDestination();
+
+        const beforeWrongProvenanceDocument = editor.getJSON();
+        const wrongProvenanceTransactions = captureCommandTransactions(editor, () => {
+          fireEvent.paste(editor.view.dom, {
+            clipboardData: createClipboardData("<p>Ignored wrong provenance</p>", matchingClipboardText, {
+              [STRUCTURED_TABLE_CLIPBOARD_PROVENANCE_MIME]: "different-token"
+            })
+          } as never);
+        });
+
+        expect(wrongProvenanceTransactions.some((transaction) => transaction.docChanged)).toBe(true);
+        expect(wrongProvenanceTransactions.filter((transaction) => transaction.docChanged)).toHaveLength(1);
+        expect(editor.state.doc.textContent).toContain("Ignored wrong provenance");
+        expect(JSON.stringify(editor.getJSON())).not.toContain("Src1");
+        expect(JSON.stringify(editor.getJSON())).not.toContain("Src2");
+
+        await act(async () => {
+          editor.commands.undo();
+        });
+
+        expect(editor.getJSON()).toEqual(beforeWrongProvenanceDocument);
+
+        currentTime += 1_000;
+
+        await prepareRowDestination();
+
+        const fallbackBeforeDocument = editor.getJSON();
+        const fallbackTransactions = captureCommandTransactions(editor, () => {
+          fireEvent.paste(editor.view.dom, {
+            clipboardData: createClipboardData("<p>Ignored</p>", "Ignored")
+          } as never);
+        });
+
+        expect(fallbackTransactions.some((transaction) => transaction.docChanged)).toBe(true);
+        expect(fallbackTransactions.filter((transaction) => transaction.docChanged)).toHaveLength(1);
+        expect(editor.state.doc.textContent).toContain("Ignored");
+        expect(JSON.stringify(editor.getJSON())).not.toContain("Src1");
+        expect(JSON.stringify(editor.getJSON())).not.toContain("Src2");
+
+        await act(async () => {
+          editor.commands.undo();
+        });
+
+        expect(editor.getJSON()).toEqual(fallbackBeforeDocument);
+
+        currentTime += 5 * 60 * 1000 + 1;
+
+        await act(async () => {
+          editor.commands.setContent({
+            type: "doc",
+            content: [{ type: "paragraph" }]
+          });
+        });
+
+        await pasteIntoEditorAtCurrentSelection(editor, "<p>Fallback</p>", "Fallback");
+        expect(editor.state.doc.textContent).toBe("Fallback");
+      } finally {
+        geometry.restore();
+      }
+    } finally {
+      clipboardHarness.restore();
+      randomUUIDSpy.mockRestore();
+      dateNowSpy.mockRestore();
+    }
+  });
+
+  it("copies a column as structured clipboard data, truncates on paste into a smaller column, and restores the prior table on undo", async () => {
+    const clipboardHarness = installStructuredClipboardWriteHarness();
+    const harness = createOverlayOwnerDocumentHarness(1280, 720);
+    const overlayRoot = document.createElement("div");
+    Object.defineProperty(overlayRoot, "ownerDocument", {
+      configurable: true,
+      value: harness.ownerDocument
+    });
+    const { editorReady } = renderRuntime({}, { overlayRoot });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          createTextTableNode([["Src1"], ["Src2"], ["Src3"], ["Src4"]])
+        ]
+      });
+    });
+
+    await waitFor(() => {
+      expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+    });
+
+    const geometry = mockTableGeometry(editor, {
+      tableRect: new DOMRect(120, 140, 180, 192),
+      wrapperClientHeight: 192,
+      wrapperClientWidth: 180,
+      wrapperOffsetHeight: 204,
+      wrapperOffsetWidth: 220,
+      wrapperRect: new DOMRect(100, 120, 220, 240),
+      wrapperScrollWidth: 240
+    });
+    const columnProvenanceToken = "22222222-2222-4222-8222-222222222222";
+    const randomUUIDSpy = vi.spyOn(crypto, "randomUUID").mockReturnValue(columnProvenanceToken);
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 0) + 1);
+      });
+
+      const columnButton = await screen.findByRole("button", { name: "Table column 1 options" });
+      fireEvent.click(columnButton);
+      const menu = await screen.findByRole("menu", { name: "Table column menu" });
+      const copyColumnItem = within(menu).getByRole("menuitem", { name: "Copy column" });
+      const sourceDocument = editor.getJSON();
+      const sourceUndoDepth = undoDepth(editor.state);
+      fireEvent.click(copyColumnItem);
+
+      await waitFor(() => {
+        expect(clipboardHarness.clipboardWrite).toHaveBeenCalledTimes(1);
+      });
+
+      const writtenClipboardItems = clipboardHarness.clipboardWrite.mock.calls[0]?.[0] as MockClipboardItem[] | undefined;
+      const writtenClipboardItem = writtenClipboardItems?.[0];
+      if (!writtenClipboardItem) {
+        throw new Error("Expected structured column copy to write a clipboard item.");
+      }
+
+      expect(writtenClipboardItem.types).toContain(STRUCTURED_TABLE_CLIPBOARD_PROVENANCE_MIME);
+      expect(writtenClipboardItem.types).toContain("text/plain");
+      expect(MockClipboardItem.supports(STRUCTURED_TABLE_CLIPBOARD_PROVENANCE_MIME)).toBe(true);
+      expect(editor.getJSON()).toEqual(sourceDocument);
+      expect(undoDepth(editor.state)).toBe(sourceUndoDepth);
+      expect(getTableMenu(overlayRoot, "column")).toBeNull();
+    } finally {
+      geometry.restore();
+      clipboardHarness.restore();
+      randomUUIDSpy.mockRestore();
+    }
+
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          createTextTableNode([["Dst1"], ["Dst2"]])
+        ]
+      });
+    });
+
+    await waitFor(() => {
+      expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+    });
+
+    await act(async () => {
+      editor.commands.setTextSelection(getTableCellParagraphPosition(editor, 0) + 1);
+    });
+    selectStructuredTableColumn(editor, 0);
+    await act(async () => {
+      editor.commands.focus(undefined, { scrollIntoView: false });
+    });
+
+    const matchingClipboardText = "Src1\nSrc2\nSrc3\nSrc4";
+    const beforeDocument = editor.getJSON();
+    const beforeUndoDepth = undoDepth(editor.state);
+    const transactions = captureCommandTransactions(editor, () => {
+      fireEvent.paste(editor.view.dom, {
+        clipboardData: createClipboardData("<p>Src1</p>", matchingClipboardText, {
+          [STRUCTURED_TABLE_CLIPBOARD_PROVENANCE_MIME]: columnProvenanceToken
+        })
+      } as never);
+    });
+
+    expect(transactions.some((transaction) => transaction.docChanged)).toBe(true);
+    expect(transactions.filter((transaction) => transaction.docChanged)).toHaveLength(1);
+    expect(getTableTextGrid(editor)).toEqual([["Src1"], ["Src2"]]);
+    expect(undoDepth(editor.state)).toBe(beforeUndoDepth + 1);
+
+    await act(async () => {
+      editor.commands.undo();
+    });
+
+    expect(editor.getJSON()).toEqual(beforeDocument);
+  });
+
   it.each([
     {
       disabledItemLabel: "Move up",
@@ -7362,6 +7831,7 @@ describe("PageEditorHostRuntime", () => {
           "Insert after",
           "Move up",
           "Move down",
+          "Copy row",
           "Delete row"
         ]);
 
@@ -7442,6 +7912,7 @@ describe("PageEditorHostRuntime", () => {
           "Insert after",
           "Move left",
           "Move right",
+          "Copy column",
           "Delete column"
         ]);
 

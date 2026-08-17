@@ -85,6 +85,7 @@ export const testSuites = [
       "src/client/editor/session/editorSessionGeneration.test.ts",
       "src/client/editor/shadowRootContract.test.tsx",
       "src/client/editor/spikes/EditorRuntimeSpikeOutlet.test.tsx",
+      "src/client/editor/tableStructuredClipboard.test.ts",
       "src/client/editor/tiptapRuntimeCompatibility.test.tsx",
       "src/client/features/workspaces/PageBodyEditor.test.tsx"
     ]

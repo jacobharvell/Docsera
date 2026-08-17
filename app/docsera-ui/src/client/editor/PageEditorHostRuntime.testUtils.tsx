@@ -163,20 +163,18 @@ function renderRuntime(
   };
 }
 
-function createClipboardData(html: string, text = html) {
+export function createClipboardData(html: string, text = html, extraData: Record<string, string> = {}) {
+  const dataEntries = [
+    ["text/html", html],
+    ["text/plain", text],
+    ...Object.entries(extraData)
+  ].filter(([, value]) => typeof value === "string" && value.length > 0) as Array<[string, string]>;
+
   return {
     getData: (type: string) => {
-      if (type === "text/html") {
-        return html;
-      }
-
-      if (type === "text/plain") {
-        return text;
-      }
-
-      return "";
+      return dataEntries.find(([entryType]) => entryType === type)?.[1] ?? "";
     },
-    types: [html ? "text/html" : "", text ? "text/plain" : ""].filter(Boolean)
+    types: dataEntries.map(([type]) => type)
   };
 }
 
@@ -480,7 +478,6 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 export {
-  createClipboardData,
   createEnvelopeFromDocument,
   createOverlayOwnerDocumentHarness,
   createSuccessPage,

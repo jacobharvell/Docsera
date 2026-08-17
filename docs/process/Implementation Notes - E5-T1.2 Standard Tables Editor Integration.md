@@ -37,7 +37,7 @@ Slash invocation inside a table cell remains available and uses the same support
 
 HTML paste still flows through the existing paste sanitizer and TipTap paste parser. Ordinary sanitized external `<table>` content can parse into canonical table JSON at valid top-level positions. Unsafe paste content remains governed by the existing sanitizer; unsafe links and unsafe elements are removed or neutralized before TipTap sees the HTML.
 
-Nested table paste is not blocked solely because the table is nested. The sanitizer still removes unsafe tags, unsafe attributes, and unsafe links before TipTap sees the HTML. No unsanitized table ingestion path, internal structured clipboard payload, alignment persistence, row/column clipboard behavior, or rectangular range paste behavior is introduced.
+Nested table paste is not blocked solely because the table is nested. The sanitizer still removes unsafe tags, unsafe attributes, and unsafe links before TipTap sees the HTML. No unsanitized table ingestion path, alignment persistence, or rectangular range paste behavior is introduced.
 
 ## Top-Level Block Behavior
 
@@ -61,7 +61,7 @@ The table controls overlay is a live active-table surface, not a structural reco
 - the right rail appends exactly one final column at the far-right edge, regardless of the currently active interior cell;
 - the wrapper bottom lane keeps the row rail separated from the horizontal scrollbar lane;
 - this overlay is the foundation that T1.3C extends with legacy row/column pills and basic structural menus;
-- move, copy, alignment, cell-range selection, structured clipboard, and resize handles stay deferred.
+- alignment, cell-range selection, and resize handles stay deferred. Row/column copy-paste now uses the session-scoped clipboard contract added in E5-T1.6B.
 
 ## T1.3C Legacy Row/Column Pills and Basic Structural Menus
 
@@ -79,6 +79,19 @@ E5-T1.3C layers the legacy row/column control affordances onto the live overlay 
 - E5-T1.6A later extends those same menus with `Move up`, `Move down`, `Move left`, and `Move right` actions while preserving the accepted row/column selection-on-open behavior;
 - the menu surface keeps using the live row and column centers derived from the active table DOM, so offscreen controls stay hidden when horizontal scrolling clips them;
 - the Add Row and Add Column rails from T1.3B remain in place and continue to honor wrapper scroll-content coordinates.
+
+## T1.6B Structured Row/Column Clipboard
+
+E5-T1.6B adds session-scoped structured clipboard support for whole-row and whole-column selections while preserving ordinary table editing and normal clipboard behavior.
+
+- row and column menu `Copy` actions store only cell content JSON in the editor session clipboard payload;
+- the structured clipboard write path also publishes an opaque, editor-session provenance marker through the browser clipboard boundary using the supported `web application/x-docsera-structured-table-provenance` custom format so structured paste only claims clipboard content that can be traced back to the corresponding Docsera structured copy;
+- cell attributes, widths, alignment, and other structural styling are intentionally not copied;
+- the payload expires after five minutes of wall-clock time;
+- structured paste only takes precedence when the current selection is a whole row or whole column matching the payload kind and the incoming browser clipboard still carries the matching Docsera provenance marker for that structured copy;
+- structured paste replaces the selected row or column as one ordinary undoable TipTap transaction;
+- source content larger than the destination truncates to the destination dimensions instead of overflowing;
+- ordinary clipboard paste still falls through unchanged when the structured payload is missing, stale, structurally ineligible, or the incoming clipboard cannot prove Docsera provenance, even if the visible plain text happens to match a prior structured copy.
 
 ## Legacy Baseline And Corrections
 
@@ -111,7 +124,7 @@ The table-control surface now uses explicit current Docsera runtime tokens and l
 The following remain deferred to later standard-operation or E7 tasks:
 
 - header toggle UI
-- structured row/column/table clipboard
+- table-level clipboard and broader clipboard interoperability beyond row/column structural selections
 - cross-cell drag selection
 - advanced multi-cell selection presentation
 - column alignment controls or `align` persistence

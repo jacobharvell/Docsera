@@ -1,4 +1,5 @@
-import type { Editor as TiptapEditor } from "@tiptap/core";
+import type { Editor as TiptapEditor, JSONContent } from "@tiptap/core";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
   CellSelection,
   findCellPos,
@@ -17,6 +18,7 @@ import useTableDragSelectionController from "./useTableDragSelectionController";
 
 type TableControlsOverlayProps = {
   editor: TiptapEditor | null;
+  onStructuredTableClipboardCopy: (payload: { cells: JSONContent[][]; kind: "column" | "row" }) => void;
   overlayRoot: HTMLElement;
 };
 
@@ -69,8 +71,8 @@ type TableHandleState = {
   kind: "row" | "column";
 };
 
-type TableRowMenuCommand = "insertBefore" | "insertAfter" | "moveUp" | "moveDown" | "delete";
-type TableColumnMenuCommand = "insertBefore" | "insertAfter" | "moveLeft" | "moveRight" | "delete";
+type TableRowMenuCommand = "insertBefore" | "insertAfter" | "moveUp" | "moveDown" | "copy" | "delete";
+type TableColumnMenuCommand = "insertBefore" | "insertAfter" | "moveLeft" | "moveRight" | "copy" | "delete";
 
 type TableMenuAction<TCommand extends string> = {
   command: TCommand;
@@ -671,6 +673,7 @@ function resolveHandleStateFromTarget(target: EventTarget | null): TableHandleSt
 
 export default function TableControlsOverlay({
   editor,
+  onStructuredTableClipboardCopy,
   overlayRoot,
 }: TableControlsOverlayProps) {
   const [overlayState, setOverlayState] = useState<TableOverlayState | null>(null);
@@ -1092,6 +1095,7 @@ export default function TableControlsOverlay({
             command: "moveDown",
             disabled: menuState.index >= renderLayout.map.height - 1,
           },
+          { label: "Copy row", command: "copy" },
           { label: "Delete row", command: "delete", destructive: true },
         ]
       : null;
@@ -1106,6 +1110,7 @@ export default function TableControlsOverlay({
             command: "moveRight",
             disabled: menuState.index >= renderLayout.map.width - 1,
           },
+          { label: "Copy column", command: "copy" },
           { label: "Delete column", command: "delete", destructive: true },
         ]
       : null;
@@ -1153,7 +1158,6 @@ export default function TableControlsOverlay({
           const nextIndex = command === "moveUp" ? target.index - 1 : target.index + 1;
           if (nextIndex < 0 || nextIndex >= context.map.height) return false;
           editor.view.dispatch(closeHistory(editor.state.tr));
-          const beforeDoc = editor.state.doc;
           const didMove = moveTableRow({
             from: target.index,
             to: nextIndex,
@@ -1168,6 +1172,16 @@ export default function TableControlsOverlay({
           clearNativeSelectionIfCellSelection(editor);
           return true;
         }
+        if (command === "copy") {
+          onStructuredTableClipboardCopy({
+            cells: collectRowClipboardCells(editor, context, target.index),
+            kind: "row"
+          });
+          editor.view.focus();
+          clearNativeSelectionIfCellSelection(editor);
+          return true;
+        }
+
         editor.view.dispatch(closeHistory(editor.state.tr));
         selectRow(editor, context, target.index);
         let result = false;
@@ -1204,7 +1218,6 @@ export default function TableControlsOverlay({
           const nextIndex = command === "moveLeft" ? target.index - 1 : target.index + 1;
           if (nextIndex < 0 || nextIndex >= context.map.width) return false;
           editor.view.dispatch(closeHistory(editor.state.tr));
-          const beforeDoc = editor.state.doc;
           const didMove = moveTableColumn({
             from: target.index,
             to: nextIndex,
@@ -1219,6 +1232,16 @@ export default function TableControlsOverlay({
           clearNativeSelectionIfCellSelection(editor);
           return true;
         }
+        if (command === "copy") {
+          onStructuredTableClipboardCopy({
+            cells: collectColumnClipboardCells(editor, context, target.index),
+            kind: "column"
+          });
+          editor.view.focus();
+          clearNativeSelectionIfCellSelection(editor);
+          return true;
+        }
+
         editor.view.dispatch(closeHistory(editor.state.tr));
         selectColumn(editor, context, target.index);
         let result = false;
@@ -2498,6 +2521,50 @@ function selectRow(editor: TiptapEditor, context: TableContext, rowIndex: number
   editor.view.dispatch(tr);
   editor.view.focus();
   clearNativeSelectionIfCellSelection(editor);
+}
+
+function getStructuredTableCellContent(node: ProseMirrorNode | null | undefined): JSONContent[] {
+  if (!node || (node.type.name !== "tableCell" && node.type.name !== "tableHeader")) {
+    return [];
+  }
+
+  return node.content.toJSON() as JSONContent[];
+}
+
+function collectRowClipboardCells(editor: TiptapEditor, context: TableContext, rowIndex: number): JSONContent[][] {
+  const boundedRowIndex = Math.max(0, Math.min(rowIndex, context.map.height - 1));
+  const cells: JSONContent[][] = [];
+
+  for (let columnIndex = 0; columnIndex < context.map.width; columnIndex += 1) {
+    const relativeCellPos = context.map.map[boundedRowIndex * context.map.width + columnIndex];
+    if (typeof relativeCellPos !== "number") {
+      cells.push([]);
+      continue;
+    }
+
+    const cellNode = editor.state.doc.nodeAt(context.tableStart + relativeCellPos);
+    cells.push(getStructuredTableCellContent(cellNode));
+  }
+
+  return cells;
+}
+
+function collectColumnClipboardCells(editor: TiptapEditor, context: TableContext, columnIndex: number): JSONContent[][] {
+  const boundedColumnIndex = Math.max(0, Math.min(columnIndex, context.map.width - 1));
+  const cells: JSONContent[][] = [];
+
+  for (let rowIndex = 0; rowIndex < context.map.height; rowIndex += 1) {
+    const relativeCellPos = context.map.map[rowIndex * context.map.width + boundedColumnIndex];
+    if (typeof relativeCellPos !== "number") {
+      cells.push([]);
+      continue;
+    }
+
+    const cellNode = editor.state.doc.nodeAt(context.tableStart + relativeCellPos);
+    cells.push(getStructuredTableCellContent(cellNode));
+  }
+
+  return cells;
 }
 
 function shouldFlipRowMenu(layout: TableLayout, rowIndex: number, ownerWindow: Window): boolean {

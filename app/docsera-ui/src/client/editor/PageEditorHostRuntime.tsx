@@ -20,6 +20,14 @@ import {
 } from "./editorBlockCommands";
 import { resolveHoverTargetBlockIndex } from "./editorBlockHover";
 import { sanitizeDocseraPastedHTML, sanitizeDocseraPastedText } from "./pasteSanitizer";
+import {
+  createStructuredTableClipboardPayload,
+  createStructuredTableClipboardItemData,
+  doesStructuredTableClipboardDataMatchPayload,
+  isFreshStructuredTableClipboardPayload,
+  tryApplyStructuredTableClipboardPaste,
+  type StructuredTableClipboardPayload
+} from "./tableStructuredClipboard";
 import type { PageBodySaveResult } from "../shared/types/docsera";
 import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import { CellSelection } from "@tiptap/pm/tables";
@@ -2558,11 +2566,68 @@ export function PageEditorHostRuntime({
   const blockTurnIntoMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const blockTurnIntoTriggerRef = useRef<HTMLButtonElement | null>(null);
   const blockActionMenuSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const structuredTableClipboardRef = useRef<StructuredTableClipboardPayload | null>(null);
+
+  const handleStructuredTableClipboardCopy = useCallback(
+    (payload: { cells: JSONContent[][]; kind: "column" | "row" }) => {
+      const nextPayload = createStructuredTableClipboardPayload(payload.kind, payload.cells);
+      structuredTableClipboardRef.current = nextPayload;
+
+      const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
+      if (!clipboard) {
+        return;
+      }
+
+      void (async () => {
+        if (typeof clipboard.write === "function" && typeof ClipboardItem === "function") {
+          try {
+            await clipboard.write([new ClipboardItem(createStructuredTableClipboardItemData(nextPayload))]);
+            return;
+          } catch {
+            // Fall back to the plain-text clipboard path when structured clipboard writing is unavailable.
+          }
+        }
+
+        if (typeof clipboard.writeText === "function") {
+          await clipboard.writeText(nextPayload.clipboardText).catch(() => undefined);
+        }
+      })();
+    },
+    []
+  );
 
   const editorProps = useMemo(
     () => ({
       transformPastedHTML: sanitizeDocseraPastedHTML,
       transformPastedText: sanitizeDocseraPastedText,
+      handleDOMEvents: {
+        paste: (view: Editor["view"], event: ClipboardEvent) => {
+          if (!editorRef.current || !editableRef.current) {
+            return false;
+          }
+
+          const clipboardPayload = structuredTableClipboardRef.current;
+          if (!clipboardPayload) {
+            return false;
+          }
+
+          if (!isFreshStructuredTableClipboardPayload(clipboardPayload)) {
+            structuredTableClipboardRef.current = null;
+            return false;
+          }
+
+          if (!doesStructuredTableClipboardDataMatchPayload(event.clipboardData, clipboardPayload)) {
+            return false;
+          }
+
+          if (!tryApplyStructuredTableClipboardPaste(view, clipboardPayload)) {
+            return false;
+          }
+
+          event.preventDefault();
+          return true;
+        }
+      },
       handleKeyDown: (_view: unknown, event: KeyboardEvent) => {
         const runtimeEditor = editorRef.current;
         if (!runtimeEditor || !editableRef.current) {
@@ -5728,7 +5793,11 @@ export function PageEditorHostRuntime({
               ownerWindow={overlayOwnerWindow}
               overlayRoot={overlayRoot}
             />
-            <TableControlsOverlay editor={editor} overlayRoot={overlayRoot} />
+            <TableControlsOverlay
+              editor={editor}
+              onStructuredTableClipboardCopy={handleStructuredTableClipboardCopy}
+              overlayRoot={overlayRoot}
+            />
           </div>,
           overlayRoot
         )}
