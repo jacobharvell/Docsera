@@ -303,6 +303,36 @@ function dispatchPointerEvent(
   target.dispatchEvent(event);
 }
 
+function dispatchMouseEvent(
+  target: EventTarget,
+  type: "mousedown" | "mousemove" | "mouseup" | "click",
+  input: {
+    button?: number;
+    buttons?: number;
+    clientX: number;
+    clientY: number;
+  }
+) {
+  const event = new window.MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    button: input.button ?? 0,
+    buttons: input.buttons ?? 0,
+    clientX: input.clientX,
+    clientY: input.clientY
+  });
+
+  Object.defineProperties(event, {
+    button: { configurable: true, value: input.button ?? 0 },
+    buttons: { configurable: true, value: input.buttons ?? 0 },
+    clientX: { configurable: true, value: input.clientX },
+    clientY: { configurable: true, value: input.clientY }
+  });
+
+  target.dispatchEvent(event);
+}
+
 function withBoxedTableMapRects<T>(run: () => Promise<T>): Promise<T> {
   const originalGet = TableMap.get.bind(TableMap);
   const boxedNumber = (value: number): number => new Number(value) as unknown as number;
@@ -566,38 +596,32 @@ function setCollapsedNativeSelection(textNode: Text, offset: number): void {
 async function dragTableSelection(
   startCell: HTMLTableCellElement,
   endCell: HTMLTableCellElement,
-  pointerId: number
+  _pointerId: number
 ): Promise<void> {
   await act(async () => {
     startCell.focus();
-    dispatchPointerEvent(startCell, "pointerdown", {
+    dispatchMouseEvent(startCell, "mousedown", {
       button: 0,
       buttons: 1,
       clientX: startCell.getBoundingClientRect().left + 8,
-      clientY: startCell.getBoundingClientRect().top + 8,
-      pointerId,
-      pointerType: "mouse"
+      clientY: startCell.getBoundingClientRect().top + 8
     });
   });
 
   await act(async () => {
-    dispatchPointerEvent(document, "pointermove", {
+    dispatchMouseEvent(endCell, "mousemove", {
       buttons: 1,
       clientX: endCell.getBoundingClientRect().left + 8,
-      clientY: endCell.getBoundingClientRect().top + 8,
-      pointerId,
-      pointerType: "mouse"
+      clientY: endCell.getBoundingClientRect().top + 8
     });
   });
 
   await act(async () => {
-    dispatchPointerEvent(document, "pointerup", {
+    dispatchMouseEvent(endCell, "mouseup", {
       button: 0,
       buttons: 0,
       clientX: endCell.getBoundingClientRect().left + 8,
-      clientY: endCell.getBoundingClientRect().top + 8,
-      pointerId,
-      pointerType: "mouse"
+      clientY: endCell.getBoundingClientRect().top + 8
     });
   });
 }
@@ -792,7 +816,6 @@ describe("PageEditorHostRuntime table drag selection", () => {
 
     const editor = editorReady[0];
     const proseMirror = editor.view.dom;
-    const tableWrapper = getTableWrapper(proseMirror);
     const geometry = installTableGeometry({
       editor: proseMirror,
       left: 120,
@@ -805,52 +828,126 @@ describe("PageEditorHostRuntime table drag selection", () => {
 
     try {
       const firstCell = getTableCell(proseMirror, 1, 1);
-      const secondCell = getTableCell(proseMirror, 1, 2);
+      const secondCell = getTableCell(proseMirror, 2, 2);
+      const firstCellText = getTableCellTextNode(proseMirror, 1, 1);
+      const editorRoot = proseMirror.ownerDocument;
+      const firstCellStartX = firstCell.getBoundingClientRect().left + 8;
+      const firstCellStartY = firstCell.getBoundingClientRect().top + 8;
+      const firstCellDragX = firstCell.getBoundingClientRect().left + 48;
+      const firstCellDragY = firstCell.getBoundingClientRect().top + 8;
+      const secondCellDragX = secondCell.getBoundingClientRect().left + 8;
+      const secondCellDragY = secondCell.getBoundingClientRect().top + 8;
+
       await act(async () => {
         firstCell.focus();
         dispatchPointerEvent(firstCell, "pointerdown", {
           button: 0,
           buttons: 1,
-          clientX: firstCell.getBoundingClientRect().left + 8,
-          clientY: firstCell.getBoundingClientRect().top + 8,
+          clientX: firstCellStartX,
+          clientY: firstCellStartY,
           pointerId: 3,
           pointerType: "mouse"
+        });
+        dispatchMouseEvent(firstCell, "mousedown", {
+          button: 0,
+          buttons: 1,
+          clientX: firstCellStartX,
+          clientY: firstCellStartY
         });
       });
 
       expect(editor.state.selection instanceof CellSelection).toBe(false);
-      expect(tableWrapper).not.toHaveAttribute("data-docsera-table-drag-selection-active", "true");
 
       await act(async () => {
-        dispatchPointerEvent(document, "pointermove", {
+        dispatchMouseEvent(firstCell, "mousemove", {
           buttons: 1,
-          clientX: secondCell.getBoundingClientRect().left + 8,
-          clientY: secondCell.getBoundingClientRect().top + 8,
-          pointerId: 3,
-          pointerType: "mouse"
+          clientX: firstCellDragX,
+          clientY: firstCellDragY
+        });
+        const selection = window.getSelection();
+        if (!selection) {
+          throw new Error("Expected the native selection API to be available.");
+        }
+
+        selection.removeAllRanges();
+        const range = document.createRange();
+        range.setStart(firstCellText, 0);
+        range.setEnd(firstCellText, Math.min(4, firstCellText.textContent?.length ?? 0));
+        selection.addRange(range);
+      });
+
+      expect(editor.state.selection instanceof CellSelection).toBe(false);
+      expect(getNativeSelectionState()?.rangeCount).toBe(1);
+      expect(getNativeSelectionState()?.text).toBe("R1C1");
+
+      await act(async () => {
+        dispatchMouseEvent(editorRoot, "mousemove", {
+          buttons: 1,
+          clientX: secondCellDragX,
+          clientY: secondCellDragY
         });
       });
 
       await waitFor(() => {
         expect(editor.state.selection instanceof CellSelection).toBe(true);
       });
-      expect(tableWrapper).toHaveAttribute("data-docsera-table-drag-selection-active", "true");
       await act(async () => {
-        dispatchPointerEvent(document, "pointerup", {
+        dispatchMouseEvent(editorRoot, "mouseup", {
           button: 0,
           buttons: 0,
-          clientX: secondCell.getBoundingClientRect().left + 8,
-          clientY: secondCell.getBoundingClientRect().top + 8,
-          pointerId: 3,
-          pointerType: "mouse"
+          clientX: secondCellDragX,
+          clientY: secondCellDragY
         });
       });
 
+      expect(editor.state.selection instanceof CellSelection).toBe(true);
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it("uses the editor root for the stock mouse drag lifecycle inside a shadow root", async () => {
+    const { container, editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createTableDocument(3, 3))
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const shadowHost = document.createElement("div");
+    document.body.append(shadowHost);
+    const shadowRoot = shadowHost.attachShadow({ mode: "open" });
+    shadowRoot.append(container);
+    editorReady[0]?.view.updateRoot();
+
+    const editor = editorReady[0];
+    const proseMirror = editor.view.dom;
+    const geometry = installTableGeometry({
+      editor: proseMirror,
+      left: 120,
+      top: 140,
+      rows: 3,
+      columns: 3,
+      cellWidth: 120,
+      cellHeight: 56
+    });
+
+    try {
+      expect(editor.view.root).toBe(shadowRoot);
+      await dragTableSelection(getTableCell(proseMirror, 1, 1), getTableCell(proseMirror, 2, 2), 33);
+
       await waitFor(() => {
-        expect(getNativeSelectionState()?.rangeCount ?? 0).toBe(0);
+        expect(getCellSelectionRect(editor)).toEqual({
+          bottom: 2,
+          left: 0,
+          right: 2,
+          top: 0
+        });
       });
     } finally {
       geometry.restore();
+      shadowHost.remove();
     }
   });
 
@@ -890,15 +987,19 @@ describe("PageEditorHostRuntime table drag selection", () => {
           pointerId: 9,
           pointerType: "mouse"
         });
+        dispatchMouseEvent(startCell, "mousedown", {
+          button: 0,
+          buttons: 1,
+          clientX: startCell.getBoundingClientRect().left + 8,
+          clientY: startCell.getBoundingClientRect().top + 8
+        });
       });
 
       await act(async () => {
-        dispatchPointerEvent(document, "pointermove", {
+        dispatchMouseEvent(edgeCell, "mousemove", {
           buttons: 1,
-          clientX: getTableCell(proseMirror, 2, 3).getBoundingClientRect().left + 8,
-          clientY: getTableCell(proseMirror, 2, 3).getBoundingClientRect().top + 8,
-          pointerId: 9,
-          pointerType: "mouse"
+          clientX: edgeCell.getBoundingClientRect().left + 8,
+          clientY: edgeCell.getBoundingClientRect().top + 8
         });
       });
 
@@ -913,12 +1014,10 @@ describe("PageEditorHostRuntime table drag selection", () => {
       expect(editor.state.selection instanceof CellSelection).toBe(true);
 
       await act(async () => {
-        dispatchPointerEvent(document, "pointermove", {
+        dispatchMouseEvent(edgeCell, "mousemove", {
           buttons: 1,
           clientX: edgeCell.getBoundingClientRect().left + 8,
-          clientY: edgeCell.getBoundingClientRect().top + 8,
-          pointerId: 9,
-          pointerType: "mouse"
+          clientY: edgeCell.getBoundingClientRect().top + 8
         });
       });
 
@@ -927,12 +1026,10 @@ describe("PageEditorHostRuntime table drag selection", () => {
       });
 
       await act(async () => {
-        dispatchPointerEvent(document, "pointermove", {
+        dispatchMouseEvent(reverseCell, "mousemove", {
           buttons: 1,
           clientX: reverseCell.getBoundingClientRect().left + 8,
-          clientY: reverseCell.getBoundingClientRect().top + 8,
-          pointerId: 9,
-          pointerType: "mouse"
+          clientY: reverseCell.getBoundingClientRect().top + 8
         });
       });
 
@@ -941,19 +1038,16 @@ describe("PageEditorHostRuntime table drag selection", () => {
       });
 
       await act(async () => {
-        dispatchPointerEvent(document, "pointerup", {
+        dispatchMouseEvent(reverseCell, "mouseup", {
           button: 0,
           buttons: 0,
           clientX: reverseCell.getBoundingClientRect().left + 8,
-          clientY: reverseCell.getBoundingClientRect().top + 8,
-          pointerId: 9,
-          pointerType: "mouse"
+          clientY: reverseCell.getBoundingClientRect().top + 8
         });
       });
 
       await waitFor(() => {
         expect(editor.state.selection instanceof CellSelection).toBe(true);
-        expect(getNativeSelectionState()?.rangeCount ?? 0).toBe(0);
       });
     } finally {
       geometry.restore();
@@ -1040,7 +1134,6 @@ describe("PageEditorHostRuntime table drag selection", () => {
 
       await waitFor(() => {
         expect(editor.state.selection instanceof CellSelection).toBe(true);
-        expect(getNativeSelectionState()?.rangeCount ?? 0).toBe(0);
       });
 
       const targetCell = getTableCell(proseMirror, 2, 2);
@@ -1131,11 +1224,10 @@ describe("PageEditorHostRuntime table drag selection", () => {
         expect(getNativeSelectionState()?.text).toBe("2!C");
       });
 
-      await dragTableSelection(getTableCell(proseMirror, 2, 2), getTableCell(proseMirror, 2, 3), 18);
+      await dragTableSelection(getTableCell(proseMirror, 2, 2), getTableCell(proseMirror, 1, 3), 18);
 
       await waitFor(() => {
         expect(editor.state.selection instanceof CellSelection).toBe(true);
-        expect(getNativeSelectionState()?.rangeCount ?? 0).toBe(0);
       });
     } finally {
       geometry.restore();
@@ -1394,7 +1486,6 @@ describe("PageEditorHostRuntime table drag selection", () => {
 
       await waitFor(() => {
         expect(editor.state.selection instanceof CellSelection).toBe(true);
-        expect(getNativeSelectionState()?.rangeCount ?? 0).toBe(0);
         expect(getNormalizedSelectedTableCellCoordinates(editor)).toEqual([
           { columnIndex: 1, rowIndex: 0 },
           { columnIndex: 2, rowIndex: 0 },

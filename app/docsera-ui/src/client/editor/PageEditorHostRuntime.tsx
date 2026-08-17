@@ -5077,11 +5077,6 @@ export function PageEditorHostRuntime({
         .docsera-editor-runtime__surface .ProseMirror table th {
           font-weight: 700;
         }
-        .docsera-editor-runtime__surface .ProseMirror .tableWrapper[data-docsera-table-drag-selection-active="true"],
-        .docsera-editor-runtime__surface .ProseMirror .tableWrapper[data-docsera-table-drag-selection-active="true"] * {
-          -webkit-user-select: none;
-          user-select: none;
-        }
         .docsera-editor-runtime__surface .ProseMirror table td.selectedCell::after,
         .docsera-editor-runtime__surface .ProseMirror table th.selectedCell::after,
         .docsera-editor-runtime__surface .ProseMirror table td.docsera-table-selection-outline::after,

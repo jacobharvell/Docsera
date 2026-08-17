@@ -4,7 +4,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import type { Editor, JSONContent } from "@tiptap/core";
 import { CellSelection, findTable, moveTableColumn, moveTableRow, TableMap } from "@tiptap/pm/tables";
-import { undoDepth } from "@tiptap/pm/history";
+import { closeHistory, undoDepth } from "@tiptap/pm/history";
 import { TextSelection } from "@tiptap/pm/state";
 import type { DocseraTiptapDocument } from "../../shared/editor/document";
 import { createEmptyDocseraDocumentEnvelope } from "../../shared/editor/document";
@@ -470,6 +470,42 @@ function createTextTableNode(rows: string[][]) {
   };
 }
 
+type TableTextCellSpec = {
+  marks?: JSONContent["marks"];
+  text: string;
+};
+
+function createStyledTextTableNode(rows: TableTextCellSpec[][]) {
+  return {
+    type: "table",
+    content: rows.map((row) => ({
+      type: "tableRow",
+      content: row.map((cell) => ({
+        type: "tableCell",
+        attrs: {
+          colspan: 1,
+          rowspan: 1,
+          colwidth: null
+        },
+        content: cell.text
+          ? [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "text",
+                    text: cell.text,
+                    ...(cell.marks ? { marks: cell.marks } : {})
+                  }
+                ]
+              }
+            ]
+          : [{ type: "paragraph" }]
+      }))
+    }))
+  };
+}
+
 type TableCellSpec = {
   cellType: "tableCell" | "tableHeader";
   colwidth: number[] | null;
@@ -669,6 +705,200 @@ function getTableCellParagraphPositions(editor: Editor): number[] {
   return positions;
 }
 
+function getTableCellParagraphPositionAt(editor: Editor, rowIndex: number, columnIndex: number): number {
+  let tablePos: number | null = null;
+  let tableNode: any = null;
+
+  editor.state.doc.descendants((node, pos) => {
+    if (tablePos !== null || node.type.name !== "table") {
+      return tablePos === null;
+    }
+
+    tablePos = pos;
+    tableNode = node;
+    return false;
+  });
+
+  if (tablePos === null || !tableNode) {
+    throw new Error("Expected a table element.");
+  }
+
+  const map = TableMap.get(tableNode);
+  const tableStart = tablePos + 1;
+  const cellPos = tableStart + map.positionAt(rowIndex - 1, columnIndex - 1, tableNode);
+  return cellPos;
+}
+
+function getTableCellTextPositionAt(editor: Editor, rowIndex: number, columnIndex: number): number {
+  const table = getTableElement(editor);
+  if (!table) {
+    throw new Error("Expected a table element.");
+  }
+
+  const row = table.querySelectorAll("tr")[rowIndex - 1];
+  if (!(row instanceof HTMLTableRowElement)) {
+    throw new Error(`Expected table row ${rowIndex}.`);
+  }
+
+  const cell = row.querySelectorAll("th,td")[columnIndex - 1];
+  if (!(cell instanceof HTMLTableCellElement)) {
+    throw new Error(`Expected table cell ${rowIndex},${columnIndex}.`);
+  }
+
+  const firstText = cell.querySelector("p")?.firstChild;
+  if (!(firstText instanceof Text)) {
+    throw new Error(`Expected text in table cell ${rowIndex},${columnIndex}.`);
+  }
+
+  return editor.view.posAtDOM(firstText, 0);
+}
+
+function getTableCellElement(editor: Editor, rowIndex: number, columnIndex: number): HTMLTableCellElement {
+  const table = getTableElement(editor);
+  if (!table) {
+    throw new Error("Expected a table element.");
+  }
+
+  const row = table.querySelectorAll("tr")[rowIndex - 1];
+  if (!(row instanceof HTMLTableRowElement)) {
+    throw new Error(`Expected table row ${rowIndex}.`);
+  }
+
+  const cell = row.querySelectorAll("th,td")[columnIndex - 1];
+  if (!(cell instanceof HTMLTableCellElement)) {
+    throw new Error(`Expected table cell ${rowIndex},${columnIndex}.`);
+  }
+
+  return cell;
+}
+
+function dispatchPointerEvent(
+  target: EventTarget,
+  type: "pointerdown" | "pointermove" | "pointerup",
+  input: {
+    button?: number;
+    buttons?: number;
+    clientX: number;
+    clientY: number;
+    pointerId?: number;
+    pointerType?: string;
+  }
+) {
+  const eventInit = {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    button: input.button ?? 0,
+    buttons: input.buttons ?? 0,
+    clientX: input.clientX,
+    clientY: input.clientY,
+    pointerId: input.pointerId ?? 1,
+    pointerType: input.pointerType ?? "mouse"
+  };
+  const event =
+    typeof window.PointerEvent === "function"
+      ? new window.PointerEvent(type, eventInit)
+      : new window.MouseEvent(type, eventInit);
+
+  Object.defineProperties(event, {
+    button: { configurable: true, value: eventInit.button },
+    buttons: { configurable: true, value: eventInit.buttons },
+    clientX: { configurable: true, value: eventInit.clientX },
+    clientY: { configurable: true, value: eventInit.clientY },
+    pointerId: { configurable: true, value: eventInit.pointerId },
+    pointerType: { configurable: true, value: eventInit.pointerType }
+  });
+
+  target.dispatchEvent(event);
+}
+
+function dispatchMouseEvent(
+  target: EventTarget,
+  type: "mousedown" | "mousemove" | "mouseup",
+  input: {
+    button?: number;
+    buttons?: number;
+    clientX: number;
+    clientY: number;
+  }
+) {
+  const event = new window.MouseEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    button: input.button ?? 0,
+    buttons: input.buttons ?? 0,
+    clientX: input.clientX,
+    clientY: input.clientY
+  });
+
+  Object.defineProperties(event, {
+    button: { configurable: true, value: input.button ?? 0 },
+    buttons: { configurable: true, value: input.buttons ?? 0 },
+    clientX: { configurable: true, value: input.clientX },
+    clientY: { configurable: true, value: input.clientY }
+  });
+
+  target.dispatchEvent(event);
+}
+
+async function dragTableSelection(
+  startCell: HTMLTableCellElement,
+  endCell: HTMLTableCellElement,
+  pointerId: number,
+  root: Document | ShadowRoot = startCell.ownerDocument
+): Promise<void> {
+  await act(async () => {
+    startCell.focus();
+    dispatchPointerEvent(startCell, "pointerdown", {
+      button: 0,
+      buttons: 1,
+      clientX: startCell.getBoundingClientRect().left + 8,
+      clientY: startCell.getBoundingClientRect().top + 8,
+      pointerId,
+      pointerType: "mouse"
+    });
+    dispatchMouseEvent(startCell, "mousedown", {
+      button: 0,
+      buttons: 1,
+      clientX: startCell.getBoundingClientRect().left + 8,
+      clientY: startCell.getBoundingClientRect().top + 8
+    });
+  });
+
+  await act(async () => {
+    dispatchMouseEvent(root, "mousemove", {
+      buttons: 1,
+      clientX: endCell.getBoundingClientRect().left + 8,
+      clientY: endCell.getBoundingClientRect().top + 8
+    });
+    dispatchPointerEvent(root, "pointermove", {
+      buttons: 1,
+      clientX: endCell.getBoundingClientRect().left + 8,
+      clientY: endCell.getBoundingClientRect().top + 8,
+      pointerId,
+      pointerType: "mouse"
+    });
+  });
+
+  await act(async () => {
+    dispatchMouseEvent(root, "mouseup", {
+      button: 0,
+      buttons: 0,
+      clientX: endCell.getBoundingClientRect().left + 8,
+      clientY: endCell.getBoundingClientRect().top + 8
+    });
+    dispatchPointerEvent(root, "pointerup", {
+      button: 0,
+      buttons: 0,
+      clientX: endCell.getBoundingClientRect().left + 8,
+      clientY: endCell.getBoundingClientRect().top + 8,
+      pointerId,
+      pointerType: "mouse"
+    });
+  });
+}
+
 function getTableCellParagraphPosition(editor: Editor, cellIndex: number): number {
   const positions = getTableCellParagraphPositions(editor);
   const position = positions[cellIndex];
@@ -739,8 +969,55 @@ async function selectFirstTableCellText(editor: Editor, text: string) {
   await selectText(editor, paragraphPosition + 1, paragraphPosition + 1 + text.length);
 }
 
+function createMutableClipboardData() {
+  const storedData = new Map<string, string>();
+  const clipboardData = {
+    types: [] as string[],
+    clearData(type?: string) {
+      if (typeof type === "string") {
+        storedData.delete(type);
+      } else {
+        storedData.clear();
+      }
+
+      clipboardData.types = Array.from(storedData.keys());
+    },
+    getData(type: string) {
+      return storedData.get(type) ?? "";
+    },
+    setData(type: string, value: string) {
+      storedData.set(type, value);
+      clipboardData.types = Array.from(storedData.keys());
+    }
+  };
+
+  return clipboardData;
+}
+
 function getJsonContentChildren(node: JSONContent): JSONContent[] {
   return Array.isArray(node.content) ? node.content : [];
+}
+
+function getTableCellContent(editor: Editor, rowIndex: number, columnIndex: number): JSONContent[] {
+  const table = editor.getJSON().content?.find((node) => node.type === "table");
+  if (!table) {
+    throw new Error("Expected a top-level table.");
+  }
+
+  const row = getJsonContentChildren(table).filter((node) => node.type === "tableRow")[rowIndex - 1];
+  if (!row) {
+    throw new Error(`Expected table row ${rowIndex}.`);
+  }
+
+  const cell = getJsonContentChildren(row).filter((node) => node.type === "tableCell" || node.type === "tableHeader")[
+    columnIndex - 1
+  ];
+  if (!cell) {
+    throw new Error(`Expected table cell ${rowIndex},${columnIndex}.`);
+  }
+
+  const paragraph = getJsonContentChildren(cell).find((node) => node.type === "paragraph");
+  return paragraph ? getJsonContentChildren(paragraph) : [];
 }
 
 function getFirstTableCellParagraphContent(editor: Editor): JSONContent[] {
@@ -1006,6 +1283,7 @@ function mockTableGeometry(
   let wrapperScrollLeft = geometry.wrapperScrollLeft ?? 0;
   let wrapperScrollWidth = geometry.wrapperScrollWidth;
   const restoreSteps: Array<() => void> = [];
+  const cells = Array.from(table.querySelectorAll("td, th")) as HTMLTableCellElement[];
 
   const restoreRect = (element: Element, getRect: () => DOMRect) => {
     const originalDescriptor = Object.getOwnPropertyDescriptor(element, "getBoundingClientRect");
@@ -1023,6 +1301,37 @@ function mockTableGeometry(
       Reflect.deleteProperty(element, "getBoundingClientRect");
     });
   };
+
+  const originalElementFromPoint = editor.view.dom.ownerDocument.elementFromPoint?.bind(editor.view.dom.ownerDocument) ?? null;
+  Object.defineProperty(editor.view.dom.ownerDocument, "elementFromPoint", {
+    configurable: true,
+    value: (x: number, y: number) => {
+      for (const cell of cells) {
+        const rect = cell.getBoundingClientRect();
+        if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+          return cell;
+        }
+      }
+
+      const wrapperBox = wrapper.getBoundingClientRect();
+      if (x >= wrapperBox.left && x <= wrapperBox.right && y >= wrapperBox.top && y <= wrapperBox.bottom) {
+        return wrapper;
+      }
+
+      const tableBox = table.getBoundingClientRect();
+      if (x >= tableBox.left && x <= tableBox.right && y >= tableBox.top && y <= tableBox.bottom) {
+        return table;
+      }
+
+      return originalElementFromPoint ? originalElementFromPoint(x, y) : null;
+    }
+  });
+  restoreSteps.push(() => {
+    Object.defineProperty(editor.view.dom.ownerDocument, "elementFromPoint", {
+      configurable: true,
+      value: originalElementFromPoint
+    });
+  });
 
   restoreRect(table, () => tableRect);
   restoreRect(editorPane, () => editorSurfaceRect);
@@ -7773,6 +8082,277 @@ describe("PageEditorHostRuntime", () => {
     expect(editor.getJSON()).toEqual(beforeDocument);
   });
 
+  it("copies and pastes an ordinary rectangular cell range through the stock table clipboard path", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          createStyledTextTableNode([
+            [
+              { marks: [{ type: "bold" }], text: "Src11" },
+              { text: "Src12" },
+              { text: "Src13" }
+            ],
+            [
+              { text: "Src21" },
+              { marks: [{ type: "italic" }], text: "Src22" },
+              { text: "Src23" }
+            ],
+            [
+              { text: "Src31" },
+              { text: "Src32" },
+              { text: "Src33" }
+            ]
+          ])
+        ]
+      });
+    });
+
+    await waitFor(() => {
+      expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+    });
+
+    const cleanup: Array<() => void> = [];
+
+    try {
+      const sourceGeometry = mockTableGeometry(editor, {
+        tableRect: new DOMRect(120, 140, 360, 168),
+        wrapperClientHeight: 168,
+        wrapperClientWidth: 360,
+        wrapperOffsetHeight: 180,
+        wrapperOffsetWidth: 400,
+        wrapperRect: new DOMRect(100, 120, 400, 220),
+        wrapperScrollWidth: 360
+      });
+      cleanup.push(() => sourceGeometry.restore());
+
+      await act(async () => {
+        await dragTableSelection(
+          getTableCellElement(editor, 1, 1),
+          getTableCellElement(editor, 2, 2),
+          17
+        );
+      });
+
+      await waitFor(() => {
+        expect(editor.state.selection instanceof CellSelection).toBe(true);
+        expect(getCellSelectionRect(editor)).toEqual({
+          bottom: 2,
+          left: 0,
+          right: 2,
+          top: 0
+        });
+      });
+
+      const clipboardData = createMutableClipboardData();
+      fireEvent.copy(editor.view.dom, {
+        clipboardData
+      } as never);
+
+      expect(clipboardData.types).not.toContain(STRUCTURED_TABLE_CLIPBOARD_PROVENANCE_MIME);
+      expect(clipboardData.getData("text/html")).toContain("<table");
+      expect(clipboardData.getData("text/plain")).toBe("Src11\n\nSrc12\n\nSrc21\n\nSrc22");
+      expect(clipboardData.getData("text/plain")).not.toContain("Src13");
+      expect(clipboardData.getData("text/plain")).not.toContain("Src23");
+      expect(clipboardData.getData("text/plain")).not.toContain("Src31");
+      expect(clipboardData.getData("text/plain")).not.toContain("Src32");
+      expect(clipboardData.getData("text/plain")).not.toContain("Src33");
+
+      const pasteClipboardData = createMutableClipboardData();
+      pasteClipboardData.setData("text/html", clipboardData.getData("text/html"));
+      pasteClipboardData.setData("text/plain", clipboardData.getData("text/plain"));
+
+      await act(async () => {
+        editor.commands.setContent({
+          type: "doc",
+          content: [createTextTableNode([["Dst11", "Dst12"], ["Dst21", "Dst22"]])]
+        });
+        editor.view.dispatch(closeHistory(editor.state.tr));
+      });
+
+      await waitFor(() => {
+        expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+      });
+
+      cleanup.pop()?.();
+
+      const destinationGeometry = mockTableGeometry(editor, {
+        tableRect: new DOMRect(120, 140, 240, 112),
+        wrapperClientHeight: 112,
+        wrapperClientWidth: 240,
+        wrapperOffsetHeight: 124,
+        wrapperOffsetWidth: 280,
+        wrapperRect: new DOMRect(100, 120, 280, 180),
+        wrapperScrollWidth: 240
+      });
+      cleanup.push(() => destinationGeometry.restore());
+
+      await act(async () => {
+        editor.commands.setTextSelection(getTableCellTextPositionAt(editor, 1, 1));
+        editor.commands.focus(undefined, { scrollIntoView: false });
+      });
+
+      const beforeOverwriteDocument = editor.getJSON();
+      const overwriteTransactions = captureCommandTransactions(editor, () => {
+        fireEvent.paste(editor.view.dom, {
+          clipboardData: pasteClipboardData
+        } as never);
+      });
+
+      expect(overwriteTransactions.some((transaction) => transaction.docChanged)).toBe(true);
+      expect(overwriteTransactions.filter((transaction) => transaction.docChanged)).toHaveLength(1);
+      expect(getTableTextGrid(editor)).toEqual([
+        ["Src11", "Src12"],
+        ["Src21", "Src22"]
+      ]);
+      expect(getTableCellContent(editor, 1, 1)).toMatchObject([
+        {
+          type: "text",
+          text: "Src11",
+          marks: [{ type: "bold" }]
+        }
+      ]);
+      expect(getTableCellContent(editor, 2, 2)).toMatchObject([
+        {
+          type: "text",
+          text: "Src22",
+          marks: [{ type: "italic" }]
+        }
+      ]);
+
+      await act(async () => {
+        editor.commands.undo();
+      });
+
+      expect(editor.getJSON()).toEqual(beforeOverwriteDocument);
+
+      await act(async () => {
+        editor.commands.setContent({
+          type: "doc",
+          content: [createTextTableNode([["Dst11", "Dst12"], ["Dst21", "Dst22"]])]
+        });
+        editor.view.dispatch(closeHistory(editor.state.tr));
+      });
+
+      await waitFor(() => {
+        expect(getTableWrapperElement(editor)).toBeInstanceOf(HTMLElement);
+      });
+
+      cleanup.pop()?.();
+
+      const expansionGeometry = mockTableGeometry(editor, {
+        tableRect: new DOMRect(120, 140, 240, 112),
+        wrapperClientHeight: 112,
+        wrapperClientWidth: 240,
+        wrapperOffsetHeight: 124,
+        wrapperOffsetWidth: 280,
+        wrapperRect: new DOMRect(100, 120, 280, 180),
+        wrapperScrollWidth: 240
+      });
+      cleanup.push(() => expansionGeometry.restore());
+
+      await act(async () => {
+        editor.commands.setTextSelection(getTableCellTextPositionAt(editor, 2, 2));
+        editor.commands.focus(undefined, { scrollIntoView: false });
+      });
+
+      const beforeExpansionDocument = editor.getJSON();
+      const expansionTransactions = captureCommandTransactions(editor, () => {
+        fireEvent.paste(editor.view.dom, {
+          clipboardData: pasteClipboardData
+        } as never);
+      });
+
+      expect(expansionTransactions.some((transaction) => transaction.docChanged)).toBe(true);
+      expect(expansionTransactions.filter((transaction) => transaction.docChanged)).toHaveLength(1);
+      expect(getTableShape(editor)).toEqual({
+        columns: 3,
+        rows: 3
+      });
+      expect(getTableTextGrid(editor)).toEqual([
+        ["Dst11", "Dst12", ""],
+        ["Dst21", "Src11", "Src12"],
+        ["", "Src21", "Src22"]
+      ]);
+      expect(getTableCellContent(editor, 2, 2)).toMatchObject([
+        {
+          type: "text",
+          text: "Src11",
+          marks: [{ type: "bold" }]
+        }
+      ]);
+
+      await act(async () => {
+        editor.commands.undo();
+      });
+
+      expect(editor.getJSON()).toEqual(beforeExpansionDocument);
+    } finally {
+      for (const restore of cleanup.reverse()) {
+        restore();
+      }
+    }
+  });
+
+  it("still copies and pastes ordinary text through the browser clipboard path", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Plain text" }] }]
+      });
+    });
+
+    await selectText(editor, 1, 6);
+    await act(async () => {
+      editor.commands.focus(undefined, { scrollIntoView: false });
+    });
+
+    const clipboardData = createMutableClipboardData();
+    fireEvent.copy(editor.view.dom, {
+      clipboardData
+    } as never);
+
+    expect(clipboardData.getData("text/plain")).toBe("Plain");
+    expect(clipboardData.types).not.toContain(STRUCTURED_TABLE_CLIPBOARD_PROVENANCE_MIME);
+
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [{ type: "paragraph" }]
+      });
+    });
+
+    await act(async () => {
+      editor.commands.setTextSelection({ from: 1, to: 1 });
+      editor.commands.focus(undefined, { scrollIntoView: false });
+    });
+
+    const transactions = captureCommandTransactions(editor, () => {
+      fireEvent.paste(editor.view.dom, {
+        clipboardData
+      } as never);
+    });
+
+    expect(transactions.some((transaction) => transaction.docChanged)).toBe(true);
+    expect(transactions.filter((transaction) => transaction.docChanged)).toHaveLength(1);
+    expect(editor.state.doc.textContent).toBe("Plain");
+  });
+
   it.each([
     {
       disabledItemLabel: "Move up",
@@ -10682,4 +11262,6 @@ describe("PageEditorHostRuntime", () => {
     expect(screen.queryByRole("listbox", { name: "Slash command menu" })).toBeNull();
   });
 });
+
+
 

@@ -3238,12 +3238,6 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   font-weight: 700;
 }
 
-.docsera-main__table-wrapper[data-docsera-table-drag-selection-active="true"],
-.docsera-main__table-wrapper[data-docsera-table-drag-selection-active="true"] * {
-  -webkit-user-select: none;
-  user-select: none;
-}
-
 .docsera-main__table td.selectedCell::after,
 .docsera-main__table th.selectedCell::after,
 .docsera-main__table td.docsera-table-selection-outline::after,

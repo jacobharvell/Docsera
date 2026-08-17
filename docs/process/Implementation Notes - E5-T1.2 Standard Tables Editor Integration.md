@@ -39,6 +39,8 @@ HTML paste still flows through the existing paste sanitizer and TipTap paste par
 
 Nested table paste is not blocked solely because the table is nested. The sanitizer still removes unsafe tags, unsafe attributes, and unsafe links before TipTap sees the HTML. No unsanitized table ingestion path, alignment persistence, or rectangular range paste behavior is introduced.
 
+Ordinary rectangular `CellSelection` copy/paste remains owned by the stock TipTap/ProseMirror table clipboard path. Docsera does not add a second rectangular-range serializer, provenance system, or row/column-specific interception for that standard cell-range behavior.
+
 ## Top-Level Block Behavior
 
 TipTap renders editable tables through `.tableWrapper`. A table at the page-body root is treated as one top-level editor block by the existing gutter, Quick Add, selection, duplicate, delete, and drag machinery. The wrapper label resolves to `Table`, so whole-table block actions expose the generic Duplicate and Delete actions without a table-specific menu or Turn into path.
@@ -92,6 +94,22 @@ E5-T1.6B adds session-scoped structured clipboard support for whole-row and whol
 - structured paste replaces the selected row or column as one ordinary undoable TipTap transaction;
 - source content larger than the destination truncates to the destination dimensions instead of overflowing;
 - ordinary clipboard paste still falls through unchanged when the structured payload is missing, stale, structurally ineligible, or the incoming clipboard cannot prove Docsera provenance, even if the visible plain text happens to match a prior structured copy.
+- ordinary rectangular cell copy/paste stays on the stock TipTap/ProseMirror table clipboard path and is separate from this provenance-driven row/column contract.
+
+## Rectangular Cell-Range Ownership
+
+Stock `@tiptap/pm/tables` owns the ordinary rectangular `CellSelection` clipboard path.
+
+- `tableEditing` owns the rectangular cell-range selection transaction and the stock copy/paste serialization and expansion behavior.
+- TipTap exposes the matching `setCellSelection` command on top of that stock behavior.
+- Docsera does not add a second rectangular cell-range serializer, provenance system, or paste router for ordinary cell ranges.
+
+Docsera still keeps a narrow table-overlay interaction bridge around that stock path.
+
+- TipTap's `Table` extension already installs ProseMirror `tableEditing`, so ordinary `mousedown`/`mousemove`/`mouseup` cell-range selection is not reimplemented in Docsera.
+- stock `tableEditing` owns the promotion from in-cell text selection to structural `CellSelection`, the live rectangular drag updates, and the ordinary rectangular clipboard path.
+- Docsera observes that stock selection state to project row/column pills, perimeter presentation, menus, and explicit cross-surface handoff such as New page ownership release.
+- row/column structured clipboard remains a separate Docsera-owned overlay contract and returns control to the stock paste path whenever the structured provenance contract is absent.
 
 ## Legacy Baseline And Corrections
 

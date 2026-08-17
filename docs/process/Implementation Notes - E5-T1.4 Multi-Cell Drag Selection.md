@@ -10,20 +10,20 @@ The task keeps the current table control surfaces intact. Row and column rails, 
 
 ## Drag Selection Contract
 
-The editor now treats a primary-button pointer gesture inside a table cell as a pending selection session. The controller does not suppress normal native selection immediately on pointerdown. It only promotes the gesture into a table drag selection once the pointer crosses into a different cell or the editor already has a `CellSelection`.
+Docsera no longer mounts a second drag-selection controller for ordinary table gestures.
 
-Once promoted:
+- TipTap `Table` already installs ProseMirror `tableEditing`.
+- `tableEditing` owns the ordinary `mousedown -> mousemove -> mouseup` lifecycle for in-cell text selection, promotion to `CellSelection`, live rectangular updates, and settled structural range selection.
+- the editor root for that lifecycle is `view.root`, so ShadowRoot-hosted runtimes continue to use the stock ProseMirror listener boundary instead of global `document`/`window` listeners.
 
-- the active table wrapper receives `data-docsera-table-drag-selection-active="true"`;
-- native DOM selection is cleared so the drag does not leave a browser text-selection trail;
-- the editor selection is replaced with a TipTap `CellSelection`;
-- pointer movement updates the selected rectangle live while the drag remains active.
+Docsera keeps only the presentation layer on top of that stock selection state.
 
-Structural `CellSelection` state also keeps the browser selection clean after the gesture completes, but only while a structural table selection still owns the interaction. Cleanup is deferred during a direct cell click so the browser and TipTap can hand ownership back to a normal in-cell caret without a late structural-selection callback clearing that valid text selection.
+- perimeter-only multi-cell outline decoration still keys off live `CellSelection`;
+- top/left row and column pill projection still derives from the normalized selected rectangle;
+- row/column pill actions and menus still issue explicit row/column structural selections;
+- cross-surface page creation still performs its narrow intentional ownership handoff from a settled `CellSelection` to the inline New page title input.
 
-Cross-surface page creation follows a narrower ownership rule: a settled structural `CellSelection` relinquishes ownership only when an explicit page-create action begins. The handoff resolves a valid local caret inside inline content in the selected cell, clears the native browser selection, blurs the prior editor surface, and lets the inline title input take focus on the first click. Global outside-pointer, blur, or `selectionchange` cleanup is intentionally prohibited because those broader listeners can collapse an active table drag or other valid in-editor selection work.
-
-The session ends on pointerup, pointercancel, window blur, or teardown. Cleanup is defensive around editor destruction so unmount does not read `editor.view` after TipTap has already torn it down.
+Docsera no longer runs generic native-selection arbitration for ordinary structural selections. It does not keep a second handoff state machine, does not preserve a collapsed DOM caret while a structural selection remains active, and does not clear browser selection on every ordinary `CellSelection` update. Native selection cleanup remains only on explicit Docsera-owned transitions such as the New page handoff or row/column overlay commands that intentionally replace selection ownership.
 
 ## Selection Presentation
 
@@ -78,34 +78,21 @@ The row-pill anchor uses the selected row geometry even when the row DOM itself 
 
 ## Geometry And Hit Testing
 
-The drag controller resolves the active cell by combining table DOM geometry with `elementFromPoint` fallback hit testing. It is scroll-aware and works from the wrapper's visible geometry instead of assuming the table starts at the viewport origin.
-
-The controller also ignores pointer gestures that start on the table overlay controls:
-
-- row rail
-- column rail
-- table menu
-- table handle
-
-That keeps the new gesture from interfering with existing table chrome.
+The stock ProseMirror drag-selection path remains geometry-aware through the editor view and table plugin. Docsera's overlay still measures the live table wrapper and visible table edges for pill/menu placement, scrolling behavior, and perimeter presentation, but it no longer owns ordinary cross-cell hit testing or drag activation.
 
 ## Legacy Baseline
 
-The implementation follows the legacy drag-selection pattern from the old editor runtime:
-
-- delayed activation until cross-cell intent is visible;
-- live `CellSelection` updates during the drag;
-- perimeter-only visual treatment for rectangular selections;
-- no regression to row/column table controls.
-
-The old implementation details that were not carried forward are the legacy code-path and DOM assumptions that depended on the prior editor shell. The new controller is mounted from the current table overlay and is guarded against TipTap teardown.
+Legacy Docsera reconstruction had carried forward a custom drag-selection controller into the new shell. E5-T1.6C removed that duplicate ownership after confirming the current TipTap/ProseMirror stack already provides the intended delayed promotion, live rectangular updates, and stock rectangular clipboard behavior. The retained legacy-compatible behavior is the visible presentation and table-control layer, not the legacy drag controller itself.
 
 ## Regression Coverage
 
-The new behavior is covered by `src/client/editor/PageEditorHostRuntime.tableSelection.test.tsx`:
+The behavior is covered by `src/client/editor/PageEditorHostRuntime.tableSelection.test.tsx`:
 
-- within-cell pointer gestures remain available until cross-cell intent exists;
-- cross-cell drags promote to `CellSelection`;
+- within-cell mouse gestures remain available until cross-cell intent exists;
+- stock `mousedown`/`mousemove`/`mouseup` cross-cell drags promote to `CellSelection`;
+- the selected rectangle expands and contracts as the mouse moves;
+- the settled drag keeps the structural `CellSelection` after mouseup;
+- a ShadowRoot-hosted runtime still uses `view.root` for the stock drag lifecycle;
 - clicking back into a selected cell hands ownership from `CellSelection` to a stable in-cell caret, survives selection/focus cleanup, accepts immediate typing, preserves within-cell text selection, and still allows a later cross-cell drag to promote back into `CellSelection`;
 - clicking either root-level New page control while a structural `CellSelection` is active releases the table's interaction ownership on the same gesture, resolves a valid in-cell caret without emitting the ProseMirror invalid-selection warning, and allows the inline title input to receive focus immediately without a second click;
 - the selected rectangle updates live as the pointer moves and pill visibility expands onto or contracts away from the accepted top-row and leftmost-column boundaries only;
@@ -118,7 +105,6 @@ The new behavior is covered by `src/client/editor/PageEditorHostRuntime.tableSel
 - assertions verify the rendered shell contract for exact `#4648D4` light-theme active fill/border and `#7C83FA` dark-theme active fill/border versus the shared muted fill/border treatment;
 - repeated live-overlay hover, click, menu, and selection-rerender assertions verify that only the currently hovered pill may remain expanded, that the shell keeps the compact-to-expanded size transition contract with reduced-motion coverage, and that stale expansion is cleared immediately on pointer exit, selection transition, or menu transition;
 - clicking an active row or column pill after drag release still selects the full row or column and opens the correct menu;
-- structural selections clear the browser selection when they complete;
 - horizontal scrolling does not break table drag selection or the active overlay contract.
 
 The test file is assigned to the `editor-interactions` suite so it is included in the managed editor regression pass.

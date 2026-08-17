@@ -14,7 +14,6 @@ import type { CSSProperties } from "react";
 import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { closeHistory } from "prosemirror-history";
 import { COMPACT_MENU_STYLES } from "./CompactMenuStyles";
-import useTableDragSelectionController from "./useTableDragSelectionController";
 
 type TableControlsOverlayProps = {
   editor: TiptapEditor | null;
@@ -329,20 +328,12 @@ function resolveTableControlActiveIconColor(editor: TiptapEditor | null): string
   return resolveTableControlTheme(editor) === "dark" ? "#ffffff" : "var(--docsera-editor-panel)";
 }
 
-function isEditableTableCellEventTarget(target: EventTarget | null): target is HTMLElement {
-  return target instanceof HTMLElement && !target.closest(TABLE_OVERLAY_EXCLUSION_SELECTOR) && Boolean(target.closest("td, th"));
-}
-
 function getEventComposedPath(event: Event): EventTarget[] {
   if (typeof event.composedPath === "function") {
     return event.composedPath().filter((entry): entry is EventTarget => entry !== null && entry !== undefined);
   }
 
   return event.target ? [event.target] : [];
-}
-
-function isEditableTableCellEvent(event: Event): boolean {
-  return getEventComposedPath(event).some((entry) => isEditableTableCellEventTarget(entry));
 }
 
 function resolveHandleStateFromEvent(event: Event): TableHandleState | null {
@@ -681,7 +672,6 @@ export default function TableControlsOverlay({
   const [hoveredHandle, setHoveredHandle] = useState<TableHandleState | null>(null);
   const [hoveredRailKind, setHoveredRailKind] = useState<TableRailResizeKind | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const structuralSelectionClickHandoffRef = useRef<number | null>(null);
   const ownerWindow = getOverlayOwnerWindow(overlayRoot);
   const tableControlPrimaryColor = resolveTableControlPrimaryColor(editor);
   const activeTableIconColor = resolveTableControlActiveIconColor(editor);
@@ -712,141 +702,6 @@ export default function TableControlsOverlay({
     };
     setOverlayState(nextOverlayState);
   }, [editor]);
-  useTableDragSelectionController(editor, Boolean(editor));
-
-  useEffect(() => {
-    if (!editor || !ownerWindow) {
-      return;
-    }
-
-    const ownerDocument = overlayRoot.ownerDocument;
-    const hasRequestAnimationFrame = typeof ownerWindow.requestAnimationFrame === "function";
-    if (!hasRequestAnimationFrame) {
-      clearNativeSelectionIfCellSelection(editor);
-      return;
-    }
-
-    let animationFrameId: number | null = null;
-
-    const clearStructuralSelection = () => {
-      if (animationFrameId !== null) {
-        ownerWindow.cancelAnimationFrame(animationFrameId);
-        animationFrameId = null;
-      }
-
-      if (!(editor.state.selection instanceof CellSelection)) {
-        return;
-      }
-
-      animationFrameId = ownerWindow.requestAnimationFrame(() => {
-        animationFrameId = null;
-        if (structuralSelectionClickHandoffRef.current !== null) {
-          return;
-        }
-        clearNativeSelectionIfCellSelection(editor);
-      });
-    };
-
-    const beginStructuralSelectionClickHandoff = (event: PointerEvent) => {
-      if (!(editor.state.selection instanceof CellSelection)) {
-        structuralSelectionClickHandoffRef.current = null;
-        return;
-      }
-
-      if (!isEditableTableCellEvent(event)) {
-        structuralSelectionClickHandoffRef.current = null;
-        return;
-      }
-
-      structuralSelectionClickHandoffRef.current = event.pointerId;
-    };
-
-    const endStructuralSelectionClickHandoff = (pointerId: number | null) => {
-      if (
-        structuralSelectionClickHandoffRef.current === null ||
-        (pointerId !== null && structuralSelectionClickHandoffRef.current !== pointerId)
-      ) {
-        return;
-      }
-
-      structuralSelectionClickHandoffRef.current = null;
-      clearStructuralSelection();
-    };
-
-    const handlePointerUp = (event: PointerEvent) => {
-      endStructuralSelectionClickHandoff(event.pointerId);
-    };
-
-    const handlePointerCancel = (event: PointerEvent) => {
-      endStructuralSelectionClickHandoff(event.pointerId);
-    };
-
-    const handleWindowBlur = () => {
-      endStructuralSelectionClickHandoff(null);
-    };
-
-    clearStructuralSelection();
-
-    if (typeof editor.on !== "function" || typeof editor.off !== "function") {
-      return () => {
-        if (animationFrameId !== null) {
-          ownerWindow.cancelAnimationFrame(animationFrameId);
-        }
-      };
-    }
-
-    editor.on("selectionUpdate", clearStructuralSelection);
-    ownerDocument.addEventListener("pointerdown", beginStructuralSelectionClickHandoff, true);
-    ownerDocument.addEventListener("pointerup", handlePointerUp, true);
-    ownerDocument.addEventListener("pointercancel", handlePointerCancel, true);
-    ownerWindow.addEventListener("blur", handleWindowBlur);
-
-    return () => {
-      editor.off("selectionUpdate", clearStructuralSelection);
-      ownerDocument.removeEventListener("pointerdown", beginStructuralSelectionClickHandoff, true);
-      ownerDocument.removeEventListener("pointerup", handlePointerUp, true);
-      ownerDocument.removeEventListener("pointercancel", handlePointerCancel, true);
-      ownerWindow.removeEventListener("blur", handleWindowBlur);
-      if (animationFrameId !== null) {
-        ownerWindow.cancelAnimationFrame(animationFrameId);
-      }
-    };
-  }, [editor, ownerWindow, overlayRoot]);
-
-  useEffect(() => {
-    if (!editor || !ownerWindow) {
-      return;
-    }
-
-    const ownerDocument = overlayRoot.ownerDocument;
-    const handleSelectionChange = () => {
-      if (structuralSelectionClickHandoffRef.current !== null) {
-        return;
-      }
-
-      if (!(editor.state.selection instanceof CellSelection)) {
-        return;
-      }
-
-      if (typeof ownerWindow.requestAnimationFrame === "function") {
-        ownerWindow.requestAnimationFrame(() => {
-          if (structuralSelectionClickHandoffRef.current !== null) {
-            return;
-          }
-
-          clearNativeSelectionIfCellSelection(editor);
-        });
-        return;
-      }
-
-      clearNativeSelectionIfCellSelection(editor);
-    };
-
-    ownerDocument.addEventListener("selectionchange", handleSelectionChange);
-    return () => {
-      ownerDocument.removeEventListener("selectionchange", handleSelectionChange);
-    };
-  }, [editor, ownerWindow, overlayRoot]);
 
   useLayoutEffect(() => {
     if (!editor || !ownerWindow) {
