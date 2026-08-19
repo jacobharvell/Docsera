@@ -1,6 +1,7 @@
-import { isAllowedUri } from "@tiptap/extension-link";
+﻿import { isAllowedUri } from "@tiptap/extension-link";
 import { DOMParser, Fragment } from "@tiptap/pm/model";
 import { describe, expect, it } from "vitest";
+import { createCanonicalImageDocseraDocumentEnvelope } from "./imageFixtures";
 import {
   createCodeBlockWhitespaceDocseraDocumentEnvelope,
   createCombinedInlineMarksDocseraDocumentEnvelope,
@@ -25,6 +26,7 @@ describe("Docsera structured document validation", () => {
     ["duplicate heading document", createDuplicateHeadingDocseraDocumentEnvelope().document],
     ["empty heading document", createEmptyHeadingDocseraDocumentEnvelope().document],
     ["expanded text formatting document", createExpandedTextFormattingDocseraDocumentEnvelope().document],
+    ["canonical image document", createCanonicalImageDocseraDocumentEnvelope().document],
     ["nested table document", createNestedTableDocseraDocumentEnvelope().document]
   ])("accepts %s at the raw validation boundary", (_label, document) => {
     expect(validateDocseraStructuredDocument(document)).toEqual({ ok: true });
@@ -32,12 +34,101 @@ describe("Docsera structured document validation", () => {
 
   it.each([
     [
-      "unknown node type",
+      "malformed image node",
       {
         type: "doc",
         content: [
           {
-            type: "image"
+            type: "image",
+            attrs: {
+              mediaId: "",
+              src: "https://example.com/image.png"
+            }
+          }
+        ]
+      }
+    ],
+    [
+      "image child content rejected",
+      {
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              mediaId: "workspace-media-001"
+            },
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "Nested image content" }]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    [
+      "URL-backed image attrs rejected",
+      {
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              mediaId: "workspace-media-001",
+              src: "https://example.com/image.png",
+              title: "Uploaded image"
+            }
+          }
+        ]
+      }
+    ],
+    [
+      "legacy image attrs rejected",
+      {
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              mediaId: "workspace-media-001",
+              lightSrc: "https://example.com/light.png",
+              darkSrc: "https://example.com/dark.png",
+              lightAlt: "Light alt",
+              darkAlt: "Dark alt"
+            }
+          }
+        ]
+      }
+    ],
+    [
+      "native pixel image attrs rejected",
+      {
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              mediaId: "workspace-media-001",
+              width: 640,
+              height: 480
+            }
+          }
+        ]
+      }
+    ],
+    [
+      "invalid width percentage rejected",
+      {
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              mediaId: "workspace-media-001",
+              widthPct: Infinity
+            }
           }
         ]
       }
@@ -412,6 +503,55 @@ describe("Docsera active table schema", () => {
   });
 });
 
+describe("Docsera image schema", () => {
+  it("exposes the canonical Docsera image attrs on a normal draggable block node", () => {
+    const schema = getDocseraEditorSchema();
+    const image = schema.nodes.image;
+
+    expect(image).toBeDefined();
+    expect(image?.spec.group).toBe("block");
+    expect(image?.spec.draggable).toBe(true);
+    expect(Object.keys(image?.spec.attrs ?? {}).sort()).toEqual(
+      ["align", "alt", "caption", "darkMediaId", "frame", "mediaId", "widthPct"].sort()
+    );
+    expect(Object.keys(image?.spec.attrs ?? {})).not.toEqual(
+      expect.arrayContaining(["src", "title", "width", "height", "lightSrc", "darkSrc", "lightAlt", "darkAlt"])
+    );
+  });
+
+  it("keeps the canonical image node valid in the existing block-capable nested schema contexts", () => {
+    const schema = getDocseraEditorSchema();
+    const image = schema.nodes.image.create({ mediaId: "workspace-media-001" });
+    const paragraph = schema.nodes.paragraph.create();
+
+    expect(schema.nodes.doc.validContent(Fragment.from(image))).toBe(true);
+    expect(schema.nodes.blockquote.validContent(Fragment.from(image))).toBe(true);
+    expect(schema.nodes.listItem.validContent(Fragment.fromArray([paragraph, image]))).toBe(true);
+    expect(schema.nodes.taskItem.validContent(Fragment.fromArray([paragraph, image]))).toBe(true);
+    expect(schema.nodes.tableCell.validContent(Fragment.from(image))).toBe(true);
+    expect(() => schema.nodeFromJSON(createCanonicalImageDocseraDocumentEnvelope().document).check()).not.toThrow();
+  });
+
+  it.each([
+    ["raw img/src markup", "<img src=\"https://example.com/image.png\" alt=\"Raw image\">", "https://example.com/image.png"],
+    [
+      "figure-based media markup",
+      "<figure data-docsera-media-id=\"workspace-media-001\"></figure>",
+      "workspace-media-001"
+    ]
+  ])("does not establish a raw HTML image ingestion path for %s", (_label, html, forbiddenSnippet) => {
+    const schema = getDocseraEditorSchema();
+    const container = window.document.createElement("div");
+    container.innerHTML = html;
+
+    const document = DOMParser.fromSchema(schema).parse(container);
+    const serialized = JSON.stringify(document.toJSON());
+
+    expect(serialized).not.toContain("\"type\":\"image\"");
+    expect(serialized).not.toContain(forbiddenSnippet);
+  });
+});
+
 describe("Docsera link policy parity", () => {
   it.each([
     ["https URL", "https://example.com/docs"],
@@ -426,3 +566,4 @@ describe("Docsera link policy parity", () => {
     expect(isDocseraAllowedLinkHref(href)).toBe(Boolean(isAllowedUri(href, [])));
   });
 });
+

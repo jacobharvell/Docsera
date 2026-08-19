@@ -1,12 +1,10 @@
-import { describe, expect, it } from "vitest";
 import {
   DOCSERA_DOCUMENT_SCHEMA_VERSION,
   createEmptyDocseraDocumentEnvelope,
-  extractPlainTextFromServerDocument,
   parseDocseraDocument,
   parseDocseraDocumentOrThrow,
   serializeDocseraDocument
-} from "../../server/pages/serverEditorDocument";
+} from "./document";
 import {
   createDocseraDocumentFixtureCorpus,
   createCodeBlockWhitespaceDocseraDocumentEnvelope,
@@ -22,6 +20,11 @@ import {
   createTaskCheckedStateDocseraDocumentEnvelope,
   createSupportedE2DocseraDocumentEnvelope
 } from "./documentFixtures";
+import {
+  createCanonicalImageDocseraDocumentEnvelope,
+  createResponsiveImageDocseraDocumentEnvelope
+} from "./imageFixtures";
+import { extractPlainTextFromServerDocument } from "../../server/pages/serverEditorDocument";
 
 describe("Docsera document envelope", () => {
   it("creates and round-trips the current canonical envelope", () => {
@@ -97,6 +100,84 @@ describe("Docsera document envelope", () => {
       envelope,
       migratedLegacyDocument: false
     });
+  });
+
+  it("round-trips the canonical default image envelope without widening the image contract", () => {
+    const envelope = createCanonicalImageDocseraDocumentEnvelope();
+    const parsed = parseDocseraDocument(serializeDocseraDocument(envelope));
+
+    expect(parsed).toEqual({
+      ok: true,
+      envelope,
+      migratedLegacyDocument: false
+    });
+  });
+
+  it("canonicalizes image defaults and clamps width percentage without preserving URL-backed attrs", () => {
+    const parsed = parseDocseraDocument({
+      schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+      document: {
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              mediaId: "  workspace-media-001  ",
+              darkMediaId: "workspace-media-dark",
+              alt: "Architecture diagram",
+              caption: "Published in both light and dark modes",
+              frame: false,
+              align: "center",
+              widthPct: 15
+            }
+          }
+        ]
+      }
+    });
+
+    expect(parsed).toEqual({
+      ok: true,
+      envelope: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "image",
+              attrs: {
+                mediaId: "workspace-media-001",
+                darkMediaId: "workspace-media-dark",
+                alt: "Architecture diagram",
+                caption: "Published in both light and dark modes",
+                frame: false,
+                align: "center",
+                widthPct: 20
+              }
+            }
+          ]
+        }
+      },
+      migratedLegacyDocument: false
+    });
+  });
+
+  it("round-trips canonical image documents without introducing URL or pixel attrs", () => {
+    const envelope = createResponsiveImageDocseraDocumentEnvelope();
+    const parsed = parseDocseraDocument(serializeDocseraDocument(envelope));
+
+    expect(parsed).toEqual({
+      ok: true,
+      envelope,
+      migratedLegacyDocument: false
+    });
+    const serialized = JSON.stringify(envelope);
+    expect(serialized).not.toContain('"src"');
+    expect(serialized).not.toContain('"title"');
+    expect(serialized).not.toContain('"height"');
+    expect(serialized).not.toContain('"lightSrc"');
+    expect(serialized).not.toContain('"darkSrc"');
+    expect(serialized).not.toContain('"lightAlt"');
+    expect(serialized).not.toContain('"darkAlt"');
   });
 
   it.each([
@@ -341,3 +422,5 @@ describe("Docsera document envelope", () => {
     expect(text).toContain("Beta");
   });
 });
+
+

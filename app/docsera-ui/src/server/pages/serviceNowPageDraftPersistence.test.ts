@@ -4,6 +4,7 @@ import type { PageRecord } from "./serverPageDomain.ts";
 import { parseServerDocument } from "./serverEditorDocument.ts";
 import { createPageBodySaveService } from "./serviceNowPageDraftPersistence.ts";
 import { createDocseraDocumentFixtureCorpus, createSupportedE2DocseraDocumentEnvelope } from "../../shared/editor/documentFixtures";
+import { createResponsiveImageDocseraDocumentEnvelope } from "../../shared/editor/imageFixtures";
 
 function createWorkspace(): WorkspaceRecord {
   return {
@@ -268,6 +269,67 @@ describe("page body save service", () => {
       errorMessage: "The stored page content does not use a supported document envelope."
     });
     expect(savePage).not.toHaveBeenCalled();
+  });
+
+  it("accepts a canonical image envelope at the save boundary without widening the image contract", async () => {
+    const canonicalImageEnvelope = createResponsiveImageDocseraDocumentEnvelope();
+    const savePage = vi.fn(async (page: PageRecord) => page);
+    const service = createPageBodySaveService({
+      evaluateWorkspaceCapabilities: () => ({
+        canAdminWorkspace: false,
+        canEditWorkspace: true,
+        canManageWorkspaceMembers: false,
+        canViewWorkspace: true
+      }),
+      loadWorkspaceBySlug: async () => createWorkspace(),
+      loadWorkspaceBySysId: async () => createWorkspace(),
+      listWorkspacePages: async () => [createPage({ draftRevision: 2 })],
+      savePageDraft: savePage
+    });
+
+    const result = await service.savePageBody({
+      workspaceSlug: "product-docs",
+      pageSysId: "page-001",
+      expectedRevision: 2,
+      draftContentJson: canonicalImageEnvelope
+    });
+
+    expect(result.kind).toBe("succeeded");
+    expect(savePage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        draftRevision: 3,
+        draftContentJson: canonicalImageEnvelope
+      }),
+      2
+    );
+
+    if (result.kind !== "succeeded") {
+      return;
+    }
+
+    expect(result.page.draftContentJson).toEqual(canonicalImageEnvelope);
+    expect(result.page.draftContentJson.document.content?.[0]).toEqual({
+      type: "image",
+      attrs: {
+        mediaId: "workspace-media-light",
+        darkMediaId: "workspace-media-dark",
+        alt: "Architecture diagram",
+        caption: "Published in both light and dark modes",
+        frame: false,
+        align: "center",
+        widthPct: 80
+      }
+    });
+
+    const serialized = JSON.stringify(result.page.draftContentJson);
+    expect(serialized).not.toContain('"src"');
+    expect(serialized).not.toContain('"title"');
+    expect(serialized).not.toContain('"width"');
+    expect(serialized).not.toContain('"height"');
+    expect(serialized).not.toContain('"lightSrc"');
+    expect(serialized).not.toContain('"darkSrc"');
+    expect(serialized).not.toContain('"lightAlt"');
+    expect(serialized).not.toContain('"darkAlt"');
   });
 
   it.each(createDocseraDocumentFixtureCorpus().filter((fixture) => !fixture.expected.ok))(

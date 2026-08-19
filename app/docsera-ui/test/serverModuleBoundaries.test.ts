@@ -1,12 +1,14 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const repoRoot = process.cwd();
-const serverRoots = [join(repoRoot, "src", "server"), join(repoRoot, "src", "server", "api")];
+const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const serverRoots = [join(packageRoot, "src", "server"), join(packageRoot, "src", "server", "api")];
 const forbiddenSharedImportPattern = /\bfrom\s+['"]([^'"]+)['"]|\bimport\s+['"]([^'"]+)['"]/g;
-const sharedDocumentWrapperPath = join(repoRoot, "src", "shared", "editor", "document.ts");
-const serverDocumentWrapperPath = join(repoRoot, "src", "server", "pages", "serverEditorDocument.ts");
+const sharedDocumentWrapperPath = join(packageRoot, "src", "shared", "editor", "document.ts");
+const serverDocumentWrapperPath = join(packageRoot, "src", "server", "pages", "serverEditorDocument.ts");
+const explicitSourceExtensionPattern = /\.(?:ts|tsx)$/;
 
 function collectFiles(dir: string): string[] {
   const entries: string[] = [];
@@ -32,6 +34,10 @@ function isForbiddenSharedImport(specifier: string): boolean {
     specifier.startsWith("../shared/") ||
     specifier.startsWith("../../shared/")
   );
+}
+
+function isRelativeImport(specifier: string): boolean {
+  return specifier.startsWith("./") || specifier.startsWith("../");
 }
 
 function isAllowedSharedImport(file: string, specifier: string): boolean {
@@ -68,5 +74,30 @@ describe("server module boundaries", () => {
 
     const sharedWrapperSource = readFileSync(sharedDocumentWrapperPath, "utf8");
     expect(sharedWrapperSource).toContain("../../server/pages/serverEditorDocument");
+  });
+
+  it("keeps server runtime imports on explicit source-file specifiers", () => {
+    const offenders: Array<{ file: string; specifier: string }> = [];
+
+    for (const root of serverRoots) {
+      for (const file of collectFiles(root)) {
+        const sourceText = readFileSync(file, "utf8");
+        for (const match of sourceText.matchAll(forbiddenSharedImportPattern)) {
+          const specifier = (match[1] ?? match[2] ?? "").trim();
+          if (!specifier || !isRelativeImport(specifier)) {
+            continue;
+          }
+
+          if (!explicitSourceExtensionPattern.test(specifier)) {
+            offenders.push({
+              file: relative(packageRoot, file),
+              specifier
+            });
+          }
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
   });
 });

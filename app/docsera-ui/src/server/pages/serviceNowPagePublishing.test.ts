@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { WorkspaceRecord } from "../workspaces/serverWorkspaceDomain.ts";
 import type { PageRecord } from "./serverPageDomain.ts";
 import { createStandardTableDocseraDocumentEnvelope } from "../../shared/editor/documentFixtures.ts";
+import { createResponsiveImageDocseraDocumentEnvelope } from "../../shared/editor/imageFixtures.ts";
 import { createPageBodyContentJsonFromText } from "./serviceNowPagePersistence.ts";
 import { createPagePublishService } from "./serviceNowPagePublishing.ts";
 
@@ -536,6 +537,79 @@ describe("page publish service", () => {
       }),
       4
     );
+  });
+
+  it("promotes a canonical image envelope unchanged when publishing persisted draft content", async () => {
+    const imageEnvelope = createResponsiveImageDocseraDocumentEnvelope();
+    const publishPage = vi.fn(async (page: PageRecord) => page);
+    const service = createPagePublishService({
+      currentTimestamp: () => "2026-07-15 09:45:00",
+      evaluateWorkspaceCapabilities: () => ({
+        canAdminWorkspace: false,
+        canEditWorkspace: true,
+        canManageWorkspaceMembers: false,
+        canViewWorkspace: true
+      }),
+      getCurrentUser: () => ({
+        displayName: "Priya Writer",
+        sysId: "user-123"
+      }),
+      loadWorkspaceBySlug: async () => createWorkspace(),
+      loadWorkspaceBySysId: async () => createWorkspace(),
+      listWorkspacePages: async () => [
+        createPage({
+          draftRevision: 4,
+          draftContentJson: imageEnvelope,
+          draftBodyText: null
+        })
+      ],
+      publishPage
+    });
+
+    const result = await service.publishPage({
+      workspaceSlug: "product-docs",
+      pageSysId: "page-001",
+      expectedRevision: 4
+    });
+
+    expect(result.kind).toBe("succeeded");
+    expect(publishPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        draftRevision: 4,
+        publishedContentJson: imageEnvelope,
+        publishedBodyText: null,
+        publicationState: "published"
+      }),
+      4
+    );
+
+    if (result.kind !== "succeeded") {
+      return;
+    }
+
+    expect(result.page.publishedContentJson).toEqual(imageEnvelope);
+    expect(result.page.publishedContentJson?.document.content?.[0]).toEqual({
+      type: "image",
+      attrs: {
+        mediaId: "workspace-media-light",
+        darkMediaId: "workspace-media-dark",
+        alt: "Architecture diagram",
+        caption: "Published in both light and dark modes",
+        frame: false,
+        align: "center",
+        widthPct: 80
+      }
+    });
+
+    const serialized = JSON.stringify(result.page.publishedContentJson);
+    expect(serialized).not.toContain('"src"');
+    expect(serialized).not.toContain('"title"');
+    expect(serialized).not.toContain('"width"');
+    expect(serialized).not.toContain('"height"');
+    expect(serialized).not.toContain('"lightSrc"');
+    expect(serialized).not.toContain('"darkSrc"');
+    expect(serialized).not.toContain('"lightAlt"');
+    expect(serialized).not.toContain('"darkAlt"');
   });
 
   it("rejects malformed table draft content through the existing invalid-document publish path", async () => {

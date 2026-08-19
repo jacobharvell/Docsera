@@ -64,6 +64,7 @@ export const testSuites = [
     description: "canonical documents; schema validation; canonicalization; paste sanitization; document fixtures; document round trips.",
     files: [
       "src/client/editor/PageEditorHostRuntime.core.test.tsx",
+      "src/client/editor/pasteSanitizer.test.ts",
       "src/shared/editor/document.test.ts",
       "src/shared/editor/schema.test.ts",
       "test/editorDocumentContractParity.test.ts"

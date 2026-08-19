@@ -235,7 +235,7 @@ export function WorkspaceMainPane({
               <span className="docsera-main__pending-line" />
             </section>
           ) : page.contentState === "ready" && page.contentEnvelope ? (
-            <PublishedDocumentReader envelope={page.contentEnvelope} />
+            <PublishedDocumentReader envelope={page.contentEnvelope} theme={theme} />
           ) : (
             <section className="docsera-main__editor-recovery" role="status">
               <p className="docsera-main__eyebrow">Reader</p>

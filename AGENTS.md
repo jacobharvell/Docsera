@@ -86,6 +86,15 @@ Prototypes are visual and interaction references, especially for layout, spacing
 - Keep the app PDI-friendly and open-source-friendly.
 - For visible UI work, include Jacob-facing manual verification steps when subjective layout, interaction feel, prototype fidelity, drag/drop behavior, editor behavior, or visual polish is affected.
 
+### ServiceNow Server Runtime Module Boundary
+
+- Treat the deployed ServiceNow server module graph as a constrained runtime boundary, not as equivalent to the local TypeScript/Node module graph.
+- Do not extract logic from an already working ServiceNow server-runtime module into a new runtime-imported helper merely for code organization, deduplication, or client/server sharing unless the repository already contains a proven deployable pattern for that module relationship.
+- Before adding a new runtime import reachable from Scripted REST routes, page loading, persistence, authorization, publishing, or other ServiceNow-executed server code, verify that the imported module is represented and resolvable in the installed ServiceNow application runtime. Local Vitest, TypeScript checks, and SDK build success alone do not prove this.
+- When client and server code need the same contract, prefer a deployment-safe authoritative location already proven by the repository. Do not create a new ServiceNow server runtime module boundary solely to remove duplicated code if doing so increases deployed-runtime risk.
+- A new ServiceNow server runtime module boundary must have automated regression coverage where practical and must receive non-interactive installed-runtime verification before the candidate is handed to Jacob for browser acceptance.
+- If deployment produces an HTTP 500 in an existing route immediately after adding or moving a server runtime module/import, investigate module loading and the deployed module graph before changing business logic, data, ACLs, or adding fallbacks.
+
 ## Technical Implementation Authority
 
 Use the actual repository, ServiceNow SDK behavior, PDI behavior, and existing project conventions as the source of truth for technical implementation details.

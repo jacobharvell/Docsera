@@ -1,3 +1,7 @@
+import {
+  canonicalizeDocseraImageAttrs,
+  validateDocseraImageAttrs
+} from "./serverImageContract.ts";
 const DOCSERA_INVALID_DOCUMENT_MESSAGE = "The stored page content does not contain a valid TipTap document.";
 const DOCSERA_ALLOWED_LINK_ATTRS = ["href", "target", "rel", "class", "title"] as const;
 const DOCSERA_ALLOWED_ORDERED_LIST_TYPES = [null, "1", "a", "A", "i", "I"] as const;
@@ -7,6 +11,7 @@ const DOCSERA_UNICODE_WHITESPACE_REGEX_GLOBAL = new RegExp(DOCSERA_UNICODE_WHITE
 const DOCSERA_BLOCK_NODE_TYPES = new Set([
   "paragraph",
   "heading",
+  "image",
   "bulletList",
   "orderedList",
   "listItem",
@@ -24,6 +29,7 @@ const DOCSERA_INLINE_NODE_TYPES = new Set(["text", "hardBreak"]);
 const DOCSERA_DOC_CHILD_TYPES = new Set([
   "paragraph",
   "heading",
+  "image",
   "bulletList",
   "orderedList",
   "taskList",
@@ -35,6 +41,7 @@ const DOCSERA_DOC_CHILD_TYPES = new Set([
 const DOCSERA_NESTED_BLOCK_CHILD_TYPES = new Set([
   "paragraph",
   "heading",
+  "image",
   "bulletList",
   "orderedList",
   "taskList",
@@ -266,6 +273,10 @@ function validateNodeAttrs(type: string, attrs: unknown): DocseraStructuredDocum
       return createValidationFailure();
     }
 
+    if (type === "image") {
+      return createValidationFailure();
+    }
+
     return { ok: true };
   }
 
@@ -320,6 +331,8 @@ function validateNodeAttrs(type: string, attrs: unknown): DocseraStructuredDocum
       return hasOnlyAllowedKeys(attrs, ["level"]) && DOCSERA_BODY_HEADING_LEVELS.includes(attrs.level as 1 | 2 | 3)
         ? { ok: true }
         : createValidationFailure();
+    case "image":
+      return validateDocseraImageAttrs(attrs) ? { ok: true } : createValidationFailure();
     case "orderedList":
       if (!hasOnlyAllowedKeys(attrs, ["start", "type"])) {
         return createValidationFailure();
@@ -390,6 +403,8 @@ function validateStructuredNode(node: unknown): DocseraStructuredDocumentValidat
       ? ["type", "text", "marks"]
       : node.type === "horizontalRule" || node.type === "hardBreak"
         ? ["type", "attrs"]
+        : node.type === "image"
+          ? ["type", "attrs"]
         : ["type", "attrs", "content"];
 
   if (!hasOnlyAllowedKeys(node, allowedKeys)) {
@@ -415,6 +430,10 @@ function validateStructuredNode(node: unknown): DocseraStructuredDocumentValidat
     return { ok: true };
   }
 
+  if (node.type === "image" && Object.prototype.hasOwnProperty.call(node, "content")) {
+    return createValidationFailure();
+  }
+
   const attrsValidation = validateNodeAttrs(node.type, node.attrs);
   if (!attrsValidation.ok) {
     return attrsValidation;
@@ -437,6 +456,8 @@ function validateStructuredNode(node: unknown): DocseraStructuredDocumentValidat
         allowEmpty: true,
         allowedChildTypes: DOCSERA_INLINE_NODE_TYPES
       });
+    case "image":
+      return content === undefined ? { ok: true } : createValidationFailure();
     case "blockquote":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
@@ -523,7 +544,9 @@ function canonicalizeNode(node: Record<string, unknown>): Record<string, unknown
     type: node.type
   };
 
-  if (node.type === "orderedList") {
+  if (node.type === "image") {
+    canonicalNode.attrs = canonicalizeDocseraImageAttrs(node.attrs);
+  } else if (node.type === "orderedList") {
     const attrs = isRecord(node.attrs) ? node.attrs : {};
     canonicalNode.attrs = {
       start: Number.isInteger(attrs.start) ? Number(attrs.start) : 1,

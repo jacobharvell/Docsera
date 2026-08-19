@@ -1,5 +1,10 @@
 /* @vitest-environment jsdom */
 
+import {
+  createCanonicalImageDocseraDocumentEnvelope,
+  createResponsiveImageDocseraDocumentEnvelope
+} from "../../../shared/editor/imageFixtures";
+
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -41,8 +46,20 @@ function createPageRecord(envelope: DocseraDocumentEnvelope): WorkspacePageRecor
   };
 }
 
-function renderReader(envelope: DocseraDocumentEnvelope) {
-  return render(<PublishedDocumentReader envelope={envelope} />);
+function renderReader(
+  envelope: DocseraDocumentEnvelope,
+  options: {
+    resolveMediaSource?: (mediaId: string) => string | null;
+    theme?: "dark" | "light";
+  } = {}
+) {
+  return render(
+    <PublishedDocumentReader
+      envelope={envelope}
+      resolveMediaSource={options.resolveMediaSource}
+      theme={options.theme}
+    />
+  );
 }
 
 describe("PublishedDocumentReader", () => {
@@ -282,6 +299,199 @@ describe("PublishedDocumentReader", () => {
     expect(reader.querySelectorAll(".docsera-main__table-wrapper")).toHaveLength(3);
   });
 
+  it("renders canonical image metadata and resolves the light media source in light theme", () => {
+    const envelope = createResponsiveImageDocseraDocumentEnvelope();
+    const original = JSON.parse(JSON.stringify(envelope));
+
+    renderReader(envelope, {
+      theme: "light",
+      resolveMediaSource: (mediaId) => {
+        if (mediaId === "workspace-media-light") {
+          return "https://cdn.example.com/light.png";
+        }
+
+        if (mediaId === "workspace-media-dark") {
+          return "https://cdn.example.com/dark.png";
+        }
+
+        return null;
+      }
+    });
+
+    const reader = screen.getByLabelText("Published page content");
+    const figure = reader.querySelector(".docsera-main__media");
+
+    expect(figure).not.toBeNull();
+    expect(figure).toHaveAttribute("data-docsera-image-align", "center");
+    expect(figure).toHaveAttribute("data-docsera-image-frame", "false");
+    expect(figure).toHaveAttribute("data-docsera-image-width-pct", "80");
+
+    const image = within(reader).getByRole("img", { name: "Architecture diagram" });
+    expect(image).toHaveAttribute("src", "https://cdn.example.com/light.png");
+    expect(image).toHaveAttribute("alt", "Architecture diagram");
+    expect(within(reader).getByText("Published in both light and dark modes")).toHaveClass("docsera-main__media-caption");
+    expect(envelope).toEqual(original);
+  });
+
+  it("renders an authored-empty alt as an empty img alt when the media resolves", () => {
+    const envelope = createCanonicalImageDocseraDocumentEnvelope();
+
+    renderReader(envelope, {
+      resolveMediaSource: (mediaId) => (mediaId === "workspace-media-001" ? "https://cdn.example.com/canonical.png" : null)
+    });
+
+    const reader = screen.getByLabelText("Published page content");
+    const image = reader.querySelector("img.docsera-main__media-image");
+
+    expect(image).not.toBeNull();
+    expect(image).toHaveAttribute("src", "https://cdn.example.com/canonical.png");
+    expect(image).toHaveAttribute("alt", "");
+  });
+
+  it("uses the dark variant in dark theme, falls back to the light media when no dark variant exists, and keeps the configured dark failure contained", () => {
+    const darkEnvelope = createResponsiveImageDocseraDocumentEnvelope();
+    renderReader(darkEnvelope, {
+      theme: "dark",
+      resolveMediaSource: (mediaId) => {
+        if (mediaId === "workspace-media-dark") {
+          return "https://cdn.example.com/dark.png";
+        }
+
+        if (mediaId === "workspace-media-light") {
+          return "https://cdn.example.com/light.png";
+        }
+
+        return null;
+      }
+    });
+
+    const darkReader = screen.getByLabelText("Published page content");
+    expect(within(darkReader).getByRole("img", { name: "Architecture diagram" })).toHaveAttribute(
+      "src",
+      "https://cdn.example.com/dark.png"
+    );
+
+    cleanup();
+
+    const fallbackEnvelope: DocseraDocumentEnvelope = {
+      schemaVersion: 1,
+      document: {
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              mediaId: "workspace-media-001",
+              alt: "Architecture diagram",
+              caption: "Published in both light and dark modes",
+              frame: false,
+              align: "center",
+              widthPct: 80
+            }
+          }
+        ]
+      }
+    };
+    renderReader(fallbackEnvelope, {
+      theme: "dark",
+      resolveMediaSource: (mediaId) => {
+        if (mediaId === "workspace-media-001") {
+          return "https://cdn.example.com/light.png";
+        }
+
+        return null;
+      }
+    });
+
+    const fallbackReader = screen.getByLabelText("Published page content");
+    expect(within(fallbackReader).getByRole("img")).toHaveAttribute("src", "https://cdn.example.com/light.png");
+
+    cleanup();
+
+    const containedFailureEnvelope: DocseraDocumentEnvelope = {
+      schemaVersion: 1,
+      document: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Before" }]
+          },
+          {
+            type: "image",
+            attrs: {
+              mediaId: "workspace-media-light",
+              darkMediaId: "workspace-media-dark",
+              alt: "Architecture diagram",
+              caption: "Published in both light and dark modes",
+              frame: false,
+              align: "center",
+              widthPct: 80
+            }
+          },
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "After" }]
+          }
+        ]
+      }
+    };
+
+    renderReader(containedFailureEnvelope, {
+      theme: "dark",
+      resolveMediaSource: (mediaId) => (mediaId === "workspace-media-light" ? "https://cdn.example.com/light.png" : null)
+    });
+
+    const containedReader = screen.getByLabelText("Published page content");
+    expect(within(containedReader).getByText("Before")).toBeInTheDocument();
+    expect(within(containedReader).getByText("After")).toBeInTheDocument();
+    expect(within(containedReader).getByRole("status")).toHaveTextContent("Image unavailable");
+    expect(within(containedReader).queryByRole("img")).toBeNull();
+  });
+
+  it("keeps surrounding blocks visible when a media resolver throws for one image", () => {
+    const envelope: DocseraDocumentEnvelope = {
+      schemaVersion: 1,
+      document: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Before" }]
+          },
+          {
+            type: "image",
+            attrs: {
+              mediaId: "workspace-media-001",
+              alt: "Architecture diagram",
+              caption: "Published in both light and dark modes",
+              frame: false,
+              align: "center",
+              widthPct: 80
+            }
+          },
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "After" }]
+          }
+        ]
+      }
+    };
+
+    renderReader(envelope, {
+      resolveMediaSource: () => {
+        throw new Error("resolver failure");
+      }
+    });
+
+    const reader = screen.getByLabelText("Published page content");
+
+    expect(within(reader).getByText("Before")).toBeInTheDocument();
+    expect(within(reader).getByText("After")).toBeInTheDocument();
+    expect(within(reader).getByRole("status")).toHaveTextContent("Image unavailable");
+    expect(within(reader).queryByRole("img")).toBeNull();
+  });
+
   it("shares duplicate heading anchors with the TOC and skips empty headings", () => {
     const duplicateEnvelope = createDuplicateHeadingDocseraDocumentEnvelope();
     const duplicatePage = buildWorkspacePageView(createPageRecord(duplicateEnvelope), "live");
@@ -414,3 +624,5 @@ describe("PublishedDocumentReader", () => {
     expect(screen.queryByText("not code")).not.toBeInTheDocument();
   });
 });
+
+

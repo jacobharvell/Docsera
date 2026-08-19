@@ -4,6 +4,7 @@ import {
   type DocseraDocumentEnvelope,
   type DocseraTiptapDocument
 } from "./document";
+import { createCanonicalImageDocseraDocumentEnvelope } from "./imageFixtures";
 
 export type DocseraDocumentFixtureCase = {
   input: unknown;
@@ -915,6 +916,14 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
       }
     },
     {
+      input: createCanonicalImageDocseraDocumentEnvelope(),
+      label: "canonical image document",
+      expected: {
+        ok: true,
+        migratedLegacyDocument: false
+      }
+    },
+    {
       input: {
         schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
         document: {
@@ -1000,12 +1009,43 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
           type: "doc",
           content: [
             {
-              type: "image"
+              type: "image",
+              attrs: {
+                mediaId: "",
+                src: "https://example.com/image.png"
+              }
             }
           ]
         }
       },
-      label: "unknown node type",
+      label: "malformed image node",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "image",
+              attrs: {
+                mediaId: "workspace-media-001"
+              },
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Nested image content" }]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "image child content rejected",
       expected: {
         ok: false,
         reason: "invalid-document"

@@ -1,6 +1,6 @@
 import { isDocseraAllowedLinkHref } from "../../shared/editor/schema";
 
-const UNSAFE_PASTE_TAGS = new Set(["script", "style", "noscript", "iframe", "object", "embed", "canvas"]);
+const UNSAFE_PASTE_TAGS = new Set(["script", "style", "noscript", "iframe", "object", "embed", "canvas", "img", "picture", "source"]);
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value : "";

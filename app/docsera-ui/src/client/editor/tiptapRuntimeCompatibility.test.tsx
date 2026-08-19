@@ -1,4 +1,5 @@
-import "@testing-library/jest-dom/vitest";
+﻿import "@testing-library/jest-dom/vitest";
+import { createCanonicalImageDocseraDocumentEnvelope } from "../../shared/editor/imageFixtures";
 import { render, screen, waitFor } from "@testing-library/react";
 import { Editor } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
@@ -39,6 +40,25 @@ describe("TipTap runtime compatibility", () => {
 
     editor.destroy();
     expect(editor.isDestroyed).toBe(true);
+  });
+
+  it("mounts the canonical image document without reintroducing URL or pixel attrs", () => {
+    const envelope = createCanonicalImageDocseraDocumentEnvelope();
+    const editor = new Editor({
+      element: document.createElement("div"),
+      extensions: createDocseraEditorExtensions(),
+      content: envelope.document as JSONContent
+    });
+
+    expect(editor.getJSON()).toEqual(envelope.document);
+    expect(Object.keys((editor.getJSON().content?.[0] as { attrs?: Record<string, unknown> } | undefined)?.attrs ?? {}).sort()).toEqual(
+      ["align", "alt", "caption", "darkMediaId", "frame", "mediaId", "widthPct"].sort()
+    );
+    expect(JSON.stringify(editor.getJSON())).not.toContain("src");
+    expect(JSON.stringify(editor.getJSON())).not.toContain("title");
+    expect(JSON.stringify(editor.getJSON())).not.toContain("height");
+
+    editor.destroy();
   });
 
   it("mounts through the React 18 adapter without the Studio React 19 patch", async () => {
@@ -84,3 +104,5 @@ describe("TipTap runtime compatibility", () => {
     }
   );
 });
+
+

@@ -1,5 +1,6 @@
-import { Component, Fragment, type ReactNode } from "react";
+import { Component, Fragment, type CSSProperties, type ReactNode } from "react";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
+import { canonicalizeDocseraImageAttrs, type DocseraImageAttrs } from "../../../shared/editor/imageContract";
 import {
   createCanonicalHeadingAnchorResolver,
   extractCanonicalHeadingText,
@@ -12,6 +13,8 @@ import {
 
 type PublishedDocumentReaderProps = {
   envelope: DocseraDocumentEnvelope;
+  resolveMediaSource?: (mediaId: string) => string | null;
+  theme?: "dark" | "light";
 };
 
 type ReaderBoundaryProps = {
@@ -24,6 +27,8 @@ type ReaderBoundaryState = {
 
 type ReaderContext = {
   resolveHeadingAnchor: (headingText: string) => string;
+  resolveMediaSource: (mediaId: string) => string | null;
+  theme: "dark" | "light";
 };
 
 const SAFE_LINK_ATTRIBUTES = {
@@ -75,6 +80,84 @@ function getNodeContent(node: Record<string, unknown>, allowMissing = false): un
 
 function getNodeAttrs(node: Record<string, unknown>): Record<string, unknown> {
   return isRecord(node.attrs) ? node.attrs : {};
+}
+
+function getImageNodeAttrs(node: Record<string, unknown>): DocseraImageAttrs {
+  return canonicalizeDocseraImageAttrs(getNodeAttrs(node));
+}
+
+function getImageFigureStyle(attrs: DocseraImageAttrs): CSSProperties {
+  if (attrs.align === "center") {
+    return {
+      width: `${attrs.widthPct}%`,
+      marginInlineStart: "auto",
+      marginInlineEnd: "auto"
+    };
+  }
+
+  return {
+    width: `${attrs.widthPct}%`,
+    marginInlineStart: attrs.align === "right" ? "auto" : undefined,
+    marginInlineEnd: attrs.align === "left" ? "auto" : undefined
+  };
+}
+
+function getImageFigureClassName(attrs: DocseraImageAttrs): string {
+  return [
+    "docsera-main__media",
+    attrs.frame ? "docsera-main__media--framed" : "docsera-main__media--plain",
+    `docsera-main__media--align-${attrs.align}`
+  ].join(" ");
+}
+
+function renderImageUnavailable(path: string, attrs: DocseraImageAttrs): ReactNode {
+  return (
+    <figure
+      key={path}
+      className={getImageFigureClassName(attrs)}
+      data-docsera-image-align={attrs.align}
+      data-docsera-image-frame={attrs.frame ? "true" : "false"}
+      data-docsera-image-width-pct={String(attrs.widthPct)}
+      style={getImageFigureStyle(attrs)}
+    >
+      <div className="docsera-main__editor-recovery docsera-main__media-unavailable" role="status">
+        <p className="docsera-main__eyebrow">Media</p>
+        <h3 className="docsera-main__recovery-title">Image unavailable</h3>
+        <p className="docsera-main__lede">{attrs.alt || "The referenced image could not be resolved."}</p>
+      </div>
+    </figure>
+  );
+}
+
+function renderImage(node: Record<string, unknown>, path: string, context: ReaderContext): ReactNode {
+  const attrs = getImageNodeAttrs(node);
+  const resolvedMediaId =
+    context.theme === "dark" && attrs.darkMediaId !== null ? attrs.darkMediaId : attrs.mediaId;
+  let resolvedSource: string | null;
+
+  try {
+    resolvedSource = context.resolveMediaSource(resolvedMediaId);
+  } catch {
+    return renderImageUnavailable(path, attrs);
+  }
+
+  if (!resolvedSource) {
+    return renderImageUnavailable(path, attrs);
+  }
+
+  return (
+    <figure
+      key={path}
+      className={getImageFigureClassName(attrs)}
+      data-docsera-image-align={attrs.align}
+      data-docsera-image-frame={attrs.frame ? "true" : "false"}
+      data-docsera-image-width-pct={String(attrs.widthPct)}
+      style={getImageFigureStyle(attrs)}
+    >
+      <img className="docsera-main__media-image" src={resolvedSource} alt={attrs.alt} />
+      {attrs.caption ? <figcaption className="docsera-main__media-caption">{attrs.caption}</figcaption> : null}
+    </figure>
+  );
 }
 
 function getReaderHeadingTag(level: 1 | 2 | 3): "h2" | "h3" | "h4" {
@@ -425,12 +508,18 @@ function renderBlockNode(node: unknown, path: string, context: ReaderContext): R
       return renderTaskList(node, path, context);
     case "table":
       return renderTable(node, path, context);
+    case "image":
+      return renderImage(node, path, context);
     default:
       throw new Error(`The published page content contains an unsupported block node: ${String(node.type)}.`);
   }
 }
 
-function PublishedDocumentReaderContent({ envelope }: PublishedDocumentReaderProps) {
+function PublishedDocumentReaderContent({
+  envelope,
+  resolveMediaSource = () => null,
+  theme = "light"
+}: PublishedDocumentReaderProps) {
   if (!envelope || typeof envelope !== "object" || !envelope.document || typeof envelope.document !== "object") {
     return <PublishedDocumentReaderUnavailable />;
   }
@@ -445,7 +534,9 @@ function PublishedDocumentReaderContent({ envelope }: PublishedDocumentReaderPro
   }
 
   const context: ReaderContext = {
-    resolveHeadingAnchor: createCanonicalHeadingAnchorResolver()
+    resolveHeadingAnchor: createCanonicalHeadingAnchorResolver(),
+    resolveMediaSource,
+    theme
   };
 
   return (

@@ -227,7 +227,11 @@ describe("PageEditorHostRuntime", () => {
             type: "doc",
             content: [
               {
-                type: "image"
+                type: "image",
+                attrs: {
+                  mediaId: "",
+                  src: "https://example.com/image.png"
+                }
               }
             ]
           }

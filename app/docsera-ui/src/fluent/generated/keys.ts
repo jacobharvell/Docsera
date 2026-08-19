@@ -412,6 +412,10 @@ declare global {
                         table: 'sys_module'
                         id: '82c7f7d7d6804f42ba403e468abeb2db'
                     }
+                    src_server_pages_serverImageContract_ts: {
+                        table: 'sys_module'
+                        id: 'a6e99b88e62c4fa0aae055cd19533f29'
+                    }
                     src_server_pages_serverPageDomain_ts: {
                         table: 'sys_module'
                         id: '8405ade511e74b5783d977e8a5cb0165'

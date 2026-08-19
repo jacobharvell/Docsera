@@ -154,6 +154,12 @@ The resolved source is runtime-only and is never written back to canonical docum
 
 Dark-mode media selection resolves `darkMediaId` when present and otherwise `mediaId`.
 
+Canonical image nodes remain JSON-only until picker-driven insertion lands; raw HTML `img` or `figure[data-docsera-media-id]` paste does not mint Docsera image nodes.
+
+PublishedDocumentReader now canonicalizes image attrs through the shared server image contract wrapper instead of repeating local trimming/defaulting logic.
+
+Media-resolution failures are contained at the individual image boundary: a null or throwing resolver produces the contained `Image unavailable` state for that image while the surrounding reader content continues rendering.
+
 The exact TypeScript name may be chosen during implementation; this architecture is fixed.
 
 Remove the general exact reader-side resolved-source shape question from unresolved wiring.

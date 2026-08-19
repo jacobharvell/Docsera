@@ -42,7 +42,8 @@ This note records the repository-side document contract that E2-T2 hardened.
 
 ## Fixture Strategy
 
-- Shared fixture builders live in `src/shared/editor/documentFixtures.ts`
+- Canonical image fixture builders live in `src/shared/editor/imageFixtures.ts`
+- `src/shared/editor/documentFixtures.ts` reuses the image fixture builders for the general document corpus
 - The corpus covers current-envelope, legacy, malformed JSON, unsupported versions, missing envelope data, invalid roots, invalid content shapes, and large canonical documents
 - Large-document storage validation remains bounded to the existing E1 capacity evidence
 

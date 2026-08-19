@@ -1,4 +1,4 @@
-import { Extension, getSchema, type Extensions } from "@tiptap/core";
+import { Extension, Node, getSchema, mergeAttributes, type Extensions } from "@tiptap/core";
 import { Document } from "@tiptap/extension-document";
 import { Highlight } from "@tiptap/extension-highlight";
 import { Link } from "@tiptap/extension-link";
@@ -12,6 +12,7 @@ import { Superscript } from "@tiptap/extension-superscript";
 import { Underline } from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import type { Schema } from "@tiptap/pm/model";
+import { DOCSERA_IMAGE_DEFAULTS, DOCSERA_IMAGE_ALIGNMENTS, type DocseraImageAttrs } from "./imageContract";
 import {
   DOCSERA_BODY_HEADING_LEVELS,
   canonicalizeDocseraStructuredDocument,
@@ -42,6 +43,66 @@ function normalizeTableColumnWidths(value: unknown): number[] | null {
 
   return value.every((width) => Number.isInteger(width) && Number(width) > 0) ? (value as number[]) : null;
 }
+
+const DocseraImage = Node.create({
+  name: "image",
+  group: "block",
+  atom: true,
+  draggable: true,
+  selectable: true,
+  addAttributes() {
+    return {
+      mediaId: {
+        default: null,
+        renderHTML: (attributes) =>
+          typeof attributes.mediaId === "string" && attributes.mediaId.length > 0
+            ? { "data-docsera-media-id": attributes.mediaId }
+            : {}
+      },
+      darkMediaId: {
+        default: null,
+        renderHTML: (attributes) =>
+          typeof attributes.darkMediaId === "string" && attributes.darkMediaId.length > 0
+            ? { "data-docsera-dark-media-id": attributes.darkMediaId }
+            : {}
+      },
+      alt: {
+        default: DOCSERA_IMAGE_DEFAULTS.alt,
+        renderHTML: (attributes) => ({ "data-docsera-alt": typeof attributes.alt === "string" ? attributes.alt : DOCSERA_IMAGE_DEFAULTS.alt })
+      },
+      caption: {
+        default: DOCSERA_IMAGE_DEFAULTS.caption,
+        renderHTML: (attributes) => ({
+          "data-docsera-caption": typeof attributes.caption === "string" ? attributes.caption : DOCSERA_IMAGE_DEFAULTS.caption
+        })
+      },
+      frame: {
+        default: DOCSERA_IMAGE_DEFAULTS.frame,
+        renderHTML: (attributes) => ({ "data-docsera-frame": attributes.frame === false ? "false" : "true" })
+      },
+      align: {
+        default: DOCSERA_IMAGE_DEFAULTS.align,
+        renderHTML: (attributes) => ({
+          "data-docsera-align":
+            typeof attributes.align === "string" && DOCSERA_IMAGE_ALIGNMENTS.includes(attributes.align as DocseraImageAttrs["align"])
+              ? attributes.align
+              : DOCSERA_IMAGE_DEFAULTS.align
+        })
+      },
+      widthPct: {
+        default: DOCSERA_IMAGE_DEFAULTS.widthPct,
+        renderHTML: (attributes) => ({
+          "data-docsera-width-pct": String(
+            Number.isFinite(Number(attributes.widthPct)) ? Math.min(100, Math.max(20, Number(attributes.widthPct))) : DOCSERA_IMAGE_DEFAULTS.widthPct
+          )
+        })
+      }
+    };
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ["figure", mergeAttributes(HTMLAttributes, { class: "docsera-image" })];
+  }
+});
 
 const TableCell = BaseTableCell.extend({
   addAttributes() {
@@ -311,6 +372,7 @@ export function createDocseraEditorExtensions(): Extensions {
       openOnClick: false,
       isAllowedUri: (url) => isDocseraAllowedLinkHref(url)
     }),
+    DocseraImage,
     TaskItem.configure({
       nested: true
     }),
