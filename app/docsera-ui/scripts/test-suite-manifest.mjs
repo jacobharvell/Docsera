@@ -127,12 +127,14 @@ export const testSuites = [
       "src/fluent/tables/docsera-page-schema.test.ts",
       "src/fluent/tables/docsera-workspace-change-set-schema.test.ts",
       "src/server/api/docsera-runtime-mutation-routes.test.ts",
+      "src/server/api/docsera-runtime-workspace-media.test.ts",
       "src/server/pages/serviceNowPageDraftPersistence.test.ts",
       "src/server/pages/serviceNowPageListing.test.ts",
       "src/server/pages/serviceNowPagePersistenceAndQueries.test.ts",
       "src/server/pages/serviceNowPageQueries.test.ts",
       "src/server/pages/serviceNowPageRecords.test.ts",
       "src/server/workspaces/serviceNowWorkspaceChangeSetPersistence.test.ts",
+      "src/server/workspaces/serviceNowWorkspaceMedia.test.ts",
       "src/server/workspaces/workspaceChangeSetDomain.test.ts",
       "test/servicenowClient.test.ts"
     ]

@@ -14,6 +14,9 @@ import { process as savePageSettings } from "../../server/api/docsera-runtime-pa
 import { process as createWorkspace } from "../../server/api/docsera-runtime-create-workspace";
 import { process as listPages } from "../../server/api/docsera-runtime-pages";
 import { process as workspaces } from "../../server/api/docsera-runtime-workspaces";
+import { process as listWorkspaceMedia } from "../../server/api/docsera-runtime-workspace-media.ts";
+import { process as uploadWorkspaceMedia } from "../../server/api/docsera-runtime-workspace-media-upload.ts";
+import { process as getWorkspaceMediaFile } from "../../server/api/docsera-runtime-workspace-media-file.ts";
 import { process as workspaceProvisioningStatus } from "../../server/api/docsera-runtime-workspace-provisioning-status";
 import { process as workspaceDiscardAll } from "../../server/api/docsera-runtime-workspace-discard-all";
 import { process as workspaceDiscardPage } from "../../server/api/docsera-runtime-workspace-discard-page";
@@ -97,6 +100,15 @@ RestApi({
     },
     {
       $id: Now.ID["docsera-runtime-workspace-edit-lease-status-post"], name: "workspace_edit_lease_status", path: "/workspaces/edit-lease/status", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Report the current workspace authoring lease status.", script: statusWorkspaceEditLease
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-media-get"], name: "workspace_media_list", path: "/workspaces/media", method: "GET", produces: "application/json", shortDescription: "List the supported workspace-owned image library.", script: listWorkspaceMedia
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-media-post"], name: "workspace_media_upload", path: "/workspaces/media", method: "POST", consumes: "image/*", produces: "application/json", shortDescription: "Upload a workspace-owned image attachment through the held workspace edit lease.", script: uploadWorkspaceMedia
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-media-file-get"], name: "workspace_media_file", path: "/workspaces/media/file", method: "GET", produces: "image/*", shortDescription: "Stream a workspace-owned image attachment through the authorized media boundary.", script: getWorkspaceMediaFile
     },
     {
       $id: Now.ID["docsera-runtime-pages-post"],

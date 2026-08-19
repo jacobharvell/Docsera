@@ -263,6 +263,18 @@ declare global {
                         table: 'sys_ws_operation'
                         id: '38193dfc681443eeba57c8b83150a313'
                     }
+                    'docsera-runtime-workspace-media-file-get': {
+                        table: 'sys_ws_operation'
+                        id: 'bd641d50194b4549bbfb8a59f69611b5'
+                    }
+                    'docsera-runtime-workspace-media-get': {
+                        table: 'sys_ws_operation'
+                        id: 'd9e2c19db5e041de99e255cdcb267c6a'
+                    }
+                    'docsera-runtime-workspace-media-post': {
+                        table: 'sys_ws_operation'
+                        id: '7010f50adafe409c82ccf41b0d0acb19'
+                    }
                     'docsera-runtime-workspace-pending-changes-post': {
                         table: 'sys_ws_operation'
                         id: '1912ff3235804ba780bc53c6aeec1b51'
@@ -348,6 +360,10 @@ declare global {
                         table: 'sys_module'
                         id: '0cae8437f1b24d1b8e2e27367ffef695'
                     }
+                    'src_server_api_docsera-runtime-request_ts': {
+                        table: 'sys_module'
+                        id: '1f906ab5540a48a98443ebaae3b3102a'
+                    }
                     'src_server_api_docsera-runtime-workspace-discard-all_ts': {
                         table: 'sys_module'
                         id: '6be6316f3dad4a9ebf85bba70319280e'
@@ -379,6 +395,18 @@ declare global {
                     'src_server_api_docsera-runtime-workspace-edit-lease-status_ts': {
                         table: 'sys_module'
                         id: 'b5be1f4d19db4db781c89ba7c5648bb4'
+                    }
+                    'src_server_api_docsera-runtime-workspace-media_ts': {
+                        table: 'sys_module'
+                        id: '4b4662cf544f4479bdd4e50ea4e1db4c'
+                    }
+                    'src_server_api_docsera-runtime-workspace-media-file_ts': {
+                        table: 'sys_module'
+                        id: '788b34648cc048f4a262b46b51fb035c'
+                    }
+                    'src_server_api_docsera-runtime-workspace-media-upload_ts': {
+                        table: 'sys_module'
+                        id: 'afd67e96467f44cbaf80ac420ec03e3b'
                     }
                     'src_server_api_docsera-runtime-workspace-pending-changes_ts': {
                         table: 'sys_module'
@@ -487,6 +515,10 @@ declare global {
                     src_server_workspaces_serviceNowWorkspaceChangeSetPersistence_ts: {
                         table: 'sys_module'
                         id: '33fd02cf34a346bf96af94a3f07e1253'
+                    }
+                    src_server_workspaces_serviceNowWorkspaceMedia_ts: {
+                        table: 'sys_module'
+                        id: 'ee1288870b964d52b59f01c3c1b5499f'
                     }
                     src_server_workspaces_serviceNowWorkspaceProvisioning_ts: {
                         table: 'sys_module'

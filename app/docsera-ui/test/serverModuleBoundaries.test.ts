@@ -100,4 +100,21 @@ describe("server module boundaries", () => {
 
     expect(offenders).toEqual([]);
   });
+
+  it("keeps page publish and discard paths free of media deletion behavior", () => {
+    const guardedFiles = [
+      join(packageRoot, "src", "server", "api", "docsera-runtime-page-delete.ts"),
+      join(packageRoot, "src", "server", "api", "docsera-runtime-page-delete-action.ts"),
+      join(packageRoot, "src", "server", "api", "docsera-runtime-page-publish.ts"),
+      join(packageRoot, "src", "server", "api", "docsera-runtime-workspace-discard-all.ts"),
+      join(packageRoot, "src", "server", "api", "docsera-runtime-workspace-discard-page.ts")
+    ];
+
+    const offenders = guardedFiles.filter((file) => {
+      const sourceText = readFileSync(file, "utf8");
+      return sourceText.includes("deleteAttachment") || sourceText.includes("workspace-media");
+    });
+
+    expect(offenders).toEqual([]);
+  });
 });
