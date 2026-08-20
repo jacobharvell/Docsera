@@ -6,14 +6,16 @@ import {
   extractCanonicalHeadingText,
   extractCanonicalInlineText
 } from "../../../shared/editor/headingAnchors";
+import { useWorkspaceMediaObjectUrl } from "../../shared/media/useWorkspaceMediaObjectUrl";
 import {
   isDocseraAllowedLinkHref,
   validateDocseraStructuredDocument
 } from "../../../server/pages/serverEditorDocument";
+import type { WorkspaceMediaLoader } from "../../shared/types/docsera";
 
 type PublishedDocumentReaderProps = {
   envelope: DocseraDocumentEnvelope;
-  resolveMediaSource?: (mediaId: string) => string | null;
+  loadMedia?: WorkspaceMediaLoader;
   theme?: "dark" | "light";
 };
 
@@ -27,7 +29,7 @@ type ReaderBoundaryState = {
 
 type ReaderContext = {
   resolveHeadingAnchor: (headingText: string) => string;
-  resolveMediaSource: (mediaId: string) => string | null;
+  loadMedia?: WorkspaceMediaLoader;
   theme: "dark" | "light";
 };
 
@@ -129,19 +131,47 @@ function renderImageUnavailable(path: string, attrs: DocseraImageAttrs): ReactNo
   );
 }
 
-function renderImage(node: Record<string, unknown>, path: string, context: ReaderContext): ReactNode {
-  const attrs = getImageNodeAttrs(node);
-  const resolvedMediaId =
-    context.theme === "dark" && attrs.darkMediaId !== null ? attrs.darkMediaId : attrs.mediaId;
-  let resolvedSource: string | null;
+function renderImageLoading(path: string, attrs: DocseraImageAttrs): ReactNode {
+  return (
+    <figure
+      key={path}
+      className={getImageFigureClassName(attrs)}
+      data-docsera-image-align={attrs.align}
+      data-docsera-image-frame={attrs.frame ? "true" : "false"}
+      data-docsera-image-width-pct={String(attrs.widthPct)}
+      style={getImageFigureStyle(attrs)}
+    >
+      <div className="docsera-main__editor-recovery docsera-main__media-loading" role="status" aria-busy="true">
+        <p className="docsera-main__eyebrow">Media</p>
+        <h3 className="docsera-main__recovery-title">Loading image</h3>
+        <p className="docsera-main__lede">The image is being loaded through the authenticated media boundary.</p>
+      </div>
+    </figure>
+  );
+}
 
-  try {
-    resolvedSource = context.resolveMediaSource(resolvedMediaId);
-  } catch {
-    return renderImageUnavailable(path, attrs);
+function PublishedDocumentReaderImage({
+  attrs,
+  loadMedia,
+  path,
+  mediaId
+}: {
+  attrs: DocseraImageAttrs;
+  loadMedia?: WorkspaceMediaLoader;
+  path: string;
+  mediaId: string;
+}) {
+  const mediaState = useWorkspaceMediaObjectUrl({
+    loadMedia,
+    mediaId,
+    invalidateKey: path
+  });
+
+  if (mediaState.status === "loading") {
+    return renderImageLoading(path, attrs);
   }
 
-  if (!resolvedSource) {
+  if (mediaState.status !== "ready" || !mediaState.objectUrl) {
     return renderImageUnavailable(path, attrs);
   }
 
@@ -154,10 +184,17 @@ function renderImage(node: Record<string, unknown>, path: string, context: Reade
       data-docsera-image-width-pct={String(attrs.widthPct)}
       style={getImageFigureStyle(attrs)}
     >
-      <img className="docsera-main__media-image" src={resolvedSource} alt={attrs.alt} />
+      <img className="docsera-main__media-image" src={mediaState.objectUrl} alt={attrs.alt} />
       {attrs.caption ? <figcaption className="docsera-main__media-caption">{attrs.caption}</figcaption> : null}
     </figure>
   );
+}
+
+function renderImage(node: Record<string, unknown>, path: string, context: ReaderContext): ReactNode {
+  const attrs = getImageNodeAttrs(node);
+  const resolvedMediaId =
+    context.theme === "dark" && attrs.darkMediaId !== null ? attrs.darkMediaId : attrs.mediaId;
+  return <PublishedDocumentReaderImage key={path} attrs={attrs} loadMedia={context.loadMedia} mediaId={resolvedMediaId} path={path} />;
 }
 
 function getReaderHeadingTag(level: 1 | 2 | 3): "h2" | "h3" | "h4" {
@@ -517,7 +554,7 @@ function renderBlockNode(node: unknown, path: string, context: ReaderContext): R
 
 function PublishedDocumentReaderContent({
   envelope,
-  resolveMediaSource = () => null,
+  loadMedia,
   theme = "light"
 }: PublishedDocumentReaderProps) {
   if (!envelope || typeof envelope !== "object" || !envelope.document || typeof envelope.document !== "object") {
@@ -535,7 +572,7 @@ function PublishedDocumentReaderContent({
 
   const context: ReaderContext = {
     resolveHeadingAnchor: createCanonicalHeadingAnchorResolver(),
-    resolveMediaSource,
+    loadMedia,
     theme
   };
 

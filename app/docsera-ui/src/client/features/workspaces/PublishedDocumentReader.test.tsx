@@ -6,11 +6,11 @@ import {
 } from "../../../shared/editor/imageFixtures";
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { PublishedDocumentReader } from "./PublishedDocumentReader";
 import { buildWorkspacePageView } from "./workspaceViewModels";
-import type { WorkspacePageRecord } from "../../shared/types/docsera";
+import type { WorkspaceMediaLoader, WorkspacePageRecord } from "../../shared/types/docsera";
 import {
   createDuplicateHeadingDocseraDocumentEnvelope,
   createEmptyHeadingDocseraDocumentEnvelope,
@@ -23,6 +23,22 @@ import {
   createSupportedE2DocseraDocumentEnvelope
 } from "../../../shared/editor/documentFixtures";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
+
+type WorkspaceMediaLoadInput = Parameters<WorkspaceMediaLoader>[0];
+
+if (typeof URL.createObjectURL !== "function") {
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: () => "blob:reader"
+  });
+}
+
+if (typeof URL.revokeObjectURL !== "function") {
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: () => undefined
+  });
+}
 
 function createPageRecord(envelope: DocseraDocumentEnvelope): WorkspacePageRecord {
   return {
@@ -49,17 +65,21 @@ function createPageRecord(envelope: DocseraDocumentEnvelope): WorkspacePageRecor
 function renderReader(
   envelope: DocseraDocumentEnvelope,
   options: {
-    resolveMediaSource?: (mediaId: string) => string | null;
+    loadMedia?: WorkspaceMediaLoader;
     theme?: "dark" | "light";
   } = {}
 ) {
   return render(
     <PublishedDocumentReader
       envelope={envelope}
-      resolveMediaSource={options.resolveMediaSource}
+      loadMedia={options.loadMedia}
       theme={options.theme}
     />
   );
+}
+
+function createMediaBlob(label: string): Blob {
+  return new Blob([label], { type: "image/png" });
 }
 
 describe("PublishedDocumentReader", () => {
@@ -137,6 +157,25 @@ describe("PublishedDocumentReader", () => {
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener noreferrer nofollow");
     expect(link).toHaveAttribute("title", "Open guide");
+  });
+
+  it("loads canonical image media ids through the live reader binary loader", async () => {
+    const envelope = createResponsiveImageDocseraDocumentEnvelope();
+    const createObjectUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:reader");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+
+    renderReader(envelope, {
+      loadMedia: vi.fn(async ({ mediaId }: WorkspaceMediaLoadInput) => (mediaId === "workspace-media-dark" ? createMediaBlob(mediaId) : null)),
+      theme: "dark"
+    });
+
+    const reader = screen.getByLabelText("Published page content");
+    await waitFor(() => {
+      expect(within(reader).getByRole("img", { name: "Architecture diagram" })).toHaveAttribute("src", "blob:reader");
+    });
+    expect(within(reader).getByText("Published in both light and dark modes")).toBeInTheDocument();
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
   });
 
   it("renders body H1 plus underline, highlight, superscript, and subscript without theme data in canonical JSON", () => {
@@ -299,23 +338,15 @@ describe("PublishedDocumentReader", () => {
     expect(reader.querySelectorAll(".docsera-main__table-wrapper")).toHaveLength(3);
   });
 
-  it("renders canonical image metadata and resolves the light media source in light theme", () => {
+  it("loads canonical image media through the binary loader in light theme and keeps the structured metadata intact", async () => {
     const envelope = createResponsiveImageDocseraDocumentEnvelope();
     const original = JSON.parse(JSON.stringify(envelope));
+    const createObjectUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:light");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
 
     renderReader(envelope, {
       theme: "light",
-      resolveMediaSource: (mediaId) => {
-        if (mediaId === "workspace-media-light") {
-          return "https://cdn.example.com/light.png";
-        }
-
-        if (mediaId === "workspace-media-dark") {
-          return "https://cdn.example.com/dark.png";
-        }
-
-        return null;
-      }
+      loadMedia: vi.fn(async ({ mediaId }: WorkspaceMediaLoadInput) => (mediaId === "workspace-media-light" || mediaId === "workspace-media-dark" ? createMediaBlob(mediaId) : null))
     });
 
     const reader = screen.getByLabelText("Published page content");
@@ -326,50 +357,66 @@ describe("PublishedDocumentReader", () => {
     expect(figure).toHaveAttribute("data-docsera-image-frame", "false");
     expect(figure).toHaveAttribute("data-docsera-image-width-pct", "80");
 
+    await waitFor(() => {
+      expect(within(reader).getByRole("img", { name: "Architecture diagram" })).toHaveAttribute("src", "blob:light");
+    });
+
     const image = within(reader).getByRole("img", { name: "Architecture diagram" });
-    expect(image).toHaveAttribute("src", "https://cdn.example.com/light.png");
     expect(image).toHaveAttribute("alt", "Architecture diagram");
     expect(within(reader).getByText("Published in both light and dark modes")).toHaveClass("docsera-main__media-caption");
     expect(envelope).toEqual(original);
+    expect(createObjectUrlSpy).toHaveBeenCalledTimes(1);
+
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
   });
 
-  it("renders an authored-empty alt as an empty img alt when the media resolves", () => {
+  it("renders an authored-empty alt as an empty img alt when the media resolves", async () => {
     const envelope = createCanonicalImageDocseraDocumentEnvelope();
+    const createObjectUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:canonical");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
 
     renderReader(envelope, {
-      resolveMediaSource: (mediaId) => (mediaId === "workspace-media-001" ? "https://cdn.example.com/canonical.png" : null)
+      loadMedia: vi.fn(async ({ mediaId }: WorkspaceMediaLoadInput) => (mediaId === "workspace-media-001" ? createMediaBlob(mediaId) : null))
     });
 
     const reader = screen.getByLabelText("Published page content");
-    const image = reader.querySelector("img.docsera-main__media-image");
+    await waitFor(() => {
+      expect(reader.querySelector("img.docsera-main__media-image")).toHaveAttribute("src", "blob:canonical");
+    });
 
+    const image = reader.querySelector("img.docsera-main__media-image");
     expect(image).not.toBeNull();
-    expect(image).toHaveAttribute("src", "https://cdn.example.com/canonical.png");
     expect(image).toHaveAttribute("alt", "");
+
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
   });
 
-  it("uses the dark variant in dark theme, falls back to the light media when no dark variant exists, and keeps the configured dark failure contained", () => {
+  it("uses the dark variant in dark theme, keeps a configured dark failure contained, and falls back to light only when no dark variant exists", async () => {
+    const createObjectUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValueOnce("blob:dark").mockReturnValueOnce("blob:light");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+
     const darkEnvelope = createResponsiveImageDocseraDocumentEnvelope();
     renderReader(darkEnvelope, {
       theme: "dark",
-      resolveMediaSource: (mediaId) => {
+      loadMedia: vi.fn(async ({ mediaId }: WorkspaceMediaLoadInput) => {
         if (mediaId === "workspace-media-dark") {
-          return "https://cdn.example.com/dark.png";
+          return createMediaBlob(mediaId);
         }
 
         if (mediaId === "workspace-media-light") {
-          return "https://cdn.example.com/light.png";
+          return createMediaBlob(mediaId);
         }
 
         return null;
-      }
+      })
     });
 
     const darkReader = screen.getByLabelText("Published page content");
-    expect(within(darkReader).getByRole("img", { name: "Architecture diagram" })).toHaveAttribute(
-      "src",
-      "https://cdn.example.com/dark.png"
-    );
+    await waitFor(() => {
+      expect(within(darkReader).getByRole("img", { name: "Architecture diagram" })).toHaveAttribute("src", "blob:dark");
+    });
 
     cleanup();
 
@@ -394,17 +441,13 @@ describe("PublishedDocumentReader", () => {
     };
     renderReader(fallbackEnvelope, {
       theme: "dark",
-      resolveMediaSource: (mediaId) => {
-        if (mediaId === "workspace-media-001") {
-          return "https://cdn.example.com/light.png";
-        }
-
-        return null;
-      }
+      loadMedia: vi.fn(async ({ mediaId }: WorkspaceMediaLoadInput) => (mediaId === "workspace-media-001" ? createMediaBlob(mediaId) : null))
     });
 
     const fallbackReader = screen.getByLabelText("Published page content");
-    expect(within(fallbackReader).getByRole("img")).toHaveAttribute("src", "https://cdn.example.com/light.png");
+    await waitFor(() => {
+      expect(within(fallbackReader).getByRole("img")).toHaveAttribute("src", "blob:light");
+    });
 
     cleanup();
 
@@ -439,17 +482,22 @@ describe("PublishedDocumentReader", () => {
 
     renderReader(containedFailureEnvelope, {
       theme: "dark",
-      resolveMediaSource: (mediaId) => (mediaId === "workspace-media-light" ? "https://cdn.example.com/light.png" : null)
+      loadMedia: vi.fn(async ({ mediaId }: WorkspaceMediaLoadInput) => (mediaId === "workspace-media-light" ? createMediaBlob(mediaId) : null))
     });
 
     const containedReader = screen.getByLabelText("Published page content");
     expect(within(containedReader).getByText("Before")).toBeInTheDocument();
     expect(within(containedReader).getByText("After")).toBeInTheDocument();
-    expect(within(containedReader).getByRole("status")).toHaveTextContent("Image unavailable");
+    await waitFor(() => {
+      expect(within(containedReader).getByRole("status")).toHaveTextContent("Image unavailable");
+    });
     expect(within(containedReader).queryByRole("img")).toBeNull();
+
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
   });
 
-  it("keeps surrounding blocks visible when a media resolver throws for one image", () => {
+  it("keeps surrounding blocks visible when a media loader throws for one image", async () => {
     const envelope: DocseraDocumentEnvelope = {
       schemaVersion: 1,
       document: {
@@ -479,8 +527,8 @@ describe("PublishedDocumentReader", () => {
     };
 
     renderReader(envelope, {
-      resolveMediaSource: () => {
-        throw new Error("resolver failure");
+      loadMedia: async () => {
+        throw new Error("loader failure");
       }
     });
 
@@ -488,7 +536,9 @@ describe("PublishedDocumentReader", () => {
 
     expect(within(reader).getByText("Before")).toBeInTheDocument();
     expect(within(reader).getByText("After")).toBeInTheDocument();
-    expect(within(reader).getByRole("status")).toHaveTextContent("Image unavailable");
+    await waitFor(() => {
+      expect(within(reader).getByRole("status")).toHaveTextContent("Image unavailable");
+    });
     expect(within(reader).queryByRole("img")).toBeNull();
   });
 

@@ -29,6 +29,143 @@ function createJsonResponse(status: number, body: unknown) {
   };
 }
 
+function createBinaryResponse(status: number, blob: Blob) {
+  return {
+    status,
+    async blob() {
+      return blob;
+    }
+  };
+}
+
+describe("service now client workspace media", () => {
+  it("lists workspace media and normalizes the returned descriptors", async () => {
+    const fetchMock = vi.fn(async (path: RequestInfo | URL) => {
+      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/workspaces/media?workspaceSysId=workspace-001");
+      return createJsonResponse(200, {
+        result: {
+          items: [
+            {
+              contentType: "image/png",
+              createdOn: "2026-08-19T10:00:00.000Z",
+              fileName: "diagram.png",
+              mediaId: "media-001",
+              sizeBytes: 2048,
+              updatedOn: "2026-08-19T10:15:00.000Z"
+            }
+          ]
+        }
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createServiceNowClient(createRuntime()).listWorkspaceMedia!({
+      workspaceSysId: "workspace-001"
+    });
+
+    expect(result).toEqual({
+      state: "succeeded",
+      items: [
+        {
+          contentType: "image/png",
+          createdOn: "2026-08-19T10:00:00.000Z",
+          fileName: "diagram.png",
+          mediaId: "media-001",
+          sizeBytes: 2048,
+          updatedOn: "2026-08-19T10:15:00.000Z"
+        }
+      ]
+    });
+  });
+
+  it("uploads workspace media with the selected file body and lease token header", async () => {
+    const file = new File(["image-data"], "diagram.png", { type: "image/png" });
+    const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(path)).toContain(
+        "/api/x_82900_docsera/docsera_runtime/workspaces/media?workspaceSysId=workspace-001&fileName=diagram.png"
+      );
+      expect(init?.method).toBe("POST");
+      expect(init?.body).toBe(file);
+      expect((init?.headers as HeadersInit | undefined) ?? {}).toMatchObject({
+        "Content-Type": "image/png",
+        "X-Docsera-Workspace-Lease-Token": "workspace-lease-token"
+      });
+      return createJsonResponse(201, {
+        result: {
+          media: {
+            contentType: "image/png",
+            createdOn: "2026-08-19T10:00:00.000Z",
+            fileName: "diagram.png",
+            mediaId: "media-001",
+            sizeBytes: 2048,
+            updatedOn: "2026-08-19T10:15:00.000Z"
+          }
+        }
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createServiceNowClient(createRuntime()).uploadWorkspaceMedia!({
+      file,
+      workspaceLeaseToken: "workspace-lease-token",
+      workspaceSysId: "workspace-001"
+    });
+
+    expect(result).toEqual({
+      state: "succeeded",
+      media: {
+        contentType: "image/png",
+        createdOn: "2026-08-19T10:00:00.000Z",
+        fileName: "diagram.png",
+        mediaId: "media-001",
+        sizeBytes: 2048,
+        updatedOn: "2026-08-19T10:15:00.000Z"
+      }
+    });
+  });
+
+  it("loads workspace media as a binary blob through the authenticated media boundary", async () => {
+    (window as Window & { g_ck?: string }).g_ck = "user-token-001";
+    const signal = new AbortController().signal;
+    const blob = new Blob(["binary-image"], { type: "image/png" });
+    const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(path)).toContain(
+        "/api/x_82900_docsera/docsera_runtime/workspaces/media/file?workspaceSysId=workspace-001&mediaId=media-001"
+      );
+      expect(init?.credentials).toBe("same-origin");
+      expect(init?.signal).toBe(signal);
+      expect((init?.headers as HeadersInit | undefined) ?? {}).toMatchObject({
+        Accept: "image/*",
+        "X-UserToken": "user-token-001"
+      });
+      return createBinaryResponse(200, blob);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createServiceNowClient(createRuntime()).loadWorkspaceMedia!({
+      mediaId: "media-001",
+      signal,
+      workspaceSysId: "workspace-001"
+    });
+
+    expect(result).toBe(blob);
+  });
+
+  it("returns a safe null failure for unavailable workspace media responses", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => createBinaryResponse(404, new Blob())));
+
+    const result = await createServiceNowClient(createRuntime()).loadWorkspaceMedia!({
+      mediaId: "media-001",
+      workspaceSysId: "workspace-001"
+    });
+
+    expect(result).toBeNull();
+  });
+});
+
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();

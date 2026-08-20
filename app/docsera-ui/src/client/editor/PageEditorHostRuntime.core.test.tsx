@@ -131,6 +131,88 @@ describe("PageEditorHostRuntime", () => {
     expect(selectorStyleSource).toContain("padding: 8px calc(10px + var(--docsera-block-selector-scrollbar-gap)) 8px 10px;");
   });
 
+  it("owns editor image presentation inside the shadow runtime and keeps the picker contract compact", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const runtimeSource = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/PageEditorHostRuntime.tsx`,
+      "utf8"
+    );
+    const editorImageStylesSource = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/EditorImageStyles.ts`,
+      "utf8"
+    );
+    const imagePickerStylesSource = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/ImagePickerStyles.ts`,
+      "utf8"
+    );
+
+    expect(runtimeSource).toContain('import { EDITOR_IMAGE_STYLES } from "./EditorImageStyles";');
+    expect(runtimeSource).toContain("${EDITOR_IMAGE_STYLES}");
+    expect(editorImageStylesSource).toContain(".docsera-editor-image {");
+    expect(editorImageStylesSource).toContain("margin: 0;");
+    expect(editorImageStylesSource).toContain(".docsera-editor-image__loading,");
+    expect(editorImageStylesSource).toContain(".docsera-editor-image__unavailable");
+    expect(imagePickerStylesSource).toContain(".docsera-modal__surface.docsera-image-picker {");
+    expect(imagePickerStylesSource).toContain("width: min(100%, 560px);");
+    expect(imagePickerStylesSource).toContain("border-radius: 8px;");
+    expect(imagePickerStylesSource).toContain("box-shadow: 0 24px 48px rgba(15, 23, 42, 0.22);");
+    expect(imagePickerStylesSource).toContain(".docsera-modal__surface.docsera-image-picker,");
+    expect(imagePickerStylesSource).toContain(".docsera-modal__surface.docsera-image-picker *,");
+    expect(imagePickerStylesSource).toContain(".docsera-modal__surface.docsera-image-picker *::before,");
+    expect(imagePickerStylesSource).toContain(".docsera-modal__surface.docsera-image-picker *::after {");
+    expect(imagePickerStylesSource).toContain("box-sizing: border-box;");
+    expect(imagePickerStylesSource).toContain(".docsera-image-picker__header {");
+    expect(imagePickerStylesSource).toContain("border-bottom: 1px solid var(--docsera-border-soft);");
+    expect(imagePickerStylesSource).toContain(".docsera-modal__close.docsera-image-picker__close {");
+    expect(imagePickerStylesSource).toContain("width: 32px;");
+    expect(imagePickerStylesSource).toContain("height: 32px;");
+    expect(imagePickerStylesSource).toContain("background: transparent;");
+    expect(imagePickerStylesSource).toContain("cursor: pointer;");
+    expect(imagePickerStylesSource).toContain("cursor: default;");
+    expect(imagePickerStylesSource).toContain(".docsera-image-picker__search-row {");
+    expect(imagePickerStylesSource).toContain("padding: 0;");
+    expect(imagePickerStylesSource).toContain(".docsera-image-picker__search,");
+    expect(imagePickerStylesSource).toContain(".docsera-image-picker__input {");
+    expect(imagePickerStylesSource).toContain("width: 100%;");
+    expect(imagePickerStylesSource).toContain("border-radius: 4px;");
+    expect(imagePickerStylesSource).toContain("border-color: var(--docsera-primary);");
+    expect(imagePickerStylesSource).toContain("box-shadow: none;");
+    expect(imagePickerStylesSource).toContain(".docsera-image-picker__grid {");
+    expect(imagePickerStylesSource).toContain(".docsera-image-picker__tile {");
+    expect(imagePickerStylesSource).toContain("aspect-ratio: 1 / 1;");
+    expect(imagePickerStylesSource).toContain(".docsera-image-picker__tile--upload {");
+    expect(imagePickerStylesSource).toContain(".docsera-image-picker__tile-thumb {");
+    expect(imagePickerStylesSource).toContain(".docsera-image-picker__upload-view {");
+    expect(imagePickerStylesSource).toContain(".docsera-image-picker__upload-preview {");
+    expect(imagePickerStylesSource).toContain("height: clamp(220px, 36vh, 280px);");
+    expect(imagePickerStylesSource).toContain("object-fit: contain;");
+    expect(imagePickerStylesSource).toContain(".docsera-modal__primary {");
+    expect(imagePickerStylesSource).toContain("min-width: 134px;");
+    expect(imagePickerStylesSource).toContain("height: 34px;");
+    expect(imagePickerStylesSource).toContain("font-size: 14px;");
+    expect(imagePickerStylesSource).toContain("font-weight: 600;");
+    expect(imagePickerStylesSource).toContain("min-height: 34px;");
+    expect(imagePickerStylesSource).toContain("border-radius: 4px;");
+    expect(imagePickerStylesSource).toContain(".docsera-modal__secondary {");
+    expect(imagePickerStylesSource).toContain("color: var(--docsera-text-muted);");
+    expect(imagePickerStylesSource).toContain("img.docsera-image-picker__tile-image {");
+    expect(imagePickerStylesSource).not.toContain("linear-gradient(180deg");
+    expect(imagePickerStylesSource).not.toContain(".docsera-image-picker__tile-meta {");
+    expect(imagePickerStylesSource).not.toContain(".docsera-image-picker__tile-name {");
+    expect(imagePickerStylesSource).not.toContain(".docsera-image-picker__tile-details {");
+    expect(imagePickerStylesSource).not.toContain(".docsera-image-picker__library-layout {");
+    expect(imagePickerStylesSource).not.toContain(".docsera-image-picker__preview-pane {");
+    expect(imagePickerStylesSource).not.toContain(".docsera-image-picker__upload-layout {");
+    expect(imagePickerStylesSource).not.toContain(".docsera-image-picker__library-toolbar {");
+    expect(imagePickerStylesSource).not.toContain(".docsera-image-picker__tile-image img {");
+    expect(imagePickerStylesSource).not.toContain("cursor: not-allowed;");
+    expect(imagePickerStylesSource).not.toContain(":host-context(html[data-docsera-theme=\"dark\"]) .docsera-image-picker__header");
+    expect(imagePickerStylesSource).not.toContain(":host-context(html[data-docsera-theme=\"dark\"]) .docsera-image-picker__search");
+  });
+
   it("keeps the edit-mode title-to-editor spacing at 40px", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;
@@ -143,6 +225,8 @@ describe("PageEditorHostRuntime", () => {
 
     expect(runtimeShellSource).toContain(".docsera-main__editor-host {");
     expect(runtimeShellSource).toContain("margin-top: 40px;");
+    expect(runtimeShellSource).not.toContain(".docsera-image-picker__backdrop");
+    expect(runtimeShellSource).not.toContain(".docsera-modal__surface.docsera-image-picker");
   });
 
   it("keeps the editor content lane shrinkable so wide tables stay inside the existing shell width", () => {
@@ -695,13 +779,14 @@ describe("PageEditorHostRuntime", () => {
     expect(container.textContent ?? "").not.toContain("Canonical TipTap content is isolated inside the production child host and saved explicitly during E2.");
     expect(container.querySelector(".docsera-main__authoring-controls")).toBeNull();
     expect(overlayRoot).toBeInTheDocument();
-    expect(runtimeStyle).not.toContain("padding: 22px");
-    expect(runtimeStyle).not.toContain("border-radius: 24px");
-    expect(runtimeStyle).not.toContain("box-shadow: 0 18px 48px");
     expect(runtimeStyle).not.toContain("--docsera-editor-surface");
     expect(runtimeStyle).not.toContain(".docsera-editor-runtime__overlay");
     expect(runtimeStyle).not.toContain(".docsera-editor-runtime__overlay-button");
     expect(runtimeStyle).not.toContain(".docsera-editor-runtime__save-button");
+    expect(runtimeStyle).toContain(".docsera-image-picker__backdrop");
+    expect(runtimeStyle).toContain(".docsera-modal__surface.docsera-image-picker");
+    expect(runtimeStyle).toContain(".docsera-image-picker__library-scroll");
+    expect(runtimeStyle).toContain(":host-context(html[data-docsera-theme=\"dark\"]) .docsera-image-picker__backdrop");
     expect(runtimeStyle).toContain("scroll-padding-top: var(--docsera-workspace-heading-scroll-margin);");
     expect(runtimeStyle).toContain("scroll-margin-top: var(--docsera-workspace-heading-scroll-margin);");
   });

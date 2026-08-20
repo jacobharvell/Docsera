@@ -517,6 +517,37 @@ export type WorkspaceCreateFailed = {
 
 export type WorkspaceCreateResult = WorkspaceCreateSucceeded | WorkspaceCreatePending | WorkspaceCreateFailed;
 
+export type WorkspaceMediaDescriptor = {
+  contentType: "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+  createdOn: string;
+  fileName: string;
+  mediaId: string;
+  sizeBytes: number;
+  updatedOn: string;
+};
+
+export type WorkspaceMediaFailure = {
+  errorMessage: string;
+  retryable?: boolean;
+  state: "failed";
+};
+
+export type WorkspaceMediaLoader = (input: { mediaId: string; signal?: AbortSignal }) => Promise<Blob | null>;
+
+export type WorkspaceMediaListResult =
+  | {
+      items: WorkspaceMediaDescriptor[];
+      state: "succeeded";
+    }
+  | WorkspaceMediaFailure;
+
+export type WorkspaceMediaUploadResult =
+  | {
+      media: WorkspaceMediaDescriptor;
+      state: "succeeded";
+    }
+  | WorkspaceMediaFailure;
+
 export type ServiceNowClient = {
   ping: () => Promise<PingResult>;
   listWorkspaces: (input?: { searchText?: string; page?: number; pageSize?: number }) => Promise<WorkspaceListResult>;
@@ -525,6 +556,9 @@ export type ServiceNowClient = {
   createWorkspace: (input: WorkspaceCreateInput) => Promise<WorkspaceCreateResult>;
   getWorkspaceProvisioningStatus: (statusPath: string) => Promise<WorkspaceCreateResult>;
   createPage: (input: PageCreateInput) => Promise<PageCreateResult>;
+  listWorkspaceMedia?: (input: { workspaceSysId: string }) => Promise<WorkspaceMediaListResult>;
+  uploadWorkspaceMedia?: (input: { file: File; workspaceLeaseToken: string; workspaceSysId: string }) => Promise<WorkspaceMediaUploadResult>;
+  loadWorkspaceMedia?: (input: { mediaId: string; signal?: AbortSignal; workspaceSysId: string }) => Promise<Blob | null>;
   acquireWorkspaceEditLease?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspaceEditLeaseAcquireResult>;
   resumeWorkspaceEditLease?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspaceEditLeaseRenewResult>;
   renewWorkspaceEditLease?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspaceEditLeaseRenewResult>;

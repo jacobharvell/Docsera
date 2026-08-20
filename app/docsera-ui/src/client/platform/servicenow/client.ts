@@ -69,7 +69,11 @@ import type {
   PageListResult,
   WorkspaceLookupResult,
   WorkspaceMode,
-  WorkspaceViewRecord
+  WorkspaceViewRecord,
+  WorkspaceMediaDescriptor,
+  WorkspaceMediaFailure,
+  WorkspaceMediaListResult,
+  WorkspaceMediaUploadResult
 } from "../../shared/types/docsera";
 import { fingerprintDiagnosticSecret, recordDocseraDiagnosticEvent } from "../../diagnostics";
 import { normalizeNumericSiblingOrder } from "../../../shared/pages/siblingOrder";
@@ -90,12 +94,16 @@ type JsonResponse<T> = {
 
 const DEFAULT_WORKSPACE_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces";
 const DEFAULT_PAGE_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/pages";
+const DEFAULT_WORKSPACE_MEDIA_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/media";
+const DEFAULT_WORKSPACE_MEDIA_FILE_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/media/file";
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
 const SAFE_PAGE_DELETE_ERROR_MESSAGE = "Something went wrong while deleting the page. The page was not deleted. Please try again.";
 const SAFE_PAGE_MOVE_ERROR_MESSAGE = "Something went wrong while moving the page. The page was not moved. Please try again.";
 const SAFE_WORKSPACE_DISCARD_PAGE_ERROR_MESSAGE = "Something went wrong while discarding changes to this page. No changes were discarded. Please try again.";
 const SAFE_WORKSPACE_DISCARD_ALL_ERROR_MESSAGE = "Something went wrong while discarding changes. No changes were discarded. Please try again.";
 const SAFE_WORKSPACE_PUBLISH_ERROR_MESSAGE = "Something went wrong while publishing. No changes were published. Please try again.";
+const SAFE_WORKSPACE_MEDIA_LIST_ERROR_MESSAGE = "Unable to load workspace media. Please try again.";
+const SAFE_WORKSPACE_MEDIA_UPLOAD_ERROR_MESSAGE = "Something went wrong while uploading media. The file was not saved. Please try again.";
 
 function readWindowUserToken(candidate: Window | null | undefined): string | undefined {
   const tokenWindow = candidate as TokenBearingWindow | null | undefined;
@@ -223,6 +231,16 @@ function resolveWorkspaceDiscardPagePath(workspaceCollectionPath: string): strin
   return `${normalizedPath}/discard-page`;
 }
 
+function resolveWorkspaceMediaCollectionPath(workspaceCollectionPath: string): string {
+  const normalizedPath = cleanText(workspaceCollectionPath).replace(/\/+$/g, "");
+  return normalizedPath.endsWith("/workspaces") ? `${normalizedPath}/media` : DEFAULT_WORKSPACE_MEDIA_COLLECTION_PATH;
+}
+
+function resolveWorkspaceMediaFilePath(workspaceCollectionPath: string): string {
+  const normalizedPath = cleanText(workspaceCollectionPath).replace(/\/+$/g, "");
+  return normalizedPath.endsWith("/workspaces") ? `${normalizedPath}/media/file` : DEFAULT_WORKSPACE_MEDIA_FILE_PATH;
+}
+
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<JsonResponse<T>> {
   const userToken = resolveUserToken();
   const response = await fetch(path, {
@@ -258,6 +276,67 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<Jso
     body,
     status: response.status
   };
+}
+
+async function requestRaw(path: string, init: RequestInit = {}): Promise<JsonResponse<unknown>> {
+  const userToken = resolveUserToken();
+  const response = await fetch(path, {
+    credentials: "same-origin",
+    ...init,
+    headers: {
+      Accept: "application/json",
+      ...(init.headers ?? {}),
+      ...(userToken ? { "X-UserToken": userToken } : {})
+    }
+  });
+
+  let body: unknown = null;
+
+  if (typeof response.text === "function") {
+    const text = await response.text();
+    if (text.trim()) {
+      try {
+        body = JSON.parse(text) as unknown;
+      } catch {
+        body = null;
+      }
+    }
+  } else if (typeof response.json === "function") {
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+  }
+
+  return {
+    body,
+    status: response.status
+  };
+}
+
+async function requestBinary(path: string, init: RequestInit = {}): Promise<Blob | null> {
+  const userToken = resolveUserToken();
+
+  try {
+    const response = await fetch(path, {
+      credentials: "same-origin",
+      ...init,
+      headers: {
+        Accept: "image/*",
+        ...(init.headers ?? {}),
+        ...(userToken ? { "X-UserToken": userToken } : {})
+      }
+    });
+
+    if (response.status !== 200 || typeof response.blob !== "function") {
+      return null;
+    }
+
+    return await response.blob();
+  } catch {
+    return null;
+  }
 }
 
 function normalizePingPayload(payload: PingEnvelope): PingResult {
@@ -380,6 +459,57 @@ function normalizeWorkspaceLookupResult(body: unknown): WorkspaceLookupResult {
 
   return {
     workspace
+  };
+}
+
+function normalizeWorkspaceMediaDescriptor(candidate: unknown): WorkspaceMediaDescriptor {
+  if (!isPlainObject(candidate)) {
+    throw new Error("Workspace media payload was invalid.");
+  }
+
+  const contentType = cleanText(candidate.contentType) as WorkspaceMediaDescriptor["contentType"];
+  if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(contentType)) {
+    throw new Error("Workspace media payload was invalid.");
+  }
+
+  return {
+    contentType,
+    createdOn: cleanText(candidate.createdOn),
+    fileName: cleanText(candidate.fileName),
+    mediaId: cleanText(candidate.mediaId),
+    sizeBytes: Number(candidate.sizeBytes) || 0,
+    updatedOn: cleanText(candidate.updatedOn)
+  };
+}
+
+function normalizeWorkspaceMediaFailedResult(body: unknown, fallback: string): WorkspaceMediaFailure {
+  return {
+    state: "failed",
+    errorMessage: extractErrorMessage(body, fallback)
+  };
+}
+
+function normalizeWorkspaceMediaListResult(body: unknown): WorkspaceMediaListResult {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || !Array.isArray(result.items)) {
+    throw new Error("Workspace media list payload was invalid.");
+  }
+
+  return {
+    state: "succeeded",
+    items: result.items.map((item) => normalizeWorkspaceMediaDescriptor(item))
+  };
+}
+
+function normalizeWorkspaceMediaUploadResult(body: unknown): WorkspaceMediaUploadResult {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || !result.media) {
+    throw new Error("Workspace media upload payload was invalid.");
+  }
+
+  return {
+    state: "succeeded",
+    media: normalizeWorkspaceMediaDescriptor(result.media)
   };
 }
 
@@ -1998,6 +2128,8 @@ async function resolveWorkspaceDiscardPageResult(path: string, input: WorkspaceD
 export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceNowClient {
   const collectionPath = resolvePath(runtime.config.workspaceCollectionPath, DEFAULT_WORKSPACE_COLLECTION_PATH);
   const pageCollectionPath = resolvePath(runtime.config.pageCollectionPath, DEFAULT_PAGE_COLLECTION_PATH);
+  const workspaceMediaCollectionPath = resolveWorkspaceMediaCollectionPath(collectionPath);
+  const workspaceMediaFilePath = resolveWorkspaceMediaFilePath(collectionPath);
   const pageDeleteActionPath = resolvePageDeleteActionPath(pageCollectionPath);
   const pageMovePath = resolvePageMovePath(pageCollectionPath);
   const pagePublishPath = resolvePagePublishPath(pageCollectionPath);
@@ -2091,6 +2223,73 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
 
     async createPage(input: PageCreateInput): Promise<PageCreateResult> {
       return resolvePageCreateResult(pageCollectionPath, input);
+    },
+
+    async listWorkspaceMedia(input: { workspaceSysId: string }): Promise<WorkspaceMediaListResult> {
+      try {
+        const path = new URL(workspaceMediaCollectionPath, window.location.origin);
+        path.searchParams.set("workspaceSysId", cleanText(input.workspaceSysId));
+        const response = await requestJson<unknown>(path.pathname + path.search);
+        if (response.status === 200) {
+          return normalizeWorkspaceMediaListResult(response.body);
+        }
+        if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 413 || response.status === 415 || response.status === 500) {
+          return normalizeWorkspaceMediaFailedResult(response.body, SAFE_WORKSPACE_MEDIA_LIST_ERROR_MESSAGE);
+        }
+        return {
+          state: "failed",
+          errorMessage: SAFE_WORKSPACE_MEDIA_LIST_ERROR_MESSAGE,
+          retryable: true
+        };
+      } catch {
+        return {
+          state: "failed",
+          errorMessage: SAFE_WORKSPACE_MEDIA_LIST_ERROR_MESSAGE,
+          retryable: true
+        };
+      }
+    },
+
+    async uploadWorkspaceMedia(input: { file: File; workspaceLeaseToken: string; workspaceSysId: string }): Promise<WorkspaceMediaUploadResult> {
+      try {
+        const path = new URL(workspaceMediaCollectionPath, window.location.origin);
+        path.searchParams.set("workspaceSysId", cleanText(input.workspaceSysId));
+        path.searchParams.set("fileName", cleanText(input.file?.name));
+        const response = await requestRaw(path.pathname + path.search, {
+          method: "POST",
+          body: input.file,
+          headers: {
+            "Content-Type": cleanText(input.file?.type) || "application/octet-stream",
+            "X-Docsera-Workspace-Lease-Token": cleanText(input.workspaceLeaseToken)
+          }
+        });
+        if (response.status === 200 || response.status === 201) {
+          return normalizeWorkspaceMediaUploadResult(response.body);
+        }
+        if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 413 || response.status === 415 || response.status === 500) {
+          return normalizeWorkspaceMediaFailedResult(response.body, SAFE_WORKSPACE_MEDIA_UPLOAD_ERROR_MESSAGE);
+        }
+        return {
+          state: "failed",
+          errorMessage: SAFE_WORKSPACE_MEDIA_UPLOAD_ERROR_MESSAGE,
+          retryable: true
+        };
+      } catch {
+        return {
+          state: "failed",
+          errorMessage: SAFE_WORKSPACE_MEDIA_UPLOAD_ERROR_MESSAGE,
+          retryable: true
+        };
+      }
+    },
+
+    async loadWorkspaceMedia(input: { mediaId: string; signal?: AbortSignal; workspaceSysId: string }): Promise<Blob | null> {
+      const path = new URL(workspaceMediaFilePath, window.location.origin);
+      path.searchParams.set("workspaceSysId", cleanText(input.workspaceSysId));
+      path.searchParams.set("mediaId", cleanText(input.mediaId));
+      return requestBinary(path.pathname + path.search + path.hash, {
+        signal: input.signal
+      });
     },
 
     async acquireWorkspaceEditLease(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspaceEditLeaseAcquireResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseAcquirePath, input, "acquire") as Promise<WorkspaceEditLeaseAcquireResult>; },

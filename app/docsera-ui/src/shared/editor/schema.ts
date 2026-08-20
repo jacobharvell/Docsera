@@ -12,7 +12,7 @@ import { Superscript } from "@tiptap/extension-superscript";
 import { Underline } from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import type { Schema } from "@tiptap/pm/model";
-import { DOCSERA_IMAGE_DEFAULTS, DOCSERA_IMAGE_ALIGNMENTS, type DocseraImageAttrs } from "./imageContract";
+import { DOCSERA_IMAGE_DEFAULTS, DOCSERA_IMAGE_ALIGNMENTS, canonicalizeDocseraImageAttrs, type DocseraImageAttrs, type WorkspaceMediaLoader } from "./imageContract";
 import {
   DOCSERA_BODY_HEADING_LEVELS,
   canonicalizeDocseraStructuredDocument,
@@ -44,65 +44,239 @@ function normalizeTableColumnWidths(value: unknown): number[] | null {
   return value.every((width) => Number.isInteger(width) && Number(width) > 0) ? (value as number[]) : null;
 }
 
-const DocseraImage = Node.create({
-  name: "image",
-  group: "block",
-  atom: true,
-  draggable: true,
-  selectable: true,
-  addAttributes() {
-    return {
-      mediaId: {
-        default: null,
-        renderHTML: (attributes) =>
-          typeof attributes.mediaId === "string" && attributes.mediaId.length > 0
-            ? { "data-docsera-media-id": attributes.mediaId }
-            : {}
-      },
-      darkMediaId: {
-        default: null,
-        renderHTML: (attributes) =>
-          typeof attributes.darkMediaId === "string" && attributes.darkMediaId.length > 0
-            ? { "data-docsera-dark-media-id": attributes.darkMediaId }
-            : {}
-      },
-      alt: {
-        default: DOCSERA_IMAGE_DEFAULTS.alt,
-        renderHTML: (attributes) => ({ "data-docsera-alt": typeof attributes.alt === "string" ? attributes.alt : DOCSERA_IMAGE_DEFAULTS.alt })
-      },
-      caption: {
-        default: DOCSERA_IMAGE_DEFAULTS.caption,
-        renderHTML: (attributes) => ({
-          "data-docsera-caption": typeof attributes.caption === "string" ? attributes.caption : DOCSERA_IMAGE_DEFAULTS.caption
-        })
-      },
-      frame: {
-        default: DOCSERA_IMAGE_DEFAULTS.frame,
-        renderHTML: (attributes) => ({ "data-docsera-frame": attributes.frame === false ? "false" : "true" })
-      },
-      align: {
-        default: DOCSERA_IMAGE_DEFAULTS.align,
-        renderHTML: (attributes) => ({
-          "data-docsera-align":
-            typeof attributes.align === "string" && DOCSERA_IMAGE_ALIGNMENTS.includes(attributes.align as DocseraImageAttrs["align"])
-              ? attributes.align
-              : DOCSERA_IMAGE_DEFAULTS.align
-        })
-      },
-      widthPct: {
-        default: DOCSERA_IMAGE_DEFAULTS.widthPct,
-        renderHTML: (attributes) => ({
-          "data-docsera-width-pct": String(
-            Number.isFinite(Number(attributes.widthPct)) ? Math.min(100, Math.max(20, Number(attributes.widthPct))) : DOCSERA_IMAGE_DEFAULTS.widthPct
-          )
-        })
-      }
-    };
-  },
-  renderHTML({ HTMLAttributes }) {
-    return ["figure", mergeAttributes(HTMLAttributes, { class: "docsera-image" })];
-  }
-});
+function createUnavailableMediaView(attrs: DocseraImageAttrs): HTMLElement {
+  const wrapper = document.createElement("div");
+  wrapper.className = "docsera-main__editor-recovery docsera-main__media-unavailable docsera-editor-image__unavailable";
+  wrapper.setAttribute("role", "status");
+
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "docsera-main__eyebrow";
+  eyebrow.textContent = "Media";
+
+  const title = document.createElement("h3");
+  title.className = "docsera-main__recovery-title";
+  title.textContent = "Image unavailable";
+
+  const lede = document.createElement("p");
+  lede.className = "docsera-main__lede";
+  lede.textContent = attrs.alt || "The referenced image could not be resolved.";
+
+  wrapper.append(eyebrow, title, lede);
+  return wrapper;
+}
+
+function createLoadingMediaView(attrs: DocseraImageAttrs): HTMLElement {
+  const wrapper = document.createElement("div");
+  wrapper.className = "docsera-main__editor-recovery docsera-main__media-loading docsera-editor-image__loading";
+  wrapper.setAttribute("role", "status");
+
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "docsera-main__eyebrow";
+  eyebrow.textContent = "Media";
+
+  const title = document.createElement("h3");
+  title.className = "docsera-main__recovery-title";
+  title.textContent = "Loading image";
+
+  const lede = document.createElement("p");
+  lede.className = "docsera-main__lede";
+  lede.textContent = attrs.alt || "The image is being loaded through the authenticated media boundary.";
+
+  wrapper.append(eyebrow, title, lede);
+  return wrapper;
+}
+
+function createDocseraImageExtension(loadMedia: WorkspaceMediaLoader) {
+  return Node.create({
+    name: "image",
+    group: "block",
+    atom: true,
+    draggable: true,
+    selectable: true,
+    addAttributes() {
+      return {
+        mediaId: {
+          default: null,
+          renderHTML: (attributes) =>
+            typeof attributes.mediaId === "string" && attributes.mediaId.length > 0
+              ? { "data-docsera-media-id": attributes.mediaId }
+              : {}
+        },
+        darkMediaId: {
+          default: null,
+          renderHTML: (attributes) =>
+            typeof attributes.darkMediaId === "string" && attributes.darkMediaId.length > 0
+              ? { "data-docsera-dark-media-id": attributes.darkMediaId }
+              : {}
+        },
+        alt: {
+          default: DOCSERA_IMAGE_DEFAULTS.alt,
+          renderHTML: (attributes) => ({ "data-docsera-alt": typeof attributes.alt === "string" ? attributes.alt : DOCSERA_IMAGE_DEFAULTS.alt })
+        },
+        caption: {
+          default: DOCSERA_IMAGE_DEFAULTS.caption,
+          renderHTML: (attributes) => ({
+            "data-docsera-caption": typeof attributes.caption === "string" ? attributes.caption : DOCSERA_IMAGE_DEFAULTS.caption
+          })
+        },
+        frame: {
+          default: DOCSERA_IMAGE_DEFAULTS.frame,
+          renderHTML: (attributes) => ({ "data-docsera-frame": attributes.frame === false ? "false" : "true" })
+        },
+        align: {
+          default: DOCSERA_IMAGE_DEFAULTS.align,
+          renderHTML: (attributes) => ({
+            "data-docsera-align":
+              typeof attributes.align === "string" && DOCSERA_IMAGE_ALIGNMENTS.includes(attributes.align as DocseraImageAttrs["align"])
+                ? attributes.align
+                : DOCSERA_IMAGE_DEFAULTS.align
+          })
+        },
+        widthPct: {
+          default: DOCSERA_IMAGE_DEFAULTS.widthPct,
+          renderHTML: (attributes) => ({
+            "data-docsera-width-pct": String(
+              Number.isFinite(Number(attributes.widthPct))
+                ? Math.min(100, Math.max(20, Number(attributes.widthPct)))
+                : DOCSERA_IMAGE_DEFAULTS.widthPct
+            )
+          })
+        }
+      };
+    },
+    addNodeView() {
+      return ({ node, editor }) => {
+        const figure = document.createElement("figure");
+        let activeLoadId = 0;
+        let activeMediaId = "";
+        let activeObjectUrl: string | null = null;
+        let activeController: AbortController | null = null;
+        let destroyed = false;
+
+        function revokeActiveObjectUrl(): void {
+          if (activeObjectUrl && typeof URL.revokeObjectURL === "function") {
+            URL.revokeObjectURL(activeObjectUrl);
+          }
+          activeObjectUrl = null;
+        }
+
+        function renderState(attrs: DocseraImageAttrs, state: "loading" | "ready" | "unavailable"): void {
+          figure.className = "docsera-editor-image";
+          figure.dataset.docseraImageAlign = attrs.align;
+          figure.dataset.docseraImageFrame = attrs.frame ? "true" : "false";
+          figure.dataset.docseraImageWidthPct = String(attrs.widthPct);
+          figure.style.width = `${attrs.widthPct}%`;
+          figure.style.marginInlineStart = attrs.align === "center" || attrs.align === "right" ? "auto" : "0";
+          figure.style.marginInlineEnd = attrs.align === "center" || attrs.align === "left" ? "auto" : "0";
+          figure.replaceChildren();
+
+          if (state === "loading") {
+            figure.append(createLoadingMediaView(attrs));
+            return;
+          }
+
+          if (state === "unavailable" || !activeObjectUrl) {
+            figure.append(createUnavailableMediaView(attrs));
+            return;
+          }
+
+          const image = document.createElement("img");
+          image.className = "docsera-editor-image__image docsera-main__media-image";
+          image.alt = attrs.alt;
+          image.src = activeObjectUrl;
+          image.draggable = false;
+          figure.append(image);
+
+          if (attrs.caption) {
+            const caption = document.createElement("figcaption");
+            caption.className = "docsera-editor-image__caption docsera-main__media-caption";
+            caption.textContent = attrs.caption;
+            figure.append(caption);
+          }
+        }
+
+        const render = () => {
+          if (destroyed) {
+            return;
+          }
+
+          const attrs = canonicalizeDocseraImageAttrs(node.attrs);
+          const nextMediaId = attrs.mediaId;
+          if (nextMediaId === activeMediaId && activeObjectUrl) {
+            renderState(attrs, "ready");
+            return;
+          }
+
+          activeLoadId += 1;
+          const loadId = activeLoadId;
+          activeMediaId = nextMediaId;
+          activeController?.abort();
+          const controller = new AbortController();
+          activeController = controller;
+          revokeActiveObjectUrl();
+          renderState(attrs, "loading");
+
+          if (!nextMediaId) {
+            renderState(attrs, "unavailable");
+            return;
+          }
+
+          void loadMedia({ mediaId: nextMediaId, signal: controller.signal })
+            .then((blob) => {
+              if (destroyed || loadId !== activeLoadId || controller.signal.aborted) {
+                return;
+              }
+
+              if (!blob) {
+                renderState(attrs, "unavailable");
+                return;
+              }
+
+              if (typeof URL.createObjectURL !== "function") {
+                renderState(attrs, "unavailable");
+                return;
+              }
+
+              activeObjectUrl = URL.createObjectURL(blob);
+              renderState(attrs, "ready");
+            })
+            .catch(() => {
+              if (destroyed || loadId !== activeLoadId || controller.signal.aborted) {
+                return;
+              }
+
+              renderState(attrs, "unavailable");
+            });
+        };
+
+        render();
+
+        return {
+          dom: figure,
+          update(updatedNode) {
+            if (destroyed || updatedNode.type.name !== node.type.name) {
+              return false;
+            }
+
+            node = updatedNode;
+            render();
+            return true;
+          },
+          destroy() {
+            destroyed = true;
+            activeLoadId += 1;
+            activeController?.abort();
+            activeController = null;
+            revokeActiveObjectUrl();
+          }
+        };
+      };
+    },
+    renderHTML({ HTMLAttributes }) {
+      return ["figure", mergeAttributes(HTMLAttributes, { class: "docsera-image" })];
+    }
+  });
+}
 
 const TableCell = BaseTableCell.extend({
   addAttributes() {
@@ -341,6 +515,16 @@ const ActiveTableCellHighlight = Extension.create({
 });
 
 export function createDocseraEditorExtensions(): Extensions {
+  return createDocseraEditorExtensionsWithOptions();
+}
+
+type CreateDocseraEditorExtensionsOptions = {
+  loadMedia?: WorkspaceMediaLoader;
+};
+
+export function createDocseraEditorExtensionsWithOptions(options: CreateDocseraEditorExtensionsOptions = {}): Extensions {
+  const loadMedia = options.loadMedia ?? (async () => null);
+
   return [
     Document.extend({
       content: "block*"
@@ -372,7 +556,7 @@ export function createDocseraEditorExtensions(): Extensions {
       openOnClick: false,
       isAllowedUri: (url) => isDocseraAllowedLinkHref(url)
     }),
-    DocseraImage,
+    createDocseraImageExtension(loadMedia),
     TaskItem.configure({
       nested: true
     }),

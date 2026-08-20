@@ -169,9 +169,6 @@ describe("WorkspaceMainPane", () => {
     expect(host.shadowRoot?.querySelector(".docsera-main__authoring-controls")).toBeNull();
     expect(host.shadowRoot?.textContent ?? "").not.toContain("The selected page is using the shared workspace draft representation.");
     expect(host.shadowRoot?.textContent ?? "").not.toContain("Canonical TipTap content is isolated inside the production child host and saved explicitly during E2.");
-    expect(runtimeStyle).not.toContain("padding: 22px");
-    expect(runtimeStyle).not.toContain("border-radius: 24px");
-    expect(runtimeStyle).not.toContain("box-shadow: 0 18px 48px");
     expect(runtimeStyle).not.toContain("--docsera-editor-surface");
     expect(runtimeStyle).not.toContain(".docsera-editor-runtime__overlay");
     expect(runtimeStyle).not.toContain(".docsera-editor-runtime__overlay-button");

@@ -6,3 +6,5 @@ export {
   type DocseraImageAlignment,
   type DocseraImageAttrs
 } from "../../server/pages/serverImageContract";
+
+export type WorkspaceMediaLoader = (input: { mediaId: string; signal?: AbortSignal }) => Promise<Blob | null>;

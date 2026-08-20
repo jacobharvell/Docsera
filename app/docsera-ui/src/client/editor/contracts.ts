@@ -1,4 +1,5 @@
 import type { DocseraDocumentEnvelope } from "../../shared/editor/document";
+import type { WorkspaceMediaLoader } from "../shared/types/docsera";
 
 export type EditorCapabilities = Readonly<{
   canEdit: boolean;
@@ -33,19 +34,19 @@ export type EditorPersistenceAdapter = Readonly<{
 }>;
 
 export type EditorMediaReference = Readonly<{
-  attachmentSysId: string;
+  mediaId: string;
   fileName: string;
   contentType: string;
-  byteLength: number;
+  sizeBytes: number;
 }>;
 
 export type EditorMediaAdapter = Readonly<{
+  list: (input: { signal?: AbortSignal }) => Promise<EditorMediaReference[]>;
   upload: (input: {
-    pageSysId: string;
     file: File;
     signal?: AbortSignal;
   }) => Promise<EditorMediaReference>;
-  resolveUrl: (reference: EditorMediaReference, signal?: AbortSignal) => Promise<string>;
+  load: WorkspaceMediaLoader;
 }>;
 
 export type EditorHostStatus =

@@ -59,6 +59,7 @@ import type {
   WorkspacePageRecord,
   WorkspaceViewRecord
 } from "../shared/types/docsera";
+import type { EditorMediaAdapter } from "../editor/contracts";
 
 type WorkspaceListState =
   | { status: "idle" }
@@ -1023,6 +1024,51 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     sessionKey: "",
     token: null
   });
+  const workspaceSysIdForMedia = workspaceState.status === "success" ? cleanText(workspaceState.data.sysId) : "";
+  const workspaceLeaseTokenForMedia = workspaceLeaseState.state === "held" ? workspaceLeaseState.leaseToken : "";
+  const workspaceMediaAdapter = useMemo<EditorMediaAdapter | undefined>(() => {
+    const listWorkspaceMedia = serviceNowClient.listWorkspaceMedia;
+    const uploadWorkspaceMedia = serviceNowClient.uploadWorkspaceMedia;
+    const loadWorkspaceMedia = serviceNowClient.loadWorkspaceMedia;
+
+    if (!workspaceSysIdForMedia || !listWorkspaceMedia || !uploadWorkspaceMedia || !loadWorkspaceMedia) {
+      return undefined;
+    }
+
+    return {
+      async list({ signal }: { signal?: AbortSignal }) {
+        void signal;
+        const result = await listWorkspaceMedia({ workspaceSysId: workspaceSysIdForMedia });
+        if (result.state !== "succeeded") {
+          throw new Error(result.errorMessage);
+        }
+        return result.items;
+      },
+      async upload({ file, signal }: { file: File; signal?: AbortSignal }) {
+        void signal;
+        if (!workspaceLeaseTokenForMedia) {
+          throw new Error("Workspace edit lease is unavailable.");
+        }
+
+        const result = await uploadWorkspaceMedia({
+          file,
+          workspaceLeaseToken: workspaceLeaseTokenForMedia,
+          workspaceSysId: workspaceSysIdForMedia
+        });
+        if (result.state !== "succeeded") {
+          throw new Error(result.errorMessage);
+        }
+        return result.media;
+      },
+      async load({ mediaId, signal }: { mediaId: string; signal?: AbortSignal }) {
+        return loadWorkspaceMedia({
+          mediaId,
+          signal,
+          workspaceSysId: workspaceSysIdForMedia
+        });
+      }
+    };
+  }, [serviceNowClient, workspaceLeaseTokenForMedia, workspaceSysIdForMedia]);
 
   useEffect(() => {
     inlinePageCreateStateRef.current = inlinePageCreateState;
@@ -6034,6 +6080,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               editorInitialSavedEnvelope={restoredBodySnapshot && selectedPageView?.contentEnvelope ? selectedPageView.contentEnvelope : undefined}
               editAccessLost={editAccessLost}
               editorFailure={editorFailure}
+              mediaAdapter={workspaceMediaAdapter}
               inlineCreateState={displayedInlinePageCreateState}
               isCreatingPage={isCreatingPage}
               mode={activeWorkspaceMode}
@@ -6102,6 +6149,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               showCreatePageControls={showCreatePageControls}
               treeFilter={currentModeUiState.searchQuery}
               treePages={displayedTreePages}
+              loadMedia={workspaceMediaAdapter?.load}
               workspaceNavWidth={workspaceNavWidth}
               onSidebarCollapsedChange={setSidebarCollapsed}
               onWorkspaceNavWidthChange={setWorkspaceNavWidth}

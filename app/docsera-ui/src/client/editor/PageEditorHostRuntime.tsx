@@ -8,7 +8,7 @@ import type { CSSProperties } from "react";
 import { Fragment } from "@tiptap/pm/model";
 import type { DocseraDocumentEnvelope, DocseraTiptapDocument } from "../../shared/editor/document";
 import { DOCSERA_DOCUMENT_SCHEMA_VERSION, parseDocseraDocumentOrThrow } from "../../shared/editor/document";
-import { createDocseraEditorExtensions } from "../../shared/editor/schema";
+import { createDocseraEditorExtensionsWithOptions } from "../../shared/editor/schema";
 import { extractDocumentOutline, type EditorOutlineItem } from "./documentOutline";
 import {
   EDITOR_BLOCK_COMMANDS,
@@ -33,6 +33,9 @@ import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transa
 import { CellSelection } from "@tiptap/pm/tables";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { CompactTextToolbar } from "./CompactTextToolbar";
+import { EDITOR_IMAGE_STYLES } from "./EditorImageStyles";
+import { ImagePickerDialog } from "./ImagePickerDialog";
+import { IMAGE_PICKER_STYLES } from "./ImagePickerStyles";
 import { subscribeToPageOwnershipHandoff } from "../pageOwnershipHandoff";
 import {
   buildTopLevelBlockDragFeedbackStyle,
@@ -50,6 +53,7 @@ import {
   Code2,
   Copy,
   ChevronRight,
+  Image,
   Heading1,
   Heading2,
   Heading3,
@@ -65,6 +69,7 @@ import {
 } from "lucide-react";
 import { BLOCK_SELECTOR_STYLES } from "./BlockSelectorStyles";
 import TableControlsOverlay from "./TableControlsOverlay";
+import type { EditorMediaAdapter, EditorMediaReference } from "./contracts";
 
 type PageEditorHostRuntimeProps = {
   canEdit: boolean;
@@ -94,6 +99,7 @@ type PageEditorHostRuntimeProps = {
     isSaving: boolean;
     status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
   }) => void;
+  mediaAdapter?: EditorMediaAdapter;
   overlayRoot: HTMLElement;
   pageSysId: string;
   sessionKey?: string;
@@ -178,6 +184,8 @@ type CommandSelectorState =
   | {
       activeIndex: number;
       anchorRect: DOMRect;
+      ownerFrom: number;
+      ownerTo: number;
       ownerBlockIndex: number;
       placement: CommandSelectorPlacement;
       surfaceContext: EditorBlockCommandContext;
@@ -185,6 +193,16 @@ type CommandSelectorState =
       source: "slash";
       ownerPos: number;
     };
+
+type ImagePickerSessionState = {
+  historyTime: number | null;
+  insertedBlockIndex: number | null;
+  targetFrom: number | null;
+  targetTo: number | null;
+  restoreSelectionPos: number;
+  sessionId: string;
+  source: "quickAdd" | "slash";
+};
 
 type BlockActionMenuState = {
   activeIndex: number;
@@ -1837,6 +1855,8 @@ function BlockCommandIcon({ id }: { id: EditorBlockCommandId }) {
       return <Minus size={16} strokeWidth={2} />;
     case "table":
       return <Table2 size={16} strokeWidth={2} />;
+    case "image":
+      return <Image size={16} strokeWidth={2} />;
     case "codeBlock":
     default:
       return <Code2 size={16} strokeWidth={2} />;
@@ -2218,6 +2238,57 @@ function replaceEmptyParagraphWithCommandOutput(
   return true;
 }
 
+function createCanonicalImageNodeJson(mediaId: string): JSONContent {
+  return {
+    type: "image",
+    attrs: {
+      mediaId,
+      darkMediaId: null,
+      alt: "",
+      caption: "",
+      frame: true,
+      align: "left",
+      widthPct: 100
+    }
+  };
+}
+
+function replaceEmptyParagraphWithCanonicalImage(
+  editor: Editor,
+  blockIndex: number,
+  mediaId: string
+): boolean {
+  const blockRange = getTopLevelBlockRange(editor, blockIndex);
+  if (!blockRange) {
+    return false;
+  }
+
+  return replaceEmptyParagraphWithCanonicalImageInRange(editor, blockRange.from, blockRange.to, mediaId);
+}
+
+function replaceEmptyParagraphWithCanonicalImageInRange(
+  editor: Editor,
+  from: number,
+  to: number,
+  mediaId: string
+): boolean {
+  const targetNode = editor.state.doc.nodeAt(from);
+  if (!targetNode || targetNode.type.name !== "paragraph" || targetNode.content.size !== 0) {
+    return false;
+  }
+
+  const imageNode = editor.schema.nodeFromJSON(createCanonicalImageNodeJson(mediaId));
+  let transaction = editor.state.tr.delete(from, to).insert(from, imageNode);
+  try {
+    transaction = transaction.setSelection(NodeSelection.create(transaction.doc, from));
+  } catch {
+    transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(from), 1));
+  }
+
+  editor.view.dispatch(transaction);
+  return true;
+}
+
 function restoreEditorSelectionFocus(
   editor: Editor,
   selectionAnchor: number
@@ -2523,6 +2594,7 @@ export function PageEditorHostRuntime({
   onSaveDraft,
   onEditorReady,
   onStatusChange,
+  mediaAdapter,
   overlayRoot,
   pageSysId,
   sessionKey = "",
@@ -2531,6 +2603,7 @@ export function PageEditorHostRuntime({
   const [errorMessage, setErrorMessage] = useState("");
   const [hoverTarget, setHoverTarget] = useState<HoverTarget | null>(null);
   const [commandSelector, setCommandSelector] = useState<CommandSelectorState | null>(null);
+  const [imagePickerSession, setImagePickerSession] = useState<ImagePickerSessionState | null>(null);
   const [blockActionMenu, setBlockActionMenu] = useState<BlockActionMenuState | null>(null);
   const [blockTurnIntoMenu, setBlockTurnIntoMenu] = useState<BlockTurnIntoMenuState | null>(null);
   const [selectorScrollMetrics, setSelectorScrollMetrics] = useState({ hasOverflow: false, scrollbarWidth: 0 });
@@ -2558,10 +2631,18 @@ export function PageEditorHostRuntime({
   const initialSavedDocumentKey = useMemo(() => serializeDocument(validatedInitialSavedEnvelope.document), [validatedInitialSavedEnvelope]);
   const initialSessionIsClean = initialDocumentKey === initialSavedDocumentKey;
   const editorExtensions = useMemo(
-    () => [...createDocseraEditorExtensions(), createCommandQueryPresentationExtension(), createBlockSelectionExtension()],
-    []
+    () => [
+      ...createDocseraEditorExtensionsWithOptions({
+        loadMedia: mediaAdapter?.load
+      }),
+      createCommandQueryPresentationExtension(),
+      createBlockSelectionExtension()
+    ],
+    [mediaAdapter]
   );
   const commandSelectorItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const imagePickerSessionRef = useRef<ImagePickerSessionState | null>(null);
+  const imagePickerSessionCounterRef = useRef(0);
   const blockActionMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const blockTurnIntoMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const blockTurnIntoTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -3135,6 +3216,76 @@ export function PageEditorHostRuntime({
     [syncHoverTargetFromLastPointer]
   );
 
+  const closeImagePicker = useCallback(
+    (options: { restoreSelection?: boolean } = {}) => {
+      const { restoreSelection = true } = options;
+      const session = imagePickerSessionRef.current;
+      imagePickerSessionRef.current = null;
+      setImagePickerSession(null);
+      if (!restoreSelection || !session) {
+        return;
+      }
+
+      const runtimeEditor = editorRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed) {
+        return;
+      }
+
+      restoreEditorSelectionFocus(runtimeEditor, session.restoreSelectionPos);
+    },
+    []
+  );
+
+  const openImagePicker = useCallback(
+    (selector: CommandSelectorState) => {
+      const runtimeEditor = editorRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed) {
+        return;
+      }
+
+      const nextSession: ImagePickerSessionState = {
+        historyTime: selector.source === "quickAdd" ? selector.historyTime : null,
+        insertedBlockIndex: selector.source === "quickAdd" ? selector.insertedBlockIndex : null,
+        targetFrom: selector.source === "slash" ? selector.ownerFrom : null,
+        targetTo: selector.source === "slash" ? selector.ownerTo : null,
+        restoreSelectionPos: selector.source === "quickAdd" ? runtimeEditor.state.selection.from : selector.ownerPos,
+        sessionId: `image-picker-${imagePickerSessionCounterRef.current + 1}`,
+        source: selector.source
+      };
+      imagePickerSessionCounterRef.current += 1;
+      imagePickerSessionRef.current = nextSession;
+      setImagePickerSession(nextSession);
+      closeCommandSelector({ syncHoverFromPointer: false });
+    },
+    [closeCommandSelector]
+  );
+
+  const insertImageFromPicker = useCallback(
+    (reference: EditorMediaReference) => {
+      const runtimeEditor = editorRef.current;
+      const session = imagePickerSessionRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed || !session) {
+        return;
+      }
+
+      let didInsert = false;
+      if (session.source === "quickAdd" && session.insertedBlockIndex !== null) {
+        const runInsert = () => replaceEmptyParagraphWithCanonicalImage(runtimeEditor, session.insertedBlockIndex as number, reference.mediaId);
+        didInsert = session.historyTime !== null ? runEditorCommandWithHistoryTime(runtimeEditor, session.historyTime, runInsert) : runInsert();
+      } else if (session.targetFrom !== null && session.targetTo !== null) {
+        didInsert = replaceEmptyParagraphWithCanonicalImageInRange(runtimeEditor, session.targetFrom, session.targetTo, reference.mediaId);
+      }
+      if (!didInsert) {
+        return;
+      }
+
+      imagePickerSessionRef.current = null;
+      setImagePickerSession(null);
+      runtimeEditor.view.focus();
+    },
+    []
+  );
+
   const closeBlockActionMenus = useCallback(
     (options: { focusEditor?: boolean; syncHoverFromPointer?: boolean } = {}) => {
       const { focusEditor = false, syncHoverFromPointer = true } = options;
@@ -3581,6 +3732,8 @@ export function PageEditorHostRuntime({
   function openSlashSelector(runtimeEditor: Editor, triggerSelection: SlashTriggerSelection) {
     clearTransientBlockSelection();
     const anchorRect = getCaretBounds(runtimeEditor) ?? new DOMRect(12, 12, 1, 1);
+    const targetNode = runtimeEditor.state.doc.nodeAt(triggerSelection.ownerPos);
+    const targetTo = triggerSelection.ownerPos + (targetNode?.nodeSize ?? 0);
 
     setCommandSelector({
       activeIndex: 0,
@@ -3590,7 +3743,9 @@ export function PageEditorHostRuntime({
       placement: resolveCommandSelectorPlacement(overlayOwnerDocument, anchorRect, BLOCK_SELECTOR_HEIGHT),
       query: "",
       source: "slash",
-      ownerPos: triggerSelection.ownerPos
+      ownerPos: triggerSelection.ownerPos,
+      ownerFrom: triggerSelection.ownerPos,
+      ownerTo: targetTo
     });
     return true;
   }
@@ -3952,19 +4107,24 @@ export function PageEditorHostRuntime({
       return;
     }
 
-  let didExecute = false;
-  if (activeSelector.source === "quickAdd") {
-    didExecute = runEditorCommandWithHistoryTime(runtimeEditor, activeSelector.historyTime, () => {
-      if (command.id === "blockquote") {
-        return replaceEmptyParagraphWithBlockquote(runtimeEditor, activeSelector.insertedBlockIndex);
-      }
-      if (command.id === "table") {
-        command.run(runtimeEditor);
-        return true;
-      }
-      return replaceQuickAddParagraph(runtimeEditor, activeSelector.insertedBlockIndex, command);
-    });
-  } else {
+    if (command.id === "image") {
+      openImagePicker(activeSelector);
+      return;
+    }
+
+    let didExecute = false;
+    if (activeSelector.source === "quickAdd") {
+      didExecute = runEditorCommandWithHistoryTime(runtimeEditor, activeSelector.historyTime, () => {
+        if (command.id === "blockquote") {
+          return replaceEmptyParagraphWithBlockquote(runtimeEditor, activeSelector.insertedBlockIndex);
+        }
+        if (command.id === "table") {
+          command.run(runtimeEditor);
+          return true;
+        }
+        return replaceQuickAddParagraph(runtimeEditor, activeSelector.insertedBlockIndex, command);
+      });
+    } else {
       if (command.id === "blockquote") {
         didExecute = replaceEmptyParagraphWithBlockquote(runtimeEditor, activeSelector.ownerBlockIndex);
       } else {
@@ -3990,25 +4150,31 @@ export function PageEditorHostRuntime({
       cancelPendingTimers();
       setOwnedHoverTarget(null);
       setCommandSelector(null);
+      closeImagePicker({ restoreSelection: false });
       setBlockActionMenu(null);
       setBlockTurnIntoMenu(null);
       clearTransientBlockSelection();
       clearBlockDragSession();
     }
-  }, [clearBlockDragSession, clearTransientBlockSelection, isEditable]);
+  }, [clearBlockDragSession, clearTransientBlockSelection, closeImagePicker, isEditable]);
 
   useEffect(() => {
     setOwnedHoverTarget(null);
     setCommandSelector(null);
+    closeImagePicker({ restoreSelection: false });
     setBlockActionMenu(null);
     setBlockTurnIntoMenu(null);
     clearTransientBlockSelection();
     clearBlockDragSession();
-  }, [clearBlockDragSession, clearTransientBlockSelection, pageSysId, sessionKey]);
+  }, [clearBlockDragSession, clearTransientBlockSelection, closeImagePicker, pageSysId, sessionKey]);
 
   useEffect(() => {
     commandSelectorRef.current = commandSelector;
   }, [commandSelector]);
+
+  useEffect(() => {
+    imagePickerSessionRef.current = imagePickerSession;
+  }, [imagePickerSession]);
 
   useEffect(() => {
     const runtimeEditor = editorRef.current;
@@ -5137,6 +5303,8 @@ export function PageEditorHostRuntime({
           cursor: grabbing !important;
         }
         ${BLOCK_SELECTOR_STYLES}
+        ${IMAGE_PICKER_STYLES}
+        ${EDITOR_IMAGE_STYLES}
 
         .docsera-editor-floating {
           pointer-events: auto;
@@ -5792,6 +5960,16 @@ export function PageEditorHostRuntime({
               editor={editor}
               onStructuredTableClipboardCopy={handleStructuredTableClipboardCopy}
               overlayRoot={overlayRoot}
+            />
+            <ImagePickerDialog
+              isOpen={imagePickerSession !== null}
+              mediaAdapter={mediaAdapter}
+              onClose={() => {
+                closeImagePicker({ restoreSelection: true });
+              }}
+              onInsert={insertImageFromPicker}
+              overlayRoot={overlayRoot}
+              sessionId={imagePickerSession?.sessionId ?? ""}
             />
           </div>,
           overlayRoot

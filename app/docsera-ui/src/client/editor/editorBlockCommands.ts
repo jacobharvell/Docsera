@@ -10,6 +10,7 @@ export type EditorBlockCommandId =
   | "numberedList"
   | "codeBlock"
   | "horizontalRule"
+  | "image"
   | "table";
 
 export type EditorBlockCommandContext = {
@@ -221,6 +222,21 @@ export const EDITOR_BLOCK_COMMANDS: EditorBlockCommand[] = [
     slashSelectionOffset: "continuation",
     run: (editor) => {
       editor.chain().focus(undefined, { scrollIntoView: false }).insertContent([{ type: "horizontalRule" }, { type: "paragraph" }]).run();
+    }
+  },
+  {
+    category: "Basic Blocks",
+    id: "image",
+    label: "Image",
+    description: "Insert an image from the workspace media library",
+    keywords: ["image", "media", "photo", "picture", "upload"],
+    quickAdd: {
+      content: [],
+      selectionOffset: 1
+    },
+    slashSelectionOffset: 1,
+    run: () => {
+      // The runtime opens the image picker and inserts the canonical image block.
     }
   },
   {

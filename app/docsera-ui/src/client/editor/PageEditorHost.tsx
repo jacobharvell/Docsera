@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef } from "react";
 import type { DocseraDocumentEnvelope } from "../../shared/editor/document";
 import type { PageBodySaveResult } from "../shared/types/docsera";
 import type { EditorOutlineItem } from "./documentOutline";
+import type { EditorMediaAdapter } from "./contracts";
 
 export type PageEditorHostFailure = {
   kind: "load_failed" | "mount_failed";
@@ -11,6 +12,7 @@ export type PageEditorHostFailure = {
 export type PageEditorRecoverySnapshot = Readonly<{
   envelope: DocseraDocumentEnvelope;
   isDirty: boolean;
+  mediaAdapter?: EditorMediaAdapter;
   pageSysId: string;
   savedRevision: number;
   sessionKey: string;
@@ -38,6 +40,7 @@ type PageEditorHostProps = {
     isSaving: boolean;
     status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
   }) => void;
+  mediaAdapter?: EditorMediaAdapter;
   pageSysId: string;
   sessionKey: string;
   theme: "dark" | "light";
@@ -93,6 +96,7 @@ export function PageEditorHost(props: PageEditorHostProps) {
         });
       },
       onSaveDraft: currentProps.onSaveDraft,
+      mediaAdapter: currentProps.mediaAdapter,
       onStatusChange: currentProps.onStatusChange,
       overlayRoot: entry.overlayRoot,
       pageSysId: currentProps.pageSysId,
@@ -176,6 +180,7 @@ export function PageEditorHost(props: PageEditorHostProps) {
     props.onError,
     props.onOutlineChange,
     props.onSaveDraft,
+    props.mediaAdapter,
     props.onStatusChange,
     props.pageSysId,
     props.sessionKey,

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { PageBodySaveResult, WorkspaceMode, WorkspaceViewRecord } from "../../shared/types/docsera";
 import type { PageEditorHostFailure, PageEditorRecoverySnapshot } from "../../editor/PageEditorHost";
+import type { EditorMediaAdapter } from "../../editor/contracts";
 import type { InlinePageCreateState } from "./PageTree";
 import { WorkspaceMainPane } from "./WorkspaceMainPane";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
@@ -22,6 +23,8 @@ type WorkspaceShellProps = {
   collapsedPageIds: string[];
   currentWorkspaceSlug: string;
   editorInitialSavedEnvelope?: DocseraDocumentEnvelope;
+  mediaAdapter?: EditorMediaAdapter;
+  loadMedia?: (input: { mediaId: string; signal?: AbortSignal }) => Promise<Blob | null>;
   editAccessLost: boolean;
   accessLossMessage?: string;
   editorFailure: PageEditorHostFailure | null;
@@ -135,6 +138,8 @@ export function WorkspaceShell({
   collapsedPageIds,
   currentWorkspaceSlug,
   editorInitialSavedEnvelope,
+  mediaAdapter,
+  loadMedia,
   editAccessLost,
   accessLossMessage,
   editorFailure,
@@ -320,6 +325,8 @@ export function WorkspaceShell({
           canEditPageBody={canEditPageBody}
           accessLossMessage={accessLossMessage}
           editorInitialSavedEnvelope={editorInitialSavedEnvelope}
+          mediaAdapter={mediaAdapter}
+          loadMedia={loadMedia}
           editAccessLost={editAccessLost}
           editorFailure={editorFailure}
           onAccessLost={onAccessLost}

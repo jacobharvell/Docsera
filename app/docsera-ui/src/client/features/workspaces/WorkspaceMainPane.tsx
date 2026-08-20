@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { PageEditorHost, type PageEditorHostFailure, type PageEditorRecoverySnapshot } from "../../editor/PageEditorHost";
+import type { EditorMediaAdapter } from "../../editor/contracts";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
 import { PublishedDocumentReader } from "./PublishedDocumentReader";
 import type { PageBodySaveResult, WorkspaceMode } from "../../shared/types/docsera";
+import type { WorkspaceMediaLoader } from "../../shared/types/docsera";
 import type { WorkspacePageView } from "./workspaceViewModels";
 
 type WorkspaceMainPaneProps = {
@@ -13,6 +15,8 @@ type WorkspaceMainPaneProps = {
   } | null;
   bodyState: "loading" | "ready";
   editorInitialSavedEnvelope?: DocseraDocumentEnvelope;
+  mediaAdapter?: EditorMediaAdapter;
+  loadMedia?: WorkspaceMediaLoader;
   page: WorkspacePageView | null;
   workspaceMode: WorkspaceMode;
   canCreatePage: boolean;
@@ -113,6 +117,8 @@ export function WorkspaceMainPane({
   bodyNotice,
   bodyState,
   editorInitialSavedEnvelope,
+  mediaAdapter,
+  loadMedia,
   page,
   workspaceMode,
   canCreatePage,
@@ -235,7 +241,11 @@ export function WorkspaceMainPane({
               <span className="docsera-main__pending-line" />
             </section>
           ) : page.contentState === "ready" && page.contentEnvelope ? (
-            <PublishedDocumentReader envelope={page.contentEnvelope} theme={theme} />
+            <PublishedDocumentReader
+              envelope={page.contentEnvelope}
+              loadMedia={loadMedia}
+              theme={theme}
+            />
           ) : (
             <section className="docsera-main__editor-recovery" role="status">
               <p className="docsera-main__eyebrow">Reader</p>
@@ -264,6 +274,7 @@ export function WorkspaceMainPane({
                   onReadyStateChange={onEditorReadyStateChange}
                   onSaveDraft={onSavePageDraft}
                   onStatusChange={onStatusChange}
+                  mediaAdapter={mediaAdapter}
                   pageSysId={page.sysId}
                   sessionKey={sessionKey}
                   theme={theme}
