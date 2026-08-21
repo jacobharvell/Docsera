@@ -141,11 +141,20 @@ function renderImageLoading(path: string, attrs: DocseraImageAttrs): ReactNode {
       data-docsera-image-width-pct={String(attrs.widthPct)}
       style={getImageFigureStyle(attrs)}
     >
-      <div className="docsera-main__editor-recovery docsera-main__media-loading" role="status" aria-busy="true">
-        <p className="docsera-main__eyebrow">Media</p>
-        <h3 className="docsera-main__recovery-title">Loading image</h3>
-        <p className="docsera-main__lede">The image is being loaded through the authenticated media boundary.</p>
-      </div>
+      <div
+        className="docsera-main__media-loading"
+        role="status"
+        aria-label="Loading image"
+        aria-busy="true"
+        style={{
+          display: "block",
+          minHeight: "8rem",
+          padding: "0",
+          borderRadius: "inherit",
+          background: "color-mix(in srgb, var(--docsera-surface) 92%, var(--docsera-surface-muted) 8%)",
+          boxShadow: "none"
+        }}
+      />
     </figure>
   );
 }

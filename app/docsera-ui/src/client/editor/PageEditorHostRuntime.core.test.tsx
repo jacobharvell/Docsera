@@ -144,8 +144,24 @@ describe("PageEditorHostRuntime", () => {
       `${nodeProcess.cwd()}/src/client/editor/EditorImageStyles.ts`,
       "utf8"
     );
+    const imageOptionsPanelSource = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/ImageOptionsPanel.tsx`,
+      "utf8"
+    );
+    const imagePickerDialogSource = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/ImagePickerDialog.tsx`,
+      "utf8"
+    );
     const imagePickerStylesSource = nodeProcess.getBuiltinModule("fs").readFileSync(
       `${nodeProcess.cwd()}/src/client/editor/ImagePickerStyles.ts`,
+      "utf8"
+    );
+    const editorImageNodeSource = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/shared/editor/schema.ts`,
+      "utf8"
+    );
+    const publishedReaderSource = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/features/workspaces/PublishedDocumentReader.tsx`,
       "utf8"
     );
 
@@ -211,6 +227,16 @@ describe("PageEditorHostRuntime", () => {
     expect(imagePickerStylesSource).not.toContain("cursor: not-allowed;");
     expect(imagePickerStylesSource).not.toContain(":host-context(html[data-docsera-theme=\"dark\"]) .docsera-image-picker__header");
     expect(imagePickerStylesSource).not.toContain(":host-context(html[data-docsera-theme=\"dark\"]) .docsera-image-picker__search");
+    expect(imageOptionsPanelSource).toContain('className={`docsera-image-options-panel__media-value docsera-image-options-panel__media-value--${lightMediaLabel.state}`}');
+    expect(imageOptionsPanelSource).toContain('style={readonlyMediaValueStyle}');
+    expect(imageOptionsPanelSource).toContain('readOnly');
+    expect(imageOptionsPanelSource).toContain('aria-readonly="true"');
+    expect(imagePickerDialogSource).toContain('aria-busy={libraryState.status === "loading" ? "true" : undefined}');
+    expect(imagePickerDialogSource).not.toContain("Loading the workspace media library...");
+    expect(editorImageNodeSource).toContain('aria-label", "Loading image"');
+    expect(editorImageNodeSource).not.toContain("The image is being loaded through the authenticated media boundary.");
+    expect(publishedReaderSource).toContain('aria-label="Loading image"');
+    expect(publishedReaderSource).not.toContain("The image is being loaded through the authenticated media boundary.");
   });
 
   it("keeps the edit-mode title-to-editor spacing at 40px", () => {

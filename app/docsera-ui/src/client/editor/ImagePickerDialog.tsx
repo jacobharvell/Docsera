@@ -8,7 +8,8 @@ type ImagePickerDialogProps = {
   isOpen: boolean;
   mediaAdapter?: EditorMediaAdapter;
   onClose: () => void;
-  onInsert: (reference: EditorMediaReference) => void;
+  onInsert?: (reference: EditorMediaReference) => void;
+  onSelect?: (reference: EditorMediaReference) => void;
   overlayRoot: HTMLElement;
   sessionId: string;
 };
@@ -143,6 +144,7 @@ export function ImagePickerDialog({
   mediaAdapter,
   onClose,
   onInsert,
+  onSelect,
   overlayRoot,
   sessionId
 }: ImagePickerDialogProps) {
@@ -174,6 +176,7 @@ export function ImagePickerDialog({
   const [isUploading, setIsUploading] = useState(false);
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
   const [libraryReloadToken, setLibraryReloadToken] = useState(0);
+  const chooseMedia = onSelect ?? onInsert;
 
   const activeLibraryItems = useMemo(() => {
     const query = cleanText(searchText).toLowerCase();
@@ -411,7 +414,7 @@ export function ImagePickerDialog({
         return;
       }
 
-      onInsert(result);
+      chooseMedia?.(result);
       closeDialog();
     } catch (error) {
       if (activeSessionRef.current !== sessionId || uploadAttemptRef.current !== currentAttempt) {
@@ -424,7 +427,7 @@ export function ImagePickerDialog({
   };
 
   const handleSelectExisting = (reference: EditorMediaReference) => {
-    onInsert(reference);
+    chooseMedia?.(reference);
     closeDialog();
   };
 
@@ -469,7 +472,11 @@ export function ImagePickerDialog({
               />
             </div>
 
-            <div ref={libraryScrollRef} className="docsera-image-picker__library-scroll">
+            <div
+              ref={libraryScrollRef}
+              className="docsera-image-picker__library-scroll"
+              aria-busy={libraryState.status === "loading" ? "true" : undefined}
+            >
               <ul className="docsera-image-picker__grid" role="list">
                 <li className="docsera-image-picker__grid-item">
                   <button
@@ -503,11 +510,7 @@ export function ImagePickerDialog({
               </ul>
             </div>
 
-            {libraryState.status === "loading" ? (
-              <div className="docsera-image-picker__state" role="status">
-                <p className="docsera-main__lede">Loading the workspace media library...</p>
-              </div>
-            ) : libraryState.status === "error" ? (
+            {libraryState.status === "error" ? (
               <div className="docsera-image-picker__state" role="alert">
                 <p className="docsera-main__lede">{libraryState.errorMessage}</p>
                 <button
@@ -520,7 +523,7 @@ export function ImagePickerDialog({
                   Try again
                 </button>
               </div>
-            ) : activeLibraryItems.length === 0 ? (
+            ) : libraryState.status === "ready" && activeLibraryItems.length === 0 ? (
               <div className="docsera-image-picker__state" role="status">
                 <p className="docsera-main__lede">{searchText ? "No images match your search." : "This workspace has no images yet."}</p>
               </div>

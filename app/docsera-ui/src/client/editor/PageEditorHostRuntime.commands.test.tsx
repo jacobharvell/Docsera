@@ -12,7 +12,7 @@ import { parseDocseraDocumentOrThrow } from "../../shared/editor/document";
 import type { PageBodySaveResult } from "../shared/types/docsera";
 import { describe, expect, it, vi } from "vitest";
 import { getCommandQueryPresentationState, PageEditorHostRuntime } from "./PageEditorHostRuntime";
-import type { EditorMediaAdapter } from "./contracts";
+import type { EditorMediaAdapter, EditorMediaReference } from "./contracts";
 import {
   applyToolbarBlockTypeCommand,
   formatToolbarShortcutLabel,
@@ -59,6 +59,61 @@ function getOptionNames(container: HTMLElement): string[] {
     .getAllByRole("option")
     .map((option) => option.getAttribute("aria-label") ?? option.textContent?.trim() ?? "");
 }
+
+function normalizeColor(value: string | null | undefined): string {
+  const normalized = (value ?? "").trim().toLowerCase();
+  if (!normalized) {
+    return "";
+  }
+
+  if (normalized.startsWith("#")) {
+    return normalized;
+  }
+
+  const rgbMatch = normalized.match(/^rgb\(\s*(\d+),\s*(\d+),\s*(\d+)\s*\)$/);
+  if (!rgbMatch) {
+    return normalized;
+  }
+
+  return `#${rgbMatch
+    .slice(1)
+    .map((channel) => Number(channel).toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+function expectStandardImageFieldContract(field: HTMLElement, surfaceBackgroundColor: string) {
+  const style = getComputedStyle(field);
+  expect(style.minHeight).toBe("34px");
+  expect(style.borderRadius).toBe("4px");
+  expect(normalizeColor(style.backgroundColor)).toBe(normalizeColor(surfaceBackgroundColor));
+}
+
+function expectStandardImageMediaValueContract(field: HTMLElement, surfaceBackgroundStyle: string) {
+  const mediaValue = field as HTMLInputElement;
+  const style = getComputedStyle(field);
+  expect(mediaValue.readOnly).toBe(true);
+  expect(mediaValue.tabIndex).toBe(-1);
+  expect(style.boxSizing).toBe("border-box");
+  expect(style.height).toBe("34px");
+  expect(style.minHeight).toBe("34px");
+  expect(style.paddingTop).toBe("0px");
+  expect(style.paddingBottom).toBe("0px");
+  expect(style.borderRadius).toBe("4px");
+  expect(style.cursor).toBe("default");
+  expect(style.overflow).toBe("hidden");
+  expect(style.whiteSpace).toBe("nowrap");
+  expect(style.textOverflow).toBe("ellipsis");
+  expect(mediaValue.style.background).toBe(surfaceBackgroundStyle);
+  expect(style.boxShadow).toBe("none");
+}
+
+function expectQuietLoadingMediaPlaceholderContract(status: HTMLElement) {
+  expect(status.style.border).toBe("");
+  expect(status.style.borderRadius).toBe("inherit");
+  expect(status.style.boxShadow).toBe("none");
+}
+
+const MUTED_SURFACE_BACKGROUND_STYLE = "var(--docsera-surface-muted)";
 
 function createMediaBlob(label: string): Blob {
   return new Blob([label], { type: "image/png" });
@@ -1532,6 +1587,16 @@ async function openQuickAdd(editor: Editor, pointer: { clientX: number; clientY:
   fireEvent.click(await screen.findByRole("button", { name: buttonName }));
 }
 
+async function openImageOptions(editor: Editor, pointer: { clientX: number; clientY: number }) {
+  const surface = getEditorPaneElement(editor);
+  if (!(surface instanceof HTMLElement)) {
+    throw new Error("Expected the editor surface to be available.");
+  }
+
+  await dispatchOwnerPointerMove(surface.ownerDocument, surface, pointer);
+  fireEvent.click(await screen.findByRole("button", { name: "Image options" }));
+}
+
 async function dispatchOwnerPointerEvent(
   ownerDocument: Document,
   target: EventTarget,
@@ -1973,6 +2038,888 @@ describe("PageEditorHostRuntime", () => {
     });
   });
 
+  it("renders the image hover controls in the accepted order and keeps the inactive controls non-mutating", async () => {
+    const mediaAdapter: EditorMediaAdapter = {
+      list: vi.fn(async () => [
+        {
+          contentType: "image/png",
+          fileName: "light.png",
+          mediaId: "workspace-media-light",
+          sizeBytes: 2048
+        },
+        {
+          contentType: "image/png",
+          fileName: "dark.png",
+          mediaId: "workspace-media-dark",
+          sizeBytes: 2048
+        }
+      ]),
+      load: vi.fn(async ({ mediaId }) => (mediaId === "workspace-media-base" ? createMediaBlob(mediaId) : null)),
+      upload: vi.fn(async ({ file }) => ({
+        contentType: file.type,
+        fileName: file.name,
+        mediaId: "workspace-media-upload",
+        sizeBytes: file.size
+      }))
+    };
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-base",
+            darkMediaId: null,
+            alt: "",
+            caption: "",
+            frame: false,
+            align: "left",
+            widthPct: 100
+          }
+        }
+      ]
+    };
+
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
+      mediaAdapter
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    const before = editor.getJSON();
+
+    await openImageOptions(editor, { clientX: 720, clientY: 60 });
+
+    const previewGroup = document.querySelector(
+      `[data-docsera-image-preview-controls="true"][data-docsera-image-preview-controls-block-index="0"]`
+    );
+    expect(previewGroup).toBeInstanceOf(HTMLElement);
+    if (!(previewGroup instanceof HTMLElement)) {
+      throw new Error("Expected the image preview control group to render.");
+    }
+
+    expect(getButtonNames(previewGroup)).toEqual(["Light preview", "Dark preview"]);
+    const previewButtons = within(previewGroup).getAllByRole("button");
+    expect(previewButtons[0]).toHaveClass("docsera-image-controls-button--selected");
+    expect(previewButtons[1]).not.toHaveClass("docsera-image-controls-button--selected");
+    expect(previewButtons[0]).toHaveAttribute("aria-disabled", "true");
+    expect(previewButtons[1]).toHaveAttribute("aria-disabled", "true");
+    expect(previewButtons[0]).not.toBeDisabled();
+    expect(previewButtons[1]).not.toBeDisabled();
+
+    const controlGroup = document.querySelector(
+      `[data-docsera-image-controls="true"][data-docsera-image-controls-block-index="0"]`
+    );
+    expect(controlGroup).toBeInstanceOf(HTMLElement);
+    if (!(controlGroup instanceof HTMLElement)) {
+      throw new Error("Expected the image control group to render.");
+    }
+
+    const controlButtons = within(controlGroup).getAllByRole("button");
+    expect(getButtonNames(controlGroup)).toEqual(["Zoom", "Frame", "Alignment", "Image options"]);
+    expect(controlButtons[0]).toHaveAttribute("aria-disabled", "true");
+    expect(controlButtons[1]).toHaveAttribute("aria-disabled", "true");
+    expect(controlButtons[2]).toHaveAttribute("aria-disabled", "true");
+    expect(controlButtons[3]).not.toBeDisabled();
+
+    for (const button of controlButtons.slice(0, 3)) {
+      fireEvent.click(button);
+    }
+
+    expect(editor.getJSON()).toEqual(before);
+    expect(screen.getByRole("dialog", { name: "Image Options" })).toBeInTheDocument();
+
+    geometrySpy.mockRestore();
+  });
+
+  it("marks Dark preview selected in dark theme while keeping future controls inert", async () => {
+    const mediaAdapter: EditorMediaAdapter = {
+      list: vi.fn(async () => [
+        {
+          contentType: "image/png",
+          fileName: "light.png",
+          mediaId: "workspace-media-light",
+          sizeBytes: 2048
+        }
+      ]),
+      load: vi.fn(async ({ mediaId }) =>
+        mediaId === "workspace-media-light" || mediaId === "workspace-media-base" ? createMediaBlob(mediaId) : null
+      ),
+      upload: vi.fn(async ({ file }) => ({
+        contentType: file.type,
+        fileName: file.name,
+        mediaId: "workspace-media-upload",
+        sizeBytes: file.size
+      }))
+    };
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-base",
+            darkMediaId: null,
+            alt: "",
+            caption: "",
+            frame: false,
+            align: "center",
+            widthPct: 100
+          }
+        }
+      ]
+    };
+
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
+      mediaAdapter,
+      theme: "dark"
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+
+    await openImageOptions(editor, { clientX: 720, clientY: 60 });
+
+    const previewGroup = document.querySelector(
+      `[data-docsera-image-preview-controls="true"][data-docsera-image-preview-controls-block-index="0"]`
+    );
+    expect(previewGroup).toBeInstanceOf(HTMLElement);
+    if (!(previewGroup instanceof HTMLElement)) {
+      throw new Error("Expected the image preview control group to render.");
+    }
+
+    const previewButtons = within(previewGroup).getAllByRole("button");
+    expect(getButtonNames(previewGroup)).toEqual(["Light preview", "Dark preview"]);
+    expect(previewButtons[0]).not.toHaveClass("docsera-image-controls-button--selected");
+    expect(previewButtons[1]).toHaveClass("docsera-image-controls-button--selected");
+    expect(previewButtons[0]).toHaveAttribute("aria-disabled", "true");
+    expect(previewButtons[1]).toHaveAttribute("aria-disabled", "true");
+
+    const controlGroup = document.querySelector(
+      `[data-docsera-image-controls="true"][data-docsera-image-controls-block-index="0"]`
+    );
+    expect(controlGroup).toBeInstanceOf(HTMLElement);
+    if (!(controlGroup instanceof HTMLElement)) {
+      throw new Error("Expected the image control group to render.");
+    }
+
+    const controlButtons = within(controlGroup).getAllByRole("button");
+    expect(getButtonNames(controlGroup)).toEqual(["Zoom", "Frame", "Alignment", "Image options"]);
+    expect(controlButtons[0]).toHaveAttribute("aria-disabled", "true");
+    expect(controlButtons[1]).toHaveAttribute("aria-disabled", "true");
+    expect(controlButtons[2]).toHaveAttribute("aria-disabled", "true");
+    expect(controlButtons[3]).not.toHaveAttribute("aria-disabled", "true");
+
+    geometrySpy.mockRestore();
+  });
+
+  it("stages image options changes until Save Changes and preserves align, widthPct, and frame metadata", async () => {
+    const mediaAdapter: EditorMediaAdapter = {
+      list: vi.fn(async () => [
+        {
+          contentType: "image/png",
+          fileName: "light.png",
+          mediaId: "workspace-media-light",
+          sizeBytes: 2048
+        },
+        {
+          contentType: "image/png",
+          fileName: "dark.png",
+          mediaId: "workspace-media-dark",
+          sizeBytes: 2048
+        }
+      ]),
+      load: vi.fn(async ({ mediaId }) =>
+        mediaId === "workspace-media-light" || mediaId === "workspace-media-dark" || mediaId === "workspace-media-base"
+          ? createMediaBlob(mediaId)
+          : null
+      ),
+      upload: vi.fn(async ({ file }) => ({
+        contentType: file.type,
+        fileName: file.name,
+        mediaId: "workspace-media-upload",
+        sizeBytes: file.size
+      }))
+    };
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-base",
+            darkMediaId: null,
+            alt: "",
+            caption: "",
+            frame: true,
+            align: "center",
+            widthPct: 80
+          }
+        }
+      ]
+    };
+
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
+      mediaAdapter
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    const before = editor.getJSON();
+
+    await openImageOptions(editor, { clientX: 720, clientY: 60 });
+    const panel = await screen.findByRole("dialog", { name: "Image Options" });
+    const footerActions = panel.querySelector(".docsera-image-options-panel__footer-actions");
+    expect(footerActions).toBeInstanceOf(HTMLElement);
+    if (!(footerActions instanceof HTMLElement)) {
+      throw new Error("Expected the image options footer actions to render.");
+    }
+
+    const footerButtons = within(footerActions).getAllByRole("button");
+    expect(getButtonNames(footerActions)).toEqual(["Delete", "Save Changes"]);
+    expect(footerButtons[0]).toHaveClass("docsera-image-options-panel__button--destructive");
+    expect(footerButtons[1]).toHaveClass("docsera-image-options-panel__button--primary");
+    expect(footerButtons[0]).not.toHaveClass("docsera-image-options-panel__button--primary");
+
+    expect(within(panel).getByText("Light mode image")).toBeInTheDocument();
+    expect(within(panel).getByText("Dark mode image")).toBeInTheDocument();
+    expect(within(panel).getAllByRole("button", { name: "Upload" })).toHaveLength(2);
+    expect(within(panel).queryByRole("button", { name: "Clear" })).toBeNull();
+    expect(within(panel).queryByRole("checkbox", { name: "Frame image" })).toBeNull();
+
+    fireEvent.click(within(panel).getAllByRole("button", { name: "Upload" })[0]);
+    const picker = await screen.findByRole("dialog", { name: "Select image" });
+    fireEvent.click(within(picker).getByRole("button", { name: "light.png" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Select image" })).toBeNull();
+    });
+
+    fireEvent.click(within(panel).getAllByRole("button", { name: "Upload" })[1]);
+    const darkPicker = await screen.findByRole("dialog", { name: "Select image" });
+    fireEvent.click(within(darkPicker).getByRole("button", { name: "dark.png" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Select image" })).toBeNull();
+    });
+
+    fireEvent.change(within(panel).getByLabelText("Alt text"), {
+      target: { value: "Architecture diagram" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Caption"), {
+      target: { value: "Published in both light and dark modes" }
+    });
+
+    expect(editor.getJSON()).toEqual(before);
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Image Options" })).toBeNull();
+    });
+
+    expect(editor.getJSON()).toMatchObject({
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-light",
+            darkMediaId: "workspace-media-dark",
+            alt: "Architecture diagram",
+            caption: "Published in both light and dark modes",
+            frame: true,
+            align: "center",
+            widthPct: 80
+          }
+        }
+      ]
+    });
+
+    geometrySpy.mockRestore();
+  });
+
+  it("shows a loading media label first, then the resolved filename, without rendering the raw media id", async () => {
+    const listDeferred = createDeferred<EditorMediaReference[]>();
+    const mediaAdapter: EditorMediaAdapter = {
+      list: vi.fn(async () => listDeferred.promise),
+      load: vi.fn(async ({ mediaId }) => (mediaId === "workspace-media-base" ? createMediaBlob(mediaId) : null)),
+      upload: vi.fn(async ({ file }) => ({
+        contentType: file.type,
+        fileName: file.name,
+        mediaId: "workspace-media-upload",
+        sizeBytes: file.size
+      }))
+    };
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-base",
+            darkMediaId: null,
+            alt: "Original alt",
+            caption: "Original caption",
+            frame: true,
+            align: "left",
+            widthPct: 100
+          }
+        }
+      ]
+    };
+
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
+      mediaAdapter
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+
+    await openImageOptions(editor, { clientX: 720, clientY: 60 });
+    const panel = await screen.findByRole("dialog", { name: "Image Options" });
+    const panelStyles = getComputedStyle(panel);
+    const panelBackgroundColor = panelStyles.backgroundColor;
+    const altInput = within(panel).getByLabelText("Alt text");
+    const captionInput = within(panel).getByLabelText("Caption");
+    const lightMediaValue = within(panel).getByDisplayValue("Loading…");
+    const darkMediaValue = within(panel).getByDisplayValue("Not configured");
+
+    expect(lightMediaValue).toHaveValue("Loading…");
+    expect(darkMediaValue).toHaveValue("Not configured");
+    expect(panel).not.toHaveTextContent("workspace-media-base");
+    expectStandardImageMediaValueContract(lightMediaValue, MUTED_SURFACE_BACKGROUND_STYLE);
+    expectStandardImageMediaValueContract(darkMediaValue, MUTED_SURFACE_BACKGROUND_STYLE);
+    expectStandardImageFieldContract(altInput, panelBackgroundColor);
+    expectStandardImageFieldContract(captionInput, panelBackgroundColor);
+
+    await act(async () => {
+      altInput.focus();
+    });
+    expect(document.activeElement).toBe(altInput);
+
+    listDeferred.resolve([
+      {
+        contentType: "image/png",
+        fileName: "hero-image.png",
+        mediaId: "workspace-media-base",
+        sizeBytes: 2048
+      }
+    ]);
+
+    await act(async () => {
+      await listDeferred.promise;
+    });
+
+    const resolvedLightMediaValue = await within(panel).findByDisplayValue("hero-image.png");
+
+    expect(panel).not.toHaveTextContent("workspace-media-base");
+    expectStandardImageMediaValueContract(resolvedLightMediaValue, MUTED_SURFACE_BACKGROUND_STYLE);
+    expectStandardImageMediaValueContract(
+      within(panel).getByDisplayValue("Not configured"),
+      MUTED_SURFACE_BACKGROUND_STYLE
+    );
+
+    geometrySpy.mockRestore();
+  });
+
+  it("shows a neutral unavailable label when configured media is missing from the catalog", async () => {
+    const mediaAdapter: EditorMediaAdapter = {
+      list: vi.fn(async () => []),
+      load: vi.fn(async ({ mediaId }) => (mediaId === "workspace-media-base" ? createMediaBlob(mediaId) : null)),
+      upload: vi.fn(async ({ file }) => ({
+        contentType: file.type,
+        fileName: file.name,
+        mediaId: "workspace-media-upload",
+        sizeBytes: file.size
+      }))
+    };
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-base",
+            darkMediaId: "workspace-media-dark",
+            alt: "Original alt",
+            caption: "Original caption",
+            frame: true,
+            align: "left",
+            widthPct: 100
+          }
+        }
+      ]
+    };
+
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
+      mediaAdapter
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+
+    await openImageOptions(editor, { clientX: 720, clientY: 60 });
+    const panel = await screen.findByRole("dialog", { name: "Image Options" });
+
+    await waitFor(() => {
+      expect(within(panel).getAllByDisplayValue("Media unavailable")).toHaveLength(2);
+      expect(panel).not.toHaveTextContent("workspace-media-base");
+      expect(panel).not.toHaveTextContent("workspace-media-dark");
+    });
+
+    for (const mediaValue of within(panel).getAllByDisplayValue("Media unavailable")) {
+      expectStandardImageMediaValueContract(mediaValue, MUTED_SURFACE_BACKGROUND_STYLE);
+    }
+
+    geometrySpy.mockRestore();
+  });
+
+  it("keeps image options anchored below the toolbar and remeasured on resize", async () => {
+    const mediaAdapter: EditorMediaAdapter = {
+      list: vi.fn(async () => [
+        {
+          contentType: "image/png",
+          fileName: "light.png",
+          mediaId: "workspace-media-light",
+          sizeBytes: 2048
+        }
+      ]),
+      load: vi.fn(async ({ mediaId }) => (mediaId === "workspace-media-base" || mediaId === "workspace-media-light" ? createMediaBlob(mediaId) : null)),
+      upload: vi.fn(async () => ({
+        contentType: "image/png",
+        fileName: "light.png",
+        mediaId: "workspace-media-light",
+        sizeBytes: 2048
+      }))
+    };
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-base",
+            darkMediaId: null,
+            alt: "Original alt",
+            caption: "Original caption",
+            frame: true,
+            align: "left",
+            widthPct: 100
+          }
+        }
+      ]
+    };
+
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
+      mediaAdapter
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    let controlGroupRect = new DOMRect(640, 58, 96, 32);
+    let triggerRect = new DOMRect(708, 62, 24, 24);
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (
+        this.dataset.docseraImageControls === "true" &&
+        this.dataset.docseraImageControlsBlockIndex === "0"
+      ) {
+        return controlGroupRect;
+      }
+
+      if (
+        this.dataset.docseraImageOptions === "true" &&
+        this.dataset.docseraImageOptionsBlockIndex === "0"
+      ) {
+        return triggerRect;
+      }
+
+      return new DOMRect(0, 0, 1, 1);
+    });
+
+    await openImageOptions(editor, { clientX: 720, clientY: 60 });
+    const panel = await screen.findByRole("dialog", { name: "Image Options" });
+    const controlGroup = document.querySelector(
+      `[data-docsera-image-controls="true"][data-docsera-image-controls-block-index="0"]`
+    );
+    expect(controlGroup).toBeInstanceOf(HTMLElement);
+    if (!(controlGroup instanceof HTMLElement)) {
+      throw new Error("Expected the image control group to render.");
+    }
+
+    await waitFor(() => {
+      expect(controlGroup).toHaveStyle({ left: "744px", top: "60px" });
+      expect(controlGroup).toHaveStyle({ transform: "translateX(-100%)" });
+      expect(panel).toHaveStyle({ left: "364px", top: "100px" });
+    });
+
+    controlGroupRect = new DOMRect(604, 122, 96, 32);
+    triggerRect = new DOMRect(672, 126, 24, 24);
+    window.dispatchEvent(new Event("resize"));
+
+    await waitFor(() => {
+      expect(controlGroup).toHaveStyle({ left: "744px", top: "60px" });
+      expect(panel).toHaveStyle({ left: "328px", top: "164px" });
+    });
+
+    rectSpy.mockRestore();
+    geometrySpy.mockRestore();
+  });
+
+  it("anchors image options to the control group and discards staged edits on Escape", async () => {
+    const mediaAdapter: EditorMediaAdapter = {
+      list: vi.fn(async () => [
+        {
+          contentType: "image/png",
+          fileName: "light.png",
+          mediaId: "workspace-media-light",
+          sizeBytes: 2048
+        }
+      ]),
+      load: vi.fn(async ({ mediaId }) => (mediaId === "workspace-media-base" || mediaId === "workspace-media-light" ? createMediaBlob(mediaId) : null)),
+      upload: vi.fn(async () => ({
+        contentType: "image/png",
+        fileName: "light.png",
+        mediaId: "workspace-media-light",
+        sizeBytes: 2048
+      }))
+    };
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-base",
+            darkMediaId: null,
+            alt: "Original alt",
+            caption: "Original caption",
+            frame: true,
+            align: "left",
+            widthPct: 100
+          }
+        }
+      ]
+    };
+
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
+      mediaAdapter
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    const controlGroupRect = new DOMRect(640, 58, 96, 32);
+    const triggerRect = new DOMRect(708, 62, 24, 24);
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (
+        this.dataset.docseraImageControls === "true" &&
+        this.dataset.docseraImageControlsBlockIndex === "0"
+      ) {
+        return controlGroupRect;
+      }
+
+      if (
+        this.dataset.docseraImageOptions === "true" &&
+        this.dataset.docseraImageOptionsBlockIndex === "0"
+      ) {
+        return triggerRect;
+      }
+
+      return new DOMRect(0, 0, 1, 1);
+    });
+    const before = editor.getJSON();
+
+    await openImageOptions(editor, { clientX: 720, clientY: 60 });
+    const panel = await screen.findByRole("dialog", { name: "Image Options" });
+    const controlGroup = document.querySelector(
+      `[data-docsera-image-controls="true"][data-docsera-image-controls-block-index="0"]`
+    );
+    expect(controlGroup).toBeInstanceOf(HTMLElement);
+    if (!(controlGroup instanceof HTMLElement)) {
+      throw new Error("Expected the image control group to render.");
+    }
+
+    const controlButton = within(controlGroup).getByRole("button", { name: "Image options" });
+    expect(getComputedStyle(controlGroup).pointerEvents).toBe("auto");
+    expect(getComputedStyle(controlButton).cursor).toBe("pointer");
+    expect(controlButton).toHaveAttribute("aria-haspopup", "dialog");
+    expect(controlButton).toHaveAttribute("aria-controls");
+    expect(controlButton).toHaveAttribute("aria-expanded", "true");
+
+    await waitFor(() => {
+      expect(panel).toHaveStyle({ left: "364px", top: "100px" });
+    });
+
+    fireEvent.change(within(panel).getByLabelText("Alt text"), {
+      target: { value: "Discarded alt" }
+    });
+    fireEvent.change(within(panel).getByLabelText("Caption"), {
+      target: { value: "Discarded caption" }
+    });
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Image Options" })).toBeNull();
+    });
+    expect(editor.getJSON()).toEqual(before);
+
+    rectSpy.mockRestore();
+    geometrySpy.mockRestore();
+  });
+
+  it("discards staged image options when dismissed outside the panel", async () => {
+    const mediaAdapter: EditorMediaAdapter = {
+      list: vi.fn(async () => [
+        {
+          contentType: "image/png",
+          fileName: "light.png",
+          mediaId: "workspace-media-light",
+          sizeBytes: 2048
+        }
+      ]),
+      load: vi.fn(async ({ mediaId }) => (mediaId === "workspace-media-base" || mediaId === "workspace-media-light" ? createMediaBlob(mediaId) : null)),
+      upload: vi.fn(async () => ({
+        contentType: "image/png",
+        fileName: "light.png",
+        mediaId: "workspace-media-light",
+        sizeBytes: 2048
+      }))
+    };
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-base",
+            darkMediaId: null,
+            alt: "Original alt",
+            caption: "Original caption",
+            frame: true,
+            align: "left",
+            widthPct: 100
+          }
+        }
+      ]
+    };
+
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
+      mediaAdapter
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    const before = editor.getJSON();
+
+    await openImageOptions(editor, { clientX: 720, clientY: 60 });
+    const panel = await screen.findByRole("dialog", { name: "Image Options" });
+    fireEvent.change(within(panel).getByLabelText("Alt text"), {
+      target: { value: "Discarded alt" }
+    });
+
+    fireEvent.pointerDown(document.body, { button: 0, clientX: 8, clientY: 8 });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Image Options" })).toBeNull();
+    });
+    expect(editor.getJSON()).toEqual(before);
+
+    geometrySpy.mockRestore();
+  });
+
+  it("updates dark media through Upload and removes the image block without deleting workspace media", async () => {
+    const mediaAdapter: EditorMediaAdapter = {
+      list: vi.fn(async () => [
+        {
+          contentType: "image/png",
+          fileName: "light.png",
+          mediaId: "workspace-media-light",
+          sizeBytes: 2048
+        },
+        {
+          contentType: "image/png",
+          fileName: "dark.png",
+          mediaId: "workspace-media-dark",
+          sizeBytes: 2048
+        }
+      ]),
+      load: vi.fn(async ({ mediaId }) =>
+        mediaId === "workspace-media-light" || mediaId === "workspace-media-dark" ? createMediaBlob(mediaId) : null
+      ),
+      upload: vi.fn(async ({ file }) => ({
+        contentType: file.type,
+        fileName: file.name,
+        mediaId: "workspace-media-upload",
+        sizeBytes: file.size
+      }))
+    };
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Alpha" }]
+        },
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-light",
+            darkMediaId: "workspace-media-dark",
+            alt: "Architecture diagram",
+            caption: "Published in both light and dark modes",
+            frame: true,
+            align: "center",
+            widthPct: 80
+          }
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Omega" }]
+        }
+      ]
+    };
+
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
+      mediaAdapter
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [
+      new DOMRect(132, 52, 620, 28),
+      new DOMRect(132, 108, 620, 28),
+      new DOMRect(132, 164, 620, 28)
+    ]);
+
+    await openImageOptions(editor, { clientX: 720, clientY: 118 });
+    const panel = await screen.findByRole("dialog", { name: "Image Options" });
+    expect(within(panel).getAllByRole("button", { name: "Upload" })).toHaveLength(2);
+    expect(within(panel).queryByRole("button", { name: "Clear" })).toBeNull();
+    expect(within(panel).queryByRole("checkbox", { name: "Frame image" })).toBeNull();
+    fireEvent.click(within(panel).getAllByRole("button", { name: "Upload" })[1]);
+    const darkPicker = await screen.findByRole("dialog", { name: "Select image" });
+    fireEvent.click(within(darkPicker).getByRole("button", { name: "dark.png" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Select image" })).toBeNull();
+    });
+    fireEvent.click(within(panel).getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Image Options" })).toBeNull();
+    });
+
+    expect(editor.getJSON()).toMatchObject({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Alpha" }]
+        },
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-light",
+            darkMediaId: "workspace-media-dark",
+            alt: "Architecture diagram",
+            caption: "Published in both light and dark modes",
+            frame: true,
+            align: "center",
+            widthPct: 80
+          }
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Omega" }]
+        }
+      ]
+    });
+
+    await openImageOptions(editor, { clientX: 720, clientY: 118 });
+    const deletePanel = await screen.findByRole("dialog", { name: "Image Options" });
+    fireEvent.click(within(deletePanel).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Image Options" })).toBeNull();
+    });
+
+    expect(editor.getJSON()).toEqual({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Alpha" }]
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Omega" }]
+        }
+      ]
+    });
+
+    expect(mediaAdapter.upload).not.toHaveBeenCalled();
+    geometrySpy.mockRestore();
+  });
+
+  it("keeps the accepted frame stylesheet to a simple border treatment", () => {
+    renderRuntime();
+    const runtimeStyleText = getRuntimeStyleText();
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const runtimeShellSource = nodeProcess
+      .getBuiltinModule("fs")
+      .readFileSync(`${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`, "utf8");
+
+    expect(runtimeStyleText).toMatch(/\.docsera-editor-image\[data-docsera-image-frame="true"\]\s*{[^}]*border:\s*1px solid[^}]*background:\s*transparent[^}]*box-shadow:\s*none;/s);
+    expect(runtimeShellSource).toMatch(/\.docsera-main__media--framed\s*{[^}]*border:\s*1px solid[^}]*border-radius:\s*16px;[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
+  });
+
   it("invalidates a pending image load when the editor is destroyed", async () => {
     const loadDeferred = createDeferred<Blob | null>();
     const mediaAdapter: EditorMediaAdapter = {
@@ -2029,8 +2976,13 @@ describe("PageEditorHostRuntime", () => {
     }
 
     const loadedFigure = figure as HTMLElement;
+    const loadingStatus = within(loadedFigure).getByRole("status", { name: "Loading image" });
 
-    expect(loadedFigure.querySelector(".docsera-editor-image__loading")).toBeInTheDocument();
+    expect(loadedFigure).toHaveAttribute("data-docsera-image-frame", "true");
+    expect(loadingStatus).toHaveAttribute("aria-busy", "true");
+    expect(loadingStatus).not.toHaveTextContent("Media");
+    expect(loadingStatus).not.toHaveTextContent("Loading image");
+    expectQuietLoadingMediaPlaceholderContract(loadingStatus);
 
     await act(async () => {
       editor.destroy();
@@ -2048,6 +3000,129 @@ describe("PageEditorHostRuntime", () => {
     expect(revokeObjectUrlSpy).toHaveBeenCalledTimes(0);
     createObjectUrlSpy.mockRestore();
     revokeObjectUrlSpy.mockRestore();
+  });
+
+  it("keeps the unframed loading placeholder borderless while the editor image resolves", async () => {
+    const loadDeferred = createDeferred<Blob | null>();
+    const mediaAdapter: EditorMediaAdapter = {
+      list: vi.fn(async () => []),
+      load: vi.fn(async () => loadDeferred.promise),
+      upload: vi.fn(async () => ({
+        contentType: "image/png",
+        fileName: "diagram.png",
+        mediaId: "workspace-media-001",
+        sizeBytes: 2048
+      }))
+    };
+    const createObjectUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:unframed-loading");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              mediaId: "workspace-media-001",
+              darkMediaId: null,
+              alt: "",
+              caption: "",
+              frame: false,
+              align: "left",
+              widthPct: 100
+            }
+          }
+        ]
+      }),
+      mediaAdapter
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const figure = await waitFor(() => {
+      const element = editor.view.dom.querySelector("figure");
+      if (!element) {
+        throw new Error("Expected the runtime image node view to render a figure element.");
+      }
+
+      return element as HTMLElement;
+    });
+
+    const loadingStatus = within(figure).getByRole("status", { name: "Loading image" });
+
+    expect(figure).toHaveAttribute("data-docsera-image-frame", "false");
+    expect(loadingStatus).toHaveAttribute("aria-busy", "true");
+    expect(loadingStatus).not.toHaveTextContent("Media");
+    expect(loadingStatus).not.toHaveTextContent("Loading image");
+    expectQuietLoadingMediaPlaceholderContract(loadingStatus);
+
+    await act(async () => {
+      loadDeferred.resolve(createMediaBlob("workspace-media-001"));
+    });
+
+    await waitFor(() => {
+      expect(figure.querySelector("img")).toHaveAttribute("src", "blob:unframed-loading");
+    });
+
+    expect(revokeObjectUrlSpy).toHaveBeenCalledTimes(0);
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
+  });
+
+  it("keeps the picker library region busy without rendering a loading row", async () => {
+    const listDeferred = createDeferred<EditorMediaReference[]>();
+    const mediaAdapter: EditorMediaAdapter = {
+      list: vi.fn(async () => listDeferred.promise),
+      load: vi.fn(async () => null),
+      upload: vi.fn(async () => ({
+        contentType: "image/png",
+        fileName: "upload.png",
+        mediaId: "workspace-media-upload",
+        sizeBytes: 1024
+      }))
+    };
+
+    const { editorReady } = renderRuntime({ mediaAdapter });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await openSlashQuery(editor, "image");
+    fireEvent.click(await screen.findByRole("option", { name: "Image" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Select image" });
+    const libraryScroll = dialog.querySelector(".docsera-image-picker__library-scroll");
+    if (!(libraryScroll instanceof HTMLElement)) {
+      throw new Error("Expected the picker library scroll container to be available.");
+    }
+
+    expect(libraryScroll).toHaveAttribute("aria-busy", "true");
+    expect(dialog).not.toHaveTextContent("Loading the workspace media library...");
+    expect(within(dialog).getByRole("button", { name: "Upload image" })).toBeInTheDocument();
+
+    listDeferred.resolve([
+      {
+        contentType: "image/png",
+        fileName: "diagram.png",
+        mediaId: "workspace-media-001",
+        sizeBytes: 2048
+      }
+    ]);
+
+    await act(async () => {
+      await listDeferred.promise;
+    });
+
+    await waitFor(() => {
+      expect(libraryScroll).not.toHaveAttribute("aria-busy");
+      expect(within(dialog).getByRole("button", { name: "diagram.png" })).toBeInTheDocument();
+    });
   });
 
   it("retries the library load, filters by file name without reordering, and only enters upload after a file is chosen", async () => {
@@ -2532,7 +3607,25 @@ describe("PageEditorHostRuntime", () => {
       load: vi.fn(async () => null),
       upload: vi.fn(() => uploadDeferred.promise)
     };
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-base",
+            darkMediaId: null,
+            alt: "",
+            caption: "",
+            frame: false,
+            align: "center",
+            widthPct: 100
+          }
+        }
+      ]
+    };
     const { editorReady, rerender, onAccessLost, onOutlineChange, onSaveDraft, onStatusChange, overlayRoot } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
       mediaAdapter,
       sessionKey: "session-a"
     });
@@ -2542,8 +3635,10 @@ describe("PageEditorHostRuntime", () => {
     });
 
     const editor = editorReady[0];
-    await openSlashQuery(editor, "image");
-    fireEvent.click(await screen.findByRole("option", { name: "Image" }));
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    await openImageOptions(editor, { clientX: 720, clientY: 60 });
+    const panel = await screen.findByRole("dialog", { name: "Image Options" });
+    fireEvent.click(within(panel).getAllByRole("button", { name: "Upload" })[0]);
 
     const dialog = await screen.findByRole("dialog", { name: "Select image" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Upload image" }));
@@ -2594,10 +3689,27 @@ describe("PageEditorHostRuntime", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog", { name: "Select image" })).toBeNull();
     });
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Image Options" })).toBeNull();
+    });
     expect(editor.getJSON()).toEqual({
       type: "doc",
-      content: [{ type: "paragraph" }]
+      content: [
+        {
+          type: "image",
+          attrs: {
+            alt: "",
+            align: "center",
+            caption: "",
+            darkMediaId: null,
+            frame: false,
+            mediaId: "workspace-media-base",
+            widthPct: 100
+          }
+        }
+      ]
     });
+    geometrySpy.mockRestore();
   });
 
   it("renders the transient shared search state without mutating the document or undo history", async () => {
@@ -6789,6 +7901,10 @@ describe("PageEditorHostRuntime", () => {
       `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
       "utf8"
     );
+    const imageStylesSource = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/ImageOptionsStyles.ts`,
+      "utf8"
+    );
 
     expect(source).toContain("docsera-table-controls-overlay__pill-shell");
     expect(source).toContain("docsera-table-controls-overlay__pill-icon");
@@ -6834,6 +7950,7 @@ describe("PageEditorHostRuntime", () => {
     expect(runtimeSource).toContain("--docsera-table-control-primary: #7C83FA");
     expect(runtimeSource).toContain("--docsera-table-control-active-icon: var(--docsera-editor-panel);");
     expect(runtimeSource).toContain("--docsera-table-control-active-icon: #ffffff;");
+    expect(runtimeSource).toContain("const IMAGE_OPTIONS_PANEL_WIDTH = 372;");
     expect(runtimeSource).toContain("overflow-y: visible;");
     expect(runtimeSource).toContain("border-color: var(--docsera-table-control-primary);");
     expect(runtimeSource).toContain("box-shadow: inset 0 0 0 1.5px var(--docsera-table-control-primary);");
@@ -6847,6 +7964,44 @@ describe("PageEditorHostRuntime", () => {
     expect(source).not.toContain("text-[var(--docsera-text-secondary)]");
     expect(source).not.toContain("pointer-events-none inline-flex items-center justify-center");
     expect(source).not.toContain("opacity: isHovered || isMenuOpen ? 1 : 0,");
+    expect(runtimeSource).toContain("Frame as FrameIcon");
+    expect(runtimeSource).toContain("EllipsisVertical");
+    expect(runtimeSource).toContain("translateX(-100%)");
+    expect(runtimeSource).toContain("anchorRect.right - IMAGE_OPTIONS_CONTROL_INSET");
+    expect(runtimeSource).not.toContain("viewportWidth - anchorRect.right");
+    expect(runtimeSource).not.toContain("Crop");
+    expect(runtimeSource).not.toContain("MoreHorizontal");
+    expect(imageStylesSource).toContain(".docsera-image-preview-group");
+    expect(imageStylesSource).toContain(".docsera-image-controls-group");
+    expect(imageStylesSource).toContain(".docsera-image-controls-button");
+    expect(imageStylesSource).toContain(".docsera-image-controls-button--selected");
+    expect(imageStylesSource).toContain(".docsera-image-options-trigger");
+    expect(imageStylesSource).toContain(".docsera-image-options-panel");
+    expect(imageStylesSource).toContain(".docsera-image-options-panel__header-divider");
+    expect(imageStylesSource).toContain(".docsera-image-options-panel__button--primary");
+    expect(imageStylesSource).toContain("[aria-disabled=\"true\"]");
+    expect(imageStylesSource).toContain("pointer-events: auto;");
+    expect(imageStylesSource).toContain("border-radius: 8px;");
+    expect(imageStylesSource).toContain("border-radius: 6px;");
+    expect(imageStylesSource).toContain("overflow-y: auto;");
+    expect(imageStylesSource).toContain("border-radius: 4px;");
+    expect(imageStylesSource).toContain("min-height: 34px;");
+    expect(imageStylesSource).toContain("background: var(--docsera-surface);");
+    expect(imageStylesSource).toContain("box-shadow: none;");
+    expect(imageStylesSource).toContain("outline: none;");
+    expect(imageStylesSource).toContain("border-color: var(--docsera-primary);");
+    expect(imageStylesSource).toContain("white-space: nowrap;");
+    expect(imageStylesSource).toContain("text-overflow: ellipsis;");
+    expect(imageStylesSource).toContain("width: min(372px, calc(100vw - 24px));");
+    expect(imageStylesSource).toContain("max-width: min(372px, calc(100vw - 24px));");
+    expect(imageStylesSource).toContain("background: var(--docsera-surface-muted);");
+    expect(imageStylesSource).toContain("cursor: pointer;");
+    expect(imageStylesSource).toContain("color: white;");
+    expect(imageStylesSource).not.toContain("transform: translateY(-1px);");
+    expect(runtimeSource).toContain("transform: \"translateX(-100%)\"");
+    expect(imageStylesSource).not.toContain("scale(");
+    expect(imageStylesSource).not.toContain("word-break: break-word;");
+    expect(imageStylesSource).not.toContain("color: var(--docsera-surface);");
   });
 
   it("appends a column at the far-right edge even when the active cell is not the last column", async () => {

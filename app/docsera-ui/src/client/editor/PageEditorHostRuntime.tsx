@@ -7,6 +7,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { CSSProperties } from "react";
 import { Fragment } from "@tiptap/pm/model";
 import type { DocseraDocumentEnvelope, DocseraTiptapDocument } from "../../shared/editor/document";
+import { canonicalizeDocseraImageAttrs, type DocseraImageAttrs } from "../../shared/editor/imageContract";
 import { DOCSERA_DOCUMENT_SCHEMA_VERSION, parseDocseraDocumentOrThrow } from "../../shared/editor/document";
 import { createDocseraEditorExtensionsWithOptions } from "../../shared/editor/schema";
 import { extractDocumentOutline, type EditorOutlineItem } from "./documentOutline";
@@ -35,6 +36,8 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { CompactTextToolbar } from "./CompactTextToolbar";
 import { EDITOR_IMAGE_STYLES } from "./EditorImageStyles";
 import { ImagePickerDialog } from "./ImagePickerDialog";
+import { ImageOptionsPanel } from "./ImageOptionsPanel";
+import { IMAGE_OPTIONS_STYLES } from "./ImageOptionsStyles";
 import { IMAGE_PICKER_STYLES } from "./ImagePickerStyles";
 import { subscribeToPageOwnershipHandoff } from "../pageOwnershipHandoff";
 import {
@@ -49,10 +52,12 @@ import {
 } from "./editorAutoScroll";
 import { useTopLevelBlockDragSession } from "./useTopLevelBlockDragSession";
 import {
+  AlignCenter,
   Check,
   Code2,
   Copy,
   ChevronRight,
+  EllipsisVertical,
   Image,
   Heading1,
   Heading2,
@@ -61,10 +66,14 @@ import {
   List,
   ListOrdered,
   Minus,
+  Moon,
   Pilcrow,
   Plus,
   Quote,
+  SunMedium,
   Table2,
+  Frame as FrameIcon,
+  ZoomIn,
   Trash2,
 } from "lucide-react";
 import { BLOCK_SELECTOR_STYLES } from "./BlockSelectorStyles";
@@ -204,6 +213,14 @@ type ImagePickerSessionState = {
   source: "quickAdd" | "slash";
 };
 
+type ImageOptionsSessionState = {
+  anchorRect: DOMRect;
+  blockIndex: number;
+  initialAttrs: DocseraImageAttrs;
+  placement: CommandSelectorPlacement;
+  sessionId: string;
+};
+
 type BlockActionMenuState = {
   activeIndex: number;
   anchorRect: DOMRect;
@@ -251,6 +268,10 @@ const BLOCK_SELECTOR_PLACEMENT_GAP = 6;
 const BLOCK_TARGET_TOP_OFFSET = 1;
 const BLOCK_DRAG_LINE_HEIGHT = 2;
 const BLOCK_HANDLE_GESTURE_THRESHOLD_PX = 4;
+const IMAGE_OPTIONS_CONTROL_INSET = 8;
+const IMAGE_OPTIONS_CONTROL_TOP_OFFSET = 8;
+const IMAGE_OPTIONS_PANEL_WIDTH = 372;
+const IMAGE_OPTIONS_PANEL_HEIGHT = 428;
 const BLOCK_ACTION_MENU_WIDTH = 182;
 const BLOCK_ACTION_MENU_HEIGHT = 144;
 const BLOCK_TURN_INTO_MENU_WIDTH = 198;
@@ -1192,6 +1213,62 @@ function buildGutterHandleStyle(anchorRect: DOMRect): CSSProperties {
     top: `${anchorRect.top}px`,
     width: `${QUICK_ADD_BUTTON_SIZE}px`,
     height: `${QUICK_ADD_BUTTON_SIZE}px`
+  };
+}
+
+function buildImageOptionsControlGroupStyle(anchorRect: DOMRect): CSSProperties {
+  return {
+    position: "fixed",
+    left: `${Math.max(VIEWPORT_GUTTER, anchorRect.right - IMAGE_OPTIONS_CONTROL_INSET)}px`,
+    top: `${Math.max(VIEWPORT_GUTTER, anchorRect.top + IMAGE_OPTIONS_CONTROL_TOP_OFFSET)}px`,
+    transform: "translateX(-100%)"
+  };
+}
+
+function buildImagePreviewControlGroupStyle(anchorRect: DOMRect): CSSProperties {
+  return {
+    position: "fixed",
+    left: `${Math.max(VIEWPORT_GUTTER, anchorRect.left + IMAGE_OPTIONS_CONTROL_INSET)}px`,
+    top: `${Math.max(VIEWPORT_GUTTER, anchorRect.top + IMAGE_OPTIONS_CONTROL_TOP_OFFSET)}px`
+  };
+}
+
+function getImageOptionsControlGroupRect(overlayRoot: HTMLElement, blockIndex: number): DOMRect | null {
+  const trigger = overlayRoot.querySelector(
+    `[data-docsera-image-controls="true"][data-docsera-image-controls-block-index="${blockIndex}"]`
+  );
+  if (!(trigger instanceof HTMLElement)) {
+    return null;
+  }
+
+  return trigger.getBoundingClientRect();
+}
+
+function buildImageOptionsPanelStyle(
+  ownerDocument: Document,
+  rect: DOMRect,
+  placement: CommandSelectorPlacement
+): CSSProperties {
+  const ownerWindow = ownerDocument.defaultView;
+  const viewportWidth = ownerWindow?.innerWidth ?? ownerDocument.documentElement.clientWidth;
+  const viewportHeight = ownerWindow?.innerHeight ?? ownerDocument.documentElement.clientHeight;
+  const maxSurfaceWidth = Math.max(1, viewportWidth - VIEWPORT_GUTTER * 2);
+  const clampedWidth = Math.max(1, Math.min(IMAGE_OPTIONS_PANEL_WIDTH, maxSurfaceWidth));
+  const clampedHeight = resolveConstrainedSurfaceHeight(ownerDocument, rect, IMAGE_OPTIONS_PANEL_HEIGHT, placement);
+  const preferredLeft = rect.right - clampedWidth;
+  const left = Math.min(
+    Math.max(VIEWPORT_GUTTER, preferredLeft),
+    Math.max(VIEWPORT_GUTTER, viewportWidth - clampedWidth - VIEWPORT_GUTTER)
+  );
+  const top = Math.max(VIEWPORT_GUTTER, rect.bottom + POPOVER_GAP);
+
+  return {
+    position: "fixed",
+    left: `${left}px`,
+    top: `${top}px`,
+    width: `${clampedWidth}px`,
+    maxWidth: `${maxSurfaceWidth}px`,
+    maxHeight: `${clampedHeight}px`
   };
 }
 
@@ -2604,6 +2681,7 @@ export function PageEditorHostRuntime({
   const [hoverTarget, setHoverTarget] = useState<HoverTarget | null>(null);
   const [commandSelector, setCommandSelector] = useState<CommandSelectorState | null>(null);
   const [imagePickerSession, setImagePickerSession] = useState<ImagePickerSessionState | null>(null);
+  const [imageOptionsSession, setImageOptionsSession] = useState<ImageOptionsSessionState | null>(null);
   const [blockActionMenu, setBlockActionMenu] = useState<BlockActionMenuState | null>(null);
   const [blockTurnIntoMenu, setBlockTurnIntoMenu] = useState<BlockTurnIntoMenuState | null>(null);
   const [selectorScrollMetrics, setSelectorScrollMetrics] = useState({ hasOverflow: false, scrollbarWidth: 0 });
@@ -2612,6 +2690,7 @@ export function PageEditorHostRuntime({
   const selectorQueryStateId = useId();
   const blockActionMenuId = useId();
   const blockTurnIntoMenuId = useId();
+  const imageOptionsPanelId = useId();
   const incomingInitialEnvelope = useMemo(() => parseDocseraDocumentOrThrow(initialEnvelope), [initialEnvelope]);
   const incomingInitialSavedEnvelope = useMemo(
     () => parseDocseraDocumentOrThrow(initialSavedEnvelope ?? initialEnvelope),
@@ -2643,6 +2722,8 @@ export function PageEditorHostRuntime({
   const commandSelectorItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const imagePickerSessionRef = useRef<ImagePickerSessionState | null>(null);
   const imagePickerSessionCounterRef = useRef(0);
+  const imageOptionsSessionRef = useRef<ImageOptionsSessionState | null>(null);
+  const imageOptionsSessionCounterRef = useRef(0);
   const blockActionMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const blockTurnIntoMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const blockTurnIntoTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -3236,6 +3317,23 @@ export function PageEditorHostRuntime({
     []
   );
 
+  const closeImageOptions = useCallback(
+    (options: { focusEditor?: boolean } = {}) => {
+      const { focusEditor = true } = options;
+      imageOptionsSessionRef.current = null;
+      setImageOptionsSession(null);
+      if (!focusEditor) {
+        return;
+      }
+
+      const runtimeEditor = editorRef.current;
+      if (runtimeEditor && !runtimeEditor.isDestroyed) {
+        runtimeEditor.view.focus();
+      }
+    },
+    []
+  );
+
   const openImagePicker = useCallback(
     (selector: CommandSelectorState) => {
       const runtimeEditor = editorRef.current;
@@ -3491,9 +3589,42 @@ export function PageEditorHostRuntime({
     (options: { focusEditor?: boolean; syncHoverFromPointer?: boolean } = {}) => {
       const { focusEditor = false, syncHoverFromPointer = true } = options;
       closeBlockActionMenus({ focusEditor, syncHoverFromPointer });
+      closeImageOptions({ focusEditor });
       clearTransientBlockSelection();
     },
-    [clearTransientBlockSelection, closeBlockActionMenus]
+    [clearTransientBlockSelection, closeBlockActionMenus, closeImageOptions]
+  );
+
+  const openImageOptions = useCallback(
+    (blockIndex: number, anchorRect: DOMRect) => {
+      const runtimeEditor = editorRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed) {
+        return;
+      }
+
+      const imageNode = getTopLevelBlockNodeFromDoc(runtimeEditor.state.doc, blockIndex);
+      if (!imageNode || imageNode.type.name !== "image") {
+        return;
+      }
+
+      const initialAttrs = canonicalizeDocseraImageAttrs(imageNode.attrs);
+      imageOptionsSessionCounterRef.current += 1;
+      const nextSession: ImageOptionsSessionState = {
+        anchorRect,
+        blockIndex,
+        initialAttrs,
+        placement: "below",
+        sessionId: `image-options-${imageOptionsSessionCounterRef.current}`
+      };
+      imageOptionsSessionRef.current = nextSession;
+      setImageOptionsSession(nextSession);
+      closeCommandSelector({ syncHoverFromPointer: false });
+      closeBlockActionMenus({ focusEditor: false, syncHoverFromPointer: false });
+      closeBlockTurnIntoMenu({ focusParent: false });
+      closeImagePicker({ restoreSelection: false });
+      clearTransientBlockSelection();
+    },
+    [clearTransientBlockSelection, closeBlockActionMenus, closeBlockTurnIntoMenu, closeCommandSelector, closeImagePicker, overlayOwnerDocument]
   );
 
   const handleBlockActionMenuKeyDown = useCallback(
@@ -4151,22 +4282,24 @@ export function PageEditorHostRuntime({
       setOwnedHoverTarget(null);
       setCommandSelector(null);
       closeImagePicker({ restoreSelection: false });
+      closeImageOptions({ focusEditor: false });
       setBlockActionMenu(null);
       setBlockTurnIntoMenu(null);
       clearTransientBlockSelection();
       clearBlockDragSession();
     }
-  }, [clearBlockDragSession, clearTransientBlockSelection, closeImagePicker, isEditable]);
+  }, [clearBlockDragSession, clearTransientBlockSelection, closeImageOptions, closeImagePicker, isEditable]);
 
   useEffect(() => {
     setOwnedHoverTarget(null);
     setCommandSelector(null);
     closeImagePicker({ restoreSelection: false });
+    closeImageOptions({ focusEditor: false });
     setBlockActionMenu(null);
     setBlockTurnIntoMenu(null);
     clearTransientBlockSelection();
     clearBlockDragSession();
-  }, [clearBlockDragSession, clearTransientBlockSelection, closeImagePicker, pageSysId, sessionKey]);
+  }, [clearBlockDragSession, clearTransientBlockSelection, closeImageOptions, closeImagePicker, pageSysId, sessionKey]);
 
   useEffect(() => {
     commandSelectorRef.current = commandSelector;
@@ -4175,6 +4308,35 @@ export function PageEditorHostRuntime({
   useEffect(() => {
     imagePickerSessionRef.current = imagePickerSession;
   }, [imagePickerSession]);
+
+  useEffect(() => {
+    imageOptionsSessionRef.current = imageOptionsSession;
+  }, [imageOptionsSession]);
+
+  useLayoutEffect(() => {
+    if (!imageOptionsSession) {
+      return;
+    }
+
+    const targetRect = getImageOptionsControlGroupRect(overlayRoot, imageOptionsSession.blockIndex);
+    if (!targetRect) {
+      closeImageOptions({ focusEditor: true });
+      return;
+    }
+
+    if (areDomRectsEqual(imageOptionsSession.anchorRect, targetRect)) {
+      return;
+    }
+
+    setImageOptionsSession((current) =>
+      current
+        ? {
+            ...current,
+            anchorRect: targetRect
+          }
+        : current
+    );
+  }, [closeImageOptions, imageOptionsSession, overlayMeasurementVersion, overlayRoot]);
 
   useEffect(() => {
     const runtimeEditor = editorRef.current;
@@ -4563,7 +4725,7 @@ export function PageEditorHostRuntime({
   }, [commandSelector, syncCommandQueryPresentation]);
 
   useEffect(() => {
-    if (!editor || (!hoverTarget && !commandSelector)) {
+    if (!editor || (!hoverTarget && !commandSelector && !imageOptionsSession)) {
       return;
     }
 
@@ -4577,7 +4739,7 @@ export function PageEditorHostRuntime({
       overlayOwnerDocument.removeEventListener("scroll", handleViewportChange, true);
       overlayOwnerWindow?.removeEventListener("resize", handleViewportChange);
     };
-  }, [commandSelector, editor, hoverTarget, overlayOwnerDocument, overlayOwnerWindow, scheduleOverlayMeasurement]);
+  }, [commandSelector, editor, hoverTarget, imageOptionsSession, overlayOwnerDocument, overlayOwnerWindow, scheduleOverlayMeasurement]);
 
   useEffect(() => {
     if (!editor || !isEditable) {
@@ -4621,7 +4783,7 @@ export function PageEditorHostRuntime({
   }, [editor, isEditable, overlayOwnerDocument, scheduleOverlayMeasurement]);
 
   useEffect(() => {
-    if (!commandSelector && !blockActionMenu && !blockTurnIntoMenu) {
+    if (!commandSelector && !blockActionMenu && !blockTurnIntoMenu && !imageOptionsSession) {
       return;
     }
 
@@ -4637,6 +4799,9 @@ export function PageEditorHostRuntime({
         if (blockActionMenu || blockTurnIntoMenu) {
           closeAllBlockSurfaces({ focusEditor: false, syncHoverFromPointer: false });
         }
+        if (imageOptionsSession) {
+          closeImageOptions({ focusEditor: false });
+        }
         return;
       }
 
@@ -4646,13 +4811,16 @@ export function PageEditorHostRuntime({
       if (blockActionMenu || blockTurnIntoMenu) {
         closeAllBlockSurfaces({ focusEditor: false, syncHoverFromPointer: false });
       }
+      if (imageOptionsSession) {
+        closeImageOptions({ focusEditor: false });
+      }
     };
 
     overlayOwnerDocument.addEventListener("pointerdown", handlePointerDown, true);
     return () => {
       overlayOwnerDocument.removeEventListener("pointerdown", handlePointerDown, true);
     };
-  }, [blockActionMenu, blockTurnIntoMenu, closeAllBlockSurfaces, closeCommandSelector, commandSelector, overlayOwnerDocument, overlayRoot]);
+  }, [blockActionMenu, blockTurnIntoMenu, closeAllBlockSurfaces, closeCommandSelector, closeImageOptions, commandSelector, imageOptionsSession, overlayOwnerDocument, overlayRoot]);
 
   useEffect(() => () => {
     if (overlayMeasurementFrameRef.current !== null) {
@@ -4851,6 +5019,23 @@ export function PageEditorHostRuntime({
               : hoverTarget;
           })()
         : hoverTarget;
+  const hoveredImageTarget =
+    editor && hoverTarget
+      ? (() => {
+          const node = getTopLevelBlockNodeFromDoc(editor.state.doc, hoverTarget.blockIndex);
+          return node?.type.name === "image" ? hoverTarget : null;
+        })()
+      : null;
+  const imageOptionsBlockIndex = imageOptionsSession?.blockIndex ?? hoveredImageTarget?.blockIndex ?? null;
+  const imageOptionsBlockRect = editor && imageOptionsBlockIndex !== null ? getTopLevelBlockRect(editor, imageOptionsBlockIndex) : null;
+  const imagePreviewControlGroupStyle =
+    imageOptionsBlockRect ? buildImagePreviewControlGroupStyle(imageOptionsBlockRect) : undefined;
+  const imageOptionsControlGroupStyle =
+    imageOptionsBlockRect ? buildImageOptionsControlGroupStyle(imageOptionsBlockRect) : undefined;
+  const imageOptionsPanelStyle =
+    editor && imageOptionsSession
+      ? buildImageOptionsPanelStyle(overlayOwnerDocument, imageOptionsSession.anchorRect, imageOptionsSession.placement)
+      : undefined;
   const hoverTargetRect = editor && activeBlockControlTarget ? getTopLevelBlockRect(editor, activeBlockControlTarget.blockIndex) : null;
   const gutterAnchorRect = hoverTargetRect ? buildQuickAddAnchorRect(hoverTargetRect) : null;
   const gutterButtonStyle = gutterAnchorRect ? buildGutterButtonStyle(gutterAnchorRect) : undefined;
@@ -5304,6 +5489,7 @@ export function PageEditorHostRuntime({
         }
         ${BLOCK_SELECTOR_STYLES}
         ${IMAGE_PICKER_STYLES}
+        ${IMAGE_OPTIONS_STYLES}
         ${EDITOR_IMAGE_STYLES}
 
         .docsera-editor-floating {
@@ -5718,6 +5904,125 @@ export function PageEditorHostRuntime({
               </button>
             ) : null}
 
+            {editor && imageOptionsBlockIndex !== null && imagePreviewControlGroupStyle ? (
+              <div
+                className={`docsera-image-preview-group${imageOptionsSession?.blockIndex === imageOptionsBlockIndex ? " docsera-image-preview-group--active" : ""}`}
+                style={imagePreviewControlGroupStyle}
+                data-docsera-image-preview-controls="true"
+                data-docsera-image-preview-controls-block-index={imageOptionsBlockIndex}
+              >
+                <button
+                  type="button"
+                  className={`docsera-image-controls-button${theme === "light" ? " docsera-image-controls-button--selected" : ""}`}
+                  aria-disabled="true"
+                  aria-label="Light preview"
+                  title="Light preview"
+                  data-docsera-image-preview-control="true"
+                  data-docsera-image-preview-control-kind="light"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onClick={() => undefined}
+                >
+                  <SunMedium size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                </button>
+                <button
+                  type="button"
+                  className={`docsera-image-controls-button${theme === "dark" ? " docsera-image-controls-button--selected" : ""}`}
+                  aria-disabled="true"
+                  aria-label="Dark preview"
+                  title="Dark preview"
+                  data-docsera-image-preview-control="true"
+                  data-docsera-image-preview-control-kind="dark"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onClick={() => undefined}
+                >
+                  <Moon size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                </button>
+              </div>
+            ) : null}
+
+            {editor && imageOptionsBlockIndex !== null && imageOptionsControlGroupStyle ? (
+              <div
+                className={`docsera-image-controls-group${imageOptionsSession?.blockIndex === imageOptionsBlockIndex ? " docsera-image-controls-group--active" : ""}`}
+                style={imageOptionsControlGroupStyle}
+                data-docsera-image-controls="true"
+                data-docsera-image-controls-block-index={imageOptionsBlockIndex}
+              >
+                <button
+                  type="button"
+                  className="docsera-image-controls-button"
+                  aria-disabled="true"
+                  aria-label="Zoom"
+                  title="Zoom"
+                  data-docsera-image-control="true"
+                  data-docsera-image-control-kind="zoom"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onClick={() => undefined}
+                >
+                  <ZoomIn size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                </button>
+                <button
+                  type="button"
+                  className="docsera-image-controls-button"
+                  aria-disabled="true"
+                  aria-label="Frame"
+                  title="Frame"
+                  data-docsera-image-control="true"
+                  data-docsera-image-control-kind="frame"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onClick={() => undefined}
+                >
+                  <FrameIcon size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                </button>
+                <button
+                  type="button"
+                  className="docsera-image-controls-button"
+                  aria-disabled="true"
+                  aria-label="Alignment"
+                  title="Alignment"
+                  data-docsera-image-control="true"
+                  data-docsera-image-control-kind="alignment"
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onClick={() => undefined}
+                >
+                  <AlignCenter size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                </button>
+                <button
+                  type="button"
+                  className="docsera-image-controls-button docsera-image-options-trigger"
+                  aria-haspopup="dialog"
+                  aria-controls={imageOptionsPanelId}
+                  aria-expanded={imageOptionsSession !== null}
+                  aria-label="Image options"
+                  title="Image options"
+                  data-docsera-image-options="true"
+                  data-docsera-image-options-block-index={imageOptionsBlockIndex}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onClick={(event) => {
+                    const controlGroup = event.currentTarget.closest<HTMLElement>("[data-docsera-image-controls='true']");
+                    if (!controlGroup) {
+                      return;
+                    }
+
+                    openImageOptions(imageOptionsBlockIndex, controlGroup.getBoundingClientRect());
+                  }}
+                >
+                  <EllipsisVertical size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                </button>
+              </div>
+            ) : null}
+
             {blockActionMenu && blockActionMenuStyle && blockActionMenuNode ? (
               <div
                 ref={blockActionMenuSurfaceRef}
@@ -5947,6 +6252,22 @@ export function PageEditorHostRuntime({
                   )}
                 </div>
               </div>
+            ) : null}
+
+            {editor && imageOptionsSession && imageOptionsPanelStyle ? (
+              <ImageOptionsPanel
+                blockIndex={imageOptionsSession.blockIndex}
+                editor={editor}
+                initialAttrs={imageOptionsSession.initialAttrs}
+                mediaAdapter={mediaAdapter}
+                onClose={() => {
+                  closeImageOptions({ focusEditor: true });
+                }}
+                overlayRoot={overlayRoot}
+                panelId={imageOptionsPanelId}
+                panelStyle={imageOptionsPanelStyle}
+                sessionId={imageOptionsSession.sessionId}
+              />
             ) : null}
 
             <CompactTextToolbar

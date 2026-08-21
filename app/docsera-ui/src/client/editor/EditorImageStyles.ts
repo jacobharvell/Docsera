@@ -7,6 +7,7 @@ export const EDITOR_IMAGE_STYLES = `
     max-width: 100%;
     min-width: 0;
     color: var(--docsera-editor-text);
+    border-radius: 12px;
   }
 
   .docsera-editor-image[data-docsera-image-align="left"] {
@@ -23,15 +24,12 @@ export const EDITOR_IMAGE_STYLES = `
 
   .docsera-editor-image[data-docsera-image-frame="true"] {
     border: 1px solid var(--docsera-editor-panel-border);
-    border-radius: 18px;
-    padding: 14px;
-    background: color-mix(in srgb, var(--docsera-editor-panel) 94%, transparent);
-    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.08);
+    background: transparent;
+    box-shadow: none;
   }
 
   .docsera-editor-image[data-docsera-image-frame="false"] {
     border: 0;
-    padding: 0;
     background: transparent;
     box-shadow: none;
   }

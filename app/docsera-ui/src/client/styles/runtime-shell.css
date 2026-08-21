@@ -2830,10 +2830,10 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 }
 
 .docsera-main__media--framed {
-  padding: 12px;
   border: 1px solid var(--docsera-border);
-  border-radius: 24px;
-  background: color-mix(in srgb, var(--docsera-surface-muted) 84%, transparent);
+  border-radius: 16px;
+  background: transparent;
+  box-shadow: none;
 }
 
 .docsera-main__media-image {

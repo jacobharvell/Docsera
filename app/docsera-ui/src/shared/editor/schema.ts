@@ -65,24 +65,18 @@ function createUnavailableMediaView(attrs: DocseraImageAttrs): HTMLElement {
   return wrapper;
 }
 
-function createLoadingMediaView(attrs: DocseraImageAttrs): HTMLElement {
+function createLoadingMediaView(): HTMLElement {
   const wrapper = document.createElement("div");
-  wrapper.className = "docsera-main__editor-recovery docsera-main__media-loading docsera-editor-image__loading";
+  wrapper.className = "docsera-main__media-loading docsera-editor-image__loading";
   wrapper.setAttribute("role", "status");
-
-  const eyebrow = document.createElement("p");
-  eyebrow.className = "docsera-main__eyebrow";
-  eyebrow.textContent = "Media";
-
-  const title = document.createElement("h3");
-  title.className = "docsera-main__recovery-title";
-  title.textContent = "Loading image";
-
-  const lede = document.createElement("p");
-  lede.className = "docsera-main__lede";
-  lede.textContent = attrs.alt || "The image is being loaded through the authenticated media boundary.";
-
-  wrapper.append(eyebrow, title, lede);
+  wrapper.setAttribute("aria-label", "Loading image");
+  wrapper.setAttribute("aria-busy", "true");
+  wrapper.style.display = "block";
+  wrapper.style.minHeight = "8rem";
+  wrapper.style.padding = "0";
+  wrapper.style.borderRadius = "inherit";
+  wrapper.style.background = "color-mix(in srgb, var(--docsera-editor-panel) 90%, var(--docsera-editor-muted) 10%)";
+  wrapper.style.boxShadow = "none";
   return wrapper;
 }
 
@@ -171,7 +165,7 @@ function createDocseraImageExtension(loadMedia: WorkspaceMediaLoader) {
           figure.replaceChildren();
 
           if (state === "loading") {
-            figure.append(createLoadingMediaView(attrs));
+            figure.append(createLoadingMediaView());
             return;
           }
 

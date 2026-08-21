@@ -6,7 +6,7 @@ import {
 } from "../../../shared/editor/imageFixtures";
 
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { PublishedDocumentReader } from "./PublishedDocumentReader";
 import { buildWorkspacePageView } from "./workspaceViewModels";
@@ -80,6 +80,23 @@ function renderReader(
 
 function createMediaBlob(label: string): Blob {
   return new Blob([label], { type: "image/png" });
+}
+
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+
+  return { promise, resolve, reject };
+}
+
+function expectQuietLoadingMediaPlaceholderContract(status: HTMLElement) {
+  expect(status.style.border).toBe("");
+  expect(status.style.borderRadius).toBe("inherit");
+  expect(status.style.boxShadow).toBe("none");
 }
 
 describe("PublishedDocumentReader", () => {
@@ -366,6 +383,76 @@ describe("PublishedDocumentReader", () => {
     expect(within(reader).getByText("Published in both light and dark modes")).toHaveClass("docsera-main__media-caption");
     expect(envelope).toEqual(original);
     expect(createObjectUrlSpy).toHaveBeenCalledTimes(1);
+
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
+  });
+
+  it("renders a quiet accessible loading placeholder before the image resolves", async () => {
+    const envelope = createResponsiveImageDocseraDocumentEnvelope();
+    const loadDeferred = createDeferred<Blob | null>();
+    const createObjectUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:loading");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+
+    renderReader(envelope, {
+      loadMedia: vi.fn(async () => loadDeferred.promise)
+    });
+
+    const reader = screen.getByLabelText("Published page content");
+    const figure = reader.querySelector(".docsera-main__media");
+    if (!(figure instanceof HTMLElement)) {
+      throw new Error("Expected the reader to render an image figure.");
+    }
+    const loadingStatus = within(reader).getByRole("status", { name: "Loading image" });
+
+    expect(figure).toHaveAttribute("data-docsera-image-frame", "false");
+    expect(loadingStatus).toHaveAttribute("aria-busy", "true");
+    expect(loadingStatus).not.toHaveTextContent("Media");
+    expect(loadingStatus).not.toHaveTextContent("Loading image");
+    expectQuietLoadingMediaPlaceholderContract(loadingStatus);
+
+    await act(async () => {
+      loadDeferred.resolve(createMediaBlob("workspace-media-light"));
+    });
+
+    await waitFor(() => {
+      expect(within(reader).getByRole("img", { name: "Architecture diagram" })).toHaveAttribute("src", "blob:loading");
+    });
+
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
+  });
+
+  it("renders a framed quiet accessible loading placeholder before the image resolves", async () => {
+    const envelope = createCanonicalImageDocseraDocumentEnvelope();
+    const loadDeferred = createDeferred<Blob | null>();
+    const createObjectUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:framed-loading");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+
+    renderReader(envelope, {
+      loadMedia: vi.fn(async () => loadDeferred.promise)
+    });
+
+    const reader = screen.getByLabelText("Published page content");
+    const figure = reader.querySelector(".docsera-main__media");
+    if (!(figure instanceof HTMLElement)) {
+      throw new Error("Expected the reader to render an image figure.");
+    }
+    const loadingStatus = within(reader).getByRole("status", { name: "Loading image" });
+
+    expect(figure).toHaveAttribute("data-docsera-image-frame", "true");
+    expect(loadingStatus).toHaveAttribute("aria-busy", "true");
+    expect(loadingStatus).not.toHaveTextContent("Media");
+    expect(loadingStatus).not.toHaveTextContent("Loading image");
+    expectQuietLoadingMediaPlaceholderContract(loadingStatus);
+
+    await act(async () => {
+      loadDeferred.resolve(createMediaBlob("workspace-media-001"));
+    });
+
+    await waitFor(() => {
+      expect(figure.querySelector("img")).toHaveAttribute("src", "blob:framed-loading");
+    });
 
     createObjectUrlSpy.mockRestore();
     revokeObjectUrlSpy.mockRestore();
