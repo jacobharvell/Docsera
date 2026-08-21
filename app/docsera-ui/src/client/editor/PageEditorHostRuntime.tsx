@@ -7,7 +7,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import type { CSSProperties } from "react";
 import { Fragment } from "@tiptap/pm/model";
 import type { DocseraDocumentEnvelope, DocseraTiptapDocument } from "../../shared/editor/document";
-import { canonicalizeDocseraImageAttrs, type DocseraImageAttrs } from "../../shared/editor/imageContract";
+import { DOCSERA_IMAGE_ALIGNMENTS, canonicalizeDocseraImageAttrs, type DocseraImageAttrs } from "../../shared/editor/imageContract";
 import { DOCSERA_DOCUMENT_SCHEMA_VERSION, parseDocseraDocumentOrThrow } from "../../shared/editor/document";
 import { createDocseraEditorExtensionsWithOptions } from "../../shared/editor/schema";
 import { extractDocumentOutline, type EditorOutlineItem } from "./documentOutline";
@@ -34,6 +34,7 @@ import { NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transa
 import { CellSelection } from "@tiptap/pm/tables";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { CompactTextToolbar } from "./CompactTextToolbar";
+import { resolveToolbarMenuSurfaceStyle } from "./CompactTextToolbar";
 import { EDITOR_IMAGE_STYLES } from "./EditorImageStyles";
 import { ImagePickerDialog } from "./ImagePickerDialog";
 import { ImageOptionsPanel } from "./ImageOptionsPanel";
@@ -52,7 +53,9 @@ import {
 } from "./editorAutoScroll";
 import { useTopLevelBlockDragSession } from "./useTopLevelBlockDragSession";
 import {
+  AlignLeft,
   AlignCenter,
+  AlignRight,
   Check,
   Code2,
   Copy,
@@ -221,6 +224,29 @@ type ImageOptionsSessionState = {
   sessionId: string;
 };
 
+type ImageAlignmentMenuState = {
+  anchorRect: DOMRect;
+  activeIndex: number;
+  blockIndex: number;
+  placement: CommandSelectorPlacement;
+  sessionId: string;
+};
+
+type ImageResizeSessionState = {
+  activeWidthPct: number;
+  anchorRect: DOMRect;
+  blockIndex: number;
+  containerWidth: number;
+  edge: "left" | "right";
+  initialAttrs: DocseraImageAttrs;
+  initialFigureRect: DOMRect;
+  pointerId: number;
+  sessionId: string;
+  startClientX: number;
+  startWidthPct: number;
+  targetRect: DOMRect;
+};
+
 type BlockActionMenuState = {
   activeIndex: number;
   anchorRect: DOMRect;
@@ -272,6 +298,10 @@ const IMAGE_OPTIONS_CONTROL_INSET = 8;
 const IMAGE_OPTIONS_CONTROL_TOP_OFFSET = 8;
 const IMAGE_OPTIONS_PANEL_WIDTH = 372;
 const IMAGE_OPTIONS_PANEL_HEIGHT = 428;
+const IMAGE_ALIGNMENT_MENU_WIDTH = 192;
+const IMAGE_ALIGNMENT_MENU_HEIGHT = 126;
+const IMAGE_RESIZE_HANDLE_WIDTH = 12;
+const IMAGE_RESIZE_HANDLE_INSET = 6;
 const BLOCK_ACTION_MENU_WIDTH = 182;
 const BLOCK_ACTION_MENU_HEIGHT = 144;
 const BLOCK_TURN_INTO_MENU_WIDTH = 198;
@@ -723,6 +753,80 @@ function getTopLevelBlockNodeFromDoc(
   }
 
   return doc.child(blockIndex);
+}
+
+function getTopLevelImageNodePositionFromDoc(doc: Editor["state"]["doc"], blockIndex: number): number | null {
+  const node = getTopLevelBlockNodeFromDoc(doc, blockIndex);
+  if (!node || node.type.name !== "image") {
+    return null;
+  }
+
+  return getTopLevelBlockPositionFromDoc(doc, blockIndex);
+}
+
+function updateTopLevelImageAttrs(
+  editor: Editor,
+  blockIndex: number,
+  updater: (attrs: DocseraImageAttrs) => DocseraImageAttrs
+): boolean {
+  const runtimeNode = getTopLevelBlockNodeFromDoc(editor.state.doc, blockIndex);
+  if (!runtimeNode || runtimeNode.type.name !== "image") {
+    return false;
+  }
+
+  const position = getTopLevelImageNodePositionFromDoc(editor.state.doc, blockIndex);
+  if (position === null) {
+    return false;
+  }
+
+  const liveAttrs = canonicalizeDocseraImageAttrs(runtimeNode.attrs);
+  const nextAttrs = updater(liveAttrs);
+  if (
+    liveAttrs.mediaId === nextAttrs.mediaId &&
+    liveAttrs.darkMediaId === nextAttrs.darkMediaId &&
+    liveAttrs.alt === nextAttrs.alt &&
+    liveAttrs.caption === nextAttrs.caption &&
+    liveAttrs.frame === nextAttrs.frame &&
+    liveAttrs.align === nextAttrs.align &&
+    liveAttrs.widthPct === nextAttrs.widthPct
+  ) {
+    return false;
+  }
+
+  let didUpdate = false;
+  editor
+    .chain()
+    .focus(undefined, { scrollIntoView: false })
+    .command(({ tr, dispatch }) => {
+      tr.setNodeMarkup(position, undefined, nextAttrs);
+      dispatch?.(tr);
+      didUpdate = true;
+      return true;
+    })
+    .run();
+  return didUpdate;
+}
+
+function getImageControlGroupRect(overlayRoot: HTMLElement, blockIndex: number): DOMRect | null {
+  const trigger = overlayRoot.querySelector(
+    `[data-docsera-image-controls="true"][data-docsera-image-controls-block-index="${blockIndex}"]`
+  );
+  if (!(trigger instanceof HTMLElement)) {
+    return null;
+  }
+
+  return trigger.getBoundingClientRect();
+}
+
+function getImageControlButtonRect(overlayRoot: HTMLElement, blockIndex: number, kind: string): DOMRect | null {
+  const trigger = overlayRoot.querySelector(
+    `[data-docsera-image-control-kind="${kind}"][data-docsera-image-controls-block-index="${blockIndex}"]`
+  );
+  if (!(trigger instanceof HTMLElement)) {
+    return null;
+  }
+
+  return trigger.getBoundingClientRect();
 }
 
 function resolveBlockSelectionStateFromDoc(
@@ -1231,6 +1335,28 @@ function buildImagePreviewControlGroupStyle(anchorRect: DOMRect): CSSProperties 
     left: `${Math.max(VIEWPORT_GUTTER, anchorRect.left + IMAGE_OPTIONS_CONTROL_INSET)}px`,
     top: `${Math.max(VIEWPORT_GUTTER, anchorRect.top + IMAGE_OPTIONS_CONTROL_TOP_OFFSET)}px`
   };
+}
+
+function buildImageResizeHandleStyle(anchorRect: DOMRect, edge: "left" | "right"): CSSProperties {
+  return {
+    position: "fixed",
+    left:
+      edge === "left"
+        ? `${Math.max(VIEWPORT_GUTTER, anchorRect.left - IMAGE_RESIZE_HANDLE_INSET)}px`
+        : `${Math.max(VIEWPORT_GUTTER, anchorRect.right - IMAGE_RESIZE_HANDLE_WIDTH + IMAGE_RESIZE_HANDLE_INSET)}px`,
+    top: `${anchorRect.top}px`,
+    width: `${IMAGE_RESIZE_HANDLE_WIDTH}px`,
+    height: `${Math.max(1, anchorRect.height)}px`
+  };
+}
+
+function getImageFigureRect(editor: Editor, blockIndex: number): DOMRect | null {
+  const element = getTopLevelBlockElement(editor, blockIndex);
+  if (!element) {
+    return null;
+  }
+
+  return element.getBoundingClientRect();
 }
 
 function getImageOptionsControlGroupRect(overlayRoot: HTMLElement, blockIndex: number): DOMRect | null {
@@ -2682,6 +2808,8 @@ export function PageEditorHostRuntime({
   const [commandSelector, setCommandSelector] = useState<CommandSelectorState | null>(null);
   const [imagePickerSession, setImagePickerSession] = useState<ImagePickerSessionState | null>(null);
   const [imageOptionsSession, setImageOptionsSession] = useState<ImageOptionsSessionState | null>(null);
+  const [imageAlignmentMenu, setImageAlignmentMenu] = useState<ImageAlignmentMenuState | null>(null);
+  const [imageResizeSession, setImageResizeSession] = useState<ImageResizeSessionState | null>(null);
   const [blockActionMenu, setBlockActionMenu] = useState<BlockActionMenuState | null>(null);
   const [blockTurnIntoMenu, setBlockTurnIntoMenu] = useState<BlockTurnIntoMenuState | null>(null);
   const [selectorScrollMetrics, setSelectorScrollMetrics] = useState({ hasOverflow: false, scrollbarWidth: 0 });
@@ -2691,6 +2819,7 @@ export function PageEditorHostRuntime({
   const blockActionMenuId = useId();
   const blockTurnIntoMenuId = useId();
   const imageOptionsPanelId = useId();
+  const imageAlignmentMenuId = useId();
   const incomingInitialEnvelope = useMemo(() => parseDocseraDocumentOrThrow(initialEnvelope), [initialEnvelope]);
   const incomingInitialSavedEnvelope = useMemo(
     () => parseDocseraDocumentOrThrow(initialSavedEnvelope ?? initialEnvelope),
@@ -2724,10 +2853,16 @@ export function PageEditorHostRuntime({
   const imagePickerSessionCounterRef = useRef(0);
   const imageOptionsSessionRef = useRef<ImageOptionsSessionState | null>(null);
   const imageOptionsSessionCounterRef = useRef(0);
+  const imageAlignmentMenuRef = useRef<ImageAlignmentMenuState | null>(null);
+  const imageAlignmentMenuCounterRef = useRef(0);
+  const imageResizeSessionRef = useRef<ImageResizeSessionState | null>(null);
+  const imageResizeSessionCounterRef = useRef(0);
+  const imageResizeCleanupRef = useRef<(() => void) | null>(null);
   const blockActionMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const blockTurnIntoMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const blockTurnIntoTriggerRef = useRef<HTMLButtonElement | null>(null);
   const blockActionMenuSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const imageAlignmentMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const structuredTableClipboardRef = useRef<StructuredTableClipboardPayload | null>(null);
 
   const handleStructuredTableClipboardCopy = useCallback(
@@ -3334,6 +3469,23 @@ export function PageEditorHostRuntime({
     []
   );
 
+  const closeImageAlignmentMenu = useCallback(
+    (options: { focusEditor?: boolean } = {}) => {
+      const { focusEditor = true } = options;
+      imageAlignmentMenuRef.current = null;
+      setImageAlignmentMenu(null);
+      if (!focusEditor) {
+        return;
+      }
+
+      const runtimeEditor = editorRef.current;
+      if (runtimeEditor && !runtimeEditor.isDestroyed) {
+        runtimeEditor.view.focus();
+      }
+    },
+    []
+  );
+
   const openImagePicker = useCallback(
     (selector: CommandSelectorState) => {
       const runtimeEditor = editorRef.current;
@@ -3627,6 +3779,355 @@ export function PageEditorHostRuntime({
     [clearTransientBlockSelection, closeBlockActionMenus, closeBlockTurnIntoMenu, closeCommandSelector, closeImagePicker, overlayOwnerDocument]
   );
 
+  const openImageAlignmentMenu = useCallback(
+    (blockIndex: number) => {
+      const runtimeEditor = editorRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed) {
+        return;
+      }
+
+      const controlGroupRect = getImageControlGroupRect(overlayRoot, blockIndex);
+      const triggerRect = getImageControlButtonRect(overlayRoot, blockIndex, "alignment");
+      if (!controlGroupRect || !triggerRect) {
+        return;
+      }
+
+      const imageNode = getTopLevelBlockNodeFromDoc(runtimeEditor.state.doc, blockIndex);
+      if (!imageNode || imageNode.type.name !== "image") {
+        return;
+      }
+
+      const attrs = canonicalizeDocseraImageAttrs(imageNode.attrs);
+      const activeIndex = Math.max(0, DOCSERA_IMAGE_ALIGNMENTS.indexOf(attrs.align));
+      imageAlignmentMenuCounterRef.current += 1;
+      const nextMenu: ImageAlignmentMenuState = {
+        activeIndex,
+        anchorRect: triggerRect,
+        blockIndex,
+        placement: resolveCommandSelectorPlacement(overlayOwnerDocument, controlGroupRect, IMAGE_ALIGNMENT_MENU_HEIGHT),
+        sessionId: `image-alignment-${imageAlignmentMenuCounterRef.current}`
+      };
+      imageAlignmentMenuRef.current = nextMenu;
+      setImageAlignmentMenu(nextMenu);
+      closeCommandSelector({ syncHoverFromPointer: false });
+      closeBlockActionMenus({ focusEditor: false, syncHoverFromPointer: false });
+      closeBlockTurnIntoMenu({ focusParent: false });
+      closeImagePicker({ restoreSelection: false });
+    },
+    [closeBlockActionMenus, closeBlockTurnIntoMenu, closeCommandSelector, closeImagePicker, overlayOwnerDocument, overlayRoot]
+  );
+
+  const applyImageAlignment = useCallback(
+    (blockIndex: number, align: DocseraImageAttrs["align"]) => {
+      const runtimeEditor = editorRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed) {
+        return;
+      }
+
+      const imageNode = getTopLevelBlockNodeFromDoc(runtimeEditor.state.doc, blockIndex);
+      if (!imageNode || imageNode.type.name !== "image") {
+        return;
+      }
+
+      const liveAttrs = canonicalizeDocseraImageAttrs(imageNode.attrs);
+      if (liveAttrs.align === align) {
+        closeImageAlignmentMenu({ focusEditor: true });
+        return;
+      }
+
+      const position = getTopLevelImageNodePositionFromDoc(runtimeEditor.state.doc, blockIndex);
+      if (position === null) {
+        return;
+      }
+
+      const nextAttrs = {
+        ...liveAttrs,
+        align
+      };
+
+      runtimeEditor
+        ?.chain()
+        .focus(undefined, { scrollIntoView: false })
+        .command(({ tr, dispatch }) => {
+          tr.setNodeMarkup(position, undefined, nextAttrs);
+          dispatch?.(tr);
+          return true;
+        })
+        .run();
+      closeImageAlignmentMenu({ focusEditor: true });
+    },
+    [closeImageAlignmentMenu]
+  );
+
+  const toggleImageFrame = useCallback(
+    (blockIndex: number) => {
+      const runtimeEditor = editorRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed) {
+        return;
+      }
+
+      const imageNode = getTopLevelBlockNodeFromDoc(runtimeEditor.state.doc, blockIndex);
+      if (!imageNode || imageNode.type.name !== "image") {
+        return;
+      }
+
+      const liveAttrs = canonicalizeDocseraImageAttrs(imageNode.attrs);
+      const position = getTopLevelImageNodePositionFromDoc(runtimeEditor.state.doc, blockIndex);
+      if (position === null) {
+        return;
+      }
+
+      const nextAttrs = {
+        ...liveAttrs,
+        frame: !liveAttrs.frame
+      };
+
+      runtimeEditor
+        .chain()
+        .focus(undefined, { scrollIntoView: false })
+        .command(({ tr, dispatch }) => {
+          tr.setNodeMarkup(position, undefined, nextAttrs);
+          dispatch?.(tr);
+          return true;
+        })
+        .run();
+      closeImageAlignmentMenu({ focusEditor: false });
+    },
+    [closeImageAlignmentMenu]
+  );
+
+  const restoreImageResizePreview = useCallback((session: ImageResizeSessionState) => {
+    const runtimeEditor = editorRef.current;
+    if (!runtimeEditor || runtimeEditor.isDestroyed) {
+      return;
+    }
+
+    const figureElement = getTopLevelBlockElement(runtimeEditor, session.blockIndex);
+    if (!(figureElement instanceof HTMLElement)) {
+      return;
+    }
+
+    figureElement.dataset.docseraImageAlign = session.initialAttrs.align;
+    figureElement.dataset.docseraImageFrame = session.initialAttrs.frame ? "true" : "false";
+    figureElement.dataset.docseraImageWidthPct = String(session.initialAttrs.widthPct);
+    figureElement.style.width = `${session.initialAttrs.widthPct}%`;
+    figureElement.style.marginInlineStart = session.initialAttrs.align === "center" || session.initialAttrs.align === "right" ? "auto" : "0";
+    figureElement.style.marginInlineEnd = session.initialAttrs.align === "center" || session.initialAttrs.align === "left" ? "auto" : "0";
+  }, []);
+
+  const finalizeImageResizeSession = useCallback(
+    (options: { commit: boolean }) => {
+      const session = imageResizeSessionRef.current;
+      imageResizeCleanupRef.current?.();
+      imageResizeCleanupRef.current = null;
+      imageResizeSessionRef.current = null;
+      setImageResizeSession(null);
+
+      if (!session) {
+        return;
+      }
+
+      if (!options.commit) {
+        restoreImageResizePreview(session);
+        const runtimeEditor = editorRef.current;
+        if (runtimeEditor && !runtimeEditor.isDestroyed) {
+          runtimeEditor.view.focus();
+        }
+        return;
+      }
+
+      if (session.activeWidthPct === session.initialAttrs.widthPct) {
+        restoreImageResizePreview(session);
+        const runtimeEditor = editorRef.current;
+        if (runtimeEditor && !runtimeEditor.isDestroyed) {
+          runtimeEditor.view.focus();
+        }
+        return;
+      }
+
+      const runtimeEditor = editorRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed) {
+        restoreImageResizePreview(session);
+        return;
+      }
+
+      const imageNode = getTopLevelBlockNodeFromDoc(runtimeEditor.state.doc, session.blockIndex);
+      if (!imageNode || imageNode.type.name !== "image") {
+        restoreImageResizePreview(session);
+        return;
+      }
+
+      const position = getTopLevelImageNodePositionFromDoc(runtimeEditor.state.doc, session.blockIndex);
+      if (position === null) {
+        restoreImageResizePreview(session);
+        return;
+      }
+
+      const nextAttrs = {
+        ...canonicalizeDocseraImageAttrs(imageNode.attrs),
+        widthPct: session.activeWidthPct
+      };
+
+      const historyTime = Date.now() + imageResizeSessionCounterRef.current * 1000;
+      runEditorCommandWithHistoryTime(runtimeEditor, historyTime, () =>
+        runtimeEditor
+          .chain()
+          .focus(undefined, { scrollIntoView: false })
+          .command(({ tr, dispatch }) => {
+            tr.setNodeMarkup(position, undefined, nextAttrs);
+            dispatch?.(tr);
+            return true;
+          })
+          .run()
+      );
+      runtimeEditor.view.focus();
+    },
+    [restoreImageResizePreview]
+  );
+
+  const startImageResizeSession = useCallback(
+    (blockIndex: number, edge: "left" | "right", event: React.PointerEvent<HTMLButtonElement>) => {
+      const runtimeEditor = editorRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed) {
+        return;
+      }
+
+      const figureElement = getTopLevelBlockElement(runtimeEditor, blockIndex);
+      if (!(figureElement instanceof HTMLElement)) {
+        return;
+      }
+
+      const imageNode = getTopLevelBlockNodeFromDoc(runtimeEditor.state.doc, blockIndex);
+      if (!imageNode || imageNode.type.name !== "image") {
+        return;
+      }
+
+      const initialAttrs = canonicalizeDocseraImageAttrs(imageNode.attrs);
+      const figureRect = figureElement.getBoundingClientRect();
+      const containerWidth = Math.max(1, figureElement.parentElement?.getBoundingClientRect().width ?? figureRect.width);
+      const startWidthPct = Math.min(100, Math.max(20, initialAttrs.widthPct));
+      const sessionId = `image-resize-${imageResizeSessionCounterRef.current + 1}`;
+      imageResizeSessionCounterRef.current += 1;
+      const nextSession: ImageResizeSessionState = {
+        activeWidthPct: startWidthPct,
+        anchorRect: figureRect,
+        blockIndex,
+        containerWidth,
+        edge,
+        initialAttrs,
+        initialFigureRect: figureRect,
+        pointerId: event.pointerId,
+        sessionId,
+        startClientX: event.clientX,
+        startWidthPct,
+        targetRect: figureRect
+      };
+
+      imageResizeSessionRef.current = nextSession;
+      setImageResizeSession(nextSession);
+      closeImageAlignmentMenu({ focusEditor: false });
+
+      const ownerDocument = figureElement.ownerDocument;
+      const ownerWindow = ownerDocument.defaultView;
+      const applyResizePoint = (clientX: number) => {
+        const activeSession = imageResizeSessionRef.current;
+        if (!activeSession || activeSession.sessionId !== sessionId) {
+          return;
+        }
+
+        const delta = clientX - activeSession.startClientX;
+        const nextWidthPx =
+          activeSession.edge === "right"
+            ? activeSession.startWidthPct / 100 * activeSession.containerWidth + delta
+            : activeSession.startWidthPct / 100 * activeSession.containerWidth - delta;
+        const clampedWidthPx = Math.max(activeSession.containerWidth * 0.2, Math.min(activeSession.containerWidth, nextWidthPx));
+        const nextWidthPct = Math.min(100, Math.max(20, Math.round((clampedWidthPx / activeSession.containerWidth) * 100)));
+        const currentFigureElement = getTopLevelBlockElement(runtimeEditor, activeSession.blockIndex);
+        if (!(currentFigureElement instanceof HTMLElement)) {
+          return;
+        }
+
+        currentFigureElement.dataset.docseraImageAlign = activeSession.initialAttrs.align;
+        currentFigureElement.dataset.docseraImageFrame = activeSession.initialAttrs.frame ? "true" : "false";
+        currentFigureElement.dataset.docseraImageWidthPct = String(nextWidthPct);
+        currentFigureElement.style.width = `${nextWidthPct}%`;
+        currentFigureElement.style.marginInlineStart =
+          activeSession.initialAttrs.align === "center" || activeSession.initialAttrs.align === "right" ? "auto" : "0";
+        currentFigureElement.style.marginInlineEnd =
+          activeSession.initialAttrs.align === "center" || activeSession.initialAttrs.align === "left" ? "auto" : "0";
+        const nextFigureRect = currentFigureElement.getBoundingClientRect();
+        const updatedSession: ImageResizeSessionState = {
+          ...activeSession,
+          activeWidthPct: nextWidthPct,
+          anchorRect: nextFigureRect,
+          targetRect: nextFigureRect
+        };
+        imageResizeSessionRef.current = updatedSession;
+        setImageResizeSession(updatedSession);
+      };
+
+      const handlePointerMove = (pointerEvent: PointerEvent) => {
+        if (pointerEvent.pointerId !== event.pointerId) {
+          return;
+        }
+
+        pointerEvent.preventDefault();
+        applyResizePoint(pointerEvent.clientX);
+      };
+
+      const handlePointerUp = (pointerEvent: PointerEvent) => {
+        if (pointerEvent.pointerId !== event.pointerId) {
+          return;
+        }
+
+        pointerEvent.preventDefault();
+        applyResizePoint(pointerEvent.clientX);
+        finalizeImageResizeSession({ commit: true });
+      };
+
+      const handlePointerCancel = (pointerEvent: PointerEvent) => {
+        if (pointerEvent.pointerId !== event.pointerId) {
+          return;
+        }
+
+        pointerEvent.preventDefault();
+        finalizeImageResizeSession({ commit: false });
+      };
+
+      const handleBlur = () => {
+        finalizeImageResizeSession({ commit: false });
+      };
+
+      const handlePageHide = () => {
+        finalizeImageResizeSession({ commit: false });
+      };
+
+      imageResizeCleanupRef.current = () => {
+        ownerDocument.removeEventListener("pointermove", handlePointerMove, true);
+        ownerDocument.removeEventListener("pointerup", handlePointerUp, true);
+        ownerDocument.removeEventListener("pointercancel", handlePointerCancel, true);
+        ownerWindow?.removeEventListener("blur", handleBlur, true);
+        ownerWindow?.removeEventListener("pagehide", handlePageHide, true);
+      };
+
+      ownerDocument.addEventListener("pointermove", handlePointerMove, true);
+      ownerDocument.addEventListener("pointerup", handlePointerUp, true);
+      ownerDocument.addEventListener("pointercancel", handlePointerCancel, true);
+      ownerWindow?.addEventListener("blur", handleBlur, true);
+      ownerWindow?.addEventListener("pagehide", handlePageHide, true);
+
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture is a best-effort enhancement; the document listeners keep the gesture stable without it.
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+    },
+    [closeImageAlignmentMenu, finalizeImageResizeSession]
+  );
+
   const handleBlockActionMenuKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLElement>) => {
       const runtimeEditor = editorRef.current;
@@ -3764,6 +4265,51 @@ export function PageEditorHostRuntime({
     [closeAllBlockSurfaces, closeBlockTurnIntoMenu, executeBlockTurnIntoCommand]
   );
 
+  const handleImageAlignmentMenuKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLElement>) => {
+      const activeMenu = imageAlignmentMenuRef.current;
+      if (!activeMenu) {
+        return;
+      }
+
+      const alignments: Array<DocseraImageAttrs["align"]> = ["left", "center", "right"];
+      const nextIndex = Math.max(0, Math.min(activeMenu.activeIndex, alignments.length - 1));
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeImageAlignmentMenu({ focusEditor: true });
+        return;
+      }
+
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setImageAlignmentMenu((current) =>
+          current
+            ? {
+                ...current,
+                activeIndex:
+                  alignments.length > 0
+                    ? event.key === "ArrowDown"
+                      ? (current.activeIndex + 1) % alignments.length
+                      : (current.activeIndex - 1 + alignments.length) % alignments.length
+                    : 0
+              }
+            : current
+        );
+        return;
+      }
+
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        const activeAlignment = alignments[nextIndex];
+        if (activeAlignment) {
+          applyImageAlignment(activeMenu.blockIndex, activeAlignment);
+        }
+      }
+    },
+    [applyImageAlignment, closeImageAlignmentMenu]
+  );
+
   useEffect(() => {
     blockActionMenuRef.current = blockActionMenu;
   }, [blockActionMenu]);
@@ -3831,6 +4377,15 @@ export function PageEditorHostRuntime({
         : current
     );
   }, [blockTurnIntoMenu, overlayMeasurementVersion, overlayOwnerDocument]);
+
+  useLayoutEffect(() => {
+    if (!imageAlignmentMenu) {
+      imageAlignmentMenuItemRefs.current = [];
+      return;
+    }
+
+    imageAlignmentMenuItemRefs.current[imageAlignmentMenu.activeIndex]?.focus();
+  }, [imageAlignmentMenu]);
 
   useLayoutEffect(() => {
     if (!blockActionMenu) {
@@ -4283,23 +4838,44 @@ export function PageEditorHostRuntime({
       setCommandSelector(null);
       closeImagePicker({ restoreSelection: false });
       closeImageOptions({ focusEditor: false });
+      closeImageAlignmentMenu({ focusEditor: false });
+      finalizeImageResizeSession({ commit: false });
       setBlockActionMenu(null);
       setBlockTurnIntoMenu(null);
       clearTransientBlockSelection();
       clearBlockDragSession();
     }
-  }, [clearBlockDragSession, clearTransientBlockSelection, closeImageOptions, closeImagePicker, isEditable]);
+  }, [
+    clearBlockDragSession,
+    clearTransientBlockSelection,
+    closeImageAlignmentMenu,
+    closeImageOptions,
+    closeImagePicker,
+    finalizeImageResizeSession,
+    isEditable
+  ]);
 
   useEffect(() => {
     setOwnedHoverTarget(null);
     setCommandSelector(null);
     closeImagePicker({ restoreSelection: false });
     closeImageOptions({ focusEditor: false });
+    closeImageAlignmentMenu({ focusEditor: false });
+    finalizeImageResizeSession({ commit: false });
     setBlockActionMenu(null);
     setBlockTurnIntoMenu(null);
     clearTransientBlockSelection();
     clearBlockDragSession();
-  }, [clearBlockDragSession, clearTransientBlockSelection, closeImageOptions, closeImagePicker, pageSysId, sessionKey]);
+  }, [
+    clearBlockDragSession,
+    clearTransientBlockSelection,
+    closeImageAlignmentMenu,
+    closeImageOptions,
+    closeImagePicker,
+    finalizeImageResizeSession,
+    pageSysId,
+    sessionKey
+  ]);
 
   useEffect(() => {
     commandSelectorRef.current = commandSelector;
@@ -4312,6 +4888,14 @@ export function PageEditorHostRuntime({
   useEffect(() => {
     imageOptionsSessionRef.current = imageOptionsSession;
   }, [imageOptionsSession]);
+
+  useEffect(() => {
+    imageAlignmentMenuRef.current = imageAlignmentMenu;
+  }, [imageAlignmentMenu]);
+
+  useEffect(() => {
+    imageResizeSessionRef.current = imageResizeSession;
+  }, [imageResizeSession]);
 
   useLayoutEffect(() => {
     if (!imageOptionsSession) {
@@ -4337,6 +4921,37 @@ export function PageEditorHostRuntime({
         : current
     );
   }, [closeImageOptions, imageOptionsSession, overlayMeasurementVersion, overlayRoot]);
+
+  useLayoutEffect(() => {
+    if (!imageAlignmentMenu) {
+      return;
+    }
+
+    const controlGroupRect = getImageControlGroupRect(overlayRoot, imageAlignmentMenu.blockIndex);
+    const triggerRect = getImageControlButtonRect(overlayRoot, imageAlignmentMenu.blockIndex, "alignment");
+    if (!controlGroupRect || !triggerRect) {
+      closeImageAlignmentMenu({ focusEditor: true });
+      return;
+    }
+
+    const nextPlacement = resolveCommandSelectorPlacement(overlayOwnerDocument, controlGroupRect, IMAGE_ALIGNMENT_MENU_HEIGHT);
+    if (
+      areDomRectsEqual(imageAlignmentMenu.anchorRect, triggerRect) &&
+      imageAlignmentMenu.placement === nextPlacement
+    ) {
+      return;
+    }
+
+    setImageAlignmentMenu((current) =>
+      current
+        ? {
+            ...current,
+            anchorRect: triggerRect,
+            placement: nextPlacement
+          }
+        : current
+    );
+  }, [closeImageAlignmentMenu, imageAlignmentMenu, overlayMeasurementVersion, overlayOwnerDocument, overlayRoot]);
 
   useEffect(() => {
     const runtimeEditor = editorRef.current;
@@ -4660,9 +5275,11 @@ export function PageEditorHostRuntime({
       clearSurfaceClickSuppressionReleaseTimerUnmountRef.current?.();
       suppressSurfaceClickUntilPointerUpRef.current = false;
       clearTransientBlockSelectionUnmountRef.current?.("runtime-teardown");
+      closeImageAlignmentMenu({ focusEditor: false });
+      finalizeImageResizeSession({ commit: false });
       editorRef.current = null;
     };
-  }, []);
+  }, [closeImageAlignmentMenu, finalizeImageResizeSession]);
 
   useEffect(() => {
     if (!editor) {
@@ -4783,12 +5400,26 @@ export function PageEditorHostRuntime({
   }, [editor, isEditable, overlayOwnerDocument, scheduleOverlayMeasurement]);
 
   useEffect(() => {
-    if (!commandSelector && !blockActionMenu && !blockTurnIntoMenu && !imageOptionsSession) {
+    if (!commandSelector && !blockActionMenu && !blockTurnIntoMenu && !imageOptionsSession && !imageAlignmentMenu) {
       return;
     }
 
     const handlePointerDown = (event: PointerEvent) => {
+      const alignmentMenuElement =
+        imageAlignmentMenu && overlayRoot.querySelector<HTMLElement>(`[id="${imageAlignmentMenuId}"]`);
+      const alignmentTriggerElement =
+        imageAlignmentMenu && overlayRoot.querySelector<HTMLElement>(`[aria-controls="${imageAlignmentMenuId}"]`);
+      const isInsideAlignmentSurface =
+        isPointerEventInsideElement(event, alignmentMenuElement) || isPointerEventInsideElement(event, alignmentTriggerElement);
+
+      if (isInsideAlignmentSurface) {
+        return;
+      }
+
       if (isPointerEventInsideElement(event, overlayRoot)) {
+        if (imageAlignmentMenu) {
+          closeImageAlignmentMenu({ focusEditor: false });
+        }
         return;
       }
 
@@ -4802,6 +5433,9 @@ export function PageEditorHostRuntime({
         if (imageOptionsSession) {
           closeImageOptions({ focusEditor: false });
         }
+        if (imageAlignmentMenu) {
+          closeImageAlignmentMenu({ focusEditor: false });
+        }
         return;
       }
 
@@ -4814,13 +5448,50 @@ export function PageEditorHostRuntime({
       if (imageOptionsSession) {
         closeImageOptions({ focusEditor: false });
       }
+      if (imageAlignmentMenu) {
+        closeImageAlignmentMenu({ focusEditor: false });
+      }
     };
 
     overlayOwnerDocument.addEventListener("pointerdown", handlePointerDown, true);
     return () => {
       overlayOwnerDocument.removeEventListener("pointerdown", handlePointerDown, true);
     };
-  }, [blockActionMenu, blockTurnIntoMenu, closeAllBlockSurfaces, closeCommandSelector, closeImageOptions, commandSelector, imageOptionsSession, overlayOwnerDocument, overlayRoot]);
+  }, [
+    blockActionMenu,
+    blockTurnIntoMenu,
+    closeAllBlockSurfaces,
+    closeCommandSelector,
+    closeImageAlignmentMenu,
+    closeImageOptions,
+    commandSelector,
+    imageAlignmentMenu,
+    imageAlignmentMenuId,
+    imageOptionsSession,
+    overlayOwnerDocument,
+    overlayRoot
+  ]);
+
+  useEffect(() => {
+    if (!imageOptionsSession || !imageAlignmentMenu) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      closeImageAlignmentMenu({ focusEditor: false });
+    };
+
+    overlayOwnerDocument.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      overlayOwnerDocument.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [closeImageAlignmentMenu, imageAlignmentMenu, imageOptionsSession, overlayOwnerDocument]);
 
   useEffect(() => () => {
     if (overlayMeasurementFrameRef.current !== null) {
@@ -5026,12 +5697,35 @@ export function PageEditorHostRuntime({
           return node?.type.name === "image" ? hoverTarget : null;
         })()
       : null;
-  const imageOptionsBlockIndex = imageOptionsSession?.blockIndex ?? hoveredImageTarget?.blockIndex ?? null;
+  const imageOptionsBlockIndex =
+    imageResizeSession?.blockIndex ?? imageAlignmentMenu?.blockIndex ?? imageOptionsSession?.blockIndex ?? hoveredImageTarget?.blockIndex ?? null;
   const imageOptionsBlockRect = editor && imageOptionsBlockIndex !== null ? getTopLevelBlockRect(editor, imageOptionsBlockIndex) : null;
+  const activeImageNode =
+    editor && imageOptionsBlockIndex !== null ? getTopLevelBlockNodeFromDoc(editor.state.doc, imageOptionsBlockIndex) : null;
+  const activeImageAttrs = activeImageNode?.type.name === "image" ? canonicalizeDocseraImageAttrs(activeImageNode.attrs) : null;
   const imagePreviewControlGroupStyle =
     imageOptionsBlockRect ? buildImagePreviewControlGroupStyle(imageOptionsBlockRect) : undefined;
   const imageOptionsControlGroupStyle =
     imageOptionsBlockRect ? buildImageOptionsControlGroupStyle(imageOptionsBlockRect) : undefined;
+  const imageAlignmentMenuRect =
+    editor && imageAlignmentMenu ? getImageControlGroupRect(overlayRoot, imageAlignmentMenu.blockIndex) : null;
+  const imageAlignmentMenuTriggerRect =
+    editor && imageAlignmentMenu ? getImageControlButtonRect(overlayRoot, imageAlignmentMenu.blockIndex, "alignment") : null;
+  const imageAlignmentMenuStyle =
+    editor && imageAlignmentMenu && imageAlignmentMenuRect && imageAlignmentMenuTriggerRect
+      ? resolveToolbarMenuSurfaceStyle(
+          overlayOwnerDocument,
+          imageAlignmentMenuRect,
+          imageAlignmentMenuTriggerRect,
+          { width: IMAGE_ALIGNMENT_MENU_WIDTH, height: IMAGE_ALIGNMENT_MENU_HEIGHT },
+          "start"
+        )
+      : undefined;
+  const imageResizeBlockRect = imageResizeSession?.targetRect ?? imageOptionsBlockRect;
+  const imageResizeHandleLeftStyle =
+    imageResizeBlockRect && imageOptionsBlockIndex !== null ? buildImageResizeHandleStyle(imageResizeBlockRect, "left") : undefined;
+  const imageResizeHandleRightStyle =
+    imageResizeBlockRect && imageOptionsBlockIndex !== null ? buildImageResizeHandleStyle(imageResizeBlockRect, "right") : undefined;
   const imageOptionsPanelStyle =
     editor && imageOptionsSession
       ? buildImageOptionsPanelStyle(overlayOwnerDocument, imageOptionsSession.anchorRect, imageOptionsSession.placement)
@@ -5958,6 +6652,7 @@ export function PageEditorHostRuntime({
                   aria-label="Zoom"
                   title="Zoom"
                   data-docsera-image-control="true"
+                  data-docsera-image-controls-block-index={imageOptionsBlockIndex}
                   data-docsera-image-control-kind="zoom"
                   onMouseDown={(event) => {
                     event.preventDefault();
@@ -5968,33 +6663,52 @@ export function PageEditorHostRuntime({
                 </button>
                 <button
                   type="button"
-                  className="docsera-image-controls-button"
-                  aria-disabled="true"
-                  aria-label="Frame"
+                  className={`docsera-image-controls-button${activeImageAttrs?.frame !== false ? " docsera-image-controls-button--selected" : ""}`}
+                  aria-pressed={activeImageAttrs?.frame !== false}
+                  aria-label={`Frame image ${activeImageAttrs?.frame !== false ? "on" : "off"}`}
                   title="Frame"
                   data-docsera-image-control="true"
+                  data-docsera-image-controls-block-index={imageOptionsBlockIndex}
                   data-docsera-image-control-kind="frame"
                   onMouseDown={(event) => {
                     event.preventDefault();
                   }}
-                  onClick={() => undefined}
+                  onClick={() => {
+                    toggleImageFrame(imageOptionsBlockIndex);
+                  }}
                 >
                   <FrameIcon size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
                 </button>
                 <button
                   type="button"
-                  className="docsera-image-controls-button"
-                  aria-disabled="true"
-                  aria-label="Alignment"
-                  title="Alignment"
+                  className={`docsera-image-controls-button${imageAlignmentMenu?.blockIndex === imageOptionsBlockIndex ? " docsera-image-controls-button--selected" : ""}`}
+                  aria-haspopup="menu"
+                  aria-controls={imageAlignmentMenuId}
+                  aria-expanded={imageAlignmentMenu?.blockIndex === imageOptionsBlockIndex}
+                  aria-label={`Alignment: ${activeImageAttrs?.align === "center" ? "Center" : activeImageAttrs?.align === "right" ? "Right" : "Left"}`}
+                  title={`Alignment: ${activeImageAttrs?.align === "center" ? "Center" : activeImageAttrs?.align === "right" ? "Right" : "Left"}`}
                   data-docsera-image-control="true"
+                  data-docsera-image-controls-block-index={imageOptionsBlockIndex}
                   data-docsera-image-control-kind="alignment"
                   onMouseDown={(event) => {
                     event.preventDefault();
                   }}
-                  onClick={() => undefined}
+                  onClick={() => {
+                    if (imageAlignmentMenu?.blockIndex === imageOptionsBlockIndex) {
+                      closeImageAlignmentMenu({ focusEditor: false });
+                      return;
+                    }
+
+                    openImageAlignmentMenu(imageOptionsBlockIndex);
+                  }}
                 >
-                  <AlignCenter size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                  {activeImageAttrs?.align === "right" ? (
+                    <AlignRight size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                  ) : activeImageAttrs?.align === "center" ? (
+                    <AlignCenter size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                  ) : (
+                    <AlignLeft size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                  )}
                 </button>
                 <button
                   type="button"
@@ -6005,6 +6719,7 @@ export function PageEditorHostRuntime({
                   aria-label="Image options"
                   title="Image options"
                   data-docsera-image-options="true"
+                  data-docsera-image-controls-block-index={imageOptionsBlockIndex}
                   data-docsera-image-options-block-index={imageOptionsBlockIndex}
                   onMouseDown={(event) => {
                     event.preventDefault();
@@ -6020,6 +6735,85 @@ export function PageEditorHostRuntime({
                 >
                   <EllipsisVertical size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
                 </button>
+              </div>
+            ) : null}
+
+            {editor && imageOptionsBlockIndex !== null && activeImageAttrs && imageResizeHandleLeftStyle && imageResizeHandleRightStyle ? (
+              <div className="docsera-image-resize-group" data-docsera-image-resize-group="true" data-docsera-image-resize-block-index={imageOptionsBlockIndex}>
+                <button
+                  type="button"
+                  className="docsera-image-resize-handle docsera-image-resize-handle--left"
+                  aria-label="Resize image from left edge"
+                  tabIndex={-1}
+                  data-docsera-image-resize-handle="true"
+                  data-docsera-image-resize-handle-edge="left"
+                  style={imageResizeHandleLeftStyle}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onPointerDown={(event) => {
+                    startImageResizeSession(imageOptionsBlockIndex, "left", event);
+                  }}
+                />
+                <button
+                  type="button"
+                  className="docsera-image-resize-handle docsera-image-resize-handle--right"
+                  aria-label="Resize image from right edge"
+                  tabIndex={-1}
+                  data-docsera-image-resize-handle="true"
+                  data-docsera-image-resize-handle-edge="right"
+                  style={imageResizeHandleRightStyle}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onPointerDown={(event) => {
+                    startImageResizeSession(imageOptionsBlockIndex, "right", event);
+                  }}
+                />
+              </div>
+            ) : null}
+
+            {editor && imageAlignmentMenu && imageAlignmentMenuStyle ? (
+              <div
+                className={`docsera-image-alignment-menu${imageAlignmentMenu.blockIndex === imageOptionsBlockIndex ? " docsera-image-alignment-menu--active" : ""}`}
+                style={imageAlignmentMenuStyle}
+                role="menu"
+                id={imageAlignmentMenuId}
+                aria-label="Alignment options"
+                data-docsera-image-alignment-menu="true"
+                data-docsera-image-alignment-menu-block-index={imageAlignmentMenu.blockIndex}
+                onKeyDown={handleImageAlignmentMenuKeyDown}
+              >
+                {[
+                  { align: "left" as const, label: "Left", Icon: AlignLeft },
+                  { align: "center" as const, label: "Center", Icon: AlignCenter },
+                  { align: "right" as const, label: "Right", Icon: AlignRight }
+                ].map((option, index) => {
+                  const isSelected = activeImageAttrs?.align === option.align;
+                  const isActive = imageAlignmentMenu.activeIndex === index;
+                  return (
+                    <button
+                      key={option.align}
+                      ref={(element) => {
+                        imageAlignmentMenuItemRefs.current[index] = element;
+                      }}
+                      type="button"
+                      className={`docsera-image-alignment-menu__item${isActive ? " docsera-image-alignment-menu__item--active" : ""}${isSelected ? " docsera-image-alignment-menu__item--selected" : ""}`}
+                      role="menuitemradio"
+                      aria-checked={isSelected}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                      }}
+                      onClick={() => {
+                        applyImageAlignment(imageAlignmentMenu.blockIndex, option.align);
+                      }}
+                    >
+                      <option.Icon size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                      <span>{option.label}</span>
+                      {isSelected ? <Check size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" /> : null}
+                    </button>
+                  );
+                })}
               </div>
             ) : null}
 
@@ -6259,6 +7053,7 @@ export function PageEditorHostRuntime({
                 blockIndex={imageOptionsSession.blockIndex}
                 editor={editor}
                 initialAttrs={imageOptionsSession.initialAttrs}
+                isEscapeDismissalDeferred={imageAlignmentMenu !== null}
                 mediaAdapter={mediaAdapter}
                 onClose={() => {
                   closeImageOptions({ focusEditor: true });

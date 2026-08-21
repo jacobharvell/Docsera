@@ -72,6 +72,120 @@ export const IMAGE_OPTIONS_STYLES = `
     flex: 0 0 auto;
   }
 
+  .docsera-image-resize-group {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 6;
+  }
+
+  .docsera-image-resize-handle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: transparent;
+    box-shadow: none;
+    cursor: col-resize;
+    outline: none;
+    pointer-events: auto;
+    z-index: 6;
+    transition: background-color 0.16s ease;
+  }
+
+  .docsera-image-resize-handle::before {
+    content: "";
+    display: block;
+    width: 2px;
+    height: calc(100% - 8px);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--docsera-primary) 68%, var(--docsera-border));
+    opacity: 0.5;
+    transition: opacity 0.16s ease, background-color 0.16s ease;
+  }
+
+  .docsera-image-resize-handle:hover::before,
+  .docsera-image-resize-handle:focus-visible::before {
+    opacity: 1;
+    background: var(--docsera-primary);
+  }
+
+  .docsera-image-resize-handle--left {
+    justify-content: flex-start;
+  }
+
+  .docsera-image-resize-handle--right {
+    justify-content: flex-end;
+  }
+
+  .docsera-image-alignment-menu {
+    pointer-events: auto;
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    width: 192px;
+    padding: 4px;
+    border: 1px solid var(--docsera-border);
+    border-radius: 8px;
+    background: var(--docsera-surface);
+    color: var(--docsera-text);
+    box-shadow: var(--docsera-shadow);
+    z-index: 7;
+  }
+
+  .docsera-image-alignment-menu--active {
+    border-color: color-mix(in srgb, var(--docsera-primary) 22%, var(--docsera-border));
+  }
+
+  .docsera-image-alignment-menu__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 32px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1.2;
+    cursor: pointer;
+    transition:
+      background-color 0.16s ease,
+      color 0.16s ease;
+  }
+
+  .docsera-image-alignment-menu__item:hover,
+  .docsera-image-alignment-menu__item:focus-visible,
+  .docsera-image-alignment-menu__item--active {
+    background: var(--docsera-surface-muted);
+    color: var(--docsera-primary);
+    outline: none;
+  }
+
+  .docsera-image-alignment-menu__item--selected {
+    background: color-mix(in srgb, var(--docsera-primary) 12%, var(--docsera-surface));
+    color: var(--docsera-primary);
+  }
+
+  .docsera-image-alignment-menu__item svg {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+  }
+
+  .docsera-image-alignment-menu__item span {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: left;
+  }
+
   .docsera-image-options-panel {
     display: grid;
     min-width: 0;

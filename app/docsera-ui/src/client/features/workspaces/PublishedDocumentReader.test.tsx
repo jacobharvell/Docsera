@@ -195,6 +195,44 @@ describe("PublishedDocumentReader", () => {
     revokeObjectUrlSpy.mockRestore();
   });
 
+  it("renders a right-aligned framed image with responsive width in the published reader", async () => {
+    const envelope = createCanonicalImageDocseraDocumentEnvelope();
+    const imageNode = envelope.document.content?.[0] as
+      | { attrs?: { alt: string; align: string; frame: boolean; widthPct: number }; type?: string }
+      | undefined;
+    if (!imageNode || imageNode.type !== "image" || !imageNode.attrs) {
+      throw new Error("Expected the canonical image envelope to contain a single image node.");
+    }
+
+    imageNode.attrs.frame = true;
+    imageNode.attrs.align = "right";
+    imageNode.attrs.widthPct = 72;
+    imageNode.attrs.alt = "Right aligned diagram";
+
+    const createObjectUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:right-align");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+
+    renderReader(envelope, {
+      loadMedia: vi.fn(async ({ mediaId }: WorkspaceMediaLoadInput) => (mediaId === "workspace-media-001" ? createMediaBlob(mediaId) : null))
+    });
+
+    const reader = screen.getByLabelText("Published page content");
+    const figure = reader.querySelector(".docsera-main__media");
+
+    expect(figure).toHaveClass("docsera-main__media--framed", "docsera-main__media--align-right");
+    expect(figure).toHaveAttribute("data-docsera-image-align", "right");
+    expect(figure).toHaveAttribute("data-docsera-image-frame", "true");
+    expect(figure).toHaveAttribute("data-docsera-image-width-pct", "72");
+    expect(figure).toHaveStyle({ width: "72%" });
+
+    await waitFor(() => {
+      expect(within(reader).getByRole("img", { name: "Right aligned diagram" })).toHaveAttribute("src", "blob:right-align");
+    });
+
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
+  });
+
   it("renders body H1 plus underline, highlight, superscript, and subscript without theme data in canonical JSON", () => {
     const envelope = createExpandedTextFormattingDocseraDocumentEnvelope();
     const page = buildWorkspacePageView(createPageRecord(envelope), "live");
@@ -761,5 +799,4 @@ describe("PublishedDocumentReader", () => {
     expect(screen.queryByText("not code")).not.toBeInTheDocument();
   });
 });
-
 

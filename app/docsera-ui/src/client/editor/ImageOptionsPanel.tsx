@@ -15,7 +15,6 @@ type ImageOptionsDraft = {
   alt: string;
   caption: string;
   darkMediaId: string | null;
-  frame: boolean;
   mediaId: string;
 };
 
@@ -23,6 +22,7 @@ export type ImageOptionsPanelProps = {
   blockIndex: number;
   editor: Editor;
   initialAttrs: DocseraImageAttrs;
+  isEscapeDismissalDeferred?: boolean;
   panelId: string;
   mediaAdapter?: EditorMediaAdapter;
   onClose: () => void;
@@ -82,7 +82,6 @@ function makeDraft(attrs: DocseraImageAttrs): ImageOptionsDraft {
     alt: attrs.alt,
     caption: attrs.caption,
     darkMediaId: attrs.darkMediaId,
-    frame: attrs.frame,
     mediaId: attrs.mediaId
   };
 }
@@ -90,10 +89,9 @@ function makeDraft(attrs: DocseraImageAttrs): ImageOptionsDraft {
 function areDraftsEqual(left: ImageOptionsDraft, right: ImageOptionsDraft): boolean {
   return (
     left.mediaId === right.mediaId &&
-    left.darkMediaId === right.darkMediaId &&
-    left.alt === right.alt &&
-    left.caption === right.caption &&
-    left.frame === right.frame
+      left.darkMediaId === right.darkMediaId &&
+      left.alt === right.alt &&
+      left.caption === right.caption
   );
 }
 
@@ -132,6 +130,7 @@ export function ImageOptionsPanel({
   initialAttrs,
   panelId,
   mediaAdapter,
+  isEscapeDismissalDeferred = false,
   onClose,
   overlayRoot,
   panelStyle,
@@ -196,6 +195,10 @@ export function ImageOptionsPanel({
         return;
       }
 
+      if (isEscapeDismissalDeferred) {
+        return;
+      }
+
       event.preventDefault();
       event.stopPropagation();
       onClose();
@@ -203,7 +206,7 @@ export function ImageOptionsPanel({
 
     overlayRoot.ownerDocument.addEventListener("keydown", handleKeyDown, true);
     return () => overlayRoot.ownerDocument.removeEventListener("keydown", handleKeyDown, true);
-  }, [onClose, overlayRoot, pickerTarget]);
+  }, [isEscapeDismissalDeferred, onClose, overlayRoot, pickerTarget]);
 
   const lightMediaLabel = resolveMediaLabel(mediaCatalogLoaded, mediaCatalog, draft.mediaId);
   const darkMediaLabel = resolveMediaLabel(mediaCatalogLoaded, mediaCatalog, draft.darkMediaId);
@@ -265,8 +268,7 @@ export function ImageOptionsPanel({
       mediaId: draft.mediaId,
       darkMediaId: draft.darkMediaId,
       alt: draft.alt,
-      caption: draft.caption,
-      frame: draft.frame
+      caption: draft.caption
     };
 
     if (areDraftsEqual(makeDraft(liveAttrs), draft)) {

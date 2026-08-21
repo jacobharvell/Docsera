@@ -2080,7 +2080,7 @@ describe("PageEditorHostRuntime", () => {
       ]
     };
 
-    const { editorReady } = renderRuntime({
+    const { editorReady, onSaveDraft } = renderRuntime({
       initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
       mediaAdapter
     });
@@ -2121,15 +2121,17 @@ describe("PageEditorHostRuntime", () => {
     }
 
     const controlButtons = within(controlGroup).getAllByRole("button");
-    expect(getButtonNames(controlGroup)).toEqual(["Zoom", "Frame", "Alignment", "Image options"]);
+    expect(getButtonNames(controlGroup)).toEqual(["Zoom", "Frame image off", "Alignment: Left", "Image options"]);
     expect(controlButtons[0]).toHaveAttribute("aria-disabled", "true");
-    expect(controlButtons[1]).toHaveAttribute("aria-disabled", "true");
-    expect(controlButtons[2]).toHaveAttribute("aria-disabled", "true");
+    expect(controlButtons[1]).toHaveAttribute("aria-pressed", "false");
+    expect(controlButtons[1]).not.toHaveClass("docsera-image-controls-button--selected");
+    expect(controlButtons[1]).toHaveAttribute("aria-label", "Frame image off");
+    expect(controlButtons[2]).toHaveAttribute("aria-haspopup", "menu");
+    expect(controlButtons[2]).toHaveAttribute("aria-expanded", "false");
+    expect(controlButtons[2]).toHaveAttribute("aria-label", "Alignment: Left");
     expect(controlButtons[3]).not.toBeDisabled();
 
-    for (const button of controlButtons.slice(0, 3)) {
-      fireEvent.click(button);
-    }
+    fireEvent.click(controlButtons[0]);
 
     expect(editor.getJSON()).toEqual(before);
     expect(screen.getByRole("dialog", { name: "Image Options" })).toBeInTheDocument();
@@ -2214,10 +2216,14 @@ describe("PageEditorHostRuntime", () => {
     }
 
     const controlButtons = within(controlGroup).getAllByRole("button");
-    expect(getButtonNames(controlGroup)).toEqual(["Zoom", "Frame", "Alignment", "Image options"]);
+    expect(getButtonNames(controlGroup)).toEqual(["Zoom", "Frame image off", "Alignment: Center", "Image options"]);
     expect(controlButtons[0]).toHaveAttribute("aria-disabled", "true");
-    expect(controlButtons[1]).toHaveAttribute("aria-disabled", "true");
-    expect(controlButtons[2]).toHaveAttribute("aria-disabled", "true");
+    expect(controlButtons[1]).toHaveAttribute("aria-pressed", "false");
+    expect(controlButtons[1]).not.toHaveClass("docsera-image-controls-button--selected");
+    expect(controlButtons[1]).toHaveAttribute("aria-label", "Frame image off");
+    expect(controlButtons[2]).toHaveAttribute("aria-haspopup", "menu");
+    expect(controlButtons[2]).toHaveAttribute("aria-expanded", "false");
+    expect(controlButtons[2]).toHaveAttribute("aria-label", "Alignment: Center");
     expect(controlButtons[3]).not.toHaveAttribute("aria-disabled", "true");
 
     geometrySpy.mockRestore();
@@ -2269,7 +2275,7 @@ describe("PageEditorHostRuntime", () => {
       ]
     };
 
-    const { editorReady } = renderRuntime({
+    const { editorReady, onSaveDraft } = renderRuntime({
       initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
       mediaAdapter
     });
@@ -2284,6 +2290,13 @@ describe("PageEditorHostRuntime", () => {
 
     await openImageOptions(editor, { clientX: 720, clientY: 60 });
     const panel = await screen.findByRole("dialog", { name: "Image Options" });
+    const controlGroup = document.querySelector(
+      `[data-docsera-image-controls="true"][data-docsera-image-controls-block-index="0"]`
+    );
+    expect(controlGroup).toBeInstanceOf(HTMLElement);
+    if (!(controlGroup instanceof HTMLElement)) {
+      throw new Error("Expected the image control group to render.");
+    }
     const footerActions = panel.querySelector(".docsera-image-options-panel__footer-actions");
     expect(footerActions).toBeInstanceOf(HTMLElement);
     if (!(footerActions instanceof HTMLElement)) {
@@ -2327,6 +2340,156 @@ describe("PageEditorHostRuntime", () => {
 
     expect(editor.getJSON()).toEqual(before);
 
+    fireEvent.click(within(controlGroup).getByRole("button", { name: "Frame image on" }));
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              mediaId: "workspace-media-base",
+              darkMediaId: null,
+              alt: "",
+              caption: "",
+              frame: false,
+              align: "center",
+              widthPct: 80
+            }
+          }
+        ]
+      });
+    });
+    expect(within(panel).getByLabelText("Alt text")).toHaveValue("Architecture diagram");
+    expect(within(panel).getByLabelText("Caption")).toHaveValue("Published in both light and dark modes");
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+
+    const rightHandle = await screen.findByRole("button", { name: "Resize image from right edge" });
+    const leftHandle = await screen.findByRole("button", { name: "Resize image from left edge" });
+    const figure = document.querySelector(".docsera-editor-image");
+    if (!(figure instanceof HTMLElement)) {
+      throw new Error("Expected the editor image figure to render.");
+    }
+
+    const leftHandleStyles = getComputedStyle(leftHandle);
+    const rightHandleStyles = getComputedStyle(rightHandle);
+    expect(leftHandleStyles.width).toBe("12px");
+    expect(rightHandleStyles.width).toBe("12px");
+    expect(leftHandleStyles.left).toBe("126px");
+    expect(rightHandleStyles.left).toBe("746px");
+    expect(Number.parseFloat(leftHandleStyles.left) + Number.parseFloat(leftHandleStyles.width) / 2).toBeCloseTo(132, 5);
+    expect(Number.parseFloat(rightHandleStyles.left) + Number.parseFloat(rightHandleStyles.width) / 2).toBeCloseTo(752, 5);
+
+    fireEvent.click(within(controlGroup).getByRole("button", { name: "Alignment: Center" }));
+    const alignmentMenu = await screen.findByRole("menu", { name: "Alignment options" });
+    const alignmentMenuItem = within(alignmentMenu).getByRole("menuitemradio", { name: "Right" });
+
+    // Synthetic JSDOM clicks can still invoke a node even when real browser hit testing would miss it.
+    expect(getComputedStyle(alignmentMenu).pointerEvents).toBe("auto");
+    expect(getComputedStyle(alignmentMenuItem).cursor).toBe("pointer");
+
+    fireEvent.click(alignmentMenuItem);
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              mediaId: "workspace-media-base",
+              darkMediaId: null,
+              alt: "",
+              caption: "",
+              frame: false,
+              align: "right",
+              widthPct: 80
+            }
+          }
+        ]
+      });
+      expect(screen.getByRole("dialog", { name: "Image Options" })).toBeInTheDocument();
+    });
+    expect(within(panel).getByLabelText("Alt text")).toHaveValue("Architecture diagram");
+    expect(within(panel).getByLabelText("Caption")).toHaveValue("Published in both light and dark modes");
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(2);
+
+    const rightPointerDownPrevented = await dispatchOwnerPointerEvent(
+      panel.ownerDocument,
+      rightHandle,
+      "pointerdown",
+      { clientX: 740, clientY: 64 },
+      { button: 0, buttons: 1, pointerId: 11 }
+    );
+    expect(rightPointerDownPrevented).toBe(true);
+
+    await dispatchOwnerPointerEvent(
+      panel.ownerDocument,
+      panel.ownerDocument,
+      "pointermove",
+      { clientX: 780, clientY: 64 },
+      { button: 0, buttons: 1, pointerId: 11 }
+    );
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              mediaId: "workspace-media-base",
+              darkMediaId: null,
+              alt: "",
+              caption: "",
+              frame: false,
+              align: "right",
+              widthPct: 80
+            }
+          }
+        ]
+      });
+      expect(figure).toHaveAttribute("data-docsera-image-width-pct", "86");
+      expect(figure).toHaveStyle({ width: "86%" });
+    });
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(2);
+
+    await dispatchOwnerPointerEvent(
+      panel.ownerDocument,
+      panel.ownerDocument,
+      "pointerup",
+      { clientX: 820, clientY: 64 },
+      { button: 0, buttons: 0, pointerId: 11 }
+    );
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              mediaId: "workspace-media-base",
+              darkMediaId: null,
+              alt: "",
+              caption: "",
+              frame: false,
+              align: "right",
+              widthPct: 93
+            }
+          }
+        ]
+      });
+      expect(figure).toHaveAttribute("data-docsera-image-width-pct", "93");
+      expect(figure).toHaveStyle({ width: "93%" });
+    });
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(3);
+
     fireEvent.click(within(panel).getByRole("button", { name: "Save Changes" }));
 
     await waitFor(() => {
@@ -2336,20 +2499,601 @@ describe("PageEditorHostRuntime", () => {
     expect(editor.getJSON()).toMatchObject({
       type: "doc",
       content: [
+          {
+            type: "image",
+            attrs: {
+              mediaId: "workspace-media-light",
+              darkMediaId: "workspace-media-dark",
+              alt: "Architecture diagram",
+              caption: "Published in both light and dark modes",
+              frame: false,
+              align: "right",
+              widthPct: 93
+            }
+          }
+        ]
+      });
+
+    geometrySpy.mockRestore();
+  });
+
+  it("toggles frame immediately and restores the prior state through undo and redo", async () => {
+    const mediaAdapter: EditorMediaAdapter = {
+      list: vi.fn(async () => []),
+      load: vi.fn(async ({ mediaId }) => (mediaId === "workspace-media-base" ? createMediaBlob(mediaId) : null)),
+      upload: vi.fn(async ({ file }) => ({
+        contentType: file.type,
+        fileName: file.name,
+        mediaId: "workspace-media-upload",
+        sizeBytes: file.size
+      }))
+    };
+    const initial = {
+      type: "doc",
+      content: [
         {
           type: "image",
           attrs: {
-            mediaId: "workspace-media-light",
-            darkMediaId: "workspace-media-dark",
-            alt: "Architecture diagram",
-            caption: "Published in both light and dark modes",
+            mediaId: "workspace-media-base",
+            darkMediaId: null,
+            alt: "",
+            caption: "",
             frame: true,
-            align: "center",
+            align: "left",
+            widthPct: 100
+          }
+        }
+      ]
+    };
+
+    const { editorReady, onSaveDraft, onStatusChange } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
+      mediaAdapter
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+
+    await openImageOptions(editor, { clientX: 720, clientY: 60 });
+    const controlGroup = document.querySelector(
+      `[data-docsera-image-controls="true"][data-docsera-image-controls-block-index="0"]`
+    );
+    expect(controlGroup).toBeInstanceOf(HTMLElement);
+    if (!(controlGroup instanceof HTMLElement)) {
+      throw new Error("Expected the image control group to render.");
+    }
+
+    const frameButton = within(controlGroup).getByRole("button", { name: "Frame image on" });
+    expect(frameButton).toHaveAttribute("aria-pressed", "true");
+    expect(frameButton).toHaveClass("docsera-image-controls-button--selected");
+
+    fireEvent.click(frameButton);
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              frame: false,
+              align: "left",
+              widthPct: 100
+            }
+          }
+        ]
+      });
+    });
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+    expect(onStatusChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        isDirty: false,
+        status: "Saved"
+      })
+    );
+    expect(undoDepth(editor.state)).toBe(1);
+    expect(within(controlGroup).getByRole("button", { name: "Frame image off" })).toHaveAttribute("aria-pressed", "false");
+
+    await act(async () => {
+      editor.commands.undo();
+    });
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              frame: true,
+              align: "left",
+              widthPct: 100
+            }
+          }
+        ]
+      });
+    });
+    expect(within(controlGroup).getByRole("button", { name: "Frame image on" })).toHaveAttribute("aria-pressed", "true");
+
+    await act(async () => {
+      editor.commands.redo();
+    });
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              frame: false,
+              align: "left",
+              widthPct: 100
+            }
+          }
+        ]
+      });
+    });
+    expect(within(controlGroup).getByRole("button", { name: "Frame image off" })).toHaveAttribute("aria-pressed", "false");
+
+    geometrySpy.mockRestore();
+  });
+
+  it("applies left, center, and right image alignment through the compact menu", async () => {
+    const mediaAdapter: EditorMediaAdapter = {
+      list: vi.fn(async () => []),
+      load: vi.fn(async ({ mediaId }) => (mediaId === "workspace-media-base" ? createMediaBlob(mediaId) : null)),
+      upload: vi.fn(async ({ file }) => ({
+        contentType: file.type,
+        fileName: file.name,
+        mediaId: "workspace-media-upload",
+        sizeBytes: file.size
+      }))
+    };
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-base",
+            darkMediaId: null,
+            alt: "",
+            caption: "",
+            frame: true,
+            align: "left",
+            widthPct: 100
+          }
+        }
+      ]
+    };
+
+    const { editorReady, onSaveDraft, onStatusChange } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
+      mediaAdapter
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+
+    await openImageOptions(editor, { clientX: 720, clientY: 60 });
+    const controlGroup = document.querySelector(
+      `[data-docsera-image-controls="true"][data-docsera-image-controls-block-index="0"]`
+    );
+    expect(controlGroup).toBeInstanceOf(HTMLElement);
+    if (!(controlGroup instanceof HTMLElement)) {
+      throw new Error("Expected the image control group to render.");
+    }
+
+    const alignmentButton = within(controlGroup).getByRole("button", { name: "Alignment: Left" });
+    expect(alignmentButton).toHaveAttribute("aria-haspopup", "menu");
+    expect(alignmentButton).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(alignmentButton);
+
+    const alignmentMenu = await screen.findByRole("menu", { name: "Alignment options" });
+    expect(getMenuItemNames(alignmentMenu)).toEqual(["Left", "Center", "Right"]);
+    expect(within(alignmentMenu).getByRole("menuitemradio", { name: "Left" })).toHaveAttribute("aria-checked", "true");
+
+    const beforeNoopSaveCalls = onSaveDraft.mock.calls.length;
+    const beforeNoopStatusCalls = onStatusChange.mock.calls.length;
+    fireEvent.click(within(alignmentMenu).getByRole("menuitemradio", { name: "Left" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menu", { name: "Alignment options" })).toBeNull();
+    });
+    expect(editor.getJSON()).toEqual(initial);
+    await runAutosave();
+    expect(onSaveDraft.mock.calls.length).toBe(beforeNoopSaveCalls);
+    expect(onStatusChange.mock.calls.length).toBe(beforeNoopStatusCalls);
+    expect(onStatusChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        isDirty: false,
+        status: "Saved"
+      })
+    );
+
+    fireEvent.click(within(controlGroup).getByRole("button", { name: "Alignment: Left" }));
+    const centerMenu = await screen.findByRole("menu", { name: "Alignment options" });
+    expect(within(centerMenu).getByRole("menuitemradio", { name: "Center" })).toHaveAttribute("aria-checked", "false");
+    fireEvent.click(within(centerMenu).getByRole("menuitemradio", { name: "Center" }));
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              frame: true,
+              align: "center",
+              widthPct: 100
+            }
+          }
+        ]
+      });
+    });
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(beforeNoopSaveCalls + 1);
+    expect(onStatusChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        isDirty: false,
+        status: "Saved"
+      })
+    );
+    expect(within(controlGroup).getByRole("button", { name: "Alignment: Center" })).toBeInTheDocument();
+
+    fireEvent.click(within(controlGroup).getByRole("button", { name: "Alignment: Center" }));
+    const rightMenu = await screen.findByRole("menu", { name: "Alignment options" });
+    expect(within(rightMenu).getByRole("menuitemradio", { name: "Center" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(within(rightMenu).getByRole("menuitemradio", { name: "Right" }));
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              frame: true,
+              align: "right",
+              widthPct: 100
+            }
+          }
+        ]
+      });
+    });
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(beforeNoopSaveCalls + 2);
+    expect(onStatusChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        isDirty: false,
+        status: "Saved"
+      })
+    );
+    expect(within(controlGroup).getByRole("button", { name: "Alignment: Right" })).toBeInTheDocument();
+
+    fireEvent.click(within(controlGroup).getByRole("button", { name: "Alignment: Right" }));
+    const leftMenu = await screen.findByRole("menu", { name: "Alignment options" });
+    expect(within(leftMenu).getByRole("menuitemradio", { name: "Right" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(within(leftMenu).getByRole("menuitemradio", { name: "Left" }));
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              frame: true,
+              align: "left",
+              widthPct: 100
+            }
+          }
+        ]
+      });
+    });
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(beforeNoopSaveCalls + 3);
+    expect(onStatusChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        isDirty: false,
+        status: "Saved"
+      })
+    );
+    expect(within(controlGroup).getByRole("button", { name: "Alignment: Left" })).toBeInTheDocument();
+
+    geometrySpy.mockRestore();
+  });
+
+  it("resizes from both edges with live preview, clamping, undo, and cancel restore", async () => {
+    const mediaAdapter: EditorMediaAdapter = {
+      list: vi.fn(async () => []),
+      load: vi.fn(async ({ mediaId }) => (mediaId === "workspace-media-base" ? createMediaBlob(mediaId) : null)),
+      upload: vi.fn(async ({ file }) => ({
+        contentType: file.type,
+        fileName: file.name,
+        mediaId: "workspace-media-upload",
+        sizeBytes: file.size
+      }))
+    };
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-base",
+            darkMediaId: null,
+            alt: "",
+            caption: "",
+            frame: true,
+            align: "left",
             widthPct: 80
           }
         }
       ]
+    };
+
+    const { editorReady, container, onSaveDraft, onStatusChange } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
+      mediaAdapter
     });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    const surface = container.querySelector(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to render.");
+    }
+
+    await openImageOptions(editor, { clientX: 720, clientY: 60 });
+    const beforeResize = editor.getJSON();
+    const rightHandle = await screen.findByRole("button", { name: "Resize image from right edge" });
+    const leftHandle = await screen.findByRole("button", { name: "Resize image from left edge" });
+    const figure = document.querySelector(".docsera-editor-image");
+    if (!(figure instanceof HTMLElement)) {
+      throw new Error("Expected the editor image figure to render.");
+    }
+
+    const rightPointerDownPrevented = await dispatchOwnerPointerEvent(
+      surface.ownerDocument,
+      rightHandle,
+      "pointerdown",
+      { clientX: 740, clientY: 64 },
+      { button: 0, buttons: 1, pointerId: 11 }
+    );
+    expect(rightPointerDownPrevented).toBe(true);
+
+    await dispatchOwnerPointerEvent(
+      surface.ownerDocument,
+      surface.ownerDocument,
+      "pointermove",
+      { clientX: 780, clientY: 64 },
+      { button: 0, buttons: 1, pointerId: 11 }
+    );
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toEqual(beforeResize);
+      expect(figure).toHaveAttribute("data-docsera-image-width-pct", "86");
+      expect(figure).toHaveStyle({ width: "86%" });
+    });
+    expect(surface.className).not.toContain("docsera-editor-runtime__surface--block-dragging");
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(0);
+    expect(onStatusChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        isDirty: false,
+        status: "Saved"
+      })
+    );
+
+    await dispatchOwnerPointerEvent(
+      surface.ownerDocument,
+      surface.ownerDocument,
+      "pointerup",
+      { clientX: 820, clientY: 64 },
+      { button: 0, buttons: 0, pointerId: 11 }
+    );
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              frame: true,
+              align: "left",
+              widthPct: 93
+            }
+          }
+        ]
+      });
+    });
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+    expect(onStatusChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        isDirty: false,
+        status: "Saved"
+      })
+    );
+    expect(undoDepth(editor.state)).toBe(1);
+
+    await act(async () => {
+      editor.commands.undo();
+    });
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              frame: true,
+              align: "left",
+              widthPct: 80
+            }
+          }
+        ]
+      });
+      expect(figure).toHaveAttribute("data-docsera-image-width-pct", "80");
+      expect(figure).toHaveStyle({ width: "80%" });
+    });
+    expect(undoDepth(editor.state)).toBe(0);
+
+    await act(async () => {
+      editor.commands.redo();
+    });
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              frame: true,
+              align: "left",
+              widthPct: 93
+            }
+          }
+        ]
+      });
+      expect(figure).toHaveAttribute("data-docsera-image-width-pct", "93");
+      expect(figure).toHaveStyle({ width: "93%" });
+    });
+    expect(undoDepth(editor.state)).toBe(1);
+
+    const leftPointerDownPrevented = await dispatchOwnerPointerEvent(
+      surface.ownerDocument,
+      leftHandle,
+      "pointerdown",
+      { clientX: 132, clientY: 64 },
+      { button: 0, buttons: 1, pointerId: 12 }
+    );
+    expect(leftPointerDownPrevented).toBe(true);
+
+    await dispatchOwnerPointerEvent(
+      surface.ownerDocument,
+      surface.ownerDocument,
+      "pointermove",
+      { clientX: 640, clientY: 64 },
+      { button: 0, buttons: 1, pointerId: 12 }
+    );
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              frame: true,
+              align: "left",
+              widthPct: 93
+            }
+          }
+        ]
+      });
+      expect(figure).toHaveAttribute("data-docsera-image-width-pct", "20");
+      expect(figure).toHaveStyle({ width: "20%" });
+    });
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+
+    await dispatchOwnerPointerEvent(
+      surface.ownerDocument,
+      surface.ownerDocument,
+      "pointerup",
+      { clientX: 640, clientY: 64 },
+      { button: 0, buttons: 0, pointerId: 12 }
+    );
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              frame: true,
+              align: "left",
+              widthPct: 20
+            }
+          }
+        ]
+      });
+      expect(figure).toHaveAttribute("data-docsera-image-width-pct", "20");
+      expect(figure).toHaveStyle({ width: "20%" });
+    });
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(2);
+
+    const cancelPointerDownPrevented = await dispatchOwnerPointerEvent(
+      surface.ownerDocument,
+      leftHandle,
+      "pointerdown",
+      { clientX: 132, clientY: 64 },
+      { button: 0, buttons: 1, pointerId: 13 }
+    );
+    expect(cancelPointerDownPrevented).toBe(true);
+
+    await dispatchOwnerPointerEvent(
+      surface.ownerDocument,
+      surface.ownerDocument,
+      "pointermove",
+      { clientX: 80, clientY: 64 },
+      { button: 0, buttons: 1, pointerId: 13 }
+    );
+
+    await waitFor(() => {
+      expect(figure).toHaveAttribute("data-docsera-image-width-pct", "28");
+      expect(figure).toHaveStyle({ width: "28%" });
+    });
+
+    await dispatchOwnerPointerEvent(
+      surface.ownerDocument,
+      surface.ownerDocument,
+      "pointercancel",
+      { clientX: 80, clientY: 64 },
+      { button: 0, buttons: 0, pointerId: 13 }
+    );
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "image",
+            attrs: {
+              frame: true,
+              align: "left",
+              widthPct: 20
+            }
+          }
+        ]
+      });
+      expect(figure).toHaveAttribute("data-docsera-image-width-pct", "20");
+      expect(figure).toHaveStyle({ width: "20%" });
+    });
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(2);
 
     geometrySpy.mockRestore();
   });
@@ -2508,9 +3252,19 @@ describe("PageEditorHostRuntime", () => {
           fileName: "light.png",
           mediaId: "workspace-media-light",
           sizeBytes: 2048
+        },
+        {
+          contentType: "image/png",
+          fileName: "dark.png",
+          mediaId: "workspace-media-dark",
+          sizeBytes: 2048
         }
       ]),
-      load: vi.fn(async ({ mediaId }) => (mediaId === "workspace-media-base" || mediaId === "workspace-media-light" ? createMediaBlob(mediaId) : null)),
+      load: vi.fn(async ({ mediaId }) =>
+        mediaId === "workspace-media-base" || mediaId === "workspace-media-light" || mediaId === "workspace-media-dark"
+          ? createMediaBlob(mediaId)
+          : null
+      ),
       upload: vi.fn(async () => ({
         contentType: "image/png",
         fileName: "light.png",
@@ -2596,7 +3350,7 @@ describe("PageEditorHostRuntime", () => {
     geometrySpy.mockRestore();
   });
 
-  it("anchors image options to the control group and discards staged edits on Escape", async () => {
+  it("keeps staged image options open while alignment is dismissed, lets the trigger toggle normally, and closes the panel on a second Escape", async () => {
     const mediaAdapter: EditorMediaAdapter = {
       list: vi.fn(async () => [
         {
@@ -2604,9 +3358,19 @@ describe("PageEditorHostRuntime", () => {
           fileName: "light.png",
           mediaId: "workspace-media-light",
           sizeBytes: 2048
+        },
+        {
+          contentType: "image/png",
+          fileName: "dark.png",
+          mediaId: "workspace-media-dark",
+          sizeBytes: 2048
         }
       ]),
-      load: vi.fn(async ({ mediaId }) => (mediaId === "workspace-media-base" || mediaId === "workspace-media-light" ? createMediaBlob(mediaId) : null)),
+      load: vi.fn(async ({ mediaId }) =>
+        mediaId === "workspace-media-base" || mediaId === "workspace-media-light" || mediaId === "workspace-media-dark"
+          ? createMediaBlob(mediaId)
+          : null
+      ),
       upload: vi.fn(async () => ({
         contentType: "image/png",
         fileName: "light.png",
@@ -2646,17 +3410,11 @@ describe("PageEditorHostRuntime", () => {
     const controlGroupRect = new DOMRect(640, 58, 96, 32);
     const triggerRect = new DOMRect(708, 62, 24, 24);
     const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-      if (
-        this.dataset.docseraImageControls === "true" &&
-        this.dataset.docseraImageControlsBlockIndex === "0"
-      ) {
+      if (this.dataset.docseraImageControls === "true" && this.dataset.docseraImageControlsBlockIndex === "0") {
         return controlGroupRect;
       }
 
-      if (
-        this.dataset.docseraImageOptions === "true" &&
-        this.dataset.docseraImageOptionsBlockIndex === "0"
-      ) {
+      if (this.dataset.docseraImageOptions === "true" && this.dataset.docseraImageOptionsBlockIndex === "0") {
         return triggerRect;
       }
 
@@ -2674,15 +3432,22 @@ describe("PageEditorHostRuntime", () => {
       throw new Error("Expected the image control group to render.");
     }
 
-    const controlButton = within(controlGroup).getByRole("button", { name: "Image options" });
-    expect(getComputedStyle(controlGroup).pointerEvents).toBe("auto");
-    expect(getComputedStyle(controlButton).cursor).toBe("pointer");
-    expect(controlButton).toHaveAttribute("aria-haspopup", "dialog");
-    expect(controlButton).toHaveAttribute("aria-controls");
-    expect(controlButton).toHaveAttribute("aria-expanded", "true");
+    const lightUpload = within(panel).getAllByRole("button", { name: "Upload" })[0];
+    const darkUpload = within(panel).getAllByRole("button", { name: "Upload" })[1];
+    fireEvent.click(lightUpload);
+    const picker = await screen.findByRole("dialog", { name: "Select image" });
+    fireEvent.click(within(picker).getByRole("button", { name: "light.png" }));
 
     await waitFor(() => {
-      expect(panel).toHaveStyle({ left: "364px", top: "100px" });
+      expect(screen.queryByRole("dialog", { name: "Select image" })).toBeNull();
+    });
+
+    fireEvent.click(darkUpload);
+    const darkPicker = await screen.findByRole("dialog", { name: "Select image" });
+    fireEvent.click(within(darkPicker).getByRole("button", { name: "light.png" }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Select image" })).toBeNull();
     });
 
     fireEvent.change(within(panel).getByLabelText("Alt text"), {
@@ -2691,6 +3456,56 @@ describe("PageEditorHostRuntime", () => {
     fireEvent.change(within(panel).getByLabelText("Caption"), {
       target: { value: "Discarded caption" }
     });
+
+    expect(editor.getJSON()).toEqual(before);
+
+    const alignmentButton = within(controlGroup).getByRole("button", { name: "Alignment: Left" });
+    expect(getComputedStyle(controlGroup).pointerEvents).toBe("auto");
+    expect(getComputedStyle(alignmentButton).cursor).toBe("pointer");
+    expect(alignmentButton).toHaveAttribute("aria-haspopup", "menu");
+    expect(alignmentButton).toHaveAttribute("aria-controls");
+    expect(alignmentButton).toHaveAttribute("aria-expanded", "false");
+
+    await waitFor(() => {
+      expect(panel).toHaveStyle({ left: "364px", top: "100px" });
+    });
+
+    fireEvent.click(alignmentButton);
+    const alignmentMenu = await screen.findByRole("menu", { name: "Alignment options" });
+    expect(within(alignmentMenu).getByRole("menuitemradio", { name: "Left" })).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menu", { name: "Alignment options" })).toBeNull();
+      expect(screen.getByRole("dialog", { name: "Image Options" })).toBeInTheDocument();
+    });
+
+    expect(within(panel).getByLabelText("Alt text")).toHaveValue("Discarded alt");
+    expect(within(panel).getByLabelText("Caption")).toHaveValue("Discarded caption");
+    expect(within(controlGroup).getByRole("button", { name: "Image options" })).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(alignmentButton);
+    const reopenedAlignmentMenu = await screen.findByRole("menu", { name: "Alignment options" });
+    expect(within(reopenedAlignmentMenu).getByRole("menuitemradio", { name: "Left" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(alignmentButton);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menu", { name: "Alignment options" })).toBeNull();
+      expect(screen.getByRole("dialog", { name: "Image Options" })).toBeInTheDocument();
+    });
+
+    fireEvent.click(alignmentButton);
+    await screen.findByRole("menu", { name: "Alignment options" });
+    fireEvent.pointerDown(panel, { button: 0, clientX: 364, clientY: 100 });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menu", { name: "Alignment options" })).toBeNull();
+      expect(screen.getByRole("dialog", { name: "Image Options" })).toBeInTheDocument();
+    });
+    expect(within(panel).getByLabelText("Alt text")).toHaveValue("Discarded alt");
+    expect(within(panel).getByLabelText("Caption")).toHaveValue("Discarded caption");
+
     fireEvent.keyDown(document, { key: "Escape" });
 
     await waitFor(() => {
@@ -7951,6 +8766,8 @@ describe("PageEditorHostRuntime", () => {
     expect(runtimeSource).toContain("--docsera-table-control-active-icon: var(--docsera-editor-panel);");
     expect(runtimeSource).toContain("--docsera-table-control-active-icon: #ffffff;");
     expect(runtimeSource).toContain("const IMAGE_OPTIONS_PANEL_WIDTH = 372;");
+    expect(runtimeSource).toContain("const IMAGE_RESIZE_HANDLE_WIDTH = 12;");
+    expect(runtimeSource).toContain("const IMAGE_RESIZE_HANDLE_INSET = 6;");
     expect(runtimeSource).toContain("overflow-y: visible;");
     expect(runtimeSource).toContain("border-color: var(--docsera-table-control-primary);");
     expect(runtimeSource).toContain("box-shadow: inset 0 0 0 1.5px var(--docsera-table-control-primary);");
@@ -7979,8 +8796,15 @@ describe("PageEditorHostRuntime", () => {
     expect(imageStylesSource).toContain(".docsera-image-options-panel");
     expect(imageStylesSource).toContain(".docsera-image-options-panel__header-divider");
     expect(imageStylesSource).toContain(".docsera-image-options-panel__button--primary");
+    expect(imageStylesSource).toContain(".docsera-image-alignment-menu {");
+    expect(imageStylesSource).toContain(".docsera-image-alignment-menu--active");
+    expect(imageStylesSource).toContain(".docsera-image-alignment-menu__item {");
+    expect(imageStylesSource).toContain(".docsera-image-alignment-menu__item:hover,");
+    expect(imageStylesSource).toContain(".docsera-image-alignment-menu__item:focus-visible,");
+    expect(imageStylesSource).toContain(".docsera-image-alignment-menu__item--selected");
     expect(imageStylesSource).toContain("[aria-disabled=\"true\"]");
     expect(imageStylesSource).toContain("pointer-events: auto;");
+    expect(imageStylesSource).toContain("pointer-events: auto;\n    display: grid;");
     expect(imageStylesSource).toContain("border-radius: 8px;");
     expect(imageStylesSource).toContain("border-radius: 6px;");
     expect(imageStylesSource).toContain("overflow-y: auto;");
@@ -7997,6 +8821,8 @@ describe("PageEditorHostRuntime", () => {
     expect(imageStylesSource).toContain("background: var(--docsera-surface-muted);");
     expect(imageStylesSource).toContain("cursor: pointer;");
     expect(imageStylesSource).toContain("color: white;");
+    expect(imageStylesSource).toContain(".docsera-image-resize-handle::before {");
+    expect(imageStylesSource).toContain("width: 2px;");
     expect(imageStylesSource).not.toContain("transform: translateY(-1px);");
     expect(runtimeSource).toContain("transform: \"translateX(-100%)\"");
     expect(imageStylesSource).not.toContain("scale(");
