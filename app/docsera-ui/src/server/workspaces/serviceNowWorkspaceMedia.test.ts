@@ -258,6 +258,36 @@ describe("workspace media service", () => {
     expect(harness.dependencies.getAttachmentContentStream).not.toHaveBeenCalled();
   });
 
+  it("denies retrieval before resolving attachment content for users without workspace view access", async () => {
+    const harness = createHarness({
+      capabilities: {
+        canAdminWorkspace: false,
+        canEditWorkspace: false,
+        canViewWorkspace: false
+      },
+      attachments: [
+        createAttachment({
+          mediaId: "media-001",
+          fileName: "diagram.png",
+          contentType: "image/png"
+        })
+      ]
+    });
+
+    const result = await harness.service.getWorkspaceMediaFile({
+      mediaId: "media-001",
+      workspaceSysId: workspace.sysId
+    });
+
+    expect(result).toEqual({
+      kind: "failed",
+      status: 403,
+      errorMessage: "You do not have permission to view media in this workspace."
+    });
+    expect(harness.dependencies.getAttachmentBySysId).not.toHaveBeenCalled();
+    expect(harness.dependencies.getAttachmentContentStream).not.toHaveBeenCalled();
+  });
+
   it("permits view-only users to retrieve a validated workspace media file", async () => {
     const harness = createHarness({
       capabilities: {

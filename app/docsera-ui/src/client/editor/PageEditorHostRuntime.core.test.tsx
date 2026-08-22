@@ -492,6 +492,73 @@ describe("PageEditorHostRuntime", () => {
     revokeObjectUrlSpy.mockRestore();
   });
 
+  it("clears transient image preview state when the editor session changes", async () => {
+    resetDocseraImageDisplayState();
+    const envelope = createResponsiveImageDocseraDocumentEnvelope();
+    const mediaAdapter = createMediaAdapter(async ({ mediaId }) => new Blob([mediaId], { type: "image/png" }));
+    const createObjectUrlSpy = vi.spyOn(URL, "createObjectURL").mockImplementation((blob: Blob | MediaSource) =>
+      blob instanceof Blob && blob.size === "workspace-media-light".length ? "blob:light" : "blob:dark"
+    );
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const runtime = renderRuntime({
+      initialEnvelope: envelope,
+      mediaAdapter,
+      pageSysId: "page-001",
+      sessionKey: "page-001:1"
+    });
+
+    await waitFor(() => {
+      expect(runtime.editorReady[0]).toBeDefined();
+    });
+
+    const imageFigure = await waitFor(() => {
+      const figure = runtime.container.querySelector(".docsera-editor-image") as HTMLElement | null;
+      expect(figure).not.toBeNull();
+      return figure!;
+    });
+    await waitFor(() => {
+      expect(imageFigure.querySelector("img")).toHaveAttribute("src", "blob:light");
+    });
+
+    await act(async () => {
+      setDocseraImagePreviewState({ blockIndex: 0, theme: "dark" });
+    });
+
+    await waitFor(() => {
+      expect(imageFigure).toHaveAttribute("data-docsera-image-preview-theme", "dark");
+      expect(imageFigure.querySelector("img")).toHaveAttribute("src", "blob:dark");
+    });
+
+    runtime.rerender(
+      <PageEditorHostRuntime
+        canEdit={true}
+        initialEnvelope={envelope}
+        initialRevision={0}
+        onAccessLost={runtime.onAccessLost}
+        onEditorReady={vi.fn()}
+        onOutlineChange={runtime.onOutlineChange}
+        onSaveDraft={runtime.onSaveDraft}
+        onStatusChange={runtime.onStatusChange}
+        overlayRoot={runtime.overlayRoot}
+        pageSysId="page-002"
+        sessionKey="page-002:2"
+        theme="light"
+        mediaAdapter={mediaAdapter}
+      />
+    );
+
+    await waitFor(() => {
+      expect(imageFigure).not.toHaveAttribute("data-docsera-image-preview-theme", "dark");
+      expect(imageFigure.querySelector("img")).toHaveAttribute("src", "blob:light");
+    });
+
+    await act(async () => {
+      resetDocseraImageDisplayState();
+    });
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
+  });
+
   it("renders the fullscreen viewer with edit-mode session semantics and restores focus on close", async () => {
     const overlayRoot = document.createElement("div");
     document.body.append(overlayRoot);

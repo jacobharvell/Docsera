@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createCanonicalImageDocseraDocumentEnvelope } from "../../shared/editor/imageFixtures.ts";
 
 type TableRow = {
   sysId: string;
@@ -352,6 +353,48 @@ function createDocumentEnvelope(text: string) {
     schemaVersion: 1,
     document: createDocument(text)
   };
+}
+
+function createImageDocumentEnvelope(
+  attrs: Partial<{
+    align: "left" | "center" | "right";
+    alt: string;
+    caption: string;
+    darkMediaId: string | null;
+    frame: boolean;
+    mediaId: string;
+    widthPct: number;
+  }> & {
+    mediaId: string;
+  }
+) {
+  const envelope = createCanonicalImageDocseraDocumentEnvelope();
+  const imageNode = envelope.document.content?.[0];
+  if (!imageNode || typeof imageNode !== "object" || Array.isArray(imageNode) || (imageNode as { type?: string }).type !== "image") {
+    throw new Error("Expected the canonical image fixture to contain one image node.");
+  }
+
+  (imageNode as {
+    attrs: {
+      align: "left" | "center" | "right";
+      alt: string;
+      caption: string;
+      darkMediaId: string | null;
+      frame: boolean;
+      mediaId: string;
+      widthPct: number;
+    };
+  }).attrs = {
+    align: attrs.align ?? "left",
+    alt: attrs.alt ?? "",
+    caption: attrs.caption ?? "",
+    darkMediaId: attrs.darkMediaId ?? null,
+    frame: attrs.frame ?? true,
+    mediaId: attrs.mediaId,
+    widthPct: attrs.widthPct ?? 100
+  };
+
+  return envelope;
 }
 
 function createSeedPage(overrides: Partial<SeedPage> & Pick<SeedPage, "pageId">): SeedPage {
@@ -716,6 +759,24 @@ function getRows(tableName: string) {
 
 function pageRow(pageId: string) {
   return getRows(pageTable).find((row) => row.sysId === pageId);
+}
+
+function imageNodeAttrs(contentJson: unknown) {
+  const envelope = typeof contentJson === "string" ? JSON.parse(contentJson) : contentJson;
+  if (!envelope || typeof envelope !== "object" || Array.isArray(envelope)) {
+    throw new Error("Expected an image document envelope.");
+  }
+
+  const content = (envelope as { document?: { content?: unknown[] } }).document?.content ?? [];
+  const imageNode = content.find(
+    (node): node is { attrs?: Record<string, unknown>; type?: string } =>
+      Boolean(node && typeof node === "object" && !Array.isArray(node) && (node as { type?: string }).type === "image")
+  );
+  if (!imageNode?.attrs) {
+    throw new Error("Expected the document envelope to contain an image node.");
+  }
+
+  return imageNode.attrs;
 }
 
 function changeSetRow(changeSetId = "change-set-001") {
@@ -2305,6 +2366,155 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     expect(getRows(changeEntryTable).filter((row) => row.fields.change_set === "change-set-001")).toEqual([]);
     expect(getRows(removalBatchTable).filter((row) => row.fields.change_set === "change-set-001")).toEqual([]);
     expect(getRows(removalMemberTable)).toEqual([]);
+  });
+
+  it("preserves canonical image references through draft, publish, discard, and page deletion without copying workspace media", () => {
+    const publishedImageEnvelope = createImageDocumentEnvelope({
+      align: "center",
+      alt: "Published architecture diagram",
+      caption: "Published reader state",
+      darkMediaId: "workspace-media-published-dark",
+      frame: false,
+      mediaId: "workspace-media-published-light",
+      widthPct: 80
+    });
+    const draftImageEnvelope = createImageDocumentEnvelope({
+      align: "right",
+      alt: "Draft architecture diagram",
+      caption: "Draft reader state",
+      darkMediaId: "workspace-media-draft-dark",
+      mediaId: "workspace-media-draft-light",
+      widthPct: 60
+    });
+
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({
+          draftBodyText: "",
+          draftContentJson: publishedImageEnvelope,
+          draftSlug: "overview",
+          draftTitle: "Overview",
+          pageId: "page-001",
+          publishedBodyText: "",
+          publishedContentJson: publishedImageEnvelope,
+          publishedSlug: "overview",
+          publishedTitle: "Overview"
+        }),
+        createSeedPage({
+          draftBodyText: "Sibling body",
+          draftContentJson: createDocument("Sibling body"),
+          draftSlug: "sibling",
+          draftTitle: "Sibling",
+          pageId: "page-002",
+          publishedBodyText: "Sibling body",
+          publishedContentJson: createDocument("Sibling body"),
+          publishedSlug: "sibling",
+          publishedTitle: "Sibling",
+          siblingOrder: "2"
+        })
+      ]
+    });
+    for (const mediaId of [
+      "workspace-media-published-dark",
+      "workspace-media-published-light",
+      "workspace-media-draft-dark",
+      "workspace-media-draft-light"
+    ]) {
+      glideMock.insertRow("sys_attachment", mediaId, {
+        content_type: "image/png",
+        file_name: `${mediaId}.png`,
+        size_bytes: 1024,
+        table_name: workspaceTable,
+        table_sys_id: "workspace-001"
+      });
+    }
+
+    const service = createService();
+    const initialAttachmentIds = getRows("sys_attachment").map((row) => row.sysId);
+    const initialEdit = expectSucceeded(service.listPages(workspaceRef(), "edit"));
+    const initialLive = expectSucceeded(service.listPages(workspaceRef(), "live"));
+
+    expect(imageNodeAttrs(initialEdit.pages.find((page) => page.sysId === "page-001")?.draftContentJson)).toEqual(
+      imageNodeAttrs(publishedImageEnvelope)
+    );
+    expect(imageNodeAttrs(initialLive.pages.find((page) => page.sysId === "page-001")?.draftContentJson)).toEqual(
+      imageNodeAttrs(publishedImageEnvelope)
+    );
+    expect(getRows("sys_attachment").map((row) => row.sysId)).toEqual(initialAttachmentIds);
+
+    const saved = expectSucceeded(service.savePageBody({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      draftContentJson: draftImageEnvelope,
+      expectedRevision: 0,
+      pageSysId: "page-001",
+      workspace: workspaceRef()
+    }));
+
+    expect(JSON.parse(String(pageRow("page-001")?.fields.draft_content_json ?? ""))).toEqual(draftImageEnvelope);
+    expect(JSON.parse(String(pageRow("page-001")?.fields.published_content_json ?? ""))).toEqual(publishedImageEnvelope);
+    expect(getRows("sys_attachment").map((row) => row.sysId)).toEqual(initialAttachmentIds);
+
+    const editAfterSave = expectSucceeded(service.listPages(workspaceRef(), "edit"));
+    const liveAfterSave = expectSucceeded(service.listPages(workspaceRef(), "live"));
+    expect(imageNodeAttrs(editAfterSave.pages.find((page) => page.sysId === "page-001")?.draftContentJson)).toEqual(
+      imageNodeAttrs(draftImageEnvelope)
+    );
+    expect(imageNodeAttrs(liveAfterSave.pages.find((page) => page.sysId === "page-001")?.draftContentJson)).toEqual(
+      imageNodeAttrs(publishedImageEnvelope)
+    );
+
+    const published = expectSucceeded(service.publishWorkspace({
+      authority: saved.authority,
+      commandId: "publish-image-001",
+      workspace: workspaceRef()
+    }));
+
+    expect(getRows("sys_attachment").map((row) => row.sysId)).toEqual(initialAttachmentIds);
+    expect(JSON.parse(String(pageRow("page-001")?.fields.published_content_json ?? ""))).toEqual(draftImageEnvelope);
+
+    const liveAfterPublish = expectSucceeded(service.listPages(currentWorkspaceRef(), "live"));
+    expect(imageNodeAttrs(liveAfterPublish.pages.find((page) => page.sysId === "page-001")?.draftContentJson)).toEqual(
+      imageNodeAttrs(draftImageEnvelope)
+    );
+
+    const currentDraftRevision = Number(pageRow("page-001")?.fields.draft_revision ?? 0);
+    const removed = expectSucceeded(service.savePageBody({
+      authority: published.authority,
+      draftContentJson: createDocument("Image removed"),
+      expectedRevision: currentDraftRevision,
+      pageSysId: "page-001",
+      workspace: currentWorkspaceRef()
+    }));
+
+    const discarded = service.discardPage({
+      authority: removed.authority,
+      pageSysId: "page-001",
+      workspace: currentWorkspaceRef()
+    });
+
+    if (discarded.kind !== "succeeded") {
+      throw new Error(`expected discard page success: ${discarded.errorMessage}`);
+    }
+
+    expect(imageNodeAttrs(discarded.result.pages.find((page) => page.sysId === "page-001")?.draftContentJson)).toEqual(
+      imageNodeAttrs(draftImageEnvelope)
+    );
+    expect(getRows("sys_attachment").map((row) => row.sysId)).toEqual(initialAttachmentIds);
+
+    const deleted = expectSucceeded(service.deletePage({
+      authority: discarded.authority,
+      pageSysId: "page-001",
+      workspace: currentWorkspaceRef()
+    }));
+
+    expect(deleted.result.deletedPageSysId).toBe("page-001");
+    expect(pendingRows(service, currentWorkspaceRef())).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        category: "Removed",
+        pageSysId: "page-001"
+      })
+    ]));
+    expect(getRows("sys_attachment").map((row) => row.sysId)).toEqual(initialAttachmentIds);
   });
 
   it("rejects discard-all when there are no pending workspace changes", () => {
