@@ -2644,7 +2644,7 @@ describe("PageEditorHostRuntime", () => {
     geometrySpy.mockRestore();
   });
 
-  it("applies left, center, and right image alignment through the compact menu", async () => {
+  it("applies left, center, and right image alignment through the standard alignment menu", async () => {
     const mediaAdapter: EditorMediaAdapter = {
       list: vi.fn(async () => []),
       load: vi.fn(async ({ mediaId }) => (mediaId === "workspace-media-base" ? createMediaBlob(mediaId) : null)),
@@ -3350,7 +3350,7 @@ describe("PageEditorHostRuntime", () => {
     geometrySpy.mockRestore();
   });
 
-  it("keeps staged image options open while alignment is dismissed, lets the trigger toggle normally, and closes the panel on a second Escape", async () => {
+  it("keeps staged image options open while the standard alignment menu is dismissed, lets the trigger toggle normally, and closes the panel on a second Escape", async () => {
     const mediaAdapter: EditorMediaAdapter = {
       list: vi.fn(async () => [
         {

@@ -94,12 +94,17 @@ test("keeps the publish success toast as a layered header card with viewport-saf
 test("keeps modal surfaces above the Changes Center portal and the Changes Center portal above table overlays", () => {
   const shellCss = readFileSync("src/client/styles/runtime-shell.css", "utf8");
   const tableOverlaySource = readFileSync("src/client/editor/TableControlsOverlay.tsx", "utf8");
+  const fullscreenViewerStyles = readFileSync("src/client/shared/media/ImageFullscreenViewerStyles.ts", "utf8");
 
   expect(shellCss).toMatch(/\.docsera-modal\s*{[^}]*z-index:\s*150;/s);
   expect(shellCss).toMatch(/\.docsera-changes-center--portal\s*{[^}]*z-index:\s*140;/s);
+  expect(shellCss).toMatch(/\.docsera-main__media-surface\s*{[^}]*border-radius:\s*0;[^}]*overflow:\s*hidden;/s);
+  expect(shellCss).not.toMatch(/\.docsera-main__media-activation\s*{[^}]*all:\s*unset;/s);
   expect(shellCss).toContain(".docsera-modal__panel {");
   expect(tableOverlaySource).toContain("const TABLE_CONTROL_OVERLAY_Z_INDEX = 126;");
   expect(tableOverlaySource).toContain("const TABLE_CONTROL_MENU_Z_INDEX = 130;");
+  expect(fullscreenViewerStyles).toContain(".docsera-image-viewer {");
+  expect(fullscreenViewerStyles).toMatch(/\.docsera-image-viewer\s*{[^}]*z-index:\s*160;/s);
 });
 
 test("keeps reader table styling aligned to the E5 Legacy geometry without advanced-control spacing", () => {

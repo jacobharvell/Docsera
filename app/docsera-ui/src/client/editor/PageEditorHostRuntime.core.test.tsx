@@ -2,11 +2,25 @@
 
 import "@testing-library/jest-dom/vitest";
 import { useMemo, useState } from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { PageBodySaveResult } from "../shared/types/docsera";
 import { describe, expect, it, vi } from "vitest";
 import { createEmptyDocseraDocumentEnvelope, type DocseraDocumentEnvelope } from "../../shared/editor/document";
 import { createExpandedTextFormattingDocseraDocumentEnvelope, createSupportedE2DocseraDocumentEnvelope } from "../../shared/editor/documentFixtures";
+import {
+  createCanonicalImageDocseraDocumentEnvelope,
+  createResponsiveImageDocseraDocumentEnvelope
+} from "../../shared/editor/imageFixtures";
+import {
+  createImageFullscreenViewerSession,
+  ImageFullscreenViewer,
+  type ImageFullscreenViewerSession
+} from "../shared/media/ImageFullscreenViewer";
+import {
+  resetDocseraImageDisplayState,
+  setDocseraImagePreviewState
+} from "../shared/editor/imageDisplayState";
+import type { EditorMediaAdapter } from "./contracts";
 import { getAutosaveRetryDelay, PageEditorHostRuntime } from "./PageEditorHostRuntime";
 import {
   createEnvelopeFromDocument,
@@ -15,6 +29,64 @@ import {
   renderRuntime,
   runAutosave
 } from "./PageEditorHostRuntime.testUtils";
+
+if (typeof URL.createObjectURL !== "function") {
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: () => "blob:test"
+  });
+}
+
+if (typeof URL.revokeObjectURL !== "function") {
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: () => undefined
+  });
+}
+
+function createMediaAdapter(load: EditorMediaAdapter["load"]): EditorMediaAdapter {
+  return {
+    list: vi.fn(async () => []),
+    load,
+    upload: vi.fn(async (input: Parameters<EditorMediaAdapter["upload"]>[0]) => ({
+      contentType: input.file.type,
+      fileName: input.file.name,
+      mediaId: `media-${input.file.name}`,
+      sizeBytes: input.file.size
+    }))
+  };
+}
+
+function FullscreenViewerHarness({
+  initialSession,
+  onRequestClose,
+  overlayRoot,
+  theme = "light"
+}: {
+  initialSession: ImageFullscreenViewerSession;
+  onRequestClose?: () => void;
+  overlayRoot: HTMLElement;
+  theme?: "dark" | "light";
+}) {
+  const [session, setSession] = useState<ImageFullscreenViewerSession | null>(initialSession);
+  const [isOpen, setIsOpen] = useState(true);
+
+  return session ? (
+    <ImageFullscreenViewer
+      overlayRoot={overlayRoot}
+      isOpen={isOpen}
+      onDismissed={() => {
+        setSession(null);
+      }}
+      onRequestClose={() => {
+        setIsOpen(false);
+        onRequestClose?.();
+      }}
+      session={session}
+      theme={theme}
+    />
+  ) : null;
+}
 
 function SaveAcknowledgeHarness(input: {
   initialEnvelope: DocseraDocumentEnvelope;
@@ -165,10 +237,16 @@ describe("PageEditorHostRuntime", () => {
       "utf8"
     );
 
+    expect(runtimeSource).toContain('import { COMPACT_MENU_STYLES } from "./CompactMenuStyles";');
     expect(runtimeSource).toContain('import { EDITOR_IMAGE_STYLES } from "./EditorImageStyles";');
+    expect(runtimeSource).toContain('ImageFullscreenViewer');
     expect(runtimeSource).toContain("${EDITOR_IMAGE_STYLES}");
+    expect(runtimeSource).toContain("${COMPACT_MENU_STYLES}");
     expect(editorImageStylesSource).toContain(".docsera-editor-image {");
     expect(editorImageStylesSource).toContain("margin: 0;");
+    expect(editorImageStylesSource).toContain(".docsera-editor-image__surface {");
+    expect(editorImageStylesSource).toContain("border-radius: 0;");
+    expect(editorImageStylesSource).toContain(".docsera-editor-image__caption {");
     expect(editorImageStylesSource).toContain(".docsera-editor-image__loading,");
     expect(editorImageStylesSource).toContain(".docsera-editor-image__unavailable");
     expect(imagePickerStylesSource).toContain(".docsera-modal__surface.docsera-image-picker {");
@@ -236,6 +314,8 @@ describe("PageEditorHostRuntime", () => {
     expect(editorImageNodeSource).toContain('aria-label", "Loading image"');
     expect(editorImageNodeSource).not.toContain("The image is being loaded through the authenticated media boundary.");
     expect(publishedReaderSource).toContain('aria-label="Loading image"');
+    expect(publishedReaderSource).toContain("docsera-main__media-surface");
+    expect(publishedReaderSource).toContain("docsera-main__media-activation");
     expect(publishedReaderSource).not.toContain("The image is being loaded through the authenticated media boundary.");
   });
 
@@ -324,6 +404,343 @@ describe("PageEditorHostRuntime", () => {
 
     expect(screen.queryByRole("button", { name: /Save draft/i })).not.toBeInTheDocument();
     expect(onSaveDraft).not.toHaveBeenCalled();
+  });
+
+  it("keeps image preview changes transient and uses the configured dark image when previewed", async () => {
+    resetDocseraImageDisplayState();
+    const envelope = createResponsiveImageDocseraDocumentEnvelope();
+    const createObjectUrlSpy = vi
+      .spyOn(URL, "createObjectURL")
+      .mockImplementation((blob: Blob | MediaSource) =>
+        blob instanceof Blob && blob.size === "workspace-media-light".length ? "blob:light" : "blob:dark"
+      );
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const { container, editorReady, onSaveDraft } = renderRuntime({
+      initialEnvelope: envelope,
+      mediaAdapter: createMediaAdapter(async ({ mediaId }) => new Blob([mediaId], { type: "image/png" }))
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const imageFigure = await waitFor(() => {
+      const figure = container.querySelector(".docsera-editor-image") as HTMLElement | null;
+      expect(figure).not.toBeNull();
+      return figure!;
+    });
+    await waitFor(() => {
+      expect(imageFigure.querySelector("img")).toHaveAttribute("src", "blob:light");
+    });
+
+    await act(async () => {
+      setDocseraImagePreviewState({ blockIndex: 0, theme: "dark" });
+    });
+
+    await waitFor(() => {
+      expect(imageFigure).toHaveAttribute("data-docsera-image-preview-theme", "dark");
+      expect(imageFigure.querySelector("img")).toHaveAttribute("src", "blob:dark");
+    });
+
+    expect(editorReady[0].getJSON()).toEqual(envelope.document);
+    expect(onSaveDraft).not.toHaveBeenCalled();
+    await act(async () => {
+      resetDocseraImageDisplayState();
+    });
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
+  });
+
+  it("falls back to the light image when previewing dark mode without a dark asset", async () => {
+    resetDocseraImageDisplayState();
+    const envelope = createCanonicalImageDocseraDocumentEnvelope();
+    const createObjectUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:light");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const { container, editorReady, onSaveDraft } = renderRuntime({
+      initialEnvelope: envelope,
+      mediaAdapter: createMediaAdapter(async ({ mediaId }) => new Blob([mediaId], { type: "image/png" }))
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const imageFigure = await waitFor(() => {
+      const figure = container.querySelector(".docsera-editor-image") as HTMLElement | null;
+      expect(figure).not.toBeNull();
+      return figure!;
+    });
+    await waitFor(() => {
+      expect(imageFigure.querySelector("img")).toHaveAttribute("src", "blob:light");
+    });
+
+    await act(async () => {
+      setDocseraImagePreviewState({ blockIndex: 0, theme: "dark" });
+    });
+
+    await waitFor(() => {
+      expect(imageFigure).toHaveAttribute("data-docsera-image-preview-theme", "dark");
+      expect(imageFigure.querySelector("img")).toHaveAttribute("src", "blob:light");
+    });
+
+    expect(editorReady[0].getJSON()).toEqual(envelope.document);
+    expect(onSaveDraft).not.toHaveBeenCalled();
+    await act(async () => {
+      resetDocseraImageDisplayState();
+    });
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
+  });
+
+  it("renders the fullscreen viewer with edit-mode session semantics and restores focus on close", async () => {
+    const overlayRoot = document.createElement("div");
+    document.body.append(overlayRoot);
+    const restoreButton = document.createElement("button");
+    restoreButton.type = "button";
+    restoreButton.textContent = "Restore focus";
+    document.body.append(restoreButton);
+    const sourceElement = document.createElement("div");
+    Object.defineProperty(sourceElement, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(120, 100, 320, 180)
+    });
+    const imageElement = document.createElement("img");
+    Object.defineProperty(imageElement, "src", {
+      configurable: true,
+      value: "blob:viewer"
+    });
+    Object.defineProperty(imageElement, "currentSrc", {
+      configurable: true,
+      value: "blob:viewer"
+    });
+    Object.defineProperty(imageElement, "naturalWidth", {
+      configurable: true,
+      value: 1920
+    });
+    Object.defineProperty(imageElement, "naturalHeight", {
+      configurable: true,
+      value: 1080
+    });
+    const session = createImageFullscreenViewerSession({
+      alt: "Architecture diagram",
+      imageElement,
+      restoreFocusElement: restoreButton,
+      sourceElement
+    });
+
+    render(
+      <FullscreenViewerHarness initialSession={session} overlayRoot={overlayRoot} />
+    );
+
+    const dialog = await waitFor(() => within(overlayRoot).getByRole("dialog", { name: "Image viewer" }));
+    expect(dialog).toBeInTheDocument();
+
+    const backdrop = overlayRoot.querySelector(".docsera-image-viewer__backdrop") as HTMLButtonElement | null;
+    expect(backdrop).not.toBeNull();
+    fireEvent.click(backdrop!);
+
+    await waitFor(() => {
+      expect(overlayRoot.querySelector(".docsera-image-viewer--closing")).not.toBeNull();
+    });
+
+    const viewerSurface = overlayRoot.querySelector(".docsera-image-viewer__surface") as HTMLElement | null;
+    expect(viewerSurface).not.toBeNull();
+    fireEvent.transitionEnd(viewerSurface!);
+
+    await waitFor(() => {
+      expect(within(overlayRoot).queryByRole("dialog", { name: "Image viewer" })).not.toBeInTheDocument();
+      expect(restoreButton).toHaveFocus();
+    });
+
+    overlayRoot.remove();
+    restoreButton.remove();
+  });
+
+  it("locks viewport scrolling while the fullscreen viewer is open and restores the prior scroll position on close", async () => {
+    const overlayRoot = document.createElement("div");
+    document.body.append(overlayRoot);
+    const restoreButton = document.createElement("button");
+    restoreButton.type = "button";
+    restoreButton.textContent = "Restore focus";
+    document.body.append(restoreButton);
+    const sourceElement = document.createElement("div");
+    Object.defineProperty(sourceElement, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(120, 100, 320, 180)
+    });
+    const imageElement = document.createElement("img");
+    Object.defineProperty(imageElement, "src", {
+      configurable: true,
+      value: "blob:viewer"
+    });
+    Object.defineProperty(imageElement, "currentSrc", {
+      configurable: true,
+      value: "blob:viewer"
+    });
+    Object.defineProperty(imageElement, "naturalWidth", {
+      configurable: true,
+      value: 1920
+    });
+    Object.defineProperty(imageElement, "naturalHeight", {
+      configurable: true,
+      value: 1080
+    });
+    const originalScrollX = Object.getOwnPropertyDescriptor(window, "scrollX");
+    const originalScrollY = Object.getOwnPropertyDescriptor(window, "scrollY");
+    const scrollToSpy = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined);
+    Object.defineProperty(window, "scrollX", {
+      configurable: true,
+      value: 72
+    });
+    Object.defineProperty(window, "scrollY", {
+      configurable: true,
+      value: 144
+    });
+
+    try {
+      const session = createImageFullscreenViewerSession({
+        alt: "Architecture diagram",
+        imageElement,
+        restoreFocusElement: restoreButton,
+        sourceElement
+      });
+
+      render(
+        <FullscreenViewerHarness initialSession={session} overlayRoot={overlayRoot} />
+      );
+
+      const dialog = await waitFor(() => within(overlayRoot).getByRole("dialog", { name: "Image viewer" }));
+      expect(dialog).toBeInTheDocument();
+      expect(document.documentElement.style.overflow).toBe("hidden");
+      expect(document.body.style.overflow).toBe("hidden");
+
+      const wheelEvent = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 120 });
+      dialog.dispatchEvent(wheelEvent);
+      expect(wheelEvent.defaultPrevented).toBe(true);
+
+      const touchEvent = new Event("touchmove", { bubbles: true, cancelable: true });
+      dialog.dispatchEvent(touchEvent);
+      expect(touchEvent.defaultPrevented).toBe(true);
+
+      const keyEvent = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "PageDown" });
+      dialog.dispatchEvent(keyEvent);
+      expect(keyEvent.defaultPrevented).toBe(true);
+
+      const backdrop = overlayRoot.querySelector(".docsera-image-viewer__backdrop") as HTMLButtonElement | null;
+      expect(backdrop).not.toBeNull();
+      fireEvent.click(backdrop!);
+
+      await waitFor(() => {
+        expect(overlayRoot.querySelector(".docsera-image-viewer--closing")).not.toBeNull();
+      });
+
+      const viewerSurface = overlayRoot.querySelector(".docsera-image-viewer__surface") as HTMLElement | null;
+      expect(viewerSurface).not.toBeNull();
+      fireEvent.transitionEnd(viewerSurface!);
+
+      await waitFor(() => {
+        expect(within(overlayRoot).queryByRole("dialog", { name: "Image viewer" })).not.toBeInTheDocument();
+        expect(restoreButton).toHaveFocus();
+      });
+
+      expect(scrollToSpy).toHaveBeenCalledWith(72, 144);
+      expect(document.documentElement.style.overflow).toBe("");
+      expect(document.body.style.overflow).toBe("");
+    } finally {
+      scrollToSpy.mockRestore();
+      if (originalScrollX) {
+        Object.defineProperty(window, "scrollX", originalScrollX);
+      } else {
+        Reflect.deleteProperty(window, "scrollX");
+      }
+      if (originalScrollY) {
+        Object.defineProperty(window, "scrollY", originalScrollY);
+      } else {
+        Reflect.deleteProperty(window, "scrollY");
+      }
+      overlayRoot.remove();
+      restoreButton.remove();
+    }
+  });
+
+  it("keeps the fullscreen close button available to Space and Enter while Escape still dismisses the viewer", async () => {
+    const overlayRoot = document.createElement("div");
+    document.body.append(overlayRoot);
+    const restoreButton = document.createElement("button");
+    restoreButton.type = "button";
+    restoreButton.textContent = "Restore focus";
+    document.body.append(restoreButton);
+    const sourceElement = document.createElement("div");
+    Object.defineProperty(sourceElement, "getBoundingClientRect", {
+      configurable: true,
+      value: () => new DOMRect(120, 100, 320, 180)
+    });
+    const imageElement = document.createElement("img");
+    Object.defineProperty(imageElement, "src", {
+      configurable: true,
+      value: "blob:viewer"
+    });
+    Object.defineProperty(imageElement, "currentSrc", {
+      configurable: true,
+      value: "blob:viewer"
+    });
+    Object.defineProperty(imageElement, "naturalWidth", {
+      configurable: true,
+      value: 1920
+    });
+    Object.defineProperty(imageElement, "naturalHeight", {
+      configurable: true,
+      value: 1080
+    });
+
+    try {
+      const session = createImageFullscreenViewerSession({
+        alt: "Architecture diagram",
+        imageElement,
+        restoreFocusElement: restoreButton,
+        sourceElement
+      });
+
+      render(
+        <FullscreenViewerHarness initialSession={session} overlayRoot={overlayRoot} />
+      );
+
+      const dialog = await waitFor(() => overlayRoot.querySelector(".docsera-image-viewer"));
+      expect(dialog).toBeInstanceOf(HTMLElement);
+      if (!(dialog instanceof HTMLElement)) {
+        throw new Error("Expected the fullscreen viewer dialog to render.");
+      }
+      const closeButton = overlayRoot.querySelector(".docsera-image-viewer__close");
+      expect(closeButton).toBeInstanceOf(HTMLButtonElement);
+      if (!(closeButton instanceof HTMLButtonElement)) {
+        throw new Error("Expected the fullscreen close button to render.");
+      }
+
+      const spaceEvent = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: " " });
+      closeButton.dispatchEvent(spaceEvent);
+      expect(spaceEvent.defaultPrevented).toBe(false);
+
+      const enterEvent = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, key: "Enter" });
+      closeButton.dispatchEvent(enterEvent);
+      expect(enterEvent.defaultPrevented).toBe(false);
+
+      fireEvent.keyDown(dialog, { key: "Escape" });
+      await waitFor(() => {
+        expect(overlayRoot.querySelector(".docsera-image-viewer--closing")).not.toBeNull();
+      });
+
+      const viewerSurface = overlayRoot.querySelector(".docsera-image-viewer__surface") as HTMLElement | null;
+      expect(viewerSurface).not.toBeNull();
+      fireEvent.transitionEnd(viewerSurface!);
+
+      await waitFor(() => {
+        expect(within(overlayRoot).queryByRole("dialog", { name: "Image viewer" })).not.toBeInTheDocument();
+        expect(restoreButton).toHaveFocus();
+      });
+    } finally {
+      overlayRoot.remove();
+      restoreButton.remove();
+    }
   });
 
   it("rejects an invalid initial envelope before editor mount", () => {

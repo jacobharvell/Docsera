@@ -1,5 +1,5 @@
-import { Component, Fragment, type CSSProperties, type ReactNode } from "react";
-import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
+import { Component, Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { type DocseraDocumentEnvelope } from "../../../shared/editor/document";
 import { canonicalizeDocseraImageAttrs, type DocseraImageAttrs } from "../../../shared/editor/imageContract";
 import {
   createCanonicalHeadingAnchorResolver,
@@ -7,6 +7,7 @@ import {
   extractCanonicalInlineText
 } from "../../../shared/editor/headingAnchors";
 import { useWorkspaceMediaObjectUrl } from "../../shared/media/useWorkspaceMediaObjectUrl";
+import { ImageFullscreenViewer, createImageFullscreenViewerSession, type ImageFullscreenViewerSession } from "../../shared/media/ImageFullscreenViewer";
 import {
   isDocseraAllowedLinkHref,
   validateDocseraStructuredDocument
@@ -16,6 +17,7 @@ import type { WorkspaceMediaLoader } from "../../shared/types/docsera";
 type PublishedDocumentReaderProps = {
   envelope: DocseraDocumentEnvelope;
   loadMedia?: WorkspaceMediaLoader;
+  pageIdentity?: string;
   theme?: "dark" | "light";
 };
 
@@ -30,6 +32,12 @@ type ReaderBoundaryState = {
 type ReaderContext = {
   resolveHeadingAnchor: (headingText: string) => string;
   loadMedia?: WorkspaceMediaLoader;
+  openImageFullscreen: (input: {
+    alt: string;
+    imageElement: HTMLImageElement;
+    restoreFocusElement: HTMLElement | null;
+    sourceElement: HTMLElement;
+  }) => void;
   theme: "dark" | "light";
 };
 
@@ -91,6 +99,9 @@ function getImageNodeAttrs(node: Record<string, unknown>): DocseraImageAttrs {
 function getImageFigureStyle(attrs: DocseraImageAttrs): CSSProperties {
   if (attrs.align === "center") {
     return {
+      display: "grid",
+      gap: "12px",
+      margin: 0,
       width: `${attrs.widthPct}%`,
       marginInlineStart: "auto",
       marginInlineEnd: "auto"
@@ -98,6 +109,9 @@ function getImageFigureStyle(attrs: DocseraImageAttrs): CSSProperties {
   }
 
   return {
+    display: "grid",
+    gap: "12px",
+    margin: 0,
     width: `${attrs.widthPct}%`,
     marginInlineStart: attrs.align === "right" ? "auto" : undefined,
     marginInlineEnd: attrs.align === "left" ? "auto" : undefined
@@ -161,20 +175,33 @@ function renderImageLoading(path: string, attrs: DocseraImageAttrs): ReactNode {
 
 function PublishedDocumentReaderImage({
   attrs,
+  onOpenFullscreen,
   loadMedia,
   path,
   mediaId
 }: {
   attrs: DocseraImageAttrs;
+  onOpenFullscreen: ReaderContext["openImageFullscreen"];
   loadMedia?: WorkspaceMediaLoader;
   path: string;
   mediaId: string;
 }) {
+  const surfaceRef = useRef<HTMLButtonElement | null>(null);
   const mediaState = useWorkspaceMediaObjectUrl({
     loadMedia,
     mediaId,
     invalidateKey: path
   });
+  const surfaceStyle: CSSProperties = attrs.frame
+    ? {
+        borderColor: "var(--docsera-border)",
+        borderStyle: "solid",
+        borderWidth: "1px"
+      }
+    : {
+        borderStyle: "none",
+        borderWidth: "0"
+      };
 
   if (mediaState.status === "loading") {
     return renderImageLoading(path, attrs);
@@ -183,6 +210,25 @@ function PublishedDocumentReaderImage({
   if (mediaState.status !== "ready" || !mediaState.objectUrl) {
     return renderImageUnavailable(path, attrs);
   }
+
+  const handleOpenFullscreen = () => {
+    const surfaceElement = surfaceRef.current;
+    if (!(surfaceElement instanceof HTMLElement)) {
+      return;
+    }
+
+    const imageElement = surfaceElement.querySelector("img");
+    if (!(imageElement instanceof HTMLImageElement)) {
+      return;
+    }
+
+    onOpenFullscreen({
+      alt: attrs.alt,
+      imageElement,
+      restoreFocusElement: surfaceElement,
+      sourceElement: surfaceElement
+    });
+  };
 
   return (
     <figure
@@ -193,7 +239,21 @@ function PublishedDocumentReaderImage({
       data-docsera-image-width-pct={String(attrs.widthPct)}
       style={getImageFigureStyle(attrs)}
     >
-      <img className="docsera-main__media-image" src={mediaState.objectUrl} alt={attrs.alt} />
+      <button
+        ref={surfaceRef}
+        type="button"
+        className={`docsera-main__media-surface docsera-main__media-activation${attrs.frame ? " docsera-main__media-surface--framed" : " docsera-main__media-surface--plain"}`}
+        data-docsera-image-surface="true"
+        data-docsera-image-frame={attrs.frame ? "true" : "false"}
+        style={surfaceStyle}
+        onMouseDown={(event) => {
+          event.preventDefault();
+        }}
+        onClick={handleOpenFullscreen}
+        aria-label={attrs.alt ? `Open fullscreen viewer for ${attrs.alt}` : "Open fullscreen viewer"}
+      >
+        <img className="docsera-main__media-image" src={mediaState.objectUrl} alt={attrs.alt} />
+      </button>
       {attrs.caption ? <figcaption className="docsera-main__media-caption">{attrs.caption}</figcaption> : null}
     </figure>
   );
@@ -203,7 +263,16 @@ function renderImage(node: Record<string, unknown>, path: string, context: Reade
   const attrs = getImageNodeAttrs(node);
   const resolvedMediaId =
     context.theme === "dark" && attrs.darkMediaId !== null ? attrs.darkMediaId : attrs.mediaId;
-  return <PublishedDocumentReaderImage key={path} attrs={attrs} loadMedia={context.loadMedia} mediaId={resolvedMediaId} path={path} />;
+  return (
+    <PublishedDocumentReaderImage
+      key={path}
+      attrs={attrs}
+      loadMedia={context.loadMedia}
+      mediaId={resolvedMediaId}
+      onOpenFullscreen={context.openImageFullscreen}
+      path={path}
+    />
+  );
 }
 
 function getReaderHeadingTag(level: 1 | 2 | 3): "h2" | "h3" | "h4" {
@@ -564,8 +633,41 @@ function renderBlockNode(node: unknown, path: string, context: ReaderContext): R
 function PublishedDocumentReaderContent({
   envelope,
   loadMedia,
+  pageIdentity,
   theme = "light"
 }: PublishedDocumentReaderProps) {
+  const [imageFullscreenSession, setImageFullscreenSession] = useState<ImageFullscreenViewerSession | null>(null);
+  const [imageFullscreenOpen, setImageFullscreenOpen] = useState(false);
+  const pageIdentityKey = typeof pageIdentity === "string" ? pageIdentity.trim() : "";
+  const documentKey = useMemo(() => {
+    if (!envelope || typeof envelope !== "object" || !envelope.document || typeof envelope.document !== "object") {
+      return "";
+    }
+
+    try {
+      return JSON.stringify(envelope.document);
+    } catch {
+      return "";
+    }
+  }, [envelope]);
+  const openImageFullscreen = useCallback<ReaderContext["openImageFullscreen"]>((input) => {
+    setImageFullscreenOpen(true);
+    setImageFullscreenSession(createImageFullscreenViewerSession(input));
+  }, []);
+  const overlayRoot = typeof document !== "undefined" ? document.body : null;
+
+  useEffect(() => {
+    setImageFullscreenOpen(false);
+    setImageFullscreenSession(null);
+  }, [documentKey, pageIdentityKey]);
+
+  useEffect(() => {
+    return () => {
+      setImageFullscreenOpen(false);
+      setImageFullscreenSession(null);
+    };
+  }, []);
+
   if (!envelope || typeof envelope !== "object" || !envelope.document || typeof envelope.document !== "object") {
     return <PublishedDocumentReaderUnavailable />;
   }
@@ -582,13 +684,30 @@ function PublishedDocumentReaderContent({
   const context: ReaderContext = {
     resolveHeadingAnchor: createCanonicalHeadingAnchorResolver(),
     loadMedia,
+    openImageFullscreen,
     theme
   };
 
   return (
-    <div className="docsera-main__reader" aria-label="Published page content">
-      {envelope.document.content.map((node, index) => renderBlockNode(node, `reader-${index}`, context))}
-    </div>
+    <>
+      <div className="docsera-main__reader" aria-label="Published page content">
+        {envelope.document.content.map((node, index) => renderBlockNode(node, `reader-${index}`, context))}
+      </div>
+      {overlayRoot && imageFullscreenSession ? (
+        <ImageFullscreenViewer
+          overlayRoot={overlayRoot}
+          isOpen={imageFullscreenOpen}
+          onDismissed={() => {
+            setImageFullscreenSession(null);
+          }}
+          onRequestClose={() => {
+            setImageFullscreenOpen(false);
+          }}
+          session={imageFullscreenSession}
+          theme={theme}
+        />
+      ) : null}
+    </>
   );
 }
 

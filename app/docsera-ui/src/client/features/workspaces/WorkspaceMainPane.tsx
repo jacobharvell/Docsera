@@ -244,6 +244,7 @@ export function WorkspaceMainPane({
             <PublishedDocumentReader
               envelope={page.contentEnvelope}
               loadMedia={loadMedia}
+              pageIdentity={page.sysId}
               theme={theme}
             />
           ) : (

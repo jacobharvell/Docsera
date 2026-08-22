@@ -6,7 +6,7 @@ import {
 } from "../../../shared/editor/imageFixtures";
 
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { PublishedDocumentReader } from "./PublishedDocumentReader";
 import { buildWorkspacePageView } from "./workspaceViewModels";
@@ -66,6 +66,7 @@ function renderReader(
   envelope: DocseraDocumentEnvelope,
   options: {
     loadMedia?: WorkspaceMediaLoader;
+    pageIdentity?: string;
     theme?: "dark" | "light";
   } = {}
 ) {
@@ -73,6 +74,7 @@ function renderReader(
     <PublishedDocumentReader
       envelope={envelope}
       loadMedia={options.loadMedia}
+      pageIdentity={options.pageIdentity}
       theme={options.theme}
     />
   );
@@ -190,6 +192,15 @@ describe("PublishedDocumentReader", () => {
     await waitFor(() => {
       expect(within(reader).getByRole("img", { name: "Architecture diagram" })).toHaveAttribute("src", "blob:reader");
     });
+    const figure = reader.querySelector(".docsera-main__media");
+    expect(figure).not.toBeNull();
+    expect(figure).toHaveAttribute("data-docsera-image-frame", "false");
+    const surface = figure?.querySelector(".docsera-main__media-surface");
+    expect(surface).toHaveAttribute("data-docsera-image-surface", "true");
+    expect(surface).toHaveAttribute("data-docsera-image-frame", "false");
+    expect(surface).toHaveClass("docsera-main__media-surface", "docsera-main__media-activation");
+    expect(surface?.querySelector("img")).toHaveAttribute("src", "blob:reader");
+    expect(within(reader).getByText("Published in both light and dark modes")).toHaveClass("docsera-main__media-caption");
     expect(within(reader).getByText("Published in both light and dark modes")).toBeInTheDocument();
     createObjectUrlSpy.mockRestore();
     revokeObjectUrlSpy.mockRestore();
@@ -217,6 +228,9 @@ describe("PublishedDocumentReader", () => {
     });
 
     const reader = screen.getByLabelText("Published page content");
+    await waitFor(() => {
+      expect(within(reader).getByRole("img", { name: "Right aligned diagram" })).toHaveAttribute("src", "blob:right-align");
+    });
     const figure = reader.querySelector(".docsera-main__media");
 
     expect(figure).toHaveClass("docsera-main__media--framed", "docsera-main__media--align-right");
@@ -224,9 +238,139 @@ describe("PublishedDocumentReader", () => {
     expect(figure).toHaveAttribute("data-docsera-image-frame", "true");
     expect(figure).toHaveAttribute("data-docsera-image-width-pct", "72");
     expect(figure).toHaveStyle({ width: "72%" });
+    const surface = figure?.querySelector(".docsera-main__media-surface");
+    expect(surface).toHaveClass("docsera-main__media-activation", "docsera-main__media-surface--framed");
+    expect(getComputedStyle(surface as HTMLElement).borderTopWidth).toBe("1px");
+    expect(getComputedStyle(surface as HTMLElement).borderTopStyle).toBe("solid");
+    expect(figure).toHaveStyle({ display: "grid", gap: "12px" });
+
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
+  });
+
+  it("closes an open fullscreen viewer when the published envelope changes", async () => {
+    const envelope = createResponsiveImageDocseraDocumentEnvelope();
+    const nextEnvelope = createResponsiveImageDocseraDocumentEnvelope();
+    const nextImageNode = nextEnvelope.document.content?.[0] as
+      | { attrs?: { alt?: string }; type?: string }
+      | undefined;
+    if (!nextImageNode || nextImageNode.type !== "image") {
+      throw new Error("Expected the alternate envelope to contain an image node.");
+    }
+
+    const nextAttrs = nextImageNode.attrs;
+    if (nextAttrs) {
+      nextAttrs.alt = "Updated architecture diagram";
+    }
+
+    const createObjectUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:reader");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const loadMedia = vi.fn(async ({ mediaId }: WorkspaceMediaLoadInput) => (mediaId === "workspace-media-dark" ? createMediaBlob(mediaId) : null));
+
+    const renderResult = renderReader(envelope, {
+      loadMedia,
+      theme: "dark"
+    });
+
+    const reader = screen.getByLabelText("Published page content");
+    const imageButton = await waitFor(() => within(reader).getByRole("button", { name: "Open fullscreen viewer for Architecture diagram" }));
+    await waitFor(() => {
+      expect(within(reader).getByRole("img", { name: "Architecture diagram" })).toHaveAttribute("src", "blob:reader");
+    });
+
+    fireEvent.click(imageButton);
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Image viewer" })).toBeInTheDocument();
+    });
+
+    renderResult.rerender(
+      <PublishedDocumentReader
+        envelope={nextEnvelope}
+        loadMedia={loadMedia}
+        theme="dark"
+      />
+    );
 
     await waitFor(() => {
-      expect(within(reader).getByRole("img", { name: "Right aligned diagram" })).toHaveAttribute("src", "blob:right-align");
+      expect(screen.queryByRole("dialog", { name: "Image viewer" })).toBeNull();
+    });
+
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
+  });
+
+  it("closes an open fullscreen viewer when the reader navigates to a different page identity with identical JSON", async () => {
+    const envelope = createResponsiveImageDocseraDocumentEnvelope();
+    const createObjectUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:reader");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const loadMedia = vi.fn(async ({ mediaId }: WorkspaceMediaLoadInput) => (mediaId === "workspace-media-dark" ? createMediaBlob(mediaId) : null));
+
+    const renderResult = renderReader(envelope, {
+      loadMedia,
+      pageIdentity: "page-a",
+      theme: "dark"
+    });
+
+    const reader = screen.getByLabelText("Published page content");
+    const imageButton = await waitFor(() => within(reader).getByRole("button", { name: "Open fullscreen viewer for Architecture diagram" }));
+    await waitFor(() => {
+      expect(within(reader).getByRole("img", { name: "Architecture diagram" })).toHaveAttribute("src", "blob:reader");
+    });
+
+    fireEvent.click(imageButton);
+    await waitFor(() => {
+      expect(screen.getByRole("dialog", { name: "Image viewer" })).toBeInTheDocument();
+    });
+
+    renderResult.rerender(
+      <PublishedDocumentReader
+        envelope={envelope}
+        loadMedia={loadMedia}
+        pageIdentity="page-b"
+        theme="dark"
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Image viewer" })).toBeNull();
+    });
+
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
+  });
+
+  it("opens the fullscreen viewer from the live image surface and restores focus on Escape", async () => {
+    const envelope = createResponsiveImageDocseraDocumentEnvelope();
+    const createObjectUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:reader");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+
+    renderReader(envelope, {
+      loadMedia: vi.fn(async ({ mediaId }: WorkspaceMediaLoadInput) => (mediaId === "workspace-media-dark" ? createMediaBlob(mediaId) : null)),
+      theme: "dark"
+    });
+
+    const reader = screen.getByLabelText("Published page content");
+    const imageButton = await waitFor(() => within(reader).getByRole("button", { name: "Open fullscreen viewer for Architecture diagram" }));
+    await waitFor(() => {
+      expect(within(reader).getByRole("img", { name: "Architecture diagram" })).toHaveAttribute("src", "blob:reader");
+    });
+
+    fireEvent.click(imageButton);
+
+    const dialog = await waitFor(() => screen.getByRole("dialog", { name: "Image viewer" }));
+    expect(dialog).toBeInTheDocument();
+
+    fireEvent.keyDown(dialog, { key: "Escape" });
+    await waitFor(() => {
+      expect(document.querySelector(".docsera-image-viewer--closing")).not.toBeNull();
+    });
+    const viewerSurface = document.querySelector(".docsera-image-viewer__surface") as HTMLElement | null;
+    expect(viewerSurface).not.toBeNull();
+    fireEvent.transitionEnd(viewerSurface!);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Image viewer" })).not.toBeInTheDocument();
+      expect(imageButton).toHaveFocus();
     });
 
     createObjectUrlSpy.mockRestore();

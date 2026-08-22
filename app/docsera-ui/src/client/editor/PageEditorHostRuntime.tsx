@@ -35,6 +35,7 @@ import { CellSelection } from "@tiptap/pm/tables";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { CompactTextToolbar } from "./CompactTextToolbar";
 import { resolveToolbarMenuSurfaceStyle } from "./CompactTextToolbar";
+import { COMPACT_MENU_STYLES } from "./CompactMenuStyles";
 import { EDITOR_IMAGE_STYLES } from "./EditorImageStyles";
 import { ImagePickerDialog } from "./ImagePickerDialog";
 import { ImageOptionsPanel } from "./ImageOptionsPanel";
@@ -51,6 +52,19 @@ import {
   resolveEditorAutoScrollTopClearancePx,
   resolveEditorDocumentAutoScrollViewport
 } from "./editorAutoScroll";
+import {
+  ImageFullscreenViewer,
+  type ImageFullscreenViewerSession,
+  createImageFullscreenViewerSession
+} from "../shared/media/ImageFullscreenViewer";
+import {
+  clearDocseraImagePreviewState,
+  getDocseraImageDisplayState,
+  resetDocseraImageDisplayState,
+  setDocseraImageDisplayTheme,
+  setDocseraImagePreviewState,
+  subscribeDocseraImageDisplayState
+} from "../shared/editor/imageDisplayState";
 import { useTopLevelBlockDragSession } from "./useTopLevelBlockDragSession";
 import {
   AlignLeft,
@@ -232,6 +246,10 @@ type ImageAlignmentMenuState = {
   sessionId: string;
 };
 
+type ImageAlignmentPickerMenuState = ImageAlignmentMenuState;
+
+type ImageControlPresentation = "standard" | "compact";
+
 type ImageResizeSessionState = {
   activeWidthPct: number;
   anchorRect: DOMRect;
@@ -298,8 +316,8 @@ const IMAGE_OPTIONS_CONTROL_INSET = 8;
 const IMAGE_OPTIONS_CONTROL_TOP_OFFSET = 8;
 const IMAGE_OPTIONS_PANEL_WIDTH = 372;
 const IMAGE_OPTIONS_PANEL_HEIGHT = 428;
-const IMAGE_ALIGNMENT_MENU_WIDTH = 192;
-const IMAGE_ALIGNMENT_MENU_HEIGHT = 126;
+const IMAGE_ALIGNMENT_MENU_WIDTH = 236;
+const IMAGE_ALIGNMENT_MENU_HEIGHT = 240;
 const IMAGE_RESIZE_HANDLE_WIDTH = 12;
 const IMAGE_RESIZE_HANDLE_INSET = 6;
 const BLOCK_ACTION_MENU_WIDTH = 182;
@@ -2809,7 +2827,11 @@ export function PageEditorHostRuntime({
   const [imagePickerSession, setImagePickerSession] = useState<ImagePickerSessionState | null>(null);
   const [imageOptionsSession, setImageOptionsSession] = useState<ImageOptionsSessionState | null>(null);
   const [imageAlignmentMenu, setImageAlignmentMenu] = useState<ImageAlignmentMenuState | null>(null);
+  const [imageAlignmentPickerMenu, setImageAlignmentPickerMenu] = useState<ImageAlignmentPickerMenuState | null>(null);
   const [imageResizeSession, setImageResizeSession] = useState<ImageResizeSessionState | null>(null);
+  const [imageFullscreenSession, setImageFullscreenSession] = useState<ImageFullscreenViewerSession | null>(null);
+  const [imageFullscreenOpen, setImageFullscreenOpen] = useState(false);
+  const [imageDisplayState, setImageDisplayState] = useState(() => getDocseraImageDisplayState());
   const [blockActionMenu, setBlockActionMenu] = useState<BlockActionMenuState | null>(null);
   const [blockTurnIntoMenu, setBlockTurnIntoMenu] = useState<BlockTurnIntoMenuState | null>(null);
   const [selectorScrollMetrics, setSelectorScrollMetrics] = useState({ hasOverflow: false, scrollbarWidth: 0 });
@@ -2820,6 +2842,7 @@ export function PageEditorHostRuntime({
   const blockTurnIntoMenuId = useId();
   const imageOptionsPanelId = useId();
   const imageAlignmentMenuId = useId();
+  const imageAlignmentPickerMenuId = useId();
   const incomingInitialEnvelope = useMemo(() => parseDocseraDocumentOrThrow(initialEnvelope), [initialEnvelope]);
   const incomingInitialSavedEnvelope = useMemo(
     () => parseDocseraDocumentOrThrow(initialSavedEnvelope ?? initialEnvelope),
@@ -2855,6 +2878,8 @@ export function PageEditorHostRuntime({
   const imageOptionsSessionCounterRef = useRef(0);
   const imageAlignmentMenuRef = useRef<ImageAlignmentMenuState | null>(null);
   const imageAlignmentMenuCounterRef = useRef(0);
+  const imageAlignmentPickerMenuRef = useRef<ImageAlignmentPickerMenuState | null>(null);
+  const imageAlignmentPickerMenuCounterRef = useRef(0);
   const imageResizeSessionRef = useRef<ImageResizeSessionState | null>(null);
   const imageResizeSessionCounterRef = useRef(0);
   const imageResizeCleanupRef = useRef<(() => void) | null>(null);
@@ -2863,6 +2888,7 @@ export function PageEditorHostRuntime({
   const blockTurnIntoTriggerRef = useRef<HTMLButtonElement | null>(null);
   const blockActionMenuSurfaceRef = useRef<HTMLDivElement | null>(null);
   const imageAlignmentMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const imageAlignmentPickerMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const structuredTableClipboardRef = useRef<StructuredTableClipboardPayload | null>(null);
 
   const handleStructuredTableClipboardCopy = useCallback(
@@ -3313,6 +3339,15 @@ export function PageEditorHostRuntime({
   const isEditable = canEdit;
   const overlayOwnerDocument = overlayRoot.ownerDocument;
   const overlayOwnerWindow = overlayOwnerDocument.defaultView;
+  useEffect(() => {
+    setDocseraImageDisplayTheme(theme);
+  }, [theme]);
+  useEffect(
+    () => () => {
+      resetDocseraImageDisplayState();
+    },
+    []
+  );
   const commandGroups = useMemo(
     () =>
       commandSelector
@@ -3470,10 +3505,31 @@ export function PageEditorHostRuntime({
   );
 
   const closeImageAlignmentMenu = useCallback(
-    (options: { focusEditor?: boolean } = {}) => {
-      const { focusEditor = true } = options;
+    (options: { clearPickerMenu?: boolean; focusEditor?: boolean } = {}) => {
+      const { clearPickerMenu = true, focusEditor = true } = options;
       imageAlignmentMenuRef.current = null;
       setImageAlignmentMenu(null);
+      if (clearPickerMenu) {
+        imageAlignmentPickerMenuRef.current = null;
+        setImageAlignmentPickerMenu(null);
+      }
+      if (!focusEditor) {
+        return;
+      }
+
+      const runtimeEditor = editorRef.current;
+      if (runtimeEditor && !runtimeEditor.isDestroyed) {
+        runtimeEditor.view.focus();
+      }
+    },
+    []
+  );
+
+  const closeImageAlignmentPickerMenu = useCallback(
+    (options: { focusEditor?: boolean } = {}) => {
+      const { focusEditor = true } = options;
+      imageAlignmentPickerMenuRef.current = null;
+      setImageAlignmentPickerMenu(null);
       if (!focusEditor) {
         return;
       }
@@ -3773,10 +3829,19 @@ export function PageEditorHostRuntime({
       closeCommandSelector({ syncHoverFromPointer: false });
       closeBlockActionMenus({ focusEditor: false, syncHoverFromPointer: false });
       closeBlockTurnIntoMenu({ focusParent: false });
+      closeImageAlignmentMenu({ focusEditor: false });
       closeImagePicker({ restoreSelection: false });
       clearTransientBlockSelection();
     },
-    [clearTransientBlockSelection, closeBlockActionMenus, closeBlockTurnIntoMenu, closeCommandSelector, closeImagePicker, overlayOwnerDocument]
+    [
+      clearTransientBlockSelection,
+      closeBlockActionMenus,
+      closeBlockTurnIntoMenu,
+      closeCommandSelector,
+      closeImageAlignmentMenu,
+      closeImagePicker,
+      overlayOwnerDocument
+    ]
   );
 
   const openImageAlignmentMenu = useCallback(
@@ -3787,21 +3852,13 @@ export function PageEditorHostRuntime({
       }
 
       const controlGroupRect = getImageControlGroupRect(overlayRoot, blockIndex);
-      const triggerRect = getImageControlButtonRect(overlayRoot, blockIndex, "alignment");
+      const triggerRect = getImageControlButtonRect(overlayRoot, blockIndex, "actions");
       if (!controlGroupRect || !triggerRect) {
         return;
       }
-
-      const imageNode = getTopLevelBlockNodeFromDoc(runtimeEditor.state.doc, blockIndex);
-      if (!imageNode || imageNode.type.name !== "image") {
-        return;
-      }
-
-      const attrs = canonicalizeDocseraImageAttrs(imageNode.attrs);
-      const activeIndex = Math.max(0, DOCSERA_IMAGE_ALIGNMENTS.indexOf(attrs.align));
       imageAlignmentMenuCounterRef.current += 1;
       const nextMenu: ImageAlignmentMenuState = {
-        activeIndex,
+        activeIndex: 0,
         anchorRect: triggerRect,
         blockIndex,
         placement: resolveCommandSelectorPlacement(overlayOwnerDocument, controlGroupRect, IMAGE_ALIGNMENT_MENU_HEIGHT),
@@ -3812,9 +3869,91 @@ export function PageEditorHostRuntime({
       closeCommandSelector({ syncHoverFromPointer: false });
       closeBlockActionMenus({ focusEditor: false, syncHoverFromPointer: false });
       closeBlockTurnIntoMenu({ focusParent: false });
+      closeImageOptions({ focusEditor: false });
       closeImagePicker({ restoreSelection: false });
     },
-    [closeBlockActionMenus, closeBlockTurnIntoMenu, closeCommandSelector, closeImagePicker, overlayOwnerDocument, overlayRoot]
+    [
+      closeBlockActionMenus,
+      closeBlockTurnIntoMenu,
+      closeCommandSelector,
+      closeImageOptions,
+      closeImagePicker,
+      overlayOwnerDocument,
+      overlayRoot
+    ]
+  );
+
+  const openImageAlignmentPickerMenu = useCallback(
+    (blockIndex: number, anchorRect: DOMRect) => {
+      const runtimeEditor = editorRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed) {
+        return;
+      }
+
+      imageAlignmentPickerMenuCounterRef.current += 1;
+      const nextMenu: ImageAlignmentPickerMenuState = {
+        activeIndex: 0,
+        anchorRect,
+        blockIndex,
+        placement: resolveCommandSelectorPlacement(overlayOwnerDocument, anchorRect, IMAGE_ALIGNMENT_MENU_HEIGHT),
+        sessionId: `image-alignment-picker-${imageAlignmentPickerMenuCounterRef.current}`
+      };
+      imageAlignmentPickerMenuRef.current = nextMenu;
+      setImageAlignmentPickerMenu(nextMenu);
+      closeImageAlignmentMenu({ clearPickerMenu: false, focusEditor: false });
+      closeCommandSelector({ syncHoverFromPointer: false });
+      closeBlockActionMenus({ focusEditor: false, syncHoverFromPointer: false });
+      closeBlockTurnIntoMenu({ focusParent: false });
+      closeImagePicker({ restoreSelection: false });
+      closeImageOptions({ focusEditor: false });
+      clearTransientBlockSelection();
+    },
+    [
+      clearTransientBlockSelection,
+      closeBlockActionMenus,
+      closeBlockTurnIntoMenu,
+      closeCommandSelector,
+      closeImageAlignmentMenu,
+      closeImageOptions,
+      closeImagePicker,
+      overlayOwnerDocument
+    ]
+  );
+
+  const openImageFullscreenFromBlock = useCallback(
+    (blockIndex: number, restoreFocusElement: HTMLElement | null) => {
+      const runtimeEditor = editorRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed) {
+        return;
+      }
+
+      const blockElement = getTopLevelBlockElement(runtimeEditor, blockIndex);
+      if (!(blockElement instanceof HTMLElement)) {
+        return;
+      }
+
+      const surfaceElement =
+        blockElement.querySelector<HTMLElement>("[data-docsera-image-surface='true']") ?? blockElement;
+      const imageElement = surfaceElement.querySelector("img");
+      if (!(imageElement instanceof HTMLImageElement)) {
+        return;
+      }
+
+      const nextSession = createImageFullscreenViewerSession({
+        alt: imageElement.alt,
+        imageElement,
+        restoreFocusElement,
+        sourceElement: surfaceElement
+      });
+
+      setImageFullscreenSession(nextSession);
+      setImageFullscreenOpen(true);
+      closeImageAlignmentMenu({ focusEditor: false });
+      closeImageAlignmentPickerMenu({ focusEditor: false });
+      closeImageOptions({ focusEditor: false });
+      closeImagePicker({ restoreSelection: false });
+    },
+    [closeImageAlignmentMenu, closeImageAlignmentPickerMenu, closeImageOptions, closeImagePicker]
   );
 
   const applyImageAlignment = useCallback(
@@ -3831,7 +3970,7 @@ export function PageEditorHostRuntime({
 
       const liveAttrs = canonicalizeDocseraImageAttrs(imageNode.attrs);
       if (liveAttrs.align === align) {
-        closeImageAlignmentMenu({ focusEditor: true });
+        closeImageAlignmentPickerMenu({ focusEditor: true });
         return;
       }
 
@@ -3854,9 +3993,9 @@ export function PageEditorHostRuntime({
           return true;
         })
         .run();
-      closeImageAlignmentMenu({ focusEditor: true });
+      closeImageAlignmentPickerMenu({ focusEditor: true });
     },
-    [closeImageAlignmentMenu]
+    [closeImageAlignmentPickerMenu]
   );
 
   const toggleImageFrame = useCallback(
@@ -3892,8 +4031,50 @@ export function PageEditorHostRuntime({
         })
         .run();
       closeImageAlignmentMenu({ focusEditor: false });
+      closeImageAlignmentPickerMenu({ focusEditor: false });
     },
-    [closeImageAlignmentMenu]
+    [closeImageAlignmentMenu, closeImageAlignmentPickerMenu]
+  );
+
+  const executeImageControlMenuAction = useCallback(
+    (blockIndex: number, actionIndex: number) => {
+      const runtimeEditor = editorRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed) {
+        return;
+      }
+
+      const controlGroupRect = getImageControlGroupRect(overlayRoot, blockIndex);
+      const restoreFocusElement =
+        overlayRoot.querySelector<HTMLElement>(
+          `[data-docsera-image-control-kind="actions"][data-docsera-image-controls-block-index="${blockIndex}"]`
+        ) ?? null;
+
+      switch (actionIndex) {
+        case 0:
+          openImageFullscreenFromBlock(blockIndex, restoreFocusElement);
+          return;
+        case 1:
+          toggleImageFrame(blockIndex);
+          return;
+        case 2:
+          {
+            const triggerRect = imageAlignmentMenuItemRefs.current[actionIndex]?.getBoundingClientRect() ?? controlGroupRect;
+            closeImageAlignmentMenu({ clearPickerMenu: false, focusEditor: false });
+            if (triggerRect) {
+              openImageAlignmentPickerMenu(blockIndex, triggerRect);
+            }
+            return;
+          }
+        case 3:
+          if (controlGroupRect) {
+            openImageOptions(blockIndex, controlGroupRect);
+          }
+          return;
+        default:
+          return;
+      }
+    },
+    [openImageAlignmentPickerMenu, openImageFullscreenFromBlock, openImageOptions, overlayRoot, toggleImageFrame]
   );
 
   const restoreImageResizePreview = useCallback((session: ImageResizeSessionState) => {
@@ -4272,8 +4453,8 @@ export function PageEditorHostRuntime({
         return;
       }
 
-      const alignments: Array<DocseraImageAttrs["align"]> = ["left", "center", "right"];
-      const nextIndex = Math.max(0, Math.min(activeMenu.activeIndex, alignments.length - 1));
+      const menuItemCount = 4;
+      const nextIndex = Math.max(0, Math.min(activeMenu.activeIndex, menuItemCount - 1));
 
       if (event.key === "Escape") {
         event.preventDefault();
@@ -4288,10 +4469,10 @@ export function PageEditorHostRuntime({
             ? {
                 ...current,
                 activeIndex:
-                  alignments.length > 0
+                  menuItemCount > 0
                     ? event.key === "ArrowDown"
-                      ? (current.activeIndex + 1) % alignments.length
-                      : (current.activeIndex - 1 + alignments.length) % alignments.length
+                      ? (current.activeIndex + 1) % menuItemCount
+                      : (current.activeIndex - 1 + menuItemCount) % menuItemCount
                     : 0
               }
             : current
@@ -4301,13 +4482,55 @@ export function PageEditorHostRuntime({
 
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        const activeAlignment = alignments[nextIndex];
+        executeImageControlMenuAction(activeMenu.blockIndex, nextIndex);
+      }
+    },
+    [closeImageAlignmentMenu, executeImageControlMenuAction]
+  );
+
+  const handleImageAlignmentPickerMenuKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLElement>) => {
+      const activeMenu = imageAlignmentPickerMenuRef.current;
+      if (!activeMenu) {
+        return;
+      }
+
+      const menuItemCount = 3;
+      const nextIndex = Math.max(0, Math.min(activeMenu.activeIndex, menuItemCount - 1));
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeImageAlignmentPickerMenu({ focusEditor: true });
+        return;
+      }
+
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setImageAlignmentPickerMenu((current) =>
+          current
+            ? {
+                ...current,
+                activeIndex:
+                  menuItemCount > 0
+                    ? event.key === "ArrowDown"
+                      ? (current.activeIndex + 1) % menuItemCount
+                      : (current.activeIndex - 1 + menuItemCount) % menuItemCount
+                    : 0
+              }
+            : current
+        );
+        return;
+      }
+
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        const activeAlignment = ["left", "center", "right"][nextIndex] as DocseraImageAttrs["align"] | undefined;
         if (activeAlignment) {
           applyImageAlignment(activeMenu.blockIndex, activeAlignment);
         }
       }
     },
-    [applyImageAlignment, closeImageAlignmentMenu]
+    [applyImageAlignment, closeImageAlignmentPickerMenu]
   );
 
   useEffect(() => {
@@ -4839,6 +5062,9 @@ export function PageEditorHostRuntime({
       closeImagePicker({ restoreSelection: false });
       closeImageOptions({ focusEditor: false });
       closeImageAlignmentMenu({ focusEditor: false });
+      clearDocseraImagePreviewState();
+      setImageFullscreenOpen(false);
+      setImageFullscreenSession(null);
       finalizeImageResizeSession({ commit: false });
       setBlockActionMenu(null);
       setBlockTurnIntoMenu(null);
@@ -4861,6 +5087,9 @@ export function PageEditorHostRuntime({
     closeImagePicker({ restoreSelection: false });
     closeImageOptions({ focusEditor: false });
     closeImageAlignmentMenu({ focusEditor: false });
+    clearDocseraImagePreviewState();
+    setImageFullscreenOpen(false);
+    setImageFullscreenSession(null);
     finalizeImageResizeSession({ commit: false });
     setBlockActionMenu(null);
     setBlockTurnIntoMenu(null);
@@ -4878,6 +5107,16 @@ export function PageEditorHostRuntime({
   ]);
 
   useEffect(() => {
+    return subscribeDocseraImageDisplayState(() => {
+      const nextState = getDocseraImageDisplayState();
+      setImageDisplayState({
+        preview: nextState.preview ? { ...nextState.preview } : null,
+        theme: nextState.theme
+      });
+    });
+  }, []);
+
+  useEffect(() => {
     commandSelectorRef.current = commandSelector;
   }, [commandSelector]);
 
@@ -4892,6 +5131,10 @@ export function PageEditorHostRuntime({
   useEffect(() => {
     imageAlignmentMenuRef.current = imageAlignmentMenu;
   }, [imageAlignmentMenu]);
+
+  useEffect(() => {
+    imageAlignmentPickerMenuRef.current = imageAlignmentPickerMenu;
+  }, [imageAlignmentPickerMenu]);
 
   useEffect(() => {
     imageResizeSessionRef.current = imageResizeSession;
@@ -4928,7 +5171,7 @@ export function PageEditorHostRuntime({
     }
 
     const controlGroupRect = getImageControlGroupRect(overlayRoot, imageAlignmentMenu.blockIndex);
-    const triggerRect = getImageControlButtonRect(overlayRoot, imageAlignmentMenu.blockIndex, "alignment");
+    const triggerRect = getImageControlButtonRect(overlayRoot, imageAlignmentMenu.blockIndex, "actions");
     if (!controlGroupRect || !triggerRect) {
       closeImageAlignmentMenu({ focusEditor: true });
       return;
@@ -4952,6 +5195,53 @@ export function PageEditorHostRuntime({
         : current
     );
   }, [closeImageAlignmentMenu, imageAlignmentMenu, overlayMeasurementVersion, overlayOwnerDocument, overlayRoot]);
+
+  useLayoutEffect(() => {
+    if (!imageAlignmentPickerMenu) {
+      return;
+    }
+
+    const controlGroupRect = getImageControlGroupRect(overlayRoot, imageAlignmentPickerMenu.blockIndex);
+    const triggerRect = getImageControlButtonRect(overlayRoot, imageAlignmentPickerMenu.blockIndex, "alignment");
+    const nextAnchorRect = triggerRect ?? imageAlignmentPickerMenu.anchorRect;
+    if (!controlGroupRect || !nextAnchorRect) {
+      closeImageAlignmentPickerMenu({ focusEditor: true });
+      return;
+    }
+
+    const nextPlacement = resolveCommandSelectorPlacement(overlayOwnerDocument, controlGroupRect, IMAGE_ALIGNMENT_MENU_HEIGHT);
+    if (
+      areDomRectsEqual(imageAlignmentPickerMenu.anchorRect, nextAnchorRect) &&
+      imageAlignmentPickerMenu.placement === nextPlacement
+    ) {
+      return;
+    }
+
+    setImageAlignmentPickerMenu((current) =>
+      current
+        ? {
+            ...current,
+            anchorRect: nextAnchorRect,
+            placement: nextPlacement
+          }
+        : current
+    );
+  }, [
+    closeImageAlignmentPickerMenu,
+    imageAlignmentPickerMenu,
+    overlayMeasurementVersion,
+    overlayOwnerDocument,
+    overlayRoot
+  ]);
+
+  useLayoutEffect(() => {
+    if (!imageAlignmentPickerMenu) {
+      imageAlignmentPickerMenuItemRefs.current = [];
+      return;
+    }
+
+    imageAlignmentPickerMenuItemRefs.current[imageAlignmentPickerMenu.activeIndex]?.focus();
+  }, [imageAlignmentPickerMenu]);
 
   useEffect(() => {
     const runtimeEditor = editorRef.current;
@@ -5400,7 +5690,14 @@ export function PageEditorHostRuntime({
   }, [editor, isEditable, overlayOwnerDocument, scheduleOverlayMeasurement]);
 
   useEffect(() => {
-    if (!commandSelector && !blockActionMenu && !blockTurnIntoMenu && !imageOptionsSession && !imageAlignmentMenu) {
+    if (
+      !commandSelector &&
+      !blockActionMenu &&
+      !blockTurnIntoMenu &&
+      !imageOptionsSession &&
+      !imageAlignmentMenu &&
+      !imageAlignmentPickerMenu
+    ) {
       return;
     }
 
@@ -5412,13 +5709,24 @@ export function PageEditorHostRuntime({
       const isInsideAlignmentSurface =
         isPointerEventInsideElement(event, alignmentMenuElement) || isPointerEventInsideElement(event, alignmentTriggerElement);
 
-      if (isInsideAlignmentSurface) {
+      const alignmentPickerMenuElement =
+        imageAlignmentPickerMenu && overlayRoot.querySelector<HTMLElement>(`[id="${imageAlignmentPickerMenuId}"]`);
+      const alignmentPickerTriggerElement =
+        imageAlignmentPickerMenu && overlayRoot.querySelector<HTMLElement>(`[aria-controls="${imageAlignmentPickerMenuId}"]`);
+      const isInsideAlignmentPickerSurface =
+        isPointerEventInsideElement(event, alignmentPickerMenuElement) ||
+        isPointerEventInsideElement(event, alignmentPickerTriggerElement);
+
+      if (isInsideAlignmentSurface || isInsideAlignmentPickerSurface) {
         return;
       }
 
       if (isPointerEventInsideElement(event, overlayRoot)) {
         if (imageAlignmentMenu) {
           closeImageAlignmentMenu({ focusEditor: false });
+        }
+        if (imageAlignmentPickerMenu) {
+          closeImageAlignmentPickerMenu({ focusEditor: false });
         }
         return;
       }
@@ -5436,6 +5744,9 @@ export function PageEditorHostRuntime({
         if (imageAlignmentMenu) {
           closeImageAlignmentMenu({ focusEditor: false });
         }
+        if (imageAlignmentPickerMenu) {
+          closeImageAlignmentPickerMenu({ focusEditor: false });
+        }
         return;
       }
 
@@ -5451,6 +5762,9 @@ export function PageEditorHostRuntime({
       if (imageAlignmentMenu) {
         closeImageAlignmentMenu({ focusEditor: false });
       }
+      if (imageAlignmentPickerMenu) {
+        closeImageAlignmentPickerMenu({ focusEditor: false });
+      }
     };
 
     overlayOwnerDocument.addEventListener("pointerdown", handlePointerDown, true);
@@ -5463,10 +5777,13 @@ export function PageEditorHostRuntime({
     closeAllBlockSurfaces,
     closeCommandSelector,
     closeImageAlignmentMenu,
+    closeImageAlignmentPickerMenu,
     closeImageOptions,
     commandSelector,
     imageAlignmentMenu,
     imageAlignmentMenuId,
+    imageAlignmentPickerMenu,
+    imageAlignmentPickerMenuId,
     imageOptionsSession,
     overlayOwnerDocument,
     overlayRoot
@@ -5487,11 +5804,32 @@ export function PageEditorHostRuntime({
       closeImageAlignmentMenu({ focusEditor: false });
     };
 
-    overlayOwnerDocument.addEventListener("keydown", handleKeyDown, true);
+      overlayOwnerDocument.addEventListener("keydown", handleKeyDown, true);
     return () => {
       overlayOwnerDocument.removeEventListener("keydown", handleKeyDown, true);
     };
   }, [closeImageAlignmentMenu, imageAlignmentMenu, imageOptionsSession, overlayOwnerDocument]);
+
+  useEffect(() => {
+    if (!imageOptionsSession || !imageAlignmentPickerMenu) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      closeImageAlignmentPickerMenu({ focusEditor: false });
+    };
+
+    overlayOwnerDocument.addEventListener("keydown", handleKeyDown, true);
+    return () => {
+      overlayOwnerDocument.removeEventListener("keydown", handleKeyDown, true);
+    };
+  }, [closeImageAlignmentPickerMenu, imageAlignmentPickerMenu, imageOptionsSession, overlayOwnerDocument]);
 
   useEffect(() => () => {
     if (overlayMeasurementFrameRef.current !== null) {
@@ -5698,11 +6036,71 @@ export function PageEditorHostRuntime({
         })()
       : null;
   const imageOptionsBlockIndex =
-    imageResizeSession?.blockIndex ?? imageAlignmentMenu?.blockIndex ?? imageOptionsSession?.blockIndex ?? hoveredImageTarget?.blockIndex ?? null;
+    imageResizeSession?.blockIndex ??
+    imageAlignmentMenu?.blockIndex ??
+    imageAlignmentPickerMenu?.blockIndex ??
+    imageOptionsSession?.blockIndex ??
+    hoveredImageTarget?.blockIndex ??
+    null;
   const imageOptionsBlockRect = editor && imageOptionsBlockIndex !== null ? getTopLevelBlockRect(editor, imageOptionsBlockIndex) : null;
   const activeImageNode =
     editor && imageOptionsBlockIndex !== null ? getTopLevelBlockNodeFromDoc(editor.state.doc, imageOptionsBlockIndex) : null;
   const activeImageAttrs = activeImageNode?.type.name === "image" ? canonicalizeDocseraImageAttrs(activeImageNode.attrs) : null;
+  const activeImagePreviewTheme =
+    imageOptionsBlockIndex !== null && imageDisplayState.preview?.blockIndex === imageOptionsBlockIndex
+      ? imageDisplayState.preview.theme
+      : imageDisplayState.theme;
+  const imageControlPresentation: ImageControlPresentation = "standard";
+  const imageAlignmentMenuItems = [
+    {
+      kind: "zoom",
+      label: "Zoom",
+      description: "Open a fullscreen viewer",
+      Icon: ZoomIn,
+      role: "menuitem"
+    },
+    {
+      kind: "frame",
+      label: activeImageAttrs?.frame !== false ? "Frame image off" : "Frame image on",
+      description: "Toggle the frame around the image surface",
+      Icon: FrameIcon,
+      role: "menuitem"
+    },
+    {
+      kind: "alignment",
+      label: `Alignment: ${activeImageAttrs?.align === "center" ? "Center" : activeImageAttrs?.align === "right" ? "Right" : "Left"}`,
+      description: "Choose left, center, or right alignment",
+      Icon: AlignCenter,
+      role: "menuitem"
+    },
+    {
+      kind: "options",
+      label: "Image options",
+      description: "Open the image settings panel",
+      Icon: EllipsisVertical,
+      role: "menuitem"
+    }
+  ] as const;
+  const imageAlignmentPickerMenuItems = [
+    {
+      kind: "left",
+      label: "Left",
+      description: "Move the image to the left",
+      Icon: AlignLeft
+    },
+    {
+      kind: "center",
+      label: "Center",
+      description: "Center the image",
+      Icon: AlignCenter
+    },
+    {
+      kind: "right",
+      label: "Right",
+      description: "Move the image to the right",
+      Icon: AlignRight
+    }
+  ] as const;
   const imagePreviewControlGroupStyle =
     imageOptionsBlockRect ? buildImagePreviewControlGroupStyle(imageOptionsBlockRect) : undefined;
   const imageOptionsControlGroupStyle =
@@ -5710,13 +6108,29 @@ export function PageEditorHostRuntime({
   const imageAlignmentMenuRect =
     editor && imageAlignmentMenu ? getImageControlGroupRect(overlayRoot, imageAlignmentMenu.blockIndex) : null;
   const imageAlignmentMenuTriggerRect =
-    editor && imageAlignmentMenu ? getImageControlButtonRect(overlayRoot, imageAlignmentMenu.blockIndex, "alignment") : null;
+    editor && imageAlignmentMenu ? getImageControlButtonRect(overlayRoot, imageAlignmentMenu.blockIndex, "actions") : null;
   const imageAlignmentMenuStyle =
     editor && imageAlignmentMenu && imageAlignmentMenuRect && imageAlignmentMenuTriggerRect
       ? resolveToolbarMenuSurfaceStyle(
           overlayOwnerDocument,
           imageAlignmentMenuRect,
           imageAlignmentMenuTriggerRect,
+          { width: IMAGE_ALIGNMENT_MENU_WIDTH, height: IMAGE_ALIGNMENT_MENU_HEIGHT },
+          "start"
+        )
+      : undefined;
+  const imageAlignmentPickerMenuRect =
+    editor && imageAlignmentPickerMenu ? getImageControlGroupRect(overlayRoot, imageAlignmentPickerMenu.blockIndex) : null;
+  const imageAlignmentPickerMenuTriggerRect =
+    editor && imageAlignmentPickerMenu
+      ? getImageControlButtonRect(overlayRoot, imageAlignmentPickerMenu.blockIndex, "alignment")
+      : null;
+  const imageAlignmentPickerMenuStyle =
+    editor && imageAlignmentPickerMenu && imageAlignmentPickerMenuRect
+      ? resolveToolbarMenuSurfaceStyle(
+          overlayOwnerDocument,
+          imageAlignmentPickerMenuRect,
+          imageAlignmentPickerMenuTriggerRect ?? imageAlignmentPickerMenu.anchorRect,
           { width: IMAGE_ALIGNMENT_MENU_WIDTH, height: IMAGE_ALIGNMENT_MENU_HEIGHT },
           "start"
         )
@@ -5730,6 +6144,17 @@ export function PageEditorHostRuntime({
     editor && imageOptionsSession
       ? buildImageOptionsPanelStyle(overlayOwnerDocument, imageOptionsSession.anchorRect, imageOptionsSession.placement)
       : undefined;
+  useEffect(() => {
+    if (imageOptionsBlockIndex === null) {
+      clearDocseraImagePreviewState();
+      return;
+    }
+
+    setDocseraImagePreviewState({
+      blockIndex: imageOptionsBlockIndex,
+      theme
+    });
+  }, [imageOptionsBlockIndex, theme]);
   const hoverTargetRect = editor && activeBlockControlTarget ? getTopLevelBlockRect(editor, activeBlockControlTarget.blockIndex) : null;
   const gutterAnchorRect = hoverTargetRect ? buildQuickAddAnchorRect(hoverTargetRect) : null;
   const gutterButtonStyle = gutterAnchorRect ? buildGutterButtonStyle(gutterAnchorRect) : undefined;
@@ -6182,6 +6607,7 @@ export function PageEditorHostRuntime({
           cursor: grabbing !important;
         }
         ${BLOCK_SELECTOR_STYLES}
+        ${COMPACT_MENU_STYLES}
         ${IMAGE_PICKER_STYLES}
         ${IMAGE_OPTIONS_STYLES}
         ${EDITOR_IMAGE_STYLES}
@@ -6607,8 +7033,8 @@ export function PageEditorHostRuntime({
               >
                 <button
                   type="button"
-                  className={`docsera-image-controls-button${theme === "light" ? " docsera-image-controls-button--selected" : ""}`}
-                  aria-disabled="true"
+                  className={`docsera-image-controls-button${activeImagePreviewTheme === "light" ? " docsera-image-controls-button--selected" : ""}`}
+                  aria-pressed={activeImagePreviewTheme === "light"}
                   aria-label="Light preview"
                   title="Light preview"
                   data-docsera-image-preview-control="true"
@@ -6616,14 +7042,23 @@ export function PageEditorHostRuntime({
                   onMouseDown={(event) => {
                     event.preventDefault();
                   }}
-                  onClick={() => undefined}
+                  onClick={() => {
+                    if (imageOptionsBlockIndex === null) {
+                      return;
+                    }
+
+                    setDocseraImagePreviewState({
+                      blockIndex: imageOptionsBlockIndex,
+                      theme: "light"
+                    });
+                  }}
                 >
                   <SunMedium size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
                 </button>
                 <button
                   type="button"
-                  className={`docsera-image-controls-button${theme === "dark" ? " docsera-image-controls-button--selected" : ""}`}
-                  aria-disabled="true"
+                  className={`docsera-image-controls-button${activeImagePreviewTheme === "dark" ? " docsera-image-controls-button--selected" : ""}`}
+                  aria-pressed={activeImagePreviewTheme === "dark"}
                   aria-label="Dark preview"
                   title="Dark preview"
                   data-docsera-image-preview-control="true"
@@ -6631,7 +7066,16 @@ export function PageEditorHostRuntime({
                   onMouseDown={(event) => {
                     event.preventDefault();
                   }}
-                  onClick={() => undefined}
+                  onClick={() => {
+                    if (imageOptionsBlockIndex === null) {
+                      return;
+                    }
+
+                    setDocseraImagePreviewState({
+                      blockIndex: imageOptionsBlockIndex,
+                      theme: "dark"
+                    });
+                  }}
                 >
                   <Moon size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
                 </button>
@@ -6640,101 +7084,131 @@ export function PageEditorHostRuntime({
 
             {editor && imageOptionsBlockIndex !== null && imageOptionsControlGroupStyle ? (
               <div
-                className={`docsera-image-controls-group${imageOptionsSession?.blockIndex === imageOptionsBlockIndex ? " docsera-image-controls-group--active" : ""}`}
+                className={`docsera-image-controls-group${imageOptionsSession?.blockIndex === imageOptionsBlockIndex ? " docsera-image-controls-group--active" : ""} docsera-image-controls-group--${imageControlPresentation}`}
                 style={imageOptionsControlGroupStyle}
                 data-docsera-image-controls="true"
                 data-docsera-image-controls-block-index={imageOptionsBlockIndex}
+                data-docsera-image-controls-presentation={imageControlPresentation}
               >
-                <button
-                  type="button"
-                  className="docsera-image-controls-button"
-                  aria-disabled="true"
-                  aria-label="Zoom"
-                  title="Zoom"
-                  data-docsera-image-control="true"
-                  data-docsera-image-controls-block-index={imageOptionsBlockIndex}
-                  data-docsera-image-control-kind="zoom"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                  }}
-                  onClick={() => undefined}
-                >
-                  <ZoomIn size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
-                </button>
-                <button
-                  type="button"
-                  className={`docsera-image-controls-button${activeImageAttrs?.frame !== false ? " docsera-image-controls-button--selected" : ""}`}
-                  aria-pressed={activeImageAttrs?.frame !== false}
-                  aria-label={`Frame image ${activeImageAttrs?.frame !== false ? "on" : "off"}`}
-                  title="Frame"
-                  data-docsera-image-control="true"
-                  data-docsera-image-controls-block-index={imageOptionsBlockIndex}
-                  data-docsera-image-control-kind="frame"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                  }}
-                  onClick={() => {
-                    toggleImageFrame(imageOptionsBlockIndex);
-                  }}
-                >
-                  <FrameIcon size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
-                </button>
-                <button
-                  type="button"
-                  className={`docsera-image-controls-button${imageAlignmentMenu?.blockIndex === imageOptionsBlockIndex ? " docsera-image-controls-button--selected" : ""}`}
-                  aria-haspopup="menu"
-                  aria-controls={imageAlignmentMenuId}
-                  aria-expanded={imageAlignmentMenu?.blockIndex === imageOptionsBlockIndex}
-                  aria-label={`Alignment: ${activeImageAttrs?.align === "center" ? "Center" : activeImageAttrs?.align === "right" ? "Right" : "Left"}`}
-                  title={`Alignment: ${activeImageAttrs?.align === "center" ? "Center" : activeImageAttrs?.align === "right" ? "Right" : "Left"}`}
-                  data-docsera-image-control="true"
-                  data-docsera-image-controls-block-index={imageOptionsBlockIndex}
-                  data-docsera-image-control-kind="alignment"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                  }}
-                  onClick={() => {
-                    if (imageAlignmentMenu?.blockIndex === imageOptionsBlockIndex) {
-                      closeImageAlignmentMenu({ focusEditor: false });
-                      return;
-                    }
+                {imageControlPresentation === "standard" ? (
+                  <>
+                    <button
+                      type="button"
+                      className="docsera-image-controls-button"
+                      aria-haspopup="dialog"
+                      aria-label="Zoom"
+                      title="Zoom"
+                      data-docsera-image-control="true"
+                      data-docsera-image-controls-block-index={imageOptionsBlockIndex}
+                      data-docsera-image-control-kind="zoom"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                      }}
+                      onClick={(event) => {
+                        openImageFullscreenFromBlock(imageOptionsBlockIndex, event.currentTarget);
+                      }}
+                    >
+                      <ZoomIn size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                    </button>
+                    <button
+                      type="button"
+                      className={`docsera-image-controls-button${activeImageAttrs?.frame !== false ? " docsera-image-controls-button--selected" : ""}`}
+                      aria-pressed={activeImageAttrs?.frame !== false}
+                      aria-label={`Frame image ${activeImageAttrs?.frame !== false ? "on" : "off"}`}
+                      title="Frame"
+                      data-docsera-image-control="true"
+                      data-docsera-image-controls-block-index={imageOptionsBlockIndex}
+                      data-docsera-image-control-kind="frame"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                      }}
+                      onClick={() => {
+                        toggleImageFrame(imageOptionsBlockIndex);
+                      }}
+                    >
+                      <FrameIcon size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                    </button>
+                    <button
+                      type="button"
+                      className="docsera-image-controls-button"
+                      aria-haspopup="menu"
+                      aria-controls={imageAlignmentPickerMenuId}
+                      aria-expanded={imageAlignmentPickerMenu?.blockIndex === imageOptionsBlockIndex}
+                      aria-label={`Alignment: ${activeImageAttrs?.align === "center" ? "Center" : activeImageAttrs?.align === "right" ? "Right" : "Left"}`}
+                      title={`Alignment: ${activeImageAttrs?.align === "center" ? "Center" : activeImageAttrs?.align === "right" ? "Right" : "Left"}`}
+                      data-docsera-image-control="true"
+                      data-docsera-image-controls-block-index={imageOptionsBlockIndex}
+                      data-docsera-image-control-kind="alignment"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                      }}
+                      onClick={(event) => {
+                        if (imageAlignmentPickerMenu?.blockIndex === imageOptionsBlockIndex) {
+                          closeImageAlignmentPickerMenu({ focusEditor: false });
+                          return;
+                        }
 
-                    openImageAlignmentMenu(imageOptionsBlockIndex);
-                  }}
-                >
-                  {activeImageAttrs?.align === "right" ? (
-                    <AlignRight size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
-                  ) : activeImageAttrs?.align === "center" ? (
-                    <AlignCenter size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
-                  ) : (
-                    <AlignLeft size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className="docsera-image-controls-button docsera-image-options-trigger"
-                  aria-haspopup="dialog"
-                  aria-controls={imageOptionsPanelId}
-                  aria-expanded={imageOptionsSession !== null}
-                  aria-label="Image options"
-                  title="Image options"
-                  data-docsera-image-options="true"
-                  data-docsera-image-controls-block-index={imageOptionsBlockIndex}
-                  data-docsera-image-options-block-index={imageOptionsBlockIndex}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                  }}
-                  onClick={(event) => {
-                    const controlGroup = event.currentTarget.closest<HTMLElement>("[data-docsera-image-controls='true']");
-                    if (!controlGroup) {
-                      return;
-                    }
+                        openImageAlignmentPickerMenu(imageOptionsBlockIndex, event.currentTarget.getBoundingClientRect());
+                      }}
+                    >
+                      <AlignCenter size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                    </button>
+                    <button
+                      type="button"
+                      className="docsera-image-controls-button docsera-image-options-trigger"
+                      aria-haspopup="dialog"
+                      aria-controls={imageOptionsPanelId}
+                      aria-expanded={imageOptionsSession !== null}
+                      aria-label="Image options"
+                      title="Image options"
+                      data-docsera-image-options="true"
+                      data-docsera-image-controls-block-index={imageOptionsBlockIndex}
+                      data-docsera-image-options-block-index={imageOptionsBlockIndex}
+                      data-docsera-image-control-kind="options"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                      }}
+                      onClick={(event) => {
+                        const controlGroup = event.currentTarget.closest<HTMLElement>("[data-docsera-image-controls='true']");
+                        if (!controlGroup) {
+                          return;
+                        }
 
-                    openImageOptions(imageOptionsBlockIndex, controlGroup.getBoundingClientRect());
-                  }}
-                >
-                  <EllipsisVertical size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
-                </button>
+                        openImageOptions(imageOptionsBlockIndex, controlGroup.getBoundingClientRect());
+                      }}
+                    >
+                      <EllipsisVertical size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="docsera-image-controls-button"
+                      aria-haspopup="menu"
+                      aria-controls={imageAlignmentMenuId}
+                      aria-expanded={imageAlignmentMenu?.blockIndex === imageOptionsBlockIndex}
+                      aria-label="More image actions"
+                      title="More image actions"
+                      data-docsera-image-control="true"
+                      data-docsera-image-controls-block-index={imageOptionsBlockIndex}
+                      data-docsera-image-control-kind="actions"
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                      }}
+                      onClick={() => {
+                        if (imageAlignmentMenu?.blockIndex === imageOptionsBlockIndex) {
+                          closeImageAlignmentMenu({ focusEditor: false });
+                          return;
+                        }
+
+                        openImageAlignmentMenu(imageOptionsBlockIndex);
+                      }}
+                    >
+                      <EllipsisVertical size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                    </button>
+                  </>
+                )}
               </div>
             ) : null}
 
@@ -6775,41 +7249,89 @@ export function PageEditorHostRuntime({
 
             {editor && imageAlignmentMenu && imageAlignmentMenuStyle ? (
               <div
-                className={`docsera-image-alignment-menu${imageAlignmentMenu.blockIndex === imageOptionsBlockIndex ? " docsera-image-alignment-menu--active" : ""}`}
+                className={`docsera-compact-menu docsera-image-alignment-menu${imageAlignmentMenu.blockIndex === imageOptionsBlockIndex ? " docsera-image-alignment-menu--active" : ""}`}
                 style={imageAlignmentMenuStyle}
                 role="menu"
                 id={imageAlignmentMenuId}
-                aria-label="Alignment options"
+                aria-label="Image actions"
                 data-docsera-image-alignment-menu="true"
                 data-docsera-image-alignment-menu-block-index={imageAlignmentMenu.blockIndex}
                 onKeyDown={handleImageAlignmentMenuKeyDown}
               >
-                {[
-                  { align: "left" as const, label: "Left", Icon: AlignLeft },
-                  { align: "center" as const, label: "Center", Icon: AlignCenter },
-                  { align: "right" as const, label: "Right", Icon: AlignRight }
-                ].map((option, index) => {
-                  const isSelected = activeImageAttrs?.align === option.align;
+                {imageAlignmentMenuItems.map((option, index) => {
+                  const isSelected =
+                    option.kind === "frame"
+                      ? activeImageAttrs?.frame !== false
+                      : false;
                   const isActive = imageAlignmentMenu.activeIndex === index;
                   return (
                     <button
-                      key={option.align}
+                      key={option.kind}
                       ref={(element) => {
                         imageAlignmentMenuItemRefs.current[index] = element;
                       }}
                       type="button"
-                      className={`docsera-image-alignment-menu__item${isActive ? " docsera-image-alignment-menu__item--active" : ""}${isSelected ? " docsera-image-alignment-menu__item--selected" : ""}`}
+                      className={`docsera-compact-menu__item${isActive ? " docsera-compact-menu__item--active" : ""}${isSelected ? " docsera-compact-menu__item--selected" : ""}`}
+                      role={option.role}
+                      onMouseDown={(event) => {
+                        event.preventDefault();
+                      }}
+                      onClick={() => {
+                        executeImageControlMenuAction(imageAlignmentMenu.blockIndex, index);
+                      }}
+                    >
+                      <span className="docsera-compact-menu__item-icon" aria-hidden="true">
+                        <option.Icon size={14} strokeWidth={2.2} focusable="false" />
+                      </span>
+                      <span className="docsera-compact-menu__item-copy">
+                        <span className="docsera-compact-menu__item-title">{option.label}</span>
+                        <span className="docsera-compact-menu__item-description">{option.description}</span>
+                      </span>
+                      {isSelected ? <Check size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" /> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {editor && imageAlignmentPickerMenu && imageAlignmentPickerMenuStyle ? (
+              <div
+                className={`docsera-compact-menu docsera-image-alignment-menu docsera-image-alignment-menu--picker${imageAlignmentPickerMenu.blockIndex === imageOptionsBlockIndex ? " docsera-image-alignment-menu--active" : ""}`}
+                style={imageAlignmentPickerMenuStyle}
+                role="menu"
+                id={imageAlignmentPickerMenuId}
+                aria-label="Alignment options"
+                data-docsera-image-alignment-menu="true"
+                data-docsera-image-alignment-menu-block-index={imageAlignmentPickerMenu.blockIndex}
+                onKeyDown={handleImageAlignmentPickerMenuKeyDown}
+              >
+                {imageAlignmentPickerMenuItems.map((option, index) => {
+                  const isSelected = activeImageAttrs?.align === option.kind;
+                  const isActive = imageAlignmentPickerMenu.activeIndex === index;
+                  return (
+                    <button
+                      key={option.kind}
+                      ref={(element) => {
+                        imageAlignmentPickerMenuItemRefs.current[index] = element;
+                      }}
+                      type="button"
+                      className={`docsera-compact-menu__item${isActive ? " docsera-compact-menu__item--active" : ""}${isSelected ? " docsera-compact-menu__item--selected" : ""}`}
                       role="menuitemradio"
                       aria-checked={isSelected}
                       onMouseDown={(event) => {
                         event.preventDefault();
                       }}
                       onClick={() => {
-                        applyImageAlignment(imageAlignmentMenu.blockIndex, option.align);
+                        applyImageAlignment(imageAlignmentPickerMenu.blockIndex, option.kind);
                       }}
                     >
-                      <option.Icon size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
-                      <span>{option.label}</span>
+                      <span className="docsera-compact-menu__item-icon" aria-hidden="true">
+                        <option.Icon size={14} strokeWidth={2.2} focusable="false" />
+                      </span>
+                      <span className="docsera-compact-menu__item-copy">
+                        <span className="docsera-compact-menu__item-title">{option.label}</span>
+                        <span className="docsera-compact-menu__item-description">{option.description}</span>
+                      </span>
                       {isSelected ? <Check size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" /> : null}
                     </button>
                   );
@@ -7087,6 +7609,20 @@ export function PageEditorHostRuntime({
               overlayRoot={overlayRoot}
               sessionId={imagePickerSession?.sessionId ?? ""}
             />
+            {imageFullscreenSession ? (
+              <ImageFullscreenViewer
+                overlayRoot={overlayRoot}
+                isOpen={imageFullscreenOpen}
+                onDismissed={() => {
+                  setImageFullscreenSession(null);
+                }}
+                onRequestClose={() => {
+                  setImageFullscreenOpen(false);
+                }}
+                session={imageFullscreenSession}
+                theme={theme}
+              />
+            ) : null}
           </div>,
           overlayRoot
         )}

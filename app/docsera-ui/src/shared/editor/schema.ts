@@ -14,6 +14,10 @@ import StarterKit from "@tiptap/starter-kit";
 import type { Schema } from "@tiptap/pm/model";
 import { DOCSERA_IMAGE_DEFAULTS, DOCSERA_IMAGE_ALIGNMENTS, canonicalizeDocseraImageAttrs, type DocseraImageAttrs, type WorkspaceMediaLoader } from "./imageContract";
 import {
+  resolveDocseraImageDisplayTheme,
+  subscribeDocseraImageDisplayState
+} from "../../client/shared/editor/imageDisplayState";
+import {
   DOCSERA_BODY_HEADING_LEVELS,
   canonicalizeDocseraStructuredDocument,
   isDocseraAllowedLinkHref,
@@ -46,7 +50,7 @@ function normalizeTableColumnWidths(value: unknown): number[] | null {
 
 function createUnavailableMediaView(attrs: DocseraImageAttrs): HTMLElement {
   const wrapper = document.createElement("div");
-  wrapper.className = "docsera-main__editor-recovery docsera-main__media-unavailable docsera-editor-image__unavailable";
+  wrapper.className = "docsera-main__editor-recovery docsera-main__media-unavailable docsera-editor-image__surface docsera-editor-image__unavailable";
   wrapper.setAttribute("role", "status");
 
   const eyebrow = document.createElement("p");
@@ -67,7 +71,7 @@ function createUnavailableMediaView(attrs: DocseraImageAttrs): HTMLElement {
 
 function createLoadingMediaView(): HTMLElement {
   const wrapper = document.createElement("div");
-  wrapper.className = "docsera-main__media-loading docsera-editor-image__loading";
+  wrapper.className = "docsera-main__media-loading docsera-editor-image__surface docsera-editor-image__loading";
   wrapper.setAttribute("role", "status");
   wrapper.setAttribute("aria-label", "Loading image");
   wrapper.setAttribute("aria-busy", "true");
@@ -139,47 +143,135 @@ function createDocseraImageExtension(loadMedia: WorkspaceMediaLoader) {
       };
     },
     addNodeView() {
-      return ({ node, editor }) => {
+      return ({ node, editor, getPos }) => {
         const figure = document.createElement("figure");
-        let activeLoadId = 0;
-        let activeMediaId = "";
-        let activeObjectUrl: string | null = null;
-        let activeController: AbortController | null = null;
+        const surface = document.createElement("div");
+        const mediaStateById = new Map<
+          string,
+          {
+            controller: AbortController | null;
+            loadId: number;
+            objectUrl: string | null;
+            status: "idle" | "loading" | "ready" | "unavailable";
+          }
+        >();
         let destroyed = false;
 
-        function revokeActiveObjectUrl(): void {
-          if (activeObjectUrl && typeof URL.revokeObjectURL === "function") {
-            URL.revokeObjectURL(activeObjectUrl);
+        function revokeObjectUrl(objectUrl: string | null): void {
+          if (objectUrl && typeof URL.revokeObjectURL === "function") {
+            URL.revokeObjectURL(objectUrl);
           }
-          activeObjectUrl = null;
         }
 
-        function renderState(attrs: DocseraImageAttrs, state: "loading" | "ready" | "unavailable"): void {
+        function getBlockIndex(): number | null {
+          const position = typeof getPos === "function" ? getPos() : null;
+          if (typeof position !== "number") {
+            return null;
+          }
+
+          let blockIndex: number | null = null;
+          editor.state.doc.forEach((_block, offset, index) => {
+            if (offset === position) {
+              blockIndex = index;
+            }
+          });
+          return blockIndex;
+        }
+
+        function getMediaState(mediaId: string): {
+          objectUrl: string | null;
+          status: "idle" | "loading" | "ready" | "unavailable";
+        } {
+          return mediaStateById.get(mediaId) ?? { objectUrl: null, status: "idle" };
+        }
+
+        function ensureMediaState(mediaId: string): void {
+          const state = mediaStateById.get(mediaId) ?? {
+            controller: null,
+            loadId: 0,
+            objectUrl: null,
+            status: "idle" as const
+          };
+
+          if (state.status === "loading" || state.status === "ready") {
+            mediaStateById.set(mediaId, state);
+            return;
+          }
+
+          state.loadId += 1;
+          const loadId = state.loadId;
+          state.status = "loading";
+          state.controller?.abort();
+          state.controller = new AbortController();
+          revokeObjectUrl(state.objectUrl);
+          state.objectUrl = null;
+          mediaStateById.set(mediaId, state);
+
+          void loadMedia({ mediaId, signal: state.controller.signal })
+            .then((blob) => {
+              if (destroyed || state.controller?.signal.aborted || mediaStateById.get(mediaId)?.loadId !== loadId) {
+                return;
+              }
+
+              if (!blob || typeof URL.createObjectURL !== "function") {
+                state.status = "unavailable";
+                state.objectUrl = null;
+                render();
+                return;
+              }
+
+              state.objectUrl = URL.createObjectURL(blob);
+              state.status = "ready";
+              render();
+            })
+            .catch(() => {
+              if (destroyed || state.controller?.signal.aborted || mediaStateById.get(mediaId)?.loadId !== loadId) {
+                return;
+              }
+
+              state.status = "unavailable";
+              state.objectUrl = null;
+              render();
+            });
+        }
+
+        function renderState(attrs: DocseraImageAttrs): void {
+          const blockIndex = getBlockIndex();
+          const resolvedTheme = resolveDocseraImageDisplayTheme(blockIndex);
+          const useDarkMedia = resolvedTheme === "dark" && attrs.darkMediaId !== null;
+          const lightState = getMediaState(attrs.mediaId);
+          const darkMediaId = attrs.darkMediaId && attrs.darkMediaId !== attrs.mediaId ? attrs.darkMediaId : null;
+          const darkState = darkMediaId ? getMediaState(darkMediaId) : lightState;
+          const activeState = useDarkMedia ? darkState : lightState;
+
           figure.className = "docsera-editor-image";
           figure.dataset.docseraImageAlign = attrs.align;
           figure.dataset.docseraImageFrame = attrs.frame ? "true" : "false";
+          figure.dataset.docseraImagePreviewTheme = resolvedTheme;
           figure.dataset.docseraImageWidthPct = String(attrs.widthPct);
           figure.style.width = `${attrs.widthPct}%`;
           figure.style.marginInlineStart = attrs.align === "center" || attrs.align === "right" ? "auto" : "0";
           figure.style.marginInlineEnd = attrs.align === "center" || attrs.align === "left" ? "auto" : "0";
-          figure.replaceChildren();
 
-          if (state === "loading") {
-            figure.append(createLoadingMediaView());
-            return;
+          surface.className = "docsera-editor-image__surface";
+          surface.dataset.docseraImageSurface = "true";
+          surface.dataset.docseraImageFrame = attrs.frame ? "true" : "false";
+          surface.replaceChildren();
+
+          if (activeState.status === "loading" || activeState.status === "idle") {
+            surface.append(createLoadingMediaView());
+          } else if (activeState.status === "unavailable" || !activeState.objectUrl) {
+            surface.append(createUnavailableMediaView(attrs));
+          } else {
+            const image = document.createElement("img");
+            image.className = "docsera-editor-image__image docsera-main__media-image";
+            image.alt = attrs.alt;
+            image.src = activeState.objectUrl;
+            image.draggable = false;
+            surface.append(image);
           }
 
-          if (state === "unavailable" || !activeObjectUrl) {
-            figure.append(createUnavailableMediaView(attrs));
-            return;
-          }
-
-          const image = document.createElement("img");
-          image.className = "docsera-editor-image__image docsera-main__media-image";
-          image.alt = attrs.alt;
-          image.src = activeObjectUrl;
-          image.draggable = false;
-          figure.append(image);
+          figure.replaceChildren(surface);
 
           if (attrs.caption) {
             const caption = document.createElement("figcaption");
@@ -195,53 +287,21 @@ function createDocseraImageExtension(loadMedia: WorkspaceMediaLoader) {
           }
 
           const attrs = canonicalizeDocseraImageAttrs(node.attrs);
-          const nextMediaId = attrs.mediaId;
-          if (nextMediaId === activeMediaId && activeObjectUrl) {
-            renderState(attrs, "ready");
-            return;
+          if (attrs.mediaId) {
+            ensureMediaState(attrs.mediaId);
+          }
+          if (attrs.darkMediaId && attrs.darkMediaId !== attrs.mediaId) {
+            ensureMediaState(attrs.darkMediaId);
           }
 
-          activeLoadId += 1;
-          const loadId = activeLoadId;
-          activeMediaId = nextMediaId;
-          activeController?.abort();
-          const controller = new AbortController();
-          activeController = controller;
-          revokeActiveObjectUrl();
-          renderState(attrs, "loading");
-
-          if (!nextMediaId) {
-            renderState(attrs, "unavailable");
-            return;
-          }
-
-          void loadMedia({ mediaId: nextMediaId, signal: controller.signal })
-            .then((blob) => {
-              if (destroyed || loadId !== activeLoadId || controller.signal.aborted) {
-                return;
-              }
-
-              if (!blob) {
-                renderState(attrs, "unavailable");
-                return;
-              }
-
-              if (typeof URL.createObjectURL !== "function") {
-                renderState(attrs, "unavailable");
-                return;
-              }
-
-              activeObjectUrl = URL.createObjectURL(blob);
-              renderState(attrs, "ready");
-            })
-            .catch(() => {
-              if (destroyed || loadId !== activeLoadId || controller.signal.aborted) {
-                return;
-              }
-
-              renderState(attrs, "unavailable");
-            });
+          renderState(attrs);
         };
+
+        const unsubscribe = subscribeDocseraImageDisplayState(() => {
+          if (!destroyed) {
+            render();
+          }
+        });
 
         render();
 
@@ -258,10 +318,12 @@ function createDocseraImageExtension(loadMedia: WorkspaceMediaLoader) {
           },
           destroy() {
             destroyed = true;
-            activeLoadId += 1;
-            activeController?.abort();
-            activeController = null;
-            revokeActiveObjectUrl();
+            unsubscribe();
+            for (const mediaState of mediaStateById.values()) {
+              mediaState.controller?.abort();
+              revokeObjectUrl(mediaState.objectUrl);
+            }
+            mediaStateById.clear();
           }
         };
       };
