@@ -19,6 +19,8 @@ import {
   createHeadingHierarchyDocseraDocumentEnvelope,
   createNestedTableDocseraDocumentEnvelope,
   createRelativeLinkDocseraDocumentEnvelope,
+  createMultiItemAccordionDocseraDocumentEnvelope,
+  createSingleItemAccordionDocseraDocumentEnvelope,
   createStandardTableDocseraDocumentEnvelope,
   createSupportedE2DocseraDocumentEnvelope
 } from "../../../shared/editor/documentFixtures";
@@ -101,6 +103,52 @@ function expectQuietLoadingMediaPlaceholderContract(status: HTMLElement) {
   expect(status.style.boxShadow).toBe("none");
 }
 
+function createAccordionHeadingIsolationEnvelope(): DocseraDocumentEnvelope {
+  return {
+    schemaVersion: 1,
+    document: {
+      type: "doc",
+      content: [
+        {
+          type: "accordion",
+          attrs: { accordionId: "accordion-heading-isolation" },
+          content: [
+            {
+              type: "accordionItem",
+              attrs: { accordionItemId: "accordion-item-heading-isolation" },
+              content: [
+                {
+                  type: "accordionTitle",
+                  content: [{ type: "text", text: "Accordion title" }]
+                },
+                {
+                  type: "accordionContent",
+                  content: [
+                    {
+                      type: "heading",
+                      attrs: { level: 3 },
+                      content: [{ type: "text", text: "Overview" }]
+                    },
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "Accordion body" }]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          type: "heading",
+          attrs: { level: 2 },
+          content: [{ type: "text", text: "Overview" }]
+        }
+      ]
+    }
+  };
+}
+
 describe("PublishedDocumentReader", () => {
   it("keeps live published links unchanged while the editor link color is corrected", () => {
     const nodeProcess = new Function("return process")() as {
@@ -164,6 +212,120 @@ describe("PublishedDocumentReader", () => {
     expect(within(reader).getAllByRole("link")).toHaveLength(2);
 
     view.unmount();
+  });
+
+  it("renders accordions with single-open and zero-open disclosure behavior in the lightweight reader", async () => {
+    const envelope = createMultiItemAccordionDocseraDocumentEnvelope();
+    const createObjectUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:accordion");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+
+    renderReader(envelope, {
+      loadMedia: vi.fn(async ({ mediaId }: WorkspaceMediaLoadInput) =>
+        mediaId === "workspace-media-001" ? createMediaBlob(mediaId) : null
+      )
+    });
+
+    const reader = screen.getByLabelText("Published page content");
+    const planButton = within(reader).getByRole("button", { name: "Plan" });
+    const mediaButton = within(reader).getByRole("button", { name: "Media" });
+
+    expect(planButton).toHaveAttribute("aria-expanded", "false");
+    expect(mediaButton).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(planButton);
+    expect(planButton).toHaveAttribute("aria-expanded", "true");
+    expect(mediaButton).toHaveAttribute("aria-expanded", "false");
+    expect(within(reader).getByRole("table")).toBeVisible();
+    expect(within(reader).getByText("Accordion plan body")).toBeVisible();
+
+    fireEvent.click(mediaButton);
+    expect(planButton).toHaveAttribute("aria-expanded", "false");
+    expect(mediaButton).toHaveAttribute("aria-expanded", "true");
+    await waitFor(() => {
+      expect(within(reader).getByRole("img", { name: "Accordion diagram" })).toHaveAttribute("src", "blob:accordion");
+    });
+    expect(within(reader).queryByRole("table")).toBeNull();
+    expect(within(reader).getByText("Accordion media body")).toBeVisible();
+
+    fireEvent.click(mediaButton);
+    expect(mediaButton).toHaveAttribute("aria-expanded", "false");
+    expect(within(reader).queryByRole("img", { name: "Accordion diagram" })).toBeNull();
+
+    createObjectUrlSpy.mockRestore();
+    revokeObjectUrlSpy.mockRestore();
+  });
+
+  it("resets accordion disclosure state when the page identity or document changes", () => {
+    const envelope = createSingleItemAccordionDocseraDocumentEnvelope();
+    const renderResult = renderReader(envelope, { pageIdentity: "page-a" });
+    const reader = screen.getByLabelText("Published page content");
+    const button = within(reader).getByRole("button", { name: "Overview" });
+
+    fireEvent.click(button);
+    expect(button).toHaveAttribute("aria-expanded", "true");
+
+    renderResult.rerender(<PublishedDocumentReader envelope={envelope} pageIdentity="page-b" />);
+
+    const rerenderedReader = screen.getByLabelText("Published page content");
+    const rerenderedButton = within(rerenderedReader).getByRole("button", { name: "Overview" });
+    expect(rerenderedButton).not.toBe(button);
+    expect(rerenderedButton).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(rerenderedButton);
+    expect(rerenderedButton).toHaveAttribute("aria-expanded", "true");
+
+    const nextEnvelope = JSON.parse(JSON.stringify(envelope)) as typeof envelope;
+    const nextAccordion = nextEnvelope.document.content?.[0];
+    if (
+      nextAccordion &&
+      typeof nextAccordion === "object" &&
+      !Array.isArray(nextAccordion) &&
+      Array.isArray((nextAccordion as { content?: unknown[] }).content)
+    ) {
+      const nextAccordionItem = (nextAccordion as { content?: unknown[] }).content?.[0];
+      if (
+        nextAccordionItem &&
+        typeof nextAccordionItem === "object" &&
+        !Array.isArray(nextAccordionItem) &&
+        Array.isArray((nextAccordionItem as { content?: unknown[] }).content)
+      ) {
+        const titleNode = (nextAccordionItem as { content?: unknown[] }).content?.[0];
+        if (
+          titleNode &&
+          typeof titleNode === "object" &&
+          !Array.isArray(titleNode) &&
+          Array.isArray((titleNode as { content?: Array<{ text?: string }> }).content)
+        ) {
+          const textNode = (titleNode as { content?: Array<{ text?: string }> }).content?.[0];
+          if (textNode && typeof textNode === "object" && !Array.isArray(textNode)) {
+            (textNode as { text?: string }).text = "Updated overview";
+          }
+        }
+      }
+    }
+
+    renderResult.rerender(<PublishedDocumentReader envelope={nextEnvelope} pageIdentity="page-b" />);
+
+    const updatedReader = screen.getByLabelText("Published page content");
+    const updatedButton = within(updatedReader).getByRole("button", { name: "Updated overview" });
+    expect(updatedButton).not.toBe(rerenderedButton);
+    expect(updatedButton).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("keeps top-level heading anchors stable when accordion bodies render headings", () => {
+    const envelope = createAccordionHeadingIsolationEnvelope();
+    renderReader(envelope);
+
+    const reader = screen.getByLabelText("Published page content");
+    expect(within(reader).getByRole("heading", { name: "Overview", level: 3 })).toHaveAttribute("id", "overview");
+
+    fireEvent.click(within(reader).getByRole("button", { name: "Accordion title" }));
+
+    expect(within(reader).getByRole("heading", { name: "Overview", level: 3 })).toHaveAttribute("id", "overview");
+    expect(within(reader).getByRole("heading", { name: "Overview", level: 4 })).toHaveAttribute(
+      "id",
+      "docsera-accordion-accordion-heading-isolation-accordion-item-heading-isolation-overview"
+    );
   });
 
   it("renders safe relative links with the canonical safe attributes", () => {
@@ -941,6 +1103,49 @@ describe("PublishedDocumentReader", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Published content unavailable");
     expect(screen.queryByText("Unsafe")).not.toBeInTheDocument();
     expect(screen.queryByText("not code")).not.toBeInTheDocument();
+  });
+
+  it("shows the contained reader-unavailable experience for invalid accordion structure", () => {
+    renderReader({
+      schemaVersion: 1,
+      document: {
+        type: "doc",
+        content: [
+          {
+            type: "accordion",
+            attrs: { accordionId: "accordion-invalid" },
+            content: [
+              {
+                type: "accordionItem",
+                attrs: { accordionItemId: "accordion-item-invalid" },
+                content: [
+                  {
+                    type: "accordionTitle",
+                    content: [{ type: "text", text: "Invalid" }]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    } as DocseraDocumentEnvelope);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Published content unavailable");
+  });
+
+  it("keeps the published reader TipTap-free", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/features/workspaces/PublishedDocumentReader.tsx`,
+      "utf8"
+    );
+
+    expect(source).not.toContain("@tiptap");
+    expect(source).not.toContain("prosemirror");
   });
 });
 

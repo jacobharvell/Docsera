@@ -8,8 +8,10 @@ import {
   createDuplicateHeadingDocseraDocumentEnvelope,
   createEmptyHeadingDocseraDocumentEnvelope,
   createExpandedTextFormattingDocseraDocumentEnvelope,
+  createMultiItemAccordionDocseraDocumentEnvelope,
   createNestedTableDocseraDocumentEnvelope,
   createNestedTaskListDocseraDocumentEnvelope,
+  createSingleItemAccordionDocseraDocumentEnvelope,
   createSupportedE2DocseraDocumentEnvelope,
   createTaskCheckedStateDocseraDocumentEnvelope
 } from "./documentFixtures";
@@ -27,7 +29,9 @@ describe("Docsera structured document validation", () => {
     ["empty heading document", createEmptyHeadingDocseraDocumentEnvelope().document],
     ["expanded text formatting document", createExpandedTextFormattingDocseraDocumentEnvelope().document],
     ["canonical image document", createCanonicalImageDocseraDocumentEnvelope().document],
-    ["nested table document", createNestedTableDocseraDocumentEnvelope().document]
+    ["nested table document", createNestedTableDocseraDocumentEnvelope().document],
+    ["single-item accordion document", createSingleItemAccordionDocseraDocumentEnvelope().document],
+    ["multi-item accordion document", createMultiItemAccordionDocseraDocumentEnvelope().document]
   ])("accepts %s at the raw validation boundary", (_label, document) => {
     expect(validateDocseraStructuredDocument(document)).toEqual({ ok: true });
   });
@@ -386,6 +390,307 @@ describe("Docsera structured document validation", () => {
             type: "heading",
             attrs: { level: 4 },
             content: [{ type: "text", text: "Unsupported heading" }]
+          }
+        ]
+      }
+    ],
+    [
+      "empty accordion",
+      {
+        type: "doc",
+        content: [
+          {
+            type: "accordion",
+            attrs: { accordionId: "accordion-empty" },
+            content: []
+          }
+        ]
+      }
+    ],
+    [
+      "malformed accordion item structure",
+      {
+        type: "doc",
+        content: [
+          {
+            type: "accordion",
+            attrs: { accordionId: "accordion-missing-body" },
+            content: [
+              {
+                type: "accordionItem",
+                attrs: { accordionItemId: "accordion-item-missing-body" },
+                content: [
+                  {
+                    type: "accordionTitle",
+                    content: [{ type: "text", text: "Missing body" }]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    [
+      "duplicate accordion identity",
+      {
+        type: "doc",
+        content: [
+          {
+            type: "accordion",
+            attrs: { accordionId: "accordion-duplicate" },
+            content: [
+              {
+                type: "accordionItem",
+                attrs: { accordionItemId: "accordion-item-duplicate" },
+                content: [
+                  {
+                    type: "accordionTitle",
+                    content: [{ type: "text", text: "First" }]
+                  },
+                  {
+                    type: "accordionContent",
+                    content: [
+                      {
+                        type: "paragraph",
+                        content: [{ type: "text", text: "First body" }]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            type: "accordion",
+            attrs: { accordionId: "accordion-duplicate" },
+            content: [
+              {
+                type: "accordionItem",
+                attrs: { accordionItemId: "accordion-item-duplicate-2" },
+                content: [
+                  {
+                    type: "accordionTitle",
+                    content: [{ type: "text", text: "Second" }]
+                  },
+                  {
+                    type: "accordionContent",
+                    content: [
+                      {
+                        type: "paragraph",
+                        content: [{ type: "text", text: "Second body" }]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    [
+      "nested accordion content",
+      {
+        type: "doc",
+        content: [
+          {
+            type: "accordion",
+            attrs: { accordionId: "accordion-nested" },
+            content: [
+              {
+                type: "accordionItem",
+                attrs: { accordionItemId: "accordion-item-nested" },
+                content: [
+                  {
+                    type: "accordionTitle",
+                    content: [{ type: "text", text: "Nested" }]
+                  },
+                  {
+                    type: "accordionContent",
+                    content: [
+                      {
+                        type: "accordion",
+                        attrs: { accordionId: "accordion-inner" },
+                        content: [
+                          {
+                            type: "accordionItem",
+                            attrs: { accordionItemId: "accordion-item-inner" },
+                            content: [
+                              {
+                                type: "accordionTitle",
+                                content: [{ type: "text", text: "Inner" }]
+                              },
+                              {
+                                type: "accordionContent",
+                                content: [
+                                  {
+                                    type: "paragraph",
+                                    content: [{ type: "text", text: "Inner body" }]
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    [
+      "accordion title structural hardBreak",
+      {
+        type: "doc",
+        content: [
+          {
+            type: "accordion",
+            attrs: { accordionId: "accordion-unsupported-title-break" },
+            content: [
+              {
+                type: "accordionItem",
+                attrs: { accordionItemId: "accordion-item-unsupported-title-break" },
+                content: [
+                  {
+                    type: "accordionTitle",
+                    content: [
+                      { type: "text", text: "Line one" },
+                      { type: "hardBreak" }
+                    ]
+                  },
+                  {
+                    type: "accordionContent",
+                    content: [
+                      {
+                        type: "paragraph",
+                        content: [{ type: "text", text: "Accordion body" }]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    [
+      "accordion title embedded CR/LF",
+      {
+        type: "doc",
+        content: [
+          {
+            type: "accordion",
+            attrs: { accordionId: "accordion-unsupported-title-text" },
+            content: [
+              {
+                type: "accordionItem",
+                attrs: { accordionItemId: "accordion-item-unsupported-title-text" },
+                content: [
+                  {
+                    type: "accordionTitle",
+                    content: [{ type: "text", text: "Line one\r\nLine two" }]
+                  },
+                  {
+                    type: "accordionContent",
+                    content: [
+                      {
+                        type: "paragraph",
+                        content: [{ type: "text", text: "Accordion body" }]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    [
+      "accordion title link mark",
+      {
+        type: "doc",
+        content: [
+          {
+            type: "accordion",
+            attrs: { accordionId: "accordion-unsupported-title-mark" },
+            content: [
+              {
+                type: "accordionItem",
+                attrs: { accordionItemId: "accordion-item-unsupported-title-mark" },
+                content: [
+                  {
+                    type: "accordionTitle",
+                    content: [
+                      {
+                        type: "text",
+                        text: "Linked title",
+                        marks: [
+                          {
+                            type: "link",
+                            attrs: {
+                              href: "https://example.com/title",
+                              target: "_blank",
+                              rel: "noopener noreferrer nofollow",
+                              class: null,
+                              title: null
+                            }
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    type: "accordionContent",
+                    content: [
+                      {
+                        type: "paragraph",
+                        content: [{ type: "text", text: "Accordion body" }]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    [
+      "accordion content columns",
+      {
+        type: "doc",
+        content: [
+          {
+            type: "accordion",
+            attrs: { accordionId: "accordion-unsupported-body" },
+            content: [
+              {
+                type: "accordionItem",
+                attrs: { accordionItemId: "accordion-item-unsupported-body" },
+                content: [
+                  {
+                    type: "accordionTitle",
+                    content: [{ type: "text", text: "Accordion" }]
+                  },
+                  {
+                    type: "accordionContent",
+                    content: [
+                      {
+                        type: "columns",
+                        content: []
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
           }
         ]
       }

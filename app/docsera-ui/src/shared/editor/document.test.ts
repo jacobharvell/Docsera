@@ -9,6 +9,7 @@ import {
   createDocseraDocumentFixtureCorpus,
   createCodeBlockWhitespaceDocseraDocumentEnvelope,
   createCombinedInlineMarksDocseraDocumentEnvelope,
+  createMultiItemAccordionDocseraDocumentEnvelope,
   createDuplicateHeadingDocseraDocumentEnvelope,
   createEmptyHeadingDocseraDocumentEnvelope,
   createExpandedTextFormattingDocseraDocumentEnvelope,
@@ -17,6 +18,7 @@ import {
   createNestedTableDocseraDocumentEnvelope,
   createNestedTaskListDocseraDocumentEnvelope,
   createStandardTableDocseraDocumentEnvelope,
+  createSingleItemAccordionDocseraDocumentEnvelope,
   createTaskCheckedStateDocseraDocumentEnvelope,
   createSupportedE2DocseraDocumentEnvelope
 } from "./documentFixtures";
@@ -276,6 +278,24 @@ describe("Docsera document envelope", () => {
     });
   });
 
+  it.each([
+    ["single-item accordion", createSingleItemAccordionDocseraDocumentEnvelope()],
+    ["multi-item accordion", createMultiItemAccordionDocseraDocumentEnvelope()]
+  ])("round-trips the canonical %s without transient disclosure state", (_label, envelope) => {
+    const parsed = parseDocseraDocument(serializeDocseraDocument(envelope));
+
+    expect(parsed).toEqual({
+      ok: true,
+      envelope,
+      migratedLegacyDocument: false
+    });
+
+    const serialized = JSON.stringify(envelope);
+    expect(serialized).not.toContain("\"open\"");
+    expect(serialized).not.toContain("\"name\"");
+    expect(serialized).not.toContain("\"groupName\"");
+  });
+
   it("canonicalizes standard table structural defaults and preserves table round trips", () => {
     const input = {
       schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
@@ -420,6 +440,12 @@ describe("Docsera document envelope", () => {
     expect(text).toContain("Alpha launch");
     expect(text).toContain("Nested block");
     expect(text).toContain("Beta");
+  });
+
+  it("collects accordion title and body text in order during plain-text extraction", () => {
+    const text = extractPlainTextFromServerDocument(createSingleItemAccordionDocseraDocumentEnvelope());
+
+    expect(text).toBe("Overview\nAccordion body");
   });
 });
 

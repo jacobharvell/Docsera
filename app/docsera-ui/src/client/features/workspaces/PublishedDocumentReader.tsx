@@ -1,4 +1,4 @@
-import { Component, Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Component, Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { type DocseraDocumentEnvelope } from "../../../shared/editor/document";
 import { canonicalizeDocseraImageAttrs, type DocseraImageAttrs } from "../../../shared/editor/imageContract";
 import {
@@ -30,6 +30,8 @@ type ReaderBoundaryState = {
 };
 
 type ReaderContext = {
+  accordionOpenItemIds: Record<string, string | null>;
+  setAccordionOpenItemId: (accordionId: string, itemId: string | null) => void;
   resolveHeadingAnchor: (headingText: string) => string;
   loadMedia?: WorkspaceMediaLoader;
   openImageFullscreen: (input: {
@@ -45,6 +47,21 @@ const SAFE_LINK_ATTRIBUTES = {
   rel: "noopener noreferrer nofollow",
   target: "_blank"
 } as const;
+
+function getPublishedDocumentReaderIdentityKey(envelope: PublishedDocumentReaderProps["envelope"], pageIdentity?: string): string {
+  const pageIdentityKey = typeof pageIdentity === "string" ? pageIdentity.trim() : "";
+
+  let documentKey = "";
+  if (envelope && typeof envelope === "object" && envelope.document && typeof envelope.document === "object") {
+    try {
+      documentKey = JSON.stringify(envelope.document);
+    } catch {
+      documentKey = "";
+    }
+  }
+
+  return `${pageIdentityKey}::${documentKey}`;
+}
 
 class PublishedDocumentReaderBoundary extends Component<ReaderBoundaryProps, ReaderBoundaryState> {
   state: ReaderBoundaryState = { hasError: false };
@@ -599,6 +616,103 @@ function renderTable(node: Record<string, unknown>, path: string, context: Reade
   );
 }
 
+function renderAccordionItem(
+  node: Record<string, unknown>,
+  path: string,
+  context: ReaderContext,
+  accordionId: string,
+  itemIndex: number
+): ReactNode {
+  const attrs = getNodeAttrs(node);
+  const itemId = typeof attrs.accordionItemId === "string" ? attrs.accordionItemId.trim() : "";
+  if (!itemId) {
+    throw new Error("The published page content contains an invalid accordion item identity.");
+  }
+
+  const content = getNodeContent(node);
+  if (content.length !== 2) {
+    throw new Error("The published page content contains an invalid accordion item structure.");
+  }
+
+  const [titleNode, bodyNode] = content;
+  if (!isRecord(titleNode) || titleNode.type !== "accordionTitle") {
+    throw new Error("The published page content contains an invalid accordion title structure.");
+  }
+
+  if (!isRecord(bodyNode) || bodyNode.type !== "accordionContent") {
+    throw new Error("The published page content contains an invalid accordion body structure.");
+  }
+
+  const titleText = extractCanonicalHeadingText(titleNode);
+  const isOpen = context.accordionOpenItemIds[accordionId] === itemId;
+  const panelId = `docsera-accordion-${accordionId}-${itemId}-panel`;
+  const bodyContext: ReaderContext = {
+    ...context,
+    resolveHeadingAnchor: createCanonicalHeadingAnchorResolver(`docsera-accordion-${accordionId}-${itemId}`)
+  };
+
+  return (
+    <div
+      key={path}
+      className={`docsera-main__accordion-item${isOpen ? " docsera-main__accordion-item--open" : ""}`}
+      data-docsera-accordion-id={accordionId}
+      data-docsera-accordion-index={String(itemIndex)}
+      data-docsera-accordion-item="true"
+      data-docsera-accordion-item-id={itemId}
+      data-docsera-accordion-open={isOpen ? "true" : "false"}
+    >
+      <button
+        type="button"
+        className="docsera-main__accordion-toggle"
+        aria-controls={panelId}
+        aria-expanded={isOpen}
+        aria-label={titleText || "Accordion item"}
+        onClick={() => {
+          context.setAccordionOpenItemId(accordionId, isOpen ? null : itemId);
+        }}
+      >
+        <span className="docsera-main__accordion-title">{renderInlineContent(getNodeContent(titleNode, true), `${path}-title`)}</span>
+        <span aria-hidden="true" className="docsera-main__accordion-toggle-icon">
+          &gt;
+        </span>
+      </button>
+      <div
+        id={panelId}
+        className="docsera-main__accordion-panel"
+        hidden={!isOpen}
+      >
+        {isOpen ? renderBlockChildren(getNodeContent(bodyNode), `${path}-body`, bodyContext) : null}
+      </div>
+    </div>
+  );
+}
+
+function renderAccordion(node: Record<string, unknown>, path: string, context: ReaderContext): ReactNode {
+  const attrs = getNodeAttrs(node);
+  const accordionId = typeof attrs.accordionId === "string" ? attrs.accordionId.trim() : "";
+  if (!accordionId) {
+    throw new Error("The published page content contains an invalid accordion identity.");
+  }
+
+  const items = getNodeContent(node);
+  return (
+    <div
+      key={path}
+      className="docsera-main__accordion"
+      data-docsera-accordion-group="true"
+      data-docsera-accordion-id={accordionId}
+    >
+      {items.map((item, index) => {
+        if (!isRecord(item) || item.type !== "accordionItem") {
+          throw new Error("The published page content contains an unsupported accordion structure.");
+        }
+
+        return renderAccordionItem(item, `${path}-${index}`, context, accordionId, index);
+      })}
+    </div>
+  );
+}
+
 function renderBlockNode(node: unknown, path: string, context: ReaderContext): ReactNode {
   if (!isRecord(node) || typeof node.type !== "string") {
     throw new Error("The published page content contains an unsupported block node: non-object.");
@@ -623,6 +737,8 @@ function renderBlockNode(node: unknown, path: string, context: ReaderContext): R
       return renderTaskList(node, path, context);
     case "table":
       return renderTable(node, path, context);
+    case "accordion":
+      return renderAccordion(node, path, context);
     case "image":
       return renderImage(node, path, context);
     default:
@@ -633,33 +749,22 @@ function renderBlockNode(node: unknown, path: string, context: ReaderContext): R
 function PublishedDocumentReaderContent({
   envelope,
   loadMedia,
-  pageIdentity,
   theme = "light"
 }: PublishedDocumentReaderProps) {
   const [imageFullscreenSession, setImageFullscreenSession] = useState<ImageFullscreenViewerSession | null>(null);
   const [imageFullscreenOpen, setImageFullscreenOpen] = useState(false);
-  const pageIdentityKey = typeof pageIdentity === "string" ? pageIdentity.trim() : "";
-  const documentKey = useMemo(() => {
-    if (!envelope || typeof envelope !== "object" || !envelope.document || typeof envelope.document !== "object") {
-      return "";
-    }
-
-    try {
-      return JSON.stringify(envelope.document);
-    } catch {
-      return "";
-    }
-  }, [envelope]);
+  const [accordionOpenItemIds, setAccordionOpenItemIds] = useState<Record<string, string | null>>({});
   const openImageFullscreen = useCallback<ReaderContext["openImageFullscreen"]>((input) => {
     setImageFullscreenOpen(true);
     setImageFullscreenSession(createImageFullscreenViewerSession(input));
   }, []);
+  const setAccordionOpenItemId = (accordionId: string, itemId: string | null) => {
+    setAccordionOpenItemIds((current) => ({
+      ...current,
+      [accordionId]: itemId
+    }));
+  };
   const overlayRoot = typeof document !== "undefined" ? document.body : null;
-
-  useEffect(() => {
-    setImageFullscreenOpen(false);
-    setImageFullscreenSession(null);
-  }, [documentKey, pageIdentityKey]);
 
   useEffect(() => {
     return () => {
@@ -682,6 +787,8 @@ function PublishedDocumentReaderContent({
   }
 
   const context: ReaderContext = {
+    accordionOpenItemIds,
+    setAccordionOpenItemId,
     resolveHeadingAnchor: createCanonicalHeadingAnchorResolver(),
     loadMedia,
     openImageFullscreen,
@@ -712,8 +819,10 @@ function PublishedDocumentReaderContent({
 }
 
 export function PublishedDocumentReader(props: PublishedDocumentReaderProps) {
+  const readerIdentityKey = getPublishedDocumentReaderIdentityKey(props.envelope, props.pageIdentity);
+
   return (
-    <PublishedDocumentReaderBoundary>
+    <PublishedDocumentReaderBoundary key={readerIdentityKey}>
       <PublishedDocumentReaderContent {...props} />
     </PublishedDocumentReaderBoundary>
   );

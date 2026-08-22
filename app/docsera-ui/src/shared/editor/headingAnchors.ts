@@ -38,13 +38,14 @@ export function extractCanonicalHeadingText(node: unknown): string {
   return extractCanonicalInlineText(node).replace(/\s+/g, " ").trim();
 }
 
-export function createCanonicalHeadingAnchorResolver(): (headingText: string) => string {
+export function createCanonicalHeadingAnchorResolver(anchorPrefix = ""): (headingText: string) => string {
   const countsBySlug = new Map<string, number>();
 
   return (headingText: string) => {
     const baseId = slugifyHeadingText(headingText) || "section";
     const nextCount = (countsBySlug.get(baseId) ?? 0) + 1;
     countsBySlug.set(baseId, nextCount);
-    return nextCount === 1 ? baseId : `${baseId}-${nextCount}`;
+    const resolvedId = nextCount === 1 ? baseId : `${baseId}-${nextCount}`;
+    return anchorPrefix ? `${anchorPrefix}-${resolvedId}` : resolvedId;
   };
 }

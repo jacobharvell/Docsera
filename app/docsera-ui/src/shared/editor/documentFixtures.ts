@@ -514,6 +514,117 @@ export function createEmptyHeadingDocseraDocumentEnvelope(): DocseraDocumentEnve
   };
 }
 
+function createAccordionTitleNode(title: string): Record<string, unknown> {
+  return {
+    type: "accordionTitle",
+    content: title ? [{ type: "text", text: title }] : []
+  };
+}
+
+function createAccordionBodyParagraph(text: string): Record<string, unknown> {
+  return {
+    type: "paragraph",
+    content: [{ type: "text", text }]
+  };
+}
+
+function createCanonicalAccordionItemNode(
+  accordionItemId: string,
+  title: string,
+  content: Record<string, unknown>[]
+): Record<string, unknown> {
+  return {
+    type: "accordionItem",
+    attrs: { accordionItemId },
+    content: [createAccordionTitleNode(title), { type: "accordionContent", content }]
+  };
+}
+
+export function createSingleItemAccordionDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
+  return {
+    schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+    document: {
+      type: "doc",
+      content: [
+        {
+          type: "accordion",
+          attrs: { accordionId: "accordion-overview" },
+          content: [
+            createCanonicalAccordionItemNode("accordion-item-overview", "Overview", [
+              createAccordionBodyParagraph("Accordion body")
+            ])
+          ]
+        }
+      ]
+    }
+  };
+}
+
+export function createMultiItemAccordionDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
+  return {
+    schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+    document: {
+      type: "doc",
+      content: [
+        {
+          type: "accordion",
+          attrs: { accordionId: "accordion-reference" },
+          content: [
+            createCanonicalAccordionItemNode("accordion-item-plan", "Plan", [
+              createAccordionBodyParagraph("Accordion plan body"),
+              {
+                type: "table",
+                content: [
+                  {
+                    type: "tableRow",
+                    content: [
+                      {
+                        type: "tableHeader",
+                        attrs: { colspan: 1, rowspan: 1, colwidth: null },
+                        content: [
+                          {
+                            type: "paragraph",
+                            content: [{ type: "text", text: "Stage" }]
+                          }
+                        ]
+                      },
+                      {
+                        type: "tableCell",
+                        attrs: { colspan: 1, rowspan: 1, colwidth: null },
+                        content: [
+                          {
+                            type: "paragraph",
+                            content: [{ type: "text", text: "Discovery" }]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]),
+            createCanonicalAccordionItemNode("accordion-item-media", "Media", [
+              createAccordionBodyParagraph("Accordion media body"),
+              {
+                type: "image",
+                attrs: {
+                  mediaId: "workspace-media-001",
+                  darkMediaId: null,
+                  alt: "Accordion diagram",
+                  caption: "Accordion item media",
+                  frame: true,
+                  align: "center",
+                  widthPct: 60
+                }
+              }
+            ])
+          ]
+        }
+      ]
+    }
+  };
+}
+
 export function createRelativeLinkDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
   return {
     schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
@@ -804,6 +915,30 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
       }
     },
     {
+      input: createSingleItemAccordionDocseraDocumentEnvelope().document,
+      label: "raw single-item accordion document",
+      expected: {
+        ok: true,
+        migratedLegacyDocument: true
+      }
+    },
+    {
+      input: createSingleItemAccordionDocseraDocumentEnvelope(),
+      label: "single-item accordion document",
+      expected: {
+        ok: true,
+        migratedLegacyDocument: false
+      }
+    },
+    {
+      input: createMultiItemAccordionDocseraDocumentEnvelope(),
+      label: "multi-item accordion document",
+      expected: {
+        ok: true,
+        migratedLegacyDocument: false
+      }
+    },
+    {
       input: createHeadingPairDocseraDocumentEnvelope(),
       label: "heading pair document",
       expected: {
@@ -997,6 +1132,422 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
         document: null
       },
       label: "missing document root",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "accordion",
+              attrs: { accordionId: "accordion-empty" },
+              content: []
+            }
+          ]
+        }
+      },
+      label: "empty accordion rejected",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "accordion",
+              attrs: { accordionId: "accordion-missing-body" },
+              content: [
+                {
+                  type: "accordionItem",
+                  attrs: { accordionItemId: "accordion-item-missing-body" },
+                  content: [
+                    {
+                      type: "accordionTitle",
+                      content: [{ type: "text", text: "Missing body" }]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "malformed accordion item structure",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "accordion",
+              attrs: { accordionId: "accordion-duplicate" },
+              content: [
+                {
+                  type: "accordionItem",
+                  attrs: { accordionItemId: "accordion-item-duplicate" },
+                  content: [
+                    {
+                      type: "accordionTitle",
+                      content: [{ type: "text", text: "First" }]
+                    },
+                    {
+                      type: "accordionContent",
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [{ type: "text", text: "First body" }]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              type: "accordion",
+              attrs: { accordionId: "accordion-duplicate" },
+              content: [
+                {
+                  type: "accordionItem",
+                  attrs: { accordionItemId: "accordion-item-duplicate-2" },
+                  content: [
+                    {
+                      type: "accordionTitle",
+                      content: [{ type: "text", text: "Second" }]
+                    },
+                    {
+                      type: "accordionContent",
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [{ type: "text", text: "Second body" }]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "duplicate accordion identity rejected",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "accordion",
+              attrs: { accordionId: "accordion-duplicate-item" },
+              content: [
+                {
+                  type: "accordionItem",
+                  attrs: { accordionItemId: "accordion-item-duplicate" },
+                  content: [
+                    {
+                      type: "accordionTitle",
+                      content: [{ type: "text", text: "First" }]
+                    },
+                    {
+                      type: "accordionContent",
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [{ type: "text", text: "First body" }]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  type: "accordionItem",
+                  attrs: { accordionItemId: "accordion-item-duplicate" },
+                  content: [
+                    {
+                      type: "accordionTitle",
+                      content: [{ type: "text", text: "Second" }]
+                    },
+                    {
+                      type: "accordionContent",
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [{ type: "text", text: "Second body" }]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "duplicate accordion item identity rejected",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "accordion",
+              attrs: { accordionId: "accordion-nested" },
+              content: [
+                {
+                  type: "accordionItem",
+                  attrs: { accordionItemId: "accordion-item-nested" },
+                  content: [
+                    {
+                      type: "accordionTitle",
+                      content: [{ type: "text", text: "Nested" }]
+                    },
+                    {
+                      type: "accordionContent",
+                      content: [
+                        {
+                          type: "accordion",
+                          attrs: { accordionId: "accordion-inner" },
+                          content: [
+                            {
+                              type: "accordionItem",
+                              attrs: { accordionItemId: "accordion-item-inner" },
+                              content: [
+                                {
+                                  type: "accordionTitle",
+                                  content: [{ type: "text", text: "Inner" }]
+                                },
+                                {
+                                  type: "accordionContent",
+                                  content: [
+                                    {
+                                      type: "paragraph",
+                                      content: [{ type: "text", text: "Inner body" }]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "nested accordion rejected",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "accordion",
+              attrs: { accordionId: "accordion-unsupported-title-break" },
+              content: [
+                {
+                  type: "accordionItem",
+                  attrs: { accordionItemId: "accordion-item-unsupported-title-break" },
+                  content: [
+                    {
+                      type: "accordionTitle",
+                      content: [
+                        { type: "text", text: "Line one" },
+                        { type: "hardBreak" }
+                      ]
+                    },
+                    {
+                      type: "accordionContent",
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [{ type: "text", text: "Accordion body" }]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "accordion title structural hardBreak rejected",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "accordion",
+              attrs: { accordionId: "accordion-unsupported-title-text" },
+              content: [
+                {
+                  type: "accordionItem",
+                  attrs: { accordionItemId: "accordion-item-unsupported-title-text" },
+                  content: [
+                    {
+                      type: "accordionTitle",
+                      content: [{ type: "text", text: "Line one\r\nLine two" }]
+                    },
+                    {
+                      type: "accordionContent",
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [{ type: "text", text: "Accordion body" }]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "accordion title embedded CR/LF rejected",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "accordion",
+              attrs: { accordionId: "accordion-unsupported-title-mark" },
+              content: [
+                {
+                  type: "accordionItem",
+                  attrs: { accordionItemId: "accordion-item-unsupported-title-mark" },
+                  content: [
+                    {
+                      type: "accordionTitle",
+                      content: [
+                        {
+                          type: "text",
+                          text: "Linked title",
+                          marks: [
+                            {
+                              type: "link",
+                              attrs: {
+                                href: "https://example.com/title",
+                                target: "_blank",
+                                rel: "noopener noreferrer nofollow",
+                                class: null,
+                                title: null
+                              }
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      type: "accordionContent",
+                      content: [
+                        {
+                          type: "paragraph",
+                          content: [{ type: "text", text: "Accordion body" }]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "accordion title link mark rejected",
+      expected: {
+        ok: false,
+        reason: "invalid-document"
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "accordion",
+              attrs: { accordionId: "accordion-unsupported-body" },
+              content: [
+                {
+                  type: "accordionItem",
+                  attrs: { accordionItemId: "accordion-item-unsupported-body" },
+                  content: [
+                    {
+                      type: "accordionTitle",
+                      content: [{ type: "text", text: "Accordion" }]
+                    },
+                    {
+                      type: "accordionContent",
+                      content: [
+                        {
+                          type: "columns",
+                          content: []
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "accordion content columns rejected",
       expected: {
         ok: false,
         reason: "invalid-document"

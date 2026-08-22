@@ -23,9 +23,14 @@ const DOCSERA_BLOCK_NODE_TYPES = new Set([
   "table",
   "tableRow",
   "tableCell",
-  "tableHeader"
+  "tableHeader",
+  "accordion",
+  "accordionItem",
+  "accordionTitle",
+  "accordionContent"
 ]);
 const DOCSERA_INLINE_NODE_TYPES = new Set(["text", "hardBreak"]);
+const DOCSERA_TITLE_INLINE_NODE_TYPES = new Set(["text"]);
 const DOCSERA_DOC_CHILD_TYPES = new Set([
   "paragraph",
   "heading",
@@ -36,7 +41,8 @@ const DOCSERA_DOC_CHILD_TYPES = new Set([
   "blockquote",
   "horizontalRule",
   "codeBlock",
-  "table"
+  "table",
+  "accordion"
 ]);
 const DOCSERA_NESTED_BLOCK_CHILD_TYPES = new Set([
   "paragraph",
@@ -52,6 +58,13 @@ const DOCSERA_NESTED_BLOCK_CHILD_TYPES = new Set([
 ]);
 const DOCSERA_TABLE_CELL_TYPES = new Set(["tableCell", "tableHeader"]);
 const DOCSERA_TABLE_CELL_ALIGNMENTS = new Set(["left", "center", "right"]);
+const DOCSERA_ACCORDION_ATTRS = ["accordionId"] as const;
+const DOCSERA_ACCORDION_ITEM_ATTRS = ["accordionItemId"] as const;
+
+type AccordionValidationContext = {
+  accordionIds: Set<string>;
+  accordionItemIds: Set<string>;
+};
 
 export const DOCSERA_DOCUMENT_SCHEMA_VERSION = 1 as const;
 export const DOCSERA_BODY_HEADING_LEVELS = [1, 2, 3] as const;
@@ -119,6 +132,13 @@ function createValidationFailure(message = DOCSERA_INVALID_DOCUMENT_MESSAGE): Do
   };
 }
 
+function createAccordionValidationContext(): AccordionValidationContext {
+  return {
+    accordionIds: new Set<string>(),
+    accordionItemIds: new Set<string>()
+  };
+}
+
 function createParseFailure(
   reason: DocseraDocumentParseFailureReason,
   message: string
@@ -136,6 +156,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function hasOnlyAllowedKeys(value: Record<string, unknown>, allowedKeys: readonly string[]): boolean {
   return Object.keys(value).every((key) => allowedKeys.includes(key));
+}
+
+function normalizeStableIdentity(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function isNullableString(value: unknown): value is string | null {
@@ -219,7 +243,7 @@ function validateLinkAttrs(attrs: unknown): DocseraStructuredDocumentValidationR
   return { ok: true };
 }
 
-function validateMark(mark: unknown): DocseraStructuredDocumentValidationResult {
+function validateMark(mark: unknown, { allowLinkMark = true }: { allowLinkMark?: boolean } = {}): DocseraStructuredDocumentValidationResult {
   if (!isRecord(mark) || typeof mark.type !== "string" || !isAllowedMarkType(mark.type)) {
     return createValidationFailure();
   }
@@ -229,6 +253,10 @@ function validateMark(mark: unknown): DocseraStructuredDocumentValidationResult 
   }
 
   if (mark.type === "link") {
+    if (!allowLinkMark) {
+      return createValidationFailure();
+    }
+
     return validateLinkAttrs(mark.attrs);
   }
 
@@ -241,12 +269,15 @@ function validateMark(mark: unknown): DocseraStructuredDocumentValidationResult 
   return { ok: true };
 }
 
-function validateTextNodeMarks(marks: unknown[]): DocseraStructuredDocumentValidationResult {
+function validateTextNodeMarks(
+  marks: unknown[],
+  { allowLinkMark = true }: { allowLinkMark?: boolean } = {}
+): DocseraStructuredDocumentValidationResult {
   let hasSuperscript = false;
   let hasSubscript = false;
 
   for (const mark of marks) {
-    const markValidation = validateMark(mark);
+    const markValidation = validateMark(mark, { allowLinkMark });
     if (!markValidation.ok) {
       return markValidation;
     }
@@ -267,13 +298,17 @@ function validateTextNodeMarks(marks: unknown[]): DocseraStructuredDocumentValid
   return hasSuperscript && hasSubscript ? createValidationFailure() : { ok: true };
 }
 
-function validateNodeAttrs(type: string, attrs: unknown): DocseraStructuredDocumentValidationResult {
+function validateNodeAttrs(
+  type: string,
+  attrs: unknown,
+  context: AccordionValidationContext
+): DocseraStructuredDocumentValidationResult {
   if (attrs === undefined) {
     if (type === "heading") {
       return createValidationFailure();
     }
 
-    if (type === "image") {
+    if (type === "image" || type === "accordion" || type === "accordionItem") {
       return createValidationFailure();
     }
 
@@ -296,6 +331,35 @@ function validateNodeAttrs(type: string, attrs: unknown): DocseraStructuredDocum
     case "table":
     case "tableRow":
       return Object.keys(attrs).length === 0 ? { ok: true } : createValidationFailure();
+    case "accordionTitle":
+    case "accordionContent":
+      return Object.keys(attrs).length === 0 ? { ok: true } : createValidationFailure();
+    case "accordion": {
+      if (!hasOnlyAllowedKeys(attrs, DOCSERA_ACCORDION_ATTRS)) {
+        return createValidationFailure();
+      }
+
+      const accordionId = normalizeStableIdentity(attrs.accordionId);
+      if (!accordionId || context.accordionIds.has(accordionId)) {
+        return createValidationFailure();
+      }
+
+      context.accordionIds.add(accordionId);
+      return { ok: true };
+    }
+    case "accordionItem": {
+      if (!hasOnlyAllowedKeys(attrs, DOCSERA_ACCORDION_ITEM_ATTRS)) {
+        return createValidationFailure();
+      }
+
+      const accordionItemId = normalizeStableIdentity(attrs.accordionItemId);
+      if (!accordionItemId || context.accordionItemIds.has(accordionItemId)) {
+        return createValidationFailure();
+      }
+
+      context.accordionItemIds.add(accordionItemId);
+      return { ok: true };
+    }
     case "tableCell":
     case "tableHeader": {
       if (!hasOnlyAllowedKeys(attrs, ["colspan", "rowspan", "colwidth", "align"])) {
@@ -368,7 +432,9 @@ function validateChildNodes(
     allowEmpty?: boolean;
     allowedChildTypes: ReadonlySet<string>;
     requireLeadingParagraph?: boolean;
-  }
+  },
+  context: AccordionValidationContext,
+  inAccordionTitle = false
 ): DocseraStructuredDocumentValidationResult {
   if (!allowEmpty && content.length === 0) {
     return createValidationFailure();
@@ -384,7 +450,7 @@ function validateChildNodes(
       return createValidationFailure();
     }
 
-    const childValidation = validateStructuredNode(child);
+    const childValidation = validateStructuredNode(child, context, inAccordionTitle);
     if (!childValidation.ok) {
       return childValidation;
     }
@@ -393,7 +459,11 @@ function validateChildNodes(
   return { ok: true };
 }
 
-function validateStructuredNode(node: unknown): DocseraStructuredDocumentValidationResult {
+function validateStructuredNode(
+  node: unknown,
+  context: AccordionValidationContext,
+  inAccordionTitle = false
+): DocseraStructuredDocumentValidationResult {
   if (!isRecord(node) || typeof node.type !== "string" || !isAllowedDocumentNodeType(node.type)) {
     return createValidationFailure();
   }
@@ -403,8 +473,10 @@ function validateStructuredNode(node: unknown): DocseraStructuredDocumentValidat
       ? ["type", "text", "marks"]
       : node.type === "horizontalRule" || node.type === "hardBreak"
         ? ["type", "attrs"]
-        : node.type === "image"
-          ? ["type", "attrs"]
+      : node.type === "image"
+        ? ["type", "attrs"]
+      : node.type === "accordionTitle" || node.type === "accordionContent"
+        ? ["type", "content"]
         : ["type", "attrs", "content"];
 
   if (!hasOnlyAllowedKeys(node, allowedKeys)) {
@@ -416,12 +488,16 @@ function validateStructuredNode(node: unknown): DocseraStructuredDocumentValidat
       return createValidationFailure();
     }
 
+    if (inAccordionTitle && /[\r\n]/.test(node.text)) {
+      return createValidationFailure();
+    }
+
     if (node.marks !== undefined) {
       if (!Array.isArray(node.marks)) {
         return createValidationFailure();
       }
 
-      const markValidation = validateTextNodeMarks(node.marks);
+      const markValidation = validateTextNodeMarks(node.marks, { allowLinkMark: !inAccordionTitle });
       if (!markValidation.ok) {
         return markValidation;
       }
@@ -434,7 +510,7 @@ function validateStructuredNode(node: unknown): DocseraStructuredDocumentValidat
     return createValidationFailure();
   }
 
-  const attrsValidation = validateNodeAttrs(node.type, node.attrs);
+  const attrsValidation = validateNodeAttrs(node.type, node.attrs, context);
   if (!attrsValidation.ok) {
     return attrsValidation;
   }
@@ -449,59 +525,95 @@ function validateStructuredNode(node: unknown): DocseraStructuredDocumentValidat
       return validateChildNodes(content ?? [], {
         allowEmpty: true,
         allowedChildTypes: DOCSERA_DOC_CHILD_TYPES
-      });
+      }, context, inAccordionTitle);
     case "paragraph":
     case "heading":
       return validateChildNodes(content ?? [], {
         allowEmpty: true,
         allowedChildTypes: DOCSERA_INLINE_NODE_TYPES
-      });
+      }, context, inAccordionTitle);
     case "image":
       return content === undefined ? { ok: true } : createValidationFailure();
     case "blockquote":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
         allowedChildTypes: DOCSERA_NESTED_BLOCK_CHILD_TYPES
-      });
+      }, context, inAccordionTitle);
     case "bulletList":
     case "orderedList":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
         allowedChildTypes: new Set(["listItem"])
-      });
+      }, context, inAccordionTitle);
     case "taskList":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
         allowedChildTypes: new Set(["taskItem"])
-      });
+      }, context, inAccordionTitle);
     case "listItem":
     case "taskItem":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
         allowedChildTypes: DOCSERA_NESTED_BLOCK_CHILD_TYPES,
         requireLeadingParagraph: true
-      });
+      }, context, inAccordionTitle);
     case "table":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
         allowedChildTypes: new Set(["tableRow"])
-      });
+      }, context, inAccordionTitle);
     case "tableRow":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
         allowedChildTypes: DOCSERA_TABLE_CELL_TYPES
-      });
+      }, context, inAccordionTitle);
     case "tableCell":
     case "tableHeader":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
         allowedChildTypes: DOCSERA_NESTED_BLOCK_CHILD_TYPES
-      });
+      }, context, inAccordionTitle);
+    case "accordion":
+      return validateChildNodes(content ?? [], {
+        allowEmpty: false,
+        allowedChildTypes: new Set(["accordionItem"])
+      }, context, inAccordionTitle);
+    case "accordionTitle":
+      return validateChildNodes(content ?? [], {
+        allowEmpty: true,
+        allowedChildTypes: DOCSERA_TITLE_INLINE_NODE_TYPES
+      }, context, true);
+    case "accordionContent":
+      return validateChildNodes(content ?? [], {
+        allowEmpty: false,
+        allowedChildTypes: DOCSERA_NESTED_BLOCK_CHILD_TYPES
+      }, context, inAccordionTitle);
+    case "accordionItem": {
+      if (content === undefined || content.length !== 2) {
+        return createValidationFailure();
+      }
+
+      const [titleNode, bodyNode] = content;
+      if (!isRecord(titleNode) || titleNode.type !== "accordionTitle") {
+        return createValidationFailure();
+      }
+
+      if (!isRecord(bodyNode) || bodyNode.type !== "accordionContent") {
+        return createValidationFailure();
+      }
+
+      const titleValidation = validateStructuredNode(titleNode, context, true);
+      if (!titleValidation.ok) {
+        return titleValidation;
+      }
+
+      return validateStructuredNode(bodyNode, context, false);
+    }
     case "codeBlock":
       return validateChildNodes(content ?? [], {
         allowEmpty: true,
         allowedChildTypes: new Set(["text"])
-      });
+      }, context, inAccordionTitle);
     case "horizontalRule":
     case "hardBreak":
       return content === undefined || content.length === 0 ? { ok: true } : createValidationFailure();
@@ -546,6 +658,16 @@ function canonicalizeNode(node: Record<string, unknown>): Record<string, unknown
 
   if (node.type === "image") {
     canonicalNode.attrs = canonicalizeDocseraImageAttrs(node.attrs);
+  } else if (node.type === "accordion") {
+    const attrs = isRecord(node.attrs) ? node.attrs : {};
+    canonicalNode.attrs = {
+      accordionId: normalizeStableIdentity(attrs.accordionId)
+    };
+  } else if (node.type === "accordionItem") {
+    const attrs = isRecord(node.attrs) ? node.attrs : {};
+    canonicalNode.attrs = {
+      accordionItemId: normalizeStableIdentity(attrs.accordionItemId)
+    };
   } else if (node.type === "orderedList") {
     const attrs = isRecord(node.attrs) ? node.attrs : {};
     canonicalNode.attrs = {
@@ -586,7 +708,7 @@ export function validateDocseraStructuredDocument(
   document: unknown
 ): DocseraStructuredDocumentValidationResult {
   try {
-    return validateStructuredNode(document);
+    return validateStructuredNode(document, createAccordionValidationContext());
   } catch {
     return createValidationFailure();
   }
@@ -715,6 +837,10 @@ export function extractPlainTextFromServerDocument(value: unknown): string {
         paragraphs.push(collectInlineText(Array.isArray(node.content) ? node.content : []));
         return;
       }
+      case "accordionTitle": {
+        paragraphs.push(collectInlineText(Array.isArray(node.content) ? node.content : []));
+        return;
+      }
       case "horizontalRule":
         paragraphs.push("");
         return;
@@ -728,6 +854,9 @@ export function extractPlainTextFromServerDocument(value: unknown): string {
       case "tableRow":
       case "tableCell":
       case "tableHeader":
+      case "accordion":
+      case "accordionItem":
+      case "accordionContent":
       case "doc":
         if (Array.isArray(node.content)) {
           node.content.forEach(visitNode);
