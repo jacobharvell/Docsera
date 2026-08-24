@@ -244,6 +244,30 @@ function validateRequiredOption(value, label) {
   return value;
 }
 
+function ensureFullCommitSha(value, optionName, label) {
+  if (!/^[0-9a-f]{40}$/i.test(value)) {
+    throw new Error(`${label} is invalid: ${optionName} must be a full commit SHA.`);
+  }
+  return value.toLowerCase();
+}
+
+function ensureCommitObject(cwd, value, optionName, label) {
+  let objectType;
+  try {
+    objectType = runGit(cwd, ["cat-file", "-t", value]);
+  } catch {
+    throw new Error(`${label} is invalid: ${optionName} must resolve to an existing commit.`);
+  }
+
+  if (objectType !== "commit") {
+    throw new Error(
+      `${label} is invalid: ${optionName} must resolve to a commit; git returned ${objectType}.`
+    );
+  }
+
+  return value;
+}
+
 function ensureTaskWorktree({
   cwd = process.cwd(),
   expectedHead,
@@ -284,8 +308,26 @@ function ensureTaskWorktree({
   }
 
   const resolvedTaskBranch = validateRequiredOption(taskBranch, "task branch");
-  const resolvedOriginalBase = validateRequiredOption(originalBase, "original base");
-  const resolvedExpectedHead = validateRequiredOption(expectedHead, "expected head");
+  const resolvedOriginalBase = ensureCommitObject(
+    cwd,
+    ensureFullCommitSha(
+      validateRequiredOption(originalBase, "original base"),
+      "--original-base",
+      "original base"
+    ),
+    "--original-base",
+    "original base"
+  );
+  const resolvedExpectedHead = ensureCommitObject(
+    cwd,
+    ensureFullCommitSha(
+      validateRequiredOption(expectedHead, "expected head"),
+      "--expected-head",
+      "expected head"
+    ),
+    "--expected-head",
+    "expected head"
+  );
 
   if (currentBranch !== resolvedTaskBranch) {
     throw new Error(
@@ -415,8 +457,8 @@ function printHelp() {
       "",
       "Required options:",
       "  --task-branch, --branch           Intended task branch name.",
-      "  --original-base, --base           Original base commit for the task.",
-      "  --expected-head, --head           Expected current HEAD for the active worktree.",
+      "  --original-base, --base           Original base full commit SHA for the task.",
+      "  --expected-head, --head           Expected current HEAD full commit SHA for the active worktree.",
       "",
       "Mode:",
       "  --mode new                        New-task validation. Requires HEAD to equal the original base and the branch to be zero commits ahead and behind.",
@@ -452,4 +494,4 @@ if (invokedPath && import.meta.url === invokedPath) {
   }
 }
 
-export { ensureTaskWorktree, parseArgs, parseCountPair, parseWorktreeList };
+export { ensureCommitObject, ensureFullCommitSha, ensureTaskWorktree, parseArgs, parseCountPair, parseWorktreeList };

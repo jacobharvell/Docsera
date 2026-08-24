@@ -206,7 +206,7 @@ Create `scripts/ensure-task-worktree.mjs` and a narrow repo script wrapper for i
 
 The guard is now exposed through the repository command surface as:
 
-- `npm run ensure:task-worktree -- --task-branch <branch> --original-base <base> --expected-head <head> [--mode new|continuation]`
+- `npm run ensure:task-worktree -- --task-branch <branch> --original-base <full-base-sha> --expected-head <full-head-sha> [--mode new|continuation]`
 
 Behavior:
 

@@ -230,6 +230,122 @@ describe("ensure-task-worktree", () => {
     }
   });
 
+  it("rejects a symbolic original base before merge-base checks and leaves state unchanged", async () => {
+    const fixture = await createRepoFixture();
+    const before = snapshotWorktree(fixture.taskWorktree);
+
+    try {
+      const result = runGuardWithNode(fixture.taskWorktree, [
+        "--task-branch",
+        "fix/task-worktree-preflight-guard",
+        "--original-base",
+        "main",
+        "--expected-head",
+        fixture.baseHead,
+        "--mode",
+        "new"
+      ]);
+      assertGuardFailure(result, /original base is invalid: --original-base must be a full commit SHA\./i);
+      assert.doesNotMatch(result.stdout + result.stderr, /merge base:/i);
+      assert.deepEqual(snapshotWorktree(fixture.taskWorktree), before);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("rejects an abbreviated original base before merge-base checks and leaves state unchanged", async () => {
+    const fixture = await createRepoFixture();
+    const before = snapshotWorktree(fixture.taskWorktree);
+
+    try {
+      const result = runGuardWithNode(fixture.taskWorktree, [
+        "--task-branch",
+        "fix/task-worktree-preflight-guard",
+        "--original-base",
+        fixture.baseHead.slice(0, 12),
+        "--expected-head",
+        fixture.baseHead,
+        "--mode",
+        "new"
+      ]);
+      assertGuardFailure(result, /original base is invalid: --original-base must be a full commit SHA\./i);
+      assert.deepEqual(snapshotWorktree(fixture.taskWorktree), before);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("rejects a symbolic expected head before HEAD comparisons and leaves state unchanged", async () => {
+    const fixture = await createRepoFixture();
+    const before = snapshotWorktree(fixture.taskWorktree);
+
+    try {
+      const result = runGuardWithNode(fixture.taskWorktree, [
+        "--task-branch",
+        "fix/task-worktree-preflight-guard",
+        "--original-base",
+        fixture.baseHead,
+        "--expected-head",
+        "HEAD",
+        "--mode",
+        "continuation"
+      ]);
+      assertGuardFailure(result, /expected head is invalid: --expected-head must be a full commit SHA\./i);
+      assert.deepEqual(snapshotWorktree(fixture.taskWorktree), before);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("rejects an abbreviated expected head before HEAD comparisons and leaves state unchanged", async () => {
+    const fixture = await createRepoFixture();
+    const before = snapshotWorktree(fixture.taskWorktree);
+
+    try {
+      const result = runGuardWithNode(fixture.taskWorktree, [
+        "--task-branch",
+        "fix/task-worktree-preflight-guard",
+        "--original-base",
+        fixture.baseHead,
+        "--expected-head",
+        fixture.baseHead.slice(0, 12),
+        "--mode",
+        "continuation"
+      ]);
+      assertGuardFailure(result, /expected head is invalid: --expected-head must be a full commit SHA\./i);
+      assert.deepEqual(snapshotWorktree(fixture.taskWorktree), before);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  it("rejects a missing original-base commit object with a clear argument error and leaves state unchanged", async () => {
+    const fixture = await createRepoFixture();
+    const missingCommit = "1234567890abcdef1234567890abcdef12345678";
+    const before = snapshotWorktree(fixture.taskWorktree);
+
+    try {
+      const result = runGuardWithNode(fixture.taskWorktree, [
+        "--task-branch",
+        "fix/task-worktree-preflight-guard",
+        "--original-base",
+        missingCommit,
+        "--expected-head",
+        fixture.baseHead,
+        "--mode",
+        "continuation"
+      ]);
+      assertGuardFailure(
+        result,
+        /original base is invalid: --original-base must resolve to an existing commit\./i
+      );
+      assert.doesNotMatch(result.stdout + result.stderr, /git cat-file -t/i);
+      assert.deepEqual(snapshotWorktree(fixture.taskWorktree), before);
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
   it("rejects a continuation when the expected HEAD is stale", async () => {
     const fixture = await createRepoFixture();
     await writeFile(path.join(fixture.taskWorktree, "content.txt"), "continuation\n", "utf8");
