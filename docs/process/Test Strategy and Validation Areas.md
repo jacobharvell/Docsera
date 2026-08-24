@@ -83,6 +83,8 @@ Current suite names and package commands:
 - `page-settings` - `npm --prefix app/docsera-ui run test:page-settings`
 - `page-model` - `npm --prefix app/docsera-ui run test:page-model`
 - `editor-contract` - `npm --prefix app/docsera-ui run test:editor-contract`
+- `editor-accordion` - `npm --prefix app/docsera-ui run test:suite -- editor-accordion`
+- `editor-image` - `npm --prefix app/docsera-ui run test:suite -- editor-image`
 - `editor-interactions` - `npm --prefix app/docsera-ui run test:editor-interactions`
 - `reader-toc` - `npm --prefix app/docsera-ui run test:reader-toc`
 - `publishing-changes` - `npm --prefix app/docsera-ui run test:publishing-changes`

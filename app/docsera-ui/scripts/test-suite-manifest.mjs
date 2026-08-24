@@ -78,6 +78,14 @@ export const testSuites = [
     ]
   },
   {
+    name: "editor-image",
+    description: "focused image editor runtime behavior: picker, hover, preview, options, resize, upload, session lifecycle, and stylesheet contracts.",
+    files: [
+      "src/client/editor/PageEditorHostRuntime.imageControls.test.tsx",
+      "src/client/editor/PageEditorHostRuntime.imageMedia.test.tsx"
+    ]
+  },
+  {
     name: "editor-interactions",
     description: "editor host; editor commands; toolbar behavior; selection; autosave; editor session lifecycle; editor focus; editor overlays.",
     files: [
