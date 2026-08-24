@@ -8,6 +8,7 @@ export type EditorBlockCommandId =
   | "blockquote"
   | "bulletedList"
   | "numberedList"
+  | "accordion"
   | "codeBlock"
   | "horizontalRule"
   | "image"
@@ -15,6 +16,7 @@ export type EditorBlockCommandId =
 
 export type EditorBlockCommandContext = {
   isInsideTableCellOrHeader: boolean;
+  isTopLevelBlock: boolean;
 };
 
 export type EditorBlockCommand = {
@@ -24,6 +26,7 @@ export type EditorBlockCommand = {
   keywords: string[];
   label: string;
   isAvailable?: (context: EditorBlockCommandContext) => boolean;
+  createQuickAddContent?: () => JSONContent[];
   quickAdd: {
     content: JSONContent[];
     selectionOffset: number | "continuation";
@@ -36,6 +39,15 @@ function createParagraphNode(): JSONContent {
   return {
     type: "paragraph"
   };
+}
+
+export function createAccordionIdentity(prefix: string): string {
+  const randomId = globalThis.crypto?.randomUUID?.();
+  if (typeof randomId === "string" && randomId.length > 0) {
+    return `${prefix}-${randomId}`;
+  }
+
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 function createHeadingNode(level: 1 | 2 | 3): JSONContent {
@@ -62,6 +74,36 @@ function createListNode(type: "bulletList" | "orderedList"): JSONContent {
       }
     ]
   };
+}
+
+function createAccordionNode(): JSONContent {
+  return {
+    type: "accordion",
+    attrs: {
+      accordionId: createAccordionIdentity("accordion")
+    },
+    content: [
+      {
+        type: "accordionItem",
+        attrs: {
+          accordionItemId: createAccordionIdentity("accordion-item")
+        },
+        content: [
+          {
+            type: "accordionTitle"
+          },
+          {
+            type: "accordionContent",
+            content: [createParagraphNode()]
+          }
+        ]
+      }
+    ]
+  };
+}
+
+function createAccordionQuickAddContent(): JSONContent[] {
+  return [createAccordionNode()];
 }
 
 function createCodeBlockNode(): JSONContent {
@@ -196,6 +238,23 @@ export const EDITOR_BLOCK_COMMANDS: EditorBlockCommand[] = [
   },
   {
     category: "Basic Blocks",
+    id: "accordion",
+    label: "Accordion",
+    description: "Create a collapsible content block",
+    keywords: ["accordion", "details", "expandable", "collapsible"],
+    isAvailable: (context) => context.isTopLevelBlock && !context.isInsideTableCellOrHeader,
+    createQuickAddContent: createAccordionQuickAddContent,
+    quickAdd: {
+      content: [],
+      selectionOffset: 3
+    },
+    slashSelectionOffset: 3,
+    run: (editor) => {
+      editor.chain().focus(undefined, { scrollIntoView: false }).insertContent(createAccordionQuickAddContent()).run();
+    }
+  },
+  {
+    category: "Basic Blocks",
     id: "codeBlock",
     label: "Code Block",
     description: "Insert a formatted code block",
@@ -259,7 +318,7 @@ export const EDITOR_BLOCK_COMMANDS: EditorBlockCommand[] = [
 
 export function getEditorBlockCommandMatches(
   query: string,
-  context: EditorBlockCommandContext = { isInsideTableCellOrHeader: false }
+  context: EditorBlockCommandContext = { isInsideTableCellOrHeader: false, isTopLevelBlock: true }
 ): EditorBlockCommand[] {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) {
@@ -278,7 +337,7 @@ export function getEditorBlockCommandMatches(
 
 export function getGroupedEditorBlockCommandMatches(
   query: string,
-  context: EditorBlockCommandContext = { isInsideTableCellOrHeader: false }
+  context: EditorBlockCommandContext = { isInsideTableCellOrHeader: false, isTopLevelBlock: true }
 ): Array<{
   category: EditorBlockCommand["category"];
   commands: EditorBlockCommand[];
@@ -289,7 +348,11 @@ export function getGroupedEditorBlockCommandMatches(
         {
           category: "Basic Blocks",
           commands: matches
-        }
-      ]
+      }
+    ]
     : [];
+}
+
+export function getEditorBlockCommandQuickAddContent(command: EditorBlockCommand): JSONContent[] {
+  return command.createQuickAddContent ? command.createQuickAddContent() : command.quickAdd.content;
 }

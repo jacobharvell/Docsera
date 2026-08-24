@@ -71,6 +71,13 @@ export const testSuites = [
     ]
   },
   {
+    name: "editor-accordion",
+    description: "focused accordion editor runtime behavior: nested body authoring, whole-block actions, identity regeneration, and block-menu anchoring.",
+    files: [
+      "src/client/editor/PageEditorHostRuntime.accordion.test.tsx"
+    ]
+  },
+  {
     name: "editor-interactions",
     description: "editor host; editor commands; toolbar behavior; selection; autosave; editor session lifecycle; editor focus; editor overlays.",
     files: [

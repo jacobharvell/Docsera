@@ -1,8 +1,9 @@
 import { Extension, Node, getSchema, mergeAttributes, type Extensions } from "@tiptap/core";
+import { Blockquote as BaseBlockquote } from "@tiptap/extension-blockquote";
 import { Document } from "@tiptap/extension-document";
 import { Highlight } from "@tiptap/extension-highlight";
 import { Link } from "@tiptap/extension-link";
-import { TaskItem, TaskList } from "@tiptap/extension-list";
+import { ListItem as BaseListItem, TaskItem, TaskList } from "@tiptap/extension-list";
 import { Table, TableCell as BaseTableCell, TableHeader as BaseTableHeader, TableRow } from "@tiptap/extension-table";
 import { EditorState, Plugin } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
@@ -39,6 +40,9 @@ export const DOCSERA_EMPTY_HEADING_PLACEHOLDERS: Record<number, string> = {
   3: "Heading 3"
 };
 export const DOCSERA_EMPTY_BLOCKQUOTE_PLACEHOLDER = "Enter a quote";
+export const DOCSERA_EMPTY_ACCORDION_TITLE_PLACEHOLDER = "New accordion";
+const DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT =
+  "(paragraph | heading | image | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock | table)";
 
 function normalizeTableColumnWidths(value: unknown): number[] | null {
   if (!Array.isArray(value) || value.length === 0) {
@@ -67,6 +71,194 @@ function createUnavailableMediaView(attrs: DocseraImageAttrs): HTMLElement {
 
   wrapper.append(eyebrow, title, lede);
   return wrapper;
+}
+
+function createDocseraAccordionExtensions() {
+  const accordionRenderAttrs = {
+    class: "docsera-editor-accordion"
+  };
+  const accordionItemRenderAttrs = {
+    class: "docsera-editor-accordion__item"
+  };
+  const accordionTitleRenderAttrs = {
+    class: "docsera-editor-accordion__title"
+  };
+  const accordionContentRenderAttrs = {
+    class: "docsera-editor-accordion__content"
+  };
+  const DocseraBlockquote = BaseBlockquote.extend({
+    content: `${DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT}+`
+  });
+
+  const DocseraListItem = BaseListItem.extend({
+    content: `paragraph ${DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT}*`
+  });
+
+  const DocseraTaskItem = TaskItem.extend({
+    content: `paragraph ${DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT}*`
+  }).configure({
+    nested: true
+  });
+
+  const DocseraTableCell = BaseTableCell.extend({
+    content: `${DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT}+`,
+    addAttributes() {
+      const parentAttributes = (this.parent?.() ?? {}) as {
+        colwidth?: {
+          default?: unknown;
+          parseHTML?: (element: HTMLElement) => unknown;
+        };
+      };
+      const parentColwidth = parentAttributes.colwidth as
+        | {
+            default?: unknown;
+            parseHTML?: (element: HTMLElement) => unknown;
+          }
+        | undefined;
+
+      return {
+        ...parentAttributes,
+        colwidth: {
+          ...parentColwidth,
+          default: null,
+          parseHTML: (element: HTMLElement) => normalizeTableColumnWidths(parentColwidth?.parseHTML?.(element))
+        }
+      };
+    }
+  });
+
+  const DocseraTableHeader = BaseTableHeader.extend({
+    content: `${DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT}+`,
+    addAttributes() {
+      const parentAttributes = (this.parent?.() ?? {}) as {
+        colwidth?: {
+          default?: unknown;
+          parseHTML?: (element: HTMLElement) => unknown;
+        };
+      };
+      const parentColwidth = parentAttributes.colwidth as
+        | {
+            default?: unknown;
+            parseHTML?: (element: HTMLElement) => unknown;
+          }
+        | undefined;
+
+      return {
+        ...parentAttributes,
+        colwidth: {
+          ...parentColwidth,
+          default: null,
+          parseHTML: (element: HTMLElement) => normalizeTableColumnWidths(parentColwidth?.parseHTML?.(element))
+        }
+      };
+    }
+  });
+
+  return [
+    Node.create({
+      name: "accordion",
+      group: "block",
+      content: "accordionItem+",
+      draggable: true,
+      selectable: true,
+      addAttributes() {
+        return {
+          accordionId: {
+            default: null,
+            renderHTML: (attributes) =>
+              typeof attributes.accordionId === "string" && attributes.accordionId.length > 0
+                ? { "data-docsera-accordion-id": attributes.accordionId }
+                : {}
+          }
+        };
+      },
+      parseHTML() {
+        return [{ tag: "div[data-docsera-accordion='true']" }];
+      },
+      renderHTML({ HTMLAttributes }) {
+        return [
+          "div",
+          mergeAttributes(HTMLAttributes, {
+            ...accordionRenderAttrs,
+            "data-docsera-accordion": "true"
+          }),
+          0
+        ];
+      }
+    }),
+    Node.create({
+      name: "accordionItem",
+      content: "accordionTitle accordionContent",
+      draggable: false,
+      selectable: false,
+      addAttributes() {
+        return {
+          accordionItemId: {
+            default: null,
+            renderHTML: (attributes) =>
+              typeof attributes.accordionItemId === "string" && attributes.accordionItemId.length > 0
+                ? { "data-docsera-accordion-item-id": attributes.accordionItemId }
+                : {}
+          }
+        };
+      },
+      parseHTML() {
+        return [{ tag: "div[data-docsera-accordion-item='true']" }];
+      },
+      renderHTML({ HTMLAttributes }) {
+        return [
+          "div",
+          mergeAttributes(HTMLAttributes, {
+            ...accordionItemRenderAttrs,
+            "data-docsera-accordion-item": "true"
+          }),
+          0
+        ];
+      }
+    }),
+    Node.create({
+      name: "accordionTitle",
+      content: "text*",
+      marks: "bold italic strike code underline highlight superscript subscript",
+      selectable: false,
+      parseHTML() {
+        return [{ tag: "p[data-docsera-accordion-title='true']" }];
+      },
+      renderHTML({ HTMLAttributes }) {
+        return [
+          "p",
+          mergeAttributes(HTMLAttributes, {
+            ...accordionTitleRenderAttrs,
+            "data-docsera-accordion-title": "true"
+          }),
+          0
+        ];
+      }
+    }),
+    Node.create({
+      name: "accordionContent",
+      content: `${DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT}+`,
+      selectable: false,
+      parseHTML() {
+        return [{ tag: "div[data-docsera-accordion-content='true']" }];
+      },
+      renderHTML({ HTMLAttributes }) {
+        return [
+          "div",
+          mergeAttributes(HTMLAttributes, {
+            ...accordionContentRenderAttrs,
+            "data-docsera-accordion-content": "true"
+          }),
+          0
+        ];
+      }
+    }),
+    DocseraBlockquote,
+    DocseraListItem,
+    DocseraTaskItem,
+    DocseraTableCell,
+    DocseraTableHeader
+  ];
 }
 
 function createLoadingMediaView(): HTMLElement {
@@ -431,6 +623,45 @@ const EmptyParagraphPlaceholder = Extension.create({
                     "data-placeholder": DOCSERA_EMPTY_BLOCKQUOTE_PLACEHOLDER
                   })
                 );
+                return;
+              }
+
+              if (
+                node.type.name === "accordionTitle" &&
+                node.content.size === 0
+              ) {
+                decorations.push(
+                  Decoration.node(offset, offset + node.nodeSize, {
+                    "data-docsera-empty-accordion-title": "true",
+                    "data-placeholder": DOCSERA_EMPTY_ACCORDION_TITLE_PLACEHOLDER
+                  })
+                );
+              }
+            });
+
+            state.doc.descendants((node, offset) => {
+              if (node.type.name === "paragraph" && node.content.size === 0) {
+                const $offset = state.doc.resolve(offset);
+                for (let depth = $offset.depth; depth > 0; depth -= 1) {
+                  if ($offset.node(depth).type.name === "accordionContent") {
+                    decorations.push(
+                      Decoration.node(offset, offset + node.nodeSize, {
+                        "data-docsera-empty-paragraph": "true",
+                        "data-placeholder": DOCSERA_EMPTY_PARAGRAPH_PLACEHOLDER
+                      })
+                    );
+                    break;
+                  }
+                }
+              }
+
+              if (node.type.name === "accordionTitle" && node.content.size === 0) {
+                decorations.push(
+                  Decoration.node(offset, offset + node.nodeSize, {
+                    "data-docsera-empty-accordion-title": "true",
+                    "data-placeholder": DOCSERA_EMPTY_ACCORDION_TITLE_PLACEHOLDER
+                  })
+                );
               }
             });
 
@@ -587,8 +818,10 @@ export function createDocseraEditorExtensionsWithOptions(options: CreateDocseraE
     }),
     StarterKit.configure({
       document: false,
+      blockquote: false,
       heading: { levels: [...DOCSERA_BODY_HEADING_LEVELS] },
       link: false,
+      listItem: false,
       trailingNode: false,
       orderedList: {
         keepAttributes: true,
@@ -613,9 +846,7 @@ export function createDocseraEditorExtensionsWithOptions(options: CreateDocseraE
       isAllowedUri: (url) => isDocseraAllowedLinkHref(url)
     }),
     createDocseraImageExtension(loadMedia),
-    TaskItem.configure({
-      nested: true
-    }),
+    ...createDocseraAccordionExtensions(),
     TaskList.configure({}),
     Table.configure({
       resizable: false,
@@ -624,8 +855,6 @@ export function createDocseraEditorExtensionsWithOptions(options: CreateDocseraE
       allowTableNodeSelection: false
     }),
     TableRow,
-    TableHeader,
-    TableCell,
     ActiveTableCellHighlight,
     EmptyParagraphPlaceholder
   ];

@@ -1,4 +1,5 @@
 import { Component, Fragment, useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { ChevronRight } from "lucide-react";
 import { type DocseraDocumentEnvelope } from "../../../shared/editor/document";
 import { canonicalizeDocseraImageAttrs, type DocseraImageAttrs } from "../../../shared/editor/imageContract";
 import {
@@ -671,10 +672,10 @@ function renderAccordionItem(
           context.setAccordionOpenItemId(accordionId, isOpen ? null : itemId);
         }}
       >
-        <span className="docsera-main__accordion-title">{renderInlineContent(getNodeContent(titleNode, true), `${path}-title`)}</span>
         <span aria-hidden="true" className="docsera-main__accordion-toggle-icon">
-          &gt;
+          <ChevronRight size={18} strokeWidth={2.2} focusable="false" />
         </span>
+        <span className="docsera-main__accordion-title">{renderInlineContent(getNodeContent(titleNode, true), `${path}-title`)}</span>
       </button>
       <div
         id={panelId}

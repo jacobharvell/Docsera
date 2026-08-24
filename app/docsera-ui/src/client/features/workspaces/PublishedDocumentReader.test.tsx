@@ -232,6 +232,11 @@ describe("PublishedDocumentReader", () => {
     expect(planButton).toHaveAttribute("aria-expanded", "false");
     expect(mediaButton).toHaveAttribute("aria-expanded", "false");
 
+    const planIcon = planButton.querySelector(".docsera-main__accordion-toggle-icon");
+    expect(planIcon?.querySelector("svg")).toBeInTheDocument();
+    expect(planButton.firstElementChild).toBe(planIcon);
+    expect(planButton.lastElementChild).toHaveClass("docsera-main__accordion-title");
+
     fireEvent.click(planButton);
     expect(planButton).toHaveAttribute("aria-expanded", "true");
     expect(mediaButton).toHaveAttribute("aria-expanded", "false");

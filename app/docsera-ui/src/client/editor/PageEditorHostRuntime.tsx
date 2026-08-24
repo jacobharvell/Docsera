@@ -11,10 +11,13 @@ import { DOCSERA_IMAGE_ALIGNMENTS, canonicalizeDocseraImageAttrs, type DocseraIm
 import { DOCSERA_DOCUMENT_SCHEMA_VERSION, parseDocseraDocumentOrThrow } from "../../shared/editor/document";
 import { createDocseraEditorExtensionsWithOptions } from "../../shared/editor/schema";
 import { extractDocumentOutline, type EditorOutlineItem } from "./documentOutline";
+import { closeHistory } from "@tiptap/pm/history";
 import {
   EDITOR_BLOCK_COMMANDS,
+  createAccordionIdentity,
   getEditorBlockCommandMatches,
   getGroupedEditorBlockCommandMatches,
+  getEditorBlockCommandQuickAddContent,
   type EditorBlockCommandContext,
   type EditorBlockCommand,
   type EditorBlockCommandId
@@ -72,6 +75,7 @@ import {
   AlignRight,
   Check,
   Code2,
+  ChevronDown,
   Copy,
   ChevronRight,
   EllipsisVertical,
@@ -465,17 +469,20 @@ function isTextSelection(selection: unknown): selection is TextSelection {
 }
 
 function resolveEditorBlockCommandContext(selection: TextSelection): EditorBlockCommandContext {
+  const isTopLevelBlock = selection.$from.depth === 1;
   for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
     const nodeName = selection.$from.node(depth).type.name;
     if (nodeName === "tableCell" || nodeName === "tableHeader") {
       return {
-        isInsideTableCellOrHeader: true
+        isInsideTableCellOrHeader: true,
+        isTopLevelBlock
       };
     }
   }
 
   return {
-    isInsideTableCellOrHeader: false
+    isInsideTableCellOrHeader: false,
+    isTopLevelBlock
   };
 }
 
@@ -870,6 +877,8 @@ function getTopLevelBlockSelectionOffset(
   node: Editor["state"]["doc"]["content"]["content"][number]
 ): number | "continuation" {
   switch (node.type.name) {
+    case "accordion":
+      return 3;
     case "blockquote":
       return 2;
     case "table":
@@ -1170,6 +1179,12 @@ function getSlashTriggerSelection(editor: Editor): SlashTriggerSelection | null 
   const parent = $from.parent;
   if (!parent.isTextblock || parent.type.spec.code) {
     return null;
+  }
+
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    if ($from.node(depth).type.name === "accordionTitle") {
+      return null;
+    }
   }
 
   const text = parent.textBetween(0, $from.parentOffset, "", "");
@@ -1482,7 +1497,7 @@ function buildBlockActionMenuAnchorRect(targetRect: DOMRect): DOMRect {
     anchorRect.left + QUICK_ADD_BUTTON_SIZE + BLOCK_HANDLE_BUTTON_GAP,
     anchorRect.top,
     QUICK_ADD_BUTTON_SIZE,
-    Math.max(1, targetRect.bottom - (targetRect.top + BLOCK_TARGET_TOP_OFFSET))
+    QUICK_ADD_BUTTON_SIZE
   );
 }
 
@@ -1629,6 +1644,10 @@ function resolveNearestVerticalBlockTarget(editor: Editor, clientY: number): Hov
 }
 
 function getTopLevelBlockLabel(element: HTMLElement): string {
+  if (element.classList.contains("docsera-editor-accordion")) {
+    return "Accordion";
+  }
+
   if (element.classList.contains("tableWrapper")) {
     return "Table";
   }
@@ -1789,6 +1808,8 @@ function getTopLevelCaretSelectionOffset(
   node: Editor["state"]["doc"]["content"]["content"][number]
 ): number | null {
   switch (node.type.name) {
+    case "accordion":
+      return 3;
     case "blockquote":
       return 2;
     case "bulletList":
@@ -2072,6 +2093,8 @@ function BlockCommandIcon({ id }: { id: EditorBlockCommandId }) {
       return <ListOrdered size={16} strokeWidth={2} />;
     case "blockquote":
       return <Quote size={16} strokeWidth={2} />;
+    case "accordion":
+      return <ChevronDown size={16} strokeWidth={2} />;
     case "horizontalRule":
       return <Minus size={16} strokeWidth={2} />;
     case "table":
@@ -2120,6 +2143,14 @@ function applyCommandSelectionOffset(
 
 function applySlashCommand(editor: Editor, selector: Extract<CommandSelectorState, { source: "slash" }>, command: EditorBlockCommand): boolean {
   editor.commands.focus(undefined, { scrollIntoView: false });
+  if (command.id === "accordion") {
+    return replaceEmptyParagraphWithCommandOutput(
+      editor,
+      selector.ownerBlockIndex,
+      getEditorBlockCommandQuickAddContent(command),
+      command.quickAdd.selectionOffset
+    );
+  }
   applyBlockCommand(editor, command);
   const topLevelOwnerPos = getTopLevelBlockPositionFromDoc(editor.state.doc, selector.ownerBlockIndex);
   if (topLevelOwnerPos !== selector.ownerPos) {
@@ -2159,6 +2190,8 @@ function getTopLevelBlockCommandId(
   node: Editor["state"]["doc"]["content"]["content"][number]
 ): EditorBlockCommandId | null {
   switch (node.type.name) {
+    case "accordion":
+      return "accordion";
     case "paragraph":
       return "text";
     case "heading":
@@ -2191,6 +2224,8 @@ function getTopLevelBlockLabelFromNode(
   node: Editor["state"]["doc"]["content"]["content"][number]
 ): string {
   switch (node.type.name) {
+    case "accordion":
+      return "Accordion";
     case "heading":
       switch (node.attrs.level) {
         case 1:
@@ -2254,14 +2289,13 @@ function getBlockActionMenuEntries(
     });
   }
 
-  entries.push(
-    {
-      kind: "duplicate"
-    },
-    {
-      kind: "delete"
-    }
-  );
+  entries.push({
+    kind: "duplicate"
+  });
+
+  entries.push({
+    kind: "delete"
+  });
 
   return entries;
 }
@@ -2334,7 +2368,10 @@ function duplicateTopLevelBlock(editor: Editor, blockIndex: number): boolean {
     return false;
   }
 
-  const duplicateNode = editor.schema.nodeFromJSON(sourceNode.toJSON());
+  const sourceJson = sourceNode.toJSON() as JSONContent;
+  const duplicateNode = editor.schema.nodeFromJSON(
+    sourceNode.type.name === "accordion" ? regenerateAccordionJsonIdentities(sourceJson) : sourceJson
+  );
   const transaction = applyTopLevelBlockSelectionToTransaction(
     editor.state.tr.insert(blockRange.to, duplicateNode),
     blockIndex + 1
@@ -2401,29 +2438,26 @@ function replaceEmptyParagraphWithBlockquote(
   editor: Editor,
   blockIndex: number
 ): boolean {
-  return replaceEmptyParagraphWithCommandOutput(
-    editor,
-    blockIndex,
-    [
-      {
-        type: "blockquote",
-        content: [{ type: "paragraph" }]
-      }
-    ],
-    2
-  );
+  return replaceEmptyParagraphWithCommandOutput(editor, blockIndex, createBlockquoteCommandOutput(), 2);
 }
 
-function replaceEmptyParagraphWithCommandOutput(
+function createBlockquoteCommandOutput(): JSONContent[] {
+  return [
+    {
+      type: "blockquote",
+      content: [{ type: "paragraph" }]
+    }
+  ];
+}
+
+function replaceEmptyParagraphAtPositionWithCommandOutput(
   editor: Editor,
-  blockIndex: number,
+  nodePos: number,
   content: JSONContent[],
   selectionOffset: number | "continuation" | undefined
 ): boolean {
-  const blockRange = getTopLevelBlockRange(editor, blockIndex);
-  const targetNode = blockIndex >= 0 && blockIndex < editor.state.doc.childCount ? editor.state.doc.child(blockIndex) : null;
+  const targetNode = editor.state.doc.nodeAt(nodePos);
   if (
-    !blockRange ||
     !targetNode ||
     targetNode.type.name !== "paragraph" ||
     targetNode.content.size !== 0 ||
@@ -2434,20 +2468,20 @@ function replaceEmptyParagraphWithCommandOutput(
 
   const nextNodes = content.map((node) => editor.schema.nodeFromJSON(node));
 
-  let transaction = editor.state.tr.delete(blockRange.from, blockRange.to).insert(blockRange.from, Fragment.fromArray(nextNodes));
+  let transaction = editor.state.tr.delete(nodePos, nodePos + targetNode.nodeSize).insert(nodePos, Fragment.fromArray(nextNodes));
   if (selectionOffset !== "continuation") {
     transaction = transaction.setMeta(TIPTAP_SKIP_TRAILING_NODE_META, true);
   }
 
   if (selectionOffset === "continuation") {
-    const continuationAnchor = Math.min(blockRange.from + nextNodes[0].nodeSize + 1, Math.max(1, transaction.doc.content.size));
+    const continuationAnchor = Math.min(nodePos + nextNodes[0].nodeSize + 1, Math.max(1, transaction.doc.content.size));
     try {
       transaction = transaction.setSelection(TextSelection.create(transaction.doc, continuationAnchor));
     } catch {
       transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(continuationAnchor), 1));
     }
   } else {
-    const selectionAnchor = Math.min(blockRange.from + selectionOffset, Math.max(1, transaction.doc.content.size));
+    const selectionAnchor = Math.min(nodePos + selectionOffset, Math.max(1, transaction.doc.content.size));
     try {
       transaction = transaction.setSelection(TextSelection.create(transaction.doc, selectionAnchor));
     } catch {
@@ -2457,6 +2491,28 @@ function replaceEmptyParagraphWithCommandOutput(
 
   editor.view.dispatch(transaction);
   return true;
+}
+
+function replaceEmptySlashOwnerParagraphWithBlockquote(
+  editor: Editor,
+  selector: Extract<CommandSelectorState, { source: "slash" }>
+): boolean {
+  editor.view.dispatch(closeHistory(editor.state.tr));
+  return replaceEmptyParagraphAtPositionWithCommandOutput(editor, selector.ownerPos, createBlockquoteCommandOutput(), 2);
+}
+
+function replaceEmptyParagraphWithCommandOutput(
+  editor: Editor,
+  blockIndex: number,
+  content: JSONContent[],
+  selectionOffset: number | "continuation" | undefined
+): boolean {
+  const blockRange = getTopLevelBlockRange(editor, blockIndex);
+  if (!blockRange) {
+    return false;
+  }
+
+  return replaceEmptyParagraphAtPositionWithCommandOutput(editor, blockRange.from, content, selectionOffset);
 }
 
 function createCanonicalImageNodeJson(mediaId: string): JSONContent {
@@ -2657,7 +2713,36 @@ function replaceQuickAddParagraph(
   blockIndex: number,
   command: EditorBlockCommand
 ): boolean {
-  return replaceEmptyParagraphWithCommandOutput(editor, blockIndex, command.quickAdd.content, command.quickAdd.selectionOffset);
+  return replaceEmptyParagraphWithCommandOutput(
+    editor,
+    blockIndex,
+    getEditorBlockCommandQuickAddContent(command),
+    command.quickAdd.selectionOffset
+  );
+}
+
+function regenerateAccordionJsonIdentities(node: JSONContent): JSONContent {
+  const nextNode: JSONContent = {
+    ...node,
+    attrs: node.attrs ? { ...node.attrs } : node.attrs,
+    content: Array.isArray(node.content) ? node.content.map((child) => regenerateAccordionJsonIdentities(child)) : node.content
+  };
+
+  if (nextNode.type === "accordion") {
+    nextNode.attrs = {
+      ...(nextNode.attrs ?? {}),
+      accordionId: createAccordionIdentity("accordion")
+    };
+  }
+
+  if (nextNode.type === "accordionItem") {
+    nextNode.attrs = {
+      ...(nextNode.attrs ?? {}),
+      accordionItemId: createAccordionIdentity("accordion-item")
+    };
+  }
+
+  return nextNode;
 }
 
 function runEditorCommandWithHistoryTime(editor: Editor, historyTime: number, run: () => boolean | void): boolean {
@@ -4705,7 +4790,8 @@ export function PageEditorHostRuntime({
       ownerBlockIndex: insertedBlockIndex,
       ownerLabel: target.accessibleLabel,
       surfaceContext: {
-        isInsideTableCellOrHeader: false
+        isInsideTableCellOrHeader: false,
+        isTopLevelBlock: true
       },
       placement: resolveCommandSelectorPlacement(overlayOwnerDocument, fallbackAnchorRect, BLOCK_SELECTOR_HEIGHT),
       query: "",
@@ -5035,7 +5121,7 @@ export function PageEditorHostRuntime({
       });
     } else {
       if (command.id === "blockquote") {
-        didExecute = replaceEmptyParagraphWithBlockquote(runtimeEditor, activeSelector.ownerBlockIndex);
+        didExecute = replaceEmptySlashOwnerParagraphWithBlockquote(runtimeEditor, activeSelector);
       } else {
         didExecute = applySlashCommand(runtimeEditor, activeSelector, command);
       }
@@ -6380,7 +6466,7 @@ export function PageEditorHostRuntime({
         .docsera-editor-runtime__surface .ProseMirror > p[data-docsera-empty-paragraph="true"] {
           position: relative;
         }
-        .docsera-editor-runtime__surface .ProseMirror > p[data-placeholder]:not([data-docsera-command-query-owner])::before,
+        .docsera-editor-runtime__surface .ProseMirror p[data-placeholder]:not([data-docsera-command-query-owner])::before,
         .docsera-editor-runtime__surface .ProseMirror > h1[data-placeholder]::before,
         .docsera-editor-runtime__surface .ProseMirror > h2[data-placeholder]::before,
         .docsera-editor-runtime__surface .ProseMirror > h3[data-placeholder]::before {
@@ -6445,6 +6531,37 @@ export function PageEditorHostRuntime({
           color: var(--docsera-editor-muted);
           font-style: italic;
           pointer-events: none;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion {
+          margin: 0 0 1rem;
+          padding: 1rem 1.1rem;
+          border: 1px solid color-mix(in srgb, var(--docsera-editor-panel-border) 86%, transparent);
+          border-radius: 16px;
+          background: color-mix(in srgb, var(--docsera-editor-panel) 96%, transparent);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion.docsera-editor-runtime__block--selected {
+          background: var(--docsera-editor-block-selection);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__item {
+          display: block;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__title {
+          margin: 0;
+          font-size: 1.03rem;
+          font-weight: 700;
+          line-height: 1.35;
+          color: var(--docsera-editor-text);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__title[data-placeholder]::before {
+          content: attr(data-placeholder);
+          float: left;
+          height: 0;
+          color: var(--docsera-editor-muted);
+          font-style: italic;
+          pointer-events: none;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__content {
+          margin-top: 0.9rem;
         }
         .docsera-editor-runtime__surface .ProseMirror pre {
           margin: 0 0 1rem;

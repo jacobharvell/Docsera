@@ -17,6 +17,35 @@ import {
 } from "./documentFixtures";
 import { getDocseraEditorSchema, isDocseraAllowedLinkHref, validateDocseraStructuredDocument } from "./schema";
 
+function addActiveEditorTableDefaults<T extends Record<string, unknown>>(value: T): T {
+  const cloned = JSON.parse(JSON.stringify(value)) as T;
+
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== "object") {
+      return;
+    }
+
+    const record = node as Record<string, unknown>;
+    if (record.type === "tableCell" || record.type === "tableHeader") {
+      const attrs = (record.attrs as Record<string, unknown> | undefined) ?? {};
+      record.attrs = {
+        align: null,
+        ...attrs
+      };
+    }
+
+    const content = record.content;
+    if (Array.isArray(content)) {
+      for (const child of content) {
+        visit(child);
+      }
+    }
+  };
+
+  visit(cloned);
+  return cloned;
+}
+
 describe("Docsera structured document validation", () => {
   it.each([
     ["supported rich E2 document", createSupportedE2DocseraDocumentEnvelope().document],
@@ -805,6 +834,176 @@ describe("Docsera active table schema", () => {
       colwidth: null,
       align: "center"
     });
+  });
+});
+
+describe("Docsera active accordion schema", () => {
+  it("registers the canonical accordion node family with top-level-only block ownership", () => {
+    const schema = getDocseraEditorSchema();
+
+    expect(schema.nodes.accordion).toBeDefined();
+    expect(schema.nodes.accordionItem).toBeDefined();
+    expect(schema.nodes.accordionTitle).toBeDefined();
+    expect(schema.nodes.accordionContent).toBeDefined();
+    expect(schema.nodes.accordion?.spec.group).toBe("block");
+    expect(schema.nodes.accordionItem?.spec.content).toBe("accordionTitle accordionContent");
+    expect(schema.nodes.accordionTitle?.spec.content).toBe("text*");
+    expect(schema.nodes.accordionTitle?.spec.marks).toBe("bold italic strike code underline highlight superscript subscript");
+    expect(schema.nodes.accordionContent?.spec.content).toBe(
+      "(paragraph | heading | image | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock | table)+"
+    );
+  });
+
+  it.each([
+    ["single-item accordion document", createSingleItemAccordionDocseraDocumentEnvelope().document],
+    [
+      "multi-item accordion document",
+      addActiveEditorTableDefaults(createMultiItemAccordionDocseraDocumentEnvelope().document)
+    ]
+  ])("round-trips the canonical %s through the active schema without mutation", (_label, document) => {
+    const schema = getDocseraEditorSchema();
+    const node = schema.nodeFromJSON(document);
+
+    expect(node.toJSON()).toEqual(document);
+    expect(schema.nodes.doc.validContent(node.content)).toBe(true);
+  });
+
+  it("keeps accordion out of nested table, list, blockquote, and accordion content containers", () => {
+    const schema = getDocseraEditorSchema();
+    const accordion = schema.nodeFromJSON(createSingleItemAccordionDocseraDocumentEnvelope().document).firstChild;
+    const paragraph = schema.nodes.paragraph.create();
+
+    expect(accordion).not.toBeNull();
+    if (!accordion) {
+      throw new Error("Expected the canonical accordion schema to create a top-level accordion.");
+    }
+
+    expect(schema.nodes.doc.validContent(Fragment.from(accordion))).toBe(true);
+    expect(schema.nodes.blockquote.validContent(Fragment.fromArray([paragraph, accordion]))).toBe(false);
+    expect(schema.nodes.listItem.validContent(Fragment.fromArray([paragraph, accordion]))).toBe(false);
+    expect(schema.nodes.taskItem.validContent(Fragment.fromArray([paragraph, accordion]))).toBe(false);
+    expect(schema.nodes.tableCell.validContent(Fragment.fromArray([paragraph, accordion]))).toBe(false);
+    expect(schema.nodes.tableHeader.validContent(Fragment.fromArray([paragraph, accordion]))).toBe(false);
+    expect(schema.nodes.accordionContent.validContent(Fragment.from(accordion))).toBe(false);
+  });
+
+  it("keeps Tab sinking available for nested task items while still excluding accordion content", async () => {
+    const { Editor } = await import("@tiptap/core");
+    const { createDocseraEditorExtensions } = await import("./schema");
+    const initialDocument = {
+      type: "doc",
+      content: [
+        {
+          type: "taskList",
+          content: [
+            {
+              type: "taskItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [
+                    {
+                      type: "text",
+                      text: "First task"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              type: "taskItem",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [
+                    {
+                      type: "text",
+                      text: "Second task"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    } satisfies import("@tiptap/core").JSONContent;
+    const editor = new Editor({
+      element: document.createElement("div"),
+      extensions: createDocseraEditorExtensions(),
+      content: initialDocument
+    });
+
+    try {
+      let selectionPosition: number | null = null;
+
+      editor.state.doc.descendants((node, pos) => {
+        if (selectionPosition !== null) {
+          return false;
+        }
+
+        if (node.isText && typeof node.text === "string" && node.text.includes("Second task")) {
+          selectionPosition = pos + 1;
+          return false;
+        }
+
+        return true;
+      });
+
+      if (selectionPosition === null) {
+        throw new Error("Expected to find the second task text in the editor document.");
+      }
+
+      editor.commands.setTextSelection(selectionPosition);
+      editor.commands.focus();
+      editor.view.dom.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", code: "Tab", bubbles: true, cancelable: true }));
+
+      expect(editor.getJSON()).toMatchObject({
+        type: "doc",
+        content: [
+          {
+            type: "taskList",
+            content: [
+              {
+                type: "taskItem",
+                content: [
+                  {
+                    type: "paragraph",
+                    content: [
+                      {
+                        type: "text",
+                        text: "First task"
+                      }
+                    ]
+                  },
+                  {
+                    type: "taskList",
+                    content: [
+                      {
+                        type: "taskItem",
+                        content: [
+                          {
+                            type: "paragraph",
+                            content: [
+                              {
+                                type: "text",
+                                text: "Second task"
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      });
+    } finally {
+      editor.destroy();
+    }
   });
 });
 

@@ -21,7 +21,7 @@ import {
   resolveCenteredSurfaceStyle,
   resolveToolbarMenuSurfaceStyle
 } from "./CompactTextToolbar";
-import { EDITOR_BLOCK_COMMANDS } from "./editorBlockCommands";
+import { EDITOR_BLOCK_COMMANDS, getEditorBlockCommandQuickAddContent } from "./editorBlockCommands";
 import {
   createEnvelopeFromDocument,
   createOverlayOwnerDocumentHarness,
@@ -986,7 +986,7 @@ function getTableCellParagraphPosition(editor: Editor, cellIndex: number): numbe
 function getFirstTextblockPositionInsideNode(editor: Editor, ancestorTypeName: string): number {
   let position: number | null = null;
   editor.state.doc.descendants((node, pos) => {
-    if (position !== null || !node.isTextblock) {
+    if (position !== null || !(node.isTextblock || node.type.name === ancestorTypeName)) {
       return position === null;
     }
 
@@ -5447,6 +5447,7 @@ describe("PageEditorHostRuntime", () => {
       "Blockquote",
       "Bulleted List",
       "Numbered List",
+      "Accordion",
       "Code Block",
       "Horizontal Rule",
       "Image",
@@ -5822,7 +5823,7 @@ describe("PageEditorHostRuntime", () => {
   it.each(
     EDITOR_BLOCK_COMMANDS.filter((command) => command.id !== "image").map((command) => [
       command.label,
-      command.quickAdd.content
+      getEditorBlockCommandQuickAddContent(command)
     ])
   )("replaces the temporary final-block Quick Add paragraph with the declared Quick Add output for %s in one undo step", async (label, declaredQuickAddContent) => {
     const initial = {
@@ -5868,6 +5869,53 @@ describe("PageEditorHostRuntime", () => {
 
     expect(editor.getJSON()).toEqual(initial);
     geometrySpy.mockRestore();
+  });
+
+  it("generates fresh non-empty accordion ids for each Quick Add insertion", () => {
+    const accordionCommand = EDITOR_BLOCK_COMMANDS.find((command) => command.id === "accordion");
+    if (!accordionCommand) {
+      throw new Error("Expected the accordion command to be registered.");
+    }
+
+    const first = getEditorBlockCommandQuickAddContent(accordionCommand);
+    const second = getEditorBlockCommandQuickAddContent(accordionCommand);
+
+    expect(first).toHaveLength(1);
+    expect(second).toHaveLength(1);
+    expect(first[0]).toMatchObject({
+      type: "accordion",
+      attrs: {
+        accordionId: expect.stringMatching(/^accordion-/)
+      },
+      content: [
+        {
+          type: "accordionItem",
+          attrs: {
+            accordionItemId: expect.stringMatching(/^accordion-item-/)
+          }
+        }
+      ]
+    });
+    expect(second[0]).toMatchObject({
+      type: "accordion",
+      attrs: {
+        accordionId: expect.stringMatching(/^accordion-/)
+      },
+      content: [
+        {
+          type: "accordionItem",
+          attrs: {
+            accordionItemId: expect.stringMatching(/^accordion-item-/)
+          }
+        }
+      ]
+    });
+    expect((first[0].attrs as { accordionId?: string }).accordionId).not.toBe(
+      (second[0].attrs as { accordionId?: string }).accordionId
+    );
+    expect((first[0].content?.[0]?.attrs as { accordionItemId?: string }).accordionItemId).not.toBe(
+      (second[0].content?.[0]?.attrs as { accordionItemId?: string }).accordionItemId
+    );
   });
 
   it.each([
@@ -7971,6 +8019,37 @@ describe("PageEditorHostRuntime", () => {
     ["Heading 3", { type: "doc", content: [{ type: "heading", attrs: { level: 3 } }] }],
     ["Bulleted List", { type: "doc", content: [{ type: "bulletList" }] }],
     ["Numbered List", { type: "doc", content: [{ type: "orderedList" }] }],
+    [
+      "Accordion",
+      {
+        type: "doc",
+        content: [
+          {
+            type: "accordion",
+            attrs: {
+              accordionId: expect.stringMatching(/^accordion-/)
+            },
+            content: [
+              {
+                type: "accordionItem",
+                attrs: {
+                  accordionItemId: expect.stringMatching(/^accordion-item-/)
+                },
+                content: [
+                  {
+                    type: "accordionTitle"
+                  },
+                  {
+                    type: "accordionContent",
+                    content: [{ type: "paragraph" }]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ],
     ["Blockquote", { type: "doc", content: [{ type: "blockquote" }] }],
     [
       "Horizontal Rule",
@@ -7994,10 +8073,130 @@ describe("PageEditorHostRuntime", () => {
     await openSlashQuery(editor);
 
     fireEvent.click(await screen.findByRole("option", { name: new RegExp(label, "i") }));
-    expect(editor.getJSON().content?.[0]).toMatchObject(expected.content[0]);
+    expect(editor.getJSON()).toMatchObject(expected);
     if (label === "Horizontal Rule") {
       expect(editor.getJSON().content?.[1]).toMatchObject(expected.content[1]);
     }
+  });
+
+  it("replaces the owner paragraph with a canonical accordion and leaves no ghost paragraph when inserted from Slash", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+
+    await openSlashQuery(editor);
+    fireEvent.click(await screen.findByRole("option", { name: /Accordion/ }));
+
+    expect(editor.getJSON()).toMatchObject({
+      type: "doc",
+      content: [
+        {
+          type: "accordion",
+          attrs: {
+            accordionId: expect.stringMatching(/^accordion-/)
+          },
+          content: [
+            {
+              type: "accordionItem",
+              attrs: {
+                accordionItemId: expect.stringMatching(/^accordion-item-/)
+              },
+              content: [
+                {
+                  type: "accordionTitle"
+                },
+                {
+                  type: "accordionContent",
+                  content: [{ type: "paragraph" }]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+    expect(editor.getJSON().content).toHaveLength(1);
+  });
+
+  it("treats the accordion title placeholder as presentation only", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "accordion",
+          attrs: {
+            accordionId: "accordion-placeholder"
+          },
+          content: [
+            {
+              type: "accordionItem",
+              attrs: {
+                accordionItemId: "accordion-item-placeholder"
+              },
+              content: [
+                {
+                  type: "accordionTitle"
+                },
+                {
+                  type: "accordionContent",
+                  content: [
+                    {
+                      type: "paragraph"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const title = editor.view.dom.querySelector("[data-docsera-accordion-title='true']");
+    if (!(title instanceof HTMLElement)) {
+      throw new Error("Expected the accordion title element to be present.");
+    }
+
+    expect(title).toHaveAttribute("data-placeholder", "New accordion");
+    expect(editor.getJSON()).toMatchObject({
+      type: "doc",
+      content: [
+        {
+          type: "accordion",
+          content: [
+            {
+              type: "accordionItem",
+              content: [
+                {
+                  type: "accordionTitle"
+                },
+                {
+                  type: "accordionContent",
+                  content: [
+                    {
+                      type: "paragraph"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
   });
 
   it("creates the same 3 x 3 no-header table through Slash and Quick Add with focus in the first cell", async () => {

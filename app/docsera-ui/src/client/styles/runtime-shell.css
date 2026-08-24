@@ -3264,7 +3264,7 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 .docsera-main__accordion-toggle {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 16px;
   width: 100%;
   min-width: 0;
@@ -3290,6 +3290,7 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 }
 
 .docsera-main__accordion-title {
+  flex: 1 1 auto;
   min-width: 0;
   font-family: Geist, Inter, "Segoe UI", sans-serif;
   font-size: 1rem;
@@ -3299,10 +3300,16 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 
 .docsera-main__accordion-toggle-icon {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--docsera-text-soft);
-  font-size: 0.95rem;
   line-height: 1;
   transition: transform 180ms ease;
+}
+
+.docsera-main__accordion-toggle-icon svg {
+  display: block;
 }
 
 .docsera-main__accordion-item--open .docsera-main__accordion-toggle-icon {
