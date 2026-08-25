@@ -188,7 +188,11 @@ Codex is responsible for validating each implementation using the most appropria
 
 If automated validation is not practical, document why and provide repeatable manual verification steps with expected results.
 
-Do not remove failing tests just to make checks pass. Tests may be updated or removed only when accepted requirements or the current implementation brief intentionally change the expected behavior. Explain any removed or materially changed tests in the final summary.
+Do not remove failing tests just to make checks pass. Tests may be updated or removed when accepted requirements or the current implementation brief intentionally change the expected behavior, or when a test is redundant, superseded, diagnostic/provisional, or otherwise unnecessary and the distinct accepted behavior or regression boundary remains covered. Explain any removed or materially changed tests in the final summary.
+
+Permanent tests should protect accepted end-state behavior, important boundaries, and meaningful regression risks. They should not preserve the history of failed or intermediate implementations unless that history itself represents a distinct durable behavior that needs coverage.
+
+Diagnostic or reproduction tests, temporary fixtures, tracing, and investigative scaffolding are provisional unless they protect a separate accepted behavior or durable regression boundary.
 
 ### Regression Coverage Is Required
 
@@ -202,6 +206,8 @@ Regression coverage is part of the definition of done for coded behavior changes
 - If a regression is found manually in the PDI, the next fix must add or update a test that would have caught it.
 - Merge readiness should include a short summary of which regression tests were added or updated and what behavior they protect.
 - Coverage should be proportional: test the behavior being changed and the nearby workflows most likely to regress, not every possible test type.
+- When a task required multiple implementation or correction cycles, perform an explicit test-consolidation check before the final candidate is handed off: remove obsolete or superseded tests, consolidate overlapping tests that protect the same contract, remove temporary diagnostic scaffolding and helpers no longer needed, and keep coverage for each distinct accepted behavior or important regression boundary.
+- Consolidation must not remove required regression coverage merely to make validation pass.
 
 ## Git Branch and Merge Discipline
 

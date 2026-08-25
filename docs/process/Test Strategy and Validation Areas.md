@@ -59,6 +59,8 @@ Depending on the change, Codex may:
 * perform scripted validation
 * document manual verification steps
 
+Permanent tests should cover accepted end-state behavior, important boundaries, and meaningful regression risks rather than preserving the history of failed or intermediate implementations. Diagnostic or reproduction tests, temporary fixtures, tracing, and investigative scaffolding are provisional unless they protect a distinct durable behavior.
+
 Codex should not skip validation silently.
 
 ### Validation Areas Are Not Mandatory Suites
@@ -146,6 +148,10 @@ Codex may update or remove obsolete tests when accepted requirements or the curr
 Codex must not remove failing tests simply to make checks pass.
 
 Any removed or materially changed tests must be explained in the final implementation summary.
+
+When a task takes multiple implementation or correction cycles, Codex should perform a final test-consolidation pass before handoff: remove obsolete or superseded tests, collapse overlapping coverage that protects the same contract, retire temporary scaffolding and helpers that are no longer needed, and keep coverage for each distinct accepted behavior or important regression boundary.
+
+That consolidation pass is for pruning overlap and scaffolding, not for dropping required regression coverage just to force a green run.
 
 ## Validation Areas
 
