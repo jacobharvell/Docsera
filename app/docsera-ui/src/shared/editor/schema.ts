@@ -1,19 +1,20 @@
-import { Extension, Node, getSchema, mergeAttributes, type Extensions } from "@tiptap/core";
+import { Extension, Node, getSchema, mergeAttributes, type Editor, type Extensions } from "@tiptap/core";
 import { Blockquote as BaseBlockquote } from "@tiptap/extension-blockquote";
 import { Document } from "@tiptap/extension-document";
 import { Highlight } from "@tiptap/extension-highlight";
 import { Link } from "@tiptap/extension-link";
 import { ListItem as BaseListItem, TaskItem, TaskList } from "@tiptap/extension-list";
 import { Table, TableCell as BaseTableCell, TableHeader as BaseTableHeader, TableRow } from "@tiptap/extension-table";
-import { EditorState, Plugin } from "@tiptap/pm/state";
-import { Decoration, DecorationSet } from "@tiptap/pm/view";
+import { EditorState, Plugin, PluginKey, Selection } from "@tiptap/pm/state";
 import { CellSelection, findTable, selectedRect, TableMap } from "@tiptap/pm/tables";
 import { Subscript } from "@tiptap/extension-subscript";
 import { Superscript } from "@tiptap/extension-superscript";
 import { Underline } from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
-import type { Schema } from "@tiptap/pm/model";
+import type { Node as PMNode, Schema } from "@tiptap/pm/model";
+import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { DOCSERA_IMAGE_DEFAULTS, DOCSERA_IMAGE_ALIGNMENTS, canonicalizeDocseraImageAttrs, type DocseraImageAttrs, type WorkspaceMediaLoader } from "./imageContract";
+import { createAccordionIdentity } from "../../client/editor/editorBlockCommands";
 import {
   resolveDocseraImageDisplayTheme,
   subscribeDocseraImageDisplayState
@@ -41,8 +42,268 @@ export const DOCSERA_EMPTY_HEADING_PLACEHOLDERS: Record<number, string> = {
 };
 export const DOCSERA_EMPTY_BLOCKQUOTE_PLACEHOLDER = "Enter a quote";
 export const DOCSERA_EMPTY_ACCORDION_TITLE_PLACEHOLDER = "New accordion";
+export type AccordionSelectionContext = {
+  accordionId: string;
+  itemId: string;
+  itemIndex: number;
+  selectionRegion: "title" | "content";
+  titleStartPos: number;
+  bodyStartPos: number;
+};
+export type AccordionDisclosureState = Record<string, string | null>;
+export const DOCSERA_ACCORDION_DISCLOSURE_PLUGIN_KEY = new PluginKey<AccordionDisclosureState>(
+  "docseraAccordionDisclosure"
+);
+export const DOCSERA_ACCORDION_DISCLOSURE_DECORATION_PLUGIN_KEY = new PluginKey("docseraAccordionDisclosureDecoration");
 const DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT =
   "(paragraph | heading | image | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock | table)";
+const DOCSERA_ACCORDION_ITEM_LAST_ATTR = "data-docsera-accordion-item-last";
+const DOCSERA_ACCORDION_ITEM_MENU_OPEN_ATTR = "data-docsera-accordion-item-menu-open";
+const DOCSERA_ACCORDION_CHEVRON_ICON_SIZE = 18;
+const DOCSERA_ACCORDION_CONTROL_ICON_SIZE = 14;
+const DOCSERA_ACCORDION_ADD_INTERACTION_LANE_WIDTH = "2.25rem";
+
+function createAccordionSvgIcon(applyAttributes: (icon: SVGSVGElement) => void): SVGSVGElement {
+  const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  icon.setAttribute("viewBox", "0 0 24 24");
+  icon.setAttribute("width", String(DOCSERA_ACCORDION_CONTROL_ICON_SIZE));
+  icon.setAttribute("height", String(DOCSERA_ACCORDION_CONTROL_ICON_SIZE));
+  icon.setAttribute("fill", "none");
+  icon.setAttribute("stroke", "currentColor");
+  icon.setAttribute("stroke-width", "2.2");
+  icon.setAttribute("stroke-linecap", "round");
+  icon.setAttribute("stroke-linejoin", "round");
+  icon.setAttribute("aria-hidden", "true");
+  icon.setAttribute("focusable", "false");
+  applyAttributes(icon);
+  return icon;
+}
+
+function createAccordionChevronIcon() {
+  const icon = createAccordionSvgIcon((svg) => {
+    svg.setAttribute("width", String(DOCSERA_ACCORDION_CHEVRON_ICON_SIZE));
+    svg.setAttribute("height", String(DOCSERA_ACCORDION_CHEVRON_ICON_SIZE));
+
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "m9 18 6-6-6-6");
+    svg.append(path);
+  });
+
+  return icon;
+}
+
+function createAccordionPlusIcon() {
+  return createAccordionSvgIcon((svg) => {
+    const verticalLine = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    verticalLine.setAttribute("d", "M12 5v14");
+    const horizontalLine = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    horizontalLine.setAttribute("d", "M5 12h14");
+    svg.append(verticalLine, horizontalLine);
+  });
+}
+
+function createAccordionEllipsisIcon() {
+  return createAccordionSvgIcon((svg) => {
+    svg.setAttribute("fill", "currentColor");
+    svg.removeAttribute("stroke");
+    svg.removeAttribute("stroke-width");
+    svg.removeAttribute("stroke-linecap");
+    svg.removeAttribute("stroke-linejoin");
+
+    for (const cy of [5, 12, 19]) {
+      const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+      circle.setAttribute("cx", "12");
+      circle.setAttribute("cy", String(cy));
+      circle.setAttribute("r", "1.5");
+      svg.append(circle);
+    }
+  });
+}
+
+function createAccordionTrashIcon() {
+  return createAccordionSvgIcon((svg) => {
+    svg.setAttribute("width", "15");
+    svg.setAttribute("height", "15");
+
+    const lid = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    lid.setAttribute("d", "M3 6h18");
+    const handle = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    handle.setAttribute("d", "M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2");
+    const can = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    can.setAttribute("d", "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6");
+    const leftLine = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    leftLine.setAttribute("d", "M10 11v6");
+    const rightLine = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    rightLine.setAttribute("d", "M14 11v6");
+    svg.append(lid, handle, can, leftLine, rightLine);
+  });
+}
+
+function getAccordionDisclosureState(state: EditorState): AccordionDisclosureState {
+  return DOCSERA_ACCORDION_DISCLOSURE_PLUGIN_KEY.getState(state) ?? {};
+}
+
+function getAccordionSelectionContextFromSelection(selection: Selection, _doc: PMNode): AccordionSelectionContext | null {
+  const { $from } = selection;
+
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    const node = $from.node(depth);
+    if (node.type.name !== "accordionTitle" && node.type.name !== "accordionContent") {
+      continue;
+    }
+
+    const itemDepth = depth - 1;
+    const accordionDepth = depth - 2;
+    if (itemDepth < 0 || accordionDepth < 0) {
+      return null;
+    }
+
+    const itemNode = $from.node(itemDepth);
+    const accordionNode = $from.node(accordionDepth);
+    if (itemNode.type.name !== "accordionItem" || accordionNode.type.name !== "accordion") {
+      return null;
+    }
+
+    const accordionId = typeof accordionNode.attrs.accordionId === "string" ? accordionNode.attrs.accordionId.trim() : "";
+    const itemId = typeof itemNode.attrs.accordionItemId === "string" ? itemNode.attrs.accordionItemId.trim() : "";
+    if (!accordionId || !itemId) {
+      return null;
+    }
+
+    const itemPos = $from.before(itemDepth);
+    const titleNode = itemNode.child(0);
+    const bodyStartPos = itemPos + 1 + titleNode.nodeSize;
+    const itemOffset = itemPos - $from.before(accordionDepth) - 1;
+    let itemIndex = -1;
+    accordionNode.forEach((_child, offset, index) => {
+      if (offset === itemOffset) {
+        itemIndex = index;
+      }
+    });
+
+    if (itemIndex < 0) {
+      return null;
+    }
+
+    return {
+      accordionId,
+      itemId,
+      itemIndex,
+      selectionRegion: node.type.name === "accordionTitle" ? "title" : "content",
+      titleStartPos: itemPos + 1,
+      bodyStartPos
+    };
+  }
+
+  return null;
+}
+
+export function getAccordionOpenItemId(state: EditorState, accordionId: string): string | null {
+  const openItemId = getAccordionDisclosureState(state)[accordionId];
+  return typeof openItemId === "string" || openItemId === null ? openItemId : null;
+}
+
+export function getAccordionSelectionContext(state: EditorState): AccordionSelectionContext | null {
+  return getAccordionSelectionContextFromSelection(state.selection, state.doc);
+}
+
+function createAccordionDisclosureDecorationPlugin() {
+  return new Plugin({
+    key: DOCSERA_ACCORDION_DISCLOSURE_DECORATION_PLUGIN_KEY,
+    props: {
+      decorations(state) {
+        const decorations: Decoration[] = [];
+        state.doc.descendants((node, pos) => {
+          if (node.type.name !== "accordionItem") {
+            return;
+          }
+
+          const $pos = state.doc.resolve(pos);
+          const accordionNode = $pos.parent;
+          if (accordionNode.type.name !== "accordion") {
+            return;
+          }
+
+          const accordionId = typeof accordionNode.attrs.accordionId === "string" ? accordionNode.attrs.accordionId.trim() : "";
+          const itemId = typeof node.attrs.accordionItemId === "string" ? node.attrs.accordionItemId.trim() : "";
+          if (!accordionId || !itemId) {
+            return;
+          }
+
+          const isOpen = getAccordionOpenItemId(state, accordionId) === itemId;
+          decorations.push(
+            Decoration.node(pos, pos + node.nodeSize, {
+              "data-docsera-accordion-open": isOpen ? "true" : "false"
+            })
+          );
+        });
+
+        return decorations.length ? DecorationSet.create(state.doc, decorations) : DecorationSet.empty;
+      }
+    }
+  });
+}
+
+function createAccordionItemNode(schema: Schema): PMNode {
+  return schema.nodes.accordionItem.create(
+    {
+      accordionItemId: createAccordionIdentity("accordion-item")
+    },
+    [
+      schema.nodes.accordionTitle.create(),
+      schema.nodes.accordionContent.create(null, schema.nodes.paragraph.create())
+    ]
+  );
+}
+
+function createAccordionDisclosurePlugin() {
+  return new Plugin<AccordionDisclosureState>({
+    key: DOCSERA_ACCORDION_DISCLOSURE_PLUGIN_KEY,
+    state: {
+      init: () => ({}),
+      apply(transaction, currentState) {
+        const nextDisclosure = transaction.getMeta(DOCSERA_ACCORDION_DISCLOSURE_PLUGIN_KEY) as
+          | { accordionId?: string; itemId?: string | null }
+          | undefined;
+        if (nextDisclosure && typeof nextDisclosure.accordionId === "string") {
+          const accordionId = nextDisclosure.accordionId.trim();
+          if (!accordionId) {
+            return currentState;
+          }
+
+          const nextItemId =
+            typeof nextDisclosure.itemId === "string" && nextDisclosure.itemId.trim().length > 0
+              ? nextDisclosure.itemId.trim()
+              : null;
+
+          return {
+            ...currentState,
+            [accordionId]: nextItemId
+          };
+        }
+
+        if (!transaction.selectionSet) {
+          return currentState;
+        }
+
+        const selectionContext = getAccordionSelectionContextFromSelection(transaction.selection, transaction.doc);
+        if (!selectionContext) {
+          return currentState;
+        }
+
+        const currentOpenItemId = currentState[selectionContext.accordionId] ?? null;
+        if (currentOpenItemId === selectionContext.itemId) {
+          return currentState;
+        }
+
+        return {
+          ...currentState,
+          [selectionContext.accordionId]: selectionContext.itemId
+        };
+      }
+    }
+  });
+}
 
 function normalizeTableColumnWidths(value: unknown): number[] | null {
   if (!Array.isArray(value) || value.length === 0) {
@@ -159,12 +420,21 @@ function createDocseraAccordionExtensions() {
       name: "accordion",
       group: "block",
       content: "accordionItem+",
+      defining: true,
+      isolating: true,
       draggable: true,
       selectable: true,
+      addProseMirrorPlugins() {
+        return [createAccordionDisclosurePlugin(), createAccordionDisclosureDecorationPlugin()];
+      },
       addAttributes() {
         return {
           accordionId: {
             default: null,
+            parseHTML: (element) => {
+              const accordionId = element.getAttribute("data-docsera-accordion-id");
+              return typeof accordionId === "string" && accordionId.trim().length > 0 ? accordionId.trim() : null;
+            },
             renderHTML: (attributes) =>
               typeof attributes.accordionId === "string" && attributes.accordionId.length > 0
                 ? { "data-docsera-accordion-id": attributes.accordionId }
@@ -173,7 +443,7 @@ function createDocseraAccordionExtensions() {
         };
       },
       parseHTML() {
-        return [{ tag: "div[data-docsera-accordion='true']" }];
+        return [{ tag: "div[data-docsera-accordion='true']", priority: 1000 }];
       },
       renderHTML({ HTMLAttributes }) {
         return [
@@ -189,12 +459,409 @@ function createDocseraAccordionExtensions() {
     Node.create({
       name: "accordionItem",
       content: "accordionTitle accordionContent",
+      defining: true,
       draggable: false,
       selectable: false,
+      addNodeView() {
+        return ({ node, editor, getPos }) => {
+          const itemRoot = document.createElement("div");
+          const controlsLayer = document.createElement("div");
+          const addInteractionLane = document.createElement("span");
+          const toggleButton = document.createElement("button");
+          const ellipsisButton = document.createElement("button");
+          const addButton = document.createElement("button");
+          const menu = document.createElement("div");
+          const menuDeleteButton = document.createElement("button");
+          const menuDeleteIcon = document.createElement("span");
+          const menuDeleteLabel = document.createElement("span");
+          const contentDOM = document.createElement("div");
+          let destroyed = false;
+          let menuOpen = false;
+          let documentPointerDownListener: ((event: PointerEvent) => void) | null = null;
+          let documentKeyDownListener: ((event: KeyboardEvent) => void) | null = null;
+
+          itemRoot.className = "docsera-editor-accordion__item";
+          itemRoot.setAttribute("data-docsera-accordion-item", "true");
+          itemRoot.setAttribute("data-docsera-accordion-item-id", node.attrs.accordionItemId ?? "");
+          controlsLayer.className = "docsera-editor-accordion__controls";
+          controlsLayer.setAttribute("contenteditable", "false");
+          addInteractionLane.className = "docsera-editor-accordion__add-lane";
+          addInteractionLane.setAttribute("data-docsera-accordion-control", "add-lane");
+          addInteractionLane.setAttribute("aria-hidden", "true");
+          toggleButton.type = "button";
+          toggleButton.className = "docsera-editor-accordion__control docsera-editor-accordion__control--toggle";
+          toggleButton.setAttribute("data-docsera-accordion-control", "toggle");
+          toggleButton.append(createAccordionChevronIcon());
+          ellipsisButton.type = "button";
+          ellipsisButton.className = "docsera-editor-accordion__control docsera-editor-accordion__control--ellipsis";
+          ellipsisButton.setAttribute("data-docsera-accordion-control", "menu");
+          ellipsisButton.append(createAccordionEllipsisIcon());
+          addButton.type = "button";
+          addButton.className = "docsera-editor-accordion__control docsera-editor-accordion__control--add";
+          addButton.setAttribute("data-docsera-accordion-control", "add");
+          addButton.style.zIndex = "1";
+          addButton.append(createAccordionPlusIcon());
+          menu.className = "docsera-compact-menu docsera-editor-accordion__menu";
+          menu.hidden = true;
+          menu.setAttribute("contenteditable", "false");
+          menu.setAttribute("role", "menu");
+          menuDeleteButton.type = "button";
+          menuDeleteButton.className = "docsera-block-menu__item docsera-block-menu__item--destructive";
+          menuDeleteButton.setAttribute("role", "menuitem");
+          menuDeleteButton.setAttribute("aria-label", "Delete item");
+          menuDeleteIcon.className = "docsera-block-menu__icon";
+          menuDeleteIcon.setAttribute("aria-hidden", "true");
+          menuDeleteIcon.append(createAccordionTrashIcon());
+          menuDeleteLabel.className = "docsera-block-menu__label";
+          menuDeleteLabel.textContent = "Delete item";
+          menuDeleteButton.append(menuDeleteIcon, menuDeleteLabel);
+          contentDOM.className = "docsera-editor-accordion__item-content";
+
+          controlsLayer.append(toggleButton, addInteractionLane, ellipsisButton, addButton);
+          menu.append(menuDeleteButton);
+          itemRoot.append(controlsLayer, contentDOM, menu);
+          contentDOM.setAttribute("data-docsera-accordion-item-content", "true");
+
+          function getBodyElement() {
+            return contentDOM.querySelector<HTMLElement>("[data-docsera-accordion-content='true']");
+          }
+
+          function resolveItemContext() {
+            const position = typeof getPos === "function" ? getPos() : null;
+            if (typeof position !== "number") {
+              return null;
+            }
+
+            const itemNode = editor.state.doc.nodeAt(position);
+            if (!itemNode || itemNode.type.name !== "accordionItem") {
+              return null;
+            }
+
+            const resolved = editor.state.doc.resolve(position);
+            const accordionNode = resolved.parent;
+            if (accordionNode.type.name !== "accordion") {
+              return null;
+            }
+
+            const accordionId = typeof accordionNode.attrs.accordionId === "string" ? accordionNode.attrs.accordionId.trim() : "";
+            const itemId = typeof itemNode.attrs.accordionItemId === "string" ? itemNode.attrs.accordionItemId.trim() : "";
+            if (!accordionId || !itemId) {
+              return null;
+            }
+
+            let itemIndex = -1;
+            accordionNode.forEach((_child, offset, index) => {
+              if (offset === resolved.parentOffset) {
+                itemIndex = index;
+              }
+            });
+
+            if (itemIndex < 0) {
+              return null;
+            }
+
+            if (itemNode.childCount < 2) {
+              return null;
+            }
+            const titleNode = itemNode.child(0);
+            const bodyNode = itemNode.child(1);
+
+            const titleStartPos = position + 1;
+            const bodyStartPos = position + 1 + titleNode.nodeSize;
+
+            return {
+              accordionId,
+              accordionNode,
+              bodyNode,
+              bodyStartPos,
+              itemId,
+              itemIndex,
+              itemNode,
+              position,
+              titleNode,
+              titleStartPos
+            };
+          }
+
+          function isWithinItem(target: EventTarget | null) {
+            return target instanceof globalThis.Node && itemRoot.contains(target);
+          }
+
+          function getSelectionPosition(startPos: number): number | null {
+            try {
+              return Selection.near(editor.state.doc.resolve(startPos), 1).from;
+            } catch {
+              return null;
+            }
+          }
+
+          function updateControls() {
+            const context = resolveItemContext();
+            if (!context) {
+              return;
+            }
+
+            const openItemId = getAccordionOpenItemId(editor.state, context.accordionId);
+            const isOpen = openItemId === context.itemId;
+            const panelId = `docsera-editor-accordion-${context.accordionId}-${context.itemId}-panel`;
+            const titleText = context.titleNode.textContent.trim();
+            const titleLabel = titleText ? `: ${titleText}` : "";
+            const itemCount = context.accordionNode.childCount;
+            const isLastItem = context.itemIndex === itemCount - 1;
+
+            itemRoot.setAttribute("data-docsera-accordion-id", context.accordionId);
+            itemRoot.setAttribute("data-docsera-accordion-item-id", context.itemId);
+            itemRoot.setAttribute("data-docsera-accordion-open", isOpen ? "true" : "false");
+            itemRoot.setAttribute(DOCSERA_ACCORDION_ITEM_LAST_ATTR, isLastItem ? "true" : "false");
+            itemRoot.setAttribute(DOCSERA_ACCORDION_ITEM_MENU_OPEN_ATTR, menuOpen ? "true" : "false");
+            toggleButton.setAttribute("aria-controls", panelId);
+            toggleButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
+            toggleButton.setAttribute(
+              "aria-label",
+              `${isOpen ? "Collapse" : "Expand"} accordion item${titleLabel}`
+            );
+            toggleButton.setAttribute("title", `${isOpen ? "Collapse" : "Expand"} accordion item${titleLabel}`);
+            ellipsisButton.setAttribute("aria-label", `More accordion item actions${titleLabel}`);
+            ellipsisButton.setAttribute("title", `More accordion item actions${titleLabel}`);
+            addButton.setAttribute("aria-label", `Add item after${titleLabel}`);
+            addButton.setAttribute("title", `Add item after${titleLabel}`);
+            addInteractionLane.hidden = !isLastItem;
+            addButton.hidden = !isLastItem;
+            menu.setAttribute("aria-label", `Accordion item actions${titleLabel}`);
+            menu.hidden = !menuOpen;
+            menuDeleteButton.disabled = itemCount <= 1;
+            const bodyElement = getBodyElement();
+            if (bodyElement) {
+              bodyElement.id = panelId;
+              bodyElement.hidden = !isOpen;
+              bodyElement.setAttribute("aria-hidden", isOpen ? "false" : "true");
+            }
+          }
+
+          function attachMenuDismissListeners() {
+            if (documentPointerDownListener || documentKeyDownListener) {
+              return;
+            }
+
+            const ownerDocument = itemRoot.ownerDocument;
+            documentPointerDownListener = (event: PointerEvent) => {
+              const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+              if (path.includes(itemRoot) || path.includes(menu)) {
+                return;
+              }
+
+              closeMenu();
+            };
+            documentKeyDownListener = (event: KeyboardEvent) => {
+              if (event.key !== "Escape") {
+                return;
+              }
+
+              const path = typeof event.composedPath === "function" ? event.composedPath() : [];
+              if (!path.includes(itemRoot)) {
+                return;
+              }
+
+              event.preventDefault();
+              closeMenu(true);
+            };
+
+            ownerDocument.addEventListener("pointerdown", documentPointerDownListener, true);
+            ownerDocument.addEventListener("keydown", documentKeyDownListener, true);
+          }
+
+          function detachMenuDismissListeners() {
+            if (!documentPointerDownListener && !documentKeyDownListener) {
+              return;
+            }
+
+            const ownerDocument = itemRoot.ownerDocument;
+            if (documentPointerDownListener) {
+              ownerDocument.removeEventListener("pointerdown", documentPointerDownListener, true);
+              documentPointerDownListener = null;
+            }
+            if (documentKeyDownListener) {
+              ownerDocument.removeEventListener("keydown", documentKeyDownListener, true);
+              documentKeyDownListener = null;
+            }
+          }
+
+          function openMenu() {
+            if (destroyed || menuOpen) {
+              return;
+            }
+
+            menuOpen = true;
+            attachMenuDismissListeners();
+            updateControls();
+            menuDeleteButton.focus();
+          }
+
+          function closeMenu(returnFocus = false) {
+            if (!menuOpen) {
+              return;
+            }
+
+            menuOpen = false;
+            detachMenuDismissListeners();
+            updateControls();
+            if (returnFocus) {
+              ellipsisButton.focus();
+            }
+          }
+
+          toggleButton.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+          });
+          ellipsisButton.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+          });
+          addButton.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+          });
+          menuDeleteButton.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+          });
+
+          itemRoot.addEventListener("focusin", () => {
+            itemRoot.setAttribute("data-docsera-accordion-item-affordances-visible", "true");
+          });
+          itemRoot.addEventListener("focusout", (event) => {
+            if (!isWithinItem(event.relatedTarget)) {
+              itemRoot.removeAttribute("data-docsera-accordion-item-affordances-visible");
+            }
+          });
+
+          toggleButton.addEventListener("click", () => {
+            const context = resolveItemContext();
+            if (!context) {
+              return;
+            }
+
+            const titleSelectionPos = getSelectionPosition(context.titleStartPos + 1);
+            const nextItemId = getAccordionOpenItemId(editor.state, context.accordionId) === context.itemId ? null : context.itemId;
+            let transaction = editor.state.tr
+              .setMeta(DOCSERA_ACCORDION_DISCLOSURE_PLUGIN_KEY, {
+                accordionId: context.accordionId,
+                itemId: nextItemId
+              })
+              .setMeta("addToHistory", false);
+
+            if (titleSelectionPos !== null) {
+              try {
+                transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(titleSelectionPos), 1));
+              } catch {
+                // If selection mapping fails, keep the disclosure state update and let the editor retain its prior selection.
+              }
+            }
+
+            editor.view.dispatch(transaction);
+          });
+
+          ellipsisButton.addEventListener("click", () => {
+            if (menuOpen) {
+              closeMenu();
+              return;
+            }
+
+            openMenu();
+          });
+
+          addButton.addEventListener("click", () => {
+            const context = resolveItemContext();
+            if (!context) {
+              return;
+            }
+
+            const newItem = createAccordionItemNode(editor.schema);
+            const insertPos = context.position + context.itemNode.nodeSize;
+            let transaction = editor.state.tr.insert(insertPos, newItem);
+            try {
+              transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(insertPos + 2), 1));
+            } catch {
+              // The insertion still succeeded; selection will remain where the editor can place it safely.
+            }
+
+            editor.view.dispatch(transaction);
+            editor.view.focus();
+          });
+
+          menuDeleteButton.addEventListener("click", () => {
+            const context = resolveItemContext();
+            if (!context || context.accordionNode.childCount <= 1) {
+              return;
+            }
+
+            const previousItem = context.itemIndex > 0 ? context.accordionNode.child(context.itemIndex - 1) : null;
+            const nextItemExists = context.itemIndex < context.accordionNode.childCount - 1;
+            const nextSelectionBasePos = nextItemExists ? context.position : previousItem ? context.position - previousItem.nodeSize : null;
+            let transaction = editor.state.tr.delete(context.position, context.position + context.itemNode.nodeSize);
+
+            if (typeof nextSelectionBasePos === "number") {
+              try {
+                transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(nextSelectionBasePos + 1), 1));
+              } catch {
+                // The deletion should still proceed even if the fallback selection cannot be resolved.
+              }
+            }
+
+            closeMenu();
+            editor.view.dispatch(transaction);
+            editor.view.focus();
+          });
+
+          updateControls();
+
+          return {
+            dom: itemRoot,
+            contentDOM,
+            destroy() {
+              destroyed = true;
+              closeMenu();
+            },
+            ignoreMutation(mutation) {
+              const target = mutation.target as globalThis.Node;
+              const bodyElement = getBodyElement();
+              if (
+              target === itemRoot ||
+              target === controlsLayer ||
+              target === contentDOM ||
+              target === menu ||
+              target === bodyElement ||
+              (controlsLayer instanceof globalThis.Node && controlsLayer.contains(target)) ||
+              (menu instanceof globalThis.Node && menu.contains(target))
+              ) {
+                return true;
+              }
+
+              return !contentDOM.contains(target);
+            },
+            stopEvent(event) {
+              const target = event.target;
+              return (
+                target instanceof globalThis.Node &&
+                ((controlsLayer.contains(target) && !contentDOM.contains(target)) || menu.contains(target))
+              );
+            },
+            update(nextNode) {
+              if (nextNode.type.name !== "accordionItem") {
+                return false;
+              }
+
+              updateControls();
+              return true;
+            }
+          };
+        };
+      },
       addAttributes() {
         return {
           accordionItemId: {
             default: null,
+            parseHTML: (element) => {
+              const accordionItemId = element.getAttribute("data-docsera-accordion-item-id");
+              return typeof accordionItemId === "string" && accordionItemId.trim().length > 0 ? accordionItemId.trim() : null;
+            },
             renderHTML: (attributes) =>
               typeof attributes.accordionItemId === "string" && attributes.accordionItemId.length > 0
                 ? { "data-docsera-accordion-item-id": attributes.accordionItemId }
@@ -203,7 +870,12 @@ function createDocseraAccordionExtensions() {
         };
       },
       parseHTML() {
-        return [{ tag: "div[data-docsera-accordion-item='true']" }];
+        return [
+          {
+            tag: "div[data-docsera-accordion-item='true']",
+            priority: 1000
+          }
+        ];
       },
       renderHTML({ HTMLAttributes }) {
         return [
@@ -222,7 +894,7 @@ function createDocseraAccordionExtensions() {
       marks: "bold italic strike code underline highlight superscript subscript",
       selectable: false,
       parseHTML() {
-        return [{ tag: "p[data-docsera-accordion-title='true']" }];
+        return [{ tag: "p[data-docsera-accordion-title='true']", priority: 1000 }];
       },
       renderHTML({ HTMLAttributes }) {
         return [
@@ -240,7 +912,7 @@ function createDocseraAccordionExtensions() {
       content: `${DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT}+`,
       selectable: false,
       parseHTML() {
-        return [{ tag: "div[data-docsera-accordion-content='true']" }];
+        return [{ tag: "div[data-docsera-accordion-content='true']", priority: 1000 }];
       },
       renderHTML({ HTMLAttributes }) {
         return [

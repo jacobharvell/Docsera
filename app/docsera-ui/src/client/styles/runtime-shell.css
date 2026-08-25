@@ -3323,6 +3323,10 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   color: var(--docsera-text-muted);
 }
 
+.docsera-main__accordion-panel[hidden] {
+  display: none;
+}
+
 .docsera-main__accordion-panel > :first-child {
   margin-top: 0;
 }

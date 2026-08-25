@@ -51,16 +51,23 @@ export const COMPACT_MENU_STYLES = `
       box-shadow 0.16s ease;
   }
 
-  :is(.docsera-text-toolbar__menu-item, .docsera-compact-menu__item):hover,
-  :is(.docsera-text-toolbar__menu-item, .docsera-compact-menu__item):focus-visible {
+  :is(.docsera-text-toolbar__menu-item, .docsera-compact-menu__item):not(:disabled):hover,
+  :is(.docsera-text-toolbar__menu-item, .docsera-compact-menu__item):not(:disabled):focus-visible {
     border-color: var(--docsera-border);
     background: var(--docsera-surface-muted);
     color: var(--docsera-primary);
     outline: none;
   }
 
-  :is(.docsera-text-toolbar__menu-item, .docsera-compact-menu__item):focus-visible {
+  :is(.docsera-text-toolbar__menu-item, .docsera-compact-menu__item):not(:disabled):focus-visible {
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--docsera-primary) 22%, transparent);
+  }
+
+  :is(.docsera-text-toolbar__menu-item, .docsera-compact-menu__item):disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    color: var(--docsera-text-soft);
+    box-shadow: none;
   }
 
   :is(.docsera-text-toolbar__menu-item--active, .docsera-compact-menu__item--active) {
@@ -81,8 +88,8 @@ export const COMPACT_MENU_STYLES = `
     transition: background-color 0.16s ease, color 0.16s ease;
   }
 
-  .docsera-compact-menu__item:hover .docsera-compact-menu__item-icon,
-  .docsera-compact-menu__item:focus-visible .docsera-compact-menu__item-icon,
+  .docsera-compact-menu__item:not(:disabled):hover .docsera-compact-menu__item-icon,
+  .docsera-compact-menu__item:not(:disabled):focus-visible .docsera-compact-menu__item-icon,
   .docsera-compact-menu__item--active .docsera-compact-menu__item-icon {
     background: var(--docsera-primary-soft);
     color: var(--docsera-primary);

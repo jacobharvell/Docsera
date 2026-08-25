@@ -116,4 +116,55 @@ test("keeps reader table styling aligned to the E5 Legacy geometry without advan
   expect(css).toMatch(/\.docsera-main__table\s*{[^}]*font-size:\s*inherit;[^}]*line-height:\s*inherit;/s);
   expect(css).toMatch(/\.docsera-main__table-cell\s*{[^}]*min-width:\s*80px;[^}]*padding:\s*0\.38rem 0\.75rem;[^}]*border:\s*1px solid/s);
   expect(css).toMatch(/\.docsera-main__table-cell\s*{[^}]*vertical-align:\s*top;/s);
+  expect(css).toMatch(/\.docsera-main__accordion-panel\[hidden\]\s*{\s*display:\s*none;/s);
+});
+
+test("keeps editor accordion affordances anchored to the title row and hides closed menus explicitly", () => {
+  const css = readFileSync("src/client/editor/PageEditorHostRuntime.tsx", "utf8");
+
+  expect(css).toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion\s*{[^}]*margin:\s*1rem 0;[^}]*border-radius:\s*18px;/s);
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__item\s*{[^}]*display:\s*grid;[^}]*--docsera-editor-accordion-title-row-height:\s*3\.4rem;[^}]*--docsera-editor-accordion-title-row-center:\s*calc\(var\(--docsera-editor-accordion-title-row-height\) \/ 2\);[^}]*--docsera-editor-accordion-control-size:\s*1\.7rem;[^}]*--docsera-editor-accordion-menu-gap:\s*0\.35rem;/s
+  );
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control\s*{[^}]*border:\s*0;[^}]*background:\s*transparent;[^}]*font:\s*inherit;/s
+  );
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__add-lane\s*{[^}]*position:\s*absolute;[^}]*left:\s*100%;[^}]*top:\s*0;[^}]*width:\s*2\.25rem;[^}]*height:\s*100%;[^}]*pointer-events:\s*auto;[^}]*background:\s*transparent;[^}]*cursor:\s*pointer;[^}]*z-index:\s*0;/s
+  );
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--ellipsis,\s*\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--add\s*{[^}]*top:\s*var\(--docsera-editor-accordion-title-row-center\);[^}]*transform:\s*translateY\(-50%\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--ellipsis:hover,[\s\S]*\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--add:focus-visible\s*{[^}]*background:\s*var\(--docsera-surface-muted\);[^}]*outline:\s*none;/s
+  );
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--toggle:hover\s*{[^}]*background:\s*transparent;[^}]*color:\s*color-mix\(in srgb, var\(--docsera-editor-text\) 72%, var\(--docsera-editor-muted\)\);[^}]*box-shadow:\s*none;[^}]*outline:\s*none;/s
+  );
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--toggle:focus-visible\s*{[^}]*background:\s*transparent;[^}]*color:\s*color-mix\(in srgb, var\(--docsera-editor-text\) 72%, var\(--docsera-editor-muted\)\);[^}]*outline:\s*none;[^}]*box-shadow:\s*0 0 0 2px color-mix\(in srgb, var\(--docsera-primary\) 18%, white 20%\);/s
+  );
+  expect(css).toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--toggle\s*{[^}]*top:\s*var\(--docsera-editor-accordion-title-row-center\);[^}]*color:\s*color-mix\(in srgb, var\(--docsera-editor-text\) 72%, var\(--docsera-editor-muted\)\);[^}]*visibility:\s*visible;/s);
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__menu\s*{[^}]*top:\s*calc\(\s*var\(--docsera-editor-accordion-title-row-center\)\s*\+\s*\(var\(--docsera-editor-accordion-control-size\) \/ 2\)\s*\+\s*var\(--docsera-editor-accordion-menu-gap\)\s*\);/s
+  );
+  expect(css).toContain(".docsera-block-menu__item:disabled,");
+  expect(css).toContain(".docsera-block-menu__item--destructive:disabled,");
+  expect(css).toContain(".docsera-block-menu__item--destructive:disabled.docsera-block-menu__item--active {");
+  expect(css).toMatch(/\.docsera-block-menu__item:disabled,\s*\.docsera-block-menu__item:disabled:hover,\s*\.docsera-block-menu__item:disabled:focus-visible\s*{[^}]*cursor:\s*not-allowed;[^}]*color:\s*var\(--docsera-text-soft\);[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
+  expect(css).toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__menu\[hidden\]\s*{\s*display:\s*none;/s);
+  expect(css).toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__title\s*{[^}]*font-size:\s*1rem;[^}]*line-height:\s*1\.4;/s);
+  expect(css).not.toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control:hover/);
+  expect(css).not.toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control:focus-visible/);
+});
+
+test("keeps compact menu hover and icon chrome off disabled items", () => {
+  const css = readFileSync("src/client/editor/CompactMenuStyles.ts", "utf8");
+
+  expect(css).toContain(":is(.docsera-text-toolbar__menu-item, .docsera-compact-menu__item):not(:disabled):hover,");
+  expect(css).toContain(":is(.docsera-text-toolbar__menu-item, .docsera-compact-menu__item):not(:disabled):focus-visible {");
+  expect(css).toContain(".docsera-compact-menu__item:not(:disabled):hover .docsera-compact-menu__item-icon,");
+  expect(css).toContain(".docsera-compact-menu__item:not(:disabled):focus-visible .docsera-compact-menu__item-icon,");
+  expect(css).toMatch(/:is\(\.docsera-text-toolbar__menu-item, \.docsera-compact-menu__item\):disabled\s*{[^}]*cursor:\s*not-allowed;[^}]*color:\s*var\(--docsera-text-soft\);[^}]*box-shadow:\s*none;/s);
+  expect(css).not.toMatch(/:is\(\.docsera-text-toolbar__menu-item, \.docsera-compact-menu__item\):hover,\s*:is\(\.docsera-text-toolbar__menu-item, \.docsera-compact-menu__item\):focus-visible/);
 });

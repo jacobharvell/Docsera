@@ -5,8 +5,12 @@ import { createRoot, type Root } from "react-dom/client";
 import * as React from "react";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Fragment } from "@tiptap/pm/model";
+import { Fragment, Slice, type Node as PMNode } from "@tiptap/pm/model";
 import type { DocseraDocumentEnvelope, DocseraTiptapDocument } from "../../shared/editor/document";
+import {
+  DOCSERA_ACCORDION_DISCLOSURE_PLUGIN_KEY,
+  getAccordionSelectionContext,
+} from "../../shared/editor/schema";
 import { DOCSERA_IMAGE_ALIGNMENTS, canonicalizeDocseraImageAttrs, type DocseraImageAttrs } from "../../shared/editor/imageContract";
 import { DOCSERA_DOCUMENT_SCHEMA_VERSION, parseDocseraDocumentOrThrow } from "../../shared/editor/document";
 import { createDocseraEditorExtensionsWithOptions } from "../../shared/editor/schema";
@@ -2745,6 +2749,51 @@ function regenerateAccordionJsonIdentities(node: JSONContent): JSONContent {
   return nextNode;
 }
 
+function regenerateAccordionPastedNodeIdentities(node: PMNode): PMNode {
+  const nextContent = node.content.size ? regenerateAccordionPastedFragmentIdentities(node.content) : node.content;
+
+  if (node.type.name === "accordion") {
+    return node.type.create(
+      {
+        ...node.attrs,
+        accordionId: createAccordionIdentity("accordion")
+      },
+      nextContent,
+      node.marks
+    );
+  }
+
+  if (node.type.name === "accordionItem") {
+    return node.type.create(
+      {
+        ...node.attrs,
+        accordionItemId: createAccordionIdentity("accordion-item")
+      },
+      nextContent,
+      node.marks
+    );
+  }
+
+  return node.copy(nextContent);
+}
+
+function regenerateAccordionPastedFragmentIdentities(fragment: Fragment): Fragment {
+  return Fragment.fromArray(
+    Array.from({ length: fragment.childCount }, (_unused, index) => regenerateAccordionPastedNodeIdentities(fragment.child(index)))
+  );
+}
+
+export function regenerateAccordionPastedSliceIdentities(slice: Slice): Slice {
+  return new Slice(regenerateAccordionPastedFragmentIdentities(slice.content), slice.openStart, slice.openEnd);
+}
+
+export function transformAccordionPastedSliceIdentities(
+  slice: Slice,
+  view?: { dragging: { move: boolean } | null } | null
+): Slice {
+  return view?.dragging?.move === true ? slice : regenerateAccordionPastedSliceIdentities(slice);
+}
+
 function runEditorCommandWithHistoryTime(editor: Editor, historyTime: number, run: () => boolean | void): boolean {
   const originalDispatch = editor.view.dispatch.bind(editor.view);
   let didRun = false;
@@ -3008,6 +3057,7 @@ export function PageEditorHostRuntime({
     () => ({
       transformPastedHTML: sanitizeDocseraPastedHTML,
       transformPastedText: sanitizeDocseraPastedText,
+      transformPasted: (slice: Slice, view: Editor["view"]) => transformAccordionPastedSliceIdentities(slice, view),
       handleDOMEvents: {
         paste: (view: Editor["view"], event: ClipboardEvent) => {
           if (!editorRef.current || !editableRef.current) {
@@ -3121,6 +3171,36 @@ export function PageEditorHostRuntime({
             );
             return true;
           }
+        }
+
+        const accordionSelectionContext = getAccordionSelectionContext(runtimeEditor.state);
+        if (
+          accordionSelectionContext &&
+          accordionSelectionContext.selectionRegion === "title" &&
+          event.key === "Enter" &&
+          !event.shiftKey &&
+          !event.ctrlKey &&
+          !event.metaKey &&
+          !event.altKey
+        ) {
+          event.preventDefault();
+          const bodySelectionPos = accordionSelectionContext.bodyStartPos + 2;
+          let transaction = runtimeEditor.state.tr
+            .setMeta(DOCSERA_ACCORDION_DISCLOSURE_PLUGIN_KEY, {
+              accordionId: accordionSelectionContext.accordionId,
+              itemId: accordionSelectionContext.itemId
+            })
+            .setMeta("addToHistory", false);
+
+          try {
+            transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(bodySelectionPos), 1));
+          } catch {
+            // Keep the disclosure state change even if the body selection cannot be resolved.
+          }
+
+          runtimeEditor.view.dispatch(transaction);
+          runtimeEditor.view.focus();
+          return true;
         }
 
         const activeBlockSelection = getBlockSelectionState(runtimeEditor);
@@ -6533,23 +6613,151 @@ export function PageEditorHostRuntime({
           pointer-events: none;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion {
-          margin: 0 0 1rem;
-          padding: 1rem 1.1rem;
+          margin: 1rem 0;
           border: 1px solid color-mix(in srgb, var(--docsera-editor-panel-border) 86%, transparent);
-          border-radius: 16px;
+          border-radius: 18px;
+          overflow: visible;
           background: color-mix(in srgb, var(--docsera-editor-panel) 96%, transparent);
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion.docsera-editor-runtime__block--selected {
           background: var(--docsera-editor-block-selection);
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__item {
-          display: block;
+          position: relative;
+          display: grid;
+          --docsera-editor-accordion-title-row-height: 3.4rem;
+          --docsera-editor-accordion-title-row-center: calc(var(--docsera-editor-accordion-title-row-height) / 2);
+          --docsera-editor-accordion-control-size: 1.7rem;
+          --docsera-editor-accordion-menu-gap: 0.35rem;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__item + .docsera-editor-accordion__item {
+          border-top: 1px solid color-mix(in srgb, var(--docsera-editor-panel-border) 82%, transparent);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__controls {
+          position: absolute;
+          inset: 0;
+          pointer-events: none;
+          z-index: 2;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__add-lane {
+          position: absolute;
+          left: 100%;
+          top: 0;
+          width: 2.25rem;
+          height: 100%;
+          pointer-events: auto;
+          background: transparent;
+          cursor: pointer;
+          z-index: 0;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control {
+          position: absolute;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: var(--docsera-editor-accordion-control-size);
+          height: var(--docsera-editor-accordion-control-size);
+          padding: 0;
+          border: 0;
+          border-radius: 6px;
+          background: transparent;
+          color: var(--docsera-text-muted);
+          font: inherit;
+          cursor: pointer;
+          pointer-events: auto;
+          transition: background-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease, opacity 0.16s ease,
+            transform 0.16s ease, visibility 0.16s ease;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--ellipsis:hover,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--ellipsis:focus-visible,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--add:hover,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--add:focus-visible {
+          background: var(--docsera-surface-muted);
+          color: var(--docsera-primary);
+          outline: none;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--ellipsis:focus-visible,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--add:focus-visible {
+          box-shadow: 0 0 0 2px color-mix(in srgb, var(--docsera-primary) 18%, white 20%);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--ellipsis svg,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--add svg {
+          width: 14px;
+          height: 14px;
+          flex: 0 0 auto;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--toggle {
+          left: 1.1rem;
+          top: var(--docsera-editor-accordion-title-row-center);
+          transform: translateY(-50%) rotate(0deg);
+          color: color-mix(in srgb, var(--docsera-editor-text) 72%, var(--docsera-editor-muted));
+          opacity: 1;
+          visibility: visible;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--toggle:hover {
+          background: transparent;
+          color: color-mix(in srgb, var(--docsera-editor-text) 72%, var(--docsera-editor-muted));
+          box-shadow: none;
+          outline: none;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--toggle:focus-visible {
+          background: transparent;
+          color: color-mix(in srgb, var(--docsera-editor-text) 72%, var(--docsera-editor-muted));
+          outline: none;
+          box-shadow: 0 0 0 2px color-mix(in srgb, var(--docsera-primary) 18%, white 20%);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__item[data-docsera-accordion-open="true"] .docsera-editor-accordion__control--toggle {
+          transform: translateY(-50%) rotate(90deg);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--ellipsis,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--add {
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+          top: var(--docsera-editor-accordion-title-row-center);
+          transform: translateY(-50%);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__item:hover .docsera-editor-accordion__control--ellipsis,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__item:focus-within .docsera-editor-accordion__control--ellipsis,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__item[data-docsera-accordion-item-affordances-visible="true"] .docsera-editor-accordion__control--ellipsis,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__item[data-docsera-accordion-item-menu-open="true"] .docsera-editor-accordion__control--ellipsis {
+          opacity: 1;
+          visibility: visible;
+          pointer-events: auto;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion:hover .docsera-editor-accordion__item[data-docsera-accordion-item-last="true"] .docsera-editor-accordion__control--add,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion:focus-within .docsera-editor-accordion__item[data-docsera-accordion-item-last="true"] .docsera-editor-accordion__control--add,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__item[data-docsera-accordion-item-affordances-visible="true"][data-docsera-accordion-item-last="true"] .docsera-editor-accordion__control--add {
+          opacity: 1;
+          visibility: visible;
+          pointer-events: auto;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--ellipsis {
+          right: 1.1rem;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--add {
+          right: -2.25rem;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__menu {
+          position: absolute;
+          right: 1.1rem;
+          top: calc(
+            var(--docsera-editor-accordion-title-row-center) +
+              (var(--docsera-editor-accordion-control-size) / 2) +
+              var(--docsera-editor-accordion-menu-gap)
+          );
+          z-index: 3;
+          pointer-events: auto;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__menu[hidden] {
+          display: none;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__title {
           margin: 0;
-          font-size: 1.03rem;
+          padding: 1rem 2.25rem 1rem 2.75rem;
+          font-size: 1rem;
           font-weight: 700;
-          line-height: 1.35;
+          line-height: 1.4;
           color: var(--docsera-editor-text);
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__title[data-placeholder]::before {
@@ -6561,7 +6769,11 @@ export function PageEditorHostRuntime({
           pointer-events: none;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__content {
-          margin-top: 0.9rem;
+          margin-top: 0;
+          padding: 0 1.1rem 1rem;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__content[hidden] {
+          display: none;
         }
         .docsera-editor-runtime__surface .ProseMirror pre {
           margin: 0 0 1rem;
@@ -6973,6 +7185,23 @@ export function PageEditorHostRuntime({
         .docsera-block-menu__item--destructive.docsera-block-menu__item--active {
           background: color-mix(in srgb, #d92d20 10%, var(--docsera-surface));
           color: #d92d20;
+        }
+        .docsera-block-menu__item:disabled,
+        .docsera-block-menu__item:disabled:hover,
+        .docsera-block-menu__item:disabled:focus-visible {
+          opacity: 0.45;
+          cursor: not-allowed;
+          color: var(--docsera-text-soft);
+          background: transparent;
+          box-shadow: none;
+          outline: none;
+        }
+        .docsera-block-menu__item--destructive:disabled,
+        .docsera-block-menu__item--destructive:disabled:hover,
+        .docsera-block-menu__item--destructive:disabled:focus-visible,
+        .docsera-block-menu__item--destructive:disabled.docsera-block-menu__item--active {
+          color: var(--docsera-text-soft);
+          background: transparent;
         }
         .docsera-block-menu__icon,
         .docsera-block-action-menu__chevron,
