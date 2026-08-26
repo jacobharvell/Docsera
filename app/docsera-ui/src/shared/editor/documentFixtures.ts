@@ -625,6 +625,89 @@ export function createMultiItemAccordionDocseraDocumentEnvelope(): DocseraDocume
   };
 }
 
+function createColumnsParagraph(text: string): Record<string, unknown> {
+  return {
+    type: "paragraph",
+    content: [{ type: "text", text }]
+  };
+}
+
+function createColumnsHeading(level: 1 | 2 | 3, text: string): Record<string, unknown> {
+  return {
+    type: "heading",
+    attrs: { level },
+    content: [{ type: "text", text }]
+  };
+}
+
+function createColumnsColumnNode(content: Record<string, unknown>[] = []): Record<string, unknown> {
+  const columnNode: Record<string, unknown> = {
+    type: "column"
+  };
+
+  columnNode.content = content.length > 0 ? content : [{ type: "paragraph" }];
+
+  return columnNode;
+}
+
+function createColumnsDocumentEnvelope(columns: Record<string, unknown>[][]): DocseraDocumentEnvelope {
+  return {
+    schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+    document: {
+      type: "doc",
+      content: [
+        {
+          type: "columns",
+          content: columns.map((columnContent) => createColumnsColumnNode(columnContent))
+        }
+      ]
+    }
+  };
+}
+
+export function createTwoColumnDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
+  return createColumnsDocumentEnvelope([
+    [
+      createColumnsHeading(2, "Overview"),
+      createColumnsParagraph("Left column")
+    ],
+    [
+      createColumnsParagraph("Right column"),
+      {
+        type: "bulletList",
+        content: [
+          {
+            type: "listItem",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "Nested list item" }]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  ]);
+}
+
+export function createThreeColumnDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
+  return createColumnsDocumentEnvelope([
+    [createColumnsParagraph("Alpha")],
+    [],
+    [createColumnsParagraph("Charlie")]
+  ]);
+}
+
+export function createFourColumnDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
+  return createColumnsDocumentEnvelope([
+    [createColumnsParagraph("North")],
+    [createColumnsParagraph("East")],
+    [createColumnsParagraph("South")],
+    [createColumnsParagraph("West")]
+  ]);
+}
+
 export function createRelativeLinkDocseraDocumentEnvelope(): DocseraDocumentEnvelope {
   return {
     schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
@@ -1521,11 +1604,11 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
           content: [
             {
               type: "accordion",
-              attrs: { accordionId: "accordion-unsupported-body" },
+              attrs: { accordionId: "accordion-columns-body" },
               content: [
                 {
                   type: "accordionItem",
-                  attrs: { accordionItemId: "accordion-item-unsupported-body" },
+                  attrs: { accordionItemId: "accordion-item-columns-body" },
                   content: [
                     {
                       type: "accordionTitle",
@@ -1536,7 +1619,26 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
                       content: [
                         {
                           type: "columns",
-                          content: []
+                          content: [
+                            {
+                              type: "column",
+                              content: [
+                                {
+                                  type: "paragraph",
+                                  content: [{ type: "text", text: "Left" }]
+                                }
+                              ]
+                            },
+                            {
+                              type: "column",
+                              content: [
+                                {
+                                  type: "paragraph",
+                                  content: [{ type: "text", text: "Right" }]
+                                }
+                              ]
+                            }
+                          ]
                         }
                       ]
                     }
@@ -1547,7 +1649,85 @@ export function createDocseraDocumentFixtureCorpus(): DocseraDocumentFixtureCase
           ]
         }
       },
-      label: "accordion content columns rejected",
+      label: "accordion body columns document",
+      expected: {
+        ok: true,
+        migratedLegacyDocument: false
+      }
+    },
+    {
+      input: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "columns",
+              content: [
+                {
+                  type: "column",
+                  content: [
+                    {
+                      type: "accordion",
+                      attrs: { accordionId: "accordion-columns-under-column" },
+                      content: [
+                        {
+                          type: "accordionItem",
+                          attrs: { accordionItemId: "accordion-item-columns-under-column" },
+                          content: [
+                            {
+                              type: "accordionTitle",
+                              content: [{ type: "text", text: "Accordion" }]
+                            },
+                            {
+                              type: "accordionContent",
+                              content: [
+                                {
+                                  type: "columns",
+                                  content: [
+                                    {
+                                      type: "column",
+                                      content: [
+                                        {
+                                          type: "paragraph",
+                                          content: [{ type: "text", text: "Nested left" }]
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      type: "column",
+                                      content: [
+                                        {
+                                          type: "paragraph",
+                                          content: [{ type: "text", text: "Nested right" }]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  type: "column",
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "Safe column" }]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      },
+      label: "columns beneath a column ancestor rejected through accordion content",
       expected: {
         ok: false,
         reason: "invalid-document"

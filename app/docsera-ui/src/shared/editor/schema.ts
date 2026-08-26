@@ -57,6 +57,9 @@ export const DOCSERA_ACCORDION_DISCLOSURE_PLUGIN_KEY = new PluginKey<AccordionDi
 export const DOCSERA_ACCORDION_DISCLOSURE_DECORATION_PLUGIN_KEY = new PluginKey("docseraAccordionDisclosureDecoration");
 const DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT =
   "(paragraph | heading | image | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock | table)";
+const DOCSERA_ACCORDION_BODY_NESTED_BLOCK_CONTENT = `${DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT} | columns`;
+const DOCSERA_COLUMN_NESTED_BLOCK_CONTENT =
+  "(paragraph | heading | image | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock | table | accordion)";
 const DOCSERA_ACCORDION_ITEM_LAST_ATTR = "data-docsera-accordion-item-last";
 const DOCSERA_ACCORDION_ITEM_MENU_OPEN_ATTR = "data-docsera-accordion-item-menu-open";
 const DOCSERA_ACCORDION_CHEVRON_ICON_SIZE = 18;
@@ -909,7 +912,7 @@ function createDocseraAccordionExtensions() {
     }),
     Node.create({
       name: "accordionContent",
-      content: `${DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT}+`,
+      content: `(${DOCSERA_ACCORDION_BODY_NESTED_BLOCK_CONTENT})+`,
       selectable: false,
       parseHTML() {
         return [{ tag: "div[data-docsera-accordion-content='true']", priority: 1000 }];
@@ -1340,10 +1343,54 @@ const EmptyParagraphPlaceholder = Extension.create({
             return decorations.length ? DecorationSet.create(state.doc, decorations) : DecorationSet.empty;
           }
         }
-      })
-    ];
-  }
+    })
+  ];
+}
+
 });
+
+function createDocseraColumnsExtensions() {
+  return [
+    Node.create({
+      name: "columns",
+      content: "column{2,4}",
+      defining: true,
+      isolating: true,
+      parseHTML() {
+        return [{ tag: "div[data-docsera-columns='true']", priority: 1000 }];
+      },
+      renderHTML({ HTMLAttributes }) {
+        return [
+          "div",
+          mergeAttributes(HTMLAttributes, {
+            class: "docsera-editor-columns",
+            "data-docsera-columns": "true"
+          }),
+          0
+        ];
+      }
+    }),
+    Node.create({
+      name: "column",
+      content: `${DOCSERA_COLUMN_NESTED_BLOCK_CONTENT}+`,
+      defining: true,
+      isolating: true,
+      parseHTML() {
+        return [{ tag: "div[data-docsera-column='true']", priority: 1000 }];
+      },
+      renderHTML({ HTMLAttributes }) {
+        return [
+          "div",
+          mergeAttributes(HTMLAttributes, {
+            class: "docsera-editor-columns__column",
+            "data-docsera-column": "true"
+          }),
+          0
+        ];
+      }
+    })
+  ];
+}
 
 type CellOutlineEdges = {
   bottom: boolean;
@@ -1486,7 +1533,7 @@ export function createDocseraEditorExtensionsWithOptions(options: CreateDocseraE
 
   return [
     Document.extend({
-      content: "block*"
+      content: "(block | columns)*"
     }),
     StarterKit.configure({
       document: false,
@@ -1519,6 +1566,7 @@ export function createDocseraEditorExtensionsWithOptions(options: CreateDocseraE
     }),
     createDocseraImageExtension(loadMedia),
     ...createDocseraAccordionExtensions(),
+    ...createDocseraColumnsExtensions(),
     TaskList.configure({}),
     Table.configure({
       resizable: false,

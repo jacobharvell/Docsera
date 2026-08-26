@@ -617,6 +617,38 @@ function renderTable(node: Record<string, unknown>, path: string, context: Reade
   );
 }
 
+function renderColumn(node: Record<string, unknown>, path: string, context: ReaderContext): ReactNode {
+  return (
+    <div key={path} className="docsera-main__column">
+      {renderBlockChildren(getNodeContent(node, true), `${path}-child`, context)}
+    </div>
+  );
+}
+
+function renderColumns(node: Record<string, unknown>, path: string, context: ReaderContext): ReactNode {
+  const columns = getNodeContent(node);
+  if (columns.length < 2 || columns.length > 4) {
+    throw new Error("The published page content contains an invalid columns structure.");
+  }
+
+  return (
+    <div
+      key={path}
+      className="docsera-main__columns"
+      data-docsera-columns-count={String(columns.length)}
+      style={{ "--docsera-columns-count": String(columns.length) } as CSSProperties}
+    >
+      {columns.map((column, index) => {
+        if (!isRecord(column) || column.type !== "column") {
+          throw new Error("The published page content contains an unsupported columns structure.");
+        }
+
+        return renderColumn(column, `${path}-${index}`, context);
+      })}
+    </div>
+  );
+}
+
 function renderAccordionItem(
   node: Record<string, unknown>,
   path: string,
@@ -738,6 +770,8 @@ function renderBlockNode(node: unknown, path: string, context: ReaderContext): R
       return renderTaskList(node, path, context);
     case "table":
       return renderTable(node, path, context);
+    case "columns":
+      return renderColumns(node, path, context);
     case "accordion":
       return renderAccordion(node, path, context);
     case "image":

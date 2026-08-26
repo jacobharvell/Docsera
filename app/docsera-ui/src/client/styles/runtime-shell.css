@@ -3245,6 +3245,20 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   gap: 12px;
 }
 
+.docsera-main__columns {
+  margin: 1rem 0;
+  display: grid;
+  gap: 24px;
+  align-items: start;
+  grid-template-columns: repeat(var(--docsera-columns-count), minmax(0, 1fr));
+}
+
+.docsera-main__column {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+
 .docsera-main__accordion {
   margin: 1rem 0;
   border: 1px solid color-mix(in srgb, var(--docsera-border) 82%, var(--docsera-text-soft));
@@ -3806,6 +3820,10 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 
   .docsera-main__surface {
     margin-inline-start: 0;
+  }
+
+  .docsera-main__columns {
+    grid-template-columns: 1fr;
   }
 
   .docsera-workspace__nav-resizer {

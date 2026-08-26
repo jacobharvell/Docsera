@@ -42,6 +42,7 @@
     "test:page-model": "node ./scripts/run-managed-vitest-suites.mjs page-model",
     "test:editor-contract": "node ./scripts/run-managed-vitest-suites.mjs editor-contract",
     "test:editor-interactions": "node ./scripts/run-managed-vitest-suites.mjs editor-interactions",
+    "test:editor-columns": "node ./scripts/run-managed-vitest-suites.mjs editor-columns",
     "test:reader-toc": "node ./scripts/run-managed-vitest-suites.mjs reader-toc",
     "test:publishing-changes": "node ./scripts/run-managed-vitest-suites.mjs publishing-changes",
     "test:workspace-state": "node ./scripts/run-managed-vitest-suites.mjs workspace-state",

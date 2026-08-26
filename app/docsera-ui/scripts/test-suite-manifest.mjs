@@ -78,6 +78,14 @@ export const testSuites = [
     ]
   },
   {
+    name: "editor-columns",
+    description: "focused columns contract and lightweight reader behavior: canonical columns structure, nested content, responsive rendering, and recovery.",
+    files: [
+      "src/client/features/workspaces/PublishedDocumentReader.columns.test.tsx",
+      "src/shared/editor/columns.test.ts"
+    ]
+  },
+  {
     name: "editor-image",
     description: "focused image editor runtime behavior: picker, hover, preview, options, resize, upload, session lifecycle, and stylesheet contracts.",
     files: [

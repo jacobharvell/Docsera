@@ -692,7 +692,7 @@ describe("Docsera structured document validation", () => {
       }
     ],
     [
-      "accordion content columns",
+      "accordion body empty columns",
       {
         type: "doc",
         content: [
@@ -850,7 +850,7 @@ describe("Docsera active accordion schema", () => {
     expect(schema.nodes.accordionTitle?.spec.content).toBe("text*");
     expect(schema.nodes.accordionTitle?.spec.marks).toBe("bold italic strike code underline highlight superscript subscript");
     expect(schema.nodes.accordionContent?.spec.content).toBe(
-      "(paragraph | heading | image | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock | table)+"
+      "((paragraph | heading | image | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock | table) | columns)+"
     );
   });
 
@@ -868,10 +868,23 @@ describe("Docsera active accordion schema", () => {
     expect(schema.nodes.doc.validContent(node.content)).toBe(true);
   });
 
-  it("keeps accordion out of nested table, list, blockquote, and accordion content containers", () => {
+  it("keeps accordion out of unrelated nested containers while allowing columns only in accordion content", () => {
     const schema = getDocseraEditorSchema();
     const accordion = schema.nodeFromJSON(createSingleItemAccordionDocseraDocumentEnvelope().document).firstChild;
     const paragraph = schema.nodes.paragraph.create();
+    const columns = schema.nodeFromJSON({
+      type: "columns",
+      content: [
+        {
+          type: "column",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Left" }] }]
+        },
+        {
+          type: "column",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Right" }] }]
+        }
+      ]
+    });
 
     expect(accordion).not.toBeNull();
     if (!accordion) {
@@ -879,12 +892,19 @@ describe("Docsera active accordion schema", () => {
     }
 
     expect(schema.nodes.doc.validContent(Fragment.from(accordion))).toBe(true);
+    expect(schema.nodes.accordionContent.validContent(Fragment.from(columns))).toBe(true);
     expect(schema.nodes.blockquote.validContent(Fragment.fromArray([paragraph, accordion]))).toBe(false);
     expect(schema.nodes.listItem.validContent(Fragment.fromArray([paragraph, accordion]))).toBe(false);
     expect(schema.nodes.taskItem.validContent(Fragment.fromArray([paragraph, accordion]))).toBe(false);
     expect(schema.nodes.tableCell.validContent(Fragment.fromArray([paragraph, accordion]))).toBe(false);
     expect(schema.nodes.tableHeader.validContent(Fragment.fromArray([paragraph, accordion]))).toBe(false);
     expect(schema.nodes.accordionContent.validContent(Fragment.from(accordion))).toBe(false);
+    expect(schema.nodes.column.validContent(Fragment.from(columns))).toBe(false);
+    expect(schema.nodes.blockquote.validContent(Fragment.from(columns))).toBe(false);
+    expect(schema.nodes.listItem.validContent(Fragment.from(columns))).toBe(false);
+    expect(schema.nodes.taskItem.validContent(Fragment.from(columns))).toBe(false);
+    expect(schema.nodes.tableCell.validContent(Fragment.from(columns))).toBe(false);
+    expect(schema.nodes.tableHeader.validContent(Fragment.from(columns))).toBe(false);
   });
 
   it("keeps Tab sinking available for nested task items while still excluding accordion content", async () => {
