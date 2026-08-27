@@ -2726,6 +2726,9 @@ describe("PageEditorHostRuntime", () => {
       "Bulleted List",
       "Numbered List",
       "Accordion",
+      "2 columns",
+      "3 columns",
+      "4 columns",
       "Code Block",
       "Horizontal Rule",
       "Image",
@@ -3194,6 +3197,37 @@ describe("PageEditorHostRuntime", () => {
     expect((first[0].content?.[0]?.attrs as { accordionItemId?: string }).accordionItemId).not.toBe(
       (second[0].content?.[0]?.attrs as { accordionItemId?: string }).accordionItemId
     );
+  });
+
+  it.each([
+    ["columns2", 2],
+    ["columns3", 3],
+    ["columns4", 4]
+  ] as const)("returns canonical column quick-add content for %s with %i defined columns", (commandId, expectedColumnCount) => {
+    const command = EDITOR_BLOCK_COMMANDS.find((candidate) => candidate.id === commandId);
+    if (!command) {
+      throw new Error(`Expected the ${commandId} command to be registered.`);
+    }
+
+    const quickAddContent = getEditorBlockCommandQuickAddContent(command);
+    expect(quickAddContent).toHaveLength(1);
+
+    const columnsNode = quickAddContent[0];
+    expect(columnsNode).toMatchObject({
+      type: "columns"
+    });
+    expect(columnsNode.content).toHaveLength(expectedColumnCount);
+
+    for (const column of columnsNode.content ?? []) {
+      expect(column).toBeDefined();
+      expect(column).toMatchObject({
+        type: "column"
+      });
+      expect(column.content).toHaveLength(1);
+      expect(column.content?.[0]).toMatchObject({
+        type: "paragraph"
+      });
+    }
   });
 
   it.each([

@@ -142,6 +142,46 @@ function createAccordionUnderColumnWithColumnsDocument(): Record<string, unknown
   };
 }
 
+function createAccordionColumnsWithNestedAccordionDocument(): Record<string, unknown> {
+  return {
+    type: "doc",
+    content: [
+      {
+        type: "accordion",
+        attrs: {
+          accordionId: "accordion-nested-under-columns"
+        },
+        content: [
+          {
+            type: "accordionItem",
+            attrs: {
+              accordionItemId: "accordion-item-nested-under-columns"
+            },
+            content: [
+              {
+                type: "accordionTitle",
+                content: [{ type: "text", text: "Accordion body" }]
+              },
+              {
+                type: "accordionContent",
+                content: [
+                  {
+                    type: "columns",
+                    content: [
+                      createColumnNode([createAccordionNode("Nested accordion", "Nested body")]),
+                      createColumnNode([createParagraphNode("Safe column")])
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  };
+}
+
 function createNestedColumnsDocument(): Record<string, unknown> {
   return {
     type: "doc",
@@ -304,6 +344,20 @@ describe("Docsera columns schema", () => {
     });
     expect(node.toJSON()).toEqual(envelope.document);
     expect(schema.nodes.doc?.validContent(node.content)).toBe(true);
+  });
+
+  it("rejects accordion-body columns that contain another accordion beneath a column ancestor", () => {
+    const document = createAccordionColumnsWithNestedAccordionDocument();
+
+    expect(validateDocseraStructuredDocument(document)).toEqual({
+      ok: false,
+      message: "The stored page content does not contain a valid TipTap document."
+    });
+
+    expect(parseDocseraDocument({ schemaVersion: 1, document })).toMatchObject({
+      ok: false,
+      reason: "invalid-document"
+    });
   });
 
   it("rejects accordion-body columns beneath a column ancestor", () => {

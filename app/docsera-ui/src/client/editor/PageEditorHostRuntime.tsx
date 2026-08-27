@@ -474,18 +474,33 @@ function isTextSelection(selection: unknown): selection is TextSelection {
 
 function resolveEditorBlockCommandContext(selection: TextSelection): EditorBlockCommandContext {
   const isTopLevelBlock = selection.$from.depth === 1;
+  const insertionContainerType = selection.$from.depth > 0 ? selection.$from.node(selection.$from.depth - 1).type.name : "doc";
+  let isInsideAccordion = false;
+  let isInsideAccordionContent = false;
+  let isInsideColumn = false;
+  let isInsideTableCellOrHeader = false;
   for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
     const nodeName = selection.$from.node(depth).type.name;
+    if (nodeName === "accordion") {
+      isInsideAccordion = true;
+    }
+    if (nodeName === "accordionContent") {
+      isInsideAccordionContent = true;
+    }
+    if (nodeName === "column") {
+      isInsideColumn = true;
+    }
     if (nodeName === "tableCell" || nodeName === "tableHeader") {
-      return {
-        isInsideTableCellOrHeader: true,
-        isTopLevelBlock
-      };
+      isInsideTableCellOrHeader = true;
     }
   }
 
   return {
-    isInsideTableCellOrHeader: false,
+    insertionContainerType,
+    isInsideAccordion,
+    isInsideAccordionContent,
+    isInsideColumn,
+    isInsideTableCellOrHeader,
     isTopLevelBlock
   };
 }
@@ -1648,6 +1663,10 @@ function resolveNearestVerticalBlockTarget(editor: Editor, clientY: number): Hov
 }
 
 function getTopLevelBlockLabel(element: HTMLElement): string {
+  if (element.classList.contains("docsera-editor-columns")) {
+    return "Columns";
+  }
+
   if (element.classList.contains("docsera-editor-accordion")) {
     return "Accordion";
   }
@@ -1681,6 +1700,7 @@ function getTopLevelBlockLabel(element: HTMLElement): string {
 
 function getTopLevelBlockElements(editor: Editor): HTMLElement[] {
   const proseMirror = editor.view.dom;
+
   if (!(proseMirror instanceof HTMLElement)) {
     return [];
   }
@@ -2099,6 +2119,30 @@ function BlockCommandIcon({ id }: { id: EditorBlockCommandId }) {
       return <Quote size={16} strokeWidth={2} />;
     case "accordion":
       return <ChevronDown size={16} strokeWidth={2} />;
+    case "columns2":
+      return (
+        <svg aria-hidden="true" fill="currentColor" focusable="false" height="16" viewBox="0 0 16 16" width="16">
+          <rect height="12" rx="1.25" width="6.25" x="0" y="2" />
+          <rect height="12" rx="1.25" width="6.25" x="9.75" y="2" />
+        </svg>
+      );
+    case "columns3":
+      return (
+        <svg aria-hidden="true" fill="currentColor" focusable="false" height="16" viewBox="0 0 16 16" width="16">
+          <rect height="12" rx="1.25" width="3.67" x="0" y="2" />
+          <rect height="12" rx="1.25" width="3.67" x="6.17" y="2" />
+          <rect height="12" rx="1.25" width="3.67" x="12.33" y="2" />
+        </svg>
+      );
+    case "columns4":
+      return (
+        <svg aria-hidden="true" fill="currentColor" focusable="false" height="16" viewBox="0 0 16 16" width="16">
+          <rect height="12" rx="1.25" width="2.25" x="0" y="2" />
+          <rect height="12" rx="1.25" width="2.25" x="4.58" y="2" />
+          <rect height="12" rx="1.25" width="2.25" x="9.17" y="2" />
+          <rect height="12" rx="1.25" width="2.25" x="13.75" y="2" />
+        </svg>
+      );
     case "horizontalRule":
       return <Minus size={16} strokeWidth={2} />;
     case "table":
@@ -2145,14 +2189,30 @@ function applyCommandSelectionOffset(
   return true;
 }
 
-function applySlashCommand(editor: Editor, selector: Extract<CommandSelectorState, { source: "slash" }>, command: EditorBlockCommand): boolean {
+function applySlashCommand(
+  editor: Editor,
+  selector: Extract<CommandSelectorState, { source: "slash" }>,
+  command: EditorBlockCommand
+): boolean {
   editor.commands.focus(undefined, { scrollIntoView: false });
-  if (command.id === "accordion") {
-    return replaceEmptyParagraphWithCommandOutput(
+  if (command.id === "accordion" || command.id === "columns2" || command.id === "columns3" || command.id === "columns4") {
+    const content = getEditorBlockCommandQuickAddContent(command);
+    return replaceEmptySlashOwnerParagraphWithCommandOutput(
       editor,
-      selector.ownerBlockIndex,
-      getEditorBlockCommandQuickAddContent(command),
+      selector,
+      content,
       command.quickAdd.selectionOffset
+    );
+  }
+  if (
+    command.id === "horizontalRule" &&
+    (selector.surfaceContext.isInsideColumn || selector.surfaceContext.isInsideAccordionContent)
+  ) {
+    return replaceEmptySlashOwnerParagraphWithCommandOutput(
+      editor,
+      selector,
+      [{ type: "horizontalRule" }],
+      "node"
     );
   }
   applyBlockCommand(editor, command);
@@ -2247,6 +2307,10 @@ function getTopLevelBlockLabelFromNode(
       return "Numbered List";
     case "blockquote":
       return "Blockquote";
+    case "columns2":
+    case "columns3":
+    case "columns4":
+      return "Columns";
     case "codeBlock":
       return "Code Block";
     case "horizontalRule":
@@ -2454,11 +2518,21 @@ function createBlockquoteCommandOutput(): JSONContent[] {
   ];
 }
 
+function replaceEmptySlashOwnerParagraphWithCommandOutput(
+  editor: Editor,
+  selector: Extract<CommandSelectorState, { source: "slash" }>,
+  content: JSONContent[],
+  selectionOffset: number | "continuation" | "node" | undefined
+): boolean {
+  editor.view.dispatch(closeHistory(editor.state.tr));
+  return replaceEmptyParagraphAtPositionWithCommandOutput(editor, selector.ownerPos, content, selectionOffset);
+}
+
 function replaceEmptyParagraphAtPositionWithCommandOutput(
   editor: Editor,
   nodePos: number,
   content: JSONContent[],
-  selectionOffset: number | "continuation" | undefined
+  selectionOffset: number | "continuation" | "node" | undefined
 ): boolean {
   const targetNode = editor.state.doc.nodeAt(nodePos);
   if (
@@ -2472,9 +2546,24 @@ function replaceEmptyParagraphAtPositionWithCommandOutput(
 
   const nextNodes = content.map((node) => editor.schema.nodeFromJSON(node));
 
-  let transaction = editor.state.tr.delete(nodePos, nodePos + targetNode.nodeSize).insert(nodePos, Fragment.fromArray(nextNodes));
+  let transaction = editor.state.tr.replaceWith(nodePos, nodePos + targetNode.nodeSize, Fragment.fromArray(nextNodes));
   if (selectionOffset !== "continuation") {
     transaction = transaction.setMeta(TIPTAP_SKIP_TRAILING_NODE_META, true);
+  }
+
+  if (selectionOffset === "node") {
+    try {
+      transaction = transaction.setSelection(NodeSelection.create(transaction.doc, nodePos));
+    } catch {
+      const nearbyAnchor = Math.min(nodePos + nextNodes[0].nodeSize, Math.max(1, transaction.doc.content.size));
+      try {
+        transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(nearbyAnchor), 1));
+      } catch {
+        return false;
+      }
+    }
+    editor.view.dispatch(transaction);
+    return true;
   }
 
   if (selectionOffset === "continuation") {
@@ -2558,16 +2647,12 @@ function replaceEmptyParagraphWithCanonicalImageInRange(
     return false;
   }
 
-  const imageNode = editor.schema.nodeFromJSON(createCanonicalImageNodeJson(mediaId));
-  let transaction = editor.state.tr.delete(from, to).insert(from, imageNode);
-  try {
-    transaction = transaction.setSelection(NodeSelection.create(transaction.doc, from));
-  } catch {
-    transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(from), 1));
-  }
-
-  editor.view.dispatch(transaction);
-  return true;
+  return replaceEmptyParagraphAtPositionWithCommandOutput(
+    editor,
+    from,
+    [createCanonicalImageNodeJson(mediaId)],
+    "node"
+  );
 }
 
 function restoreEditorSelectionFocus(
@@ -4870,6 +4955,10 @@ export function PageEditorHostRuntime({
       ownerBlockIndex: insertedBlockIndex,
       ownerLabel: target.accessibleLabel,
       surfaceContext: {
+        insertionContainerType: "doc",
+        isInsideAccordion: false,
+        isInsideAccordionContent: false,
+        isInsideColumn: false,
         isInsideTableCellOrHeader: false,
         isTopLevelBlock: true
       },
@@ -5214,7 +5303,15 @@ export function PageEditorHostRuntime({
     closeCommandSelector();
     if (activeSelector.source === "quickAdd" || activeSelector.source === "slash") {
       if (editorRef.current === runtimeEditor && !runtimeEditor.isDestroyed) {
-        restoreEditorSelectionFocus(runtimeEditor, selectionAnchor);
+        const shouldPreserveSelection =
+          activeSelector.source === "slash" &&
+          command.id === "horizontalRule" &&
+          (activeSelector.surfaceContext.isInsideColumn || activeSelector.surfaceContext.isInsideAccordionContent);
+        if (shouldPreserveSelection) {
+          runtimeEditor.view.focus();
+        } else {
+          restoreEditorSelectionFocus(runtimeEditor, selectionAnchor);
+        }
       }
     }
   }
@@ -5605,6 +5702,7 @@ export function PageEditorHostRuntime({
       }
     }
   }, [editorExtensions, editorProps, initialSessionIsClean, isEditable]);
+  const mountedEditor = editor && editorRef.current === editor && !editor.isDestroyed ? editor : null;
 
   useEffect(() => {
     if (!editor || !isEditable) {
@@ -5738,7 +5836,7 @@ export function PageEditorHostRuntime({
   }, [closeImageAlignmentMenu, finalizeImageResizeSession]);
 
   useEffect(() => {
-    if (!editor) {
+    if (!mountedEditor) {
       return;
     }
 
@@ -5748,31 +5846,31 @@ export function PageEditorHostRuntime({
         return;
       }
 
-      if (!(editor.state.selection instanceof CellSelection)) {
+      if (!(mountedEditor.state.selection instanceof CellSelection)) {
         return;
       }
 
-      releaseStructuralCellSelectionOwnership(editor);
+      releaseStructuralCellSelectionOwnership(mountedEditor);
     });
-  }, [editor, overlayRoot, pageSysId]);
+  }, [mountedEditor, overlayRoot, pageSysId]);
 
   useEffect(() => {
-    if (!editor) {
+    if (!mountedEditor) {
       return;
     }
 
-    editor.setEditable(isEditable);
-    if (trySetEditorTabIndex(editor, isEditable)) {
+    mountedEditor.setEditable(isEditable);
+    if (trySetEditorTabIndex(mountedEditor, isEditable)) {
       return;
     }
 
     queueMicrotask(() => {
-      if (disposedRef.current || (editor as Editor & { isDestroyed?: boolean }).isDestroyed) {
+      if (disposedRef.current || (mountedEditor as Editor & { isDestroyed?: boolean }).isDestroyed) {
         return;
       }
-      void trySetEditorTabIndex(editor, isEditable);
+      void trySetEditorTabIndex(mountedEditor, isEditable);
     });
-  }, [editor, isEditable]);
+  }, [isEditable, mountedEditor]);
 
   const overlayThemeClass = useMemo(
     () => (theme === "dark" ? "docsera-editor-runtime--dark" : "docsera-editor-runtime--light"),
@@ -6168,9 +6266,9 @@ export function PageEditorHostRuntime({
   }
 
   const activeBlockControlTarget =
-    editor && blockHandleGesture && !blockDragState
+    mountedEditor && blockHandleGesture && !blockDragState
       ? (() => {
-          const gestureNode = getTopLevelBlockNodeFromDoc(editor.state.doc, blockHandleGesture.blockIndex);
+          const gestureNode = getTopLevelBlockNodeFromDoc(mountedEditor.state.doc, blockHandleGesture.blockIndex);
           return gestureNode
             ? {
                 accessibleLabel: getTopLevelBlockLabelFromNode(gestureNode),
@@ -6178,14 +6276,14 @@ export function PageEditorHostRuntime({
               }
             : hoverTarget;
         })()
-      : editor && (blockTurnIntoMenu || blockActionMenu)
+      : mountedEditor && (blockTurnIntoMenu || blockActionMenu)
         ? (() => {
             const menuBlockIndex = blockTurnIntoMenu?.blockIndex ?? blockActionMenu?.blockIndex ?? null;
             if (menuBlockIndex === null) {
               return hoverTarget;
             }
 
-            const menuNode = getTopLevelBlockNodeFromDoc(editor.state.doc, menuBlockIndex);
+            const menuNode = getTopLevelBlockNodeFromDoc(mountedEditor.state.doc, menuBlockIndex);
             return menuNode
               ? {
                   accessibleLabel: getTopLevelBlockLabelFromNode(menuNode),
@@ -6195,9 +6293,9 @@ export function PageEditorHostRuntime({
           })()
         : hoverTarget;
   const hoveredImageTarget =
-    editor && hoverTarget
+    mountedEditor && hoverTarget
       ? (() => {
-          const node = getTopLevelBlockNodeFromDoc(editor.state.doc, hoverTarget.blockIndex);
+          const node = getTopLevelBlockNodeFromDoc(mountedEditor.state.doc, hoverTarget.blockIndex);
           return node?.type.name === "image" ? hoverTarget : null;
         })()
       : null;
@@ -6208,9 +6306,12 @@ export function PageEditorHostRuntime({
     imageOptionsSession?.blockIndex ??
     hoveredImageTarget?.blockIndex ??
     null;
-  const imageOptionsBlockRect = editor && imageOptionsBlockIndex !== null ? getTopLevelBlockRect(editor, imageOptionsBlockIndex) : null;
+  const imageOptionsBlockRect =
+    mountedEditor && imageOptionsBlockIndex !== null ? getTopLevelBlockRect(mountedEditor, imageOptionsBlockIndex) : null;
   const activeImageNode =
-    editor && imageOptionsBlockIndex !== null ? getTopLevelBlockNodeFromDoc(editor.state.doc, imageOptionsBlockIndex) : null;
+    mountedEditor && imageOptionsBlockIndex !== null
+      ? getTopLevelBlockNodeFromDoc(mountedEditor.state.doc, imageOptionsBlockIndex)
+      : null;
   const activeImageAttrs = activeImageNode?.type.name === "image" ? canonicalizeDocseraImageAttrs(activeImageNode.attrs) : null;
   const activeImagePreviewTheme =
     imageOptionsBlockIndex !== null && imageDisplayState.preview?.blockIndex === imageOptionsBlockIndex
@@ -6321,21 +6422,22 @@ export function PageEditorHostRuntime({
       theme
     });
   }, [imageOptionsBlockIndex, theme]);
-  const hoverTargetRect = editor && activeBlockControlTarget ? getTopLevelBlockRect(editor, activeBlockControlTarget.blockIndex) : null;
+  const hoverTargetRect =
+    mountedEditor && activeBlockControlTarget ? getTopLevelBlockRect(mountedEditor, activeBlockControlTarget.blockIndex) : null;
   const gutterAnchorRect = hoverTargetRect ? buildQuickAddAnchorRect(hoverTargetRect) : null;
   const gutterButtonStyle = gutterAnchorRect ? buildGutterButtonStyle(gutterAnchorRect) : undefined;
   const gutterHandleStyle = gutterAnchorRect ? buildGutterHandleStyle(gutterAnchorRect) : undefined;
   const blockDragDropIndicatorStyle =
-    editor &&
+    mountedEditor &&
     blockDragState &&
     blockDragState.destinationIndex !== null &&
     isValidBlockDragDestinationIndex(
-      editor.state.doc.childCount,
+      mountedEditor.state.doc.childCount,
       blockDragState.sourceBlockIndex,
       blockDragState.sourceBlockEndIndex,
       blockDragState.destinationIndex
     )
-      ? buildTopLevelBlockDropIndicatorStyle(editor, blockDragState.destinationIndex, {
+      ? buildTopLevelBlockDropIndicatorStyle(mountedEditor, blockDragState.destinationIndex, {
         lineHeight: BLOCK_DRAG_LINE_HEIGHT,
         viewportGutter: VIEWPORT_GUTTER
       })
@@ -6348,7 +6450,8 @@ export function PageEditorHostRuntime({
     : null;
   const isPressedHandleTarget =
     Boolean(blockHandleGesture && activeBlockControlTarget && blockHandleGesture.blockIndex === activeBlockControlTarget.blockIndex && !blockDragState);
-  const blockActionMenuNode = editor && blockActionMenu ? getTopLevelBlockNodeFromDoc(editor.state.doc, blockActionMenu.blockIndex) : null;
+  const blockActionMenuNode =
+    mountedEditor && blockActionMenu ? getTopLevelBlockNodeFromDoc(mountedEditor.state.doc, blockActionMenu.blockIndex) : null;
   const blockActionMenuEntries = blockActionMenuNode ? getBlockActionMenuEntries(blockActionMenuNode) : [];
   const blockActionMenuStyle =
     editor && blockActionMenu
@@ -6375,17 +6478,17 @@ export function PageEditorHostRuntime({
         )
       : undefined;
   const quickAddAnchorRect =
-    commandSelector && commandSelector.source === "quickAdd" && editor
-      ? getTopLevelBlockRect(editor, commandSelector.insertedBlockIndex)
-        ? buildQuickAddAnchorRect(getTopLevelBlockRect(editor, commandSelector.insertedBlockIndex)!)
+    commandSelector && commandSelector.source === "quickAdd" && mountedEditor
+      ? getTopLevelBlockRect(mountedEditor, commandSelector.insertedBlockIndex)
+        ? buildQuickAddAnchorRect(getTopLevelBlockRect(mountedEditor, commandSelector.insertedBlockIndex)!)
         : commandSelector.fallbackAnchorRect
       : null;
   const selectorStyle =
-    commandSelector && editor
+    commandSelector && mountedEditor
       ? commandSelector.source === "slash"
         ? buildSurfaceStyle(
             overlayOwnerDocument,
-            getCaretBounds(editor) ?? commandSelector.anchorRect,
+            getCaretBounds(mountedEditor) ?? commandSelector.anchorRect,
             BLOCK_SELECTOR_WIDTH,
             BLOCK_SELECTOR_HEIGHT,
             commandSelector.placement
@@ -6774,6 +6877,24 @@ export function PageEditorHostRuntime({
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__content[hidden] {
           display: none;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-columns {
+          margin: 1rem 0;
+          display: grid;
+          gap: 24px;
+          align-items: start;
+          grid-template-columns: repeat(var(--docsera-columns-count), minmax(0, 1fr));
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-columns__column {
+          min-width: 0;
+          display: grid;
+          gap: 12px;
+          overflow-wrap: anywhere;
+        }
+        @media (max-width: 920px) {
+          .docsera-editor-runtime__surface .ProseMirror .docsera-editor-columns {
+            grid-template-columns: 1fr;
+          }
         }
         .docsera-editor-runtime__surface .ProseMirror pre {
           margin: 0 0 1rem;
@@ -7916,10 +8037,10 @@ export function PageEditorHostRuntime({
               </div>
             ) : null}
 
-            {editor && imageOptionsSession && imageOptionsPanelStyle ? (
+            {mountedEditor && imageOptionsSession && imageOptionsPanelStyle ? (
               <ImageOptionsPanel
                 blockIndex={imageOptionsSession.blockIndex}
-                editor={editor}
+                editor={mountedEditor}
                 initialAttrs={imageOptionsSession.initialAttrs}
                 isEscapeDismissalDeferred={imageAlignmentMenu !== null}
                 mediaAdapter={mediaAdapter}
@@ -7935,13 +8056,13 @@ export function PageEditorHostRuntime({
 
             <CompactTextToolbar
               canEdit={isEditable}
-              editor={editor}
+              editor={mountedEditor}
               ownerDocument={overlayOwnerDocument}
               ownerWindow={overlayOwnerWindow}
               overlayRoot={overlayRoot}
             />
             <TableControlsOverlay
-              editor={editor}
+              editor={mountedEditor}
               onStructuredTableClipboardCopy={handleStructuredTableClipboardCopy}
               overlayRoot={overlayRoot}
             />

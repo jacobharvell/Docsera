@@ -81,6 +81,7 @@ export const testSuites = [
     name: "editor-columns",
     description: "focused columns contract and lightweight reader behavior: canonical columns structure, nested content, responsive rendering, and recovery.",
     files: [
+      "src/client/editor/PageEditorHostRuntime.columns.test.tsx",
       "src/client/features/workspaces/PublishedDocumentReader.columns.test.tsx",
       "src/shared/editor/columns.test.ts"
     ]

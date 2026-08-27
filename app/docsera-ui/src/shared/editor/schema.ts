@@ -35,6 +35,7 @@ export {
 
 let cachedDocseraEditorSchema: Schema | null = null;
 export const DOCSERA_EMPTY_PARAGRAPH_PLACEHOLDER = "Start typing or press '/' for commands";
+export const DOCSERA_EMPTY_COLUMN_PARAGRAPH_PLACEHOLDER = "Type here...";
 export const DOCSERA_EMPTY_HEADING_PLACEHOLDERS: Record<number, string> = {
   1: "Heading 1",
   2: "Heading 2",
@@ -1201,6 +1202,15 @@ function createDocseraImageExtension(loadMedia: WorkspaceMediaLoader) {
   });
 }
 
+function isCanonicalEmptyColumnParagraph(node: PMNode, parent: PMNode | null | undefined): boolean {
+  return (
+    parent?.type.name === "column" &&
+    parent.childCount === 1 &&
+    parent.firstChild === node &&
+    node.content.size === 0
+  );
+}
+
 const TableCell = BaseTableCell.extend({
   addAttributes() {
     const parentAttributes = (this.parent?.() ?? {}) as {
@@ -1314,11 +1324,23 @@ const EmptyParagraphPlaceholder = Extension.create({
               }
             });
 
-            state.doc.descendants((node, offset) => {
+            state.doc.descendants((node, offset, parent) => {
               if (node.type.name === "paragraph" && node.content.size === 0) {
+                if (isCanonicalEmptyColumnParagraph(node, parent)) {
+                  decorations.push(
+                    Decoration.node(offset, offset + node.nodeSize, {
+                      "data-docsera-empty-paragraph": "true",
+                      "data-placeholder": DOCSERA_EMPTY_COLUMN_PARAGRAPH_PLACEHOLDER
+                    })
+                  );
+                  return;
+                }
+
                 const $offset = state.doc.resolve(offset);
                 for (let depth = $offset.depth; depth > 0; depth -= 1) {
-                  if ($offset.node(depth).type.name === "accordionContent") {
+                  const ancestor = $offset.node(depth);
+
+                  if (ancestor.type.name === "accordionContent") {
                     decorations.push(
                       Decoration.node(offset, offset + node.nodeSize, {
                         "data-docsera-empty-paragraph": "true",
@@ -1328,6 +1350,22 @@ const EmptyParagraphPlaceholder = Extension.create({
                     break;
                   }
                 }
+              }
+
+              if (
+                parent?.type.name !== "doc" &&
+                node.type.name === "blockquote" &&
+                node.childCount === 1 &&
+                node.firstChild?.type.name === "paragraph" &&
+                node.firstChild.content.size === 0
+              ) {
+                decorations.push(
+                  Decoration.node(offset + 1, offset + node.nodeSize - 1, {
+                    "data-docsera-empty-blockquote": "true",
+                    "data-placeholder": DOCSERA_EMPTY_BLOCKQUOTE_PLACEHOLDER
+                  })
+                );
+                return;
               }
 
               if (node.type.name === "accordionTitle" && node.content.size === 0) {
@@ -1359,12 +1397,13 @@ function createDocseraColumnsExtensions() {
       parseHTML() {
         return [{ tag: "div[data-docsera-columns='true']", priority: 1000 }];
       },
-      renderHTML({ HTMLAttributes }) {
+      renderHTML({ node, HTMLAttributes }) {
         return [
           "div",
           mergeAttributes(HTMLAttributes, {
             class: "docsera-editor-columns",
-            "data-docsera-columns": "true"
+            "data-docsera-columns": "true",
+            style: `--docsera-columns-count: ${node.childCount};`
           }),
           0
         ];

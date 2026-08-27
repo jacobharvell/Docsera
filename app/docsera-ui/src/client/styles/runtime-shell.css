@@ -3257,6 +3257,7 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   min-width: 0;
   display: grid;
   gap: 12px;
+  overflow-wrap: anywhere;
 }
 
 .docsera-main__accordion {

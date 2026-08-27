@@ -9,12 +9,19 @@ export type EditorBlockCommandId =
   | "bulletedList"
   | "numberedList"
   | "accordion"
+  | "columns2"
+  | "columns3"
+  | "columns4"
   | "codeBlock"
   | "horizontalRule"
   | "image"
   | "table";
 
 export type EditorBlockCommandContext = {
+  insertionContainerType: string;
+  isInsideAccordion: boolean;
+  isInsideAccordionContent: boolean;
+  isInsideColumn: boolean;
   isInsideTableCellOrHeader: boolean;
   isTopLevelBlock: boolean;
 };
@@ -104,6 +111,26 @@ function createAccordionNode(): JSONContent {
 
 function createAccordionQuickAddContent(): JSONContent[] {
   return [createAccordionNode()];
+}
+
+function createColumnsNode(columnCount: 2 | 3 | 4): JSONContent {
+  const content: JSONContent[] = [];
+
+  for (let index = 0; index < columnCount; index += 1) {
+    content.push({
+      type: "column",
+      content: [createParagraphNode()]
+    });
+  }
+
+  return {
+    type: "columns",
+    content
+  };
+}
+
+function createColumnsQuickAddContent(columnCount: 2 | 3 | 4): JSONContent[] {
+  return [createColumnsNode(columnCount)];
 }
 
 function createCodeBlockNode(): JSONContent {
@@ -242,7 +269,9 @@ export const EDITOR_BLOCK_COMMANDS: EditorBlockCommand[] = [
     label: "Accordion",
     description: "Create a collapsible content block",
     keywords: ["accordion", "details", "expandable", "collapsible"],
-    isAvailable: (context) => context.isTopLevelBlock && !context.isInsideTableCellOrHeader,
+    isAvailable: (context) =>
+      !context.isInsideTableCellOrHeader &&
+      (context.isTopLevelBlock || (context.insertionContainerType === "column" && !context.isInsideAccordion)),
     createQuickAddContent: createAccordionQuickAddContent,
     quickAdd: {
       content: [],
@@ -251,6 +280,63 @@ export const EDITOR_BLOCK_COMMANDS: EditorBlockCommand[] = [
     slashSelectionOffset: 3,
     run: (editor) => {
       editor.chain().focus(undefined, { scrollIntoView: false }).insertContent(createAccordionQuickAddContent()).run();
+    }
+  },
+  {
+    category: "Basic Blocks",
+    id: "columns2",
+    label: "2 columns",
+    description: "Insert a two-column layout",
+    keywords: ["2 columns", "2 column", "two columns", "two column", "columns", "column", "layout"],
+    isAvailable: (context) =>
+      !context.isInsideTableCellOrHeader &&
+      (context.isTopLevelBlock || (context.insertionContainerType === "accordionContent" && !context.isInsideColumn)),
+    createQuickAddContent: () => createColumnsQuickAddContent(2),
+    quickAdd: {
+      content: [],
+      selectionOffset: 3
+    },
+    slashSelectionOffset: 3,
+    run: (editor) => {
+      editor.chain().focus(undefined, { scrollIntoView: false }).insertContent(createColumnsQuickAddContent(2)).run();
+    }
+  },
+  {
+    category: "Basic Blocks",
+    id: "columns3",
+    label: "3 columns",
+    description: "Insert a three-column layout",
+    keywords: ["3 columns", "3 column", "three columns", "three column", "columns", "column", "layout"],
+    isAvailable: (context) =>
+      !context.isInsideTableCellOrHeader &&
+      (context.isTopLevelBlock || (context.insertionContainerType === "accordionContent" && !context.isInsideColumn)),
+    createQuickAddContent: () => createColumnsQuickAddContent(3),
+    quickAdd: {
+      content: [],
+      selectionOffset: 3
+    },
+    slashSelectionOffset: 3,
+    run: (editor) => {
+      editor.chain().focus(undefined, { scrollIntoView: false }).insertContent(createColumnsQuickAddContent(3)).run();
+    }
+  },
+  {
+    category: "Basic Blocks",
+    id: "columns4",
+    label: "4 columns",
+    description: "Insert a four-column layout",
+    keywords: ["4 columns", "4 column", "four columns", "four column", "columns", "column", "layout"],
+    isAvailable: (context) =>
+      !context.isInsideTableCellOrHeader &&
+      (context.isTopLevelBlock || (context.insertionContainerType === "accordionContent" && !context.isInsideColumn)),
+    createQuickAddContent: () => createColumnsQuickAddContent(4),
+    quickAdd: {
+      content: [],
+      selectionOffset: 3
+    },
+    slashSelectionOffset: 3,
+    run: (editor) => {
+      editor.chain().focus(undefined, { scrollIntoView: false }).insertContent(createColumnsQuickAddContent(4)).run();
     }
   },
   {
@@ -318,7 +404,14 @@ export const EDITOR_BLOCK_COMMANDS: EditorBlockCommand[] = [
 
 export function getEditorBlockCommandMatches(
   query: string,
-  context: EditorBlockCommandContext = { isInsideTableCellOrHeader: false, isTopLevelBlock: true }
+  context: EditorBlockCommandContext = {
+    insertionContainerType: "doc",
+    isInsideAccordion: false,
+    isInsideAccordionContent: false,
+    isInsideColumn: false,
+    isInsideTableCellOrHeader: false,
+    isTopLevelBlock: true
+  }
 ): EditorBlockCommand[] {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) {
@@ -337,7 +430,14 @@ export function getEditorBlockCommandMatches(
 
 export function getGroupedEditorBlockCommandMatches(
   query: string,
-  context: EditorBlockCommandContext = { isInsideTableCellOrHeader: false, isTopLevelBlock: true }
+  context: EditorBlockCommandContext = {
+    insertionContainerType: "doc",
+    isInsideAccordion: false,
+    isInsideAccordionContent: false,
+    isInsideColumn: false,
+    isInsideTableCellOrHeader: false,
+    isTopLevelBlock: true
+  }
 ): Array<{
   category: EditorBlockCommand["category"];
   commands: EditorBlockCommand[];
