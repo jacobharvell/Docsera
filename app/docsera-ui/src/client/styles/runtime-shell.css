@@ -2916,12 +2916,49 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   line-height: 1.1;
 }
 
+.docsera-main__title-editor {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 12px;
+  min-width: 0;
+}
+
 .docsera-main__page-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
+}
+
+.docsera-main__title-button,
+.docsera-main__title-input {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-align: left;
+}
+
+.docsera-main__title-button {
+  cursor: text;
+}
+
+.docsera-main__title-input:focus {
+  outline: none;
+}
+
+.docsera-main__title-input--invalid {
+  color: var(--docsera-error);
+}
+
+.docsera-main__title-error {
+  max-width: 40rem;
 }
 
 .docsera-main__editor-controls {

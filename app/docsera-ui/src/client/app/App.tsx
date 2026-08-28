@@ -268,11 +268,13 @@ type PageSettingsField = "title" | "slug";
 
 type PageSettingsState = {
   activeField: PageSettingsField | "";
+  activeFieldValueSnapshot: string;
   deleteError: string;
   deleteOpen: boolean;
   deletePending: boolean;
   generalError: string;
   noticeMessage: string;
+  panelOpen: boolean;
   pageSysId: string;
   slug: string;
   slugSnapshot: string;
@@ -542,11 +544,13 @@ function createInlinePageCreateState(parentPageSysId = "", focusToken = 0): Inli
 function createEmptyPageSettingsState(): PageSettingsState {
   return {
     activeField: "",
+    activeFieldValueSnapshot: "",
     deleteError: "",
     deleteOpen: false,
     deletePending: false,
     generalError: "",
     noticeMessage: "",
+    panelOpen: false,
     pageSysId: "",
     slug: "",
     slugSnapshot: "",
@@ -562,11 +566,13 @@ function isPageSettingsStateEmpty(state: PageSettingsState): boolean {
   return (
     !state.open &&
     !state.activeField &&
+    !state.activeFieldValueSnapshot &&
     !state.deleteError &&
     !state.deleteOpen &&
     !state.deletePending &&
     !state.generalError &&
     !state.noticeMessage &&
+    !state.panelOpen &&
     !state.pageSysId &&
     !state.slug &&
     !state.slugSnapshot &&
@@ -577,12 +583,21 @@ function isPageSettingsStateEmpty(state: PageSettingsState): boolean {
   );
 }
 
-function createPageSettingsStateFromPage(page: WorkspacePageRecord): PageSettingsState {
+function createPageSettingsStateFromPage(
+  page: WorkspacePageRecord,
+  options: {
+    activeField?: PageSettingsField | "";
+    panelOpen?: boolean;
+  } = {}
+): PageSettingsState {
   const title = cleanText(page.draftTitle || page.publishedTitle || "");
   const slug = cleanText(page.draftSlug || page.publishedSlug || "");
 
   return {
     ...createEmptyPageSettingsState(),
+    activeField: options.activeField ?? "",
+    activeFieldValueSnapshot: options.activeField === "slug" ? slug : options.activeField === "title" ? title : "",
+    panelOpen: options.panelOpen ?? true,
     pageSysId: cleanText(page.sysId),
     title,
     titleSnapshot: title,
@@ -590,6 +605,70 @@ function createPageSettingsStateFromPage(page: WorkspacePageRecord): PageSetting
     slugSnapshot: slug,
     open: true
   };
+}
+
+function rebasePageSettingsPersistedSnapshots(state: PageSettingsState, page: WorkspacePageRecord): PageSettingsState {
+  return {
+    ...state,
+    titleSnapshot: cleanText(page.draftTitle || page.publishedTitle || ""),
+    slugSnapshot: cleanText(page.draftSlug || page.publishedSlug || "")
+  };
+}
+
+function hasPageSettingsUnsavedChanges(state: PageSettingsState): boolean {
+  return (
+    cleanText(state.title) !== cleanText(state.titleSnapshot) ||
+    cleanText(state.slug).toLowerCase() !== cleanText(state.slugSnapshot).toLowerCase() ||
+    Boolean(state.generalError) ||
+    Boolean(state.titleError) ||
+    Boolean(state.slugError)
+  );
+}
+
+function hasNonOverlayPageSettingsState(state: PageSettingsState): boolean {
+  return state.open && !state.panelOpen;
+}
+
+function buildProjectedPageSettingsTitleDraft(
+  mode: WorkspaceMode,
+  state: PageSettingsState
+): { pageSysId: string; title: string } | null {
+  if (mode !== "edit" || !state.open) {
+    return null;
+  }
+
+  const normalizedPageSysId = cleanText(state.pageSysId);
+  if (!normalizedPageSysId) {
+    return null;
+  }
+
+  const validation = validatePageSettingsTitle(state.title);
+  if (!validation.valid) {
+    return null;
+  }
+
+  return {
+    pageSysId: normalizedPageSysId,
+    title: validation.value
+  };
+}
+
+function projectWorkspacePagesForPresentation(
+  pages: WorkspacePageRecord[],
+  projectedTitleDraft: { pageSysId: string; title: string } | null
+): WorkspacePageRecord[] {
+  if (!projectedTitleDraft) {
+    return pages;
+  }
+
+  return pages.map((page) =>
+    cleanText(page.sysId) === projectedTitleDraft.pageSysId
+      ? {
+          ...page,
+          draftTitle: projectedTitleDraft.title
+        }
+      : page
+  );
 }
 
 function createInitialPingState(runtime: DocseraRuntimeContext): RuntimeProbeState {
@@ -993,6 +1072,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const inlinePageCreateStateRef = useRef<InlinePageCreateState | null>(null);
   const lastWorkspaceModeKeyRef = useRef("");
   const pageSettingsStateRef = useRef<PageSettingsState>(createEmptyPageSettingsState());
+  const pageSettingsInteractionVersionRef = useRef(0);
   const pageSettingsPendingOpenPageIdRef = useRef("");
   const pageSettingsPanelRef = useRef<HTMLElement>(null);
   const pageSettingsCloseTargetRef = useRef("");
@@ -1024,6 +1104,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     sessionKey: "",
     token: null
   });
+
+  function markPageSettingsInteraction(): number {
+    pageSettingsInteractionVersionRef.current += 1;
+    return pageSettingsInteractionVersionRef.current;
+  }
   const workspaceSysIdForMedia = workspaceState.status === "success" ? cleanText(workspaceState.data.sysId) : "";
   const workspaceLeaseTokenForMedia = workspaceLeaseState.state === "held" ? workspaceLeaseState.leaseToken : "";
   const workspaceMediaAdapter = useMemo<EditorMediaAdapter | undefined>(() => {
@@ -1729,7 +1814,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }, [theme]);
 
   useEffect(() => {
-    if (!pageSettingsState.open) {
+    if (!pageSettingsState.panelOpen) {
       return;
     }
 
@@ -1771,7 +1856,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown, true);
     };
-  }, [pageSettingsState.open]);
+  }, [pageSettingsState.panelOpen]);
 
   const currentWorkspaceSlug = route.mode === "workspace" ? route.workspaceSlug : "";
   const currentWorkspaceSettingsIntent = route.mode === "workspace" ? route.settingsIntent : false;
@@ -2056,9 +2141,17 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
   }, [activeWorkspaceMode, currentWorkspaceSlug, route.mode, workspacePublishToastState, workspaceStateData?.sysId]);
   const currentWorkspacePages = workspacePagesLoaded ? workspacePagesState.data : [];
+  const projectedPageSettingsTitleDraft = useMemo(
+    () => buildProjectedPageSettingsTitleDraft(activeWorkspaceMode, pageSettingsState),
+    [activeWorkspaceMode, pageSettingsState]
+  );
+  const presentedWorkspacePages = useMemo(
+    () => projectWorkspacePagesForPresentation(currentWorkspacePages, projectedPageSettingsTitleDraft),
+    [currentWorkspacePages, projectedPageSettingsTitleDraft]
+  );
   const treePages = useMemo(
-    () => buildWorkspacePageTree(currentWorkspacePages, activeWorkspaceMode),
-    [activeWorkspaceMode, currentWorkspacePages]
+    () => buildWorkspacePageTree(presentedWorkspacePages, activeWorkspaceMode),
+    [activeWorkspaceMode, presentedWorkspacePages]
   );
   const workspaceShellViewModel =
     workspaceState.status === "success" ? buildWorkspaceShellViewModel(workspaceState.data) : null;
@@ -2155,7 +2248,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
     const pathRecords: WorkspacePageRecord[] = [];
     const visitedPageIds = new Set<string>();
-    let currentPage = findWorkspacePageRecordBySysId(currentWorkspacePages, selectedPageSysId);
+    let currentPage = findWorkspacePageRecordBySysId(presentedWorkspacePages, selectedPageSysId);
 
     while (currentPage) {
       const currentPageSysId = cleanText(currentPage.sysId);
@@ -2165,7 +2258,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
       visitedPageIds.add(currentPageSysId);
       pathRecords.unshift(currentPage);
-      currentPage = findWorkspacePageRecordBySysId(currentWorkspacePages, cleanText(currentPage.parentPageSysId));
+      currentPage = findWorkspacePageRecordBySysId(presentedWorkspacePages, cleanText(currentPage.parentPageSysId));
     }
 
     return pathRecords.map((page) => ({
@@ -2185,7 +2278,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       title: cleanText(page.draftTitle) || "Untitled page",
       tocItems: []
     }));
-  }, [currentWorkspacePages, selectedWorkspacePage?.sysId]);
+  }, [presentedWorkspacePages, selectedWorkspacePage?.sysId]);
   const outlinePage = useMemo(() => {
     if (!selectedPageView) {
       return null;
@@ -2559,9 +2652,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     const nextState: PageSettingsState = {
       ...createEmptyPageSettingsState(),
       activeField: snapshot.activeField,
+      activeFieldValueSnapshot: snapshot.activeField === "slug" ? snapshot.slug : snapshot.activeField === "title" ? snapshot.title : "",
       generalError: "",
       noticeMessage: RESTORED_PAGE_SETTINGS_NOTICE,
       open: true,
+      panelOpen: true,
       pageSysId: snapshot.pageSysId,
       slug: snapshot.slug,
       slugError: titleValidation.valid && !slugValidation.valid ? slugValidation.error : snapshot.slugError,
@@ -3343,7 +3438,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
   useEffect(() => {
     const pendingPageId = cleanText(pageSettingsPendingOpenPageIdRef.current);
-    if (!pendingPageId || pageSettingsState.open || route.mode !== "workspace" || workspaceState.status !== "success") {
+    if (!pendingPageId || pageSettingsState.panelOpen || route.mode !== "workspace" || workspaceState.status !== "success") {
       return;
     }
 
@@ -3354,7 +3449,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     openPageSettings(pendingPageId);
   }, [
     currentWorkspaceSlug,
-    pageSettingsState.open,
+    pageSettingsState.panelOpen,
     route.mode,
     selectedWorkspacePageId,
     workspacePagesLoaded,
@@ -3829,7 +3924,14 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
 
     pageSettingsPendingOpenPageIdRef.current = "";
-    const nextState = createPageSettingsStateFromPage(page);
+    const nextState =
+      pageSettingsStateRef.current.open && pageSettingsStateRef.current.pageSysId === cleanText(pageSysId)
+        ? {
+            ...pageSettingsStateRef.current,
+            panelOpen: true
+          }
+        : createPageSettingsStateFromPage(page, { panelOpen: true });
+    markPageSettingsInteraction();
     pageSettingsStateRef.current = nextState;
     setPageSettingsState(nextState);
   }
@@ -3840,7 +3942,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
-    if (pageSettingsStateRef.current.open && pageSettingsStateRef.current.pageSysId === nextPageId) {
+    if (pageSettingsStateRef.current.panelOpen && pageSettingsStateRef.current.pageSysId === nextPageId) {
       pageSettingsPendingOpenPageIdRef.current = "";
       requestClosePageSettingsPanel(nextPageId);
       return;
@@ -3868,45 +3970,50 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         [nextErrorKey]: "",
         generalError: ""
       };
+      markPageSettingsInteraction();
       pageSettingsStateRef.current = nextState;
       return nextState;
     });
   }
 
-  function startPageSettingsField(field: PageSettingsField) {
-    if (!pageSettingsState.open) {
+  function startPageSettingsField(field: PageSettingsField, options?: { panelOpen?: boolean }) {
+    const currentState = pageSettingsStateRef.current;
+    if (!currentState.open) {
       return;
     }
 
-    if (pageSettingsState.activeField && pageSettingsState.activeField !== field) {
-      if (!finishPageSettingsField(pageSettingsState.activeField)) {
+    if (currentState.activeField && currentState.activeField !== field) {
+      if (!finishPageSettingsField(currentState.activeField)) {
         return;
       }
     }
 
-    const currentValue = field === "title" ? pageSettingsState.title : pageSettingsState.slug;
+    const nextCurrentState = pageSettingsStateRef.current;
+    const currentValue = field === "title" ? nextCurrentState.title : nextCurrentState.slug;
     setPageSettingsState((current) => {
       const nextState = {
         ...current,
         activeField: field,
-        titleSnapshot: field === "title" ? currentValue : current.titleSnapshot,
-        slugSnapshot: field === "slug" ? currentValue : current.slugSnapshot,
+        activeFieldValueSnapshot: currentValue,
+        panelOpen: options?.panelOpen ?? current.panelOpen,
         titleError: field === "title" ? "" : current.titleError,
         slugError: field === "slug" ? "" : current.slugError,
         generalError: ""
       };
+      markPageSettingsInteraction();
       pageSettingsStateRef.current = nextState;
       return nextState;
     });
   }
 
   function finishPageSettingsField(field: PageSettingsField): boolean {
-    if (!pageSettingsState.open) {
+    const currentState = pageSettingsStateRef.current;
+    if (!currentState.open) {
       return true;
     }
 
     if (field === "title") {
-      const validation = validatePageSettingsTitle(pageSettingsState.title);
+      const validation = validatePageSettingsTitle(currentState.title);
       if (!validation.valid) {
         setPageSettingsState((current) => {
           const nextState: PageSettingsState = {
@@ -3915,6 +4022,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
             activeField: "title",
             generalError: ""
           };
+          markPageSettingsInteraction();
           pageSettingsStateRef.current = nextState;
           return nextState;
         });
@@ -3926,8 +4034,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           ...current,
           title: validation.value,
           titleError: "",
-          activeField: ""
+          activeField: "",
+          activeFieldValueSnapshot: ""
         };
+        markPageSettingsInteraction();
         pageSettingsStateRef.current = nextState;
         return nextState;
       });
@@ -3935,57 +4045,120 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
 
     const validation = validatePageSettingsSlug(
-      pageSettingsState.slug,
+      currentState.slug,
       currentWorkspacePages,
       workspaceState.status === "success" ? workspaceState.data.sysId ?? "" : "",
-      pageSettingsState.pageSysId
+      currentState.pageSysId
     );
 
     if (!validation.valid) {
       setPageSettingsState((current) => {
-        const nextState: PageSettingsState = {
-          ...current,
-          slugError: validation.error,
-          activeField: "slug",
-          generalError: ""
-        };
-        pageSettingsStateRef.current = nextState;
-        return nextState;
-      });
+          const nextState: PageSettingsState = {
+            ...current,
+            slugError: validation.error,
+            activeField: "slug",
+            generalError: ""
+          };
+          markPageSettingsInteraction();
+          pageSettingsStateRef.current = nextState;
+          return nextState;
+        });
       return false;
     }
 
     setPageSettingsState((current) => {
-      const nextState: PageSettingsState = {
-        ...current,
-        slug: validation.value,
-        slugError: "",
-        activeField: ""
-      };
-      pageSettingsStateRef.current = nextState;
-      return nextState;
-    });
+        const nextState: PageSettingsState = {
+          ...current,
+          slug: validation.value,
+          slugError: "",
+          activeField: "",
+          activeFieldValueSnapshot: ""
+        };
+        markPageSettingsInteraction();
+        pageSettingsStateRef.current = nextState;
+        return nextState;
+      });
     return true;
   }
 
   function cancelPageSettingsField(field: PageSettingsField) {
-    if (!pageSettingsState.open) {
+    const currentState = pageSettingsStateRef.current;
+    if (!currentState.open) {
       return;
     }
 
     setPageSettingsState((current) => {
       const nextState: PageSettingsState = {
         ...current,
-        title: field === "title" ? current.titleSnapshot : current.title,
-        slug: field === "slug" ? current.slugSnapshot : current.slug,
+        title: field === "title" ? current.activeFieldValueSnapshot : current.title,
+        slug: field === "slug" ? current.activeFieldValueSnapshot : current.slug,
         titleError: field === "title" ? "" : current.titleError,
         slugError: field === "slug" ? "" : current.slugError,
         activeField: "",
+        activeFieldValueSnapshot: "",
         generalError: ""
       };
+      markPageSettingsInteraction();
       pageSettingsStateRef.current = nextState;
       return nextState;
     });
+  }
+
+  function startDirectPageTitleEdit(pageSysId: string) {
+    if (route.mode !== "workspace" || workspaceState.status !== "success" || !workspacePagesLoaded || !canManagePageSettings) {
+      return;
+    }
+
+    const normalizedPageSysId = cleanText(pageSysId);
+    if (!normalizedPageSysId) {
+      return;
+    }
+
+    if (pageSettingsStateRef.current.open && pageSettingsStateRef.current.pageSysId === normalizedPageSysId) {
+      startPageSettingsField("title", { panelOpen: false });
+      return;
+    }
+
+    const page = findWorkspacePageBySysId(currentWorkspacePages, normalizedPageSysId);
+    if (!page) {
+      return;
+    }
+
+    const nextState = createPageSettingsStateFromPage(page, {
+      activeField: "title",
+      panelOpen: false
+    });
+    markPageSettingsInteraction();
+    pageSettingsStateRef.current = nextState;
+    setPageSettingsState(nextState);
+  }
+
+  async function commitDirectPageTitleEdit(): Promise<boolean> {
+    const currentState = pageSettingsStateRef.current;
+    if (!hasNonOverlayPageSettingsState(currentState) || currentState.activeField !== "title") {
+      return true;
+    }
+
+    if (!finishPageSettingsField("title")) {
+      return false;
+    }
+
+    return closePageSettingsPanel(currentState.pageSysId);
+  }
+
+  function cancelDirectPageTitleEdit() {
+    const currentState = pageSettingsStateRef.current;
+    if (!hasNonOverlayPageSettingsState(currentState) || currentState.activeField !== "title") {
+      return;
+    }
+
+    cancelPageSettingsField("title");
+    const nextState = pageSettingsStateRef.current;
+    if (!hasPageSettingsUnsavedChanges(nextState) && !nextState.activeField && !nextState.panelOpen) {
+      const emptyState = createEmptyPageSettingsState();
+      pageSettingsStateRef.current = emptyState;
+      setPageSettingsState(emptyState);
+    }
   }
 
   async function closePageSettingsPanel(nextSelectedPageId = pageSettingsStateRef.current.pageSysId): Promise<boolean> {
@@ -4027,6 +4200,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     const currentTitle = cleanText(currentPageSettingsState.titleSnapshot);
     const currentSlug = cleanText(currentPageSettingsState.slugSnapshot).toLowerCase();
     const hasChanges = normalizedTitle !== currentTitle || normalizedSlug !== currentSlug;
+    const saveInteractionVersion = pageSettingsInteractionVersionRef.current;
 
     if (!hasChanges) {
       const restoredCapture = restoredPageSettingsCaptureRef.current;
@@ -4057,19 +4231,29 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return true;
     }
 
-    setPageSettingsState((current) => ({
-      ...current,
-      titleError: "",
-      slugError: "",
+    const nextDraftState: PageSettingsState = {
+      ...currentPageSettingsState,
+      activeField: "",
+      activeFieldValueSnapshot: "",
       generalError: "",
-      noticeMessage: ""
-    }));
+      noticeMessage: "",
+      panelOpen: false,
+      slug: normalizedSlug,
+      slugError: "",
+      title: normalizedTitle,
+      titleError: ""
+    };
+
+    pageSettingsStateRef.current = nextDraftState;
+    setPageSettingsState(nextDraftState);
 
     if (staleRefreshBlocksCurrentWorkspaceWrites || workspaceCommandBlocksCurrentWorkspaceWrites) {
-      setPageSettingsState((current) => ({
-        ...current,
+      const blockedDraftState: PageSettingsState = {
+        ...nextDraftState,
         generalError: blockedWriteMessage()
-      }));
+      };
+      pageSettingsStateRef.current = blockedDraftState;
+      setPageSettingsState(blockedDraftState);
       return false;
     }
 
@@ -4089,8 +4273,14 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         })
       });
       if (isObsoleteWorkspaceMutationOutcome(outcome) && !isCurrentWorkspaceMutationContext(mutationContextKey)) return false;
+      const sameDraftInteraction =
+        pageSettingsInteractionVersionRef.current === saveInteractionVersion &&
+        pageSettingsStateRef.current.open &&
+        pageSettingsStateRef.current.pageSysId === currentPageSettingsState.pageSysId;
       if (outcome.state === "contention" || outcome.state === "forbidden" || outcome.state === "transient_failure") {
-        setPageSettingsState((current) => ({ ...current, generalError: outcome.state === "contention" ? "This workspace is currently being edited by another user." : outcome.errorMessage }));
+        if (sameDraftInteraction) {
+          setPageSettingsState((current) => ({ ...current, generalError: outcome.state === "contention" ? "This workspace is currently being edited by another user." : outcome.errorMessage }));
+        }
         return false;
       }
       if (!isCurrentWorkspaceMutationContext(mutationContextKey)) return false;
@@ -4123,10 +4313,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
             changeSetRevision: result.currentChangeSetRevision
           });
         }
-        setPageSettingsState((current) => ({
-          ...current,
-          generalError: result.errorMessage
-        }));
+        if (sameDraftInteraction) {
+          setPageSettingsState((current) => ({
+            ...current,
+            generalError: result.errorMessage
+          }));
+        }
         return false;
       }
       requestPendingChangesRefresh();
@@ -4159,11 +4351,27 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         restoredPageSettingsCaptureRef.current = null;
       }
 
-      const nextState = createEmptyPageSettingsState();
-      pageSettingsStateRef.current = nextState;
-      setPageSettingsState(nextState);
+      if (sameDraftInteraction) {
+        const nextState = createEmptyPageSettingsState();
+        pageSettingsStateRef.current = nextState;
+        setPageSettingsState(nextState);
+      } else if (
+        pageSettingsInteractionVersionRef.current !== saveInteractionVersion &&
+        cleanText(pageSettingsStateRef.current.pageSysId) === cleanText(result.page.sysId) &&
+        pageSettingsStateRef.current.open
+      ) {
+        setPageSettingsState((current) => {
+          if (!current.open || cleanText(current.pageSysId) !== cleanText(result.page.sysId)) {
+            return current;
+          }
+
+          const nextState = rebasePageSettingsPersistedSnapshots(current, result.page);
+          pageSettingsStateRef.current = nextState;
+          return nextState;
+        });
+      }
       const nextPageId = cleanText(nextSelectedPageId);
-      if (nextPageId && nextPageId !== cleanText(result.page.sysId)) {
+      if (sameDraftInteraction && nextPageId && nextPageId !== cleanText(result.page.sysId)) {
         requestRouteTransition({
           href: buildWorkspaceRouteForPage(nextPageId),
           replace: false
@@ -4172,10 +4380,16 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return true;
     } catch {
       if (!isCurrentWorkspaceMutationContext(mutationContextKey)) return false;
-      setPageSettingsState((current) => ({
-        ...current,
-        generalError: "Something went wrong while saving page settings. Your changes were not saved. Please try again."
-      }));
+      if (
+        pageSettingsInteractionVersionRef.current === saveInteractionVersion &&
+        pageSettingsStateRef.current.open &&
+        pageSettingsStateRef.current.pageSysId === currentPageSettingsState.pageSysId
+      ) {
+        setPageSettingsState((current) => ({
+          ...current,
+          generalError: "Something went wrong while saving page settings. Your changes were not saved. Please try again."
+        }));
+      }
       return false;
     }
   }
@@ -5366,13 +5580,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const pendingChangesSaveBlockedMessage =
     appHeaderWorkspaceMode === "edit" && renderedEditorSession && editorStatusLabel !== "Saved"
       ? `Current page is ${editorStatusLabel.toLowerCase()}. Publish and discard actions stay disabled until local changes are saved.`
-      : pageSettingsState.open && (
-          cleanText(pageSettingsState.title) !== cleanText(pageSettingsState.titleSnapshot) ||
-          cleanText(pageSettingsState.slug).toLowerCase() !== cleanText(pageSettingsState.slugSnapshot).toLowerCase() ||
-          Boolean(pageSettingsState.generalError) ||
-          Boolean(pageSettingsState.titleError) ||
-          Boolean(pageSettingsState.slugError)
-        )
+      : pageSettingsState.open && hasPageSettingsUnsavedChanges(pageSettingsState)
         ? "Page Settings has unsaved or blocked changes. Publish and discard actions stay disabled until settings are saved."
         : "";
   const pendingChangesUndoBlockedPageSysId = pendingChangesSaveBlockedMessage ? selectedWorkspacePageId : "";
@@ -6098,6 +6306,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               onInlineCreateTitleChange={updateInlinePageCreateTitle}
               onModeChange={changeWorkspaceMode}
               onOutlineChange={handleOutlineChange}
+              onPageTitleCancel={cancelDirectPageTitleEdit}
+              onPageTitleChange={(value) => updatePageSettingsField("title", value)}
+              onPageTitleCommit={() => void commitDirectPageTitleEdit()}
+              onPageTitleStart={startDirectPageTitleEdit}
               onReturnToMyWorkspaces={openLauncher}
               onReturnToLive={handleReturnToLive}
               onRetryWorkspace={retryWorkspaceProjectionLoad}
@@ -6114,14 +6326,14 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               onTogglePageSettings={requestTogglePageSettings}
               onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
               outlinePage={displayedOutlinePage}
-              pageSettingsOpenPageId={pageSettingsState.open ? pageSettingsState.pageSysId : ""}
+              pageSettingsOpenPageId={pageSettingsState.panelOpen ? pageSettingsState.pageSysId : ""}
               pageSettingsOverlay={
                 <PageSettingsOverlay
                   activeField={pageSettingsState.activeField}
                   canManagePageSettings={canManagePageSettings}
                   generalError={pageSettingsState.generalError}
                   noticeMessage={pageSettingsState.noticeMessage}
-                  open={pageSettingsState.open}
+                  open={pageSettingsState.panelOpen}
                   panelRef={pageSettingsPanelRef}
                   pageSlug={pageSettingsState.slug}
                   pageTitle={pageSettingsState.title}
@@ -6136,6 +6348,26 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
                   onRequestDelete={requestOpenDeletePageSettings}
                   onStartField={startPageSettingsField}
                 />
+              }
+              pageTitleActive={
+                pageSettingsState.open &&
+                pageSettingsState.pageSysId === displayedSelectedPageId &&
+                pageSettingsState.activeField === "title"
+              }
+              pageTitleSaveError={
+                pageSettingsState.open &&
+                !pageSettingsState.panelOpen &&
+                pageSettingsState.pageSysId === displayedSelectedPageId
+                  ? pageSettingsState.generalError
+                  : ""
+              }
+              pageTitleValidationError={
+                pageSettingsState.open && pageSettingsState.pageSysId === displayedSelectedPageId ? pageSettingsState.titleError : ""
+              }
+              pageTitleValue={
+                pageSettingsState.open && pageSettingsState.pageSysId === displayedSelectedPageId
+                  ? pageSettingsState.title
+                  : displayedSelectedPageView?.title
               }
               selectedPage={displayedSelectedPageView}
               selectedPageId={displayedSelectedPageId}

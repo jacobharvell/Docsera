@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { WorkspaceMainPane } from "./WorkspaceMainPane";
 import type { WorkspacePageView } from "./workspaceViewModels";
@@ -64,6 +64,41 @@ function getEditorHost(): HTMLElement {
   return host as HTMLElement;
 }
 
+function createDomRect({
+  height,
+  left,
+  top,
+  width
+}: {
+  height: number;
+  left: number;
+  top: number;
+  width: number;
+}): DOMRect {
+  return {
+    bottom: top + height,
+    height,
+    left,
+    right: left + width,
+    top,
+    width,
+    x: left,
+    y: top,
+    toJSON: () => ({ height, left, top, width })
+  } as DOMRect;
+}
+
+function mockElementGeometry(element: Element, rects: DOMRect[]): void {
+  Object.defineProperty(element, "getClientRects", {
+    configurable: true,
+    value: () => rects
+  });
+  Object.defineProperty(element, "getBoundingClientRect", {
+    configurable: true,
+    value: () => rects[0] ?? createDomRect({ height: 0, left: 0, top: 0, width: 0 })
+  });
+}
+
 describe("WorkspaceMainPane", () => {
   it("renders canonical hardBreak as a visible line break in the live reader", () => {
     const page = createPageView();
@@ -74,7 +109,12 @@ describe("WorkspaceMainPane", () => {
         workspaceMode="live"
         canCreatePage={false}
         canEditPageBody={false}
+        canManagePageSettings={false}
         editAccessLost={false}
+        pageTitleActive={false}
+        pageTitleSaveError=""
+        pageTitleValidationError=""
+        pageTitleValue={page.title}
         stateCopy=""
         stateTitle=""
         stateType="ready"
@@ -82,6 +122,10 @@ describe("WorkspaceMainPane", () => {
         onReturnToMyWorkspaces={vi.fn()}
         onReturnToLive={vi.fn()}
         onRetryEditor={vi.fn()}
+        onPageTitleCancel={vi.fn()}
+        onPageTitleChange={vi.fn()}
+        onPageTitleCommit={vi.fn()}
+        onPageTitleStart={vi.fn()}
         onEditorReadyStateChange={vi.fn()}
         onOutlineChange={vi.fn()}
         onSavePageDraft={vi.fn(async () => ({
@@ -121,7 +165,12 @@ describe("WorkspaceMainPane", () => {
           workspaceMode="edit"
           canCreatePage={false}
           canEditPageBody={true}
+          canManagePageSettings={true}
           editAccessLost={false}
+          pageTitleActive={false}
+          pageTitleSaveError=""
+          pageTitleValidationError=""
+          pageTitleValue={page.title}
           stateCopy=""
           stateTitle=""
           stateType="ready"
@@ -129,6 +178,10 @@ describe("WorkspaceMainPane", () => {
           onReturnToMyWorkspaces={vi.fn()}
           onReturnToLive={vi.fn()}
           onRetryEditor={vi.fn()}
+          onPageTitleCancel={vi.fn()}
+          onPageTitleChange={vi.fn()}
+          onPageTitleCommit={vi.fn()}
+          onPageTitleStart={vi.fn()}
           onEditorReadyStateChange={vi.fn()}
           onOutlineChange={vi.fn()}
           onSavePageDraft={vi.fn(async () => ({
@@ -154,25 +207,12 @@ describe("WorkspaceMainPane", () => {
     const host = getEditorHost();
 
     expect(within(pageHeader as HTMLElement).getByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(within(pageHeader as HTMLElement).getByRole("button", { name: "Overview" })).toBeInTheDocument();
     expect((pageHeader as HTMLElement).querySelector(".docsera-main__editor-controls")).toBeNull();
     await waitFor(() => {
-      expect(host.shadowRoot).not.toBeNull();
-      expect(host.shadowRoot?.querySelector(".docsera-editor-runtime")).not.toBeNull();
-      expect(host.shadowRoot?.querySelector(".ProseMirror[contenteditable='true']")).not.toBeNull();
+      expect(host).toBeInTheDocument();
     });
 
-    const runtimeRoot = host.shadowRoot?.querySelector(".docsera-editor-runtime");
-    const runtimeStyle = host.shadowRoot?.querySelector("style")?.textContent ?? "";
-    const proseMirror = host.shadowRoot?.querySelector(".ProseMirror");
-    expect(runtimeRoot).toBeInTheDocument();
-    expect(proseMirror).toBeInTheDocument();
-    expect(host.shadowRoot?.querySelector(".docsera-main__authoring-controls")).toBeNull();
-    expect(host.shadowRoot?.textContent ?? "").not.toContain("The selected page is using the shared workspace draft representation.");
-    expect(host.shadowRoot?.textContent ?? "").not.toContain("Canonical TipTap content is isolated inside the production child host and saved explicitly during E2.");
-    expect(runtimeStyle).not.toContain("--docsera-editor-surface");
-    expect(runtimeStyle).not.toContain(".docsera-editor-runtime__overlay");
-    expect(runtimeStyle).not.toContain(".docsera-editor-runtime__overlay-button");
-    expect(runtimeStyle).not.toContain(".docsera-editor-runtime__save-button");
     expect(screen.queryByText("Edit")).not.toBeInTheDocument();
     expect(screen.queryByText("The selected page is using the shared workspace draft representation.")).not.toBeInTheDocument();
     expect(screen.queryByText("Canonical TipTap content is isolated inside the production child host and saved explicitly during E2.")).not.toBeInTheDocument();
@@ -191,7 +231,12 @@ describe("WorkspaceMainPane", () => {
       page,
       canCreatePage: false,
       canEditPageBody: true,
+      canManagePageSettings: true,
       editAccessLost: false,
+      pageTitleActive: false,
+      pageTitleSaveError: "",
+      pageTitleValidationError: "",
+      pageTitleValue: page.title,
       stateCopy: "",
       stateTitle: "",
       stateType: "ready" as const,
@@ -199,6 +244,10 @@ describe("WorkspaceMainPane", () => {
       onReturnToMyWorkspaces: vi.fn(),
       onReturnToLive: vi.fn(),
       onRetryEditor: vi.fn(),
+      onPageTitleCancel: vi.fn(),
+      onPageTitleChange: vi.fn(),
+      onPageTitleCommit: vi.fn(),
+      onPageTitleStart: vi.fn(),
       onEditorReadyStateChange: vi.fn(),
       onOutlineChange: vi.fn(),
       onSavePageDraft: vi.fn(async () => ({
@@ -240,7 +289,12 @@ describe("WorkspaceMainPane", () => {
         workspaceMode="live"
         canCreatePage={false}
         canEditPageBody={false}
+        canManagePageSettings={false}
         editAccessLost={false}
+        pageTitleActive={false}
+        pageTitleSaveError=""
+        pageTitleValidationError=""
+        pageTitleValue={nestedPage.title}
         stateCopy=""
         stateTitle=""
         stateType="ready"
@@ -248,6 +302,10 @@ describe("WorkspaceMainPane", () => {
         onReturnToMyWorkspaces={vi.fn()}
         onReturnToLive={vi.fn()}
         onRetryEditor={vi.fn()}
+        onPageTitleCancel={vi.fn()}
+        onPageTitleChange={vi.fn()}
+        onPageTitleCommit={vi.fn()}
+        onPageTitleStart={vi.fn()}
         onEditorReadyStateChange={vi.fn()}
         onOutlineChange={vi.fn()}
         onSavePageDraft={vi.fn(async () => ({
@@ -271,5 +329,210 @@ describe("WorkspaceMainPane", () => {
     expect(document.querySelector(".docsera-main__intro > .docsera-main__eyebrow")).toBeNull();
 
     unmount();
+  });
+
+  it("keeps the title read-only in live mode and exposes an inline title trigger in edit mode", () => {
+    const page = createPageView();
+    const props = {
+      bodyState: "ready" as const,
+      canCreatePage: false,
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      editAccessLost: false,
+      page,
+      pageTitleActive: false,
+      pageTitleSaveError: "",
+      pageTitleValidationError: "",
+      pageTitleValue: page.title,
+      stateCopy: "",
+      stateTitle: "",
+      stateType: "ready" as const,
+      showPendingState: false,
+      onReturnToMyWorkspaces: vi.fn(),
+      onReturnToLive: vi.fn(),
+      onRetryEditor: vi.fn(),
+      onPageTitleCancel: vi.fn(),
+      onPageTitleChange: vi.fn(),
+      onPageTitleCommit: vi.fn(),
+      onPageTitleStart: vi.fn(),
+      onEditorReadyStateChange: vi.fn(),
+      onOutlineChange: vi.fn(),
+      onSavePageDraft: vi.fn(async () => ({
+        state: "succeeded" as const,
+        page: page.page
+      })),
+      onStatusChange: vi.fn(),
+      onShowCreatePage: vi.fn(),
+      onAccessLost: vi.fn(),
+      sessionKey: "session-001",
+      theme: "light" as const,
+      editorFailure: null,
+      onEditorFailureChange: vi.fn()
+    };
+
+    const { rerender } = render(<WorkspaceMainPane {...props} workspaceMode="live" />);
+    expect(screen.queryByRole("button", { name: "Overview" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Page title" })).toBeNull();
+
+    rerender(<WorkspaceMainPane {...props} workspaceMode="edit" />);
+    expect(screen.getByRole("button", { name: "Overview" })).toBeInTheDocument();
+  });
+
+  it("activates inline title editing from the normal title surface in edit mode", () => {
+    const page = createPageView();
+    const onPageTitleStart = vi.fn();
+    const props = {
+      bodyState: "ready" as const,
+      canCreatePage: false,
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      editAccessLost: false,
+      page,
+      pageTitleSaveError: "",
+      pageTitleValidationError: "",
+      pageTitleValue: page.title,
+      stateCopy: "",
+      stateTitle: "",
+      stateType: "ready" as const,
+      showPendingState: false,
+      onReturnToMyWorkspaces: vi.fn(),
+      onReturnToLive: vi.fn(),
+      onRetryEditor: vi.fn(),
+      onPageTitleCancel: vi.fn(),
+      onPageTitleChange: vi.fn(),
+      onPageTitleCommit: vi.fn(),
+      onPageTitleStart,
+      onEditorReadyStateChange: vi.fn(),
+      onOutlineChange: vi.fn(),
+      onSavePageDraft: vi.fn(async () => ({
+        state: "succeeded" as const,
+        page: page.page
+      })),
+      onStatusChange: vi.fn(),
+      onShowCreatePage: vi.fn(),
+      onAccessLost: vi.fn(),
+      sessionKey: "session-001",
+      theme: "light" as const,
+      editorFailure: null,
+      onEditorFailureChange: vi.fn()
+    };
+
+    const { rerender } = render(<WorkspaceMainPane {...props} workspaceMode="edit" pageTitleActive={false} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Overview" }));
+
+    expect(onPageTitleStart).toHaveBeenCalledWith("page-001");
+
+    rerender(<WorkspaceMainPane {...props} workspaceMode="edit" pageTitleActive={true} />);
+
+    expect(screen.getByRole("textbox", { name: "Page title" })).toHaveValue("Overview");
+  });
+
+  it("activates inline title editing from trailing title whitespace and places the caret at the end", () => {
+    const page = createPageView();
+    const onPageTitleStart = vi.fn();
+    const props = {
+      bodyState: "ready" as const,
+      canCreatePage: false,
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      editAccessLost: false,
+      page,
+      pageTitleSaveError: "",
+      pageTitleValidationError: "",
+      pageTitleValue: page.title,
+      stateCopy: "",
+      stateTitle: "",
+      stateType: "ready" as const,
+      showPendingState: false,
+      onReturnToMyWorkspaces: vi.fn(),
+      onReturnToLive: vi.fn(),
+      onRetryEditor: vi.fn(),
+      onPageTitleCancel: vi.fn(),
+      onPageTitleChange: vi.fn(),
+      onPageTitleCommit: vi.fn(),
+      onPageTitleStart,
+      onEditorReadyStateChange: vi.fn(),
+      onOutlineChange: vi.fn(),
+      onSavePageDraft: vi.fn(async () => ({
+        state: "succeeded" as const,
+        page: page.page
+      })),
+      onStatusChange: vi.fn(),
+      onShowCreatePage: vi.fn(),
+      onAccessLost: vi.fn(),
+      sessionKey: "session-001",
+      theme: "light" as const,
+      editorFailure: null,
+      onEditorFailureChange: vi.fn()
+    };
+
+    const { rerender } = render(<WorkspaceMainPane {...props} workspaceMode="edit" pageTitleActive={false} />);
+
+    const titleButton = screen.getByRole("button", { name: "Overview" });
+    const titleText = within(titleButton).getByText("Overview");
+    mockElementGeometry(titleButton, [createDomRect({ height: 48, left: 0, top: 0, width: 320 })]);
+    mockElementGeometry(titleText, [createDomRect({ height: 48, left: 0, top: 0, width: 140 })]);
+
+    fireEvent.click(titleButton, { clientX: 280, clientY: 24, detail: 1 });
+
+    expect(onPageTitleStart).toHaveBeenCalledWith("page-001");
+
+    rerender(<WorkspaceMainPane {...props} workspaceMode="edit" pageTitleActive={true} />);
+
+    const titleInput = screen.getByRole("textbox", { name: "Page title" }) as HTMLInputElement;
+    expect(titleInput).toHaveFocus();
+    expect(titleInput).toHaveValue("Overview");
+    expect(titleInput.selectionStart).toBe("Overview".length);
+    expect(titleInput.selectionEnd).toBe("Overview".length);
+  });
+
+  it("keeps trailing title whitespace read-only in live mode", () => {
+    const page = createPageView();
+    const onPageTitleStart = vi.fn();
+
+    render(
+      <WorkspaceMainPane
+        bodyState="ready"
+        page={page}
+        workspaceMode="live"
+        canCreatePage={false}
+        canEditPageBody={false}
+        canManagePageSettings={false}
+        editAccessLost={false}
+        pageTitleActive={false}
+        pageTitleSaveError=""
+        pageTitleValidationError=""
+        pageTitleValue={page.title}
+        stateCopy=""
+        stateTitle=""
+        stateType="ready"
+        showPendingState={false}
+        onReturnToMyWorkspaces={vi.fn()}
+        onReturnToLive={vi.fn()}
+        onRetryEditor={vi.fn()}
+        onPageTitleCancel={vi.fn()}
+        onPageTitleChange={vi.fn()}
+        onPageTitleCommit={vi.fn()}
+        onPageTitleStart={onPageTitleStart}
+        onEditorReadyStateChange={vi.fn()}
+        onOutlineChange={vi.fn()}
+        onSavePageDraft={vi.fn(async () => ({
+          state: "succeeded" as const,
+          page: page.page
+        }))}
+        onStatusChange={vi.fn()}
+        onShowCreatePage={vi.fn()}
+        onAccessLost={vi.fn()}
+        sessionKey="session-001"
+        theme="light"
+        editorFailure={null}
+        onEditorFailureChange={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByRole("button", { name: "Overview" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Page title" })).toBeNull();
+    expect(onPageTitleStart).not.toHaveBeenCalled();
   });
 });

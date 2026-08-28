@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PageEditorHost, type PageEditorHostFailure, type PageEditorRecoverySnapshot } from "../../editor/PageEditorHost";
 import type { EditorMediaAdapter } from "../../editor/contracts";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
@@ -21,8 +21,13 @@ type WorkspaceMainPaneProps = {
   workspaceMode: WorkspaceMode;
   canCreatePage: boolean;
   canEditPageBody: boolean;
+  canManagePageSettings: boolean;
   editAccessLost: boolean;
   accessLossMessage?: string;
+  pageTitleActive: boolean;
+  pageTitleSaveError?: string;
+  pageTitleValidationError?: string;
+  pageTitleValue?: string;
   stateCopy: string;
   stateTitle: string;
   stateType: "loading" | "error" | "ready";
@@ -31,6 +36,10 @@ type WorkspaceMainPaneProps = {
   onReturnToLive: () => void;
   onRetryWorkspace?: () => void;
   onRetryEditor: () => void;
+  onPageTitleCancel: () => void;
+  onPageTitleChange: (value: string) => void;
+  onPageTitleCommit: () => void | Promise<void>;
+  onPageTitleStart: (pageSysId: string) => void;
   onEditorReadyStateChange: (ready: boolean) => void;
   onOutlineChange: (pageSysId: string, outline: WorkspacePageView["tocItems"]) => void;
   onSavePageDraft: (input: {
@@ -54,6 +63,125 @@ type WorkspaceMainPaneProps = {
   editorFailure: PageEditorHostFailure | null;
   onEditorFailureChange: (failure: PageEditorHostFailure | null) => void;
 };
+
+function InlinePageTitle({
+  active,
+  canEdit,
+  saveError,
+  validationError,
+  onCancel,
+  onChange,
+  onCommit,
+  onStart,
+  pageSysId,
+  title
+}: {
+  active: boolean;
+  canEdit: boolean;
+  saveError?: string;
+  validationError?: string;
+  onCancel: () => void;
+  onChange: (value: string) => void;
+  onCommit: () => void | Promise<void>;
+  onStart: (pageSysId: string) => void;
+  pageSysId: string;
+  title: string;
+}) {
+  const errorMessage = validationError || saveError;
+  const errorId = errorMessage ? "docsera-page-title-error" : undefined;
+  const pendingTrailingWhitespaceActivationRef = useRef(false);
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const titleTextRef = useRef<HTMLSpanElement | null>(null);
+
+  useEffect(() => {
+    if (!active || !pendingTrailingWhitespaceActivationRef.current) {
+      return;
+    }
+
+    pendingTrailingWhitespaceActivationRef.current = false;
+    const input = titleInputRef.current;
+    if (!input) {
+      return;
+    }
+
+    const caretPosition = title.length;
+    input.focus();
+    input.setSelectionRange(caretPosition, caretPosition);
+  }, [active, title]);
+
+  function isWithinRect(rect: DOMRect, clientX: number, clientY: number): boolean {
+    return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  }
+
+  function shouldPlaceCaretAtTitleEnd(event: React.MouseEvent<HTMLButtonElement>): boolean {
+    const titleText = titleTextRef.current;
+    if (!titleText || event.detail === 0) {
+      return false;
+    }
+
+    const clientX = event.clientX;
+    const clientY = event.clientY;
+    const textRects = Array.from(titleText.getClientRects());
+    if (textRects.length === 0) {
+      return false;
+    }
+
+    return !textRects.some((rect) => isWithinRect(rect, clientX, clientY));
+  }
+
+  return (
+    <div className="docsera-main__title-editor">
+      <h1 id="docsera-page-title" className="docsera-main__title" aria-label={title || "Untitled page"}>
+        {active ? (
+          <input
+            aria-describedby={errorId}
+            aria-invalid={validationError ? "true" : "false"}
+            aria-label="Page title"
+            autoFocus
+            className={`docsera-main__title-input${validationError ? " docsera-main__title-input--invalid" : ""}`}
+            ref={titleInputRef}
+            type="text"
+            value={title}
+            onBlur={() => void onCommit()}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                event.stopPropagation();
+                void onCommit();
+                return;
+              }
+
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                onCancel();
+              }
+            }}
+          />
+        ) : canEdit ? (
+          <button
+            type="button"
+            className="docsera-main__title-button"
+            onClick={(event) => {
+              pendingTrailingWhitespaceActivationRef.current = shouldPlaceCaretAtTitleEnd(event);
+              onStart(pageSysId);
+            }}
+          >
+            <span ref={titleTextRef}>{title}</span>
+          </button>
+        ) : (
+          title
+        )}
+      </h1>
+      {errorMessage ? (
+        <div id={errorId} className="docsera-page-settings__field-error docsera-main__title-error" role="alert">
+          {errorMessage}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function EditorRecovery({
   message,
@@ -123,8 +251,13 @@ export function WorkspaceMainPane({
   workspaceMode,
   canCreatePage,
   canEditPageBody,
+  canManagePageSettings,
   editAccessLost,
   accessLossMessage,
+  pageTitleActive,
+  pageTitleSaveError,
+  pageTitleValidationError,
+  pageTitleValue,
   stateCopy,
   stateTitle,
   stateType,
@@ -133,6 +266,10 @@ export function WorkspaceMainPane({
   onReturnToLive,
   onRetryWorkspace,
   onRetryEditor,
+  onPageTitleCancel,
+  onPageTitleChange,
+  onPageTitleCommit,
+  onPageTitleStart,
   onEditorReadyStateChange,
   onOutlineChange,
   onSavePageDraft,
@@ -203,15 +340,26 @@ export function WorkspaceMainPane({
     workspaceMode === "edit" &&
     !showBodyPending &&
     (page.contentState !== "ready" || Boolean(editorFailure));
+  const canEditPageTitle = workspaceMode === "edit" && canManagePageSettings && !editAccessLost;
+  const displayPageTitle = pageTitleValue !== undefined ? pageTitleValue : page.title || "Untitled page";
 
   return (
     <main className="docsera-main" aria-labelledby="docsera-page-title">
       <article className={`docsera-main__surface${workspaceMode === "edit" ? " docsera-main__surface--editor" : ""}`}>
         <div className="docsera-main__intro">
           <div className="docsera-main__page-header">
-            <h1 id="docsera-page-title" className="docsera-main__title">
-              {page.title}
-            </h1>
+            <InlinePageTitle
+              active={canEditPageTitle && !showBodyPending && pageTitleActive}
+              canEdit={canEditPageTitle}
+              saveError={pageTitleSaveError}
+              onCancel={onPageTitleCancel}
+              onChange={onPageTitleChange}
+              onCommit={onPageTitleCommit}
+              onStart={onPageTitleStart}
+              pageSysId={page.sysId}
+              title={displayPageTitle}
+              validationError={pageTitleValidationError}
+            />
           </div>
         </div>
 

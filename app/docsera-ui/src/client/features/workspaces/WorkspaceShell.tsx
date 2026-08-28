@@ -39,6 +39,10 @@ type WorkspaceShellProps = {
   onInlineCreateTitleChange: (value: string) => void;
   onModeChange: (mode: WorkspaceMode) => void;
   onOutlineChange: (pageSysId: string, outline: WorkspacePageOutlineItem[]) => void;
+  onPageTitleCancel: () => void;
+  onPageTitleChange: (value: string) => void;
+  onPageTitleCommit: () => void | Promise<void>;
+  onPageTitleStart: (pageId: string) => void;
   onReturnToMyWorkspaces: () => void;
   onReturnToLive: () => void;
   onRetryWorkspace?: () => void;
@@ -66,6 +70,10 @@ type WorkspaceShellProps = {
   outlinePage: WorkspacePageView | null;
   pageSettingsOpenPageId: string;
   pageSettingsOverlay?: ReactNode;
+  pageTitleActive: boolean;
+  pageTitleSaveError?: string;
+  pageTitleValidationError?: string;
+  pageTitleValue?: string;
   selectedPage: WorkspacePageView | null;
   selectedPageId: string;
   sidebarCollapsed: boolean;
@@ -154,6 +162,10 @@ export function WorkspaceShell({
   onInlineCreateTitleChange,
   onModeChange,
   onOutlineChange,
+  onPageTitleCancel,
+  onPageTitleChange,
+  onPageTitleCommit,
+  onPageTitleStart,
   onReturnToMyWorkspaces,
   onReturnToLive,
   onRetryWorkspace,
@@ -169,6 +181,10 @@ export function WorkspaceShell({
   outlinePage,
   pageSettingsOpenPageId,
   pageSettingsOverlay,
+  pageTitleActive,
+  pageTitleSaveError,
+  pageTitleValidationError,
+  pageTitleValue,
   selectedPage,
   selectedPageId,
   sidebarCollapsed,
@@ -323,16 +339,25 @@ export function WorkspaceShell({
           bodyState={bodyState}
           canCreatePage={canCreatePage}
           canEditPageBody={canEditPageBody}
+          canManagePageSettings={canManagePageSettings}
           accessLossMessage={accessLossMessage}
           editorInitialSavedEnvelope={editorInitialSavedEnvelope}
           mediaAdapter={mediaAdapter}
           loadMedia={loadMedia}
           editAccessLost={editAccessLost}
           editorFailure={editorFailure}
+          pageTitleActive={pageTitleActive}
+          pageTitleSaveError={pageTitleSaveError}
+          pageTitleValidationError={pageTitleValidationError}
+          pageTitleValue={pageTitleValue}
           onAccessLost={onAccessLost}
           onEditorFailureChange={onEditorFailureChange}
           onEditorReadyStateChange={onEditorReadyStateChange}
           onOutlineChange={onOutlineChange}
+          onPageTitleCancel={onPageTitleCancel}
+          onPageTitleChange={onPageTitleChange}
+          onPageTitleCommit={onPageTitleCommit}
+          onPageTitleStart={onPageTitleStart}
           onReturnToMyWorkspaces={onReturnToMyWorkspaces}
           onReturnToLive={onReturnToLive}
           onRetryWorkspace={onRetryWorkspace}
