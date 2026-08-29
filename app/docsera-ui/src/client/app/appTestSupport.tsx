@@ -24,7 +24,7 @@ type MockEditorHostHandle = {
     pageSysId: string;
     readLatestDraftContentJson?: () => ReturnType<typeof createEmptyDocseraDocumentEnvelope> | null;
   }) => Promise<PageBodySaveResult>;
-  onStatusChange?: (state: { isDirty: boolean; isSaving: boolean }) => void;
+  onStatusChange?: (state: { isDirty: boolean; isSaving: boolean; status?: string }) => void;
   pageSysId: string;
   sessionKey: string;
 };
@@ -107,7 +107,7 @@ export function createPageEditorHostMock() {
     }) => Promise<PageBodySaveResult>;
     pageSysId?: string;
     sessionKey?: string;
-    onStatusChange?: (state: { isDirty: boolean; isSaving: boolean }) => void;
+    onStatusChange?: (state: { isDirty: boolean; isSaving: boolean; status?: string }) => void;
   }) {
     useEffect(() => {
       const normalizedPageSysId = pageSysId ?? "";
@@ -121,7 +121,7 @@ export function createPageEditorHostMock() {
         sessionKey: normalizedSessionKey
       });
       onError?.(null);
-      onStatusChange?.({ isDirty: false, isSaving: false });
+      onStatusChange?.({ isDirty: false, isSaving: false, status: "Saved" });
       if (!onReadyStateChange) {
         return () => {
           mockEditorHostHandles.delete(normalizedSessionKey);

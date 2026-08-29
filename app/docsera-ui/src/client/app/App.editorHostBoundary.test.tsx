@@ -5,7 +5,11 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { useEffect, useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import type { PageEditorRecoverySnapshot } from "../editor/PageEditorHost";
+import type {
+  PageEditorCanonicalHandoffResult,
+  PageEditorRecoverySnapshot,
+  PageEditorStatusState
+} from "../editor/PageEditorHost";
 import type { EditorOutlineItem } from "../editor/documentOutline";
 import { createEmptyDocseraDocumentEnvelope, type DocseraDocumentEnvelope } from "../../shared/editor/document";
 import type {
@@ -36,24 +40,12 @@ type MockHostProps = {
     pageSysId: string;
     readLatestDraftContentJson?: () => DocseraDocumentEnvelope | null;
   }) => Promise<PageBodySaveResult>;
-  onStatusChange: (state: {
-    flush?: () => Promise<boolean>;
-    getRecoverySnapshot?: () => PageEditorRecoverySnapshot | null;
-    isDirty: boolean;
-    isSaving: boolean;
-    status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
-  }) => void;
+  onStatusChange: (state: PageEditorStatusState) => void;
   pageSysId: string;
   sessionKey: string;
 };
 
-type MockHostStatus = {
-  flush?: () => Promise<boolean>;
-  getRecoverySnapshot?: () => PageEditorRecoverySnapshot | null;
-  isDirty: boolean;
-  isSaving: boolean;
-  status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
-};
+type MockHostStatus = PageEditorStatusState;
 
 type MockHostControl = {
   emitAccessLost: () => void;
@@ -149,6 +141,14 @@ function createEnvelopeForMockText(text: string): DocseraDocumentEnvelope {
     }
   ];
   return envelope;
+}
+
+function applyMockEnvelopeText(envelope: DocseraDocumentEnvelope): string {
+  return JSON.stringify(envelope.document);
+}
+
+function createMockCanonicalEnvelope(text: string): DocseraDocumentEnvelope {
+  return createEnvelopeForMockText(text);
 }
 
 vi.mock("../editor/PageEditorHost", () => {
@@ -322,8 +322,21 @@ vi.mock("../editor/PageEditorHost", () => {
     }, [initialEnvelopeText, initialSavedEnvelopeText, props.pageSysId, props.sessionKey]);
 
     useEffect(() => {
+      const applyCanonicalEnvelope = (envelope: DocseraDocumentEnvelope): PageEditorCanonicalHandoffResult => {
+        const nextText = applyMockEnvelopeText(envelope);
+        if (textRef.current === nextText) {
+          return { kind: "unchanged", nextEnvelope: envelope };
+        }
+
+        setLastFailure(false);
+        setText(nextText);
+        return { kind: "applied", nextEnvelope: envelope };
+      };
+
       const nextStatus: MockHostStatus = {
+        applyCanonicalEnvelope,
         flush: flushDocument,
+        getCanonicalEnvelope: () => createEnvelopeForMockText(textRef.current),
         getRecoverySnapshot: () => ({
           envelope: createEnvelopeForMockText(textRef.current),
           isDirty: textRef.current !== savedTextRef.current,
@@ -1219,6 +1232,14 @@ describe("App editor-host session boundary", () => {
     expect(latestHostControl?.sessionKey).not.toBe(priorSessionKey);
     expect(priorSessionKey ? hostControls.has(priorSessionKey) : false).toBe(false);
     expect(latestHostControl?.status?.flush).toEqual(expect.any(Function));
+    const replacementEnvelope = createMockCanonicalEnvelope("Child replacement");
+    expect(latestHostControl?.status?.applyCanonicalEnvelope?.(replacementEnvelope)).toEqual({
+      kind: "applied",
+      nextEnvelope: replacementEnvelope
+    });
+    await waitFor(() => {
+      expect(latestHostControl?.status?.getCanonicalEnvelope?.()).toEqual(expect.any(Object));
+    });
   });
 
   it("clears flush registration when Edit mode ends", async () => {
@@ -1731,7 +1752,7 @@ describe("App editor-host session boundary", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
     const panel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(panel).getByRole("button", { name: "Overview Draft" }));
-    const titleInput = screen.getByDisplayValue("Overview Draft");
+    const titleInput = within(panel).getByDisplayValue("Overview Draft");
     fireEvent.change(titleInput, { target: { value: "Overview Draft Restored" } });
     fireEvent.blur(titleInput);
     fireEvent.click(within(panel).getByRole("button", { name: "Close page settings" }));
@@ -1820,7 +1841,7 @@ describe("App editor-host session boundary", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
     const panel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(panel).getByRole("button", { name: "Overview Draft" }));
-    const titleInput = screen.getByDisplayValue("Overview Draft");
+    const titleInput = within(panel).getByDisplayValue("Overview Draft");
     fireEvent.change(titleInput, { target: { value: "Overview Draft Pending" } });
     fireEvent.blur(titleInput);
     fireEvent.click(within(panel).getByRole("button", { name: "Close page settings" }));
@@ -1980,7 +2001,7 @@ describe("App editor-host session boundary", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
     const panel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(panel).getByRole("button", { name: "Overview Draft" }));
-    const titleInput = screen.getByDisplayValue("Overview Draft");
+    const titleInput = within(panel).getByDisplayValue("Overview Draft");
     fireEvent.change(titleInput, { target: { value: "Overview Draft Forbidden" } });
     fireEvent.blur(titleInput);
 
@@ -2094,7 +2115,7 @@ describe("App editor-host session boundary", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
     const panel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(panel).getByRole("button", { name: "Overview Draft" }));
-    const titleInput = screen.getByDisplayValue("Overview Draft");
+    const titleInput = within(panel).getByDisplayValue("Overview Draft");
     fireEvent.change(titleInput, { target: { value: "Renewal Forbidden Title" } });
     fireEvent.blur(titleInput);
 

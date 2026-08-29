@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { PageEditorHost, type PageEditorHostFailure, type PageEditorRecoverySnapshot } from "../../editor/PageEditorHost";
+import {
+  PageEditorHost,
+  type PageEditorHostFailure,
+  type PageEditorRecoverySnapshot,
+  type PageEditorStatusState
+} from "../../editor/PageEditorHost";
 import type { EditorMediaAdapter } from "../../editor/contracts";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
 import { PublishedDocumentReader } from "./PublishedDocumentReader";
@@ -48,13 +53,8 @@ type WorkspaceMainPaneProps = {
     pageSysId: string;
     readLatestDraftContentJson?: () => DocseraDocumentEnvelope | null;
   }) => Promise<PageBodySaveResult>;
-  onStatusChange: (state: {
-    flush?: () => Promise<boolean>;
-    getRecoverySnapshot?: () => PageEditorRecoverySnapshot | null;
+  onStatusChange: (state: PageEditorStatusState & {
     release?: (options?: { keepalive?: boolean }) => Promise<void>;
-    isDirty: boolean;
-    isSaving: boolean;
-    status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
   }) => void;
   onShowCreatePage: () => void;
   onAccessLost: () => void;

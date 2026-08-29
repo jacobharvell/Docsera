@@ -29,6 +29,7 @@ import {
   renderRuntime,
   runAutosave
 } from "./PageEditorHostRuntime.testUtils";
+import type { PageEditorStatusState } from "./PageEditorHost";
 
 if (typeof URL.createObjectURL !== "function") {
   Object.defineProperty(URL, "createObjectURL", {
@@ -881,6 +882,153 @@ describe("PageEditorHostRuntime", () => {
     });
     await runAutosave();
     expect(onSaveDraft).toHaveBeenCalledTimes(0);
+  });
+
+  it("exposes the current canonical envelope through the status boundary, including unsaved visual edits", async () => {
+    const initialEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Alpha" }] }]
+    });
+    const runtime = renderRuntime({ initialEnvelope });
+
+    const editor = await waitFor(() => {
+      expect(runtime.editorReady[0]).toBeDefined();
+      return runtime.editorReady[0]!;
+    });
+
+    const initialStatus = runtime.onStatusChange.mock.lastCall?.[0] as PageEditorStatusState | undefined;
+    expect(initialStatus?.getCanonicalEnvelope?.()).toEqual(initialEnvelope);
+
+    await act(async () => {
+      editor.commands.focus("end");
+      editor.commands.insertContent(" Beta");
+    });
+
+    await waitFor(() => {
+      expect(runtime.onStatusChange).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          isDirty: true,
+          status: "Unsaved"
+        })
+      );
+    });
+
+    const dirtyStatus = runtime.onStatusChange.mock.lastCall?.[0] as PageEditorStatusState | undefined;
+    expect(dirtyStatus?.getCanonicalEnvelope?.()).toEqual(
+      createEnvelopeFromDocument({
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Alpha Beta" }] }]
+      })
+    );
+  });
+
+  it("applies a source-derived canonical replacement through the existing autosave path without creating a false no-op update", async () => {
+    const initialEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Alpha" }] }]
+    });
+    const replacementEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Replacement" }] }]
+    });
+    const runtime = renderRuntime({ initialEnvelope });
+
+    await waitFor(() => {
+      expect(runtime.editorReady[0]).toBeDefined();
+    });
+
+    const status = runtime.onStatusChange.mock.lastCall?.[0] as PageEditorStatusState | undefined;
+    await waitFor(() => {
+      expect(status).toBeDefined();
+    });
+    await act(async () => {
+      expect(status?.applyCanonicalEnvelope?.(replacementEnvelope)).toEqual({
+        kind: "applied",
+        nextEnvelope: replacementEnvelope
+      });
+      await Promise.resolve();
+    });
+
+    expect(runtime.editorReady[0].getJSON()).toEqual(replacementEnvelope.document);
+    expect(runtime.onStatusChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        isDirty: true,
+        status: "Unsaved"
+      })
+    );
+
+    await runAutosave();
+
+    expect(runtime.onSaveDraft).toHaveBeenCalledTimes(1);
+    expect(runtime.onSaveDraft).toHaveBeenLastCalledWith({
+      draftContentJson: replacementEnvelope,
+      expectedRevision: 0,
+      pageSysId: "page-001"
+    });
+
+    const postReplaceStatus = runtime.onStatusChange.mock.lastCall?.[0] as PageEditorStatusState | undefined;
+    expect(postReplaceStatus?.applyCanonicalEnvelope?.(replacementEnvelope)).toEqual({
+      kind: "unchanged",
+      nextEnvelope: replacementEnvelope
+    });
+    expect(runtime.onSaveDraft).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not let a source-derived canonical replacement become a visual undo step", async () => {
+    const initialEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Alpha" }] }]
+    });
+    const replacementEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Replacement" }] }]
+    });
+    const runtime = renderRuntime({ initialEnvelope });
+
+    const editor = await waitFor(() => {
+      expect(runtime.editorReady[0]).toBeDefined();
+      return runtime.editorReady[0]!;
+    });
+
+    await act(async () => {
+      editor.commands.insertContent(" Beta");
+    });
+
+    const status = runtime.onStatusChange.mock.lastCall?.[0] as PageEditorStatusState | undefined;
+    expect(status?.applyCanonicalEnvelope?.(replacementEnvelope)).toEqual({
+      kind: "applied",
+      nextEnvelope: replacementEnvelope
+    });
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toEqual(replacementEnvelope.document);
+    });
+
+    await act(async () => {
+      editor.commands.undo();
+    });
+
+    expect(editor.getJSON()).toEqual(replacementEnvelope.document);
+  });
+
+  it("reports canonical handoff as unavailable when the runtime is not editable", async () => {
+    const initialEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Alpha" }] }]
+    });
+    const replacementEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Replacement" }] }]
+    });
+    const runtime = renderRuntime({ canEdit: false, initialEnvelope });
+
+    await waitFor(() => {
+      expect(runtime.editorReady[0]).toBeDefined();
+    });
+
+    const status = runtime.onStatusChange.mock.lastCall?.[0] as PageEditorStatusState | undefined;
+    expect(status?.applyCanonicalEnvelope?.(replacementEnvelope)).toEqual({ kind: "unavailable" });
+    expect(runtime.editorReady[0].getJSON()).toEqual(initialEnvelope.document);
   });
 
   it("does not treat a retargeted ProseMirror root click above the last content block as a blank-canvas mutation", async () => {

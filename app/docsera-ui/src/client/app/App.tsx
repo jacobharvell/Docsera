@@ -7,7 +7,12 @@ import { PageSettingsOverlay } from "../features/workspaces/PageSettingsOverlay"
 import type { InlinePageCreateState } from "../features/workspaces/PageTree";
 import type { RecentWorkspaceItem } from "../features/workspaces/RecentWorkspacesMenu";
 import { DEFAULT_WORKSPACE_NAV_WIDTH, readStoredWorkspaceNavWidth, WorkspaceShell } from "../features/workspaces/WorkspaceShell";
-import type { PageEditorHostFailure, PageEditorRecoverySnapshot } from "../editor/PageEditorHost";
+import type {
+  PageEditorCanonicalHandoffResult,
+  PageEditorHostFailure,
+  PageEditorRecoverySnapshot,
+  PageEditorStatusState
+} from "../editor/PageEditorHost";
 import { EditorSessionGeneration, type EditorSessionToken } from "../editor/session/editorSessionGeneration";
 import { fingerprintDiagnosticSecret, recordDocseraDiagnosticEvent } from "../diagnostics";
 import { WorkspaceLeaseCoordination, type StoredWorkspaceLease } from "./workspaceLeaseCoordination";
@@ -1051,6 +1056,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [workspacePagesRetryNonce, setWorkspacePagesRetryNonce] = useState(0);
   const [editorTransitionState, setEditorTransitionState] = useState<EditorTransitionState>({ isDirty: false, isSaving: false, status: "Saved" });
   const editorFlushRef = useRef<(() => Promise<boolean>) | null>(null);
+  const editorApplyCanonicalEnvelopeRef = useRef<((envelope: DocseraDocumentEnvelope) => PageEditorCanonicalHandoffResult) | null>(null);
+  const editorGetCanonicalEnvelopeRef = useRef<(() => DocseraDocumentEnvelope | null) | null>(null);
   const editorRecoverySnapshotRef = useRef<(() => PageEditorRecoverySnapshot | null) | null>(null);
   const editorReleaseRef = useRef<((options?: { keepalive?: boolean }) => Promise<void>) | null>(null);
   const routeTransitionGenerationRef = useRef(0);
@@ -1545,13 +1552,19 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
   }
 
+  function clearEditorCapabilities(): void {
+    editorApplyCanonicalEnvelopeRef.current = null;
+    editorFlushRef.current = null;
+    editorGetCanonicalEnvelopeRef.current = null;
+    editorRecoverySnapshotRef.current = null;
+    editorReleaseRef.current = null;
+  }
+
   function invalidateEditorSessionForAuthoritativeRebind(): void {
     editorSessionGenerationRef.current.invalidate();
     editorSessionSeedRef.current = "";
     activeEditorSessionRef.current = null;
-    editorFlushRef.current = null;
-    editorRecoverySnapshotRef.current = null;
-    editorReleaseRef.current = null;
+    clearEditorCapabilities();
     setEditorFailure(null);
     setEditorSessionState({
       sessionKey: "",
@@ -1689,9 +1702,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     editorSessionGenerationRef.current.invalidate();
     editorSessionSeedRef.current = "";
     activeEditorSessionRef.current = null;
-    editorFlushRef.current = null;
-    editorRecoverySnapshotRef.current = null;
-    editorReleaseRef.current = null;
+    clearEditorCapabilities();
     setEditorSessionState({
       sessionKey: "",
       token: null
@@ -2193,7 +2204,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       editorSessionGenerationRef.current.invalidate();
       editorSessionSeedRef.current = "";
       activeEditorSessionRef.current = null;
-      editorFlushRef.current = null;
+      clearEditorCapabilities();
       setEditorSessionState({
         sessionKey: "",
         token: null
@@ -3592,8 +3603,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }, [currentModeStateKey, route.mode, selectedWorkspacePageId]);
 
   useEffect(() => {
-    editorFlushRef.current = null;
-    editorRecoverySnapshotRef.current = null;
+    clearEditorCapabilities();
     setEditorFailure(null);
     setEditorTransitionState({ isDirty: false, isSaving: false, status: "Saved" });
     setPendingRouteTransition(null);
@@ -5028,7 +5038,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }));
   }
 
-  function handleEditorStatusChange(pageSysId: string, state: { flush?: () => Promise<boolean>; getRecoverySnapshot?: () => PageEditorRecoverySnapshot | null; release?: (options?: { keepalive?: boolean }) => Promise<void>; isDirty: boolean; isSaving: boolean; status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved" }) {
+  function handleEditorStatusChange(pageSysId: string, state: PageEditorStatusState & { release?: (options?: { keepalive?: boolean }) => Promise<void> }) {
     const sessionToken = renderedEditorSession;
     if (!isCurrentEditorSession(sessionToken)) {
       return;
@@ -5038,7 +5048,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
+    editorApplyCanonicalEnvelopeRef.current = state.applyCanonicalEnvelope ?? null;
     editorFlushRef.current = state.flush ?? null;
+    editorGetCanonicalEnvelopeRef.current = state.getCanonicalEnvelope ?? null;
     editorRecoverySnapshotRef.current = state.getRecoverySnapshot ?? null;
     editorReleaseRef.current = state.release ?? null;
 

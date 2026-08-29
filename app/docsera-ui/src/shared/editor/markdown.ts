@@ -2,6 +2,7 @@ import { fromMarkdown } from "mdast-util-from-markdown";
 import { directiveFromMarkdown, directiveToMarkdown } from "mdast-util-directive";
 import { gfmFromMarkdown, gfmToMarkdown } from "mdast-util-gfm";
 import { toMarkdown } from "mdast-util-to-markdown";
+import type { Root as MdastRoot } from "mdast";
 import { directive } from "micromark-extension-directive";
 import { gfm } from "micromark-extension-gfm";
 import { parseDocument as parseYamlDocument } from "yaml";
@@ -20,11 +21,6 @@ import {
 } from "../../server/pages/serverImageContract";
 
 type RecordValue = Record<string, unknown>;
-
-type MdastNode = {
-  type?: unknown;
-  [key: string]: unknown;
-};
 
 type CanonicalNode = Record<string, unknown>;
 
@@ -163,11 +159,11 @@ function parseFrontmatter(markdown: string): { title: string; body: string } | D
   };
 }
 
-function parseMarkdownAst(markdownBody: string): MdastNode {
+function parseMarkdownAst(markdownBody: string): MdastRoot {
   return fromMarkdown(markdownBody, {
     extensions: [gfm(), directive()],
     mdastExtensions: [gfmFromMarkdown(), directiveFromMarkdown()]
-  }) as MdastNode;
+  }) as unknown as MdastRoot;
 }
 
 function isDefaultLinkAttrs(attrs: LinkAttrs): boolean {
@@ -304,7 +300,7 @@ function serializeDirectiveAttributes(
             children: []
           }
         ]
-      } as MdastNode,
+      } as MdastRoot,
       {
         extensions: [directiveToMarkdown({ quoteSmart: true, quote: "\"" })]
       }
@@ -354,7 +350,7 @@ function createLeafDirective(name: string, attrs: Record<string, string | number
           children: []
         }
       ]
-    } as MdastNode,
+    } as MdastRoot,
     {
       extensions: [directiveToMarkdown({ quoteSmart: true, quote: "\"" })]
     }
@@ -1261,7 +1257,7 @@ function parseFlow(nodes: unknown[] | undefined): CanonicalNode[] | DocseraMarkd
         const tableRows: CanonicalNode[] = [];
         for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
           const row = rows[rowIndex];
-          const cells = Array.isArray((row as RecordValue).children) ? (row as RecordValue).children : [];
+          const cells = Array.isArray((row as RecordValue).children) ? ((row as RecordValue).children as unknown[]) : [];
           const parsedCells: CanonicalNode[] = [];
           for (let cellIndex = 0; cellIndex < cells.length; cellIndex += 1) {
             const cell = cells[cellIndex];
@@ -1589,7 +1585,7 @@ export function parseDocseraMarkdownDocument(markdown: unknown): ParseDocseraMar
     return frontmatter;
   }
 
-  let ast: MdastNode;
+  let ast: MdastRoot;
   try {
     ast = parseMarkdownAst(frontmatter.body);
   } catch (error) {

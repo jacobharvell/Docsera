@@ -104,6 +104,7 @@ import {
 import { BLOCK_SELECTOR_STYLES } from "./BlockSelectorStyles";
 import TableControlsOverlay from "./TableControlsOverlay";
 import type { EditorMediaAdapter, EditorMediaReference } from "./contracts";
+import type { PageEditorCanonicalHandoffResult } from "./PageEditorHost";
 
 type PageEditorHostRuntimeProps = {
   canEdit: boolean;
@@ -121,7 +122,9 @@ type PageEditorHostRuntimeProps = {
   }) => Promise<PageBodySaveResult>;
   onEditorReady?: (editor: Editor) => void;
   onStatusChange: (state: {
+    applyCanonicalEnvelope?: (envelope: DocseraDocumentEnvelope) => PageEditorCanonicalHandoffResult;
     flush?: () => Promise<boolean>;
+    getCanonicalEnvelope?: () => DocseraDocumentEnvelope | null;
     getRecoverySnapshot?: () => {
       envelope: DocseraDocumentEnvelope;
       isDirty: boolean;
@@ -2924,6 +2927,33 @@ function createEnvelope(document: DocseraTiptapDocument): DocseraDocumentEnvelop
   return parseDocseraDocumentOrThrow(envelope);
 }
 
+function getCurrentEnvelope(editor: Editor): DocseraDocumentEnvelope {
+  return createEnvelope(editor.getJSON() as DocseraTiptapDocument);
+}
+
+function replaceEditorDocument(editor: Editor, envelope: DocseraDocumentEnvelope): PageEditorCanonicalHandoffResult {
+  const parsedEnvelope = parseDocseraDocumentOrThrow(envelope);
+  const nextDocumentKey = serializeDocument(parsedEnvelope.document);
+  const currentDocumentKey = serializeDocument(editor.getJSON() as DocseraTiptapDocument);
+  if (currentDocumentKey === nextDocumentKey) {
+    return { kind: "unchanged", nextEnvelope: parsedEnvelope };
+  }
+
+  const nextDocument = editor.state.schema.nodeFromJSON(parsedEnvelope.document);
+  let transaction = editor.state.tr
+    .replaceWith(0, editor.state.doc.content.size, nextDocument.content)
+    .setMeta("addToHistory", false);
+  try {
+    transaction = transaction.setSelection(Selection.atStart(transaction.doc));
+  } catch {
+    // Leave the mapped selection in place when the replacement cannot resolve
+    // a stable start selection.
+  }
+
+  editor.view.dispatch(closeHistory(transaction));
+  return { kind: "applied", nextEnvelope: parsedEnvelope };
+}
+
 function statusLabel(status: RuntimeStatus): "Unsaved" | "Saving…" | "Saved" | "Changes not saved" {
   switch (status) {
     case "dirty":
@@ -5599,7 +5629,27 @@ export function PageEditorHostRuntime({
 
   useEffect(() => {
     onStatusChange({
+      applyCanonicalEnvelope: (nextEnvelope) => {
+        const runtimeEditor = editorRef.current;
+        if (!runtimeEditor || runtimeEditor.isDestroyed || disposedRef.current || !editableRef.current) {
+          return { kind: "unavailable" };
+        }
+
+        try {
+          return replaceEditorDocument(runtimeEditor, nextEnvelope);
+        } catch {
+          return { kind: "unavailable" };
+        }
+      },
       flush: flushLatest,
+      getCanonicalEnvelope: () => {
+        const runtimeEditor = editorRef.current;
+        if (!runtimeEditor) {
+          return null;
+        }
+
+        return getCurrentEnvelope(runtimeEditor);
+      },
       getRecoverySnapshot: () => {
         const runtimeEditor = editorRef.current;
         if (!runtimeEditor) {
@@ -5607,7 +5657,7 @@ export function PageEditorHostRuntime({
         }
 
         return {
-          envelope: createEnvelope(runtimeEditor.getJSON() as DocseraTiptapDocument),
+          envelope: getCurrentEnvelope(runtimeEditor),
           isDirty: currentDocumentKeyRef.current !== savedDocumentKeyRef.current,
           pageSysId,
           savedRevision: savedRevisionRef.current,

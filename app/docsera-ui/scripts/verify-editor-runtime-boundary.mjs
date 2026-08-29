@@ -45,6 +45,7 @@ const runtimeMap = readJson(runtimeMapPath);
 
 const hostSourceSuffix = "src/client/editor/PageEditorHost.tsx";
 const runtimeSourceSuffix = "src/client/editor/PageEditorHostRuntime.tsx";
+const markdownSourceSessionSuffix = "src/client/editor/MarkdownSourceSession.ts";
 const readerSourceSuffix = "src/client/features/workspaces/PublishedDocumentReader.tsx";
 const workspaceMainPaneSourceSuffix = "src/client/features/workspaces/WorkspaceMainPane.tsx";
 
@@ -52,6 +53,7 @@ const hostSourceInMain = getSourceEntry(mainMap, hostSourceSuffix);
 const hostSourceInRuntime = getSourceEntry(runtimeMap, hostSourceSuffix);
 const runtimeSourceInMain = getSourceEntry(mainMap, runtimeSourceSuffix);
 const runtimeSourceInRuntime = getSourceEntry(runtimeMap, runtimeSourceSuffix);
+const markdownSourceSessionInMain = getSourceEntry(mainMap, markdownSourceSessionSuffix);
 const readerSourceInMain = getSourceEntry(mainMap, readerSourceSuffix);
 const workspaceMainPaneSourceInMain = getSourceEntry(mainMap, workspaceMainPaneSourceSuffix);
 
@@ -63,7 +65,9 @@ const readerBoundaryNeedles = [
   "createRoot(",
   "EditorContent",
   "useEditor(",
-  "mountPageEditorHostRuntime"
+  "mountPageEditorHostRuntime",
+  "@codemirror",
+  "MarkdownSourceSession"
 ];
 
 const checks = [
@@ -84,6 +88,10 @@ const checks = [
   {
     label: "PageEditorHostRuntime source is not emitted into main.jsdbx",
     ok: runtimeSourceInMain === null
+  },
+  {
+    label: "MarkdownSourceSession source is not emitted into main.jsdbx",
+    ok: markdownSourceSessionInMain === null
   },
   {
     label: "PageEditorHost source no longer creates the child React root",
@@ -115,6 +123,10 @@ const checks = [
   {
     label: "main.jsdbx keeps the lazy runtime boundary import path",
     ok: mainChunk.includes('import("./PageEditorHostRuntime.jsdbx")')
+  },
+  {
+    label: "main.jsdbx stays free of CodeMirror authoring runtime code",
+    ok: !mainChunk.includes("@codemirror")
   },
   {
     detail: readerSourceInMain?.source ?? "",

@@ -18,6 +18,21 @@ export type PageEditorRecoverySnapshot = Readonly<{
   sessionKey: string;
 }>;
 
+export type PageEditorCanonicalHandoffResult =
+  | { kind: "applied"; nextEnvelope: DocseraDocumentEnvelope }
+  | { kind: "unchanged"; nextEnvelope: DocseraDocumentEnvelope }
+  | { kind: "unavailable" };
+
+export type PageEditorStatusState = Readonly<{
+  applyCanonicalEnvelope?: (envelope: DocseraDocumentEnvelope) => PageEditorCanonicalHandoffResult;
+  flush?: () => Promise<boolean>;
+  getCanonicalEnvelope?: () => DocseraDocumentEnvelope | null;
+  getRecoverySnapshot?: () => PageEditorRecoverySnapshot | null;
+  isDirty: boolean;
+  isSaving: boolean;
+  status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
+}>;
+
 type PageEditorHostProps = {
   canEdit: boolean;
   initialEnvelope: DocseraDocumentEnvelope;
@@ -33,13 +48,7 @@ type PageEditorHostProps = {
     pageSysId: string;
     readLatestDraftContentJson?: () => DocseraDocumentEnvelope | null;
   }) => Promise<PageBodySaveResult>;
-  onStatusChange: (state: {
-    flush?: () => Promise<boolean>;
-    getRecoverySnapshot?: () => PageEditorRecoverySnapshot | null;
-    isDirty: boolean;
-    isSaving: boolean;
-    status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
-  }) => void;
+  onStatusChange: (state: PageEditorStatusState) => void;
   mediaAdapter?: EditorMediaAdapter;
   pageSysId: string;
   sessionKey: string;
