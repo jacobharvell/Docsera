@@ -353,7 +353,6 @@ describe("Docsera columns schema", () => {
       ok: false,
       message: "The stored page content does not contain a valid TipTap document."
     });
-
     expect(parseDocseraDocument({ schemaVersion: 1, document })).toMatchObject({
       ok: false,
       reason: "invalid-document"
@@ -367,7 +366,6 @@ describe("Docsera columns schema", () => {
       ok: false,
       message: "The stored page content does not contain a valid TipTap document."
     });
-
     expect(parseDocseraDocument({ schemaVersion: 1, document })).toMatchObject({
       ok: false,
       reason: "invalid-document"

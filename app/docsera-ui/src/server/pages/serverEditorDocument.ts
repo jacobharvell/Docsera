@@ -724,7 +724,7 @@ function canonicalizeNode(node: Record<string, unknown>): Record<string, unknown
     canonicalNode.attrs = cloneJson(node.attrs);
   }
 
-  if (Array.isArray(node.content) && node.content.length > 0) {
+  if (Array.isArray(node.content) && (node.content.length > 0 || node.type === "doc")) {
     canonicalNode.content = node.content.map((child) => canonicalizeNode(child as Record<string, unknown>));
   }
 
@@ -733,7 +733,7 @@ function canonicalizeNode(node: Record<string, unknown>): Record<string, unknown
 
 function normalizeDocument(document: DocseraTiptapDocument): DocseraTiptapDocument {
   const normalized = cloneJson(document);
-  if (!Array.isArray(normalized.content) || normalized.content.length === 0) {
+  if (!Array.isArray(normalized.content)) {
     normalized.content = [{ type: "paragraph" }];
   }
   return normalized;

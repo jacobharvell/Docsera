@@ -66,6 +66,7 @@ export const testSuites = [
       "src/client/editor/PageEditorHostRuntime.core.test.tsx",
       "src/client/editor/pasteSanitizer.test.ts",
       "src/shared/editor/document.test.ts",
+      "src/shared/editor/markdown.test.ts",
       "src/shared/editor/schema.test.ts",
       "test/editorDocumentContractParity.test.ts"
     ]

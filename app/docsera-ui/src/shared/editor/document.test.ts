@@ -12,6 +12,7 @@ import {
   createMultiItemAccordionDocseraDocumentEnvelope,
   createDuplicateHeadingDocseraDocumentEnvelope,
   createEmptyHeadingDocseraDocumentEnvelope,
+  createEmptyHeadingHierarchyDocseraDocumentEnvelope,
   createExpandedTextFormattingDocseraDocumentEnvelope,
   createLargeCanonicalDocseraDocumentEnvelope,
   createLegacyDocseraDocument,
@@ -42,10 +43,8 @@ describe("Docsera document envelope", () => {
 
   it.each([
     { schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION, document: { type: "doc" } },
-    { schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION, document: { type: "doc", content: [] } },
     { schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION, document: { type: "doc", content: [{ type: "paragraph" }] } },
     { type: "doc" },
-    { type: "doc", content: [] },
     { type: "doc", content: [{ type: "paragraph" }] }
   ])("canonicalizes every accepted empty representation to the runtime paragraph document", (input) => {
     const parsed = parseDocseraDocument(input);
@@ -54,6 +53,19 @@ describe("Docsera document envelope", () => {
       expect(parsed.envelope).toEqual(createEmptyDocseraDocumentEnvelope());
       expect(parsed.envelope.document.content).toEqual([{ type: "paragraph" }]);
     }
+  });
+
+  it.each([
+    { schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION, document: { type: "doc", content: [] } },
+    { type: "doc", content: [] }
+  ])("preserves an explicit zero-child document", (input) => {
+    const parsed = parseDocseraDocument(input);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) {
+      return;
+    }
+
+    expect(parsed.envelope.document).toEqual({ type: "doc", content: [] });
   });
 
   it("preserves terminal whitespace inside TipTap text nodes", () => {
@@ -215,6 +227,27 @@ describe("Docsera document envelope", () => {
               type: "heading",
               attrs: { level: 2 }
             }
+          ]
+        }
+      },
+      migratedLegacyDocument: false
+    });
+  });
+
+  it("canonicalizes empty heading levels 1, 2, and 3 by omitting empty content arrays", () => {
+    const envelope = createEmptyHeadingHierarchyDocseraDocumentEnvelope();
+    const parsed = parseDocseraDocument(serializeDocseraDocument(envelope));
+
+    expect(parsed).toEqual({
+      ok: true,
+      envelope: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            { type: "heading", attrs: { level: 1 } },
+            { type: "heading", attrs: { level: 2 } },
+            { type: "heading", attrs: { level: 3 } }
           ]
         }
       },
