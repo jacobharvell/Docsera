@@ -1,10 +1,24 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkspaceMainPane } from "./WorkspaceMainPane";
 import type { WorkspacePageView } from "./workspaceViewModels";
+
+vi.mock("./WorkspaceMarkdownSourcePanel", () => ({
+  WorkspaceMarkdownSourcePanel: ({
+    authoringSurface,
+    visible
+  }: {
+    authoringSurface: string;
+    visible: boolean;
+  }) => <div data-testid="markdown-source-panel" data-surface={authoringSurface} data-visible={String(visible)} />
+}));
+
+afterEach(() => {
+  cleanup();
+});
 
 function createPageView(): WorkspacePageView {
   return {
@@ -271,6 +285,68 @@ describe("WorkspaceMainPane", () => {
     unmount();
   });
 
+  it("mounts the markdown source panel for the active page, hides the visual editor host, and removes the visual page title while markdown is selected", async () => {
+    const page = createPageView();
+    render(
+      <WorkspaceMainPane
+        bodyState="ready"
+        page={page}
+        workspaceMode="edit"
+        canCreatePage={false}
+        canEditPageBody={true}
+        canManagePageSettings={true}
+        editAccessLost={false}
+        pageTitleActive={false}
+        pageTitleSaveError=""
+        pageTitleValidationError=""
+        pageTitleValue={page.title}
+        stateCopy=""
+        stateTitle=""
+        stateType="ready"
+        showPendingState={false}
+        onReturnToMyWorkspaces={vi.fn()}
+        onReturnToLive={vi.fn()}
+        onRetryEditor={vi.fn()}
+        onPageTitleCancel={vi.fn()}
+        onPageTitleChange={vi.fn()}
+        onPageTitleCommit={vi.fn()}
+        onPageTitleStart={vi.fn()}
+        onEditorReadyStateChange={vi.fn()}
+        onOutlineChange={vi.fn()}
+        onSavePageDraft={vi.fn(async () => ({
+          state: "succeeded" as const,
+          page: page.page
+        }))}
+        onStatusChange={vi.fn()}
+        onShowCreatePage={vi.fn()}
+        onAccessLost={vi.fn()}
+        sessionKey="session-001"
+        theme="light"
+        editorFailure={null}
+        onEditorFailureChange={vi.fn()}
+        editorCanonicalEnvelope={page.contentEnvelope}
+        authoringSurface="markdown"
+        sourceSessionPageSysId="page-001"
+        onSourceBodyChange={vi.fn()}
+        onSourceDiscardInvalidDraft={vi.fn()}
+        onSourceInvalidChange={vi.fn()}
+        onSourceTitleChange={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("markdown-source-panel")).toBeInTheDocument();
+    });
+
+    const sourcePanel = screen.getByTestId("markdown-source-panel");
+    expect(sourcePanel).toHaveAttribute("data-surface", "markdown");
+    expect(sourcePanel).toHaveAttribute("data-visible", "true");
+    expect(screen.getByRole("main", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Overview" })).toBeNull();
+    expect(document.querySelector(".docsera-main__page-header")).toBeNull();
+    expect(document.querySelector(".docsera-main__editor-host[hidden]")).toBeInTheDocument();
+  });
+
   it("renders a nested page title without an ancestor label above the title", () => {
     const rootPage = createPageView();
     rootPage.id = "page-root";
@@ -532,6 +608,58 @@ describe("WorkspaceMainPane", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Overview" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Page title" })).toBeNull();
+    expect(onPageTitleStart).not.toHaveBeenCalled();
+  });
+
+  it("keeps the title read-only in markdown mode", () => {
+    const page = createPageView();
+    const onPageTitleStart = vi.fn();
+
+    render(
+      <WorkspaceMainPane
+        bodyState="ready"
+        page={page}
+        workspaceMode="edit"
+        canCreatePage={false}
+        canEditPageBody={true}
+        canManagePageSettings={true}
+        editAccessLost={false}
+        pageTitleActive={false}
+        pageTitleSaveError=""
+        pageTitleValidationError=""
+        pageTitleValue={page.title}
+        stateCopy=""
+        stateTitle=""
+        stateType="ready"
+        showPendingState={false}
+        onReturnToMyWorkspaces={vi.fn()}
+        onReturnToLive={vi.fn()}
+        onRetryEditor={vi.fn()}
+        onPageTitleCancel={vi.fn()}
+        onPageTitleChange={vi.fn()}
+        onPageTitleCommit={vi.fn()}
+        onPageTitleStart={onPageTitleStart}
+        onEditorReadyStateChange={vi.fn()}
+        onOutlineChange={vi.fn()}
+        onSavePageDraft={vi.fn(async () => ({
+          state: "succeeded" as const,
+          page: page.page
+        }))}
+        onStatusChange={vi.fn()}
+        onShowCreatePage={vi.fn()}
+        onAccessLost={vi.fn()}
+        sessionKey="session-001"
+        theme="light"
+        editorFailure={null}
+        onEditorFailureChange={vi.fn()}
+        authoringSurface="markdown"
+      />
+    );
+
+    const pageHeader = document.querySelector(".docsera-main__page-header");
+    expect(pageHeader).toBeNull();
+    expect(screen.getByRole("main", { name: "Overview" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Page title" })).toBeNull();
     expect(onPageTitleStart).not.toHaveBeenCalled();
   });

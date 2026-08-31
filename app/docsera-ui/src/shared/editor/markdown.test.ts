@@ -615,6 +615,33 @@ describe("Docsera Markdown conversion contract", () => {
     });
   });
 
+  it("parses a lone markdown marker as editable prose instead of an invalid empty list", () => {
+    const parsed = parseDocseraMarkdownDocument(createMarkdownDocumentSource("Standalone marker", "*\n"));
+
+    expect(parsed).toMatchObject({
+      ok: true,
+      title: "Standalone marker",
+      envelope: {
+        schemaVersion: 1,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "*" }]
+            }
+          ]
+        }
+      }
+    });
+    if (!parsed.ok) {
+      return;
+    }
+
+    expect(parsed.markdown).toContain('title: "Standalone marker"');
+    expect(parsed.markdown).toContain("\\*");
+  });
+
   it("serializes a true zero-child document with the explicit empty-document directive", () => {
     const serialized = serializeDocseraMarkdownDocument(title, createEmptyDocumentEnvelope());
     expect(serialized.ok).toBe(true);

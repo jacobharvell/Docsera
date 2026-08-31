@@ -235,6 +235,57 @@ describe("MarkdownSourceSession", () => {
     result.session.destroy();
   });
 
+  it("keeps a lone markdown marker valid and editable in source mode", async () => {
+    const mount = document.createElement("div");
+    document.body.append(mount);
+    const result = createMarkdownSourceSession({
+      mount,
+      title: "Overview",
+      envelope: createCanonicalDocseraDocumentEnvelope()
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    const session = result.session;
+    const source = '---\ntitle: "Standalone marker"\n---\n*\n';
+    await act(async () => {
+      session.view.dispatch({
+        changes: { from: 0, to: session.view.state.doc.length, insert: source }
+      });
+    });
+
+    expect(session.getSnapshot()).toMatchObject({
+      kind: "valid",
+      isClean: false,
+      text: source,
+      title: "Standalone marker",
+      envelope: {
+        schemaVersion: 1,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "*" }]
+            }
+          ]
+        }
+      }
+    });
+    const snapshot = session.getSnapshot();
+    expect(snapshot.kind).toBe("valid");
+    if (snapshot.kind !== "valid") {
+      return;
+    }
+
+    expect(snapshot.normalizedMarkdown).toContain('title: "Standalone marker"');
+    expect(snapshot.normalizedMarkdown).toContain("\\*");
+    result.session.destroy();
+  });
+
   it("retains exact invalid source text and the structured converter failure without canonical mutation", async () => {
     const mount = document.createElement("div");
     document.body.append(mount);

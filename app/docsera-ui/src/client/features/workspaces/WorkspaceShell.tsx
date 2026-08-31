@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import type { PageBodySaveResult, WorkspaceMode, WorkspaceViewRecord } from "../../shared/types/docsera";
-import type { PageEditorHostFailure, PageEditorRecoverySnapshot } from "../../editor/PageEditorHost";
+import type { PageEditorCanonicalHandoffResult, PageEditorHostFailure, PageEditorRecoverySnapshot } from "../../editor/PageEditorHost";
 import type { EditorMediaAdapter } from "../../editor/contracts";
 import type { InlinePageCreateState } from "./PageTree";
 import { WorkspaceMainPane } from "./WorkspaceMainPane";
@@ -8,6 +8,7 @@ import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { WorkspaceToc } from "./WorkspaceToc";
 import type { WorkspacePageOutlineItem, WorkspacePageView } from "./workspaceViewModels";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
+import type { WorkspaceAuthoringSurface } from "./workspaceAuthoringSurface";
 
 type WorkspaceShellProps = {
   bodyNotice?: {
@@ -23,11 +24,22 @@ type WorkspaceShellProps = {
   collapsedPageIds: string[];
   currentWorkspaceSlug: string;
   editorInitialSavedEnvelope?: DocseraDocumentEnvelope;
+  editorCanonicalEnvelope?: DocseraDocumentEnvelope | null;
   mediaAdapter?: EditorMediaAdapter;
   loadMedia?: (input: { mediaId: string; signal?: AbortSignal }) => Promise<Blob | null>;
   editAccessLost: boolean;
   accessLossMessage?: string;
   editorFailure: PageEditorHostFailure | null;
+  authoringSurface?: WorkspaceAuthoringSurface;
+  markdownSourceEditable?: boolean;
+  markdownSourceRetryNonce?: number;
+  sourceDiscardNonce?: number;
+  sourceSessionPageSysId?: string;
+  onSourceBodyChange?: (envelope: DocseraDocumentEnvelope) => PageEditorCanonicalHandoffResult;
+  onSourceDiscardComplete?: () => void;
+  onSourceDiscardInvalidDraft?: () => void;
+  onSourceInvalidChange?: (state: { errorMessage: string; isInvalid: boolean; isUnavailable: boolean; pageSysId: string }) => void;
+  onSourceTitleChange?: (title: string) => void;
   inlineCreateState: InlinePageCreateState | null;
   isCreatingPage: boolean;
   mode: WorkspaceMode;
@@ -146,11 +158,22 @@ export function WorkspaceShell({
   collapsedPageIds,
   currentWorkspaceSlug,
   editorInitialSavedEnvelope,
+  editorCanonicalEnvelope,
   mediaAdapter,
   loadMedia,
   editAccessLost,
   accessLossMessage,
   editorFailure,
+  authoringSurface = "visual",
+  markdownSourceEditable = true,
+  markdownSourceRetryNonce = 0,
+  sourceDiscardNonce = 0,
+  sourceSessionPageSysId = "",
+  onSourceBodyChange,
+  onSourceDiscardComplete,
+  onSourceDiscardInvalidDraft,
+  onSourceInvalidChange,
+  onSourceTitleChange,
   inlineCreateState,
   isCreatingPage,
   mode,
@@ -337,11 +360,22 @@ export function WorkspaceShell({
         <WorkspaceMainPane
           bodyNotice={bodyNotice}
           bodyState={bodyState}
+          editorCanonicalEnvelope={editorCanonicalEnvelope}
           canCreatePage={canCreatePage}
           canEditPageBody={canEditPageBody}
           canManagePageSettings={canManagePageSettings}
           accessLossMessage={accessLossMessage}
           editorInitialSavedEnvelope={editorInitialSavedEnvelope}
+          authoringSurface={authoringSurface}
+          markdownSourceEditable={markdownSourceEditable}
+          markdownSourceRetryNonce={markdownSourceRetryNonce}
+          sourceDiscardNonce={sourceDiscardNonce}
+          sourceSessionPageSysId={sourceSessionPageSysId}
+          onSourceBodyChange={onSourceBodyChange}
+          onSourceDiscardComplete={onSourceDiscardComplete}
+          onSourceDiscardInvalidDraft={onSourceDiscardInvalidDraft}
+          onSourceInvalidChange={onSourceInvalidChange}
+          onSourceTitleChange={onSourceTitleChange}
           mediaAdapter={mediaAdapter}
           loadMedia={loadMedia}
           editAccessLost={editAccessLost}

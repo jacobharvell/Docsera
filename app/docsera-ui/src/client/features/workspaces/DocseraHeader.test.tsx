@@ -58,6 +58,167 @@ describe("DocseraHeader publishing changes", () => {
     expect(source).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.docsera-header__save-status-sync \{\s*animation: none;/);
   });
 
+  it("shows the workspace authoring surface toggle in edit mode and forwards surface changes", () => {
+    const onAuthoringSurfaceChange = vi.fn();
+    render(
+      <DocseraHeader
+        {...baseProps}
+        authoringSurface="visual"
+        onAuthoringSurfaceChange={onAuthoringSurfaceChange}
+        showAuthoringSurfaceToggle
+      />
+    );
+
+    const toggle = screen.getByRole("group", { name: "Authoring surface" });
+    const visual = within(toggle).getByRole("button", { name: "Visual" });
+    const markdown = within(toggle).getByRole("button", { name: "Markdown" });
+    const indicator = toggle.querySelectorAll(".docsera-header__segmented-indicator");
+
+    expect(indicator).toHaveLength(1);
+    expect(toggle).toHaveClass("docsera-header__surface-toggle--visual");
+    expect(visual).toHaveAccessibleName("Visual");
+    expect(markdown).toHaveAccessibleName("Markdown");
+    expect(visual).toHaveAttribute("aria-pressed", "true");
+    expect(markdown).toHaveAttribute("aria-pressed", "false");
+    expect(visual).toHaveAttribute("title", "Visual");
+    expect(markdown).toHaveAttribute("title", "Markdown");
+    expect(visual).toHaveTextContent("");
+    expect(markdown).toHaveTextContent("");
+    expect(visual.querySelector("svg")).toBeInTheDocument();
+    expect(markdown.querySelector("svg")).toBeInTheDocument();
+
+    fireEvent.click(markdown);
+    expect(onAuthoringSurfaceChange).toHaveBeenCalledTimes(1);
+    expect(onAuthoringSurfaceChange).toHaveBeenCalledWith("markdown");
+  });
+
+  it("renders one sliding selected-state indicator for each segmented header toggle", () => {
+    const { container, rerender } = render(
+      <DocseraHeader
+        {...baseProps}
+        authoringSurface="visual"
+        onAuthoringSurfaceChange={vi.fn()}
+        showAuthoringSurfaceToggle
+        showWorkspaceMode="edit"
+      />
+    );
+
+    const workspaceToggle = screen.getByRole("group", { name: "Workspace mode" });
+    const surfaceToggle = screen.getByRole("group", { name: "Authoring surface" });
+
+    expect(workspaceToggle.querySelectorAll(".docsera-header__segmented-indicator")).toHaveLength(1);
+    expect(surfaceToggle.querySelectorAll(".docsera-header__segmented-indicator")).toHaveLength(1);
+    expect(workspaceToggle).toHaveClass("docsera-header__mode-toggle--edit");
+    expect(surfaceToggle).toHaveClass("docsera-header__surface-toggle--visual");
+    expect(within(workspaceToggle).getByRole("button", { name: "Edit" })).toHaveClass("docsera-header__mode-segment--active");
+    expect(within(surfaceToggle).getByRole("button", { name: "Visual" })).toHaveClass("docsera-header__surface-segment--active");
+
+    rerender(
+      <DocseraHeader
+        {...baseProps}
+        authoringSurface="markdown"
+        onAuthoringSurfaceChange={vi.fn()}
+        showAuthoringSurfaceToggle
+        showWorkspaceMode="live"
+      />
+    );
+
+    expect(screen.getByRole("group", { name: "Workspace mode" })).toHaveClass("docsera-header__mode-toggle--live");
+    expect(container.querySelector(".docsera-header__surface-toggle")).toHaveClass("docsera-header__surface-toggle--markdown");
+    expect(container.querySelectorAll(".docsera-header__mode-toggle .docsera-header__segmented-indicator")).toHaveLength(1);
+    expect(container.querySelectorAll(".docsera-header__surface-toggle .docsera-header__segmented-indicator")).toHaveLength(1);
+  });
+
+  it("keeps the workspace mode and surface toggles aligned, separated, and free of source-editor perimeter chrome", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+    const rootThemeBlock = source.match(/:root \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const darkThemeBlock = source.match(/:root\[data-docsera-theme="dark"\] \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const actionSlotModeBlock = source.match(/\.docsera-header__action-slot--mode \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const actionDividerBlock = source.match(/\.docsera-header__action-divider \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const actionDividerVariantBlock = source.match(/\.docsera-header__action-divider--mode-surface \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const actionDividerHiddenBlock = source.match(/\.docsera-header__action-divider--hidden \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const modeToggleBlock = source.match(/\.docsera-header__mode-toggle \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const surfaceToggleBlock = source.match(/\.docsera-header__surface-toggle \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const indicatorBlock = source.match(/\.docsera-header__segmented-indicator \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const indicatorSecondPositionBlock =
+      source.match(
+        /\.docsera-header__mode-toggle--edit \.docsera-header__segmented-indicator,\n\.docsera-header__surface-toggle--markdown \.docsera-header__segmented-indicator \{([\s\S]*?)\n\}/
+      )?.[1] ?? "";
+    const surfaceToggleHiddenBlock = source.match(/\.docsera-header__surface-toggle--hidden \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const modeSegmentBlock = source.match(/\.docsera-header__mode-segment,\n\.docsera-header__surface-segment \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const activeSegmentBlock =
+      source.match(/\.docsera-header__mode-segment--active,\n\.docsera-header__surface-segment--active \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const surfaceSegmentBlock =
+      source.match(/\.docsera-header__surface-segment \{([\s\S]*?)\n\}\n\n\.docsera-header__surface-segment svg/)?.[1] ?? "";
+    const publishPanelBlock = source.match(/\.docsera-header__publish-panel \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const publishPanelHiddenBlock = source.match(/\.docsera-header__publish-panel--hidden \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const sourceEditorFocusedBlock = source.match(/\.docsera-main__source-editor \.cm-editor\.cm-focused \{([\s\S]*?)\n\}/)?.[1] ?? "";
+
+    expect(rootThemeBlock).toContain(
+      "--docsera-segmented-track: color-mix(in srgb, var(--docsera-surface) 72%, var(--docsera-surface-muted) 28%);"
+    );
+    expect(rootThemeBlock).not.toContain("--docsera-segmented-indicator:");
+    expect(darkThemeBlock).not.toContain("--docsera-segmented-indicator:");
+    expect(actionSlotModeBlock).not.toContain("position: absolute;");
+    expect(actionSlotModeBlock).not.toContain("transform: translate(-50%, -50%);");
+    expect(actionDividerBlock).toContain("width: 1px;");
+    expect(actionDividerBlock).toContain("height: 20px;");
+    expect(actionDividerVariantBlock).toContain("margin-inline: -2px;");
+    expect(actionDividerHiddenBlock).toContain("visibility: hidden;");
+    expect(modeToggleBlock).toContain("height: 32px;");
+    expect(surfaceToggleBlock).toContain("height: 32px;");
+    expect(modeToggleBlock).toContain("position: relative;");
+    expect(surfaceToggleBlock).toContain("position: relative;");
+    expect(modeToggleBlock).toContain("background: var(--docsera-segmented-track);");
+    expect(surfaceToggleBlock).toContain("background: var(--docsera-segmented-track);");
+    expect(modeToggleBlock).not.toContain("background: var(--docsera-primary");
+    expect(surfaceToggleBlock).not.toContain("background: var(--docsera-primary");
+    expect(surfaceToggleHiddenBlock).toContain("visibility: hidden;");
+    expect(surfaceToggleHiddenBlock).toContain("pointer-events: none;");
+    expect(modeToggleBlock).toContain("box-sizing: border-box;");
+    expect(surfaceToggleBlock).toContain("box-sizing: border-box;");
+    expect(modeToggleBlock).not.toContain("gap:");
+    expect(surfaceToggleBlock).not.toContain("gap:");
+    expect(indicatorBlock).toContain("position: absolute;");
+    expect(indicatorBlock).toContain("inset-block: 2px;");
+    expect(indicatorBlock).toContain("left: 2px;");
+    expect(indicatorBlock).toContain("width: calc((100% - 4px) / 2);");
+    expect(indicatorBlock).toContain("border-radius: 4px;");
+    expect(indicatorBlock).toContain("background: var(--docsera-primary);");
+    expect(indicatorBlock).not.toContain("box-shadow:");
+    expect(indicatorBlock).toContain("transition: transform 0.16s ease;");
+    expect(indicatorSecondPositionBlock).toContain("transform: translateX(100%);");
+    expect(modeSegmentBlock).toContain("border-radius: 4px;");
+    expect(modeSegmentBlock).toContain("position: relative;");
+    expect(modeSegmentBlock).toContain("z-index: 1;");
+    expect(modeSegmentBlock).toContain("display: inline-flex;");
+    expect(modeSegmentBlock).toContain("align-items: center;");
+    expect(modeSegmentBlock).toContain("justify-content: center;");
+    expect(modeSegmentBlock).toContain("transition: color 0.16s ease;");
+    expect(activeSegmentBlock).toContain("color: #ffffff;");
+    expect(activeSegmentBlock).not.toContain("background:");
+    expect(activeSegmentBlock).not.toContain("box-shadow:");
+    expect(source).toMatch(
+      /\.docsera-header__mode-segment--active:hover,\n\.docsera-header__surface-segment--active:hover \{\s*color: #ffffff;\s*\}/
+    );
+    expect(surfaceSegmentBlock).toContain("min-width: 32px;");
+    expect(surfaceSegmentBlock).toContain("padding: 6px;");
+    expect(publishPanelBlock).toContain("display: inline-flex;");
+    expect(publishPanelHiddenBlock).toContain("visibility: hidden;");
+    expect(publishPanelHiddenBlock).toContain("pointer-events: none;");
+    expect(sourceEditorFocusedBlock).toContain("outline: none;");
+    expect(sourceEditorFocusedBlock).toContain("box-shadow: none;");
+    expect(sourceEditorFocusedBlock).not.toContain("0 0 0 1px");
+    expect(source).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.docsera-header__segmented-indicator \{\s*transition: none;/);
+  });
+
   it("opens a compact dropdown with singular/plural count, rows, footer publish, and navigation only for non-removed rows", () => {
     const onOpenPendingPage = vi.fn();
     const onDiscardAllPendingChanges = vi.fn();
@@ -700,21 +861,37 @@ describe("DocseraHeader publishing changes", () => {
     expect(publish).toHaveTextContent("Publish");
   });
 
-  it.each([
-    { label: "Current page changes saved", props: { showWorkspaceMode: "live" as const } },
-    { label: "Current page changes saved", props: { showEditModeToggle: false } }
-  ])("hides the current-page save status in $props presentation", ({ label, props }) => {
+  it("reserves the live save-status geometry without exposing an accessible status", () => {
     const { container } = render(
       <DocseraHeader
         {...baseProps}
-        {...props}
         onPublishPendingChanges={vi.fn()}
         pendingChanges={pending([])}
-        saveStatus="Saved"
+        showWorkspaceMode="live"
       />
     );
 
-    expect(within(container).queryByRole("status", { name: label })).not.toBeInTheDocument();
+    expect(within(container).queryByRole("status", { name: "Current page changes saved" })).not.toBeInTheDocument();
+
+    const reservedSaveStatus = container.querySelector<HTMLElement>(".docsera-header__save-status");
+    expect(reservedSaveStatus).not.toBeNull();
+    expect(reservedSaveStatus).toHaveClass("docsera-header__save-status--reserved");
+    expect(reservedSaveStatus).toHaveAttribute("aria-hidden", "true");
+    expect(container.querySelector(".docsera-header__publish-divider")).toBeInTheDocument();
+  });
+
+  it("omits the publish panel geometry when edit controls are disabled", () => {
+    const { container } = render(
+      <DocseraHeader
+        {...baseProps}
+        onPublishPendingChanges={vi.fn()}
+        pendingChanges={pending([])}
+        saveStatus="Saved"
+        showEditModeToggle={false}
+      />
+    );
+
+    expect(within(container).queryByRole("status", { name: "Current page changes saved" })).not.toBeInTheDocument();
     expect(container.querySelector(".docsera-header__save-status")).toBeNull();
     expect(container.querySelector(".docsera-header__publish-divider")).toBeNull();
   });

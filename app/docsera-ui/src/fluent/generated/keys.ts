@@ -1331,6 +1331,14 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_ux_lib_asset'
+                        id: '3c8e41b9e36a4b3698e5a3c577e2ef17'
+                        deleted: true
+                        key: {
+                            name: 'x_82900_docsera/WorkspaceMarkdownSourcePanel'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: '3e0e9f5fa9a849438b39e672fac4404e'
                         key: {
@@ -2091,6 +2099,13 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_ux_lib_asset'
+                        id: '78d4e776403c4d78bbd1a710c3cad3b4'
+                        key: {
+                            name: 'x_82900_docsera/MarkdownSourceSession.js.map'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: '79026abd9071401c95b9fae0f6bed023'
                         key: {
@@ -2721,6 +2736,13 @@ declare global {
                             name: 'x_82900_docsera_workspace_provision_request'
                             element: 'workspace_status'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_ux_lib_asset'
+                        id: 'a582b1d3b6c74d6f85f2fa40e097907b'
+                        key: {
+                            name: 'x_82900_docsera/MarkdownSourceSession'
                         }
                     },
                     {
@@ -4023,6 +4045,14 @@ declare global {
                             name: 'x_82900_docsera_workspace_provision_request'
                             element: 'page_width'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_ux_lib_asset'
+                        id: 'f6ecfb7903d54a72ba8a77ceb1e87657'
+                        deleted: true
+                        key: {
+                            name: 'x_82900_docsera/WorkspaceMarkdownSourcePanel.js.map'
                         }
                     },
                     {

@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { Code2, Eye } from "lucide-react";
 import type { WorkspaceMode, WorkspacePendingChangesResult, WorkspaceViewRecord } from "../../shared/types/docsera";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
@@ -15,6 +16,7 @@ import {
 import { RecentWorkspacesMenu, type RecentWorkspaceItem } from "./RecentWorkspacesMenu";
 import { WorkspaceIconBadge } from "./WorkspacePrimitives";
 import type { WorkspacePageView } from "./workspaceViewModels";
+import type { WorkspaceAuthoringSurface } from "./workspaceAuthoringSurface";
 
 type CurrentPageSaveStatus = "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
 
@@ -74,7 +76,11 @@ type DocseraHeaderProps = {
   onRetryPendingChanges?: () => void;
   pendingChangesUndoBlockedPageSysId?: string;
   showEditModeToggle?: boolean;
+  showAuthoringSurfaceToggle?: boolean;
   showWorkspaceMode?: WorkspaceMode;
+  authoringSurface?: WorkspaceAuthoringSurface;
+  authoringSurfaceLocked?: boolean;
+  onAuthoringSurfaceChange?: (surface: WorkspaceAuthoringSurface) => void;
   onWorkspaceModeChange?: (mode: WorkspaceMode) => void;
   showWorkspaceSwitcher?: boolean;
   showWorkspaceSettings?: boolean;
@@ -240,7 +246,11 @@ export function DocseraHeader({
   onPublishPendingChanges,
   pendingChangesUndoBlockedPageSysId = "",
   showEditModeToggle = false,
+  showAuthoringSurfaceToggle = false,
   showWorkspaceMode = "live",
+  authoringSurface = "visual",
+  authoringSurfaceLocked = false,
+  onAuthoringSurfaceChange,
   onWorkspaceModeChange,
   showWorkspaceSwitcher = recentWorkspaces.length > 0,
   showWorkspaceSettings = false,
@@ -291,6 +301,11 @@ export function DocseraHeader({
   const hasDiscardAllError = Boolean(pendingChangesDiscardAllErrorMessage);
   const hasDiscardPageError = Boolean(pendingChangesDiscardPageErrorMessage);
   const hasPublishError = Boolean(pendingChangesPublishErrorMessage);
+  const workspaceModeChange = onWorkspaceModeChange;
+  const authoringSurfaceChange = onAuthoringSurfaceChange;
+  const showWorkspaceModeToggle = mode === "workspace" && showEditModeToggle && Boolean(onWorkspaceModeChange);
+  const showAuthoringSurfaceToggleControl = mode === "workspace" && showAuthoringSurfaceToggle && Boolean(onAuthoringSurfaceChange);
+  const reserveAuthoringControlFootprint = showWorkspaceModeToggle;
   const canOpenChanges =
     (hasPendingChanges || hasPendingError || hasDiscardAllError || hasDiscardPageError || hasPublishError || pendingChangesPublishing || pendingChangesAnyDiscarding) &&
     (!workspaceControlsLocked || pendingChangesPublishing || pendingChangesAnyDiscarding || pendingChangesDiscardAllRetryable || pendingChangesDiscardPageRetryable);
@@ -623,39 +638,97 @@ export function DocseraHeader({
 
         <div className="docsera-header__actions" aria-label="Header controls">
           <div className="docsera-header__action-slot docsera-header__action-slot--mode">
-            {mode === "workspace" && showEditModeToggle && onWorkspaceModeChange ? (
-              <div className="docsera-header__mode-toggle" role="group" aria-label="Workspace mode">
-                  <button
-                    type="button"
-                    className={`docsera-header__mode-segment${showWorkspaceMode === "live" ? " docsera-header__mode-segment--active" : ""}`}
-                    aria-pressed={showWorkspaceMode === "live"}
-                    disabled={workspaceControlsLocked}
-                    onClick={() => onWorkspaceModeChange("live")}
-                  >
-                    Live
-                  </button>
-                  <button
-                    type="button"
-                    className={`docsera-header__mode-segment${showWorkspaceMode === "edit" ? " docsera-header__mode-segment--active" : ""}`}
-                    aria-pressed={showWorkspaceMode === "edit"}
-                    disabled={workspaceControlsLocked}
-                    onClick={() => onWorkspaceModeChange("edit")}
-                  >
-                    Edit
-                  </button>
-                </div>
+            {showWorkspaceModeToggle ? (
+              <div
+                className={`docsera-header__mode-toggle docsera-header__mode-toggle--${showWorkspaceMode}`}
+                role="group"
+                aria-label="Workspace mode"
+              >
+                <span className="docsera-header__segmented-indicator" aria-hidden="true" />
+                <button
+                  type="button"
+                  className={`docsera-header__mode-segment${showWorkspaceMode === "live" ? " docsera-header__mode-segment--active" : ""}`}
+                  aria-pressed={showWorkspaceMode === "live"}
+                  title="Live"
+                  disabled={workspaceControlsLocked}
+                  onClick={() => workspaceModeChange?.("live")}
+                >
+                  Live
+                </button>
+                <button
+                  type="button"
+                  className={`docsera-header__mode-segment${showWorkspaceMode === "edit" ? " docsera-header__mode-segment--active" : ""}`}
+                  aria-pressed={showWorkspaceMode === "edit"}
+                  title="Edit"
+                  disabled={workspaceControlsLocked}
+                  onClick={() => workspaceModeChange?.("edit")}
+                >
+                  Edit
+                </button>
+              </div>
             ) : (
               <span className="docsera-header__action-slot-placeholder" aria-hidden="true" />
             )}
           </div>
-          {showPublishControl ? (
-            <div className="docsera-header__publish-panel" ref={publishPanelRef}>
-              {showCurrentPageSaveStatus && saveStatus ? (
+          {showWorkspaceModeToggle ? (
+            <span
+              className={`docsera-header__action-divider docsera-header__action-divider--mode-surface${showAuthoringSurfaceToggleControl ? "" : " docsera-header__action-divider--hidden"}`}
+              aria-hidden="true"
+            />
+          ) : null}
+          <div className="docsera-header__action-slot docsera-header__action-slot--surface">
+            {reserveAuthoringControlFootprint ? (
+              <div
+                className={`docsera-header__surface-toggle docsera-header__surface-toggle--${authoringSurface}${showAuthoringSurfaceToggleControl ? "" : " docsera-header__surface-toggle--hidden"}`}
+                role="group"
+                aria-label="Authoring surface"
+                aria-hidden={showAuthoringSurfaceToggleControl ? undefined : "true"}
+              >
+                <span className="docsera-header__segmented-indicator" aria-hidden="true" />
+                <button
+                  type="button"
+                  className={`docsera-header__surface-segment${authoringSurface === "visual" ? " docsera-header__surface-segment--active" : ""}`}
+                  aria-pressed={authoringSurface === "visual"}
+                  aria-label="Visual"
+                  title="Visual"
+                  disabled={authoringSurfaceLocked || !showAuthoringSurfaceToggleControl}
+                  onClick={() => authoringSurfaceChange?.("visual")}
+                >
+                  <Eye aria-hidden="true" focusable="false" size={16} strokeWidth={2} />
+                </button>
+                <button
+                  type="button"
+                  className={`docsera-header__surface-segment${authoringSurface === "markdown" ? " docsera-header__surface-segment--active" : ""}`}
+                  aria-pressed={authoringSurface === "markdown"}
+                  aria-label="Markdown"
+                  title="Markdown"
+                  disabled={authoringSurfaceLocked || !showAuthoringSurfaceToggleControl}
+                  onClick={() => authoringSurfaceChange?.("markdown")}
+                >
+                  <Code2 aria-hidden="true" focusable="false" size={16} strokeWidth={2} />
+                </button>
+              </div>
+            ) : (
+              <span className="docsera-header__action-slot-placeholder" aria-hidden="true" />
+            )}
+          </div>
+          {reserveAuthoringControlFootprint ? (
+            <div
+              className={`docsera-header__publish-panel${showPublishControl ? "" : " docsera-header__publish-panel--hidden"}`}
+              ref={publishPanelRef}
+              aria-hidden={showPublishControl ? undefined : "true"}
+            >
+              {showCurrentPageSaveStatus ? (
                 <>
-                  <CurrentPageSaveStatusIndicator status={saveStatus} />
+                  <CurrentPageSaveStatusIndicator status={saveStatus as CurrentPageSaveStatus} />
                   <span className="docsera-header__publish-divider" aria-hidden="true" />
                 </>
-              ) : null}
+              ) : (
+                <>
+                  <span className="docsera-header__save-status docsera-header__save-status--reserved" aria-hidden="true" />
+                  <span className="docsera-header__publish-divider" aria-hidden="true" />
+                </>
+              )}
               {pendingChangesPublishToastMessage ? (
                 <div className="docsera-header__publish-toast" role="status" aria-atomic="true" aria-live="polite">
                   <PublishSuccessIcon />
@@ -680,7 +753,7 @@ export function DocseraHeader({
                 aria-expanded={changesOpen}
                 aria-haspopup="dialog"
                 aria-label={hasPendingChanges || hasPendingError ? "Open Changes Center" : "No pending changes to publish"}
-                disabled={!canOpenChanges}
+                disabled={!showPublishControl || !canOpenChanges}
                 onClick={() => {
                   if (!canOpenChanges) {
                     return;
@@ -695,7 +768,7 @@ export function DocseraHeader({
                 Publish
                 <PublishChevron open={changesOpen} />
               </button>
-              {changesOpen ? (
+              {showPublishControl && changesOpen ? (
                 typeof document !== "undefined"
                   ? createPortal(
                       <section

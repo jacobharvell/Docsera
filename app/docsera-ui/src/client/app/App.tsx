@@ -32,6 +32,7 @@ import {
   type WorkspacePageView
 } from "../features/workspaces/workspaceViewModels";
 import { buildLauncherHref, buildWorkspaceHref, readAppRoute, type DocseraAppRoute } from "../features/workspaces/workspaceRouting";
+import type { WorkspaceAuthoringSurface } from "../features/workspaces/workspaceAuthoringSurface";
 import { requestPageOwnershipHandoff } from "../pageOwnershipHandoff";
 import {
   collectPageSubtreeSysIds,
@@ -234,10 +235,18 @@ type RequestedRouteTransition = {
     workspaceSlug: string;
     workspaceSysId: string;
   } | null;
+  requiresSourceDiscard?: boolean;
   href: string;
   replace: boolean;
   reason?: string;
   beforeCommit?: () => void;
+};
+
+type MarkdownSourceStatus = {
+  errorMessage: string;
+  isUnavailable: boolean;
+  isInvalid: boolean;
+  pageSysId: string;
 };
 
 type ShellNoticeState = {
@@ -268,6 +277,7 @@ const RESTORED_PAGE_SETTINGS_MISSING_NOTICE = "Your earlier Page Settings change
 const RESTORED_PAGE_SETTINGS_MISMATCH_NOTICE = "Your earlier Page Settings changes could not be restored because the shared page settings changed.";
 const RESTORED_INLINE_CREATE_NOTICE = "Your unsaved new-page input was restored. Review it before creating the page.";
 const RESTORED_INLINE_PARENT_MISSING_NOTICE = "The original parent is no longer available. Review the restored title before creating the page.";
+const SOURCE_TITLE_AUTOSAVE_DEBOUNCE_MS = 250;
 
 type PageSettingsField = "title" | "slug";
 
@@ -288,6 +298,12 @@ type PageSettingsState = {
   titleError: string;
   titleSnapshot: string;
   open: boolean;
+};
+
+type SourceTitleAutosaveRequest = {
+  interactionVersion: number;
+  pageSysId: string;
+  title: string;
 };
 
 type WorkspaceLeaseState =
@@ -628,6 +644,64 @@ function hasPageSettingsUnsavedChanges(state: PageSettingsState): boolean {
     Boolean(state.titleError) ||
     Boolean(state.slugError)
   );
+}
+
+function resolveCurrentPageAuthoringReadiness(input: {
+  activeWorkspaceMode: WorkspaceMode;
+  canEditPageBody: boolean;
+  editAccessLost: boolean;
+  editorCanonicalHandoffReady: boolean;
+  editorStatus: EditorTransitionState["status"];
+  isEditorReady: boolean;
+  markdownSourceStatus: MarkdownSourceStatus;
+  pageSettingsState: PageSettingsState;
+  selectedPageSysId: string;
+  workspaceCommandBlocksCurrentWorkspaceWrites: boolean;
+}): {
+  canEditMarkdownSource: boolean;
+  canSwitchSurface: boolean;
+  blockedMessage: string;
+  requiresNavigationGuard: boolean;
+} {
+  if (input.activeWorkspaceMode !== "edit") {
+    return {
+      blockedMessage: "",
+      canEditMarkdownSource: false,
+      canSwitchSurface: false,
+      requiresNavigationGuard: false
+    };
+  }
+
+  const selectedPageStatusApplies = cleanText(input.markdownSourceStatus.pageSysId) === cleanText(input.selectedPageSysId);
+  const hasPageSettingsWork = input.pageSettingsState.open && (Boolean(input.pageSettingsState.activeField) || hasPageSettingsUnsavedChanges(input.pageSettingsState));
+  const hasBodyWork = input.editorStatus !== "Saved";
+  const hasSourceWork = selectedPageStatusApplies && (input.markdownSourceStatus.isInvalid || input.markdownSourceStatus.isUnavailable);
+  const requiresNavigationGuard = hasBodyWork || hasPageSettingsWork || hasSourceWork;
+  const visualEditorReady = input.canEditPageBody && !input.editAccessLost && input.isEditorReady && input.editorCanonicalHandoffReady;
+  const sourceBlockedByRuntime = input.workspaceCommandBlocksCurrentWorkspaceWrites || !visualEditorReady;
+  const blockedMessage =
+    input.workspaceCommandBlocksCurrentWorkspaceWrites
+      ? "Workspace authoring is locked while another command is in progress."
+      : !input.canEditPageBody || input.editAccessLost
+        ? "Authoring access is no longer available."
+        : !input.editorCanonicalHandoffReady || !input.isEditorReady
+          ? "The visual editor is still getting ready."
+          : selectedPageStatusApplies && input.markdownSourceStatus.isInvalid
+            ? input.markdownSourceStatus.errorMessage || "Markdown source contains invalid content."
+            : selectedPageStatusApplies && input.markdownSourceStatus.isUnavailable
+              ? input.markdownSourceStatus.errorMessage || "Markdown source is waiting for the visual editor to become available."
+              : input.editorStatus !== "Saved"
+                ? `Current page is ${input.editorStatus.toLowerCase()}. Publish and discard actions stay disabled until local changes are saved.`
+                : hasPageSettingsWork
+                  ? "Page Settings has unsaved or blocked changes. Publish and discard actions stay disabled until settings are saved."
+                  : "";
+
+  return {
+    blockedMessage,
+    canEditMarkdownSource: visualEditorReady && !input.markdownSourceStatus.isUnavailable,
+    canSwitchSurface: !blockedMessage && !sourceBlockedByRuntime,
+    requiresNavigationGuard
+  };
 }
 
 function hasNonOverlayPageSettingsState(state: PageSettingsState): boolean {
@@ -1043,6 +1117,15 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [workspaceDiscardPageState, setWorkspaceDiscardPageState] = useState<WorkspaceDiscardPageState>({ status: "idle" });
   const [workspacePublishToastState, setWorkspacePublishToastState] = useState<WorkspacePublishToastState | null>(null);
   const [staleRefreshState, setStaleRefreshState] = useState<StaleRefreshState>({ status: "idle" });
+  const [workspaceAuthoringSurfaceState, setWorkspaceAuthoringSurfaceState] = useState<Record<string, WorkspaceAuthoringSurface>>({});
+  const [workspaceMarkdownSourceSessionPageSysIdState, setWorkspaceMarkdownSourceSessionPageSysIdState] = useState<Record<string, string>>({});
+  const [workspaceMarkdownSourceDiscardNonceState, setWorkspaceMarkdownSourceDiscardNonceState] = useState<Record<string, number>>({});
+  const [markdownSourceStatus, setMarkdownSourceStatus] = useState<MarkdownSourceStatus>({
+    errorMessage: "",
+    isUnavailable: false,
+    isInvalid: false,
+    pageSysId: ""
+  });
   const [workspaceSettingsNotice, setWorkspaceSettingsNotice] = useState(false);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalPhase, setCreateModalPhase] = useState<"idle" | "submitting" | "polling">("idle");
@@ -1055,6 +1138,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [editorRetryNonce, setEditorRetryNonce] = useState(0);
   const [workspacePagesRetryNonce, setWorkspacePagesRetryNonce] = useState(0);
   const [editorTransitionState, setEditorTransitionState] = useState<EditorTransitionState>({ isDirty: false, isSaving: false, status: "Saved" });
+  const markdownSourceTitleInvalidRef = useRef(false);
+  const markdownSourceTitleAutosaveTimerRef = useRef<number | null>(null);
+  const markdownSourceTitleAutosaveRequestRef = useRef<SourceTitleAutosaveRequest | null>(null);
+  const markdownSourceTitleAutosaveDrainRef = useRef<Promise<boolean> | null>(null);
+  const markdownSourceDiscardTransitionRef = useRef<RequestedRouteTransition | null>(null);
   const editorFlushRef = useRef<(() => Promise<boolean>) | null>(null);
   const editorApplyCanonicalEnvelopeRef = useRef<((envelope: DocseraDocumentEnvelope) => PageEditorCanonicalHandoffResult) | null>(null);
   const editorGetCanonicalEnvelopeRef = useRef<(() => DocseraDocumentEnvelope | null) | null>(null);
@@ -1068,6 +1156,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [pageSettingsState, setPageSettingsState] = useState<PageSettingsState>(createEmptyPageSettingsState);
   const [showTransitionProgress, setShowTransitionProgress] = useState(false);
   const [isEditorReady, setIsEditorReady] = useState(false);
+  const [editorCanonicalHandoffReady, setEditorCanonicalHandoffReady] = useState(false);
+  const [markdownSourceRetryNonce, setMarkdownSourceRetryNonce] = useState(0);
   const [lastCommittedWorkspaceHeaderPresentation, setLastCommittedWorkspaceHeaderPresentation] =
     useState<WorkspaceHeaderPresentation | null>(null);
   const [lastReadyWorkspaceShell, setLastReadyWorkspaceShell] = useState<RetainedWorkspaceShellState | null>(null);
@@ -1111,6 +1201,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     sessionKey: "",
     token: null
   });
+  const isEditorReadyRef = useRef(isEditorReady);
+  const editorCanonicalHandoffReadyRef = useRef(editorCanonicalHandoffReady);
+  const markdownSourceUnavailableRef = useRef(false);
+  const markdownSourceRetryIssuedRef = useRef(false);
 
   function markPageSettingsInteraction(): number {
     pageSettingsInteractionVersionRef.current += 1;
@@ -1179,6 +1273,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   useEffect(() => {
     serviceNowClientRef.current = serviceNowClient;
   }, [serviceNowClient]);
+  useEffect(() => {
+    isEditorReadyRef.current = isEditorReady;
+  }, [isEditorReady]);
+  useEffect(() => {
+    editorCanonicalHandoffReadyRef.current = editorCanonicalHandoffReady;
+  }, [editorCanonicalHandoffReady]);
 
   const workspaceMutationQueueOptions = {
     getAuthority: () => currentWorkspaceMutationAuthority(),
@@ -1558,12 +1658,17 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     editorGetCanonicalEnvelopeRef.current = null;
     editorRecoverySnapshotRef.current = null;
     editorReleaseRef.current = null;
+    editorCanonicalHandoffReadyRef.current = false;
+    markdownSourceRetryIssuedRef.current = false;
+    setEditorCanonicalHandoffReady(false);
   }
 
   function invalidateEditorSessionForAuthoritativeRebind(): void {
     editorSessionGenerationRef.current.invalidate();
     editorSessionSeedRef.current = "";
     activeEditorSessionRef.current = null;
+    isEditorReadyRef.current = false;
+    markdownSourceRetryIssuedRef.current = false;
     clearEditorCapabilities();
     setEditorFailure(null);
     setEditorSessionState({
@@ -2216,6 +2321,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
+    isEditorReadyRef.current = false;
+    markdownSourceRetryIssuedRef.current = false;
     const nextSession = editorSessionGenerationRef.current.begin(selectedWorkspacePageId, selectedWorkspacePage?.draftRevision ?? 0);
     editorSessionSeedRef.current = desiredEditorSessionSeed;
     activeEditorSessionRef.current = nextSession;
@@ -2225,7 +2332,37 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     });
   }, [desiredEditorSessionSeed, selectedWorkspacePage?.draftRevision, selectedWorkspacePageId]);
 
+  useEffect(() => {
+    if (route.mode !== "workspace" || activeWorkspaceMode !== "edit" || !selectedWorkspacePageId) {
+      return;
+    }
+
+    const currentSurface = workspaceAuthoringSurfaceState[currentWorkspaceSlug] ?? "visual";
+    const currentSourcePageSysId = workspaceMarkdownSourceSessionPageSysIdState[currentWorkspaceSlug] ?? "";
+    if (!currentSourcePageSysId && currentSurface !== "markdown") {
+      return;
+    }
+
+    if (currentSourcePageSysId === selectedWorkspacePageId) {
+      return;
+    }
+
+    setWorkspaceMarkdownSourceSessionPageSysIdState((current) => ({
+      ...current,
+      [currentWorkspaceSlug]: selectedWorkspacePageId
+    }));
+  }, [
+    activeWorkspaceMode,
+    currentWorkspaceSlug,
+    route.mode,
+    selectedWorkspacePageId,
+    workspaceAuthoringSurfaceState,
+    workspaceMarkdownSourceSessionPageSysIdState
+  ]);
+
   useLayoutEffect(() => {
+    isEditorReadyRef.current = false;
+    markdownSourceRetryIssuedRef.current = false;
     setIsEditorReady(false);
   }, [activeWorkspaceMode, editorSessionState.sessionKey, selectedWorkspacePageId]);
 
@@ -3603,7 +3740,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }, [currentModeStateKey, route.mode, selectedWorkspacePageId]);
 
   useEffect(() => {
-    clearEditorCapabilities();
     setEditorFailure(null);
     setEditorTransitionState({ isDirty: false, isSaving: false, status: "Saved" });
     setPendingRouteTransition(null);
@@ -3671,11 +3807,20 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }
 
   function shouldGuardTransition(targetHref: string): boolean {
-    if (!(editorTransitionState.isDirty || editorTransitionState.isSaving)) {
+    if (!currentPageAuthoringReadiness.requiresNavigationGuard) {
       return false;
     }
 
     return transitionWouldDestroyEditor(readAppRoute(new URL(targetHref, window.location.origin)));
+  }
+
+  async function flushCurrentPageAuthoringState(): Promise<boolean> {
+    const flush = editorFlushRef.current;
+    if (flush && !(await flush())) {
+      return false;
+    }
+
+    return flushMarkdownSourceTitleAutosave();
   }
 
   function requestRouteTransition(transition: RequestedRouteTransition): void {
@@ -3690,19 +3835,23 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     if (guarded) {
       const guardedTransition: RequestedRouteTransition = {
         ...transition,
-        discardRestoredBodyCapture: getRestoredBodyCaptureForSession(editorSessionState.sessionKey)
+        discardRestoredBodyCapture: getRestoredBodyCaptureForSession(editorSessionState.sessionKey),
+        requiresSourceDiscard: activeMarkdownSourceIsInvalid || activeMarkdownSourceIsUnavailable
       };
-      const flush = editorFlushRef.current;
-      if (!flush) {
-        setPendingRouteTransition(guardedTransition);
-        return;
-      }
       const editorSession = activeEditorSessionRef.current;
-      void flush().then(async (saved) => {
+      void flushCurrentPageAuthoringState().then(async (saved) => {
         if (routeTransitionGenerationRef.current !== transitionGeneration || !isCurrentEditorSession(editorSession)) {
           return;
         }
         if (!saved) {
+          setPendingRouteTransition(guardedTransition);
+          return;
+        }
+        if (activeMarkdownSourceIsInvalid && transitionWouldDestroyEditor(readAppRoute(new URL(guardedTransition.href, window.location.origin)))) {
+          setPendingRouteTransition(guardedTransition);
+          return;
+        }
+        if (activeMarkdownSourceIsUnavailable && transitionWouldDestroyEditor(readAppRoute(new URL(guardedTransition.href, window.location.origin)))) {
           setPendingRouteTransition(guardedTransition);
           return;
         }
@@ -4171,8 +4320,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
   }
 
-  async function closePageSettingsPanel(nextSelectedPageId = pageSettingsStateRef.current.pageSysId): Promise<boolean> {
+  async function closePageSettingsPanel(
+    nextSelectedPageId = pageSettingsStateRef.current.pageSysId,
+    options: { keepProjectionOnSuccess?: boolean } = {}
+  ): Promise<boolean> {
     const currentPageSettingsState = pageSettingsStateRef.current;
+    const keepProjectionOnSuccess = Boolean(options.keepProjectionOnSuccess);
 
     if (!currentPageSettingsState.open || workspaceState.status !== "success" || !workspacePagesLoaded) {
       return true;
@@ -4228,9 +4381,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         }
         restoredPageSettingsCaptureRef.current = null;
       }
-      const nextState = createEmptyPageSettingsState();
-      pageSettingsStateRef.current = nextState;
-      setPageSettingsState(nextState);
+      if (!keepProjectionOnSuccess) {
+        const nextState = createEmptyPageSettingsState();
+        pageSettingsStateRef.current = nextState;
+        setPageSettingsState(nextState);
+      }
       const nextPageId = cleanText(nextSelectedPageId);
       if (nextPageId && nextPageId !== currentPageSettingsState.pageSysId) {
         requestRouteTransition({
@@ -4362,9 +4517,29 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       }
 
       if (sameDraftInteraction) {
-        const nextState = createEmptyPageSettingsState();
-        pageSettingsStateRef.current = nextState;
-        setPageSettingsState(nextState);
+        if (keepProjectionOnSuccess) {
+          const nextState = rebasePageSettingsPersistedSnapshots(
+            {
+              ...currentPageSettingsState,
+              activeField: "",
+              activeFieldValueSnapshot: "",
+              generalError: "",
+              noticeMessage: "",
+              panelOpen: false,
+              slug: normalizedSlug,
+              slugError: "",
+              title: normalizedTitle,
+              titleError: ""
+            },
+            result.page
+          );
+          pageSettingsStateRef.current = nextState;
+          setPageSettingsState(nextState);
+        } else {
+          const nextState = createEmptyPageSettingsState();
+          pageSettingsStateRef.current = nextState;
+          setPageSettingsState(nextState);
+        }
       } else if (
         pageSettingsInteractionVersionRef.current !== saveInteractionVersion &&
         cleanText(pageSettingsStateRef.current.pageSysId) === cleanText(result.page.sysId) &&
@@ -5009,6 +5184,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     if (restoredCapture && clearRestoredBodyCapture(restoredCapture)) {
       bumpRecoveryVersion();
     }
+    if (transition.requiresSourceDiscard) {
+      markdownSourceDiscardTransitionRef.current = transition;
+      discardInvalidMarkdownSourceDraft({ resetSurface: false });
+      return;
+    }
     transition.beforeCommit?.();
     const release = editorReleaseRef.current;
     if (release) {
@@ -5053,11 +5233,311 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     editorGetCanonicalEnvelopeRef.current = state.getCanonicalEnvelope ?? null;
     editorRecoverySnapshotRef.current = state.getRecoverySnapshot ?? null;
     editorReleaseRef.current = state.release ?? null;
+    editorCanonicalHandoffReadyRef.current = Boolean(state.applyCanonicalEnvelope && state.getCanonicalEnvelope && state.flush);
+    if (!editorCanonicalHandoffReadyRef.current) {
+      markdownSourceRetryIssuedRef.current = false;
+    }
+    setEditorCanonicalHandoffReady(editorCanonicalHandoffReadyRef.current);
 
     setEditorTransitionState((current) =>
       current.isDirty === state.isDirty && current.isSaving === state.isSaving && current.status === state.status ? current : state
     );
+    maybeRequestMarkdownSourceRetry();
   }
+
+  function handleEditorReadyStateChange(ready: boolean) {
+    isEditorReadyRef.current = ready;
+    if (!ready) {
+      markdownSourceRetryIssuedRef.current = false;
+    }
+    setIsEditorReady(ready);
+    maybeRequestMarkdownSourceRetry();
+  }
+
+  function projectMarkdownSourceTitle(title: string): boolean {
+    const page = findWorkspacePageBySysId(currentWorkspacePages, selectedWorkspacePageId);
+    if (!page) {
+      return false;
+    }
+
+    const currentState = pageSettingsStateRef.current;
+    const nextState =
+      cleanText(currentState.pageSysId) === cleanText(page.sysId)
+        ? {
+            ...currentState,
+            title,
+            titleError: "",
+            generalError: "",
+            noticeMessage: ""
+          }
+        : {
+            ...createPageSettingsStateFromPage(page, { panelOpen: false }),
+            title,
+            titleError: "",
+            generalError: "",
+            noticeMessage: "",
+            open: true,
+            panelOpen: false
+          };
+    nextState.title = title;
+    pageSettingsStateRef.current = nextState;
+    setPageSettingsState(nextState);
+    return true;
+  }
+
+  function queueMarkdownSourceTitleAutosave(title: string): boolean {
+    const page = findWorkspacePageBySysId(currentWorkspacePages, selectedWorkspacePageId);
+    if (!page || !projectMarkdownSourceTitle(title)) {
+      return false;
+    }
+
+    markdownSourceTitleAutosaveRequestRef.current = {
+      interactionVersion: markPageSettingsInteraction(),
+      pageSysId: cleanText(page.sysId),
+      title
+    };
+
+    if (markdownSourceTitleAutosaveTimerRef.current !== null) {
+      window.clearTimeout(markdownSourceTitleAutosaveTimerRef.current);
+    }
+
+    markdownSourceTitleAutosaveTimerRef.current = window.setTimeout(() => {
+      markdownSourceTitleAutosaveTimerRef.current = null;
+      void drainMarkdownSourceTitleAutosave();
+    }, SOURCE_TITLE_AUTOSAVE_DEBOUNCE_MS);
+    return true;
+  }
+
+  async function drainMarkdownSourceTitleAutosave(): Promise<boolean> {
+    if (markdownSourceTitleAutosaveDrainRef.current) {
+      return markdownSourceTitleAutosaveDrainRef.current;
+    }
+
+    const drain = (async () => {
+      while (true) {
+        const request = markdownSourceTitleAutosaveRequestRef.current;
+        if (!request) {
+          return true;
+        }
+
+        const currentState = pageSettingsStateRef.current;
+        if (
+          !currentState.open ||
+          cleanText(currentState.pageSysId) !== cleanText(request.pageSysId) ||
+          cleanText(currentState.title) !== cleanText(request.title)
+        ) {
+          if (markdownSourceTitleAutosaveRequestRef.current !== request) {
+            continue;
+          }
+
+          markdownSourceTitleAutosaveRequestRef.current = null;
+          return true;
+        }
+
+        const saved = await closePageSettingsPanel(request.pageSysId, { keepProjectionOnSuccess: true });
+        if (markdownSourceTitleAutosaveRequestRef.current !== request) {
+          continue;
+        }
+
+        if (!saved) {
+          return false;
+        }
+
+        markdownSourceTitleAutosaveRequestRef.current = null;
+        return true;
+      }
+    })().finally(() => {
+      markdownSourceTitleAutosaveDrainRef.current = null;
+    });
+
+    markdownSourceTitleAutosaveDrainRef.current = drain;
+    return drain;
+  }
+
+  async function flushMarkdownSourceTitleAutosave(): Promise<boolean> {
+    if (markdownSourceTitleAutosaveTimerRef.current !== null) {
+      window.clearTimeout(markdownSourceTitleAutosaveTimerRef.current);
+      markdownSourceTitleAutosaveTimerRef.current = null;
+    }
+
+    return drainMarkdownSourceTitleAutosave();
+  }
+
+  function handleSourceBodyChange(envelope: DocseraDocumentEnvelope): PageEditorCanonicalHandoffResult {
+    if (markdownSourceTitleInvalidRef.current) {
+      return { kind: "unavailable" };
+    }
+
+    const applyCanonicalEnvelope = editorApplyCanonicalEnvelopeRef.current;
+    if (!applyCanonicalEnvelope) {
+      return { kind: "unavailable" };
+    }
+
+    return applyCanonicalEnvelope(envelope);
+  }
+
+  function maybeRequestMarkdownSourceRetry() {
+    if (!markdownSourceUnavailableRef.current) {
+      markdownSourceRetryIssuedRef.current = false;
+      return;
+    }
+
+    if (markdownSourceRetryIssuedRef.current) {
+      return;
+    }
+
+    if (!hasAuthoringCapability || editAccessLost || workspaceCommandBlocksCurrentWorkspaceWrites) {
+      return;
+    }
+
+    if (!isEditorReadyRef.current || !editorCanonicalHandoffReadyRef.current) {
+      return;
+    }
+
+    markdownSourceRetryIssuedRef.current = true;
+    setMarkdownSourceRetryNonce((current) => current + 1);
+  }
+
+  function handleSourceTitleChange(title: string) {
+    const validation = validatePageSettingsTitle(title);
+    if (!validation.valid) {
+      if (markdownSourceTitleAutosaveTimerRef.current !== null) {
+        window.clearTimeout(markdownSourceTitleAutosaveTimerRef.current);
+        markdownSourceTitleAutosaveTimerRef.current = null;
+      }
+      markdownSourceTitleAutosaveRequestRef.current = null;
+      markdownSourceTitleInvalidRef.current = true;
+      setMarkdownSourceStatus({
+        errorMessage: validation.error,
+        isUnavailable: false,
+        isInvalid: true,
+        pageSysId: selectedWorkspacePageId
+      });
+      return;
+    }
+
+    markdownSourceTitleInvalidRef.current = false;
+    setMarkdownSourceStatus({
+      errorMessage: "",
+      isUnavailable: false,
+      isInvalid: false,
+      pageSysId: selectedWorkspacePageId
+    });
+    void queueMarkdownSourceTitleAutosave(validation.value);
+  }
+
+  function handleSourceInvalidChange(state: MarkdownSourceStatus) {
+    markdownSourceTitleInvalidRef.current = state.isInvalid;
+    markdownSourceUnavailableRef.current = state.isUnavailable && cleanText(state.pageSysId) === cleanText(selectedWorkspacePageId);
+    setMarkdownSourceStatus(state);
+    maybeRequestMarkdownSourceRetry();
+  }
+
+  function handleSourceDiscardComplete() {
+    markdownSourceTitleInvalidRef.current = false;
+    markdownSourceUnavailableRef.current = false;
+    markdownSourceRetryIssuedRef.current = false;
+    if (markdownSourceTitleAutosaveTimerRef.current !== null) {
+      window.clearTimeout(markdownSourceTitleAutosaveTimerRef.current);
+      markdownSourceTitleAutosaveTimerRef.current = null;
+    }
+    markdownSourceTitleAutosaveRequestRef.current = null;
+    setMarkdownSourceStatus({
+      errorMessage: "",
+      isUnavailable: false,
+      isInvalid: false,
+      pageSysId: ""
+    });
+  }
+
+  function discardInvalidMarkdownSourceDraft(options: { resetSurface?: boolean } = {}) {
+    if (markdownSourceTitleAutosaveTimerRef.current !== null) {
+      window.clearTimeout(markdownSourceTitleAutosaveTimerRef.current);
+      markdownSourceTitleAutosaveTimerRef.current = null;
+    }
+    markdownSourceTitleAutosaveRequestRef.current = null;
+    setWorkspaceMarkdownSourceDiscardNonceState((current) => ({
+      ...current,
+      [currentWorkspaceSlug]: (current[currentWorkspaceSlug] ?? 0) + 1
+    }));
+    if (options.resetSurface !== false) {
+      setWorkspaceAuthoringSurfaceState((current) => ({
+        ...current,
+        [currentWorkspaceSlug]: "visual"
+      }));
+    }
+    markdownSourceTitleInvalidRef.current = false;
+    markdownSourceUnavailableRef.current = false;
+    markdownSourceRetryIssuedRef.current = false;
+    setMarkdownSourceStatus({
+      errorMessage: "",
+      isUnavailable: false,
+      isInvalid: false,
+      pageSysId: ""
+    });
+  }
+
+  function handleSourceDiscardInvalidDraft() {
+    discardInvalidMarkdownSourceDraft({ resetSurface: true });
+  }
+
+  function changeAuthoringSurface(nextSurface: WorkspaceAuthoringSurface) {
+    if (route.mode !== "workspace" || activeWorkspaceMode !== "edit") {
+      return;
+    }
+
+    if (!currentPageAuthoringReadiness.canSwitchSurface) {
+      if (activeMarkdownSourceIsInvalid || activeMarkdownSourceIsUnavailable) {
+        setShellNotice({
+          eyebrow: "Markdown",
+          kind: "alert",
+          message: markdownSourceReadinessMessage || "Discard the Markdown draft before switching back to Visual.",
+          pageSysId: selectedWorkspacePageId,
+          workspaceMode: "edit",
+          workspaceSlug: currentWorkspaceSlug
+        });
+      }
+      return;
+    }
+
+    if (nextSurface === "visual" && activeMarkdownSourceIsInvalid) {
+      setShellNotice({
+        eyebrow: "Markdown",
+        kind: "alert",
+        message: "Discard the invalid Markdown draft before switching back to Visual.",
+        pageSysId: selectedWorkspacePageId,
+        workspaceMode: "edit",
+        workspaceSlug: currentWorkspaceSlug
+      });
+      return;
+    }
+
+    setWorkspaceAuthoringSurfaceState((current) => ({
+      ...current,
+      [currentWorkspaceSlug]: nextSurface
+    }));
+
+    if (nextSurface === "markdown" && selectedWorkspacePageId) {
+      setWorkspaceMarkdownSourceSessionPageSysIdState((current) => ({
+        ...current,
+        [currentWorkspaceSlug]: selectedWorkspacePageId
+      }));
+    }
+  }
+
+  useEffect(() => {
+    if (markdownSourceStatus.isInvalid) {
+      return;
+    }
+
+    const transition = markdownSourceDiscardTransitionRef.current;
+    if (!transition) {
+      return;
+    }
+
+    markdownSourceDiscardTransitionRef.current = null;
+    requestRouteTransition(transition);
+  }, [markdownSourceStatus.isInvalid]);
 
   function handleEditorFailureChangeForSession(sessionToken: EditorSessionToken | null, failure: PageEditorHostFailure | null) {
     if (!isCurrentEditorSession(sessionToken)) {
@@ -5573,6 +6053,22 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     },
     name: "Docsera"
   };
+  const currentWorkspaceAuthoringSurface = route.mode === "workspace" && activeWorkspaceMode === "edit" ? workspaceAuthoringSurfaceState[currentWorkspaceSlug] ?? "visual" : "visual";
+  const currentWorkspaceMarkdownSourceSessionPageSysId =
+    route.mode === "workspace" && activeWorkspaceMode === "edit"
+      ? workspaceMarkdownSourceSessionPageSysIdState[currentWorkspaceSlug] ?? ""
+      : "";
+  const currentWorkspaceMarkdownSourceDiscardNonce =
+    route.mode === "workspace" && activeWorkspaceMode === "edit"
+      ? workspaceMarkdownSourceDiscardNonceState[currentWorkspaceSlug] ?? 0
+      : 0;
+  const activeMarkdownSourceIsInvalid = markdownSourceStatus.isInvalid && markdownSourceStatus.pageSysId === selectedWorkspacePageId;
+  const activeMarkdownSourceIsUnavailable = markdownSourceStatus.isUnavailable && markdownSourceStatus.pageSysId === selectedWorkspacePageId;
+  const markdownSourceReadinessMessage = activeMarkdownSourceIsInvalid
+    ? markdownSourceStatus.errorMessage || "Markdown source has invalid content. Fix it or discard it before publishing."
+    : activeMarkdownSourceIsUnavailable
+      ? markdownSourceStatus.errorMessage || "Markdown source is waiting for the visual editor to become available."
+      : "";
   const appHeaderIdentity = route.mode === "workspace" ? workspaceHeaderIdentity : launcherHeaderIdentity;
   const appHeaderMode = route.mode === "workspace" ? "workspace" : "launcher";
   const appHeaderWorkspaceSlug = route.mode === "workspace" ? currentWorkspaceSlug : "";
@@ -5583,18 +6079,29 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const appHeaderShowWorkspaceSettings =
     route.mode === "workspace" ? Boolean(workspaceHeaderPresentation?.showWorkspaceSettings) : false;
   const appHeaderShowEditToggle = route.mode === "workspace" ? Boolean(workspaceHeaderPresentation?.showEditModeToggle) : false;
+  const appHeaderShowAuthoringSurfaceToggle = route.mode === "workspace" && appHeaderWorkspaceMode === "edit" && hasAuthoringCapability;
+  const appHeaderAuthoringSurface = route.mode === "workspace" ? currentWorkspaceAuthoringSurface : "visual";
   const appHeaderShowWorkspaceSwitcher =
     route.mode === "workspace"
       ? Boolean(workspaceHeaderPresentation?.showWorkspaceSwitcher)
       : recentWorkspaceItems.length > 0;
   const appHeaderWorkspaceControlsLocked = isRetainingWorkspaceHeaderPresentation || workspaceCommandBlocksCurrentWorkspaceWrites;
   const editorStatusLabel = cleanText(editorTransitionState.status) || "Saved";
-  const pendingChangesSaveBlockedMessage =
-    appHeaderWorkspaceMode === "edit" && renderedEditorSession && editorStatusLabel !== "Saved"
-      ? `Current page is ${editorStatusLabel.toLowerCase()}. Publish and discard actions stay disabled until local changes are saved.`
-      : pageSettingsState.open && hasPageSettingsUnsavedChanges(pageSettingsState)
-        ? "Page Settings has unsaved or blocked changes. Publish and discard actions stay disabled until settings are saved."
-        : "";
+  const currentPageAuthoringReadiness = resolveCurrentPageAuthoringReadiness({
+    activeWorkspaceMode,
+    canEditPageBody: hasAuthoringCapability && !editAccessLost && !workspaceCommandBlocksCurrentWorkspaceWrites,
+    editAccessLost,
+    editorCanonicalHandoffReady: Boolean(renderedEditorSession && isEditorReady && editorCanonicalHandoffReady),
+    editorStatus: editorTransitionState.status,
+    isEditorReady,
+    markdownSourceStatus,
+    pageSettingsState,
+    selectedPageSysId: selectedWorkspacePageId,
+    workspaceCommandBlocksCurrentWorkspaceWrites
+  });
+  const appHeaderAuthoringSurfaceLocked = !currentPageAuthoringReadiness.canSwitchSurface;
+  const appHeaderMarkdownSourceEditable = currentPageAuthoringReadiness.canEditMarkdownSource;
+  const pendingChangesSaveBlockedMessage = currentPageAuthoringReadiness.blockedMessage;
   const pendingChangesUndoBlockedPageSysId = pendingChangesSaveBlockedMessage ? selectedWorkspacePageId : "";
   const workspacePublishErrorMessage =
     workspacePublishState.status === "error" &&
@@ -6273,6 +6780,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         pendingChangesPublishToastMessage={workspacePublishToastMessage}
         pendingChangesUndoBlockedPageSysId={pendingChangesUndoBlockedPageSysId}
         showEditModeToggle={appHeaderShowEditToggle}
+        showAuthoringSurfaceToggle={appHeaderShowAuthoringSurfaceToggle}
+        authoringSurface={appHeaderAuthoringSurface}
+        authoringSurfaceLocked={appHeaderAuthoringSurfaceLocked}
+        onAuthoringSurfaceChange={changeAuthoringSurface}
         showWorkspaceMode={appHeaderWorkspaceMode}
         workspaceControlsLocked={appHeaderWorkspaceControlsLocked}
         onWorkspaceModeChange={route.mode === "workspace" ? changeWorkspaceMode : undefined}
@@ -6298,6 +6809,17 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               collapsedPageIds={currentModeUiState.collapsedPageIds}
               currentWorkspaceSlug={workspaceState.status === "success" ? workspaceState.data.slug : currentWorkspaceSlug}
               editorInitialSavedEnvelope={restoredBodySnapshot && selectedPageView?.contentEnvelope ? selectedPageView.contentEnvelope : undefined}
+              editorCanonicalEnvelope={editorGetCanonicalEnvelopeRef.current?.() ?? null}
+              authoringSurface={currentWorkspaceAuthoringSurface}
+              markdownSourceEditable={appHeaderMarkdownSourceEditable}
+              markdownSourceRetryNonce={markdownSourceRetryNonce}
+              sourceDiscardNonce={currentWorkspaceMarkdownSourceDiscardNonce}
+              sourceSessionPageSysId={currentWorkspaceMarkdownSourceSessionPageSysId}
+              onSourceBodyChange={handleSourceBodyChange}
+              onSourceDiscardComplete={handleSourceDiscardComplete}
+              onSourceDiscardInvalidDraft={handleSourceDiscardInvalidDraft}
+              onSourceInvalidChange={handleSourceInvalidChange}
+              onSourceTitleChange={handleSourceTitleChange}
               editAccessLost={editAccessLost}
               editorFailure={editorFailure}
               mediaAdapter={workspaceMediaAdapter}
@@ -6314,7 +6836,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               }}
               onCommitInlineCreate={submitInlinePageCreation}
               onEditorFailureChange={(failure) => handleEditorFailureChangeForSession(renderedEditorSession, failure)}
-              onEditorReadyStateChange={setIsEditorReady}
+              onEditorReadyStateChange={handleEditorReadyStateChange}
               onInlineCreateTitleChange={updateInlinePageCreateTitle}
               onModeChange={changeWorkspaceMode}
               onOutlineChange={handleOutlineChange}
@@ -6364,7 +6886,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               pageTitleActive={
                 pageSettingsState.open &&
                 pageSettingsState.pageSysId === displayedSelectedPageId &&
-                pageSettingsState.activeField === "title"
+                pageSettingsState.activeField === "title" &&
+                currentWorkspaceAuthoringSurface === "visual"
               }
               pageTitleSaveError={
                 pageSettingsState.open &&
@@ -6462,3 +6985,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     </div>
   );
 }
+
+
+
+

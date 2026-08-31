@@ -108,6 +108,7 @@ import type { PageEditorCanonicalHandoffResult } from "./PageEditorHost";
 
 type PageEditorHostRuntimeProps = {
   canEdit: boolean;
+  interactionActive?: boolean;
   initialEnvelope: DocseraDocumentEnvelope;
   initialSavedEnvelope?: DocseraDocumentEnvelope;
   initialRevision: number;
@@ -3056,6 +3057,7 @@ function trySetEditorTabIndex(editor: Editor, isEditable: boolean): boolean {
 
 export function PageEditorHostRuntime({
   canEdit,
+  interactionActive = true,
   initialEnvelope,
   initialSavedEnvelope,
   initialRevision,
@@ -3139,6 +3141,14 @@ export function PageEditorHostRuntime({
   const imageAlignmentMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const imageAlignmentPickerMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const structuredTableClipboardRef = useRef<StructuredTableClipboardPayload | null>(null);
+  const editorCoreExtensionOptions = useMemo(
+    () => ({
+      tabindex: {
+        value: canEdit && interactionActive ? undefined : "-1"
+      }
+    }),
+    [canEdit, interactionActive]
+  );
 
   const handleStructuredTableClipboardCopy = useCallback(
     (payload: { cells: JSONContent[][]; kind: "column" | "row" }) => {
@@ -3567,7 +3577,7 @@ export function PageEditorHostRuntime({
         return true;
       }
     }),
-    []
+    [canEdit, interactionActive]
   );
   const [savedDocumentKey, setSavedDocumentKey] = useState(() => initialSavedDocumentKey);
   const [savedRevision, setSavedRevision] = useState(initialRevision);
@@ -3617,6 +3627,7 @@ export function PageEditorHostRuntime({
   const clearSurfaceClickSuppressionReleaseTimerUnmountRef = useRef<(() => void) | null>(null);
   const clearTransientBlockSelectionUnmountRef = useRef<((reason?: string) => void) | null>(null);
   const isEditable = canEdit;
+  const isInteractionActive = interactionActive && isEditable;
   const overlayOwnerDocument = overlayRoot.ownerDocument;
   const overlayOwnerWindow = overlayOwnerDocument.defaultView;
   useEffect(() => {
@@ -5348,22 +5359,24 @@ export function PageEditorHostRuntime({
 
   useEffect(() => {
     editableRef.current = isEditable;
-    if (!isEditable) {
-      cancelPendingTimers();
-      setOwnedHoverTarget(null);
-      setCommandSelector(null);
-      closeImagePicker({ restoreSelection: false });
-      closeImageOptions({ focusEditor: false });
-      closeImageAlignmentMenu({ focusEditor: false });
-      clearDocseraImagePreviewState();
-      setImageFullscreenOpen(false);
-      setImageFullscreenSession(null);
-      finalizeImageResizeSession({ commit: false });
-      setBlockActionMenu(null);
-      setBlockTurnIntoMenu(null);
-      clearTransientBlockSelection();
-      clearBlockDragSession();
+    if (isInteractionActive) {
+      return;
     }
+
+    cancelPendingTimers();
+    setOwnedHoverTarget(null);
+    setCommandSelector(null);
+    closeImagePicker({ restoreSelection: false });
+    closeImageOptions({ focusEditor: false });
+    closeImageAlignmentMenu({ focusEditor: false });
+    clearDocseraImagePreviewState();
+    setImageFullscreenOpen(false);
+    setImageFullscreenSession(null);
+    finalizeImageResizeSession({ commit: false });
+    setBlockActionMenu(null);
+    setBlockTurnIntoMenu(null);
+    clearTransientBlockSelection();
+    clearBlockDragSession();
   }, [
     clearBlockDragSession,
     clearTransientBlockSelection,
@@ -5371,6 +5384,7 @@ export function PageEditorHostRuntime({
     closeImageOptions,
     closeImagePicker,
     finalizeImageResizeSession,
+    isInteractionActive,
     isEditable
   ]);
 
@@ -5692,6 +5706,7 @@ export function PageEditorHostRuntime({
   }, []);
 
   const editor = useEditor({
+    coreExtensionOptions: editorCoreExtensionOptions,
     editable: isEditable,
     editorProps,
     extensions: editorExtensions,
@@ -5751,11 +5766,11 @@ export function PageEditorHostRuntime({
         scheduleAutosave();
       }
     }
-  }, [editorExtensions, editorProps, initialSessionIsClean, isEditable]);
+  }, [editorExtensions]);
   const mountedEditor = editor && editorRef.current === editor && !editor.isDestroyed ? editor : null;
 
   useEffect(() => {
-    if (!editor || !isEditable) {
+    if (!editor || !isInteractionActive) {
       clearGutterRangeGesture({ clearSelection: true, reason: "access-loss" });
       return;
     }
@@ -5774,10 +5789,10 @@ export function PageEditorHostRuntime({
     return () => {
       editor.off("transaction", handleTransaction);
     };
-  }, [clearGutterRangeGesture, clearTransientBlockSelection, editor, isEditable]);
+  }, [clearGutterRangeGesture, clearTransientBlockSelection, editor, isInteractionActive]);
 
   useEffect(() => {
-    if (!editor || !isEditable) {
+    if (!editor || !isInteractionActive) {
       clearGutterRangeGesture({ clearSelection: true, reason: "access-loss" });
       return;
     }
@@ -5863,7 +5878,7 @@ export function PageEditorHostRuntime({
     clearGutterRangeGesture,
     clearTransientBlockSelection,
     editor,
-    isEditable,
+    isInteractionActive,
     overlayOwnerDocument,
     overlayRoot,
     startBlankGutterRangeGesture
@@ -5891,6 +5906,10 @@ export function PageEditorHostRuntime({
     }
 
     const ownerDocument = overlayRoot.ownerDocument;
+    if (!isInteractionActive) {
+      return undefined;
+    }
+
     return subscribeToPageOwnershipHandoff(ownerDocument, (detail) => {
       if (detail.reason !== "page-create-inline-title" || detail.pageSysId !== pageSysId) {
         return;
@@ -5902,25 +5921,26 @@ export function PageEditorHostRuntime({
 
       releaseStructuralCellSelectionOwnership(mountedEditor);
     });
-  }, [mountedEditor, overlayRoot, pageSysId]);
+  }, [isInteractionActive, mountedEditor, overlayRoot, pageSysId]);
 
   useEffect(() => {
     if (!mountedEditor) {
       return;
     }
 
-    mountedEditor.setEditable(isEditable);
-    if (trySetEditorTabIndex(mountedEditor, isEditable)) {
-      return;
-    }
-
-    queueMicrotask(() => {
+    const desiredTabIndex = isInteractionActive && isEditable;
+    const applyTabIndex = () => {
       if (disposedRef.current || (mountedEditor as Editor & { isDestroyed?: boolean }).isDestroyed) {
         return;
       }
-      void trySetEditorTabIndex(mountedEditor, isEditable);
-    });
-  }, [isEditable, mountedEditor]);
+
+      void trySetEditorTabIndex(mountedEditor, desiredTabIndex);
+    };
+
+    mountedEditor.setEditable(isEditable);
+    applyTabIndex();
+    queueMicrotask(applyTabIndex);
+  }, [isEditable, isInteractionActive, mountedEditor]);
 
   const overlayThemeClass = useMemo(
     () => (theme === "dark" ? "docsera-editor-runtime--dark" : "docsera-editor-runtime--light"),
@@ -5963,7 +5983,7 @@ export function PageEditorHostRuntime({
   }, [commandSelector, editor, hoverTarget, imageOptionsSession, overlayOwnerDocument, overlayOwnerWindow, scheduleOverlayMeasurement]);
 
   useEffect(() => {
-    if (!editor || !isEditable) {
+    if (!editor || !isInteractionActive) {
       return;
     }
 
@@ -6001,16 +6021,17 @@ export function PageEditorHostRuntime({
     return () => {
       overlayOwnerDocument.removeEventListener("pointermove", handlePointerMove, true);
     };
-  }, [editor, isEditable, overlayOwnerDocument, scheduleOverlayMeasurement]);
+  }, [editor, isInteractionActive, overlayOwnerDocument, scheduleOverlayMeasurement]);
 
   useEffect(() => {
     if (
-      !commandSelector &&
-      !blockActionMenu &&
-      !blockTurnIntoMenu &&
-      !imageOptionsSession &&
-      !imageAlignmentMenu &&
-      !imageAlignmentPickerMenu
+      !isInteractionActive ||
+      (!commandSelector &&
+        !blockActionMenu &&
+        !blockTurnIntoMenu &&
+        !imageOptionsSession &&
+        !imageAlignmentMenu &&
+        !imageAlignmentPickerMenu)
     ) {
       return;
     }
@@ -6099,12 +6120,13 @@ export function PageEditorHostRuntime({
     imageAlignmentPickerMenu,
     imageAlignmentPickerMenuId,
     imageOptionsSession,
+    isInteractionActive,
     overlayOwnerDocument,
     overlayRoot
   ]);
 
   useEffect(() => {
-    if (!imageOptionsSession || !imageAlignmentMenu) {
+    if (!isInteractionActive || !imageOptionsSession || !imageAlignmentMenu) {
       return;
     }
 
@@ -6122,10 +6144,10 @@ export function PageEditorHostRuntime({
     return () => {
       overlayOwnerDocument.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [closeImageAlignmentMenu, imageAlignmentMenu, imageOptionsSession, overlayOwnerDocument]);
+  }, [closeImageAlignmentMenu, imageAlignmentMenu, imageOptionsSession, isInteractionActive, overlayOwnerDocument]);
 
   useEffect(() => {
-    if (!imageOptionsSession || !imageAlignmentPickerMenu) {
+    if (!isInteractionActive || !imageOptionsSession || !imageAlignmentPickerMenu) {
       return;
     }
 
@@ -6143,7 +6165,7 @@ export function PageEditorHostRuntime({
     return () => {
       overlayOwnerDocument.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [closeImageAlignmentPickerMenu, imageAlignmentPickerMenu, imageOptionsSession, overlayOwnerDocument]);
+  }, [closeImageAlignmentPickerMenu, imageAlignmentPickerMenu, imageOptionsSession, isInteractionActive, overlayOwnerDocument]);
 
   useEffect(() => () => {
     if (overlayMeasurementFrameRef.current !== null) {
@@ -7426,7 +7448,7 @@ export function PageEditorHostRuntime({
         ref={surfaceRef}
         className={`docsera-editor-runtime__surface${blockDragState ? " docsera-editor-runtime__surface--block-dragging" : ""}`}
         onClick={(event) => {
-          if (!editor || !isEditable || !(event.target instanceof HTMLElement)) return;
+          if (!editor || !isInteractionActive || !(event.target instanceof HTMLElement)) return;
           if (suppressSurfaceClickUntilPointerUpRef.current) {
             event.preventDefault();
             event.stopPropagation();
@@ -8087,7 +8109,7 @@ export function PageEditorHostRuntime({
               </div>
             ) : null}
 
-            {mountedEditor && imageOptionsSession && imageOptionsPanelStyle ? (
+            {isInteractionActive && mountedEditor && imageOptionsSession && imageOptionsPanelStyle ? (
               <ImageOptionsPanel
                 blockIndex={imageOptionsSession.blockIndex}
                 editor={mountedEditor}
@@ -8104,29 +8126,35 @@ export function PageEditorHostRuntime({
               />
             ) : null}
 
-            <CompactTextToolbar
-              canEdit={isEditable}
-              editor={mountedEditor}
-              ownerDocument={overlayOwnerDocument}
-              ownerWindow={overlayOwnerWindow}
-              overlayRoot={overlayRoot}
-            />
-            <TableControlsOverlay
-              editor={mountedEditor}
-              onStructuredTableClipboardCopy={handleStructuredTableClipboardCopy}
-              overlayRoot={overlayRoot}
-            />
-            <ImagePickerDialog
-              isOpen={imagePickerSession !== null}
-              mediaAdapter={mediaAdapter}
-              onClose={() => {
-                closeImagePicker({ restoreSelection: true });
-              }}
-              onInsert={insertImageFromPicker}
-              overlayRoot={overlayRoot}
-              sessionId={imagePickerSession?.sessionId ?? ""}
-            />
-            {imageFullscreenSession ? (
+            {isInteractionActive && mountedEditor ? (
+              <CompactTextToolbar
+                canEdit={isEditable}
+                editor={mountedEditor}
+                ownerDocument={overlayOwnerDocument}
+                ownerWindow={overlayOwnerWindow}
+                overlayRoot={overlayRoot}
+              />
+            ) : null}
+            {isInteractionActive && mountedEditor ? (
+              <TableControlsOverlay
+                editor={mountedEditor}
+                onStructuredTableClipboardCopy={handleStructuredTableClipboardCopy}
+                overlayRoot={overlayRoot}
+              />
+            ) : null}
+            {isInteractionActive ? (
+              <ImagePickerDialog
+                isOpen={imagePickerSession !== null}
+                mediaAdapter={mediaAdapter}
+                onClose={() => {
+                  closeImagePicker({ restoreSelection: true });
+                }}
+                onInsert={insertImageFromPicker}
+                overlayRoot={overlayRoot}
+                sessionId={imagePickerSession?.sessionId ?? ""}
+              />
+            ) : null}
+            {isInteractionActive && imageFullscreenSession ? (
               <ImageFullscreenViewer
                 overlayRoot={overlayRoot}
                 isOpen={imageFullscreenOpen}

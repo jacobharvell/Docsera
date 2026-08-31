@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   PageEditorHost,
+  type PageEditorCanonicalHandoffResult,
   type PageEditorHostFailure,
   type PageEditorRecoverySnapshot,
   type PageEditorStatusState
@@ -11,6 +12,8 @@ import { PublishedDocumentReader } from "./PublishedDocumentReader";
 import type { PageBodySaveResult, WorkspaceMode } from "../../shared/types/docsera";
 import type { WorkspaceMediaLoader } from "../../shared/types/docsera";
 import type { WorkspacePageView } from "./workspaceViewModels";
+import type { WorkspaceAuthoringSurface } from "./workspaceAuthoringSurface";
+import { WorkspaceMarkdownSourcePanel } from "./WorkspaceMarkdownSourcePanel";
 
 type WorkspaceMainPaneProps = {
   bodyNotice?: {
@@ -20,6 +23,7 @@ type WorkspaceMainPaneProps = {
   } | null;
   bodyState: "loading" | "ready";
   editorInitialSavedEnvelope?: DocseraDocumentEnvelope;
+  editorCanonicalEnvelope?: DocseraDocumentEnvelope | null;
   mediaAdapter?: EditorMediaAdapter;
   loadMedia?: WorkspaceMediaLoader;
   page: WorkspacePageView | null;
@@ -58,6 +62,16 @@ type WorkspaceMainPaneProps = {
   }) => void;
   onShowCreatePage: () => void;
   onAccessLost: () => void;
+  authoringSurface?: WorkspaceAuthoringSurface;
+  markdownSourceEditable?: boolean;
+  markdownSourceRetryNonce?: number;
+  sourceDiscardNonce?: number;
+  sourceSessionPageSysId?: string;
+  onSourceBodyChange?: (envelope: DocseraDocumentEnvelope) => PageEditorCanonicalHandoffResult;
+  onSourceDiscardComplete?: () => void;
+  onSourceDiscardInvalidDraft?: () => void;
+  onSourceInvalidChange?: (state: { errorMessage: string; isInvalid: boolean; isUnavailable: boolean; pageSysId: string }) => void;
+  onSourceTitleChange?: (title: string) => void;
   sessionKey: string;
   theme: "dark" | "light";
   editorFailure: PageEditorHostFailure | null;
@@ -245,6 +259,7 @@ export function WorkspaceMainPane({
   bodyNotice,
   bodyState,
   editorInitialSavedEnvelope,
+  editorCanonicalEnvelope,
   mediaAdapter,
   loadMedia,
   page,
@@ -276,6 +291,16 @@ export function WorkspaceMainPane({
   onStatusChange,
   onShowCreatePage,
   onAccessLost,
+  authoringSurface = "visual",
+  markdownSourceEditable = true,
+  markdownSourceRetryNonce = 0,
+  sourceDiscardNonce = 0,
+  sourceSessionPageSysId = "",
+  onSourceBodyChange,
+  onSourceDiscardComplete,
+  onSourceDiscardInvalidDraft,
+  onSourceInvalidChange,
+  onSourceTitleChange,
   sessionKey,
   theme,
   editorFailure,
@@ -340,28 +365,45 @@ export function WorkspaceMainPane({
     workspaceMode === "edit" &&
     !showBodyPending &&
     (page.contentState !== "ready" || Boolean(editorFailure));
-  const canEditPageTitle = workspaceMode === "edit" && canManagePageSettings && !editAccessLost;
+  const canEditPageTitle = workspaceMode === "edit" && canManagePageSettings && !editAccessLost && authoringSurface === "visual";
   const displayPageTitle = pageTitleValue !== undefined ? pageTitleValue : page.title || "Untitled page";
+  const sourceEnvelope = editorCanonicalEnvelope ?? editorInitialSavedEnvelope ?? page.contentEnvelope;
+  const mainLabelProps =
+    authoringSurface === "markdown"
+      ? { "aria-label": displayPageTitle }
+      : { "aria-labelledby": "docsera-page-title" };
+  const showMarkdownSource =
+    workspaceMode === "edit" &&
+    Boolean(page.contentEnvelope) &&
+    Boolean(sourceEnvelope) &&
+    Boolean(sourceSessionPageSysId) &&
+    page.sysId === sourceSessionPageSysId &&
+    Boolean(onSourceBodyChange) &&
+    Boolean(onSourceInvalidChange) &&
+    Boolean(onSourceTitleChange) &&
+    Boolean(onSourceDiscardInvalidDraft);
 
   return (
-    <main className="docsera-main" aria-labelledby="docsera-page-title">
+    <main className="docsera-main" {...mainLabelProps}>
       <article className={`docsera-main__surface${workspaceMode === "edit" ? " docsera-main__surface--editor" : ""}`}>
-        <div className="docsera-main__intro">
-          <div className="docsera-main__page-header">
-            <InlinePageTitle
-              active={canEditPageTitle && !showBodyPending && pageTitleActive}
-              canEdit={canEditPageTitle}
-              saveError={pageTitleSaveError}
-              onCancel={onPageTitleCancel}
-              onChange={onPageTitleChange}
-              onCommit={onPageTitleCommit}
-              onStart={onPageTitleStart}
-              pageSysId={page.sysId}
-              title={displayPageTitle}
-              validationError={pageTitleValidationError}
-            />
+        {authoringSurface === "visual" ? (
+          <div className="docsera-main__intro">
+            <div className="docsera-main__page-header">
+              <InlinePageTitle
+                active={canEditPageTitle && !showBodyPending && pageTitleActive}
+                canEdit={canEditPageTitle}
+                saveError={pageTitleSaveError}
+                onCancel={onPageTitleCancel}
+                onChange={onPageTitleChange}
+                onCommit={onPageTitleCommit}
+                onStart={onPageTitleStart}
+                pageSysId={page.sysId}
+                title={displayPageTitle}
+                validationError={pageTitleValidationError}
+              />
+            </div>
           </div>
-        </div>
+        ) : null}
 
         {bodyNotice ? (
           <section className="docsera-main__reader-notice" role={bodyNotice.kind}>
@@ -410,10 +452,28 @@ export function WorkspaceMainPane({
           />
         ) : page.contentEnvelope ? (
           <>
+            {showMarkdownSource ? (
+              <WorkspaceMarkdownSourcePanel
+                authoringSurface={authoringSurface}
+                canonicalEnvelope={sourceEnvelope ?? page.contentEnvelope}
+                canonicalTitle={displayPageTitle}
+                discardNonce={sourceDiscardNonce}
+                editable={markdownSourceEditable}
+                handoffRetryNonce={markdownSourceRetryNonce ?? 0}
+                pageSysId={page.sysId}
+                visible={authoringSurface === "markdown"}
+                onBodyChange={onSourceBodyChange}
+                onDiscardComplete={onSourceDiscardComplete}
+                onDiscardInvalidDraft={onSourceDiscardInvalidDraft}
+                onInvalidChange={onSourceInvalidChange}
+                onTitleChange={onSourceTitleChange}
+              />
+            ) : null}
             {sessionKey ? (
-              <div className="docsera-main__editor-host" hidden={showBodyPending}>
+              <div className="docsera-main__editor-host" hidden={showBodyPending || authoringSurface === "markdown"}>
                 <PageEditorHost
                   canEdit={canEditPageBody && !editAccessLost}
+                  interactionActive={authoringSurface === "visual"}
                   initialEnvelope={page.contentEnvelope}
                   initialSavedEnvelope={editorInitialSavedEnvelope}
                   initialRevision={page.page.draftRevision ?? 0}
@@ -443,3 +503,9 @@ export function WorkspaceMainPane({
     </main>
   );
 }
+
+
+
+
+
+

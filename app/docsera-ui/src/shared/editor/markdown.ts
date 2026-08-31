@@ -1078,7 +1078,7 @@ function parseDirectiveLabel(node: RecordValue): CanonicalNode[] | DocseraMarkdo
   return parsePhrasing((firstChild as RecordValue).children as unknown[] | undefined);
 }
 
-function parseDirectiveBody(node: RecordValue, skipLabel = false): CanonicalNode[] | DocseraMarkdownConversionFailure {
+function parseDirectiveBody(node: RecordValue, skipLabel = false, sourceText?: string): CanonicalNode[] | DocseraMarkdownConversionFailure {
   const children = Array.isArray(node.children) ? node.children : [];
   const bodyChildren = skipLabel ? children.slice(1) : children;
 
@@ -1094,12 +1094,13 @@ function parseDirectiveBody(node: RecordValue, skipLabel = false): CanonicalNode
     return createFailure("invalid-directive", `${String(node.name)} requires a non-empty body.`);
   }
 
-  return parseFlow(bodyChildren);
+  return parseFlow(bodyChildren, sourceText);
 }
 
 function parseTableCellLike(
   node: RecordValue,
-  type: "tableCell" | "tableHeader"
+  type: "tableCell" | "tableHeader",
+  sourceText?: string
 ): CanonicalNode | DocseraMarkdownConversionFailure {
   const attrs = parseDirectiveAttributes(node, ["align", "colspan", "colwidth", "rowspan"]);
   if (isFailure(attrs)) {
@@ -1136,7 +1137,7 @@ function parseTableCellLike(
     }
   }
 
-  const content = parseDirectiveBody(node);
+  const content = parseDirectiveBody(node, false, sourceText);
   if (isFailure(content)) {
     return content;
   }
@@ -1153,7 +1154,26 @@ function parseTableCellLike(
   };
 }
 
-function parseFlow(nodes: unknown[] | undefined): CanonicalNode[] | DocseraMarkdownConversionFailure {
+function getNodeSourceSlice(node: RecordValue, sourceText: string | undefined): string | null {
+  if (typeof sourceText !== "string") {
+    return null;
+  }
+
+  const rawPosition = (node as Record<string, unknown>).position;
+  if (!isRecord(rawPosition) || !isRecord(rawPosition.start) || !isRecord(rawPosition.end)) {
+    return null;
+  }
+
+  const start = Number(rawPosition.start.offset);
+  const end = Number(rawPosition.end.offset);
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end < start || end > sourceText.length) {
+    return null;
+  }
+
+  return sourceText.slice(start, end);
+}
+
+function parseFlow(nodes: unknown[] | undefined, sourceText?: string): CanonicalNode[] | DocseraMarkdownConversionFailure {
   const result: CanonicalNode[] = [];
 
   for (const node of Array.isArray(nodes) ? nodes : []) {
@@ -1184,6 +1204,23 @@ function parseFlow(nodes: unknown[] | undefined): CanonicalNode[] | DocseraMarkd
       }
       case "list": {
         const items = Array.isArray(node.children) ? node.children : [];
+        const sourceSlice = getNodeSourceSlice(node, sourceText);
+        const loneEmptyItem =
+          items.length === 1 &&
+          isRecord(items[0]) &&
+          items[0].type === "listItem" &&
+          Array.isArray(items[0].children) &&
+          items[0].children.length === 0;
+        const rawMarkerText = sourceSlice?.trim() ?? "";
+
+        if (loneEmptyItem && /^(?:[*+-]|\d+[.)])$/.test(rawMarkerText)) {
+          result.push({
+            type: "paragraph",
+            content: [{ type: "text", text: rawMarkerText }]
+          });
+          break;
+        }
+
         const checkedFlags = items.map((item) => (isRecord(item) && typeof item.checked === "boolean" ? item.checked : null));
         const isTaskList = checkedFlags.some((checked) => checked !== null);
         if (isTaskList && checkedFlags.some((checked) => checked === null)) {
@@ -1196,7 +1233,7 @@ function parseFlow(nodes: unknown[] | undefined): CanonicalNode[] | DocseraMarkd
             return createFailure("invalid-markdown", "Markdown list structure is malformed.");
           }
 
-          const parsedChildren = parseFlow(item.children as unknown[] | undefined);
+          const parsedChildren = parseFlow(item.children as unknown[] | undefined, sourceText);
           if (isFailure(parsedChildren)) {
             return parsedChildren;
           }
@@ -1231,7 +1268,7 @@ function parseFlow(nodes: unknown[] | undefined): CanonicalNode[] | DocseraMarkd
         break;
       }
       case "blockquote": {
-        const content = parseFlow(node.children as unknown[] | undefined);
+        const content = parseFlow(node.children as unknown[] | undefined, sourceText);
         if (isFailure(content)) {
           return content;
         }
@@ -1381,7 +1418,7 @@ function parseFlow(nodes: unknown[] | undefined): CanonicalNode[] | DocseraMarkd
           if (!DOCSERA_ALLOWED_ORDERED_LIST_TYPES.has(attrs.type ?? "")) {
             return createFailure("invalid-directive", "Docsera ordered list type is unsupported.");
           }
-          const content = parseDirectiveBody(node);
+          const content = parseDirectiveBody(node, false, sourceText);
           if (isFailure(content)) {
             return content;
           }
@@ -1403,7 +1440,7 @@ function parseFlow(nodes: unknown[] | undefined): CanonicalNode[] | DocseraMarkd
           if (isFailure(attrs)) {
             return attrs;
           }
-          const items = parseDirectiveBody(node);
+          const items = parseDirectiveBody(node, false, sourceText);
           if (isFailure(items)) {
             return items;
           }
@@ -1424,7 +1461,7 @@ function parseFlow(nodes: unknown[] | undefined): CanonicalNode[] | DocseraMarkd
           if (isFailure(label)) {
             return label;
           }
-          const body = parseDirectiveBody(node, true);
+          const body = parseDirectiveBody(node, true, sourceText);
           if (isFailure(body)) {
             return body;
           }
@@ -1444,7 +1481,7 @@ function parseFlow(nodes: unknown[] | undefined): CanonicalNode[] | DocseraMarkd
           if (isFailure(attrs)) {
             return attrs;
           }
-          const columns = parseDirectiveBody(node);
+          const columns = parseDirectiveBody(node, false, sourceText);
           if (isFailure(columns)) {
             return columns;
           }
@@ -1460,7 +1497,7 @@ function parseFlow(nodes: unknown[] | undefined): CanonicalNode[] | DocseraMarkd
           if (isFailure(attrs)) {
             return attrs;
           }
-          const content = parseDirectiveBody(node);
+          const content = parseDirectiveBody(node, false, sourceText);
           if (isFailure(content)) {
             return content;
           }
@@ -1476,7 +1513,7 @@ function parseFlow(nodes: unknown[] | undefined): CanonicalNode[] | DocseraMarkd
           if (isFailure(attrs)) {
             return attrs;
           }
-          const rows = parseDirectiveBody(node);
+          const rows = parseDirectiveBody(node, false, sourceText);
           if (isFailure(rows)) {
             return rows;
           }
@@ -1492,7 +1529,7 @@ function parseFlow(nodes: unknown[] | undefined): CanonicalNode[] | DocseraMarkd
           if (isFailure(attrs)) {
             return attrs;
           }
-          const cells = parseDirectiveBody(node);
+          const cells = parseDirectiveBody(node, false, sourceText);
           if (isFailure(cells)) {
             return cells;
           }
@@ -1504,7 +1541,7 @@ function parseFlow(nodes: unknown[] | undefined): CanonicalNode[] | DocseraMarkd
         }
 
         if (node.name === "docsera-table-header" || node.name === "docsera-table-cell") {
-          const cell = parseTableCellLike(node, node.name === "docsera-table-header" ? "tableHeader" : "tableCell");
+          const cell = parseTableCellLike(node, node.name === "docsera-table-header" ? "tableHeader" : "tableCell", sourceText);
           if (isFailure(cell)) {
             return cell;
           }
@@ -1598,7 +1635,7 @@ export function parseDocseraMarkdownDocument(markdown: unknown): ParseDocseraMar
     return createFailure("invalid-markdown", "Markdown source did not produce a valid document AST.");
   }
 
-  const blocks = parseFlow(ast.children);
+  const blocks = parseFlow(ast.children, frontmatter.body);
   if (isFailure(blocks)) {
     return blocks;
   }

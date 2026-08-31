@@ -1,5 +1,5 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from "@codemirror/commands";
-import { EditorState } from "@codemirror/state";
+import { Compartment, EditorState } from "@codemirror/state";
 import { markdown } from "@codemirror/lang-markdown";
 import { EditorView, keymap } from "@codemirror/view";
 import type {
@@ -33,6 +33,7 @@ type MarkdownSourceSession = {
   destroy: () => void;
   getSnapshot: () => MarkdownSourceSessionSnapshot;
   replaceFromCanonical: (input: { envelope: DocseraDocumentEnvelope; title: string }) => SerializeDocseraMarkdownResult;
+  setEditable: (editable: boolean) => void;
   subscribe: (listener: (snapshot: MarkdownSourceSessionSnapshot) => void) => () => void;
   view: EditorView;
 };
@@ -68,7 +69,7 @@ function createSnapshot(text: string, cleanText: string): MarkdownSourceSessionS
   };
 }
 
-function createEditorState(text: string, onDocChanged: () => void): EditorState {
+function createEditorState(text: string, onDocChanged: () => void, editableCompartment: Compartment, editable: boolean): EditorState {
   return EditorState.create({
     doc: text,
     extensions: [
@@ -76,6 +77,7 @@ function createEditorState(text: string, onDocChanged: () => void): EditorState 
       EditorView.lineWrapping,
       markdown(),
       history(),
+      editableCompartment.of(EditorView.editable.of(editable)),
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
       EditorView.contentAttributes.of({
         "aria-label": "Markdown source",
@@ -97,6 +99,7 @@ export function createMarkdownSourceSession(input: {
   onStateChange?: (snapshot: MarkdownSourceSessionSnapshot) => void;
   title: string;
   envelope: DocseraDocumentEnvelope;
+  editable?: boolean;
 }): CreateMarkdownSourceSessionResult {
   const serialized = serializeDocseraMarkdownDocument(input.title, input.envelope);
   if (!serialized.ok) {
@@ -110,6 +113,8 @@ export function createMarkdownSourceSession(input: {
   if (input.onStateChange) {
     listeners.add(input.onStateChange);
   }
+  const editableCompartment = new Compartment();
+  let currentEditable = input.editable ?? true;
 
   let cleanText = serialized.markdown;
   let currentSnapshot = createSnapshot(cleanText, cleanText);
@@ -122,7 +127,7 @@ export function createMarkdownSourceSession(input: {
 
   const view = new EditorView({
     parent: input.mount,
-    state: createEditorState(cleanText, emitSnapshot)
+    state: createEditorState(cleanText, emitSnapshot, editableCompartment, currentEditable)
   });
 
   currentSnapshot = createSnapshot(view.state.doc.toString(), cleanText);
@@ -147,12 +152,18 @@ export function createMarkdownSourceSession(input: {
         }
 
         cleanText = nextSerialized.markdown;
-        view.setState(createEditorState(cleanText, emitSnapshot));
+        view.setState(createEditorState(cleanText, emitSnapshot, editableCompartment, currentEditable));
         currentSnapshot = createSnapshot(cleanText, cleanText);
         for (const listener of listeners) {
           listener(currentSnapshot);
         }
         return nextSerialized;
+      },
+      setEditable(editable) {
+        currentEditable = editable;
+        view.dispatch({
+          effects: editableCompartment.reconfigure(EditorView.editable.of(editable))
+        });
       },
       subscribe(listener) {
         listeners.add(listener);

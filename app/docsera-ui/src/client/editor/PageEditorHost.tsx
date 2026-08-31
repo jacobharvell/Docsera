@@ -35,6 +35,7 @@ export type PageEditorStatusState = Readonly<{
 
 type PageEditorHostProps = {
   canEdit: boolean;
+  interactionActive?: boolean;
   initialEnvelope: DocseraDocumentEnvelope;
   initialSavedEnvelope?: DocseraDocumentEnvelope;
   initialRevision: number;
@@ -89,6 +90,7 @@ export function PageEditorHost(props: PageEditorHostProps) {
   function buildRuntimeProps(entry: HostRuntimeEntry, currentProps: PageEditorHostProps): Parameters<RuntimeModule["mountPageEditorHostRuntime"]>[0]["props"] {
     return {
       canEdit: currentProps.canEdit,
+      interactionActive: currentProps.interactionActive ?? true,
       initialEnvelope: currentProps.initialEnvelope,
       initialSavedEnvelope: currentProps.initialSavedEnvelope,
       initialRevision: currentProps.initialRevision,
@@ -182,6 +184,7 @@ export function PageEditorHost(props: PageEditorHostProps) {
     props.onError(null);
   }, [
     props.canEdit,
+    props.interactionActive,
     props.initialEnvelope,
     props.initialSavedEnvelope,
     props.initialRevision,
@@ -196,5 +199,11 @@ export function PageEditorHost(props: PageEditorHostProps) {
     props.theme
   ]);
 
-  return <div ref={hostRef} data-docsera-page-editor-host="true" />;
+  return (
+    <div
+      ref={hostRef}
+      data-docsera-page-editor-host="true"
+      data-docsera-page-editor-interaction-active={props.interactionActive === false ? "false" : "true"}
+    />
+  );
 }

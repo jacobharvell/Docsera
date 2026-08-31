@@ -61,10 +61,17 @@ test("keeps the same main-surface anchor contract when the ToC auto-hides at the
   expect(responsive).not.toContain("margin: 0 auto;");
 });
 
-test("centers workspace mode control and keeps the save status in the header before Publish", () => {
+test("keeps workspace mode controls in the right-side header cluster with matched heights", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
 
-  expect(css).toMatch(/\.docsera-header__action-slot--mode\s*{[^}]*position:\s*absolute;[^}]*left:\s*50%;[^}]*transform:\s*translate\(-50%, -50%\);/s);
+  expect(css).toMatch(/\.docsera-header__action-slot--mode\s*{[^}]*z-index:\s*1;[^}]*min-width:\s*0;/s);
+  expect(css).not.toMatch(/\.docsera-header__action-slot--mode\s*{[^}]*position:\s*absolute;/s);
+  expect(css).not.toMatch(/\.docsera-header__action-slot--mode\s*{[^}]*transform:\s*translate\(-50%, -50%\);/s);
+  expect(css).toMatch(/\.docsera-header__action-divider\s*{[^}]*width:\s*1px;[^}]*height:\s*20px;[^}]*background:\s*var\(--docsera-border\);/s);
+  expect(css).toMatch(/\.docsera-header__action-divider--mode-surface\s*{[^}]*margin-inline:\s*-2px;/s);
+  expect(css).toMatch(/\.docsera-header__mode-toggle\s*{[^}]*height:\s*32px;[^}]*box-sizing:\s*border-box;/s);
+  expect(css).toMatch(/\.docsera-header__surface-toggle\s*{[^}]*height:\s*32px;[^}]*box-sizing:\s*border-box;/s);
+  expect(css).toMatch(/\.docsera-header__mode-segment,\s*\.docsera-header__surface-segment\s*{[^}]*height:\s*100%;[^}]*box-sizing:\s*border-box;/s);
   expect(css).toMatch(/\.docsera-header__save-status\s*{[^}]*position:\s*relative;[^}]*width:\s*20px;[^}]*height:\s*20px;/s);
   expect(css).toContain(".docsera-header__save-status-sr-only {");
   expect(css).not.toContain(".docsera-main__save-status");

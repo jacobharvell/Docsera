@@ -104,6 +104,7 @@ export const testSuites = [
       "src/client/editor/editorBlockHover.test.ts",
       "src/client/app/App.editorHostBoundary.test.tsx",
       "src/client/editor/PageEditorHost.test.tsx",
+      "src/client/editor/PageEditorHostRuntime.interactionOwnership.test.tsx",
       "src/client/editor/PageEditorHostRuntime.initialization.test.tsx",
       "src/client/editor/PageEditorHostRuntime.commands.test.tsx",
       "src/client/editor/PageEditorHostRuntime.drag.test.tsx",
@@ -114,7 +115,8 @@ export const testSuites = [
       "src/client/editor/spikes/EditorRuntimeSpikeOutlet.test.tsx",
       "src/client/editor/tableStructuredClipboard.test.ts",
       "src/client/editor/tiptapRuntimeCompatibility.test.tsx",
-      "src/client/features/workspaces/PageBodyEditor.test.tsx"
+      "src/client/features/workspaces/PageBodyEditor.test.tsx",
+      "src/client/features/workspaces/WorkspaceMarkdownSourcePanel.test.tsx"
     ]
   },
   {

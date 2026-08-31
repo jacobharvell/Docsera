@@ -33,10 +33,37 @@ function getSourceEntry(map, suffix) {
   };
 }
 
+function getSourceOwners(suffix) {
+  return chunkMaps.flatMap((chunk) => {
+    const index = chunk.map.sources.findIndex((source) => source.endsWith(suffix));
+    if (index === -1) {
+      return [];
+    }
+
+    return [
+      {
+        chunk: chunk.chunk,
+        content: chunk.map.sourcesContent?.[index] ?? "",
+        source: chunk.map.sources[index]
+      }
+    ];
+  });
+}
+
 const mainChunkPath = path.join(staticRoot, "main.jsdbx");
 const mainMapPath = path.join(staticRoot, "main.jsdbx.map");
 const runtimeChunkPath = path.join(staticRoot, "PageEditorHostRuntime.jsdbx");
 const runtimeMapPath = path.join(staticRoot, "PageEditorHostRuntime.jsdbx.map");
+const chunkMaps = fs
+  .readdirSync(staticRoot)
+  .filter((file) => file.endsWith(".jsdbx.map"))
+  .map((mapFile) => {
+    const chunkFile = mapFile.slice(0, -4);
+    return {
+      chunk: chunkFile,
+      map: readJson(path.join(staticRoot, mapFile))
+    };
+  });
 
 const mainChunk = readText(mainChunkPath);
 const runtimeChunk = readText(runtimeChunkPath);
@@ -48,6 +75,7 @@ const runtimeSourceSuffix = "src/client/editor/PageEditorHostRuntime.tsx";
 const markdownSourceSessionSuffix = "src/client/editor/MarkdownSourceSession.ts";
 const readerSourceSuffix = "src/client/features/workspaces/PublishedDocumentReader.tsx";
 const workspaceMainPaneSourceSuffix = "src/client/features/workspaces/WorkspaceMainPane.tsx";
+const workspaceMarkdownSourcePanelSuffix = "src/client/features/workspaces/WorkspaceMarkdownSourcePanel.tsx";
 
 const hostSourceInMain = getSourceEntry(mainMap, hostSourceSuffix);
 const hostSourceInRuntime = getSourceEntry(runtimeMap, hostSourceSuffix);
@@ -56,6 +84,9 @@ const runtimeSourceInRuntime = getSourceEntry(runtimeMap, runtimeSourceSuffix);
 const markdownSourceSessionInMain = getSourceEntry(mainMap, markdownSourceSessionSuffix);
 const readerSourceInMain = getSourceEntry(mainMap, readerSourceSuffix);
 const workspaceMainPaneSourceInMain = getSourceEntry(mainMap, workspaceMainPaneSourceSuffix);
+const workspaceMarkdownSourcePanelInMain = getSourceEntry(mainMap, workspaceMarkdownSourcePanelSuffix);
+const workspaceMarkdownSourcePanelOwners = getSourceOwners(workspaceMarkdownSourcePanelSuffix);
+const markdownSourceSessionOwners = getSourceOwners(markdownSourceSessionSuffix);
 
 const readerBoundaryNeedles = [
   "TipTap",
@@ -121,12 +152,33 @@ const checks = [
     ok: runtimeChunk.includes("mountPageEditorHostRuntime")
   },
   {
-    label: "main.jsdbx keeps the lazy runtime boundary import path",
+    label: "main.jsdbx keeps the editor runtime boundary import path",
     ok: mainChunk.includes('import("./PageEditorHostRuntime.jsdbx")')
   },
   {
     label: "main.jsdbx stays free of CodeMirror authoring runtime code",
     ok: !mainChunk.includes("@codemirror")
+  },
+  {
+    detail: workspaceMarkdownSourcePanelInMain?.source ?? "",
+    label: "WorkspaceMarkdownSourcePanel source is owned by main.jsdbx",
+    ok: Boolean(workspaceMarkdownSourcePanelInMain) && workspaceMarkdownSourcePanelOwners.length === 1 && workspaceMarkdownSourcePanelOwners[0]?.chunk === "main.jsdbx"
+  },
+  {
+    label: "WorkspaceMarkdownSourcePanel source is not emitted into a lazy chunk",
+    ok: workspaceMarkdownSourcePanelOwners.every((owner) => owner.chunk === "main.jsdbx")
+  },
+  {
+    label: "WorkspaceMarkdownSourcePanel is no longer lazy-loaded from the main pane",
+    ok: !mainChunk.includes('import("./WorkspaceMarkdownSourcePanel")')
+  },
+  {
+    label: "MarkdownSourceSession source is not emitted into main.jsdbx",
+    ok: markdownSourceSessionInMain === null && markdownSourceSessionOwners.every((owner) => owner.chunk !== "main.jsdbx")
+  },
+  {
+    label: "MarkdownSourceSession source is emitted from a lazy chunk",
+    ok: markdownSourceSessionOwners.length > 0 && markdownSourceSessionOwners.some((owner) => owner.chunk !== "main.jsdbx")
   },
   {
     detail: readerSourceInMain?.source ?? "",
