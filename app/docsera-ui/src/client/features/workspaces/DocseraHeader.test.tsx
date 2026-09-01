@@ -138,28 +138,28 @@ describe("DocseraHeader publishing changes", () => {
       `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
       "utf8"
     );
-    const rootThemeBlock = source.match(/:root \{([\s\S]*?)\n\}/)?.[1] ?? "";
-    const darkThemeBlock = source.match(/:root\[data-docsera-theme="dark"\] \{([\s\S]*?)\n\}/)?.[1] ?? "";
-    const actionSlotModeBlock = source.match(/\.docsera-header__action-slot--mode \{([\s\S]*?)\n\}/)?.[1] ?? "";
-    const actionDividerBlock = source.match(/\.docsera-header__action-divider \{([\s\S]*?)\n\}/)?.[1] ?? "";
-    const actionDividerVariantBlock = source.match(/\.docsera-header__action-divider--mode-surface \{([\s\S]*?)\n\}/)?.[1] ?? "";
-    const actionDividerHiddenBlock = source.match(/\.docsera-header__action-divider--hidden \{([\s\S]*?)\n\}/)?.[1] ?? "";
-    const modeToggleBlock = source.match(/\.docsera-header__mode-toggle \{([\s\S]*?)\n\}/)?.[1] ?? "";
-    const surfaceToggleBlock = source.match(/\.docsera-header__surface-toggle \{([\s\S]*?)\n\}/)?.[1] ?? "";
-    const indicatorBlock = source.match(/\.docsera-header__segmented-indicator \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const rootThemeBlock = source.match(/:root \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
+    const darkThemeBlock = source.match(/:root\[data-docsera-theme="dark"\] \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
+    const actionSlotModeBlock = source.match(/\.docsera-header__action-slot--mode \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
+    const actionDividerBlock = source.match(/\.docsera-header__action-divider \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
+    const actionDividerVariantBlock = source.match(/\.docsera-header__action-divider--mode-surface \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
+    const actionDividerHiddenBlock = source.match(/\.docsera-header__action-divider--hidden \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
+    const modeToggleBlock = source.match(/\.docsera-header__mode-toggle \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
+    const surfaceToggleBlock = source.match(/\.docsera-header__surface-toggle \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
+    const indicatorBlock = source.match(/\.docsera-header__segmented-indicator \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
     const indicatorSecondPositionBlock =
       source.match(
-        /\.docsera-header__mode-toggle--edit \.docsera-header__segmented-indicator,\n\.docsera-header__surface-toggle--markdown \.docsera-header__segmented-indicator \{([\s\S]*?)\n\}/
+        /\.docsera-header__mode-toggle--edit \.docsera-header__segmented-indicator,\r?\n\.docsera-header__surface-toggle--markdown \.docsera-header__segmented-indicator \{([\s\S]*?)\r?\n\}/
       )?.[1] ?? "";
-    const surfaceToggleHiddenBlock = source.match(/\.docsera-header__surface-toggle--hidden \{([\s\S]*?)\n\}/)?.[1] ?? "";
-    const modeSegmentBlock = source.match(/\.docsera-header__mode-segment,\n\.docsera-header__surface-segment \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const surfaceToggleHiddenBlock = source.match(/\.docsera-header__surface-toggle--hidden \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
+    const modeSegmentBlock = source.match(/\.docsera-header__mode-segment,\r?\n\.docsera-header__surface-segment \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
     const activeSegmentBlock =
-      source.match(/\.docsera-header__mode-segment--active,\n\.docsera-header__surface-segment--active \{([\s\S]*?)\n\}/)?.[1] ?? "";
+      source.match(/\.docsera-header__mode-segment--active,\r?\n\.docsera-header__surface-segment--active \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
     const surfaceSegmentBlock =
-      source.match(/\.docsera-header__surface-segment \{([\s\S]*?)\n\}\n\n\.docsera-header__surface-segment svg/)?.[1] ?? "";
-    const publishPanelBlock = source.match(/\.docsera-header__publish-panel \{([\s\S]*?)\n\}/)?.[1] ?? "";
-    const publishPanelHiddenBlock = source.match(/\.docsera-header__publish-panel--hidden \{([\s\S]*?)\n\}/)?.[1] ?? "";
-    const sourceEditorFocusedBlock = source.match(/\.docsera-main__source-editor \.cm-editor\.cm-focused \{([\s\S]*?)\n\}/)?.[1] ?? "";
+      source.match(/\.docsera-header__surface-segment \{([\s\S]*?)\r?\n\}\r?\n\r?\n\.docsera-header__surface-segment svg/)?.[1] ?? "";
+    const publishPanelBlock = source.match(/\.docsera-header__publish-panel \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
+    const publishPanelHiddenBlock = source.match(/\.docsera-header__publish-panel--hidden \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
+    const sourceEditorFocusedBlock = source.match(/\.docsera-main__source-editor \.cm-editor\.cm-focused \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
 
     expect(rootThemeBlock).toContain(
       "--docsera-segmented-track: color-mix(in srgb, var(--docsera-surface) 72%, var(--docsera-surface-muted) 28%);"
@@ -206,7 +206,7 @@ describe("DocseraHeader publishing changes", () => {
     expect(activeSegmentBlock).not.toContain("background:");
     expect(activeSegmentBlock).not.toContain("box-shadow:");
     expect(source).toMatch(
-      /\.docsera-header__mode-segment--active:hover,\n\.docsera-header__surface-segment--active:hover \{\s*color: #ffffff;\s*\}/
+      /\.docsera-header__mode-segment--active:hover,\r?\n\.docsera-header__surface-segment--active:hover \{\s*color: #ffffff;\s*\}/
     );
     expect(surfaceSegmentBlock).toContain("min-width: 32px;");
     expect(surfaceSegmentBlock).toContain("padding: 6px;");

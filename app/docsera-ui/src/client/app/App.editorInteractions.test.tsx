@@ -1004,5 +1004,53 @@ describe("App editor interactions integration", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Edit" })).toHaveAttribute("aria-pressed", "true"));
   });
 
+  it("blocks navigation while markdown source is invalid until the draft is explicitly discarded", async () => {
+    const pages = [
+      createPageRecord(),
+      createPageRecord({
+        sysId: "page-002",
+        draftTitle: "Reference",
+        draftSlug: "reference",
+        draftSlugNormalized: "reference",
+        publishedTitle: "Reference",
+        publishedSlug: "reference",
+        publishedSlugNormalized: "reference"
+      })
+    ];
+    const listPages = vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", workspaceSlug, pages)
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { listPages });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitForEditWorkspaceMode();
+    await waitForEditorHostMounted();
+    await settleEditorHostReady();
+    fireEvent.click(screen.getByRole("button", { name: "Markdown" }));
+    await waitFor(() => expect(lastMarkdownSourcePanelProps).toMatchObject({ visible: true }));
+
+    act(() => {
+      lastMarkdownSourcePanelProps?.onInvalidChange?.({
+        errorMessage: "Markdown source contains invalid content.",
+        isInvalid: true,
+        isUnavailable: false,
+        pageSysId: "page-001"
+      });
+    });
+
+    expect(screen.getByRole("button", { name: "Markdown" })).toBeDisabled();
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Reference" }));
+
+    const discardDialog = await screen.findByRole("dialog", { name: "Unsaved changes" });
+    expect(window.location.search).toContain("page=overview");
+
+    fireEvent.click(within(discardDialog).getByRole("button", { name: "Discard changes" }));
+
+    await waitFor(() => expect(screen.getByRole("main", { name: "Reference" })).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Markdown" })).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(lastMarkdownSourcePanelProps).toMatchObject({ visible: true }));
+  });
+
 });
 

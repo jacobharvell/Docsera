@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 import {
@@ -24,8 +24,18 @@ import type {
 
 let deferHostReady = false;
 let hostReadyResolvers: Array<() => void> = [];
+let lastMarkdownSourcePanelProps: {
+  onInvalidChange?: (state: { errorMessage: string; isInvalid: boolean; isUnavailable: boolean; pageSysId: string }) => void;
+  visible?: boolean;
+} | null = null;
 let mockEditorHostMounts: Array<{ pageSysId: string; sessionKey: string }> = [];
 let mockEditorHostHandles = new Map<string, {
+  applyCanonicalEnvelope?: (envelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope>) => {
+    kind: "applied" | "unchanged";
+    nextEnvelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope>;
+  };
+  flush?: () => Promise<boolean>;
+  getCanonicalEnvelope?: () => ReturnType<typeof createEmptyDocseraDocumentEnvelope> | null;
   onOutlineChange?: (outline: Array<{ depth: number; id: string; text: string }>) => void;
   onSaveDraft?: (input: {
     draftContentJson: ReturnType<typeof createEmptyDocseraDocumentEnvelope>;
@@ -33,7 +43,17 @@ let mockEditorHostHandles = new Map<string, {
     pageSysId: string;
     readLatestDraftContentJson?: () => ReturnType<typeof createEmptyDocseraDocumentEnvelope> | null;
   }) => Promise<PageBodySaveResult>;
-  onStatusChange?: (state: { isDirty: boolean; isSaving: boolean }) => void;
+  onStatusChange?: (state: {
+    applyCanonicalEnvelope?: (envelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope>) => {
+      kind: "applied" | "unchanged";
+      nextEnvelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope>;
+    };
+    flush?: () => Promise<boolean>;
+    getCanonicalEnvelope?: () => ReturnType<typeof createEmptyDocseraDocumentEnvelope> | null;
+    isDirty: boolean;
+    isSaving: boolean;
+    status?: string;
+  }) => void;
   pageSysId: string;
   sessionKey: string;
 }>();
@@ -54,6 +74,22 @@ function latestMockEditorHost() {
   const handle = mockEditorHostHandles.get(latest.sessionKey);
   if (!handle) {
     throw new Error(`Expected mock editor host handle for session ${latest.sessionKey}.`);
+  }
+
+  return handle;
+}
+
+function currentPageMockEditorHost(pageSysId = "page-001") {
+  const match = [...mockEditorHostMounts]
+    .reverse()
+    .find((mount) => mount.pageSysId === pageSysId && mount.sessionKey);
+  if (!match) {
+    throw new Error(`Expected a mounted mock editor host for page ${pageSysId}.`);
+  }
+
+  const handle = mockEditorHostHandles.get(match.sessionKey);
+  if (!handle) {
+    throw new Error(`Expected mock editor host handle for session ${match.sessionKey}.`);
   }
 
   return handle;
@@ -82,13 +118,34 @@ vi.mock("../editor/PageEditorHost", () => ({
     }) => Promise<PageBodySaveResult>;
     pageSysId?: string;
     sessionKey?: string;
-    onStatusChange?: (state: { isDirty: boolean; isSaving: boolean }) => void;
+    onStatusChange?: (state: {
+      applyCanonicalEnvelope?: (envelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope>) => {
+        kind: "applied" | "unchanged";
+        nextEnvelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope>;
+      };
+      flush?: () => Promise<boolean>;
+      getCanonicalEnvelope?: () => ReturnType<typeof createEmptyDocseraDocumentEnvelope> | null;
+      isDirty: boolean;
+      isSaving: boolean;
+      status?: string;
+    }) => void;
   }) {
+    const emittedInitialSavedStatusRef = useRef("");
+
     useEffect(() => {
+      const flush = async () => true;
+      const getCanonicalEnvelope = () => createEmptyDocseraDocumentEnvelope();
+      const applyCanonicalEnvelope = (envelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope>) => ({
+        kind: "applied" as const,
+        nextEnvelope: envelope
+      });
       const normalizedPageSysId = pageSysId ?? "";
       const normalizedSessionKey = sessionKey ?? "";
       mockEditorHostMounts.push({ pageSysId: normalizedPageSysId, sessionKey: normalizedSessionKey });
       mockEditorHostHandles.set(normalizedSessionKey, {
+        applyCanonicalEnvelope,
+        flush,
+        getCanonicalEnvelope,
         onOutlineChange,
         onSaveDraft,
         onStatusChange,
@@ -96,7 +153,17 @@ vi.mock("../editor/PageEditorHost", () => ({
         sessionKey: normalizedSessionKey
       });
       onError?.(null);
-      onStatusChange?.({ isDirty: false, isSaving: false });
+      if (emittedInitialSavedStatusRef.current !== normalizedSessionKey) {
+        emittedInitialSavedStatusRef.current = normalizedSessionKey;
+        onStatusChange?.({
+          applyCanonicalEnvelope,
+          flush,
+          getCanonicalEnvelope,
+          isDirty: false,
+          isSaving: false,
+          status: "Saved"
+        });
+      }
       if (!onReadyStateChange) {
         return () => {
           mockEditorHostHandles.delete(normalizedSessionKey);
@@ -124,11 +191,22 @@ vi.mock("../editor/PageEditorHost", () => ({
   }
 }));
 
+vi.mock("../features/workspaces/WorkspaceMarkdownSourcePanel", () => ({
+  WorkspaceMarkdownSourcePanel: function MockWorkspaceMarkdownSourcePanel(props: {
+    onInvalidChange?: (state: { errorMessage: string; isInvalid: boolean; isUnavailable: boolean; pageSysId: string }) => void;
+    visible?: boolean;
+  }) {
+    lastMarkdownSourcePanelProps = props;
+    return props.visible ? <div data-docsera-markdown-source-panel="true" /> : null;
+  }
+}));
+
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   deferHostReady = false;
   hostReadyResolvers = [];
+  lastMarkdownSourcePanelProps = null;
   mockEditorHostMounts = [];
   mockEditorHostHandles = new Map();
   window.localStorage.clear();
@@ -137,6 +215,33 @@ afterEach(() => {
 });
 
 describe("App publishing changes integration", () => {
+  async function enterMarkdownSourceForPublishingTest() {
+    expect(await screen.findByRole("heading", { name: /Overview|New Guide/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Markdown" }));
+    await waitFor(() => expect(lastMarkdownSourcePanelProps).toMatchObject({ visible: true }));
+  }
+
+  function markCurrentSourceInvalid(state: Partial<{ errorMessage: string; isInvalid: boolean; isUnavailable: boolean }> = {}) {
+    act(() => {
+      lastMarkdownSourcePanelProps?.onInvalidChange?.({
+        errorMessage: state.errorMessage ?? "Markdown source contains invalid content.",
+        isInvalid: state.isInvalid ?? true,
+        isUnavailable: state.isUnavailable ?? false,
+        pageSysId: "page-001"
+      });
+    });
+  }
+
+  function emitCurrentEditorStatus(state: { isDirty: boolean; isSaving: boolean; status: string }) {
+    const host = currentPageMockEditorHost();
+    host.onStatusChange?.({
+      applyCanonicalEnvelope: host.applyCanonicalEnvelope,
+      flush: host.flush,
+      getCanonicalEnvelope: host.getCanonicalEnvelope,
+      ...state
+    });
+  }
+
   it("keeps Publish visually active while Page Settings save refreshes pending changes", async () => {
     const pendingRow = {
       attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
@@ -192,8 +297,8 @@ describe("App publishing changes integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
-    fireEvent.change(screen.getByDisplayValue("Overview"), { target: { value: "Overview Updated" } });
-    fireEvent.blur(screen.getByDisplayValue("Overview Updated"));
+    fireEvent.change(within(pageSettingsPanel).getByDisplayValue("Overview"), { target: { value: "Overview Updated" } });
+    fireEvent.blur(within(pageSettingsPanel).getByDisplayValue("Overview Updated"));
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
 
     await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
@@ -210,8 +315,8 @@ describe("App publishing changes integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Updated" }));
     const updatedSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(updatedSettingsPanel).getByRole("button", { name: "Overview Updated" }));
-    fireEvent.change(screen.getByDisplayValue("Overview Updated"), { target: { value: "Overview Clean" } });
-    fireEvent.blur(screen.getByDisplayValue("Overview Clean"));
+    fireEvent.change(within(updatedSettingsPanel).getByDisplayValue("Overview Updated"), { target: { value: "Overview Clean" } });
+    fireEvent.blur(within(updatedSettingsPanel).getByDisplayValue("Overview Clean"));
     fireEvent.click(within(updatedSettingsPanel).getByRole("button", { name: "Close page settings" }));
     await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByRole("button", { name: "No pending changes to publish" })).toBeDisabled());
@@ -376,6 +481,111 @@ describe("App publishing changes integration", () => {
     expect(publishWorkspace).toHaveBeenCalledTimes(4);
     const fourthCall = publishWorkspace.mock.calls[3][0];
     expect(fourthCall.commandId).not.toBe(firstCall.commandId);
+  }, 15000);
+
+  it.each([
+    ["invalid source", () => markCurrentSourceInvalid()],
+    ["unavailable source", () => markCurrentSourceInvalid({
+      errorMessage: "Markdown source is waiting for the visual editor to become available.",
+      isInvalid: false,
+      isUnavailable: true
+    })],
+    ["Unsaved editor status", () => emitCurrentEditorStatus({ isDirty: true, isSaving: false, status: "Unsaved" })],
+    ["Saving... editor status", () => emitCurrentEditorStatus({ isDirty: false, isSaving: true, status: "Saving…" })],
+    ["Changes not saved editor status", () => emitCurrentEditorStatus({ isDirty: true, isSaving: false, status: "Changes not saved" })]
+  ])("blocks workspace commands while the current page authoring state is %s", async (_label, markUnsettled) => {
+    const publishWorkspace = vi.fn(async () => {
+      throw new Error("publishWorkspace should not run while current-page authoring is unsettled.");
+    });
+    const discardAllWorkspace = vi.fn(async () => {
+      throw new Error("discardAllWorkspace should not run while current-page authoring is unsettled.");
+    });
+    const discardPageWorkspace = vi.fn(async () => {
+      throw new Error("discardPageWorkspace should not run while current-page authoring is unsettled.");
+    });
+
+    renderApp(App, "/?workspace=product-docs&mode=edit&page=overview", {
+      discardAllWorkspace,
+      discardPageWorkspace,
+      getWorkspacePendingChanges: vi.fn(async () => createPendingChangesResult([
+        {
+          attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+          category: "Modified",
+          firstPendingSequence: 1,
+          lastChangedOn: "2026-08-31 00:00:00",
+          navigable: true,
+          pageSysId: "page-001",
+          title: "Overview"
+        }
+      ])),
+      publishWorkspace
+    });
+
+    await enterMarkdownSourceForPublishingTest();
+    await waitFor(() => expect(currentPageMockEditorHost().sessionKey).toBeTruthy());
+
+    act(() => {
+      markUnsettled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    const dialog = await screen.findByRole("dialog", { name: "Changes Center" });
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Publish" })).toBeDisabled());
+    expect(within(dialog).getByRole("button", { name: "Discard all" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Undo changes to Overview" })).toBeDisabled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Publish" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Discard all" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Undo changes to Overview" }));
+
+    expect(publishWorkspace).not.toHaveBeenCalled();
+    expect(discardAllWorkspace).not.toHaveBeenCalled();
+    expect(discardPageWorkspace).not.toHaveBeenCalled();
+  }, 15000);
+
+  it("keeps settled saved source from blocking publish while persisted draft changes remain pending", async () => {
+    const publishWorkspace = vi.fn(async () => ({
+      changeSetId: "change-set-002",
+      changeSetRevision: 8,
+      pages: [
+        createPageRecord({
+          publicationState: "published",
+          publishedTitle: "Overview"
+        })
+      ],
+      pendingChanges: createPendingChangesResult([]),
+      publishedSnapshotSetId: "workspace-001-snapshot",
+      state: "succeeded" as const,
+      workspaceStateRevision: 4
+    }));
+
+    renderApp(App, "/?workspace=product-docs&mode=edit&page=overview", {
+      getWorkspacePendingChanges: vi.fn(async () => createPendingChangesResult([
+        {
+          attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+          category: "Modified",
+          firstPendingSequence: 1,
+          lastChangedOn: "2026-08-31 00:00:00",
+          navigable: true,
+          pageSysId: "page-001",
+          title: "Overview"
+        }
+      ])),
+      publishWorkspace
+    });
+
+    await enterMarkdownSourceForPublishingTest();
+
+    act(() => {
+      markCurrentSourceInvalid({ errorMessage: "", isInvalid: false, isUnavailable: false });
+      emitCurrentEditorStatus({ isDirty: false, isSaving: false, status: "Saved" });
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    const dialog = await screen.findByRole("dialog", { name: "Changes Center" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Publish" }));
+
+    await waitFor(() => expect(publishWorkspace).toHaveBeenCalledTimes(1));
   }, 15000);
 
   it("keeps publish success toast dismissal and timers scoped to the active toast", async () => {
