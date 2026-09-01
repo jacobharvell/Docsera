@@ -3676,7 +3676,6 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 
 .docsera-workspace__aside--collapsed {
   width: 0;
-  overflow: hidden;
   border-left-color: transparent;
 }
 

@@ -61,6 +61,16 @@ test("keeps the same main-surface anchor contract when the ToC auto-hides at the
   expect(responsive).not.toContain("margin: 0 auto;");
 });
 
+test("keeps the collapsed workspace ToC tab outside the outer aside clip boundary", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+
+  expect(css).toMatch(/\.docsera-workspace__aside\s*{[^}]*overflow:\s*visible;/s);
+  expect(css).toMatch(/\.docsera-workspace__aside--collapsed\s*{[^}]*width:\s*0;[^}]*border-left-color:\s*transparent;/s);
+  expect(css).not.toMatch(/\.docsera-workspace__aside--collapsed\s*{[^}]*overflow:\s*hidden;/s);
+  expect(css).toMatch(/\.docsera-toc-rail__toggle\s*{[^}]*left:\s*-24px;/s);
+  expect(css).toMatch(/\.docsera-toc-rail__clip\s*{[^}]*overflow:\s*hidden;/s);
+});
+
 test("keeps workspace mode controls in the right-side header cluster with matched heights", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
 
