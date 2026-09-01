@@ -180,7 +180,9 @@ For `app/docsera-ui`, use the managed validation commands:
 - `npm --prefix app/docsera-ui run test:suite -- <suite> [<suite> ...]`
 - `npm --prefix app/docsera-ui run validate`
 
-For bounded `app/docsera-ui` changes, run exact affected test files first when needed, then the relevant named logical suite or suites for the changed area and materially affected consumers. Do not run unrelated product-area suites by default. Use the complete suite for test-infrastructure changes, broad or uncertain shared behavior, cross-cutting state changes, or explicit integration checkpoints. `npm run validate` may exceed five minutes; allow at least 20 minutes for the full managed run, or split its managed test, build, and CSS-verification stages when the environment cannot sustain that duration.
+For bounded `app/docsera-ui` changes, run exact affected test files first when needed, then the relevant named logical suite or suites for the changed area and materially affected consumers. Do not run unrelated product-area suites by default. Broad, uncertain, shared, cross-cutting, or integration work may justify broader targeted validation, focused build/type/CSS checks, runtime checks, or relevant named managed suites, but it does not independently authorize the full managed frontend validation.
+
+Do not run `npm --prefix app/docsera-ui run validate` unless the current implementation brief explicitly requires the full managed frontend validation. Generic wording such as "normal validation", "appropriate validation", "full validation where appropriate", or similar language does not authorize this command. When the brief explicitly requires the full managed frontend validation, allow at least 20 minutes for the run, or split its managed test, build, and CSS-verification stages when the environment cannot sustain that duration.
 
 Do not start a second managed frontend validation/test run while one is active. Do not rely on raw long-running `vitest run` commands for diagnostics. Do not manually kill all Node processes to recover from a stuck run. When validation fails, report the managed timeout and cleanup result, not just the child exit code.
 
