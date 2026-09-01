@@ -100,6 +100,7 @@ test("listWorkspaces normalizes a double-wrapped live response", async () => {
       createResponseBody(
         {
           mode: "servicenow",
+          canCreateWorkspaces: true,
           items: [createWorkspaceView()],
           page: 2,
           pageSize: 10,
@@ -133,6 +134,32 @@ test("listWorkspaces normalizes a double-wrapped live response", async () => {
     roleLabel: "Admin",
     canManageSettings: true
   });
+  expect(result.canCreateWorkspaces).toBe(true);
+});
+
+test("listWorkspaces defaults missing creation capability to false", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(
+    createFetchResponse(
+      200,
+      createResponseBody(
+        {
+          mode: "servicenow",
+          items: [],
+          page: 1,
+          pageSize: 10,
+          totalCount: 0,
+          hasNextPage: false,
+          searchText: ""
+        },
+        2
+      )
+    )
+  );
+  globalThis.fetch = fetchMock as typeof fetch;
+
+  const result = await createServiceNowClient(runtime).listWorkspaces();
+
+  expect(result.canCreateWorkspaces).toBe(false);
 });
 
 test("getWorkspace still accepts the one-layer response contract", async () => {
@@ -299,6 +326,34 @@ test("createWorkspace maps provisioning failures into a safe error state", async
   expect(result).toMatchObject({
     state: "failed",
     errorMessage: "Workspace creation failed."
+  });
+});
+
+test("createWorkspace maps unauthorized creation into a safe error state", async () => {
+  const fetchMock = vi.fn().mockResolvedValue({
+    status: 403,
+    text: async () =>
+      JSON.stringify(
+        createResponseBody(
+          {
+            error: {
+              message: "You do not have permission to create workspaces."
+            }
+          },
+          2
+        )
+      )
+  });
+  globalThis.fetch = fetchMock as typeof fetch;
+
+  const result = await createServiceNowClient(runtime).createWorkspace({
+    name: "Forbidden Workspace",
+    shortDescription: ""
+  });
+
+  expect(result).toMatchObject({
+    state: "failed",
+    errorMessage: "You do not have permission to create workspaces."
   });
 });
 

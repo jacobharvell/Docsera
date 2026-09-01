@@ -162,6 +162,7 @@ function createClient(overrides: Partial<ServiceNowClient> = {}): ServiceNowClie
       throw new Error("ping should not be called in these tests");
     }),
     listWorkspaces: vi.fn(async () => ({
+      canCreateWorkspaces: true,
       items: [
         createWorkspace(),
         createWorkspace({
@@ -305,6 +306,7 @@ describe("App workspace shell integration", () => {
         new Promise((resolve) => {
           resolveListWorkspaces = () => {
             resolve({
+              canCreateWorkspaces: true,
               items: [],
               page: 1,
               pageSize: 10,
@@ -385,6 +387,7 @@ describe("App workspace shell integration", () => {
       return createPageListResult(mode === "edit" ? "edit" : "live", workspaceSlug, [createPageRecord()]);
     });
     const listWorkspaces = vi.fn(async () => ({
+      canCreateWorkspaces: true,
       items: [
         createWorkspace(),
         createWorkspace({ slug: "api-docs", sysId: "workspace-002", name: "API Docs" }),

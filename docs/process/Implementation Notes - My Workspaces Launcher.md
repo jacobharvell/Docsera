@@ -11,7 +11,8 @@ This note summarizes repo-side implementation behavior only. Accepted product re
 ## Page Behavior
 
 - The page is titled My Workspaces.
-- A primary New Workspace action is always available.
+- The workspace-list server response exposes `canCreateWorkspaces`, a server-evaluated Docsera Admin capability for the current user.
+- The primary New Workspace action appears only when `canCreateWorkspaces` is true.
 - The page lists active workspaces where the current user has Docsera Admin, Workspace Admin, or Workspace Editor capability.
 - The launcher body uses a single page intro plus a bordered list card that contains the search toolbar, workspace header row, row list, and pagination footer.
 - The launcher body follows the authoritative prototype styling for this surface: white page background in light mode, dark app background in dark mode, 1152px max content width, compact 40px primary actions, and a white list card with subtle slate toolbar and footer bands.
@@ -28,6 +29,7 @@ This note summarizes repo-side implementation behavior only. Accepted product re
 - Ordinary in-place search filtering does not expose a visible `Updating...` or progress label; stale-response protection remains internal.
 - A no-results state appears when the search filter matches nothing.
 - An empty state appears when the user has no included workspaces.
+- The empty state offers workspace creation only when `canCreateWorkspaces` is true; non-admin users are directed to request access instead.
 - Initial loading, error, empty, and no-results states all reuse the same launcher card shell instead of swapping to unrelated page layouts.
 - Search and page changes keep the toolbar, header row, and list card mounted while the next `listWorkspaces` request resolves.
 - Search-triggered refreshes preserve the currently rendered input and row shell, reset pagination to page 1, and ignore stale slower responses so focus and visible results do not jump backward.
@@ -37,6 +39,7 @@ This note summarizes repo-side implementation behavior only. Accepted product re
 ## Workspace Creation
 
 - New Workspace opens a modal.
+- Workspace creation is an authoritative server boundary: `POST /workspaces` rechecks effective Docsera Admin capability and returns HTTP 403 before provisioning when the current user is not authorized.
 - Workspace name is required.
 - Short description is optional.
 - The modal styling follows the authoritative My Workspaces prototype for backdrop, card shell, header, fields, helper note, and footer bands in both light and dark themes.

@@ -509,6 +509,7 @@ function createClient(overrides: Partial<ServiceNowClient> = {}): ServiceNowClie
       throw new Error("ping should not be called");
     }),
     listWorkspaces: vi.fn(async () => ({
+      canCreateWorkspaces: true,
       items: [workspace, createWorkspace({ slug: "api-docs", sysId: "workspace-002", name: "API Docs" })],
       page: 1,
       pageSize: 10,

@@ -89,6 +89,10 @@ vi.mock("../src/server/workspaces/serviceNowWorkspaceProvisioning.ts", () => ({
   createServiceNowWorkspaceProvisioningService: vi.fn()
 }));
 
+vi.mock("../src/server/workspaces/serviceNowWorkspaceCapabilities.ts", () => ({
+  canCurrentUserCreateWorkspaces: vi.fn(() => true)
+}));
+
 import { process as processCreateWorkspace } from "../src/server/api/docsera-runtime-create-workspace";
 import { process as processPageSave } from "../src/server/api/docsera-runtime-page-save";
 import { process as processPagePublish } from "../src/server/api/docsera-runtime-page-publish";
@@ -100,6 +104,7 @@ import { createServiceNowWorkspaceChangeSetPersistenceService } from "../src/ser
 import { createServiceNowPagePublishService } from "../src/server/pages/serviceNowPagePublishing.ts";
 import { createServiceNowPageListingService } from "../src/server/pages/serviceNowPageListing.ts";
 import { createServiceNowWorkspaceProvisioningService } from "../src/server/workspaces/serviceNowWorkspaceProvisioning.ts";
+import { canCurrentUserCreateWorkspaces } from "../src/server/workspaces/serviceNowWorkspaceCapabilities.ts";
 
 type ResponseRecorder = {
   body: unknown;
@@ -128,6 +133,8 @@ beforeEach(() => {
   vi.mocked(createServiceNowPagePublishService).mockReset();
   vi.mocked(createServiceNowPageListingService).mockReset();
   vi.mocked(createServiceNowWorkspaceProvisioningService).mockReset();
+  vi.mocked(canCurrentUserCreateWorkspaces).mockReset();
+  vi.mocked(canCurrentUserCreateWorkspaces).mockReturnValue(true);
   vi.mocked(readWorkspaceMutationAuthority).mockReturnValue({
     changeSetId: "change-set-001",
     changeSetRevision: 9
@@ -172,6 +179,41 @@ test("workspace lookup failures still return a safe user-facing message", async 
     }
   });
   expect(String(gsError.mock.calls[0]?.[0] ?? "")).toContain("ACL denied on x_82900_docsera_docsera_workspace");
+});
+
+test("workspaces endpoint exposes the server workspace-creation capability", async () => {
+  for (const canCreateWorkspaces of [true, false]) {
+    vi.mocked(createServiceNowWorkspaceCatalogService).mockReturnValue({
+      getWorkspace: vi.fn(),
+      listWorkspaces: vi.fn(async () => ({
+        canCreateWorkspaces,
+        items: [],
+        page: 1,
+        pageSize: 10,
+        totalCount: 0,
+        hasNextPage: false,
+        searchText: ""
+      }))
+    } as never);
+
+    const response = createResponseRecorder();
+
+    await processWorkspaces({ queryString: "page=1&pageSize=10" }, response);
+
+    expect(response.status).toBeUndefined();
+    expect(response.body).toEqual({
+      result: {
+        mode: "servicenow",
+        canCreateWorkspaces,
+        items: [],
+        page: 1,
+        pageSize: 10,
+        totalCount: 0,
+        hasNextPage: false,
+        searchText: ""
+      }
+    });
+  }
 });
 
 test("page listing failures still return a safe user-facing message", async () => {
@@ -360,6 +402,42 @@ test("create workspace hides unexpected errors behind a safe message", async () 
     }
   });
   expect(String(gsError.mock.calls[0]?.[0] ?? "")).toContain("Insert failed: x_82900_docsera_docsera_workspace_provision_request");
+});
+
+test("create workspace rejects unauthorized requests before provisioning", async () => {
+  vi.mocked(canCurrentUserCreateWorkspaces).mockReturnValue(false);
+  const createWorkspace = vi.fn();
+  vi.mocked(createServiceNowWorkspaceProvisioningService).mockReturnValue({
+    createWorkspace,
+    roleNames: {
+      docseraAdmin: "Docsera admin",
+      editor: "Editor",
+      workspaceAdmin: "Workspace admin"
+    },
+    statusPathFor: vi.fn()
+  } as never);
+
+  const response = createResponseRecorder();
+
+  await processCreateWorkspace(
+    {
+      body: {
+        name: "Forbidden workspace",
+        shortDescription: "Test"
+      }
+    },
+    response
+  );
+
+  expect(response.status).toBe(403);
+  expect(response.body).toEqual({
+    error: {
+      code: "workspace_create_forbidden",
+      message: "You do not have permission to create workspaces."
+    }
+  });
+  expect(createServiceNowWorkspaceProvisioningService).not.toHaveBeenCalled();
+  expect(createWorkspace).not.toHaveBeenCalled();
 });
 
 test("workspace provisioning status hides unexpected errors behind a safe message", async () => {

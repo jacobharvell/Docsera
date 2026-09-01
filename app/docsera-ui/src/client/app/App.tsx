@@ -4043,6 +4043,13 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }
 
   function openCreateModal() {
+    if (!canCreateWorkspaces) {
+      setCreateModalOpen(false);
+      setCreateModalError(undefined);
+      setCreateModalPhase("idle");
+      return;
+    }
+
     if (route.mode !== "launcher") {
       openLauncher();
     }
@@ -4790,6 +4797,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }
 
   async function submitWorkspaceCreation(input: { name: string; shortDescription: string }) {
+    if (!canCreateWorkspaces) {
+      setCreateModalError("You do not have permission to create workspaces.");
+      setCreateModalPhase("idle");
+      return;
+    }
+
     setCreateModalError(undefined);
     setCreateModalPhase("submitting");
 
@@ -5168,6 +5181,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }
 
   const launcherList = launcherState.status === "success" || launcherState.status === "refreshing" ? launcherState.data : null;
+  const canCreateWorkspaces = Boolean(launcherList?.canCreateWorkspaces);
 
   function handleStayOnDirtyTransition() {
     setPendingRouteTransition(null);
@@ -6946,6 +6960,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           </>
         ) : (
           <MyWorkspacesScreen
+            canCreateWorkspaces={canCreateWorkspaces}
             createModal={{
               errorMessage: createModalError,
               onClose: () => {

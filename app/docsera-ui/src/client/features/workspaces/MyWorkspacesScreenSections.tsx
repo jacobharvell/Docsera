@@ -26,7 +26,13 @@ export function PlusIcon() {
   return <DocseraIcon icon={docseraIcons.plus} />;
 }
 
-export function LauncherIntro({ onShowCreateModal }: { onShowCreateModal: () => void }) {
+export function LauncherIntro({
+  canCreateWorkspaces,
+  onShowCreateModal
+}: {
+  canCreateWorkspaces: boolean;
+  onShowCreateModal: () => void;
+}) {
   return (
     <header className="docsera-launcher__header">
       <div className="docsera-launcher__title-row">
@@ -34,10 +40,12 @@ export function LauncherIntro({ onShowCreateModal }: { onShowCreateModal: () => 
           <h1 className="docsera-launcher__title">My Workspaces</h1>
           <p className="docsera-launcher__copy">Workspaces where you have editing or administration access.</p>
         </div>
-        <button type="button" className="docsera-launcher__header-action" onClick={onShowCreateModal}>
-          <PlusIcon />
-          <span>New Workspace</span>
-        </button>
+        {canCreateWorkspaces ? (
+          <button type="button" className="docsera-launcher__header-action" onClick={onShowCreateModal}>
+            <PlusIcon />
+            <span>New Workspace</span>
+          </button>
+        ) : null}
       </div>
     </header>
   );

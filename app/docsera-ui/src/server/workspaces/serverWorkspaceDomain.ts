@@ -131,6 +131,7 @@ export type WorkspaceListQuery = {
 };
 
 export type WorkspaceListResult = {
+  canCreateWorkspaces: boolean;
   items: WorkspaceListItem[];
   page: number;
   pageSize: number;
@@ -391,7 +392,8 @@ export function filterWorkspacesByName(workspaces: WorkspaceRecord[], searchText
 export function buildWorkspaceListResult(
   workspaces: WorkspaceRecord[],
   capabilitiesByWorkspaceSlug: Map<string, WorkspaceCapabilityResult>,
-  query: WorkspaceListQuery = {}
+  query: WorkspaceListQuery = {},
+  canCreateWorkspaces = false
 ): WorkspaceListResult {
   const pageSize = Math.max(1, Math.min(50, Number(query.pageSize) || 10));
   const page = Math.max(1, Number(query.page) || 1);
@@ -418,6 +420,7 @@ export function buildWorkspaceListResult(
   const items = listedItems.slice(startIndex, startIndex + pageSize);
 
   return {
+    canCreateWorkspaces,
     items,
     page,
     pageSize,

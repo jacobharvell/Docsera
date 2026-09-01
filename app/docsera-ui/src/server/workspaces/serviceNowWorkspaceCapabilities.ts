@@ -1,5 +1,6 @@
 import { GlideRecord, gs } from "@servicenow/glide";
 import {
+  WORKSPACE_ROLE_NAMES,
   type WorkspaceCapabilityResult,
   type WorkspaceRecord,
   evaluateWorkspaceCapabilities
@@ -31,4 +32,8 @@ export function evaluateCurrentUserWorkspaceCapabilities(workspace: WorkspaceRec
     hasRole: (roleName) => Boolean(cleanText(roleName)) && gs.hasRole(roleName),
     isMemberOfGroup: (groupSysId) => isCurrentUserMemberOfGroup(groupSysId, currentUserSysId)
   });
+}
+
+export function canCurrentUserCreateWorkspaces(): boolean {
+  return gs.hasRole(WORKSPACE_ROLE_NAMES.docseraAdmin);
 }

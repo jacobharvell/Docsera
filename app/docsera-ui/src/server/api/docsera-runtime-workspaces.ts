@@ -78,6 +78,7 @@ function readPageNumber(request: RequestLike | undefined, key: "page" | "pageSiz
 }
 
 function normalizeWorkspacePayload(result: {
+  canCreateWorkspaces?: boolean;
   items?: Array<ReturnType<typeof toWorkspaceViewRecord>>;
   workspace?: ReturnType<typeof toWorkspaceViewRecord> | null;
   page?: number;
@@ -138,6 +139,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
     response.setBody({
       result: normalizeWorkspacePayload({
         items: result.items.map((item) => toWorkspaceViewRecord(item, item.roleLabel ?? null)),
+        canCreateWorkspaces: result.canCreateWorkspaces,
         page: result.page,
         pageSize: result.pageSize,
         totalCount: result.totalCount,

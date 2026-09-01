@@ -262,6 +262,7 @@ export function createClient(overrides: Partial<ServiceNowClient> = {}): Service
       throw new Error("ping should not be called in these tests");
     }),
     listWorkspaces: vi.fn(async () => ({
+      canCreateWorkspaces: true,
       items: [workspace, createWorkspace({ slug: "api-docs", sysId: "workspace-002", name: "API Docs" })],
       page: 1,
       pageSize: 10,

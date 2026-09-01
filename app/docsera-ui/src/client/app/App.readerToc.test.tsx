@@ -103,6 +103,7 @@ function createClient(overrides: Partial<ServiceNowClient> = {}): ServiceNowClie
       throw new Error("ping should not be called in these tests");
     }),
     listWorkspaces: vi.fn(async () => ({
+      canCreateWorkspaces: true,
       items: [
         createWorkspace(),
         createWorkspace({

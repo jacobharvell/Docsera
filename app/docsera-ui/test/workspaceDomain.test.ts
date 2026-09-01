@@ -1,6 +1,7 @@
 import {
   DEFAULT_WORKSPACE_ICON,
   allocateWorkspaceSlug,
+  buildWorkspaceListResult,
   buildWorkspaceGroupNames,
   createWorkspaceDraft,
   deriveWorkspaceGroupKey,
@@ -88,6 +89,37 @@ test("evaluateWorkspaceCapabilities allows authenticated users to view active wo
     canAdminWorkspace: false,
     canManageWorkspaceMembers: false
   });
+});
+
+test("buildWorkspaceListResult preserves the server-evaluated creation capability", () => {
+  const workspace = {
+    ...createWorkspaceDraft({
+      name: "Platform Docs",
+      creatorUserSysId: "user-123"
+    }),
+    adminGroupSysId: "group-admin",
+    editorGroupSysId: "group-editor"
+  };
+
+  const result = buildWorkspaceListResult(
+    [workspace],
+    new Map([
+      [
+        "platform-docs",
+        {
+          canViewWorkspace: true,
+          canEditWorkspace: true,
+          canAdminWorkspace: true,
+          canManageWorkspaceMembers: true
+        }
+      ]
+    ]),
+    {},
+    true
+  );
+
+  expect(result.canCreateWorkspaces).toBe(true);
+  expect(result.items).toHaveLength(1);
 });
 
 test("evaluateWorkspaceCapabilities restricts inactive workspaces for unrelated authenticated users", () => {

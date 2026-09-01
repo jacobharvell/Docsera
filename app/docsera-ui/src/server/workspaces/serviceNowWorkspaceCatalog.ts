@@ -8,7 +8,7 @@ import {
   type WorkspaceListResult,
   type WorkspaceRecord
 } from "./serverWorkspaceDomain.ts";
-import { evaluateCurrentUserWorkspaceCapabilities } from "./serviceNowWorkspaceCapabilities.ts";
+import { canCurrentUserCreateWorkspaces, evaluateCurrentUserWorkspaceCapabilities } from "./serviceNowWorkspaceCapabilities.ts";
 import { mapWorkspaceRecord } from "./serviceNowWorkspaceRecords.ts";
 
 const DOCSERA_WORKSPACE_TABLE = "x_82900_docsera_workspace";
@@ -70,7 +70,7 @@ export function createServiceNowWorkspaceCatalogService() {
     async listWorkspaces(query: WorkspaceListQuery = {}): Promise<WorkspaceListResult> {
       const workspaces = queryActiveWorkspaces();
       const capabilitiesBySlug = createCapabilityMap(workspaces);
-      return buildWorkspaceListResult(workspaces, capabilitiesBySlug, query);
+      return buildWorkspaceListResult(workspaces, capabilitiesBySlug, query, canCurrentUserCreateWorkspaces());
     }
   };
 }

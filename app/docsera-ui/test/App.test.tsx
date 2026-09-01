@@ -101,6 +101,7 @@ function createClient(overrides: Partial<ServiceNowClient> = {}): ServiceNowClie
       throw new Error("ping should not be called in these tests");
     }),
     listWorkspaces: vi.fn(async () => ({
+      canCreateWorkspaces: true,
       items: [
         createWorkspace(),
         createWorkspace({
@@ -230,6 +231,48 @@ describe("workspace integration flows", () => {
     expect(screen.getByRole("link", { name: "Product Docs" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "API Docs" })).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Settings" })).toHaveLength(2);
+    expect(screen.getByRole("button", { name: "New Workspace" })).toBeInTheDocument();
+  });
+
+  it("hides workspace creation actions when the server list denies creation", async () => {
+    const createWorkspaceRequest = vi.fn(async () => {
+      throw new Error("createWorkspace should not be called");
+    });
+
+    renderApp("/?view=my-workspaces", {
+      createWorkspace: createWorkspaceRequest,
+      listWorkspaces: vi.fn(async () => ({
+        canCreateWorkspaces: false,
+        items: [createWorkspace()],
+        page: 1,
+        pageSize: 10,
+        totalCount: 1,
+        hasNextPage: false,
+        searchText: ""
+      }))
+    });
+
+    expect(await screen.findByRole("heading", { name: "My Workspaces" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New Workspace" })).not.toBeInTheDocument();
+    expect(createWorkspaceRequest).not.toHaveBeenCalled();
+  });
+
+  it("does not offer workspace creation in the non-admin empty state", async () => {
+    renderApp("/?view=my-workspaces", {
+      listWorkspaces: vi.fn(async () => ({
+        canCreateWorkspaces: false,
+        items: [],
+        page: 1,
+        pageSize: 10,
+        totalCount: 0,
+        hasNextPage: false,
+        searchText: ""
+      }))
+    });
+
+    expect(await screen.findByRole("heading", { name: "No workspaces to show" })).toBeInTheDocument();
+    expect(screen.getByText(/Request access from a workspace admin/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New Workspace" })).not.toBeInTheDocument();
   });
 
   it("opens a workspace in live mode from the launcher", async () => {

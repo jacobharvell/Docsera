@@ -13,6 +13,7 @@ import { WorkspaceCreateModal } from "./WorkspaceCreateModal";
 import type { WorkspaceViewRecord } from "../../shared/types/docsera";
 
 type MyWorkspacesScreenProps = {
+  canCreateWorkspaces: boolean;
   createModal: {
     errorMessage?: string;
     onClose: () => void;
@@ -51,6 +52,7 @@ function CreateWorkspaceAction({ onShowCreateModal }: { onShowCreateModal: () =>
 }
 
 export function MyWorkspacesScreen({
+  canCreateWorkspaces,
   createModal,
   hasError,
   isEmptyState,
@@ -83,7 +85,7 @@ export function MyWorkspacesScreen({
   return (
     <div className="docsera-launcher-screen">
       <div className="docsera-launcher">
-        <LauncherIntro onShowCreateModal={onShowCreateModal} />
+        <LauncherIntro canCreateWorkspaces={canCreateWorkspaces} onShowCreateModal={onShowCreateModal} />
 
         <LauncherPanel
           isRefreshing={isRefreshing}
@@ -127,8 +129,12 @@ export function MyWorkspacesScreen({
           {!hasError && !isLoading && isEmptyState ? (
             <LauncherState
               title="No workspaces to show"
-              copy="You do not currently have editing or administration access to any workspaces. Create a workspace to get started, or request access from a workspace admin if you need to contribute to an existing workspace."
-              action={<CreateWorkspaceAction onShowCreateModal={onShowCreateModal} />}
+              copy={
+                canCreateWorkspaces
+                  ? "You do not currently have editing or administration access to any workspaces. Create a workspace to get started, or request access from a workspace admin if you need to contribute to an existing workspace."
+                  : "You do not currently have editing or administration access to any workspaces. Request access from a workspace admin if you need to contribute to an existing workspace."
+              }
+              action={canCreateWorkspaces ? <CreateWorkspaceAction onShowCreateModal={onShowCreateModal} /> : undefined}
             />
           ) : null}
 

@@ -94,6 +94,7 @@ export type WorkspaceViewRecord = {
 };
 
 export type WorkspaceListResult = {
+  canCreateWorkspaces: boolean;
   items: WorkspaceViewRecord[];
   page: number;
   pageSize: number;

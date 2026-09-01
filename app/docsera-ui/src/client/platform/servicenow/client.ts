@@ -440,6 +440,7 @@ function normalizeWorkspaceListResult(body: unknown): WorkspaceListResult {
   const items = Array.isArray(result.items) ? result.items.map((item) => normalizeWorkspaceViewRecord(item)) : [];
 
   return {
+    canCreateWorkspaces: Boolean(result.canCreateWorkspaces),
     items,
     page: Number(result.page) || 1,
     pageSize: Number(result.pageSize) || items.length || 10,
@@ -1256,7 +1257,7 @@ async function resolveWorkspaceCreateResult(
     return normalizeWorkspaceCreatePendingResult(response.body);
   }
 
-  if (response.status === 400) {
+  if (response.status === 400 || response.status === 403) {
     return normalizeWorkspaceCreateFailedResult(response.body, "Workspace creation failed.");
   }
 

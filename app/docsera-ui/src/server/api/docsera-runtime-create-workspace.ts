@@ -1,5 +1,6 @@
 import { gs } from "@servicenow/glide";
 import type { WorkspaceDraftInput } from "../workspaces/serverWorkspaceDomain.ts";
+import { canCurrentUserCreateWorkspaces } from "../workspaces/serviceNowWorkspaceCapabilities.ts";
 import { createServiceNowWorkspaceProvisioningService } from "../workspaces/serviceNowWorkspaceProvisioning.ts";
 import { toWorkspaceViewRecord } from "../workspaces/serviceNowWorkspaceRecords.ts";
 
@@ -75,6 +76,17 @@ function normalizeWorkspaceInput(request: RequestLike): WorkspaceDraftInput {
 
 export async function process(request: RequestLike, response: ResponseLike) {
   try {
+    if (!canCurrentUserCreateWorkspaces()) {
+      response.setStatus?.(403);
+      response.setBody({
+        error: {
+          code: "workspace_create_forbidden",
+          message: "You do not have permission to create workspaces."
+        }
+      });
+      return;
+    }
+
     const service = createServiceNowWorkspaceProvisioningService();
     const result = await service.createWorkspace(normalizeWorkspaceInput(request));
 
