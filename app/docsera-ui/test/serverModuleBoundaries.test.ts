@@ -8,6 +8,9 @@ const serverRoots = [join(packageRoot, "src", "server"), join(packageRoot, "src"
 const forbiddenSharedImportPattern = /\bfrom\s+['"]([^'"]+)['"]|\bimport\s+['"]([^'"]+)['"]/g;
 const sharedDocumentWrapperPath = join(packageRoot, "src", "shared", "editor", "document.ts");
 const serverDocumentWrapperPath = join(packageRoot, "src", "server", "pages", "serverEditorDocument.ts");
+const sharedWorkspaceIconCatalogWrapperPath = join(packageRoot, "src", "shared", "workspaces", "workspaceIconCatalog.ts");
+const serverWorkspaceIconCatalogPath = join(packageRoot, "src", "server", "workspaces", "serverWorkspaceIconCatalog.ts");
+const serverWorkspaceDomainPath = join(packageRoot, "src", "server", "workspaces", "serverWorkspaceDomain.ts");
 const explicitSourceExtensionPattern = /\.(?:ts|tsx)$/;
 
 function collectFiles(dir: string): string[] {
@@ -55,7 +58,7 @@ describe("server module boundaries", () => {
           const specifier = (match[1] ?? match[2] ?? "").trim();
           if (specifier && isForbiddenSharedImport(specifier) && !isAllowedSharedImport(file, specifier)) {
             offenders.push({
-              file: relative(repoRoot, file),
+              file: relative(packageRoot, file),
               specifier
             });
           }
@@ -74,6 +77,17 @@ describe("server module boundaries", () => {
 
     const sharedWrapperSource = readFileSync(sharedDocumentWrapperPath, "utf8");
     expect(sharedWrapperSource).toContain("../../server/pages/serverEditorDocument");
+  });
+
+  it("keeps the authoritative workspace icon catalog inside the deployable server module graph", () => {
+    expect(existsSync(serverWorkspaceIconCatalogPath)).toBe(true);
+
+    const serverWorkspaceDomainSource = readFileSync(serverWorkspaceDomainPath, "utf8");
+    expect(serverWorkspaceDomainSource).toContain("./serverWorkspaceIconCatalog.ts");
+    expect(serverWorkspaceDomainSource).not.toContain("../../shared/workspaces/workspaceIconCatalog");
+
+    const sharedWrapperSource = readFileSync(sharedWorkspaceIconCatalogWrapperPath, "utf8");
+    expect(sharedWrapperSource).toContain("../../server/workspaces/serverWorkspaceIconCatalog");
   });
 
   it("keeps server runtime imports on explicit source-file specifiers", () => {

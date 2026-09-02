@@ -504,6 +504,10 @@ declare global {
                         table: 'sys_module'
                         id: '15e7818a1cd7415682575fce3df6368e'
                     }
+                    src_server_workspaces_serverWorkspaceIconCatalog_ts: {
+                        table: 'sys_module'
+                        id: '5b0e1f348af4483a913fcdacfbf52d7e'
+                    }
                     src_server_workspaces_serviceNowWorkspaceCapabilities_ts: {
                         table: 'sys_module'
                         id: 'e95a4d192e1e4d7e9426e30597dd9910'

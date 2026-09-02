@@ -58,6 +58,7 @@ import type {
   WorkspaceCreateResult,
   WorkspaceDiscardPageResult,
   WorkspaceListResult,
+  WorkspaceIcon,
   WorkspaceEditLeaseHeld,
   WorkspaceDiscardAllResult,
   WorkspacePendingChangesResult,
@@ -4796,7 +4797,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
   }
 
-  async function submitWorkspaceCreation(input: { name: string; shortDescription: string }) {
+  async function submitWorkspaceCreation(input: { name: string; shortDescription: string; icon: WorkspaceIcon }) {
     if (!canCreateWorkspaces) {
       setCreateModalError("You do not have permission to create workspaces.");
       setCreateModalPhase("idle");
@@ -4809,7 +4810,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     try {
       const result = await serviceNowClient.createWorkspace({
         name: input.name,
-        shortDescription: input.shortDescription || null
+        shortDescription: input.shortDescription || null,
+        icon: input.icon
       });
 
       if (result.state === "failed") {

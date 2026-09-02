@@ -1,5 +1,5 @@
 import { gs } from "@servicenow/glide";
-import type { WorkspaceDraftInput } from "../workspaces/serverWorkspaceDomain.ts";
+import { findBuiltInWorkspaceIcon, type WorkspaceDraftInput } from "../workspaces/serverWorkspaceDomain.ts";
 import { canCurrentUserCreateWorkspaces } from "../workspaces/serviceNowWorkspaceCapabilities.ts";
 import { createServiceNowWorkspaceProvisioningService } from "../workspaces/serviceNowWorkspaceProvisioning.ts";
 import { toWorkspaceViewRecord } from "../workspaces/serviceNowWorkspaceRecords.ts";
@@ -57,12 +57,7 @@ function normalizeWorkspaceInput(request: RequestLike): WorkspaceDraftInput {
     name: cleanText(body.name),
     shortDescription: cleanText(body.shortDescription) || null,
     icon: icon
-      ? {
-          type: icon.type === "uploaded" ? "uploaded" : "builtin",
-          key: cleanText(icon.key),
-          label: cleanText(icon.label),
-          assetPath: cleanText(icon.assetPath) || undefined
-        }
+      ? normalizeWorkspaceIconInput(icon)
       : null,
     status: body.status === "inactive" ? "inactive" : "active",
     layout: layout
@@ -71,6 +66,28 @@ function normalizeWorkspaceInput(request: RequestLike): WorkspaceDraftInput {
           pageWidth: layout.pageWidth === "full" ? "full" : "readable"
         }
       : undefined
+  };
+}
+
+function normalizeWorkspaceIconInput(icon: Record<string, unknown>): WorkspaceDraftInput["icon"] {
+  if (icon.type === "uploaded") {
+    return {
+      type: "uploaded",
+      key: cleanText(icon.key),
+      label: cleanText(icon.label),
+      assetPath: cleanText(icon.assetPath) || undefined
+    };
+  }
+
+  const builtInIcon = findBuiltInWorkspaceIcon(icon.key);
+  if (!builtInIcon) {
+    throw new TypeError("Unsupported built-in workspace icon.");
+  }
+
+  return {
+    type: "builtin",
+    key: builtInIcon.key,
+    label: builtInIcon.label
   };
 }
 
@@ -153,6 +170,20 @@ export async function process(request: RequestLike, response: ResponseLike) {
       }
     });
   } catch (error) {
+    if (error instanceof TypeError) {
+      if (typeof response.setStatus === "function") {
+        response.setStatus(400);
+      }
+
+      response.setBody({
+        error: {
+          code: "workspace_create_invalid",
+          message: error.message
+        }
+      });
+      return;
+    }
+
     if (typeof response.setStatus === "function") {
       response.setStatus(500);
     }

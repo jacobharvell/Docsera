@@ -7,10 +7,22 @@ export const WORKSPACE_ROLE_NAMES = Object.freeze({
   editor: `${DOCSERA_SCOPE}.editor`
 });
 
+export {
+  BUILT_IN_WORKSPACE_ICONS,
+  DEFAULT_BUILT_IN_WORKSPACE_ICON,
+  DEFAULT_BUILT_IN_WORKSPACE_ICON_KEY,
+  type BuiltInWorkspaceIcon,
+  type BuiltInWorkspaceIconGlyph,
+  findBuiltInWorkspaceIcon,
+  isBuiltInWorkspaceIconKey,
+  normalizeBuiltInWorkspaceIcon
+} from "./workspaceIconCatalog";
+import { DEFAULT_BUILT_IN_WORKSPACE_ICON, normalizeBuiltInWorkspaceIcon } from "./workspaceIconCatalog";
+
 export const DEFAULT_WORKSPACE_ICON = Object.freeze({
   type: "builtin",
-  key: "docsera-workspace",
-  label: "Docsera workspace icon"
+  key: DEFAULT_BUILT_IN_WORKSPACE_ICON.key,
+  label: DEFAULT_BUILT_IN_WORKSPACE_ICON.label
 });
 
 export const DEFAULT_WORKSPACE_LAYOUT = Object.freeze({
@@ -234,13 +246,24 @@ export function normalizeWorkspaceIcon(icon?: Partial<WorkspaceIcon> | string | 
   }
 
   if (typeof icon === "string") {
+    const builtInIcon = normalizeBuiltInWorkspaceIcon(icon);
     return {
       ...DEFAULT_WORKSPACE_ICON,
-      key: cleanText(icon) || DEFAULT_WORKSPACE_ICON.key
+      key: builtInIcon.key,
+      label: builtInIcon.label
     };
   }
 
   const type = icon.type === "uploaded" ? "uploaded" : "builtin";
+  if (type === "builtin") {
+    const builtInIcon = normalizeBuiltInWorkspaceIcon(icon.key);
+    return {
+      type: "builtin",
+      key: builtInIcon.key,
+      label: builtInIcon.label
+    };
+  }
+
   const key = cleanText(icon.key) || DEFAULT_WORKSPACE_ICON.key;
   const label = cleanText(icon.label) || DEFAULT_WORKSPACE_ICON.label;
 

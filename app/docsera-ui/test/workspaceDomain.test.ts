@@ -1,4 +1,5 @@
 import {
+  BUILT_IN_WORKSPACE_ICONS,
   DEFAULT_WORKSPACE_ICON,
   allocateWorkspaceSlug,
   buildWorkspaceListResult,
@@ -49,6 +50,25 @@ test("createWorkspaceDraft applies default icon, active status, and layout defau
   expect(draft.layout).toEqual({
     tocVisibleByDefault: true,
     pageWidth: "readable"
+  });
+});
+
+test("createWorkspaceDraft canonicalizes supported built-in workspace icons", () => {
+  const draft = createWorkspaceDraft({
+    name: "Security Docs",
+    icon: {
+      type: "builtin",
+      key: "security",
+      label: "Forged label"
+    },
+    creatorUserSysId: "user-123"
+  });
+
+  expect(BUILT_IN_WORKSPACE_ICONS.map((icon) => icon.key)).toContain("security");
+  expect(draft.icon).toEqual({
+    type: "builtin",
+    key: "security",
+    label: "Security"
   });
 });
 
@@ -258,6 +278,11 @@ test("provisionWorkspace stores group references, assigns scoped roles, and adds
     {
       name: "HR Docs",
       shortDescription: "Policies and procedures",
+      icon: {
+        type: "builtin",
+        key: "operations",
+        label: "Forged operations label"
+      },
       creatorUserSysId: "user-123"
     },
     {
@@ -277,6 +302,11 @@ test("provisionWorkspace stores group references, assigns scoped roles, and adds
   );
 
   expect(result.workspace.slug).toBe("hr-docs-2");
+  expect(result.workspace.icon).toEqual({
+    type: "builtin",
+    key: "operations",
+    label: "Operations"
+  });
   expect(result.workspace.adminGroupSysId).toBe("Docsera_HR_Docs_2_Admins-sys-id");
   expect(result.workspace.editorGroupSysId).toBe("Docsera_HR_Docs_2_Editors-sys-id");
   expect(assignedRoles).toEqual([

@@ -404,6 +404,45 @@ test("create workspace hides unexpected errors behind a safe message", async () 
   expect(String(gsError.mock.calls[0]?.[0] ?? "")).toContain("Insert failed: x_82900_docsera_docsera_workspace_provision_request");
 });
 
+test("create workspace rejects unsupported built-in workspace icons before provisioning", async () => {
+  const createWorkspace = vi.fn();
+  vi.mocked(createServiceNowWorkspaceProvisioningService).mockReturnValue({
+    createWorkspace,
+    roleNames: {
+      docseraAdmin: "Docsera admin",
+      editor: "Editor",
+      workspaceAdmin: "Workspace admin"
+    },
+    statusPathFor: vi.fn()
+  } as never);
+
+  const response = createResponseRecorder();
+
+  await processCreateWorkspace(
+    {
+      body: {
+        name: "Forged workspace",
+        shortDescription: "Test",
+        icon: {
+          type: "builtin",
+          key: "forged-workspace-icon",
+          label: "Forged"
+        }
+      }
+    },
+    response
+  );
+
+  expect(response.status).toBe(400);
+  expect(response.body).toEqual({
+    error: {
+      code: "workspace_create_invalid",
+      message: "Unsupported built-in workspace icon."
+    }
+  });
+  expect(createWorkspace).not.toHaveBeenCalled();
+});
+
 test("create workspace rejects unauthorized requests before provisioning", async () => {
   vi.mocked(canCurrentUserCreateWorkspaces).mockReturnValue(false);
   const createWorkspace = vi.fn();

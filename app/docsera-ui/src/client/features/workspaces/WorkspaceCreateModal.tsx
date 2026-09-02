@@ -1,11 +1,19 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
+import type { WorkspaceIcon } from "../../shared/types/docsera";
+import {
+  BUILT_IN_WORKSPACE_ICONS,
+  DEFAULT_BUILT_IN_WORKSPACE_ICON,
+  findBuiltInWorkspaceIcon,
+  type BuiltInWorkspaceIcon
+} from "../../../shared/workspaces/domain";
+import { WorkspaceIconBadge } from "./WorkspacePrimitives";
 
 type WorkspaceCreateModalProps = {
   errorMessage?: string;
   onClose: () => void;
-  onSubmit: (input: { name: string; shortDescription: string }) => void;
+  onSubmit: (input: { name: string; shortDescription: string; icon: WorkspaceIcon }) => void;
   open: boolean;
   phase: "idle" | "submitting" | "polling";
 };
@@ -19,15 +27,25 @@ function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function toWorkspaceIcon(icon: BuiltInWorkspaceIcon): WorkspaceIcon {
+  return {
+    type: "builtin",
+    key: icon.key,
+    label: icon.label
+  };
+}
+
 export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, open, phase }: WorkspaceCreateModalProps) {
   const [name, setName] = useState("");
   const [shortDescription, setShortDescription] = useState("");
+  const [selectedIconKey, setSelectedIconKey] = useState(DEFAULT_BUILT_IN_WORKSPACE_ICON.key);
   const [errors, setErrors] = useState<FormErrors>({});
 
   useEffect(() => {
     if (!open) {
       setName("");
       setShortDescription("");
+      setSelectedIconKey(DEFAULT_BUILT_IN_WORKSPACE_ICON.key);
       setErrors({});
     }
   }, [open]);
@@ -67,12 +85,14 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, open, ph
 
     onSubmit({
       name: cleanText(name),
-      shortDescription: cleanText(shortDescription)
+      shortDescription: cleanText(shortDescription),
+      icon: toWorkspaceIcon(findBuiltInWorkspaceIcon(selectedIconKey) ?? DEFAULT_BUILT_IN_WORKSPACE_ICON)
     });
   }
 
   const pending = phase !== "idle";
   const canClose = phase === "idle";
+  const selectedIcon = findBuiltInWorkspaceIcon(selectedIconKey) ?? DEFAULT_BUILT_IN_WORKSPACE_ICON;
 
   return (
     <div className="docsera-modal" role="presentation" onMouseDown={() => (canClose ? onClose() : undefined)}>
@@ -101,10 +121,11 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, open, ph
 
           <div className="docsera-modal__body">
             <label className="docsera-modal__field">
-              <span className="docsera-modal__label">Workspace name</span>
+              <span className="docsera-modal__label" id="docsera-create-workspace-name-label">Workspace name</span>
               <input
                 className={`docsera-modal__input${errors.name ? " docsera-modal__input--invalid" : ""}`}
                 type="text"
+                aria-labelledby="docsera-create-workspace-name-label"
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 maxLength={80}
@@ -115,10 +136,11 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, open, ph
             </label>
 
             <label className="docsera-modal__field">
-              <span className="docsera-modal__label">Short description</span>
+              <span className="docsera-modal__label" id="docsera-create-workspace-description-label">Short description</span>
               <input
                 className={`docsera-modal__input${errors.shortDescription ? " docsera-modal__input--invalid" : ""}`}
                 type="text"
+                aria-labelledby="docsera-create-workspace-description-label"
                 value={shortDescription}
                 onChange={(event) => setShortDescription(event.target.value)}
                 maxLength={160}
@@ -129,6 +151,33 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, open, ph
                 <span className="docsera-modal__field-error">{errors.shortDescription}</span>
               ) : null}
             </label>
+
+            <fieldset className="docsera-modal__field docsera-workspace-icon-picker">
+              <legend className="docsera-modal__label">Workspace icon</legend>
+              <div className="docsera-workspace-icon-picker__grid">
+                {BUILT_IN_WORKSPACE_ICONS.map((icon) => {
+                  const selected = icon.key === selectedIcon.key;
+                  return (
+                    <button
+                      key={icon.key}
+                      type="button"
+                      className={`docsera-workspace-icon-picker__option${selected ? " docsera-workspace-icon-picker__option--selected" : ""}`}
+                      aria-pressed={selected}
+                      aria-label={`${icon.label}${selected ? ", selected" : ""}`}
+                      disabled={pending}
+                      onClick={() => setSelectedIconKey(icon.key)}
+                    >
+                      <WorkspaceIconBadge
+                        workspace={{
+                          icon: toWorkspaceIcon(icon),
+                          name: icon.label
+                        }}
+                      />
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
 
             <div className="docsera-modal__info-note">
               <p className="docsera-modal__info-note-copy">The creator becomes an Admin for the new workspace.</p>

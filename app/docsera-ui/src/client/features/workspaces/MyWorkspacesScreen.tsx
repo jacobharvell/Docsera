@@ -10,14 +10,14 @@ import {
 } from "./MyWorkspacesScreenSections";
 import type { RecentWorkspaceItem } from "./RecentWorkspacesMenu";
 import { WorkspaceCreateModal } from "./WorkspaceCreateModal";
-import type { WorkspaceViewRecord } from "../../shared/types/docsera";
+import type { WorkspaceIcon, WorkspaceViewRecord } from "../../shared/types/docsera";
 
 type MyWorkspacesScreenProps = {
   canCreateWorkspaces: boolean;
   createModal: {
     errorMessage?: string;
     onClose: () => void;
-    onSubmit: (input: { name: string; shortDescription: string }) => void;
+    onSubmit: (input: { name: string; shortDescription: string; icon: WorkspaceIcon }) => void;
     open: boolean;
     phase: "idle" | "submitting" | "polling";
   };

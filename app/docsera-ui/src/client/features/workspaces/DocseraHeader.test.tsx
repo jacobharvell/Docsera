@@ -32,6 +32,49 @@ function pending(rows: PendingRow[]): WorkspacePendingChangesResult {
 }
 
 describe("DocseraHeader publishing changes", () => {
+  it("renders non-default built-in workspace icons as transparent primary glyphs in the header identity", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+    const headerBuiltInBlock =
+      source.match(
+        /\.docsera-header__workspace-icon\.docsera-workspace-icon-badge--builtin:not\(\.docsera-workspace-icon-badge--artwork\) \{([\s\S]*?)\r?\n\}/
+      )?.[1] ?? "";
+    const headerGlyphBlock =
+      source.match(
+        /\.docsera-header__workspace-icon\.docsera-workspace-icon-badge--builtin:not\(\.docsera-workspace-icon-badge--artwork\) \.docsera-workspace-icon-badge__glyph \{([\s\S]*?)\r?\n\}/
+      )?.[1] ?? "";
+
+    const { container } = render(
+      <DocseraHeader
+        {...baseProps}
+        identity={{
+          kind: "workspace",
+          icon: { type: "builtin", key: "security", label: "Security" },
+          name: "Security"
+        }}
+      />
+    );
+
+    const headerIcon = container.querySelector(".docsera-header__workspace-icon");
+    expect(headerIcon).toHaveClass("docsera-workspace-icon-badge--builtin");
+    expect(headerIcon).not.toHaveClass("docsera-workspace-icon-badge--artwork");
+    expect(headerIcon?.querySelector(".docsera-workspace-icon-badge__glyph")).toBeInTheDocument();
+    expect(headerBuiltInBlock).toContain("background: transparent;");
+    expect(headerBuiltInBlock).toContain("color: var(--docsera-primary);");
+    expect(headerBuiltInBlock).toContain("box-shadow: none;");
+    expect(headerBuiltInBlock).not.toContain("linear-gradient");
+    expect(headerBuiltInBlock).not.toContain("color: #ffffff;");
+    expect(headerGlyphBlock).toContain("width: 82%;");
+    expect(headerGlyphBlock).toContain("height: 82%;");
+    expect(headerGlyphBlock).not.toContain("18px");
+  });
+
   it("uses a bare 20px save-status icon treatment and disables the saving animation under reduced motion", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;
