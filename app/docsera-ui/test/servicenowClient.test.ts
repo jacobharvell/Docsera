@@ -371,3 +371,102 @@ test("createWorkspace rejects invalid payloads safely", async () => {
     })
   ).rejects.toThrow("Workspace creation payload was invalid.");
 });
+
+test("uploadWorkspaceIcon posts the selected file to the workspace icon boundary and normalizes the uploaded icon", async () => {
+  const file = new File(["image"], "brand.png", { type: "image/png" });
+  const fetchMock = vi.fn().mockResolvedValue(
+    createFetchResponse(
+      201,
+      createResponseBody(
+        {
+          asset: {
+            assetKey: "asset-key-001",
+            fileName: "brand.png",
+            url: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001",
+            contentType: "image/png",
+            sizeBytes: 512,
+            width: 128,
+            height: 128
+          }
+        },
+        2
+      )
+    )
+  );
+  globalThis.fetch = fetchMock as typeof fetch;
+
+  const result = await createServiceNowClient(runtime).uploadWorkspaceIcon!({ file });
+  const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+
+  expect(path).toBe("/api/x_82900_docsera/docsera_runtime/workspaces/icons?fileName=brand.png");
+  expect(init.method).toBe("POST");
+  expect(init.body).toBe(file);
+  expect(init.headers).toMatchObject({
+    Accept: "application/json",
+    "Content-Type": "image/png"
+  });
+  expect(result).toEqual({
+    state: "succeeded",
+    icon: {
+      type: "uploaded",
+      key: "asset-key-001",
+      label: "brand.png",
+      assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001"
+    }
+  });
+});
+
+test("uploadWorkspaceIcon rejects malformed successful upload descriptors safely", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(
+    createFetchResponse(
+      201,
+      createResponseBody(
+        {
+          asset: {
+            assetKey: "asset-key-001",
+            fileName: "brand.png",
+            url: "",
+            contentType: "image/png",
+            sizeBytes: 512,
+            width: 128,
+            height: 128
+          }
+        },
+        2
+      )
+    )
+  );
+  globalThis.fetch = fetchMock as typeof fetch;
+
+  await expect(createServiceNowClient(runtime).uploadWorkspaceIcon!({ file: new File(["image"], "brand.png", { type: "image/png" }) })).resolves.toEqual({
+    state: "failed",
+    errorMessage: "Something went wrong while uploading the workspace icon. The file was not saved. Please try again.",
+    retryable: true
+  });
+});
+
+test("uploadWorkspaceIcon returns server-safe errors for rejected uploads", async () => {
+  const fetchMock = vi.fn().mockResolvedValue(
+    createFetchResponse(
+      415,
+      createResponseBody(
+        {
+          error: {
+            message: "Use a PNG, JPG, or WebP image."
+          }
+        },
+        2
+      )
+    )
+  );
+  globalThis.fetch = fetchMock as typeof fetch;
+
+  const result = await createServiceNowClient(runtime).uploadWorkspaceIcon!({
+    file: new File(["gif"], "animated.gif", { type: "image/gif" })
+  });
+
+  expect(result).toEqual({
+    state: "failed",
+    errorMessage: "Use a PNG, JPG, or WebP image."
+  });
+});

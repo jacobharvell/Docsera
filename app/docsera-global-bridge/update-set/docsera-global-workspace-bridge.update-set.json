@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "artifactRevision": "worker-queue-companion-r2",
   "buildType": "global",
-  "generatedAt": "2026-07-06 14:23:18",
+  "generatedAt": "2026-09-02 17:12:07",
   "remoteUpdateSetSysId": "cbb4d31e2a5358f32458ac92ba22a522",
   "sourceDistRoot": "dist",
   "artifactFile": "sys_remote_update_set_docsera_global_workspace_provisioning_worker_queue_0_1_0_companion.xml",
@@ -51,11 +51,25 @@
       "updateName": "sys_module_e1db765a6cbc4f568b5196435a42ef7b"
     },
     {
+      "sourceFile": "update/sys_scope_privilege_0d4d751c513343088b88326ab5354c71.xml",
+      "table": "sys_scope_privilege",
+      "targetName": "sys_scope_privilege_0d4d751c513343088b88326ab5354c71",
+      "targetSysId": "0d4d751c513343088b88326ab5354c71",
+      "updateName": "sys_scope_privilege_0d4d751c513343088b88326ab5354c71"
+    },
+    {
       "sourceFile": "update/sys_scope_privilege_180009d4ff894e0baadce8a57b91fd2f.xml",
       "table": "sys_scope_privilege",
       "targetName": "sys_scope_privilege_180009d4ff894e0baadce8a57b91fd2f",
       "targetSysId": "180009d4ff894e0baadce8a57b91fd2f",
       "updateName": "sys_scope_privilege_180009d4ff894e0baadce8a57b91fd2f"
+    },
+    {
+      "sourceFile": "update/sys_scope_privilege_957dd0a5355f409084022a37f40c35ab.xml",
+      "table": "sys_scope_privilege",
+      "targetName": "sys_scope_privilege_957dd0a5355f409084022a37f40c35ab",
+      "targetSysId": "957dd0a5355f409084022a37f40c35ab",
+      "updateName": "sys_scope_privilege_957dd0a5355f409084022a37f40c35ab"
     },
     {
       "sourceFile": "update/sys_scope_privilege_9bee1d780be04e5790100aedb520cf64.xml",
@@ -77,6 +91,13 @@
       "targetName": "sys_scope_privilege_e27d95e53c7447b29ab1fb9f94284418",
       "targetSysId": "e27d95e53c7447b29ab1fb9f94284418",
       "updateName": "sys_scope_privilege_e27d95e53c7447b29ab1fb9f94284418"
+    },
+    {
+      "sourceFile": "update/sys_scope_privilege_e5de9fae882e41f4ae5e5936a6141657.xml",
+      "table": "sys_scope_privilege",
+      "targetName": "sys_scope_privilege_e5de9fae882e41f4ae5e5936a6141657",
+      "targetSysId": "e5de9fae882e41f4ae5e5936a6141657",
+      "updateName": "sys_scope_privilege_e5de9fae882e41f4ae5e5936a6141657"
     },
     {
       "sourceFile": "update/sys_script_fa8109eeb6ed4c3e91c11238db780568.xml",

@@ -14,7 +14,7 @@ import {
   SunIcon
 } from "./DocseraHeaderIcons";
 import { RecentWorkspacesMenu, type RecentWorkspaceItem } from "./RecentWorkspacesMenu";
-import { WorkspaceIconBadge } from "./WorkspacePrimitives";
+import { WorkspaceIconBadge, type WorkspaceUploadedIconLoader } from "./WorkspacePrimitives";
 import type { WorkspacePageView } from "./workspaceViewModels";
 import type { WorkspaceAuthoringSurface } from "./workspaceAuthoringSurface";
 
@@ -88,6 +88,7 @@ type DocseraHeaderProps = {
   sidebarCollapsed?: boolean;
   theme: "dark" | "light";
   onToggleTheme: () => void;
+  loadUploadedIcon?: WorkspaceUploadedIconLoader;
   workspaceNavWidth?: number;
 };
 
@@ -193,7 +194,7 @@ function CurrentPageSaveStatusIndicator({ status }: { status: CurrentPageSaveSta
   );
 }
 
-function HeaderIdentityIcon({ identity }: { identity: HeaderIdentity }) {
+function HeaderIdentityIcon({ identity, loadUploadedIcon }: { identity: HeaderIdentity; loadUploadedIcon?: WorkspaceUploadedIconLoader }) {
   if (identity.kind === "workspace-loading") {
     return <span className="docsera-header__workspace-icon docsera-header__workspace-icon--loading" aria-hidden="true" />;
   }
@@ -206,13 +207,14 @@ function HeaderIdentityIcon({ identity }: { identity: HeaderIdentity }) {
     );
   }
 
-  return <WorkspaceIconBadge workspace={identity} className="docsera-header__workspace-icon" />;
+  return <WorkspaceIconBadge workspace={identity} className="docsera-header__workspace-icon" loadUploadedIcon={loadUploadedIcon} />;
 }
 
 export function DocseraHeader({
   breadcrumbs = [],
   currentWorkspaceSlug = "",
   identity,
+  loadUploadedIcon,
   mode,
   onOpenMyWorkspaces,
   onOpenWorkspace,
@@ -573,7 +575,7 @@ export function DocseraHeader({
                 setMenuOpen((current) => !current);
               }}
             >
-              <HeaderIdentityIcon identity={identity} />
+              <HeaderIdentityIcon identity={identity} loadUploadedIcon={loadUploadedIcon} />
               <div className="docsera-header__workspace-copy">
                 {identity.kind === "workspace-loading" ? (
                   <span className="docsera-header__workspace-name-skeleton" aria-hidden="true" />
@@ -590,6 +592,7 @@ export function DocseraHeader({
               <RecentWorkspacesMenu
                 currentWorkspaceSlug={currentWorkspaceSlug}
                 items={recentWorkspaces}
+                loadUploadedIcon={loadUploadedIcon}
                 onOpenMyWorkspaces={() => {
                   setMenuOpen(false);
                   onOpenMyWorkspaces();

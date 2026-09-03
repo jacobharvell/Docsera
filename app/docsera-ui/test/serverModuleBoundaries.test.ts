@@ -11,6 +11,12 @@ const serverDocumentWrapperPath = join(packageRoot, "src", "server", "pages", "s
 const sharedWorkspaceIconCatalogWrapperPath = join(packageRoot, "src", "shared", "workspaces", "workspaceIconCatalog.ts");
 const serverWorkspaceIconCatalogPath = join(packageRoot, "src", "server", "workspaces", "serverWorkspaceIconCatalog.ts");
 const serverWorkspaceDomainPath = join(packageRoot, "src", "server", "workspaces", "serverWorkspaceDomain.ts");
+const serviceNowWorkspaceProvisioningPath = join(packageRoot, "src", "server", "workspaces", "serviceNowWorkspaceProvisioning.ts");
+const workspaceTablePath = join(packageRoot, "src", "fluent", "tables", "docsera-workspace.now.ts");
+const globalBridgeQueueAccessPath = resolve(packageRoot, "..", "docsera-global-bridge", "src", "fluent", "security", "docsera-workspace-provisioning-queue-access.now.ts");
+const globalBridgeVerifyPath = resolve(packageRoot, "..", "docsera-global-bridge", "scripts", "verify-global-bridge.mjs");
+const globalBridgeWorkerPath = resolve(packageRoot, "..", "docsera-global-bridge", "src", "server", "script-includes", "docsera-global-workspace-provisioning-bridge.js");
+const globalBridgeBusinessRulePath = resolve(packageRoot, "..", "docsera-global-bridge", "src", "fluent", "business-rules", "docsera-workspace-provision-request-worker.now.ts");
 const explicitSourceExtensionPattern = /\.(?:ts|tsx)$/;
 
 function collectFiles(dir: string): string[] {
@@ -130,5 +136,58 @@ describe("server module boundaries", () => {
     });
 
     expect(offenders).toEqual([]);
+  });
+
+  it("keeps uploaded workspace icon finalization before global provisioning success", () => {
+    const sourceText = readFileSync(globalBridgeWorkerPath, "utf8");
+    const workspaceCreateIndex = sourceText.indexOf("stage = 'create_workspace'");
+    const iconFinalizeIndex = sourceText.indexOf("stage = 'finalize_uploaded_icon'");
+    const markSucceededIndex = sourceText.indexOf("stage = 'mark_succeeded'");
+
+    expect(workspaceCreateIndex).toBeGreaterThanOrEqual(0);
+    expect(iconFinalizeIndex).toBeGreaterThan(workspaceCreateIndex);
+    expect(markSucceededIndex).toBeGreaterThan(iconFinalizeIndex);
+    expect(sourceText).toContain("_finalizeUploadedIconAsset");
+    expect(sourceText).toContain("_rollbackCreatedWorkspace");
+    expect(sourceText).toContain("_restoreUploadedIconAssetClaim");
+    expect(sourceText).toContain("workspace_icon_finalize_failed");
+  });
+
+  it("keeps the global provisioning worker insert-triggered for requested rows only", () => {
+    const sourceText = readFileSync(globalBridgeBusinessRulePath, "utf8");
+
+    expect(sourceText).toContain('action: ["insert"]');
+    expect(sourceText).not.toContain('"update"');
+    expect(sourceText).toContain('filterCondition: "state=requested"');
+  });
+
+  it("keeps uploaded workspace provisioning requests claimed and canonicalized before one requested insert", () => {
+    const sourceText = readFileSync(serviceNowWorkspaceProvisioningPath, "utf8");
+    const futureIdIndex = sourceText.indexOf("allocateProvisionRequestSysId(record)");
+    const claimIndex = sourceText.indexOf("iconService.claimWorkspaceIcon");
+    const canonicalTypeIndex = sourceText.indexOf('record.setValue("icon_type", claim.icon.type)');
+    const canonicalPathIndex = sourceText.indexOf('record.setValue("icon_asset_path", claim.icon.assetPath)');
+    const uploadedInsertIndex = sourceText.indexOf("const insertedRequestId = cleanText(record.insert());", canonicalPathIndex);
+
+    expect(futureIdIndex).toBeGreaterThanOrEqual(0);
+    expect(claimIndex).toBeGreaterThan(futureIdIndex);
+    expect(canonicalTypeIndex).toBeGreaterThan(claimIndex);
+    expect(canonicalPathIndex).toBeGreaterThan(canonicalTypeIndex);
+    expect(uploadedInsertIndex).toBeGreaterThan(canonicalPathIndex);
+    expect(sourceText).toContain('record.setValue("state", "requested");');
+    expect(sourceText).not.toContain('record.setValue("state", "processing")');
+    expect(sourceText).not.toContain('draft.icon.type === "uploaded" ? "processing" : "requested"');
+    expect(sourceText).not.toContain("record.update()");
+  });
+
+  it("keeps global rollback delete executable through both cross-scope privilege and scoped table access", () => {
+    const workspaceTableSource = readFileSync(workspaceTablePath, "utf8");
+    const bridgeAccessSource = readFileSync(globalBridgeQueueAccessPath, "utf8");
+
+    expect(workspaceTableSource).toContain('actions: ["read", "create", "delete"]');
+    expect(bridgeAccessSource).toContain('$id: Now.ID["docsera-workspace-delete"]');
+    expect(bridgeAccessSource).toContain('operation: "delete"');
+    expect(bridgeAccessSource).toContain('targetName: "x_82900_docsera_workspace"');
+    expect(readFileSync(globalBridgeVerifyPath, "utf8")).toContain("delete_access");
   });
 });

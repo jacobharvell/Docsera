@@ -549,6 +549,13 @@ export type WorkspaceMediaUploadResult =
     }
   | WorkspaceMediaFailure;
 
+export type WorkspaceIconUploadResult =
+  | {
+      icon: WorkspaceIcon & { type: "uploaded"; assetPath: string };
+      state: "succeeded";
+    }
+  | WorkspaceMediaFailure;
+
 export type ServiceNowClient = {
   ping: () => Promise<PingResult>;
   listWorkspaces: (input?: { searchText?: string; page?: number; pageSize?: number }) => Promise<WorkspaceListResult>;
@@ -559,6 +566,8 @@ export type ServiceNowClient = {
   createPage: (input: PageCreateInput) => Promise<PageCreateResult>;
   listWorkspaceMedia?: (input: { workspaceSysId: string }) => Promise<WorkspaceMediaListResult>;
   uploadWorkspaceMedia?: (input: { file: File; workspaceLeaseToken: string; workspaceSysId: string }) => Promise<WorkspaceMediaUploadResult>;
+  uploadWorkspaceIcon?: (input: { file: File }) => Promise<WorkspaceIconUploadResult>;
+  loadWorkspaceIcon?: (input: { assetPath: string; signal?: AbortSignal }) => Promise<Blob | null>;
   loadWorkspaceMedia?: (input: { mediaId: string; signal?: AbortSignal; workspaceSysId: string }) => Promise<Blob | null>;
   acquireWorkspaceEditLease?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspaceEditLeaseAcquireResult>;
   resumeWorkspaceEditLease?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspaceEditLeaseRenewResult>;

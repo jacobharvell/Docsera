@@ -154,6 +154,41 @@ describe("service now client workspace media", () => {
     expect(result).toBe(blob);
   });
 
+  it("loads workspace icons as binary blobs through the authenticated uploaded-icon boundary", async () => {
+    (window as Window & { g_ck?: string }).g_ck = "user-token-001";
+    const signal = new AbortController().signal;
+    const blob = new Blob(["icon-image"], { type: "image/png" });
+    const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      expect(path).toBe("/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001");
+      expect(init?.credentials).toBe("same-origin");
+      expect(init?.signal).toBe(signal);
+      expect((init?.headers as HeadersInit | undefined) ?? {}).toMatchObject({
+        Accept: "image/*",
+        "X-UserToken": "user-token-001"
+      });
+      return createBinaryResponse(200, blob);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createServiceNowClient(createRuntime()).loadWorkspaceIcon!({
+      assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001",
+      signal
+    });
+
+    expect(result).toBe(blob);
+  });
+
+  it("returns a safe null failure for unavailable workspace icon responses", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => createBinaryResponse(404, new Blob())));
+
+    const result = await createServiceNowClient(createRuntime()).loadWorkspaceIcon!({
+      assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001"
+    });
+
+    expect(result).toBeNull();
+  });
+
   it("returns a safe null failure for unavailable workspace media responses", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => createBinaryResponse(404, new Blob())));
 

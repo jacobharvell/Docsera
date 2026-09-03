@@ -16,6 +16,7 @@ const defaults = {
   expectedGlobalJsLevel: "es_latest",
   expectedRuntimeAccessTracking: "permissive",
   scopedRequestTable: "x_82900_docsera_workspace_provision_request",
+  scopedWorkspaceIconAssetTable: "x_82900_docsera_workspace_icon_asset",
   scopedWorkspaceTable: "x_82900_docsera_workspace"
 };
 
@@ -211,7 +212,7 @@ function main() {
   const privilegeRecords = runQuery({
     authAlias,
     table: "sys_scope_privilege",
-    query: `target_scope=6997f092c3fd8310c569bf0d0501314d^target_nameIN${defaults.scopedRequestTable},${defaults.scopedWorkspaceTable}`,
+    query: `target_scope=6997f092c3fd8310c569bf0d0501314d^target_nameIN${defaults.scopedRequestTable},${defaults.scopedWorkspaceTable},${defaults.scopedWorkspaceIconAssetTable}`,
     fields: "sys_id,target_name,target_scope,target_type,operation,status,source_scope"
   });
   const privilegeKeys = new Set(
@@ -239,6 +240,50 @@ function main() {
     ok: privilegeKeys.has(`${defaults.scopedWorkspaceTable}::read`),
     label: "global worker has read privilege on the scoped workspace table",
     detail: JSON.stringify(privilegeRecords)
+  });
+  checks.push({
+    ok: privilegeKeys.has(`${defaults.scopedWorkspaceTable}::delete`),
+    label: "global worker has delete privilege on the scoped workspace table for rollback",
+    detail: JSON.stringify(privilegeRecords)
+  });
+  checks.push({
+    ok: privilegeKeys.has(`${defaults.scopedWorkspaceIconAssetTable}::read`),
+    label: "global worker has read privilege on the scoped workspace icon asset table",
+    detail: JSON.stringify(privilegeRecords)
+  });
+  checks.push({
+    ok: privilegeKeys.has(`${defaults.scopedWorkspaceIconAssetTable}::write`),
+    label: "global worker has write privilege on the scoped workspace icon asset table",
+    detail: JSON.stringify(privilegeRecords)
+  });
+
+  const scopedWorkspaceTableRecords = runQuery({
+    authAlias,
+    table: "sys_db_object",
+    query: `name=${defaults.scopedWorkspaceTable}`,
+    fields: "sys_id,name,read_access,create_access,delete_access"
+  });
+  const scopedWorkspaceTableRecord = scopedWorkspaceTableRecords[0] ?? null;
+
+  checks.push({
+    ok: scopedWorkspaceTableRecords.length === 1,
+    label: "scoped workspace table Application Access record is queryable",
+    detail: JSON.stringify(scopedWorkspaceTableRecords)
+  });
+  checks.push({
+    ok: normalizeBoolean(scopedWorkspaceTableRecord?.read_access),
+    label: "scoped workspace table permits cross-scope read",
+    detail: JSON.stringify(scopedWorkspaceTableRecord)
+  });
+  checks.push({
+    ok: normalizeBoolean(scopedWorkspaceTableRecord?.create_access),
+    label: "scoped workspace table permits cross-scope create",
+    detail: JSON.stringify(scopedWorkspaceTableRecord)
+  });
+  checks.push({
+    ok: normalizeBoolean(scopedWorkspaceTableRecord?.delete_access),
+    label: "scoped workspace table permits cross-scope delete for rollback",
+    detail: JSON.stringify(scopedWorkspaceTableRecord)
   });
 
   const runtimeModuleRecords = runQuery({

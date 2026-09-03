@@ -74,8 +74,8 @@ function normalizeWorkspaceIconInput(icon: Record<string, unknown>): WorkspaceDr
     return {
       type: "uploaded",
       key: cleanText(icon.key),
-      label: cleanText(icon.label),
-      assetPath: cleanText(icon.assetPath) || undefined
+      label: "",
+      assetPath: ""
     };
   }
 

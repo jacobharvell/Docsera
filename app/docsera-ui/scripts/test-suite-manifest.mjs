@@ -12,6 +12,8 @@ export const testSuites = [
     files: [
       "src/client/features/workspaces/defaultWorkspaceIconAsset.test.ts",
       "src/client/features/workspaces/RecentWorkspacesMenu.test.tsx",
+      "src/client/features/workspaces/WorkspaceCreateModal.test.tsx",
+      "src/client/features/workspaces/MyWorkspacesScreenSections.test.tsx",
       "src/client/features/workspaces/WorkspacePrimitives.test.tsx",
       "test/App.test.tsx"
     ]
@@ -195,9 +197,12 @@ export const testSuites = [
       "src/client/main.test.ts",
       "src/client/runtimeLaunch.test.ts",
       "src/client/shared/icons/DocseraIcon.test.tsx",
+      "src/server/workspaces/serverWorkspaceIconImage.test.ts",
+      "src/server/workspaces/serviceNowWorkspaceIcons.test.ts",
       "test/runtimeApiErrors.test.ts",
       "test/runtimeStylesheet.test.ts",
-      "test/serverModuleBoundaries.test.ts"
+      "test/serverModuleBoundaries.test.ts",
+      "test/workspaceProvisioningTrigger.test.ts"
     ]
   }
 ];

@@ -8,6 +8,7 @@ import {
   WORKSPACE_ROLE_NAMES
 } from "./serverWorkspaceDomain.ts";
 import { mapWorkspaceRecord } from "./serviceNowWorkspaceRecords.ts";
+import { createServiceNowWorkspaceIconService } from "./serviceNowWorkspaceIcons.ts";
 
 const DOCSERA_WORKSPACE_PROVISION_REQUEST_TABLE = "x_82900_docsera_workspace_provision_request";
 const PROVISION_STATUS_ROUTE_PATH =
@@ -165,10 +166,22 @@ function listReservedWorkspaceSlugs(): string[] {
   return slugs;
 }
 
+function allocateProvisionRequestSysId(record: GlideRecord): string {
+  const generated = cleanText((gs as unknown as { generateGUID?: () => string }).generateGUID?.());
+  if (!generated) {
+    throw new Error("Failed to allocate workspace provisioning request ID.");
+  }
+
+  (record as unknown as { setNewGuidValue: (sysId: string) => void }).setNewGuidValue(generated);
+  return generated;
+}
+
 function createProvisionRequest(input: WorkspaceDraftInput): string {
   const draft = createWorkspaceDraft(input, listReservedWorkspaceSlugs());
+  const iconService = createServiceNowWorkspaceIconService();
   const record = new GlideRecord(DOCSERA_WORKSPACE_PROVISION_REQUEST_TABLE);
   record.initialize();
+  const requestId = draft.icon.type === "uploaded" ? allocateProvisionRequestSysId(record) : "";
   record.setValue("name", draft.name);
   record.setValue("workspace_slug", draft.slug);
   record.setValue("workspace_group_key", draft.workspaceGroupKey);
@@ -187,8 +200,33 @@ function createProvisionRequest(input: WorkspaceDraftInput): string {
   record.setValue("error_code", "");
   record.setValue("error_message", "");
 
-  const requestId = cleanText(record.insert());
-  if (!requestId) {
+  if (draft.icon.type === "uploaded") {
+    const claim = iconService.claimWorkspaceIcon(draft.icon.key, requestId);
+    if (claim.kind === "failed") {
+      throw new TypeError(claim.errorMessage);
+    }
+    record.setValue("icon_type", claim.icon.type);
+    record.setValue("icon_key", claim.icon.key);
+    record.setValue("icon_label", claim.icon.label);
+    record.setValue("icon_asset_path", claim.icon.assetPath);
+
+    const insertedRequestId = cleanText(record.insert());
+    if (insertedRequestId !== requestId) {
+      iconService.restoreWorkspaceIconClaim(claim.asset.sysId);
+      const safeMessage = "Failed to queue workspace provisioning.";
+      logProvisioningFailure(
+        `createProvisionRequest uploaded insert failed ${draft.slug}`,
+        safeMessage,
+        readLastErrorMessage(record)
+      );
+      throw new Error(safeMessage);
+    }
+
+    return requestId;
+  }
+
+  const insertedRequestId = cleanText(record.insert());
+  if (!insertedRequestId) {
     const safeMessage = "Failed to queue workspace provisioning.";
     logProvisioningFailure(
       `createProvisionRequest insert failed ${draft.slug}`,
@@ -198,7 +236,7 @@ function createProvisionRequest(input: WorkspaceDraftInput): string {
     throw new Error(safeMessage);
   }
 
-  return requestId;
+  return insertedRequestId;
 }
 
 function buildStatusPath(requestId: string): string {

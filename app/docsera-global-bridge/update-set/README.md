@@ -30,7 +30,8 @@ Included worker records:
 - `sys_script:Docsera Workspace Provision Request Worker`
 - `sys_scope_privilege` rows for:
   - `x_82900_docsera_workspace_provision_request` read/write
-  - `x_82900_docsera_workspace` read/create
+  - `x_82900_docsera_workspace` read/create/delete
+  - `x_82900_docsera_workspace_icon_asset` read/write
 - `sys_module:/global/docsera-global-workspace-bridge/0.1.0/package.json`
 - `sys_module:/global/docsera-global-workspace-bridge/0.1.0/bom.json`
 - `sys_module:/global/docsera-global-workspace-bridge/0.1.0/src/server/script-includes/docsera-global-workspace-provisioning-bridge.js`

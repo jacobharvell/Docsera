@@ -17,6 +17,8 @@ import { process as workspaces } from "../../server/api/docsera-runtime-workspac
 import { process as listWorkspaceMedia } from "../../server/api/docsera-runtime-workspace-media.ts";
 import { process as uploadWorkspaceMedia } from "../../server/api/docsera-runtime-workspace-media-upload.ts";
 import { process as getWorkspaceMediaFile } from "../../server/api/docsera-runtime-workspace-media-file.ts";
+import { process as uploadWorkspaceIcon } from "../../server/api/docsera-runtime-workspace-icon-upload.ts";
+import { process as getWorkspaceIconFile } from "../../server/api/docsera-runtime-workspace-icon-file.ts";
 import { process as workspaceProvisioningStatus } from "../../server/api/docsera-runtime-workspace-provisioning-status";
 import { process as workspaceDiscardAll } from "../../server/api/docsera-runtime-workspace-discard-all";
 import { process as workspaceDiscardPage } from "../../server/api/docsera-runtime-workspace-discard-page";
@@ -109,6 +111,12 @@ RestApi({
     },
     {
       $id: Now.ID["docsera-runtime-workspace-media-file-get"], name: "workspace_media_file", path: "/workspaces/media/file", method: "GET", produces: "image/*", shortDescription: "Stream a workspace-owned image attachment through the authorized media boundary.", script: getWorkspaceMediaFile
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-icon-post"], name: "workspace_icon_upload", path: "/workspaces/icons", method: "POST", consumes: "image/*", produces: "application/json", shortDescription: "Upload a validated custom workspace icon asset.", script: uploadWorkspaceIcon
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-icon-file-get"], name: "workspace_icon_file", path: "/workspaces/icons/file", method: "GET", produces: "image/*", shortDescription: "Stream an uploaded workspace icon through workspace view authorization.", script: getWorkspaceIconFile
     },
     {
       $id: Now.ID["docsera-runtime-pages-post"],

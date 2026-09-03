@@ -19,6 +19,7 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
         }
 
         var createdGroupIds = [];
+        var workspaceSysId = '';
         var stage = 'validation';
 
         try {
@@ -49,7 +50,10 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
             this._addUserToGroup(adminGroup.sysId, payload.requestedBySysId);
 
             stage = 'create_workspace';
-            var workspaceSysId = this._createWorkspaceRecord(payload, adminGroup.sysId, editorGroup.sysId);
+            workspaceSysId = this._createWorkspaceRecord(payload, adminGroup.sysId, editorGroup.sysId);
+
+            stage = 'finalize_uploaded_icon';
+            this._finalizeUploadedIconAsset(request, payload, workspaceSysId);
 
             stage = 'mark_succeeded';
             this._markRequestSucceeded(requestId, workspaceSysId, adminGroup.sysId, editorGroup.sysId);
@@ -59,6 +63,8 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
                 workspaceSysId: workspaceSysId,
             };
         } catch (error) {
+            this._rollbackCreatedWorkspace(workspaceSysId);
+            this._restoreUploadedIconAssetClaim(requestId);
             this._rollbackCreatedGroups(createdGroupIds);
             this._markRequestFailed(requestId, this._errorCodeForStage(stage), this._safeMessageForStage(stage));
             this._logError('processRequest.' + stage, error);
@@ -72,6 +78,7 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     _DOCSERA_SCOPE: 'x_82900_docsera',
     _REQUEST_TABLE: 'x_82900_docsera_workspace_provision_request',
     _WORKSPACE_TABLE: 'x_82900_docsera_workspace',
+    _WORKSPACE_ICON_ASSET_TABLE: 'x_82900_docsera_workspace_icon_asset',
 
     _ROLE_NAMES: {
         workspaceAdmin: 'x_82900_docsera.workspace_admin',
@@ -289,6 +296,38 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
         request.update();
     },
 
+    _finalizeUploadedIconAsset: function (request, payload, workspaceSysId) {
+        if (payload.iconType !== 'uploaded') {
+            return;
+        }
+        var assetKey = this._cleanText(payload.iconKey);
+        if (!assetKey) {
+            throw new Error('Uploaded workspace icon key was missing.');
+        }
+        var asset = new GlideRecord(this._WORKSPACE_ICON_ASSET_TABLE);
+        asset.addQuery('asset_key', assetKey);
+        asset.addQuery('state', 'claimed');
+        asset.addQuery('provision_request', this._cleanText(request.getUniqueValue()));
+        asset.addQuery('workspace', '');
+        asset.setValue('workspace', workspaceSysId);
+        asset.setValue('provision_request', this._cleanText(request.getUniqueValue()));
+        asset.setValue('state', 'claimed');
+        asset.updateMultiple();
+
+        var verified = new GlideRecord(this._WORKSPACE_ICON_ASSET_TABLE);
+        verified.addQuery('asset_key', assetKey);
+        verified.setLimit(1);
+        verified.query();
+        if (
+            !verified.next() ||
+            this._cleanText(verified.getValue('state')) !== 'claimed' ||
+            this._cleanText(verified.getValue('provision_request')) !== this._cleanText(request.getUniqueValue()) ||
+            this._cleanText(verified.getValue('workspace')) !== workspaceSysId
+        ) {
+            throw new Error('Uploaded workspace icon asset finalization could not be verified.');
+        }
+    },
+
     _markRequestFailed: function (requestSysId, errorCode, errorMessage) {
         var request = new GlideRecord(this._REQUEST_TABLE);
         if (!request.get(requestSysId)) {
@@ -320,6 +359,8 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
                 return 'creator_membership_failed';
             case 'create_workspace':
                 return 'workspace_create_failed';
+            case 'finalize_uploaded_icon':
+                return 'workspace_icon_finalize_failed';
             default:
                 return 'provisioning_failed';
         }
@@ -339,9 +380,44 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
                 return 'Failed to add the workspace creator to the admin group.';
             case 'create_workspace':
                 return 'Failed to create the workspace record after provisioning access groups.';
+            case 'finalize_uploaded_icon':
+                return 'Failed to attach the uploaded workspace icon to the new workspace.';
             default:
                 return 'Workspace provisioning failed.';
         }
+    },
+
+    _rollbackCreatedWorkspace: function (workspaceSysId) {
+        var sysId = this._cleanText(workspaceSysId);
+        if (!sysId) {
+            return;
+        }
+
+        var workspace = new GlideRecord(this._WORKSPACE_TABLE);
+        if (workspace.get(sysId)) {
+            workspace.deleteRecord();
+        }
+    },
+
+    _restoreUploadedIconAssetClaim: function (requestSysId) {
+        var request = new GlideRecord(this._REQUEST_TABLE);
+        if (!request.get(requestSysId) || this._cleanText(request.getValue('icon_type')) !== 'uploaded') {
+            return;
+        }
+
+        var asset = new GlideRecord(this._WORKSPACE_ICON_ASSET_TABLE);
+        asset.addQuery('asset_key', this._cleanText(request.getValue('icon_key')));
+        asset.addQuery('state', 'claimed');
+        asset.addQuery('provision_request', this._cleanText(request.getUniqueValue()));
+        asset.setLimit(1);
+        asset.query();
+        if (!asset.next()) {
+            return;
+        }
+        asset.setValue('state', 'staged');
+        asset.setValue('provision_request', '');
+        asset.setValue('workspace', '');
+        asset.update();
     },
 
     _rollbackCreatedGroups: function (groupSysIds) {

@@ -620,11 +620,25 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__search-icon {
   font-size: 0;
 }
 
+.docsera-workspace-icon-badge--uploaded {
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  font-size: 0;
+}
+
 .docsera-workspace-icon-badge__artwork {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.docsera-workspace-icon-badge__uploaded-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 
 .docsera-workspace-icon-badge__glyph {
@@ -1139,6 +1153,11 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
   background: color-mix(in srgb, var(--docsera-secondary) 4%, var(--docsera-surface) 96%);
 }
 
+.docsera-workspace-icon-picker__option:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .docsera-workspace-icon-picker__option:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--docsera-secondary) 72%, transparent);
   outline-offset: 2px;
@@ -1154,6 +1173,61 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
   width: 46px;
   height: 46px;
   border-radius: 8px;
+}
+
+.docsera-workspace-icon-picker__upload-row {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.docsera-workspace-icon-picker__file-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.docsera-workspace-icon-picker__upload-button {
+  justify-self: center;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--docsera-border);
+  border-radius: 4px;
+  background: var(--docsera-surface);
+  color: var(--docsera-text);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.docsera-workspace-icon-picker__upload-button:not(:disabled):hover {
+  border-color: color-mix(in srgb, var(--docsera-secondary) 42%, var(--docsera-border) 58%);
+  color: var(--docsera-primary);
+}
+
+.docsera-workspace-icon-picker__upload-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--docsera-secondary) 72%, transparent);
+  outline-offset: 2px;
+}
+
+.docsera-workspace-icon-picker__upload-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.docsera-workspace-icon-picker__constraints,
+.docsera-workspace-icon-picker__status {
+  color: var(--docsera-text-soft);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.docsera-workspace-icon-picker__status:empty {
+  display: none;
 }
 
 .docsera-modal__info-note {

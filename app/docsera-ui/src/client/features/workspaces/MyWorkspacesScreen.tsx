@@ -10,7 +10,8 @@ import {
 } from "./MyWorkspacesScreenSections";
 import type { RecentWorkspaceItem } from "./RecentWorkspacesMenu";
 import { WorkspaceCreateModal } from "./WorkspaceCreateModal";
-import type { WorkspaceIcon, WorkspaceViewRecord } from "../../shared/types/docsera";
+import type { WorkspaceUploadedIconLoader } from "./WorkspacePrimitives";
+import type { WorkspaceIcon, WorkspaceIconUploadResult, WorkspaceViewRecord } from "../../shared/types/docsera";
 
 type MyWorkspacesScreenProps = {
   canCreateWorkspaces: boolean;
@@ -18,6 +19,7 @@ type MyWorkspacesScreenProps = {
     errorMessage?: string;
     onClose: () => void;
     onSubmit: (input: { name: string; shortDescription: string; icon: WorkspaceIcon }) => void;
+    onUploadIcon?: (input: { file: File }) => Promise<WorkspaceIconUploadResult>;
     open: boolean;
     phase: "idle" | "submitting" | "polling";
   };
@@ -27,6 +29,7 @@ type MyWorkspacesScreenProps = {
   isNoResultsState: boolean;
   isRefreshing: boolean;
   items: WorkspaceViewRecord[];
+  loadUploadedIcon?: WorkspaceUploadedIconLoader;
   showLoadingState: boolean;
   onNextPage: () => void;
   onOpenWorkspace: (workspaceSlug: string, item?: RecentWorkspaceItem) => void;
@@ -60,6 +63,7 @@ export function MyWorkspacesScreen({
   isNoResultsState,
   isRefreshing,
   items,
+  loadUploadedIcon,
   showLoadingState,
   onNextPage,
   onOpenWorkspace,
@@ -145,6 +149,7 @@ export function MyWorkspacesScreen({
           {showList ? (
             <WorkspaceList
               items={items}
+              loadUploadedIcon={loadUploadedIcon}
               onOpenWorkspace={onOpenWorkspace}
               onOpenWorkspaceSettings={onOpenWorkspaceSettings}
             />
@@ -155,6 +160,7 @@ export function MyWorkspacesScreen({
           errorMessage={createModal.errorMessage}
           onClose={createModal.onClose}
           onSubmit={createModal.onSubmit}
+          onUploadIcon={createModal.onUploadIcon}
           open={createModal.open}
           phase={createModal.phase}
         />

@@ -3,7 +3,7 @@ import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
 import type { WorkspaceViewRecord } from "../../shared/types/docsera";
 import type { RecentWorkspaceItem } from "./RecentWorkspacesMenu";
-import { WorkspaceIconBadge } from "./WorkspacePrimitives";
+import { WorkspaceIconBadge, type WorkspaceUploadedIconLoader } from "./WorkspacePrimitives";
 import { buildWorkspaceHref } from "./workspaceRouting";
 
 function SearchIcon() {
@@ -128,8 +128,10 @@ export function WorkspaceListHeader() {
 export function WorkspaceRow({
   onOpenWorkspace,
   onOpenWorkspaceSettings,
+  loadUploadedIcon,
   workspace
 }: {
+  loadUploadedIcon?: WorkspaceUploadedIconLoader;
   onOpenWorkspace: (workspaceSlug: string, item?: RecentWorkspaceItem) => void;
   onOpenWorkspaceSettings: (workspaceSlug: string) => void;
   workspace: WorkspaceViewRecord;
@@ -138,7 +140,7 @@ export function WorkspaceRow({
     <li className="docsera-workspace-list__item">
       <article className="docsera-workspace-row">
         <div className="docsera-workspace-row__identity">
-          <WorkspaceIconBadge workspace={workspace} className="docsera-workspace-row__icon" />
+          <WorkspaceIconBadge workspace={workspace} className="docsera-workspace-row__icon" loadUploadedIcon={loadUploadedIcon} />
           <div className="docsera-workspace-row__copy">
             <a
               className="docsera-workspace-row__name"
@@ -180,10 +182,12 @@ export function WorkspaceRow({
 
 export function WorkspaceList({
   items,
+  loadUploadedIcon,
   onOpenWorkspace,
   onOpenWorkspaceSettings
 }: {
   items: WorkspaceViewRecord[];
+  loadUploadedIcon?: WorkspaceUploadedIconLoader;
   onOpenWorkspace: (workspaceSlug: string, item?: RecentWorkspaceItem) => void;
   onOpenWorkspaceSettings: (workspaceSlug: string) => void;
 }) {
@@ -193,6 +197,7 @@ export function WorkspaceList({
         <WorkspaceRow
           key={workspace.sysId ?? workspace.slug}
           workspace={workspace}
+          loadUploadedIcon={loadUploadedIcon}
           onOpenWorkspace={onOpenWorkspace}
           onOpenWorkspaceSettings={onOpenWorkspaceSettings}
         />

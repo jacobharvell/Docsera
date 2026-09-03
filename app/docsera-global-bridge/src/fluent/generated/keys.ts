@@ -17,6 +17,18 @@ declare global {
                         table: 'sys_scope_privilege'
                         id: '9f92dc99a2cc467792837aaa2eda7685'
                     }
+                    'docsera-workspace-delete': {
+                        table: 'sys_scope_privilege'
+                        id: '957dd0a5355f409084022a37f40c35ab'
+                    }
+                    'docsera-workspace-icon-asset-read': {
+                        table: 'sys_scope_privilege'
+                        id: 'e5de9fae882e41f4ae5e5936a6141657'
+                    }
+                    'docsera-workspace-icon-asset-write': {
+                        table: 'sys_scope_privilege'
+                        id: '0d4d751c513343088b88326ab5354c71'
+                    }
                     'docsera-workspace-provision-request-read': {
                         table: 'sys_scope_privilege'
                         id: '9bee1d780be04e5790100aedb520cf64'

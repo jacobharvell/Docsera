@@ -1,9 +1,13 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RecentWorkspacesMenu, type RecentWorkspaceItem } from "./RecentWorkspacesMenu";
 
 describe("RecentWorkspacesMenu", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("keeps long workspace names within the identity layout and preserves the existing footer and current-state treatment", () => {
     const onOpenMyWorkspaces = vi.fn();
     const onOpenWorkspace = vi.fn();
@@ -59,5 +63,37 @@ describe("RecentWorkspacesMenu", () => {
 
     fireEvent.click(footer);
     expect(onOpenMyWorkspaces).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses the shared authenticated uploaded-icon loader for recent workspace rows", async () => {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:recent-workspace-icon")
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn()
+    });
+    const loadUploadedIcon = vi.fn(async () => new Blob(["icon"], { type: "image/png" }));
+    render(
+      <RecentWorkspacesMenu
+        items={[
+          {
+            icon: { type: "uploaded", key: "asset-key-001", label: "Custom", assetPath: "/icons/file?assetKey=asset-key-001" },
+            name: "Custom Docs",
+            slug: "custom-docs"
+          }
+        ]}
+        loadUploadedIcon={loadUploadedIcon}
+        onOpenMyWorkspaces={vi.fn()}
+        onOpenWorkspace={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(document.querySelector(".docsera-workspace-icon-badge__uploaded-image")).toHaveAttribute("src", "blob:recent-workspace-icon"));
+    expect(loadUploadedIcon).toHaveBeenCalledWith({
+      assetPath: "/icons/file?assetKey=asset-key-001",
+      signal: expect.any(AbortSignal)
+    });
   });
 });

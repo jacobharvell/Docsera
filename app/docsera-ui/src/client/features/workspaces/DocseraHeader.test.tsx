@@ -2,7 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { DocseraHeader } from "./DocseraHeader";
 import type { WorkspacePendingChangesResult } from "../../shared/types/docsera";
 type PendingRow = Extract<WorkspacePendingChangesResult, { state: "succeeded" }>["rows"][number];
@@ -32,6 +32,10 @@ function pending(rows: PendingRow[]): WorkspacePendingChangesResult {
 }
 
 describe("DocseraHeader publishing changes", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("renders non-default built-in workspace icons as transparent primary glyphs in the header identity", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;
@@ -73,6 +77,35 @@ describe("DocseraHeader publishing changes", () => {
     expect(headerGlyphBlock).toContain("width: 82%;");
     expect(headerGlyphBlock).toContain("height: 82%;");
     expect(headerGlyphBlock).not.toContain("18px");
+  });
+
+  it("uses the shared authenticated uploaded-icon loader for the header identity", async () => {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:header-workspace-icon")
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn()
+    });
+    const loadUploadedIcon = vi.fn(async () => new Blob(["icon"], { type: "image/png" }));
+    const { container } = render(
+      <DocseraHeader
+        {...baseProps}
+        identity={{
+          kind: "workspace",
+          icon: { type: "uploaded", key: "asset-key-001", label: "Custom", assetPath: "/icons/file?assetKey=asset-key-001" },
+          name: "Custom Docs"
+        }}
+        loadUploadedIcon={loadUploadedIcon}
+      />
+    );
+
+    await waitFor(() => expect(container.querySelector(".docsera-workspace-icon-badge__uploaded-image")).toHaveAttribute("src", "blob:header-workspace-icon"));
+    expect(loadUploadedIcon).toHaveBeenCalledWith({
+      assetPath: "/icons/file?assetKey=asset-key-001",
+      signal: expect.any(AbortSignal)
+    });
   });
 
   it("uses a bare 20px save-status icon treatment and disables the saving animation under reduced motion", () => {

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<unload unload_date="2026-07-06 14:23:18" unload_version="1" syntax="glide">
+<unload unload_date="2026-09-02 17:12:07" unload_version="1" syntax="glide">
   <sys_remote_update_set action="INSERT_OR_UPDATE">
     <sys_id>cbb4d31e2a5358f32458ac92ba22a522</sys_id>
     <application display_value="Global">global</application>
@@ -139,9 +139,9 @@
   &quot;bomFormat&quot;: &quot;CycloneDX&quot;,
   &quot;specVersion&quot;: &quot;1.6&quot;,
   &quot;version&quot;: 1,
-  &quot;serialNumber&quot;: &quot;urn:uuid:567158df-bc0c-45b3-a2b3-806d024cb841&quot;,
+  &quot;serialNumber&quot;: &quot;urn:uuid:c997d7ed-f0e6-4ae0-931b-e6af0a862b46&quot;,
   &quot;metadata&quot;: {
-    &quot;timestamp&quot;: &quot;2026-07-06T14:23:15.830Z&quot;,
+    &quot;timestamp&quot;: &quot;2026-09-02T17:12:00.650Z&quot;,
     &quot;tools&quot;: {
       &quot;components&quot;: [
         {
@@ -215,6 +215,7 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
         }
 
         var createdGroupIds = [];
+        var workspaceSysId = &apos;&apos;;
         var stage = &apos;validation&apos;;
 
         try {
@@ -245,7 +246,10 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
             this._addUserToGroup(adminGroup.sysId, payload.requestedBySysId);
 
             stage = &apos;create_workspace&apos;;
-            var workspaceSysId = this._createWorkspaceRecord(payload, adminGroup.sysId, editorGroup.sysId);
+            workspaceSysId = this._createWorkspaceRecord(payload, adminGroup.sysId, editorGroup.sysId);
+
+            stage = &apos;finalize_uploaded_icon&apos;;
+            this._finalizeUploadedIconAsset(request, payload, workspaceSysId);
 
             stage = &apos;mark_succeeded&apos;;
             this._markRequestSucceeded(requestId, workspaceSysId, adminGroup.sysId, editorGroup.sysId);
@@ -255,6 +259,8 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
                 workspaceSysId: workspaceSysId,
             };
         } catch (error) {
+            this._rollbackCreatedWorkspace(workspaceSysId);
+            this._restoreUploadedIconAssetClaim(requestId);
             this._rollbackCreatedGroups(createdGroupIds);
             this._markRequestFailed(requestId, this._errorCodeForStage(stage), this._safeMessageForStage(stage));
             this._logError(&apos;processRequest.&apos; + stage, error);
@@ -268,6 +274,7 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     _DOCSERA_SCOPE: &apos;x_82900_docsera&apos;,
     _REQUEST_TABLE: &apos;x_82900_docsera_workspace_provision_request&apos;,
     _WORKSPACE_TABLE: &apos;x_82900_docsera_workspace&apos;,
+    _WORKSPACE_ICON_ASSET_TABLE: &apos;x_82900_docsera_workspace_icon_asset&apos;,
 
     _ROLE_NAMES: {
         workspaceAdmin: &apos;x_82900_docsera.workspace_admin&apos;,
@@ -485,6 +492,38 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
         request.update();
     },
 
+    _finalizeUploadedIconAsset: function (request, payload, workspaceSysId) {
+        if (payload.iconType !== &apos;uploaded&apos;) {
+            return;
+        }
+        var assetKey = this._cleanText(payload.iconKey);
+        if (!assetKey) {
+            throw new Error(&apos;Uploaded workspace icon key was missing.&apos;);
+        }
+        var asset = new GlideRecord(this._WORKSPACE_ICON_ASSET_TABLE);
+        asset.addQuery(&apos;asset_key&apos;, assetKey);
+        asset.addQuery(&apos;state&apos;, &apos;claimed&apos;);
+        asset.addQuery(&apos;provision_request&apos;, this._cleanText(request.getUniqueValue()));
+        asset.addQuery(&apos;workspace&apos;, &apos;&apos;);
+        asset.setValue(&apos;workspace&apos;, workspaceSysId);
+        asset.setValue(&apos;provision_request&apos;, this._cleanText(request.getUniqueValue()));
+        asset.setValue(&apos;state&apos;, &apos;claimed&apos;);
+        asset.updateMultiple();
+
+        var verified = new GlideRecord(this._WORKSPACE_ICON_ASSET_TABLE);
+        verified.addQuery(&apos;asset_key&apos;, assetKey);
+        verified.setLimit(1);
+        verified.query();
+        if (
+            !verified.next() ||
+            this._cleanText(verified.getValue(&apos;state&apos;)) !== &apos;claimed&apos; ||
+            this._cleanText(verified.getValue(&apos;provision_request&apos;)) !== this._cleanText(request.getUniqueValue()) ||
+            this._cleanText(verified.getValue(&apos;workspace&apos;)) !== workspaceSysId
+        ) {
+            throw new Error(&apos;Uploaded workspace icon asset finalization could not be verified.&apos;);
+        }
+    },
+
     _markRequestFailed: function (requestSysId, errorCode, errorMessage) {
         var request = new GlideRecord(this._REQUEST_TABLE);
         if (!request.get(requestSysId)) {
@@ -516,6 +555,8 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
                 return &apos;creator_membership_failed&apos;;
             case &apos;create_workspace&apos;:
                 return &apos;workspace_create_failed&apos;;
+            case &apos;finalize_uploaded_icon&apos;:
+                return &apos;workspace_icon_finalize_failed&apos;;
             default:
                 return &apos;provisioning_failed&apos;;
         }
@@ -535,9 +576,44 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
                 return &apos;Failed to add the workspace creator to the admin group.&apos;;
             case &apos;create_workspace&apos;:
                 return &apos;Failed to create the workspace record after provisioning access groups.&apos;;
+            case &apos;finalize_uploaded_icon&apos;:
+                return &apos;Failed to attach the uploaded workspace icon to the new workspace.&apos;;
             default:
                 return &apos;Workspace provisioning failed.&apos;;
         }
+    },
+
+    _rollbackCreatedWorkspace: function (workspaceSysId) {
+        var sysId = this._cleanText(workspaceSysId);
+        if (!sysId) {
+            return;
+        }
+
+        var workspace = new GlideRecord(this._WORKSPACE_TABLE);
+        if (workspace.get(sysId)) {
+            workspace.deleteRecord();
+        }
+    },
+
+    _restoreUploadedIconAssetClaim: function (requestSysId) {
+        var request = new GlideRecord(this._REQUEST_TABLE);
+        if (!request.get(requestSysId) || this._cleanText(request.getValue(&apos;icon_type&apos;)) !== &apos;uploaded&apos;) {
+            return;
+        }
+
+        var asset = new GlideRecord(this._WORKSPACE_ICON_ASSET_TABLE);
+        asset.addQuery(&apos;asset_key&apos;, this._cleanText(request.getValue(&apos;icon_key&apos;)));
+        asset.addQuery(&apos;state&apos;, &apos;claimed&apos;);
+        asset.addQuery(&apos;provision_request&apos;, this._cleanText(request.getUniqueValue()));
+        asset.setLimit(1);
+        asset.query();
+        if (!asset.next()) {
+            return;
+        }
+        asset.setValue(&apos;state&apos;, &apos;staged&apos;);
+        asset.setValue(&apos;provision_request&apos;, &apos;&apos;);
+        asset.setValue(&apos;workspace&apos;, &apos;&apos;);
+        asset.update();
     },
 
     _rollbackCreatedGroups: function (groupSysIds) {
@@ -640,6 +716,37 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     <update_guid_history>06a8f6090d1d9226b3aa552bcf2acf4d</update_guid_history>
   </sys_update_xml>
   <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>ff89c9d81d64dd1decb259eeeeb97537</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_scope_privilege_0d4d751c513343088b88326ab5354c71</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_scope_privilege&quot;&gt;
+  &lt;sys_scope_privilege action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;0d4d751c513343088b88326ab5354c71&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_scope_privilege_0d4d751c513343088b88326ab5354c71&lt;/sys_update_name&gt;
+    &lt;operation&gt;write&lt;/operation&gt;
+    &lt;source_scope&gt;global&lt;/source_scope&gt;
+    &lt;status&gt;allowed&lt;/status&gt;
+    &lt;target_name&gt;x_82900_docsera_workspace_icon_asset&lt;/target_name&gt;
+    &lt;target_scope&gt;6997f092c3fd8310c569bf0d0501314d&lt;/target_scope&gt;
+    &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
+  &lt;/sys_scope_privilege&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>sys_scope_privilege_0d4d751c513343088b88326ab5354c71</target_name>
+    <target_sys_id>0d4d751c513343088b88326ab5354c71</target_sys_id>
+    <type>sys_scope_privilege</type>
+    <update_guid>c6ac5c2a1512f7792a6ca1265b50c286</update_guid>
+    <update_guid_history>1abdd11f7232a1650ab3f0e05843b98a</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
     <sys_id>43f5980126a68093d5e46f027397c2ef</sys_id>
     <action>INSERT_OR_UPDATE</action>
     <application>global</application>
@@ -669,6 +776,37 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     <type>sys_scope_privilege</type>
     <update_guid>860e9bcc72976892d5eafb9143fa3ab8</update_guid>
     <update_guid_history>cc8e380963dbf0bc5f106f158bfe19bf</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>9393a4e17d2fab595211232b46211aa1</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_scope_privilege_957dd0a5355f409084022a37f40c35ab</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_scope_privilege&quot;&gt;
+  &lt;sys_scope_privilege action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;957dd0a5355f409084022a37f40c35ab&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_scope_privilege_957dd0a5355f409084022a37f40c35ab&lt;/sys_update_name&gt;
+    &lt;operation&gt;delete&lt;/operation&gt;
+    &lt;source_scope&gt;global&lt;/source_scope&gt;
+    &lt;status&gt;allowed&lt;/status&gt;
+    &lt;target_name&gt;x_82900_docsera_workspace&lt;/target_name&gt;
+    &lt;target_scope&gt;6997f092c3fd8310c569bf0d0501314d&lt;/target_scope&gt;
+    &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
+  &lt;/sys_scope_privilege&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>sys_scope_privilege_957dd0a5355f409084022a37f40c35ab</target_name>
+    <target_sys_id>957dd0a5355f409084022a37f40c35ab</target_sys_id>
+    <type>sys_scope_privilege</type>
+    <update_guid>afd1f62d1792d2a8b64e48f0392ea631</update_guid>
+    <update_guid_history>fe0311c0e5185b7da5bad263b1004408</update_guid_history>
   </sys_update_xml>
   <sys_update_xml action="INSERT_OR_UPDATE">
     <sys_id>dc8bca06b6026e600dd4633c135a9cd6</sys_id>
@@ -762,6 +900,37 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     <type>sys_scope_privilege</type>
     <update_guid>258dee2de08ac178d69d5118286241fe</update_guid>
     <update_guid_history>c55fcdc016ab3ac669ab0c5d824c6b2e</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>45e3c48fe5df0694d612736f1254896e</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_scope_privilege_e5de9fae882e41f4ae5e5936a6141657</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_scope_privilege&quot;&gt;
+  &lt;sys_scope_privilege action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;e5de9fae882e41f4ae5e5936a6141657&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_scope_privilege_e5de9fae882e41f4ae5e5936a6141657&lt;/sys_update_name&gt;
+    &lt;operation&gt;read&lt;/operation&gt;
+    &lt;source_scope&gt;global&lt;/source_scope&gt;
+    &lt;status&gt;allowed&lt;/status&gt;
+    &lt;target_name&gt;x_82900_docsera_workspace_icon_asset&lt;/target_name&gt;
+    &lt;target_scope&gt;6997f092c3fd8310c569bf0d0501314d&lt;/target_scope&gt;
+    &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
+  &lt;/sys_scope_privilege&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>sys_scope_privilege_e5de9fae882e41f4ae5e5936a6141657</target_name>
+    <target_sys_id>e5de9fae882e41f4ae5e5936a6141657</target_sys_id>
+    <type>sys_scope_privilege</type>
+    <update_guid>25813fdb9e1c94cb8a8b9f082f37ed01</update_guid>
+    <update_guid_history>631cddc9abd93157888d6f666969c317</update_guid_history>
   </sys_update_xml>
   <sys_update_xml action="INSERT_OR_UPDATE">
     <sys_id>bebf89791f044e3b43addb4d36ddce15</sys_id>
@@ -873,6 +1042,7 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
         }
 
         var createdGroupIds = [];
+        var workspaceSysId = &apos;&apos;;
         var stage = &apos;validation&apos;;
 
         try {
@@ -903,7 +1073,10 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
             this._addUserToGroup(adminGroup.sysId, payload.requestedBySysId);
 
             stage = &apos;create_workspace&apos;;
-            var workspaceSysId = this._createWorkspaceRecord(payload, adminGroup.sysId, editorGroup.sysId);
+            workspaceSysId = this._createWorkspaceRecord(payload, adminGroup.sysId, editorGroup.sysId);
+
+            stage = &apos;finalize_uploaded_icon&apos;;
+            this._finalizeUploadedIconAsset(request, payload, workspaceSysId);
 
             stage = &apos;mark_succeeded&apos;;
             this._markRequestSucceeded(requestId, workspaceSysId, adminGroup.sysId, editorGroup.sysId);
@@ -913,6 +1086,8 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
                 workspaceSysId: workspaceSysId,
             };
         } catch (error) {
+            this._rollbackCreatedWorkspace(workspaceSysId);
+            this._restoreUploadedIconAssetClaim(requestId);
             this._rollbackCreatedGroups(createdGroupIds);
             this._markRequestFailed(requestId, this._errorCodeForStage(stage), this._safeMessageForStage(stage));
             this._logError(&apos;processRequest.&apos; + stage, error);
@@ -926,6 +1101,7 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     _DOCSERA_SCOPE: &apos;x_82900_docsera&apos;,
     _REQUEST_TABLE: &apos;x_82900_docsera_workspace_provision_request&apos;,
     _WORKSPACE_TABLE: &apos;x_82900_docsera_workspace&apos;,
+    _WORKSPACE_ICON_ASSET_TABLE: &apos;x_82900_docsera_workspace_icon_asset&apos;,
 
     _ROLE_NAMES: {
         workspaceAdmin: &apos;x_82900_docsera.workspace_admin&apos;,
@@ -1143,6 +1319,38 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
         request.update();
     },
 
+    _finalizeUploadedIconAsset: function (request, payload, workspaceSysId) {
+        if (payload.iconType !== &apos;uploaded&apos;) {
+            return;
+        }
+        var assetKey = this._cleanText(payload.iconKey);
+        if (!assetKey) {
+            throw new Error(&apos;Uploaded workspace icon key was missing.&apos;);
+        }
+        var asset = new GlideRecord(this._WORKSPACE_ICON_ASSET_TABLE);
+        asset.addQuery(&apos;asset_key&apos;, assetKey);
+        asset.addQuery(&apos;state&apos;, &apos;claimed&apos;);
+        asset.addQuery(&apos;provision_request&apos;, this._cleanText(request.getUniqueValue()));
+        asset.addQuery(&apos;workspace&apos;, &apos;&apos;);
+        asset.setValue(&apos;workspace&apos;, workspaceSysId);
+        asset.setValue(&apos;provision_request&apos;, this._cleanText(request.getUniqueValue()));
+        asset.setValue(&apos;state&apos;, &apos;claimed&apos;);
+        asset.updateMultiple();
+
+        var verified = new GlideRecord(this._WORKSPACE_ICON_ASSET_TABLE);
+        verified.addQuery(&apos;asset_key&apos;, assetKey);
+        verified.setLimit(1);
+        verified.query();
+        if (
+            !verified.next() ||
+            this._cleanText(verified.getValue(&apos;state&apos;)) !== &apos;claimed&apos; ||
+            this._cleanText(verified.getValue(&apos;provision_request&apos;)) !== this._cleanText(request.getUniqueValue()) ||
+            this._cleanText(verified.getValue(&apos;workspace&apos;)) !== workspaceSysId
+        ) {
+            throw new Error(&apos;Uploaded workspace icon asset finalization could not be verified.&apos;);
+        }
+    },
+
     _markRequestFailed: function (requestSysId, errorCode, errorMessage) {
         var request = new GlideRecord(this._REQUEST_TABLE);
         if (!request.get(requestSysId)) {
@@ -1174,6 +1382,8 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
                 return &apos;creator_membership_failed&apos;;
             case &apos;create_workspace&apos;:
                 return &apos;workspace_create_failed&apos;;
+            case &apos;finalize_uploaded_icon&apos;:
+                return &apos;workspace_icon_finalize_failed&apos;;
             default:
                 return &apos;provisioning_failed&apos;;
         }
@@ -1193,9 +1403,44 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
                 return &apos;Failed to add the workspace creator to the admin group.&apos;;
             case &apos;create_workspace&apos;:
                 return &apos;Failed to create the workspace record after provisioning access groups.&apos;;
+            case &apos;finalize_uploaded_icon&apos;:
+                return &apos;Failed to attach the uploaded workspace icon to the new workspace.&apos;;
             default:
                 return &apos;Workspace provisioning failed.&apos;;
         }
+    },
+
+    _rollbackCreatedWorkspace: function (workspaceSysId) {
+        var sysId = this._cleanText(workspaceSysId);
+        if (!sysId) {
+            return;
+        }
+
+        var workspace = new GlideRecord(this._WORKSPACE_TABLE);
+        if (workspace.get(sysId)) {
+            workspace.deleteRecord();
+        }
+    },
+
+    _restoreUploadedIconAssetClaim: function (requestSysId) {
+        var request = new GlideRecord(this._REQUEST_TABLE);
+        if (!request.get(requestSysId) || this._cleanText(request.getValue(&apos;icon_type&apos;)) !== &apos;uploaded&apos;) {
+            return;
+        }
+
+        var asset = new GlideRecord(this._WORKSPACE_ICON_ASSET_TABLE);
+        asset.addQuery(&apos;asset_key&apos;, this._cleanText(request.getValue(&apos;icon_key&apos;)));
+        asset.addQuery(&apos;state&apos;, &apos;claimed&apos;);
+        asset.addQuery(&apos;provision_request&apos;, this._cleanText(request.getUniqueValue()));
+        asset.setLimit(1);
+        asset.query();
+        if (!asset.next()) {
+            return;
+        }
+        asset.setValue(&apos;state&apos;, &apos;staged&apos;);
+        asset.setValue(&apos;provision_request&apos;, &apos;&apos;);
+        asset.setValue(&apos;workspace&apos;, &apos;&apos;);
+        asset.update();
     },
 
     _rollbackCreatedGroups: function (groupSysIds) {

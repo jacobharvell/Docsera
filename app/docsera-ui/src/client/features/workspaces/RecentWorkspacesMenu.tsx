@@ -1,4 +1,4 @@
-import { WorkspaceIconBadge } from "./WorkspacePrimitives";
+import { WorkspaceIconBadge, type WorkspaceUploadedIconLoader } from "./WorkspacePrimitives";
 import { WorkspaceListIcon } from "./DocseraHeaderIcons";
 import type { WorkspaceViewRecord } from "../../shared/types/docsera";
 
@@ -9,6 +9,7 @@ export type RecentWorkspaceItem = Pick<WorkspaceViewRecord, "icon" | "name" | "s
 type RecentWorkspacesMenuProps = {
   currentWorkspaceSlug?: string;
   items: RecentWorkspaceItem[];
+  loadUploadedIcon?: WorkspaceUploadedIconLoader;
   onOpenMyWorkspaces: () => void;
   onOpenWorkspace: (workspaceSlug: string, item?: RecentWorkspaceItem) => void;
 };
@@ -16,6 +17,7 @@ type RecentWorkspacesMenuProps = {
 export function RecentWorkspacesMenu({
   currentWorkspaceSlug = "",
   items,
+  loadUploadedIcon,
   onOpenMyWorkspaces,
   onOpenWorkspace
 }: RecentWorkspacesMenuProps) {
@@ -36,7 +38,7 @@ export function RecentWorkspacesMenu({
                 role="menuitem"
               >
                 <span className="docsera-header__menu-item-identity">
-                  <WorkspaceIconBadge workspace={workspace} className="docsera-header__menu-item-icon" />
+                  <WorkspaceIconBadge workspace={workspace} className="docsera-header__menu-item-icon" loadUploadedIcon={loadUploadedIcon} />
                   <span className="docsera-header__menu-item-label" title={workspace.name}>
                     {workspace.name}
                   </span>

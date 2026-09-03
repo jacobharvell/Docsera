@@ -1,7 +1,7 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
-import type { WorkspaceIcon } from "../../shared/types/docsera";
+import type { WorkspaceIcon, WorkspaceIconUploadResult } from "../../shared/types/docsera";
 import {
   BUILT_IN_WORKSPACE_ICONS,
   DEFAULT_BUILT_IN_WORKSPACE_ICON,
@@ -14,6 +14,7 @@ type WorkspaceCreateModalProps = {
   errorMessage?: string;
   onClose: () => void;
   onSubmit: (input: { name: string; shortDescription: string; icon: WorkspaceIcon }) => void;
+  onUploadIcon?: (input: { file: File }) => Promise<WorkspaceIconUploadResult>;
   open: boolean;
   phase: "idle" | "submitting" | "polling";
 };
@@ -21,6 +22,12 @@ type WorkspaceCreateModalProps = {
 type FormErrors = {
   name?: string;
   shortDescription?: string;
+  icon?: string;
+};
+
+type UploadedIconSelection = {
+  icon: WorkspaceIcon & { type: "uploaded"; assetPath: string };
+  previewUrl: string;
 };
 
 function cleanText(value: unknown): string {
@@ -35,17 +42,31 @@ function toWorkspaceIcon(icon: BuiltInWorkspaceIcon): WorkspaceIcon {
   };
 }
 
-export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, open, phase }: WorkspaceCreateModalProps) {
+export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, onUploadIcon, open, phase }: WorkspaceCreateModalProps) {
   const [name, setName] = useState("");
   const [shortDescription, setShortDescription] = useState("");
   const [selectedIconKey, setSelectedIconKey] = useState(DEFAULT_BUILT_IN_WORKSPACE_ICON.key);
+  const [selectedIconType, setSelectedIconType] = useState<"builtin" | "uploaded">("builtin");
+  const [uploadedIcon, setUploadedIcon] = useState<UploadedIconSelection | null>(null);
+  const [uploadingIcon, setUploadingIcon] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadSequenceRef = useRef(0);
 
   useEffect(() => {
     if (!open) {
       setName("");
       setShortDescription("");
       setSelectedIconKey(DEFAULT_BUILT_IN_WORKSPACE_ICON.key);
+      setSelectedIconType("builtin");
+      setUploadedIcon((current) => {
+        if (current?.previewUrl) {
+          URL.revokeObjectURL(current.previewUrl);
+        }
+        return null;
+      });
+      uploadSequenceRef.current += 1;
+      setUploadingIcon(false);
       setErrors({});
     }
   }, [open]);
@@ -83,16 +104,95 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, open, ph
       return;
     }
 
+    if (uploadingIcon) {
+      setErrors((current) => ({ ...current, icon: "Wait for the workspace icon upload to finish before creating the workspace." }));
+      return;
+    }
+
+    if (selectedIconType === "uploaded" && !uploadedIcon) {
+      setErrors((current) => ({ ...current, icon: "Upload a valid workspace icon or choose a built-in icon." }));
+      return;
+    }
+
     onSubmit({
       name: cleanText(name),
       shortDescription: cleanText(shortDescription),
-      icon: toWorkspaceIcon(findBuiltInWorkspaceIcon(selectedIconKey) ?? DEFAULT_BUILT_IN_WORKSPACE_ICON)
+      icon: selectedIconType === "uploaded" && uploadedIcon
+        ? uploadedIcon.icon
+        : toWorkspaceIcon(findBuiltInWorkspaceIcon(selectedIconKey) ?? DEFAULT_BUILT_IN_WORKSPACE_ICON)
     });
   }
 
+  function selectBuiltInIcon(iconKey: string) {
+    if (pending || uploadingIcon) return;
+    setSelectedIconKey(iconKey);
+    setSelectedIconType("builtin");
+    setErrors((current) => ({ ...current, icon: undefined }));
+  }
+
+  async function handleIconFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+    event.target.value = "";
+    if (!file || pending || uploadingIcon) return;
+
+    if (!onUploadIcon) {
+      setErrors((current) => ({ ...current, icon: "Workspace icon upload is unavailable." }));
+      return;
+    }
+
+    const contentType = cleanText(file.type);
+    const lowerName = file.name.toLowerCase();
+    const acceptedType = ["image/png", "image/jpeg", "image/webp"].includes(contentType);
+    const acceptedExtension = [".png", ".jpg", ".jpeg", ".webp"].some((extension) => lowerName.endsWith(extension));
+    if ((!acceptedType && !acceptedExtension) || lowerName.endsWith(".gif") || lowerName.endsWith(".svg")) {
+      setErrors((current) => ({ ...current, icon: "Use a PNG, JPG, or WebP image." }));
+      return;
+    }
+
+    if (file.size > 1024 * 1024) {
+      setErrors((current) => ({ ...current, icon: "Workspace icon image must be 1 MB or smaller." }));
+      return;
+    }
+
+    setUploadingIcon(true);
+    setErrors((current) => ({ ...current, icon: undefined }));
+    const uploadSequence = uploadSequenceRef.current + 1;
+    uploadSequenceRef.current = uploadSequence;
+
+    try {
+      const result = await onUploadIcon({ file });
+      if (uploadSequenceRef.current !== uploadSequence) {
+        return;
+      }
+      if (result.state === "failed") {
+        setErrors((current) => ({ ...current, icon: result.errorMessage }));
+        return;
+      }
+
+      const previewUrl = URL.createObjectURL(file);
+      setUploadedIcon((current) => {
+        if (current?.previewUrl) {
+          URL.revokeObjectURL(current.previewUrl);
+        }
+        return { icon: result.icon, previewUrl };
+      });
+      setSelectedIconType("uploaded");
+    } catch {
+      setErrors((current) => ({
+        ...current,
+        icon: "Something went wrong while uploading the workspace icon. The file was not saved. Please try again."
+      }));
+    } finally {
+      if (uploadSequenceRef.current === uploadSequence) {
+        setUploadingIcon(false);
+      }
+    }
+  }
+
   const pending = phase !== "idle";
-  const canClose = phase === "idle";
+  const canClose = phase === "idle" && !uploadingIcon;
   const selectedIcon = findBuiltInWorkspaceIcon(selectedIconKey) ?? DEFAULT_BUILT_IN_WORKSPACE_ICON;
+  const controlsDisabled = pending || uploadingIcon;
 
   return (
     <div className="docsera-modal" role="presentation" onMouseDown={() => (canClose ? onClose() : undefined)}>
@@ -156,7 +256,7 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, open, ph
               <legend className="docsera-modal__label">Workspace icon</legend>
               <div className="docsera-workspace-icon-picker__grid">
                 {BUILT_IN_WORKSPACE_ICONS.map((icon) => {
-                  const selected = icon.key === selectedIcon.key;
+                  const selected = selectedIconType === "builtin" && icon.key === selectedIcon.key;
                   return (
                     <button
                       key={icon.key}
@@ -164,8 +264,8 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, open, ph
                       className={`docsera-workspace-icon-picker__option${selected ? " docsera-workspace-icon-picker__option--selected" : ""}`}
                       aria-pressed={selected}
                       aria-label={`${icon.label}${selected ? ", selected" : ""}`}
-                      disabled={pending}
-                      onClick={() => setSelectedIconKey(icon.key)}
+                      disabled={controlsDisabled}
+                      onClick={() => selectBuiltInIcon(icon.key)}
                     >
                       <WorkspaceIconBadge
                         workspace={{
@@ -176,7 +276,47 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, open, ph
                     </button>
                   );
                 })}
+                {uploadedIcon ? (
+                  <button
+                    type="button"
+                    className={`docsera-workspace-icon-picker__option${selectedIconType === "uploaded" ? " docsera-workspace-icon-picker__option--selected" : ""}`}
+                    aria-pressed={selectedIconType === "uploaded"}
+                    aria-label={`${uploadedIcon.icon.label}${selectedIconType === "uploaded" ? ", selected" : ""}`}
+                    disabled={controlsDisabled}
+                    onClick={() => {
+                      if (controlsDisabled) return;
+                      setSelectedIconType("uploaded");
+                      setErrors((current) => ({ ...current, icon: undefined }));
+                    }}
+                  >
+                    <WorkspaceIconBadge workspace={{ icon: { ...uploadedIcon.icon, assetPath: uploadedIcon.previewUrl }, name: uploadedIcon.icon.label }} />
+                  </button>
+                ) : null}
               </div>
+              <div className="docsera-workspace-icon-picker__upload-row">
+                <input
+                  ref={fileInputRef}
+                  className="docsera-workspace-icon-picker__file-input"
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp"
+                  aria-label="Upload custom workspace icon"
+                  onChange={handleIconFileChange}
+                  disabled={controlsDisabled}
+                />
+                <button
+                  type="button"
+                  className="docsera-workspace-icon-picker__upload-button"
+                  disabled={controlsDisabled}
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  {uploadedIcon ? "Replace custom image" : "Upload custom image"}
+                </button>
+                <span className="docsera-workspace-icon-picker__constraints">Square image, minimum 128x128, maximum 1 MB. PNG, JPG, or WebP only.</span>
+              </div>
+              <div className="docsera-workspace-icon-picker__status" role="status" aria-live="polite">
+                {uploadingIcon ? "Uploading workspace icon..." : uploadedIcon ? "Custom image uploaded." : ""}
+              </div>
+              {errors.icon ? <span className="docsera-modal__field-error" role="alert">{errors.icon}</span> : null}
             </fieldset>
 
             <div className="docsera-modal__info-note">
@@ -185,10 +325,10 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, open, ph
           </div>
           <div className="docsera-modal__footer">
             <div className="docsera-modal__actions">
-              <button type="button" className="docsera-modal__secondary" onClick={onClose} disabled={pending}>
+              <button type="button" className="docsera-modal__secondary" onClick={onClose} disabled={!canClose}>
                 Cancel
               </button>
-              <button type="submit" className="docsera-modal__primary" disabled={pending}>
+              <button type="submit" className="docsera-modal__primary" disabled={pending || uploadingIcon}>
                 {phase === "polling" ? "Provisioning..." : phase === "submitting" ? "Creating..." : "Create Workspace"}
               </button>
             </div>

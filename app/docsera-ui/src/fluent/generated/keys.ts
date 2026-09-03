@@ -82,6 +82,22 @@ declare global {
                         table: 'sys_security_acl'
                         id: '605c1621a605441ba2113e35b797da13'
                     }
+                    docsera_workspace_icon_asset_create_deny: {
+                        table: 'sys_security_acl'
+                        id: '01fa4c77fc43449095555d027fa1dc82'
+                    }
+                    docsera_workspace_icon_asset_delete_deny: {
+                        table: 'sys_security_acl'
+                        id: '669aa377e68f4998bcb745267d213afd'
+                    }
+                    docsera_workspace_icon_asset_read_deny: {
+                        table: 'sys_security_acl'
+                        id: '993ec69f54454e53a77ba15094d0fbe0'
+                    }
+                    docsera_workspace_icon_asset_write_deny: {
+                        table: 'sys_security_acl'
+                        id: '57c45f7e94914669b31c6efe8e9b926b'
+                    }
                     docsera_workspace_mutation_claim_create_deny: {
                         table: 'sys_security_acl'
                         id: '98db5ab14dbd44fdbc430c68248547c5'
@@ -263,6 +279,14 @@ declare global {
                         table: 'sys_ws_operation'
                         id: '38193dfc681443eeba57c8b83150a313'
                     }
+                    'docsera-runtime-workspace-icon-file-get': {
+                        table: 'sys_ws_operation'
+                        id: 'e7a9310dd1f3408aba89137dfcdcfce9'
+                    }
+                    'docsera-runtime-workspace-icon-post': {
+                        table: 'sys_ws_operation'
+                        id: '10baec6fa9314f7488456c35aa2f6da2'
+                    }
                     'docsera-runtime-workspace-media-file-get': {
                         table: 'sys_ws_operation'
                         id: 'bd641d50194b4549bbfb8a59f69611b5'
@@ -396,6 +420,14 @@ declare global {
                         table: 'sys_module'
                         id: 'b5be1f4d19db4db781c89ba7c5648bb4'
                     }
+                    'src_server_api_docsera-runtime-workspace-icon-file_ts': {
+                        table: 'sys_module'
+                        id: 'f2f7a73f21754adc860c25b9af7bfaf1'
+                    }
+                    'src_server_api_docsera-runtime-workspace-icon-upload_ts': {
+                        table: 'sys_module'
+                        id: 'f61ba199a7f448b3bc28a3d26992fc7c'
+                    }
                     'src_server_api_docsera-runtime-workspace-media_ts': {
                         table: 'sys_module'
                         id: '4b4662cf544f4479bdd4e50ea4e1db4c'
@@ -508,6 +540,10 @@ declare global {
                         table: 'sys_module'
                         id: '5b0e1f348af4483a913fcdacfbf52d7e'
                     }
+                    src_server_workspaces_serverWorkspaceIconImage_ts: {
+                        table: 'sys_module'
+                        id: 'b79c2db965b1442f92304994a5802edd'
+                    }
                     src_server_workspaces_serviceNowWorkspaceCapabilities_ts: {
                         table: 'sys_module'
                         id: 'e95a4d192e1e4d7e9426e30597dd9910'
@@ -519,6 +555,10 @@ declare global {
                     src_server_workspaces_serviceNowWorkspaceChangeSetPersistence_ts: {
                         table: 'sys_module'
                         id: '33fd02cf34a346bf96af94a3f07e1253'
+                    }
+                    src_server_workspaces_serviceNowWorkspaceIcons_ts: {
+                        table: 'sys_module'
+                        id: '95e11909e2ee4b539ee761c312dea815'
                     }
                     src_server_workspaces_serviceNowWorkspaceMedia_ts: {
                         table: 'sys_module'
@@ -636,6 +676,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_documentation'
+                        id: '0607e2fc3ef24280b8133757bed8dba2'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'asset_key'
+                            language: 'en'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: '07e678be733c4f35afcbba165c037ccd'
                         key: {
@@ -700,6 +749,14 @@ declare global {
                             name: 'x_82900_docsera_workspace_removal_batch'
                             element: 'removed_by'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: '0b44ce3dcdac4afcb64ec30b7c08b5a6'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'state'
                         }
                     },
                     {
@@ -822,6 +879,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_documentation'
+                        id: '13433155d0ab4878b1b46b4c8404ff32'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'requested_by'
+                            language: 'en'
+                        }
+                    },
+                    {
                         table: 'sys_db_object'
                         id: '14e1a92bab0641dda3aa21ddab2ab9d3'
                         key: {
@@ -863,6 +929,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_page'
                             element: 'parent_page'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '17381c4eb8724b52a4421f2c61784915'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'content_type'
                             language: 'en'
                         }
                     },
@@ -1076,6 +1151,15 @@ declare global {
                         key: {
                             logical_table_name: 'x_82900_docsera_workspace_edit_lease'
                             col_name_string: 'last_seen_on'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '28e9d2d1a4b14d66ba7e59bd11e54347'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'state'
+                            language: 'en'
                         }
                     },
                     {
@@ -1310,6 +1394,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_documentation'
+                        id: '36ade2e9351e4f4bb690aa6c372cd568'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'NULL'
+                            language: 'en'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: '36baa74aaa1e4b029cc9303c024603f8'
                         key: {
@@ -1360,6 +1453,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_documentation'
+                        id: '3e5cbce9cfb643378dec82cc96452596'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'provision_request'
+                            language: 'en'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: '3ee06371a864459d9aaa7d1190e4bcb6'
                         key: {
@@ -1373,6 +1475,14 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_edit_lease'
                             element: 'workspace'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '3f9d0cc58f3f4d7dbe953761f7047b21'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'state'
                         }
                     },
                     {
@@ -1427,10 +1537,26 @@ declare global {
                     },
                     {
                         table: 'sys_dictionary'
+                        id: '44766defb6ca4dae929f3aba57870162'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'width'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
                         id: '44df1f0d1f5244a48a1a32410dd4d17b'
                         key: {
                             name: 'x_82900_docsera_workspace_mutation_claim'
                             element: 'owner_expires_on'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '45014888447540faa8acc292f5df5c36'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'asset_key'
                         }
                     },
                     {
@@ -1463,6 +1589,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_mutation_claim'
                             element: 'mutation_result_json'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '47ef8315ff77493ba7d9363226864830'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'state'
+                            value: 'invalid'
                         }
                     },
                     {
@@ -1506,6 +1641,14 @@ declare global {
                             name: 'x_82900_docsera_workspace'
                             element: 'pending_change_set'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '4adea8e543004fc18451d6fa1cf2e78b'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'size_bytes'
                         }
                     },
                     {
@@ -1577,6 +1720,14 @@ declare global {
                     },
                     {
                         table: 'sys_dictionary'
+                        id: '4f82b144a5e54d70996259ee6c04dbab'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'content_type'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
                         id: '4fd139e50b6b4fd99cde9c31d2899c19'
                         key: {
                             name: 'x_82900_docsera_workspace_provision_request'
@@ -1616,6 +1767,24 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_documentation'
+                        id: '52603570a88c4708ac610ddc0d094fee'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'width'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '52d2cffd245f4e9bb946495676ef9ced'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'file_name'
+                            language: 'en'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: '52e81e981b7c40668244510d038e2079'
                         key: {
@@ -1638,6 +1807,14 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace'
                             element: 'icon_asset_path'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '56053783994b45af8a7de9d398fe81e4'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'workspace'
                         }
                     },
                     {
@@ -1728,6 +1905,13 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_mutation_claim'
                             element: 'mutation_payload_json'
+                        }
+                    },
+                    {
+                        table: 'ua_table_licensing_config'
+                        id: '5ad8692a5caa4769a84044304b97be87'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
                         }
                     },
                     {
@@ -1982,6 +2166,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace'
                             element: 'NULL'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '71752ad4400648e9b8d00d627cdcfaaa'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'state'
+                            value: 'staged'
                         }
                     },
                     {
@@ -2533,6 +2726,14 @@ declare global {
                     },
                     {
                         table: 'sys_dictionary'
+                        id: '93a71fe900d64c168a574e01d6742300'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'height'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
                         id: '943131d5b9eb4cb8aa022fbffb57158d'
                         key: {
                             name: 'x_82900_docsera_workspace_removal_batch'
@@ -2569,6 +2770,15 @@ declare global {
                         id: '96dee943430c4d239bd1a8cb9cb312d2'
                         key: {
                             name: 'x_82900_docsera_workspace_edit_lease'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '9804870b6d664936b659f9e27b126dc3'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'attachment'
+                            language: 'en'
                         }
                     },
                     {
@@ -2718,6 +2928,14 @@ declare global {
                     },
                     {
                         table: 'sys_dictionary'
+                        id: 'a2b77bd2d0904b82a0a33535b3b63ae8'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'provision_request'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
                         id: 'a44879e2ad2c4b0f8187c8174f1aacd5'
                         key: {
                             name: 'x_82900_docsera_workspace'
@@ -2807,6 +3025,14 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_removal_member'
                             element: 'page'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'a7ea6e7d82d34992abe440320761210a'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'requested_by'
                         }
                     },
                     {
@@ -2996,6 +3222,15 @@ declare global {
                             name: 'x_82900_docsera_workspace'
                             element: 'icon_key'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'b26914bdc9234689a4d40ed835e3b909'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'state'
+                            value: 'claimed'
                         }
                     },
                     {
@@ -3283,6 +3518,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_documentation'
+                        id: 'c4f2bfe644e54cf19ebb749a99edc1fc'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'workspace'
+                            language: 'en'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: 'c4fb5bfe7b6b4d92858d6e4b1d039bea'
                         key: {
@@ -3348,6 +3592,13 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_mutation_claim'
                             element: 'claim_owner_key'
+                        }
+                    },
+                    {
+                        table: 'sys_db_object'
+                        id: 'c7af4767e8cf42918445fb187813b05b'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
                         }
                     },
                     {
@@ -3449,6 +3700,14 @@ declare global {
                             name: 'x_82900_docsera_workspace_mutation_claim'
                             element: 'execution_phase'
                             value: 'page_persisted'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'cfdbcc83c1924afd8201d9447b7409f5'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'file_name'
                         }
                     },
                     {
@@ -3572,6 +3831,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_documentation'
+                        id: 'd80243c3d5b94340b5c19585808f81c7'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'height'
+                            language: 'en'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: 'd87538d5215c4fcebbc15205385ea282'
                         key: {
@@ -3601,6 +3869,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_page_snapshot'
                             element: 'slug'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd919b92051154eff94d018d31a9cbc96'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'size_bytes'
+                            language: 'en'
                         }
                     },
                     {
@@ -3709,6 +3986,14 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_snapshot_set'
                             element: 'command_kind'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'df912529348e48f6bb3b8e742dab205d'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'NULL'
                         }
                     },
                     {
@@ -4097,6 +4382,14 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_mutation_claim'
                             element: 'execution_phase'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'fbe5f073d5cd420daa1e6e9d7ac687a5'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'attachment'
                         }
                     },
                     {

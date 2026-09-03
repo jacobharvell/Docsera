@@ -6763,6 +6763,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         breadcrumbs={displayedSelectedPagePath}
         currentWorkspaceSlug={appHeaderWorkspaceSlug}
         identity={appHeaderIdentity}
+        loadUploadedIcon={serviceNowClient.loadWorkspaceIcon}
         mode={appHeaderMode}
         onDismissPendingChangesPublishToast={clearWorkspacePublishToast}
         onOpenMyWorkspaces={openLauncher}
@@ -6971,6 +6972,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
                 setCreateModalPhase("idle");
               },
               onSubmit: submitWorkspaceCreation,
+              onUploadIcon: serviceNowClient.uploadWorkspaceIcon,
               open: createModalOpen,
               phase: createModalPhase
             }}
@@ -6990,6 +6992,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
             isNoResultsState={listState.isNoResultsState}
             isRefreshing={listState.isRefreshing}
             items={listState.items}
+            loadUploadedIcon={serviceNowClient.loadWorkspaceIcon}
             showLoadingState={showTransitionProgress}
             page={listState.page}
             pageSize={listState.pageSize}

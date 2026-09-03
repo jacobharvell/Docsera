@@ -1,10 +1,25 @@
 import "@testing-library/jest-dom/vitest";
 import defaultWorkspaceIconDataUri from "../../assets/docsera-default-workspace-icon.png?inline";
-import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkspaceIconBadge } from "./WorkspacePrimitives";
 
+function mockObjectUrl() {
+  Object.defineProperty(URL, "createObjectURL", {
+    configurable: true,
+    value: vi.fn()
+  });
+  Object.defineProperty(URL, "revokeObjectURL", {
+    configurable: true,
+    value: vi.fn()
+  });
+}
+
 describe("WorkspaceIconBadge", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("keeps built-in icon glyphs transparent and primary-colored in workspace identity surfaces", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;
@@ -29,7 +44,213 @@ describe("WorkspaceIconBadge", () => {
     expect(rowGlyphBlock).toContain("height: 86%;");
   });
 
+  it("renders uploaded workspace icons as contained authenticated object URLs without built-in glyph treatment", async () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+    const uploadedBadgeBlock = source.match(/\.docsera-workspace-icon-badge--uploaded \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const uploadedImageBlock = source.match(/\.docsera-workspace-icon-badge__uploaded-image \{([\s\S]*?)\n\}/)?.[1] ?? "";
+
+    mockObjectUrl();
+    const createObjectUrlSpy = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:workspace-icon");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const loadUploadedIcon = vi.fn(async () => new Blob(["icon"], { type: "image/png" }));
+
+    const { container } = render(
+      <WorkspaceIconBadge
+        loadUploadedIcon={loadUploadedIcon}
+        workspace={{
+          icon: {
+            type: "uploaded",
+            key: "asset-key-001",
+            label: "Custom icon",
+            assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001"
+          },
+          name: "Custom Docs"
+        }}
+      />
+    );
+
+    const badge = container.firstElementChild;
+    await waitFor(() => expect(container.querySelector("img")).toHaveAttribute("src", "blob:workspace-icon"));
+    const image = container.querySelector("img");
+    expect(loadUploadedIcon).toHaveBeenCalledWith({
+      assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001",
+      signal: expect.any(AbortSignal)
+    });
+    expect(createObjectUrlSpy).toHaveBeenCalledWith(expect.any(Blob));
+    expect(badge).toHaveClass("docsera-workspace-icon-badge--uploaded");
+    expect(badge).not.toHaveClass("docsera-workspace-icon-badge--builtin");
+    expect(image).toHaveClass("docsera-workspace-icon-badge__uploaded-image");
+    expect(uploadedBadgeBlock).toContain("padding: 0;");
+    expect(uploadedBadgeBlock).toContain("background: transparent;");
+    expect(uploadedBadgeBlock).toContain("box-shadow: none;");
+    expect(uploadedBadgeBlock).not.toContain("color-mix");
+    expect(uploadedBadgeBlock).not.toContain("inset");
+    expect(uploadedImageBlock).toContain("width: 100%;");
+    expect(uploadedImageBlock).toContain("height: 100%;");
+    expect(uploadedImageBlock).toContain("object-fit: contain;");
+  });
+
+  it("keeps local uploaded previews functional when no authenticated loader is supplied", () => {
+    const { container } = render(
+      <WorkspaceIconBadge
+        workspace={{
+          icon: {
+            type: "uploaded",
+            key: "asset-key-001",
+            label: "Custom icon",
+            assetPath: "blob:local-preview"
+          },
+          name: "Custom Docs"
+        }}
+      />
+    );
+
+    expect(container.querySelector("img")).toHaveAttribute("src", "blob:local-preview");
+  });
+
+  it("falls back gracefully when authenticated uploaded workspace icon retrieval fails", async () => {
+    const loadUploadedIcon = vi.fn(async () => null);
+    const { container } = render(
+      <WorkspaceIconBadge
+        loadUploadedIcon={loadUploadedIcon}
+        workspace={{
+          icon: {
+            type: "uploaded",
+            key: "asset-key-001",
+            label: "Custom icon",
+            assetPath: "/icons/file?assetKey=asset-key-001"
+          },
+          name: "Custom Docs"
+        }}
+      />
+    );
+
+    await waitFor(() => expect(loadUploadedIcon).toHaveBeenCalled());
+    expect(container.querySelector("img")).not.toBeInTheDocument();
+    expect(container.textContent).toContain("C");
+  });
+
+  it("releases authenticated object URLs when uploaded workspace icons are replaced or unmounted", async () => {
+    mockObjectUrl();
+    vi.spyOn(URL, "createObjectURL").mockReturnValueOnce("blob:first").mockReturnValueOnce("blob:second");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const loadUploadedIcon = vi.fn(async () => new Blob(["icon"], { type: "image/png" }));
+    const { container, rerender, unmount } = render(
+      <WorkspaceIconBadge
+        loadUploadedIcon={loadUploadedIcon}
+        workspace={{ icon: { type: "uploaded", key: "asset-1", label: "One", assetPath: "/icons/file?assetKey=asset-1" }, name: "One" }}
+      />
+    );
+
+    await waitFor(() => expect(container.querySelector("img")).toHaveAttribute("src", "blob:first"));
+    rerender(
+      <WorkspaceIconBadge
+        loadUploadedIcon={loadUploadedIcon}
+        workspace={{ icon: { type: "uploaded", key: "asset-2", label: "Two", assetPath: "/icons/file?assetKey=asset-2" }, name: "Two" }}
+      />
+    );
+
+    await waitFor(() => expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:first"));
+    await waitFor(() => expect(container.querySelector("img")).toHaveAttribute("src", "blob:second"));
+    unmount();
+    expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:second");
+  });
+
+  it("prevents stale uploaded icon loads from replacing a newer icon", async () => {
+    let resolveFirst: ((blob: Blob) => void) | undefined;
+    let resolveSecond: ((blob: Blob) => void) | undefined;
+    mockObjectUrl();
+    vi.spyOn(URL, "createObjectURL").mockReturnValueOnce("blob:second");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const loadUploadedIcon = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<Blob>((resolve) => {
+        resolveFirst = resolve;
+      }))
+      .mockImplementationOnce(() => new Promise<Blob>((resolve) => {
+        resolveSecond = resolve;
+      }));
+    const { container, rerender } = render(
+      <WorkspaceIconBadge
+        loadUploadedIcon={loadUploadedIcon}
+        workspace={{ icon: { type: "uploaded", key: "asset-1", label: "One", assetPath: "/icons/file?assetKey=asset-1" }, name: "One" }}
+      />
+    );
+
+    rerender(
+      <WorkspaceIconBadge
+        loadUploadedIcon={loadUploadedIcon}
+        workspace={{ icon: { type: "uploaded", key: "asset-2", label: "Two", assetPath: "/icons/file?assetKey=asset-2" }, name: "Two" }}
+      />
+    );
+    resolveFirst?.(new Blob(["first"]));
+    resolveSecond?.(new Blob(["second"]));
+
+    await waitFor(() => expect(container.querySelector("img")).toHaveAttribute("src", "blob:second"));
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+  });
+
+  it("resets failed uploaded icon state when the workspace icon changes", async () => {
+    mockObjectUrl();
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:second");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const loadUploadedIcon = vi
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(new Blob(["second"], { type: "image/png" }));
+    const { container, rerender } = render(
+      <WorkspaceIconBadge
+        loadUploadedIcon={loadUploadedIcon}
+        workspace={{ icon: { type: "uploaded", key: "asset-1", label: "One", assetPath: "/icons/file?assetKey=asset-1" }, name: "One" }}
+      />
+    );
+
+    await waitFor(() => expect(container.textContent).toContain("O"));
+    rerender(
+      <WorkspaceIconBadge
+        loadUploadedIcon={loadUploadedIcon}
+        workspace={{ icon: { type: "uploaded", key: "asset-2", label: "Two", assetPath: "/icons/file?assetKey=asset-2" }, name: "Two" }}
+      />
+    );
+
+    await waitFor(() => expect(container.querySelector("img")).toHaveAttribute("src", "blob:second"));
+  });
+
+  it("falls back gracefully when a loaded uploaded workspace icon image cannot render", async () => {
+    mockObjectUrl();
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:workspace-icon");
+    vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const { container } = render(
+      <WorkspaceIconBadge
+        loadUploadedIcon={vi.fn(async () => new Blob(["icon"], { type: "image/png" }))}
+        workspace={{ icon: { type: "uploaded", key: "asset-key-001", label: "Custom icon", assetPath: "/icons/file?assetKey=asset-key-001" }, name: "Custom Docs" }}
+      />
+    );
+
+    await waitFor(() => expect(container.querySelector("img")).toBeInTheDocument());
+    fireEvent.error(container.querySelector("img")!);
+    expect(container.querySelector("img")).not.toBeInTheDocument();
+    expect(container.textContent).toContain("C");
+  });
+
   it("renders the default Docsera workspace icon artwork for the built-in workspace key", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+    const artworkBadgeBlock = source.match(/\.docsera-workspace-icon-badge--artwork \{([\s\S]*?)\n\}/)?.[1] ?? "";
+
     const { container } = render(
       <WorkspaceIconBadge
         workspace={{
@@ -52,6 +273,10 @@ describe("WorkspaceIconBadge", () => {
     expect(image.getAttribute("src")).toBe(defaultWorkspaceIconDataUri);
     expect(image).toHaveClass("docsera-workspace-icon-badge__artwork");
     expect(image.closest(".docsera-workspace-icon-badge")).toHaveClass("docsera-workspace-icon-badge--builtin");
+    expect(image.closest(".docsera-workspace-icon-badge")).toHaveClass("docsera-workspace-icon-badge--artwork");
+    expect(artworkBadgeBlock).toContain("padding: 0;");
+    expect(artworkBadgeBlock).toContain("background: transparent;");
+    expect(artworkBadgeBlock).toContain("box-shadow: none;");
   });
 
   it("renders supported non-default built-in icons as glyph artwork", () => {
