@@ -72,6 +72,25 @@ export type WorkspaceDraftInput = {
   layout?: Partial<WorkspaceLayoutDefaults> | null;
 };
 
+export type WorkspaceSettingsInput = {
+  workspaceSlug?: string | null;
+  workspaceSysId?: string | null;
+  name?: string | null;
+  shortDescription?: string | null;
+  icon?: Partial<WorkspaceIcon> | string | null;
+  layout?: Partial<Pick<WorkspaceLayoutDefaults, "tocVisibleByDefault">> | null;
+};
+
+export type WorkspaceSettingsValidation =
+  | {
+      valid: true;
+      workspace: WorkspaceRecord;
+    }
+  | {
+      valid: false;
+      error: string;
+    };
+
 export type WorkspaceDraft = Omit<WorkspaceRecord, "adminGroupSysId" | "editorGroupSysId"> & {
   workspaceGroupKey: string;
   adminGroupName: string;
@@ -298,6 +317,110 @@ export function normalizeWorkspaceLayout(layout?: Partial<WorkspaceLayoutDefault
         ? layout.tocVisibleByDefault
         : DEFAULT_WORKSPACE_LAYOUT.tocVisibleByDefault,
     pageWidth: layout?.pageWidth === "full" ? "full" : DEFAULT_WORKSPACE_LAYOUT.pageWidth
+  };
+}
+
+function hasOwnProperty(value: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
+
+export function applyWorkspaceSettings(
+  currentWorkspace: WorkspaceRecord,
+  input: WorkspaceSettingsInput
+): WorkspaceSettingsValidation {
+  if (!currentWorkspace || typeof currentWorkspace !== "object") {
+    throw new TypeError("A workspace record is required.");
+  }
+
+  if (!input || typeof input !== "object") {
+    return {
+      valid: false,
+      error: "Workspace settings input is required."
+    };
+  }
+
+  const workspaceSysId = cleanText(input.workspaceSysId);
+  const workspaceSlug = cleanText(input.workspaceSlug);
+  if (!workspaceSysId && !workspaceSlug) {
+    return {
+      valid: false,
+      error: "A workspace reference is required."
+    };
+  }
+
+  if (workspaceSysId && cleanText(currentWorkspace.sysId) !== workspaceSysId) {
+    return {
+      valid: false,
+      error: "Workspace could not be found."
+    };
+  }
+
+  if (workspaceSlug && cleanText(currentWorkspace.slug) !== workspaceSlug) {
+    return {
+      valid: false,
+      error: "Workspace could not be found."
+    };
+  }
+
+  const name = cleanText(input.name);
+  if (!name) {
+    return {
+      valid: false,
+      error: "Workspace name is required."
+    };
+  }
+
+  if (name.length > 160) {
+    return {
+      valid: false,
+      error: "Workspace name must be 160 characters or fewer."
+    };
+  }
+
+  const shortDescription = cleanText(input.shortDescription);
+  if (shortDescription.length > 240) {
+    return {
+      valid: false,
+      error: "Short description must be 240 characters or fewer."
+    };
+  }
+
+  let icon = currentWorkspace.icon;
+  if (hasOwnProperty(input, "icon") && input.icon != null) {
+    if (typeof input.icon === "object" && input.icon.type === "uploaded") {
+      return {
+        valid: false,
+        error: "Replacing a workspace icon with an uploaded icon is not supported here."
+      };
+    }
+
+    try {
+      icon = normalizeWorkspaceIcon(input.icon);
+    } catch {
+      return {
+        valid: false,
+        error: "Unsupported built-in workspace icon."
+      };
+    }
+  }
+
+  const tocVisibleByDefault =
+    input.layout && typeof input.layout.tocVisibleByDefault === "boolean"
+      ? input.layout.tocVisibleByDefault
+      : currentWorkspace.layout.tocVisibleByDefault;
+
+  return {
+    valid: true,
+    workspace: {
+      ...currentWorkspace,
+      name,
+      shortDescription: shortDescription || null,
+      icon,
+      layout: {
+        ...currentWorkspace.layout,
+        tocVisibleByDefault
+      }
+    }
   };
 }
 

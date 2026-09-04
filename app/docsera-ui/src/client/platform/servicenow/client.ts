@@ -65,6 +65,8 @@ import type {
   WorkspaceCreatePending,
   WorkspaceCreateResult,
   WorkspaceCreateSucceeded,
+  WorkspaceSettingsSaveInput,
+  WorkspaceSettingsSaveResult,
   WorkspaceListResult,
   PageListResult,
   WorkspaceLookupResult,
@@ -98,6 +100,7 @@ const DEFAULT_PAGE_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/pages
 const DEFAULT_WORKSPACE_MEDIA_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/media";
 const DEFAULT_WORKSPACE_MEDIA_FILE_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/media/file";
 const DEFAULT_WORKSPACE_ICON_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/icons";
+const DEFAULT_WORKSPACE_SETTINGS_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/settings";
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
 const SAFE_PAGE_DELETE_ERROR_MESSAGE = "Something went wrong while deleting the page. The page was not deleted. Please try again.";
 const SAFE_PAGE_MOVE_ERROR_MESSAGE = "Something went wrong while moving the page. The page was not moved. Please try again.";
@@ -249,6 +252,11 @@ function resolveWorkspaceIconCollectionPath(workspaceCollectionPath: string): st
   return normalizedPath.endsWith("/workspaces") ? `${normalizedPath}/icons` : DEFAULT_WORKSPACE_ICON_COLLECTION_PATH;
 }
 
+function resolveWorkspaceSettingsPath(workspaceCollectionPath: string): string {
+  const normalizedPath = cleanText(workspaceCollectionPath).replace(/\/+$/g, "");
+  return normalizedPath.endsWith("/workspaces") ? `${normalizedPath}/settings` : DEFAULT_WORKSPACE_SETTINGS_PATH;
+}
+
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<JsonResponse<T>> {
   const userToken = resolveUserToken();
   const response = await fetch(path, {
@@ -364,6 +372,7 @@ function normalizePingPayload(payload: PingEnvelope): PingResult {
 function normalizeWorkspaceViewRecord(candidate: unknown): WorkspaceViewRecord {
   const workspace = candidate as Partial<WorkspaceViewRecord> & {
     icon?: WorkspaceViewRecord["icon"] | null;
+    layout?: Partial<WorkspaceViewRecord["layout"]> | null;
   };
 
   return {
@@ -375,6 +384,10 @@ function normalizeWorkspaceViewRecord(candidate: unknown): WorkspaceViewRecord {
       type: "builtin",
       key: "docsera-workspace",
       label: "Docsera workspace icon"
+    },
+    layout: {
+      tocVisibleByDefault:
+        typeof workspace.layout?.tocVisibleByDefault === "boolean" ? workspace.layout.tocVisibleByDefault : true
     },
     status: workspace.status === "inactive" ? "inactive" : "active",
     roleLabel: workspace.roleLabel === "Admin" ? "Admin" : workspace.roleLabel === "Editor" ? "Editor" : null,
@@ -595,6 +608,37 @@ function normalizeWorkspaceCreateFailedResult(body: unknown, fallback: string): 
   };
 }
 
+function normalizeWorkspaceSettingsSaveSucceededResult(body: unknown): WorkspaceSettingsSaveResult {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || !result.workspace) {
+    throw new Error("Workspace settings payload was invalid.");
+  }
+
+  return {
+    state: "succeeded",
+    workspace: normalizeWorkspaceViewRecord(result.workspace)
+  };
+}
+
+function normalizeWorkspaceSettingsSaveFailedResult(body: unknown, fallback: string): WorkspaceSettingsSaveResult {
+  const error = unwrapServiceNowEnvelope(body);
+  const errorObject = isPlainObject(error) && isPlainObject(error.error) ? error.error : null;
+  const code = cleanText(errorObject?.code);
+
+  return {
+    state: "failed",
+    code:
+      code === "workspace_settings_forbidden"
+        ? "forbidden"
+        : code === "workspace_not_found"
+          ? "not_found"
+          : code === "workspace_settings_invalid"
+            ? "invalid"
+            : undefined,
+    errorMessage: extractErrorMessage(body, fallback)
+  };
+}
+
 function normalizeWorkspaceLeaseHeldResult(
   body: unknown,
   action: "acquire" | "resume" | "renew" | "status"
@@ -699,7 +743,7 @@ function normalizeWorkspaceLeaseFailedResult(candidate: unknown): WorkspaceEditL
 
 function normalizePendingChangeCategory(value: unknown): WorkspacePendingChangeCategory | null {
   const category = cleanText(value);
-  return category === "Added" || category === "Modified" || category === "Moved" || category === "Modified · Moved" || category === "Removed"
+  return category === "Added" || category === "Modified" || category === "Moved" || category === "Modified Ã‚Â· Moved" || category === "Removed"
     ? category
     : null;
 }
@@ -1299,6 +1343,45 @@ async function resolveWorkspaceCreateResult(
   }
 
   throw new Error(`HTTP ${response.status}`);
+}
+
+async function resolveWorkspaceSettingsSaveResult(
+  path: string,
+  input: WorkspaceSettingsSaveInput
+): Promise<WorkspaceSettingsSaveResult> {
+  const response = await requestJson<unknown>(path, {
+    method: "PUT",
+    body: JSON.stringify({
+      workspaceSlug: cleanText(input.workspaceSlug),
+      workspaceSysId: cleanText(input.workspaceSysId),
+      name: cleanText(input.name),
+      shortDescription: cleanText(input.shortDescription) || null,
+      ...(input.icon ? { icon: input.icon } : {}),
+      layout: {
+        tocVisibleByDefault: input.layout?.tocVisibleByDefault ?? true
+      }
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    }
+  });
+
+  if (response.status === 200) {
+    return normalizeWorkspaceSettingsSaveSucceededResult(response.body);
+  }
+
+  if (response.status === 400 || response.status === 403 || response.status === 404) {
+    return normalizeWorkspaceSettingsSaveFailedResult(
+      response.body,
+      "Something went wrong while saving workspace settings. Your changes were not saved. Please try again."
+    );
+  }
+
+  return {
+    state: "failed",
+    code: "transient",
+    errorMessage: "Something went wrong while saving workspace settings. Your changes were not saved. Please try again."
+  };
 }
 
 async function resolveWorkspaceProvisioningStatus(path: string): Promise<WorkspaceCreateResult> {
@@ -2169,6 +2252,7 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
   const workspaceMediaCollectionPath = resolveWorkspaceMediaCollectionPath(collectionPath);
   const workspaceMediaFilePath = resolveWorkspaceMediaFilePath(collectionPath);
   const workspaceIconCollectionPath = resolveWorkspaceIconCollectionPath(collectionPath);
+  const workspaceSettingsPath = resolveWorkspaceSettingsPath(collectionPath);
   const pageDeleteActionPath = resolvePageDeleteActionPath(pageCollectionPath);
   const pageMovePath = resolvePageMovePath(pageCollectionPath);
   const pagePublishPath = resolvePagePublishPath(pageCollectionPath);
@@ -2258,6 +2342,10 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
     async getWorkspaceProvisioningStatus(statusPath: string): Promise<WorkspaceCreateResult> {
       const targetPath = cleanText(statusPath) || provisioningStatusPath;
       return resolveWorkspaceProvisioningStatus(targetPath);
+    },
+
+    async saveWorkspaceSettings(input: WorkspaceSettingsSaveInput): Promise<WorkspaceSettingsSaveResult> {
+      return resolveWorkspaceSettingsSaveResult(workspaceSettingsPath, input);
     },
 
     async createPage(input: PageCreateInput): Promise<PageCreateResult> {

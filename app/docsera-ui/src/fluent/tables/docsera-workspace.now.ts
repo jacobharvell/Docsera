@@ -12,7 +12,7 @@ export const x_82900_docsera_workspace = Table({
   name: "x_82900_docsera_workspace",
   label: "Docsera Workspace",
   display: "name",
-  actions: ["read", "create", "delete"],
+  actions: ["read", "create", "update", "delete"],
   allowWebServiceAccess: true,
   audit: true,
   schema: {

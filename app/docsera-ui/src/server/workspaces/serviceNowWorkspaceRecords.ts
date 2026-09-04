@@ -5,6 +5,11 @@ function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeServiceNowBoolean(value: unknown): boolean {
+  const normalized = cleanText(value).toLowerCase();
+  return normalized === "1" || normalized === "true";
+}
+
 function normalizeIcon(record: {
   getValue: (fieldName: string) => unknown;
 }): WorkspaceIcon {
@@ -40,7 +45,7 @@ export function mapWorkspaceRecord(record: {
     publishedSnapshotSetSysId: cleanText(record.getValue("published_snapshot_set")) || null,
     workspaceStateRevision: Number.isSafeInteger(workspaceStateRevision) && workspaceStateRevision >= 0 ? workspaceStateRevision : null,
     layout: {
-      tocVisibleByDefault: cleanText(record.getValue("toc_default_visible")) === "true",
+      tocVisibleByDefault: normalizeServiceNowBoolean(record.getValue("toc_default_visible")),
       pageWidth: cleanText(record.getValue("page_width")) === "full" ? "full" : "readable"
     }
   };
@@ -57,6 +62,9 @@ export function toWorkspaceViewRecord(workspace: ServerWorkspaceRecord, roleLabe
     name: cleanText(workspace.name),
     shortDescription: workspace.shortDescription,
     icon: workspace.icon,
+    layout: {
+      tocVisibleByDefault: workspace.layout.tocVisibleByDefault
+    },
     status: workspace.status,
     roleLabel,
     canManageSettings: Boolean(roleLabel === "Admin")

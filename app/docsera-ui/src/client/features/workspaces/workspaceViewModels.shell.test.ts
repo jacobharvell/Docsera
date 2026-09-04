@@ -13,6 +13,9 @@ function createWorkspace(): WorkspaceViewRecord {
       key: "docsera-workspace",
       label: "Docsera workspace icon"
     },
+    layout: {
+      tocVisibleByDefault: true
+    },
     status: "active",
     roleLabel: "Editor",
     canManageSettings: false

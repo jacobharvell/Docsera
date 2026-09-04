@@ -12,6 +12,7 @@ const sharedWorkspaceIconCatalogWrapperPath = join(packageRoot, "src", "shared",
 const serverWorkspaceIconCatalogPath = join(packageRoot, "src", "server", "workspaces", "serverWorkspaceIconCatalog.ts");
 const serverWorkspaceDomainPath = join(packageRoot, "src", "server", "workspaces", "serverWorkspaceDomain.ts");
 const serviceNowWorkspaceProvisioningPath = join(packageRoot, "src", "server", "workspaces", "serviceNowWorkspaceProvisioning.ts");
+const serviceNowWorkspaceSettingsPath = join(packageRoot, "src", "server", "workspaces", "serviceNowWorkspaceSettings.ts");
 const workspaceTablePath = join(packageRoot, "src", "fluent", "tables", "docsera-workspace.now.ts");
 const globalBridgeQueueAccessPath = resolve(packageRoot, "..", "docsera-global-bridge", "src", "fluent", "security", "docsera-workspace-provisioning-queue-access.now.ts");
 const globalBridgeVerifyPath = resolve(packageRoot, "..", "docsera-global-bridge", "scripts", "verify-global-bridge.mjs");
@@ -184,10 +185,20 @@ describe("server module boundaries", () => {
     const workspaceTableSource = readFileSync(workspaceTablePath, "utf8");
     const bridgeAccessSource = readFileSync(globalBridgeQueueAccessPath, "utf8");
 
-    expect(workspaceTableSource).toContain('actions: ["read", "create", "delete"]');
+    expect(workspaceTableSource).toContain('actions: ["read", "create", "update", "delete"]');
     expect(bridgeAccessSource).toContain('$id: Now.ID["docsera-workspace-delete"]');
     expect(bridgeAccessSource).toContain('operation: "delete"');
     expect(bridgeAccessSource).toContain('targetName: "x_82900_docsera_workspace"');
     expect(readFileSync(globalBridgeVerifyPath, "utf8")).toContain("delete_access");
+  });
+
+  it("keeps workspace settings outside the workspace edit lease module boundary", () => {
+    const sourceText = readFileSync(serviceNowWorkspaceSettingsPath, "utf8");
+
+    expect(sourceText).toContain("applyWorkspaceSettings");
+    expect(sourceText).toContain("canAdminWorkspace");
+    expect(sourceText).not.toContain("workspaceEditLease");
+    expect(sourceText).not.toContain("verifyWorkspaceEditLease");
+    expect(sourceText).not.toContain("workspaceLeaseToken");
   });
 });

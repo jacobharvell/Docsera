@@ -311,6 +311,10 @@ declare global {
                         table: 'sys_ws_operation'
                         id: '49d50db5280b4234b7780e5009a47cce'
                     }
+                    'docsera-runtime-workspace-settings-put': {
+                        table: 'sys_ws_operation'
+                        id: '77675553a0d54e128211cdc94df22a04'
+                    }
                     'docsera-runtime-workspaces-get': {
                         table: 'sys_ws_operation'
                         id: 'fcc3ff0a938442a2921579852f5aebea'
@@ -452,6 +456,10 @@ declare global {
                         table: 'sys_module'
                         id: '9490f88cf5394d2889ea8d160b26423d'
                     }
+                    'src_server_api_docsera-runtime-workspace-settings-save_ts': {
+                        table: 'sys_module'
+                        id: 'd1d7e8ada6f34713a28c03dcae085579'
+                    }
                     'src_server_api_docsera-runtime-workspaces_ts': {
                         table: 'sys_module'
                         id: 'd9bb2f597b564a9ab74fab37b5e777e4'
@@ -571,6 +579,10 @@ declare global {
                     src_server_workspaces_serviceNowWorkspaceRecords_ts: {
                         table: 'sys_module'
                         id: '453e4ed122a04dabb3ee142e95de0c8c'
+                    }
+                    src_server_workspaces_serviceNowWorkspaceSettings_ts: {
+                        table: 'sys_module'
+                        id: '425bbfd1d9cc43b6a8ba81e28b1323a6'
                     }
                     src_server_workspaces_workspaceChangeSetDomain_ts: {
                         table: 'sys_module'

@@ -24,6 +24,7 @@ import { process as workspaceDiscardAll } from "../../server/api/docsera-runtime
 import { process as workspaceDiscardPage } from "../../server/api/docsera-runtime-workspace-discard-page";
 import { process as workspacePendingChanges } from "../../server/api/docsera-runtime-workspace-pending-changes";
 import { process as workspacePublish } from "../../server/api/docsera-runtime-workspace-publish";
+import { process as saveWorkspaceSettings } from "../../server/api/docsera-runtime-workspace-settings-save.ts";
 import { process as acquireWorkspaceEditLease } from "../../server/api/docsera-runtime-workspace-edit-lease-acquire";
 import { process as resumeWorkspaceEditLease } from "../../server/api/docsera-runtime-workspace-edit-lease-resume";
 import { process as renewWorkspaceEditLease } from "../../server/api/docsera-runtime-workspace-edit-lease-renew";
@@ -75,6 +76,16 @@ RestApi({
       produces: "application/json",
       shortDescription: "Return the current status of a workspace provisioning request.",
       script: workspaceProvisioningStatus
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-settings-put"],
+      name: "workspace_settings_save",
+      path: "/workspaces/settings",
+      method: "PUT",
+      consumes: "application/json",
+      produces: "application/json",
+      shortDescription: "Persist authorized workspace identity and layout defaults without requiring the Edit lease.",
+      script: saveWorkspaceSettings
     },
     {
       $id: Now.ID["docsera-runtime-workspace-pending-changes-post"], name: "workspace_pending_changes", path: "/workspaces/pending-changes", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Read the active workspace pending changes through the held Edit lease.", script: workspacePendingChanges

@@ -29,6 +29,9 @@ describe("WorkspaceList", () => {
             canManageSettings: false,
             icon: { type: "uploaded", key: "asset-key-001", label: "Custom", assetPath: "/icons/file?assetKey=asset-key-001" },
             name: "Custom Docs",
+            layout: {
+              tocVisibleByDefault: true
+            },
             roleLabel: "Admin",
             shortDescription: null,
             slug: "custom-docs",

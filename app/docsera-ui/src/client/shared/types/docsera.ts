@@ -88,6 +88,9 @@ export type WorkspaceViewRecord = {
   name: string;
   shortDescription: string | null;
   icon: WorkspaceIcon;
+  layout?: {
+    tocVisibleByDefault: boolean;
+  };
   status: "active" | "inactive";
   roleLabel: WorkspaceRoleLabel | null;
   canManageSettings: boolean;
@@ -120,6 +123,28 @@ export type WorkspaceCreateInput = {
   shortDescription?: string | null;
   icon?: WorkspaceIcon | null;
 };
+
+export type WorkspaceSettingsSaveInput = {
+  workspaceSlug: string;
+  workspaceSysId: string;
+  name: string;
+  shortDescription?: string | null;
+  icon?: WorkspaceIcon | null;
+  layout?: {
+    tocVisibleByDefault: boolean;
+  };
+};
+
+export type WorkspaceSettingsSaveResult =
+  | {
+      state: "succeeded";
+      workspace: WorkspaceViewRecord;
+    }
+  | {
+      code?: "forbidden" | "invalid" | "not_found" | "transient";
+      errorMessage: string;
+      state: "failed";
+    };
 
 export type PageCreateInput = {
   workspaceSlug: string;
@@ -274,7 +299,7 @@ export type WorkspaceEditLeaseAcquireResult = WorkspaceEditLeaseHeld | Workspace
 export type WorkspaceEditLeaseRenewResult = WorkspaceEditLeaseHeld | WorkspaceEditLeaseLost | WorkspaceEditLeaseFailed;
 export type WorkspaceEditLeaseReleaseResult = WorkspaceEditLeaseReleased | WorkspaceEditLeaseLost | WorkspaceEditLeaseFailed;
 export type WorkspaceEditLeaseStatusResult = WorkspaceEditLeaseStatusHeld | WorkspaceEditLeaseLocked | WorkspaceEditLeaseUnlocked | WorkspaceEditLeaseFailed;
-export type WorkspacePendingChangeCategory = "Added" | "Modified" | "Moved" | "Modified · Moved" | "Removed";
+export type WorkspacePendingChangeCategory = "Added" | "Modified" | "Moved" | "Modified Ã‚Â· Moved" | "Removed";
 export type WorkspacePendingChangeRow = {
   attribution: {
     accessibleLabel: string;
@@ -562,6 +587,7 @@ export type ServiceNowClient = {
   getWorkspace: (workspaceSlug: string) => Promise<WorkspaceLookupResult>;
   listPages: (input: { mode?: WorkspaceMode; workspaceSlug: string }) => Promise<PageListResult>;
   createWorkspace: (input: WorkspaceCreateInput) => Promise<WorkspaceCreateResult>;
+  saveWorkspaceSettings?: (input: WorkspaceSettingsSaveInput) => Promise<WorkspaceSettingsSaveResult>;
   getWorkspaceProvisioningStatus: (statusPath: string) => Promise<WorkspaceCreateResult>;
   createPage: (input: PageCreateInput) => Promise<PageCreateResult>;
   listWorkspaceMedia?: (input: { workspaceSysId: string }) => Promise<WorkspaceMediaListResult>;

@@ -177,6 +177,7 @@ export const testSuites = [
       "src/server/api/docsera-runtime-workspace-edit-lease.test.ts",
       "src/server/page-locks/pageEditLockService.test.ts",
       "src/server/pages/serviceNowPageCreation.access-security.test.ts",
+      "src/server/workspaces/serviceNowWorkspaceSettings.test.ts",
       "src/server/workspace-leases/workspaceEditLeaseService.test.ts",
       "test/workspaceDomain.test.ts"
     ]
