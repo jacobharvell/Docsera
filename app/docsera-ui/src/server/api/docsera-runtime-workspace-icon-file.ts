@@ -21,7 +21,12 @@ function cleanText(value: unknown): string {
 export async function process(request: RequestLike, response: ResponseLike) {
   try {
     const service = createServiceNowWorkspaceIconService();
-    const result = await service.getWorkspaceIconFile({ assetKey: readQueryParam(request, "assetKey") });
+    const result = readQueryParam(request, "preview") === "settings"
+      ? await service.getWorkspaceSettingsIconPreviewFile({
+          assetKey: readQueryParam(request, "assetKey"),
+          workspaceSysId: readQueryParam(request, "workspaceSysId")
+        })
+      : await service.getWorkspaceIconFile({ assetKey: readQueryParam(request, "assetKey") });
 
     if (result.kind === "failed") {
       response.setStatus?.(result.status);

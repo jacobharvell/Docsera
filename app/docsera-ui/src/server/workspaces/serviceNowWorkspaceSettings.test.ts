@@ -15,7 +15,7 @@ function workspace(overrides: Partial<WorkspaceRecord> = {}): WorkspaceRecord {
     },
     layout: {
       pageWidth: "full",
-      tocVisibleByDefault: true
+      tocVisible: true
     },
     name: "Platform Docs",
     pendingChangeSetSysId: "change-set-1",
@@ -124,7 +124,7 @@ describe("workspace settings domain", () => {
   it("normalizes short description, enforces field limits, and persists the ToC default boolean", () => {
     const current = workspace();
     const result = applyWorkspaceSettings(current, {
-      layout: { tocVisibleByDefault: false },
+      layout: { tocVisible: false },
       name: "  Renamed Docs  ",
       shortDescription: "  A tighter purpose  ",
       workspaceSlug: "platform-docs",
@@ -138,7 +138,7 @@ describe("workspace settings domain", () => {
         shortDescription: "A tighter purpose",
         layout: {
           pageWidth: "full",
-          tocVisibleByDefault: false
+          tocVisible: false
         }
       }
     });
@@ -152,7 +152,7 @@ describe("workspace settings domain", () => {
     ).toMatchObject({ valid: false, error: "Short description must be 240 characters or fewer." });
   });
 
-  it("canonicalizes controlled built-in icons and rejects unsupported uploaded replacement input", () => {
+  it("canonicalizes controlled built-in icons and accepts only canonical uploaded icon metadata", () => {
     const current = workspace();
 
     expect(
@@ -186,7 +186,17 @@ describe("workspace settings domain", () => {
         name: "Platform Docs",
         workspaceSysId: "workspace-1"
       })
-    ).toMatchObject({ valid: false, error: "Replacing a workspace icon with an uploaded icon is not supported here." });
+    ).toMatchObject({
+      valid: true,
+      workspace: {
+        icon: {
+          type: "uploaded",
+          key: "wsi_new",
+          label: "icon.png",
+          assetPath: "/icons/file?assetKey=wsi_new"
+        }
+      }
+    });
   });
 
   it("preserves uploaded icons and unrelated workspace state when icon is omitted", () => {
@@ -200,7 +210,7 @@ describe("workspace settings domain", () => {
     });
 
     const result = applyWorkspaceSettings(current, {
-      layout: { tocVisibleByDefault: false },
+      layout: { tocVisible: false },
       name: "Renamed Docs",
       shortDescription: "",
       workspaceSlug: "platform-docs",
@@ -215,7 +225,7 @@ describe("workspace settings domain", () => {
         shortDescription: null,
         layout: {
           pageWidth: "full",
-          tocVisibleByDefault: false
+          tocVisible: false
         }
       }
     });
@@ -229,7 +239,7 @@ describe("workspace record mapping", () => {
     ["true", true],
     ["false", false]
   ])("normalizes persisted ToC default value %o to %s", (persistedValue, expectedVisible) => {
-    expect(mapWorkspaceRecord(workspaceRecord({ toc_default_visible: persistedValue })).layout.tocVisibleByDefault).toBe(expectedVisible);
+    expect(mapWorkspaceRecord(workspaceRecord({ toc_default_visible: persistedValue })).layout.tocVisible).toBe(expectedVisible);
   });
 
   it("preserves existing workspace identity, icon, settings, and metadata projection", () => {
@@ -246,7 +256,7 @@ describe("workspace record mapping", () => {
       },
       layout: {
         pageWidth: "full",
-        tocVisibleByDefault: true
+        tocVisible: true
       },
       name: "Platform Docs",
       pendingChangeSetSysId: "change-set-1",
@@ -268,7 +278,7 @@ describe("workspace settings service", () => {
 
     await expect(
       settingsService.saveWorkspaceSettings({
-        layout: { tocVisibleByDefault: false },
+        layout: { tocVisible: false },
         name: "Renamed Docs",
         workspaceSlug: "platform-docs",
         workspaceSysId: "workspace-1"
@@ -293,7 +303,7 @@ describe("workspace settings service", () => {
         workspaceStateRevision: 7,
         layout: {
           pageWidth: "full",
-          tocVisibleByDefault: false
+          tocVisible: false
         }
       })
     );
@@ -302,11 +312,11 @@ describe("workspace settings service", () => {
   it.each([
     [true, "1"],
     [false, "0"]
-  ])("preserves saved ToC default %s through canonical record projection", async (tocVisibleByDefault, persistedValue) => {
+  ])("preserves saved ToC default %s through canonical record projection", async (tocVisible, persistedValue) => {
     let storedTocDefault = persistedValue;
-    const currentWorkspace = workspace({ layout: { pageWidth: "full", tocVisibleByDefault: !tocVisibleByDefault } });
+    const currentWorkspace = workspace({ layout: { pageWidth: "full", tocVisible: !tocVisible } });
     const saveWorkspaceSettings = vi.fn(async (savedWorkspace: WorkspaceRecord) => {
-      storedTocDefault = savedWorkspace.layout.tocVisibleByDefault ? "1" : "0";
+      storedTocDefault = savedWorkspace.layout.tocVisible ? "1" : "0";
       return mapWorkspaceRecord(workspaceRecord({ toc_default_visible: storedTocDefault }));
     });
     const settingsWithCanonicalProjection = createWorkspaceSettingsService({
@@ -323,7 +333,7 @@ describe("workspace settings service", () => {
 
     await expect(
       settingsWithCanonicalProjection.saveWorkspaceSettings({
-        layout: { tocVisibleByDefault },
+        layout: { tocVisible },
         name: "Platform Docs",
         workspaceSlug: "platform-docs",
         workspaceSysId: "workspace-1"
@@ -332,7 +342,7 @@ describe("workspace settings service", () => {
       kind: "succeeded",
       workspace: {
         layout: {
-          tocVisibleByDefault
+          tocVisible
         }
       }
     });
@@ -342,7 +352,7 @@ describe("workspace settings service", () => {
       expect.objectContaining({
         layout: {
           pageWidth: "full",
-          tocVisibleByDefault
+          tocVisible
         }
       })
     );
@@ -359,6 +369,101 @@ describe("workspace settings service", () => {
     ).resolves.toMatchObject({ kind: "forbidden" });
 
     expect(deps.saveWorkspaceSettings).not.toHaveBeenCalled();
+  });
+
+  it("claims staged uploaded icon replacement only after settings authorization and rolls back on save failure", async () => {
+    const currentWorkspace = workspace();
+    const restoreWorkspaceIconClaim = vi.fn();
+    const claimWorkspaceSettingsIcon = vi.fn(() => ({
+        asset: {
+          assetKey: "wsi_new",
+          attachmentSysId: "att-1",
+          contentType: "image/png",
+          fileName: "icon.png",
+          format: "png",
+          height: 128,
+          provisionRequestSysId: "",
+          requestedBy: "user-1",
+          sizeBytes: 128,
+          state: "claimed",
+          sysId: "asset-1",
+          width: 128,
+          workspaceSysId: "workspace-1"
+        },
+        icon: { assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_new", key: "wsi_new", label: "icon.png", type: "uploaded" },
+        kind: "succeeded"
+      } as const));
+    const settingsWithIconClaim = createWorkspaceSettingsService({
+      claimWorkspaceSettingsIcon,
+      evaluateWorkspaceCapabilities: vi.fn(() => ({
+        canAdminWorkspace: true,
+        canEditWorkspace: true,
+        canManageWorkspaceMembers: true,
+        canViewWorkspace: true
+      })),
+      loadWorkspaceBySlug: vi.fn(async () => currentWorkspace),
+      loadWorkspaceBySysId: vi.fn(async () => currentWorkspace),
+      restoreWorkspaceIconClaim,
+      saveWorkspaceSettings: vi.fn(async () => null)
+    });
+
+    await expect(
+      settingsWithIconClaim.saveWorkspaceSettings({
+        icon: { type: "uploaded", key: "wsi_new", label: "forged", assetPath: "/forged" },
+        name: "Platform Docs",
+        workspaceSysId: "workspace-1"
+      })
+    ).resolves.toMatchObject({ kind: "failed", status: 500 });
+    expect(claimWorkspaceSettingsIcon).toHaveBeenCalledWith("wsi_new", "workspace-1");
+    expect(restoreWorkspaceIconClaim).toHaveBeenCalledWith("asset-1", { workspaceSysId: "workspace-1" });
+  });
+
+  it("retires a prior uploaded icon only after successful authoritative replacement", async () => {
+    const currentWorkspace = workspace({
+      icon: { type: "uploaded", key: "wsi_old", label: "old.png", assetPath: "/icons/file?assetKey=wsi_old" }
+    });
+    const retireClaimedWorkspaceIcon = vi.fn();
+    const settingsWithCleanup = createWorkspaceSettingsService({
+      claimWorkspaceSettingsIcon: vi.fn(() => ({
+        asset: {
+          assetKey: "wsi_new",
+          attachmentSysId: "att-1",
+          contentType: "image/png",
+          fileName: "icon.png",
+          format: "png",
+          height: 128,
+          provisionRequestSysId: "",
+          requestedBy: "user-1",
+          sizeBytes: 128,
+          state: "claimed",
+          sysId: "asset-1",
+          width: 128,
+          workspaceSysId: "workspace-1"
+        },
+        icon: { assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_new", key: "wsi_new", label: "icon.png", type: "uploaded" },
+        kind: "succeeded"
+      })),
+      evaluateWorkspaceCapabilities: vi.fn(() => ({
+        canAdminWorkspace: true,
+        canEditWorkspace: true,
+        canManageWorkspaceMembers: true,
+        canViewWorkspace: true
+      })),
+      loadWorkspaceBySlug: vi.fn(async () => currentWorkspace),
+      loadWorkspaceBySysId: vi.fn(async () => currentWorkspace),
+      restoreWorkspaceIconClaim: vi.fn(),
+      retireClaimedWorkspaceIcon,
+      saveWorkspaceSettings: vi.fn(async (saved: WorkspaceRecord) => saved)
+    });
+
+    await expect(
+      settingsWithCleanup.saveWorkspaceSettings({
+        icon: { type: "uploaded", key: "wsi_new", label: "forged", assetPath: "/forged" },
+        name: "Platform Docs",
+        workspaceSysId: "workspace-1"
+      })
+    ).resolves.toMatchObject({ kind: "succeeded" });
+    expect(retireClaimedWorkspaceIcon).toHaveBeenCalledWith("wsi_old", "workspace-1");
   });
 
   it("rejects missing or mismatched workspace identity before persistence", async () => {

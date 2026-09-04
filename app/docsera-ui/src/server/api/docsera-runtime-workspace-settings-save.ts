@@ -52,7 +52,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
       icon: body.icon === undefined ? undefined : body.icon && (typeof body.icon === "object" || typeof body.icon === "string") ? body.icon : null,
       layout: layout
         ? {
-            tocVisibleByDefault: typeof layout.tocVisibleByDefault === "boolean" ? layout.tocVisibleByDefault : undefined
+            tocVisible: typeof layout.tocVisible === "boolean" ? layout.tocVisible : undefined
           }
         : null
     });

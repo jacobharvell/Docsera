@@ -25,7 +25,7 @@ The repo-side workspace record shape includes:
 - required `creatorUserSysId`
 - created/updated metadata where the backing adapter can provide it
 - required layout defaults:
-  - `tocVisibleByDefault`
+  - `tocVisible`
   - `pageWidth`
 
 The current default icon is a built-in Docsera icon key:
@@ -169,7 +169,7 @@ When the SDK runtime is installed to a PDI, verify the live provisioning path wi
     "label": "Docsera workspace icon"
   },
   "layout": {
-    "tocVisibleByDefault": true,
+    "tocVisible": true,
     "pageWidth": "readable"
   }
 }

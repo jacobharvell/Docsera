@@ -89,7 +89,7 @@ export type WorkspaceViewRecord = {
   shortDescription: string | null;
   icon: WorkspaceIcon;
   layout?: {
-    tocVisibleByDefault: boolean;
+    tocVisible: boolean;
   };
   status: "active" | "inactive";
   roleLabel: WorkspaceRoleLabel | null;
@@ -131,7 +131,7 @@ export type WorkspaceSettingsSaveInput = {
   shortDescription?: string | null;
   icon?: WorkspaceIcon | null;
   layout?: {
-    tocVisibleByDefault: boolean;
+    tocVisible: boolean;
   };
 };
 
@@ -592,7 +592,8 @@ export type ServiceNowClient = {
   createPage: (input: PageCreateInput) => Promise<PageCreateResult>;
   listWorkspaceMedia?: (input: { workspaceSysId: string }) => Promise<WorkspaceMediaListResult>;
   uploadWorkspaceMedia?: (input: { file: File; workspaceLeaseToken: string; workspaceSysId: string }) => Promise<WorkspaceMediaUploadResult>;
-  uploadWorkspaceIcon?: (input: { file: File }) => Promise<WorkspaceIconUploadResult>;
+  uploadWorkspaceIcon?: (input: { file: File; workspaceSysId?: string }) => Promise<WorkspaceIconUploadResult>;
+  cleanupWorkspaceSettingsIcon?: (input: { assetKey: string; workspaceSysId: string }) => Promise<void>;
   loadWorkspaceIcon?: (input: { assetPath: string; signal?: AbortSignal }) => Promise<Blob | null>;
   loadWorkspaceMedia?: (input: { mediaId: string; signal?: AbortSignal; workspaceSysId: string }) => Promise<Blob | null>;
   acquireWorkspaceEditLease?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspaceEditLeaseAcquireResult>;

@@ -26,7 +26,7 @@ export const DEFAULT_WORKSPACE_ICON = Object.freeze({
 });
 
 export const DEFAULT_WORKSPACE_LAYOUT = Object.freeze({
-  tocVisibleByDefault: true,
+  tocVisible: true,
   pageWidth: "readable"
 });
 
@@ -43,7 +43,7 @@ export type WorkspaceIcon = {
 };
 
 export type WorkspaceLayoutDefaults = {
-  tocVisibleByDefault: boolean;
+  tocVisible: boolean;
   pageWidth: WorkspacePageWidth;
 };
 
@@ -279,10 +279,10 @@ export function normalizeWorkspaceIcon(icon?: Partial<WorkspaceIcon> | string | 
 
 export function normalizeWorkspaceLayout(layout?: Partial<WorkspaceLayoutDefaults> | null): WorkspaceLayoutDefaults {
   return {
-    tocVisibleByDefault:
-      typeof layout?.tocVisibleByDefault === "boolean"
-        ? layout.tocVisibleByDefault
-        : DEFAULT_WORKSPACE_LAYOUT.tocVisibleByDefault,
+    tocVisible:
+      typeof layout?.tocVisible === "boolean"
+        ? layout.tocVisible
+        : DEFAULT_WORKSPACE_LAYOUT.tocVisible,
     pageWidth: layout?.pageWidth === "full" ? "full" : DEFAULT_WORKSPACE_LAYOUT.pageWidth
   };
 }

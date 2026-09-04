@@ -386,8 +386,8 @@ function normalizeWorkspaceViewRecord(candidate: unknown): WorkspaceViewRecord {
       label: "Docsera workspace icon"
     },
     layout: {
-      tocVisibleByDefault:
-        typeof workspace.layout?.tocVisibleByDefault === "boolean" ? workspace.layout.tocVisibleByDefault : true
+      tocVisible:
+        typeof workspace.layout?.tocVisible === "boolean" ? workspace.layout.tocVisible : true
     },
     status: workspace.status === "inactive" ? "inactive" : "active",
     roleLabel: workspace.roleLabel === "Admin" ? "Admin" : workspace.roleLabel === "Editor" ? "Editor" : null,
@@ -1358,7 +1358,7 @@ async function resolveWorkspaceSettingsSaveResult(
       shortDescription: cleanText(input.shortDescription) || null,
       ...(input.icon ? { icon: input.icon } : {}),
       layout: {
-        tocVisibleByDefault: input.layout?.tocVisibleByDefault ?? true
+        tocVisible: input.layout?.tocVisible ?? true
       }
     }),
     headers: {
@@ -2410,10 +2410,14 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
       }
     },
 
-    async uploadWorkspaceIcon(input: { file: File }): Promise<WorkspaceIconUploadResult> {
+    async uploadWorkspaceIcon(input: { file: File; workspaceSysId?: string }): Promise<WorkspaceIconUploadResult> {
       try {
         const path = new URL(workspaceIconCollectionPath, window.location.origin);
         path.searchParams.set("fileName", cleanText(input.file?.name));
+        const workspaceSysId = cleanText(input.workspaceSysId);
+        if (workspaceSysId) {
+          path.searchParams.set("workspaceSysId", workspaceSysId);
+        }
         const response = await requestRaw(path.pathname + path.search, {
           method: "POST",
           body: input.file,
@@ -2439,6 +2443,17 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
           retryable: true
         };
       }
+    },
+
+    async cleanupWorkspaceSettingsIcon(input: { assetKey: string; workspaceSysId: string }): Promise<void> {
+      const path = new URL(workspaceIconCollectionPath, window.location.origin);
+      path.searchParams.set("action", "cleanup-settings-staged");
+      path.searchParams.set("assetKey", cleanText(input.assetKey));
+      path.searchParams.set("workspaceSysId", cleanText(input.workspaceSysId));
+      await requestJson<unknown>(path.pathname + path.search, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
     },
 
     async loadWorkspaceIcon(input: { assetPath: string; signal?: AbortSignal }): Promise<Blob | null> {

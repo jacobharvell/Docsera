@@ -48,7 +48,7 @@ test("createWorkspaceDraft applies default icon, active status, and layout defau
   expect(draft.icon).toEqual(DEFAULT_WORKSPACE_ICON);
   expect(draft.status).toBe("active");
   expect(draft.layout).toEqual({
-    tocVisibleByDefault: true,
+    tocVisible: true,
     pageWidth: "readable"
   });
 });

@@ -366,7 +366,7 @@ async function createWorkspace(instanceUrl, session, workspaceName) {
         label: "Docsera workspace icon"
       },
       layout: {
-        tocVisibleByDefault: true,
+        tocVisible: true,
         pageWidth: "readable"
       }
     })

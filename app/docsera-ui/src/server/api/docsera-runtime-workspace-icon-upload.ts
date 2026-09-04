@@ -26,11 +26,19 @@ function logUnexpectedIconError(error: unknown, context: Record<string, unknown>
 export async function process(request: RequestLike, response: ResponseLike) {
   try {
     const service = createServiceNowWorkspaceIconService();
+    if (readQueryParam(request, "action") === "cleanup-settings-staged") {
+      service.cleanupStagedWorkspaceSettingsIcon(readQueryParam(request, "assetKey"), readQueryParam(request, "workspaceSysId"));
+      response.setStatus?.(204);
+      response.setBody({});
+      return;
+    }
+
     const result = await service.uploadWorkspaceIcon({
       contentLengthBytes: readNumericHeader(request, "Content-Length"),
       contentType: readHeader(request, "Content-Type"),
       dataStream: readRequestBodyDataStream(request),
-      fileName: readQueryParam(request, "fileName")
+      fileName: readQueryParam(request, "fileName"),
+      workspaceSysId: readQueryParam(request, "workspaceSysId")
     });
 
     if (result.kind === "failed") {

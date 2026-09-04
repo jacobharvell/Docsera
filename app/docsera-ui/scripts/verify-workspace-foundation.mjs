@@ -364,7 +364,7 @@ function createWorkspacePayload() {
       label: "Docsera workspace icon"
     },
     layout: {
-      tocVisibleByDefault: true,
+      tocVisible: true,
       pageWidth: "readable"
     }
   };

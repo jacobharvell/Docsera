@@ -45,7 +45,7 @@ export function mapWorkspaceRecord(record: {
     publishedSnapshotSetSysId: cleanText(record.getValue("published_snapshot_set")) || null,
     workspaceStateRevision: Number.isSafeInteger(workspaceStateRevision) && workspaceStateRevision >= 0 ? workspaceStateRevision : null,
     layout: {
-      tocVisibleByDefault: normalizeServiceNowBoolean(record.getValue("toc_default_visible")),
+      tocVisible: normalizeServiceNowBoolean(record.getValue("toc_default_visible")),
       pageWidth: cleanText(record.getValue("page_width")) === "full" ? "full" : "readable"
     }
   };
@@ -63,7 +63,7 @@ export function toWorkspaceViewRecord(workspace: ServerWorkspaceRecord, roleLabe
     shortDescription: workspace.shortDescription,
     icon: workspace.icon,
     layout: {
-      tocVisibleByDefault: workspace.layout.tocVisibleByDefault
+      tocVisible: workspace.layout.tocVisible
     },
     status: workspace.status,
     roleLabel,

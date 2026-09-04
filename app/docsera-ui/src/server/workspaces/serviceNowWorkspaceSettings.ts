@@ -1,4 +1,4 @@
-﻿import { GlideRecord } from "@servicenow/glide";
+import { GlideRecord } from "@servicenow/glide";
 import {
   DOCSERA_WORKSPACE_TABLE,
   applyWorkspaceSettings,
@@ -6,6 +6,7 @@ import {
   type WorkspaceSettingsInput
 } from "./serverWorkspaceDomain.ts";
 import { evaluateCurrentUserWorkspaceCapabilities } from "./serviceNowWorkspaceCapabilities.ts";
+import { createServiceNowWorkspaceIconService, type WorkspaceIconClaimResult } from "./serviceNowWorkspaceIcons.ts";
 import { mapWorkspaceRecord } from "./serviceNowWorkspaceRecords.ts";
 
 type Awaitable<T> = T | Promise<T>;
@@ -19,6 +20,9 @@ export type WorkspaceSettingsDependencies = {
   };
   loadWorkspaceBySlug: (workspaceSlug: string) => Awaitable<WorkspaceRecord | null>;
   loadWorkspaceBySysId: (workspaceSysId: string) => Awaitable<WorkspaceRecord | null>;
+  claimWorkspaceSettingsIcon?: (assetKey: string, workspaceSysId: string) => WorkspaceIconClaimResult;
+  restoreWorkspaceIconClaim?: (assetSysId: string, input?: { provisionRequestSysId?: string; workspaceSysId?: string }) => void;
+  retireClaimedWorkspaceIcon?: (assetKey: string, workspaceSysId: string) => void;
   saveWorkspaceSettings: (workspace: WorkspaceRecord) => Awaitable<WorkspaceRecord | null>;
 };
 
@@ -86,7 +90,7 @@ function saveWorkspaceSettingsRecord(workspace: WorkspaceRecord): WorkspaceRecor
 
   record.setValue("name", workspace.name);
   record.setValue("short_description", workspace.shortDescription ?? "");
-  record.setValue("toc_default_visible", workspace.layout.tocVisibleByDefault);
+  record.setValue("toc_default_visible", workspace.layout.tocVisible);
   record.setValue("icon_type", workspace.icon.type);
   record.setValue("icon_key", workspace.icon.key);
   record.setValue("icon_label", workspace.icon.label);
@@ -133,16 +137,6 @@ export function createWorkspaceSettingsService(dependencies: WorkspaceSettingsDe
         };
       }
 
-      const settings = applyWorkspaceSettings(currentWorkspace, input);
-      if (!settings.valid) {
-        const error = (settings as { valid: false; error: string }).error;
-        return {
-          kind: "failed",
-          errorMessage: error,
-          status: error === "Workspace could not be found." ? 404 : 400
-        };
-      }
-
       const capability = dependencies.evaluateWorkspaceCapabilities(currentWorkspace);
       if (!capability.canAdminWorkspace) {
         return {
@@ -151,13 +145,78 @@ export function createWorkspaceSettingsService(dependencies: WorkspaceSettingsDe
         };
       }
 
+      const uploadedIconAssetKey =
+        input.icon && typeof input.icon === "object" && input.icon.type === "uploaded" ? cleanText(input.icon.key) : "";
+      let claimedUploadedIcon: Extract<WorkspaceIconClaimResult, { kind: "succeeded" }> | null = null;
+      let settingsInput = input;
+
+      if (uploadedIconAssetKey) {
+        if (!dependencies.claimWorkspaceSettingsIcon || !dependencies.restoreWorkspaceIconClaim) {
+          return {
+            kind: "failed",
+            errorMessage: "Uploaded workspace icon replacement is unavailable.",
+            status: 500
+          };
+        }
+
+        const claim = dependencies.claimWorkspaceSettingsIcon(uploadedIconAssetKey, currentWorkspace.sysId);
+        if (claim.kind === "failed") {
+          if (claim.status === 403) {
+            return {
+              kind: "forbidden",
+              errorMessage: claim.errorMessage
+            };
+          }
+          return {
+            kind: "failed",
+            errorMessage: claim.errorMessage,
+            status: claim.status === 404 ? 404 : claim.status === 500 ? 500 : 400
+          };
+        }
+
+        claimedUploadedIcon = claim;
+        settingsInput = {
+          ...input,
+          icon: claim.icon
+        };
+      }
+
+      const settings = applyWorkspaceSettings(currentWorkspace, settingsInput);
+      if (!settings.valid) {
+        if (claimedUploadedIcon) {
+          dependencies.restoreWorkspaceIconClaim?.(claimedUploadedIcon.asset.sysId, { workspaceSysId: currentWorkspace.sysId });
+        }
+        const error = (settings as { valid: false; error: string }).error;
+        return {
+          kind: "failed",
+          errorMessage: error,
+          status: error === "Workspace could not be found." ? 404 : 400
+        };
+      }
+
       const savedWorkspace = await dependencies.saveWorkspaceSettings(settings.workspace);
       if (!savedWorkspace) {
+        if (claimedUploadedIcon) {
+          dependencies.restoreWorkspaceIconClaim?.(claimedUploadedIcon.asset.sysId, { workspaceSysId: currentWorkspace.sysId });
+        }
         return {
           kind: "failed",
           errorMessage: "Something went wrong while saving workspace settings. Your changes were not saved. Please try again.",
           status: 500
         };
+      }
+
+      if (
+        dependencies.retireClaimedWorkspaceIcon &&
+        currentWorkspace.icon.type === "uploaded" &&
+        cleanText(currentWorkspace.icon.key) &&
+        cleanText(currentWorkspace.icon.key) !== cleanText(savedWorkspace.icon.key)
+      ) {
+        try {
+          dependencies.retireClaimedWorkspaceIcon(currentWorkspace.icon.key, currentWorkspace.sysId);
+        } catch {
+          // Cleanup is best-effort after the authoritative workspace save.
+        }
       }
 
       return {
@@ -169,10 +228,14 @@ export function createWorkspaceSettingsService(dependencies: WorkspaceSettingsDe
 }
 
 export function createServiceNowWorkspaceSettingsService() {
+  const iconService = createServiceNowWorkspaceIconService();
   return createWorkspaceSettingsService({
+    claimWorkspaceSettingsIcon: iconService.claimWorkspaceSettingsIcon,
     evaluateWorkspaceCapabilities: evaluateCurrentUserWorkspaceCapabilities,
     loadWorkspaceBySlug,
     loadWorkspaceBySysId,
+    restoreWorkspaceIconClaim: iconService.restoreWorkspaceIconClaim,
+    retireClaimedWorkspaceIcon: iconService.retireClaimedWorkspaceIcon,
     saveWorkspaceSettings: saveWorkspaceSettingsRecord
   });
 }

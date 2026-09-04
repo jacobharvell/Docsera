@@ -19,7 +19,7 @@ function createWorkspace(overrides: Partial<WorkspaceRecord> = {}): WorkspaceRec
     editorGroupSysId: "group-editor",
     creatorUserSysId: "user-001",
     layout: {
-      tocVisibleByDefault: true,
+      tocVisible: true,
       pageWidth: "readable"
     },
     ...overrides

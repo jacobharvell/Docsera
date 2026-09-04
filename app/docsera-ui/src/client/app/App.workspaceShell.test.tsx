@@ -60,7 +60,7 @@ function createWorkspace(overrides: Partial<WorkspaceViewRecord> = {}): Workspac
       label: "Docsera workspace icon"
     },
     layout: {
-      tocVisibleByDefault: true
+      tocVisible: true
     },
     status: "active",
     roleLabel: "Admin",
@@ -266,6 +266,9 @@ function createClient(overrides: Partial<ServiceNowClient> = {}): ServiceNowClie
     savePageSettings: vi.fn(async () => {
       throw new Error("savePageSettings should not be called in these tests");
     }),
+    saveWorkspaceSettings: vi.fn(async () => {
+      throw new Error("saveWorkspaceSettings should not be called in these tests");
+    }),
     deletePage: vi.fn(async () => {
       throw new Error("deletePage should not be called in these tests");
     }),
@@ -403,11 +406,10 @@ describe("App workspace shell integration", () => {
       searchText: ""
     }));
 
-    renderApp("/?workspace=product-docs", { getWorkspace, listPages, listWorkspaces });
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { getWorkspace, listPages, listWorkspaces });
 
-    expect(await screen.findByRole("button", { name: "Overview" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     const liveToggle = screen.getByRole("button", { name: "Live" });
-    const settingsGear = screen.getByRole("button", { name: "Workspace settings" });
     const modeGroup = screen.getByRole("group", { name: "Workspace mode" });
     const listPagesCallCount = listPages.mock.calls.length;
 
@@ -415,12 +417,10 @@ describe("App workspace shell integration", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "API Docs" }));
 
     expect(screen.getByRole("button", { name: "Live" })).toBe(liveToggle);
-    expect(screen.getByRole("button", { name: "Workspace settings" })).toBe(settingsGear);
     expect(screen.getByRole("group", { name: "Workspace mode" })).toBe(modeGroup);
     expect(screen.getByRole("button", { name: "Live" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Workspace settings" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Live" }));
-    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
     expect(listPages.mock.calls.length).toBe(listPagesCallCount);
 
     await act(async () => {
@@ -436,17 +436,15 @@ describe("App workspace shell integration", () => {
 
     expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Live" })).toBe(liveToggle);
-    expect(screen.getByRole("button", { name: "Workspace settings" })).toBe(settingsGear);
     expect(screen.getByRole("button", { name: "Live" })).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Workspace settings" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Workspace settings" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: API Docs/i }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Secure Docs" }));
 
     expect(screen.getByRole("button", { name: "Live" })).toBe(liveToggle);
-    expect(screen.getByRole("button", { name: "Workspace settings" })).toBe(settingsGear);
     expect(screen.getByRole("button", { name: "Live" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Workspace settings" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Workspace settings" })).not.toBeInTheDocument();
 
     await act(async () => {
       secureWorkspaceDeferred.resolve({
@@ -607,4 +605,874 @@ describe("App workspace shell integration", () => {
     expect(screen.queryByRole("button", { name: "Open settings for API Overview" })).not.toBeInTheDocument();
   });
 
+  it("opens Workspace Settings from the header and saves core settings through the workspace boundary", async () => {
+    const saveWorkspaceSettings = vi.fn(async (input) => ({
+      state: "succeeded" as const,
+      workspace: createWorkspace({
+        name: input.name,
+        shortDescription: input.shortDescription,
+        icon: input.icon,
+        layout: input.layout
+      })
+    }));
+
+    renderApp("/?workspace=product-docs&page=overview&mode=edit", { saveWorkspaceSettings });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+
+    const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    expect(within(panel).getByDisplayValue("Product Docs")).toBeInTheDocument();
+    expect(within(panel).getByDisplayValue("Release notes and launch guidance.")).toBeInTheDocument();
+    expect(within(panel).getByLabelText("Upload custom workspace icon")).toBeInTheDocument();
+
+    fireEvent.change(within(panel).getByDisplayValue("Product Docs"), { target: { value: "Platform Docs" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Business" }));
+    fireEvent.click(within(panel).getByRole("checkbox", { name: "Show table of contents" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
+    expect(saveWorkspaceSettings).toHaveBeenCalledWith({
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001",
+      name: "Platform Docs",
+      shortDescription: "Release notes and launch guidance.",
+      icon: { type: "builtin", key: "business", label: "Business" },
+      layout: { tocVisible: false }
+    });
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Workspace Settings" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Workspace switcher: Platform Docs/i })).toBeInTheDocument();
+  });
+
+  it("opens Workspace Settings from Edit without changing mode, page context, or the edit lease", async () => {
+    const pages = createBreadcrumbPages();
+    const acquireWorkspaceEditLease = vi.fn(async () => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 9,
+      heartbeatIntervalMs: 60_000,
+      leaseToken: "workspace-lease-token",
+      staleAfterMs: 300_000,
+      state: "held" as const
+    }));
+    const releaseWorkspaceEditLease = vi.fn(async () => ({ state: "released" as const }));
+    const listPages = vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", workspaceSlug, pages)
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=child", {
+      acquireWorkspaceEditLease,
+      listPages,
+      releaseWorkspaceEditLease
+    });
+
+    expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
+    const acquireCountBeforeOpen = acquireWorkspaceEditLease.mock.calls.length;
+    const releaseCountBeforeOpen = releaseWorkspaceEditLease.mock.calls.length;
+
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+
+    expect(await screen.findByRole("complementary", { name: "Workspace Settings" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
+    expect(window.location.search).toContain("mode=edit");
+    expect(window.location.search).toContain("page=child");
+    expect(window.location.search).not.toContain("settings=1");
+    expect(acquireWorkspaceEditLease).toHaveBeenCalledTimes(acquireCountBeforeOpen);
+    expect(releaseWorkspaceEditLease).toHaveBeenCalledTimes(releaseCountBeforeOpen);
+
+    fireEvent.click(screen.getByRole("button", { name: "Close workspace settings" }));
+
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Workspace Settings" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Edit" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
+    expect(acquireWorkspaceEditLease).toHaveBeenCalledTimes(acquireCountBeforeOpen);
+    expect(releaseWorkspaceEditLease).toHaveBeenCalledTimes(releaseCountBeforeOpen);
+  });
+
+  it("previews Workspace Settings identity drafts in the header without changing canonical workspace data", async () => {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:staged-workspace-icon")
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn()
+    });
+    const loadWorkspaceIcon = vi.fn(async () => new Blob(["persisted"], { type: "image/png" }));
+    const uploadWorkspaceIcon = vi.fn(async () => ({
+      icon: {
+        type: "uploaded" as const,
+        key: "wsi_staged",
+        label: "Uploaded workspace icon",
+        assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
+      },
+      state: "succeeded" as const
+    }));
+    const saveWorkspaceSettings = vi.fn(async () => {
+      throw new Error("saveWorkspaceSettings should not be called before dismissal");
+    });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      loadWorkspaceIcon,
+      saveWorkspaceSettings,
+      uploadWorkspaceIcon
+    });
+
+    expect(await screen.findByRole("button", { name: /Workspace switcher: Product Docs/i })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+
+    fireEvent.change(within(panel).getByDisplayValue("Product Docs"), { target: { value: "Preview Docs" } });
+    expect(screen.getByRole("button", { name: /Workspace switcher: Preview Docs/i })).toBeInTheDocument();
+    expect(saveWorkspaceSettings).not.toHaveBeenCalled();
+
+    fireEvent.change(within(panel).getByDisplayValue("Preview Docs"), { target: { value: "   " } });
+    expect(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i })).toBeInTheDocument();
+
+    fireEvent.change(within(panel).getByLabelText("Workspace name"), { target: { value: "Product Docs" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Business" }));
+    expect(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }).querySelector("svg")).toBeInTheDocument();
+
+    const file = new File(["icon"], "icon.png", { type: "image/png" });
+    fireEvent.change(within(panel).getByLabelText("Upload custom workspace icon"), { target: { files: [file] } });
+
+    await waitFor(() => expect(uploadWorkspaceIcon).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(document.querySelectorAll("img[src='blob:staged-workspace-icon']").length).toBeGreaterThanOrEqual(2));
+    expect(loadWorkspaceIcon).not.toHaveBeenCalledWith(expect.objectContaining({ assetPath: "blob:staged-workspace-icon" }));
+    expect(saveWorkspaceSettings).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(within(panel).getByRole("button", { name: "Close workspace settings" })).toBeEnabled());
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Workspace Settings" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Workspace switcher: Preview Docs/i })).not.toBeInTheDocument();
+  });
+
+  it("opens Workspace Settings from a transient My Workspaces intent and canonicalizes the URL", async () => {
+    renderApp("/?view=my-workspaces");
+
+    expect(await screen.findByRole("heading", { name: "My Workspaces" })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("link", { name: "Settings" })[0]);
+
+    expect(await screen.findByRole("complementary", { name: "Workspace Settings" })).toBeInTheDocument();
+    await waitFor(() => expect(window.location.search).not.toContain("settings=1"));
+  });
+
+  it("does not open Workspace Settings for users without management capability", async () => {
+    renderApp("/?workspace=product-docs&settings=1", {
+      getWorkspace: vi.fn(async () => ({
+        workspace: createWorkspace({
+          canManageSettings: false,
+          roleLabel: "Editor"
+        })
+      }))
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Workspace settings" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Workspace Settings" })).not.toBeInTheDocument();
+    await waitFor(() => expect(window.location.search).not.toContain("settings=1"));
+  });
+
+  it("closes unchanged Workspace Settings without mutation and saves valid changed drafts on close", async () => {
+    const saveWorkspaceSettings = vi.fn(async (input) => ({
+      state: "succeeded" as const,
+      workspace: createWorkspace({ name: input.name })
+    }));
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { saveWorkspaceSettings });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    let panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+    expect(saveWorkspaceSettings).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Workspace settings" }));
+    panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    expect(within(panel).getByDisplayValue("Product Docs")).toBeInTheDocument();
+    fireEvent.change(within(panel).getByDisplayValue("Product Docs"), { target: { value: "Renamed Docs" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
+    expect(saveWorkspaceSettings.mock.calls[0][0].name).toBe("Renamed Docs");
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Workspace Settings" })).not.toBeInTheDocument());
+  });
+
+  it("finishes Workspace Settings from the real outside surface without dismissing inside-panel interaction", async () => {
+    const saveWorkspaceSettings = vi.fn(async (input) => ({
+      state: "succeeded" as const,
+      workspace: createWorkspace({ name: input.name })
+    }));
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { saveWorkspaceSettings });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.change(within(panel).getByDisplayValue("Product Docs"), { target: { value: "Outside Saved Docs" } });
+    fireEvent.pointerDown(panel);
+    expect(screen.getByRole("complementary", { name: "Workspace Settings" })).toBeInTheDocument();
+    expect(saveWorkspaceSettings).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Workspace switcher: Outside Saved Docs" }));
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
+    expect(saveWorkspaceSettings.mock.calls[0][0].name).toBe("Outside Saved Docs");
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Workspace Settings" })).not.toBeInTheDocument());
+  });
+
+  it("keeps failed Workspace Settings drafts dismissed and restores them on reopen", async () => {
+    const saveWorkspaceSettings = vi.fn(async () => ({
+      errorMessage: "Use a different workspace name.",
+      state: "failed" as const
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { saveWorkspaceSettings });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.change(within(panel).getByDisplayValue("Product Docs"), { target: { value: "Taken Docs" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Workspace Settings" })).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Workspace settings" }));
+    const reopenedPanel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    expect(await within(reopenedPanel).findByRole("alert")).toHaveTextContent("Use a different workspace name.");
+    expect(within(reopenedPanel).getByDisplayValue("Taken Docs")).toBeInTheDocument();
+  });
+
+  it("preserves the current uploaded icon unless a built-in icon is selected", async () => {
+    const uploadedWorkspace = createWorkspace({
+      icon: {
+        type: "uploaded",
+        key: "custom",
+        label: "Custom docs",
+        assetPath: "/api/x_82900_docsera/icon/custom"
+      }
+    });
+    const loadWorkspaceIcon = vi.fn(async () => new Blob(["icon"], { type: "image/png" }));
+    const saveWorkspaceSettings = vi.fn(async (input) => ({
+      state: "succeeded" as const,
+      workspace: createWorkspace({
+        ...uploadedWorkspace,
+        name: input.name,
+        icon: input.icon ?? uploadedWorkspace.icon
+      })
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      getWorkspace: vi.fn(async () => ({ workspace: uploadedWorkspace })),
+      loadWorkspaceIcon,
+      saveWorkspaceSettings
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    await waitFor(() => expect(loadWorkspaceIcon).toHaveBeenCalledWith({
+      assetPath: "/api/x_82900_docsera/icon/custom",
+      signal: expect.any(AbortSignal)
+    }));
+    fireEvent.change(within(panel).getByDisplayValue("Product Docs"), { target: { value: "Uploaded Docs" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
+    expect(saveWorkspaceSettings.mock.calls[0][0]).not.toHaveProperty("icon");
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Workspace settings" }));
+    const reopenedPanel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.click(within(reopenedPanel).getByRole("button", { name: "Engineering" }));
+    fireEvent.click(within(reopenedPanel).getByRole("button", { name: "Close workspace settings" }));
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(2));
+    expect(saveWorkspaceSettings.mock.calls[1][0].icon).toEqual({ type: "builtin", key: "engineering", label: "Engineering" });
+  });
+
+  it("keeps an uploaded icon form clean after selecting a built-in icon and then the persisted uploaded icon again", async () => {
+    const uploadedWorkspace = createWorkspace({
+      icon: {
+        type: "uploaded",
+        key: "custom",
+        label: "Custom docs",
+        assetPath: "/api/x_82900_docsera/icon/custom"
+      }
+    });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      getWorkspace: vi.fn(async () => ({ workspace: uploadedWorkspace }))
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Engineering" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Custom docs, current uploaded icon" }));
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+    expect(screen.queryByRole("complementary", { name: "Workspace Settings" })).not.toBeInTheDocument();
+  });
+
+  it("blocks same-workspace Settings reopen while a dismissed save is pending and reconciles the save result", async () => {
+    const deferredSave = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
+    const saveWorkspaceSettings = vi.fn<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>(() => deferredSave.promise);
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { saveWorkspaceSettings });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.change(within(panel).getByDisplayValue("Product Docs"), { target: { value: "Pending Docs" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("complementary", { name: "Workspace Settings" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Workspace switcher: Pending Docs" })).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("complementary", { name: "Workspace Settings" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.queryByRole("complementary", { name: "Workspace Settings" })).not.toBeInTheDocument();
+    expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Workspace switcher: Pending Docs" })).toBeInTheDocument();
+
+    await act(async () => {
+      deferredSave.resolve({
+        state: "succeeded" as const,
+        workspace: createWorkspace({ name: "Pending Docs" })
+      });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "Workspace switcher: Pending Docs" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Workspace switcher: Product Docs" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Workspace settings" }));
+    const reopenedPanel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    expect(within(reopenedPanel).getByDisplayValue("Pending Docs")).toBeInTheDocument();
+  });
+
+  it("keeps a staged custom Workspace Settings icon visible throughout a dismissed pending save", async () => {
+    const deferredSave = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
+    const deferredCanonicalIcon = createDeferred<Blob | null>();
+    const createObjectUrlSpy = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValueOnce("blob:staged-workspace-icon")
+      .mockReturnValueOnce("blob:canonical-workspace-icon");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const loadWorkspaceIcon = vi.fn(() => deferredCanonicalIcon.promise);
+    const uploadWorkspaceIcon = vi.fn(async () => ({
+      icon: {
+        type: "uploaded" as const,
+        key: "wsi_staged",
+        label: "staged.png",
+        assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
+      },
+      state: "succeeded" as const
+    }));
+    const saveWorkspaceSettings = vi.fn<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>(() => deferredSave.promise);
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      loadWorkspaceIcon,
+      saveWorkspaceSettings,
+      uploadWorkspaceIcon
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.change(within(panel).getByLabelText("Upload custom workspace icon"), {
+      target: { files: [new File(["image"], "staged.png", { type: "image/png" })] }
+    });
+
+    await waitFor(() => expect(uploadWorkspaceIcon).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }).querySelector("img[src='blob:staged-workspace-icon']")).toBeInTheDocument());
+    expect(loadWorkspaceIcon).not.toHaveBeenCalledWith(expect.objectContaining({ assetPath: "blob:staged-workspace-icon" }));
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
+    expect(vi.mocked(saveWorkspaceSettings).mock.calls[0]?.[0].icon).toMatchObject({
+      assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged",
+      key: "wsi_staged",
+      type: "uploaded"
+    });
+    expect(screen.queryByRole("complementary", { name: "Workspace Settings" })).not.toBeInTheDocument();
+    const pendingHeader = screen.getByRole("button", { name: /Workspace switcher: Product Docs/i });
+    expect(pendingHeader.querySelector("img[src='blob:staged-workspace-icon']")).toBeInTheDocument();
+    expect(pendingHeader.querySelector(".docsera-workspace-icon-badge--uploaded")).toBeInTheDocument();
+    expect(pendingHeader.querySelector(".docsera-workspace-icon-badge")?.textContent).toBe("");
+    expect(revokeObjectUrlSpy).not.toHaveBeenCalledWith("blob:staged-workspace-icon");
+
+    await act(async () => {
+      deferredSave.resolve({
+        state: "succeeded" as const,
+        workspace: createWorkspace({
+          icon: {
+            type: "uploaded",
+            key: "wsi_staged",
+            label: "staged.png",
+            assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
+          }
+        })
+      });
+      await Promise.resolve();
+    });
+
+    expect(loadWorkspaceIcon).toHaveBeenCalledWith({
+      assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged",
+      signal: expect.any(AbortSignal)
+    });
+    const canonicalLoadingHeader = screen.getByRole("button", { name: /Workspace switcher: Product Docs/i });
+    expect(canonicalLoadingHeader.querySelector("img[src='blob:staged-workspace-icon']")).toBeInTheDocument();
+    expect(canonicalLoadingHeader.querySelector(".docsera-workspace-icon-badge")?.textContent).toBe("");
+    expect(revokeObjectUrlSpy).not.toHaveBeenCalledWith("blob:staged-workspace-icon");
+
+    await act(async () => {
+      deferredCanonicalIcon.resolve(new Blob(["canonical"], { type: "image/png" }));
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }).querySelector("img[src='blob:canonical-workspace-icon']")).toBeInTheDocument());
+    expect(createObjectUrlSpy).toHaveBeenCalledTimes(2);
+    expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:staged-workspace-icon");
+  });
+
+  it("releases a transferred Workspace Settings preview when switching workspaces before the pending save completes", async () => {
+    const deferredSave = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:staged-workspace-icon");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const uploadWorkspaceIcon = vi.fn(async () => ({
+      icon: {
+        type: "uploaded" as const,
+        key: "wsi_staged",
+        label: "staged.png",
+        assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
+      },
+      state: "succeeded" as const
+    }));
+    const saveWorkspaceSettings = vi.fn<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>(() => deferredSave.promise);
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      saveWorkspaceSettings,
+      uploadWorkspaceIcon
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.change(within(panel).getByLabelText("Upload custom workspace icon"), {
+      target: { files: [new File(["image"], "staged.png", { type: "image/png" })] }
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }).querySelector("img[src='blob:staged-workspace-icon']")).toBeInTheDocument());
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
+    expect(revokeObjectUrlSpy).not.toHaveBeenCalledWith("blob:staged-workspace-icon");
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "API Docs" }));
+    expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+    expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:staged-workspace-icon");
+
+    await act(async () => {
+      deferredSave.resolve({
+        state: "succeeded" as const,
+        workspace: createWorkspace({
+          icon: {
+            type: "uploaded",
+            key: "wsi_staged",
+            label: "staged.png",
+            assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
+          }
+        })
+      });
+      await Promise.resolve();
+    });
+
+    expect(revokeObjectUrlSpy.mock.calls.filter(([value]) => value === "blob:staged-workspace-icon")).toHaveLength(1);
+  });
+
+  it("releases a transferred Workspace Settings preview when authenticated canonical icon loading fails", async () => {
+    const deferredSave = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
+    const deferredCanonicalIcon = createDeferred<Blob | null>();
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:staged-workspace-icon");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const loadWorkspaceIcon = vi.fn(() => deferredCanonicalIcon.promise);
+    const uploadWorkspaceIcon = vi.fn(async () => ({
+      icon: {
+        type: "uploaded" as const,
+        key: "wsi_staged",
+        label: "staged.png",
+        assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
+      },
+      state: "succeeded" as const
+    }));
+    const saveWorkspaceSettings = vi.fn<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>(() => deferredSave.promise);
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      loadWorkspaceIcon,
+      saveWorkspaceSettings,
+      uploadWorkspaceIcon
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.change(within(panel).getByLabelText("Upload custom workspace icon"), {
+      target: { files: [new File(["image"], "staged.png", { type: "image/png" })] }
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }).querySelector("img[src='blob:staged-workspace-icon']")).toBeInTheDocument());
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      deferredSave.resolve({
+        state: "succeeded" as const,
+        workspace: createWorkspace({
+          icon: {
+            type: "uploaded",
+            key: "wsi_staged",
+            label: "staged.png",
+            assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
+          }
+        })
+      });
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }).querySelector("img[src='blob:staged-workspace-icon']")).toBeInTheDocument();
+    expect(revokeObjectUrlSpy).not.toHaveBeenCalledWith("blob:staged-workspace-icon");
+
+    await act(async () => {
+      deferredCanonicalIcon.resolve(null);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:staged-workspace-icon"));
+  });
+
+  it("preserves a failed dismissed Workspace Settings save for same-workspace recovery after blocked reopen", async () => {
+    const deferredSave = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
+    const saveWorkspaceSettings = vi.fn(() => deferredSave.promise);
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { saveWorkspaceSettings });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.change(within(panel).getByDisplayValue("Product Docs"), { target: { value: "Failed Pending Docs" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("button", { name: "Workspace switcher: Failed Pending Docs" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.queryByRole("complementary", { name: "Workspace Settings" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Workspace switcher: Failed Pending Docs" })).toBeInTheDocument();
+
+    await act(async () => {
+      deferredSave.resolve({
+        errorMessage: "Settings save failed.",
+        state: "failed" as const
+      });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "Workspace switcher: Product Docs" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Workspace switcher: Failed Pending Docs" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Workspace settings" }));
+    const reopenedPanel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    expect(await within(reopenedPanel).findByRole("alert")).toHaveTextContent("Settings save failed.");
+    expect(within(reopenedPanel).getByDisplayValue("Failed Pending Docs")).toBeInTheDocument();
+  });
+
+  it("keeps concurrent dismissed Workspace Settings saves isolated across workspaces", async () => {
+    const saveA = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
+    const saveB = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
+    const workspaces: Record<string, WorkspaceViewRecord> = {
+      "api-docs": createWorkspace({ sysId: "workspace-002", slug: "api-docs", name: "API Docs" }),
+      "product-docs": createWorkspace()
+    };
+    const getWorkspace = vi.fn(async (workspaceSlug: string) => ({ workspace: workspaces[workspaceSlug] ?? null }));
+    const listWorkspaces = vi.fn(async (): Promise<WorkspaceListResult> => ({
+      canCreateWorkspaces: true,
+      hasNextPage: false,
+      items: [workspaces["product-docs"], workspaces["api-docs"]],
+      page: 1,
+      pageSize: 10,
+      searchText: "",
+      totalCount: 2
+    }));
+    const saveWorkspaceSettings = vi.fn((input) => (input.workspaceSysId === "workspace-001" ? saveA.promise : saveB.promise));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { getWorkspace, listWorkspaces, saveWorkspaceSettings });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    let panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.change(within(panel).getByDisplayValue("Product Docs"), { target: { value: "Workspace A Saved" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Workspace A Saved/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "API Docs" }));
+    expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(await screen.findByRole("button", { name: "Open settings for API Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.change(within(panel).getByDisplayValue("API Docs"), { target: { value: "Workspace B Saved" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      workspaces["api-docs"] = createWorkspace({ sysId: "workspace-002", slug: "api-docs", name: "Workspace B Saved" });
+      saveB.resolve({ state: "succeeded" as const, workspace: workspaces["api-docs"] });
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("button", { name: "Workspace switcher: Workspace B Saved" })).toBeInTheDocument();
+
+    await act(async () => {
+      workspaces["product-docs"] = createWorkspace({ name: "Workspace A Saved" });
+      saveA.resolve({ state: "succeeded" as const, workspace: workspaces["product-docs"] });
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Workspace B Saved/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Workspace A Saved" }));
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(await screen.findByRole("button", { name: "Open settings for Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    expect(within(panel).getByDisplayValue("Workspace A Saved")).toBeInTheDocument();
+  });
+
+  it("keeps another workspace's active Settings draft open when a dismissed save succeeds", async () => {
+    const saveA = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
+    const workspaces: Record<string, WorkspaceViewRecord> = {
+      "api-docs": createWorkspace({ sysId: "workspace-002", slug: "api-docs", name: "API Docs" }),
+      "product-docs": createWorkspace()
+    };
+    const getWorkspace = vi.fn(async (workspaceSlug: string) => ({ workspace: workspaces[workspaceSlug] ?? null }));
+    const listWorkspaces = vi.fn(async (): Promise<WorkspaceListResult> => ({
+      canCreateWorkspaces: true,
+      hasNextPage: false,
+      items: [workspaces["product-docs"], workspaces["api-docs"]],
+      page: 1,
+      pageSize: 10,
+      searchText: "",
+      totalCount: 2
+    }));
+    const saveWorkspaceSettings = vi.fn((input) => {
+      if (input.workspaceSysId === "workspace-001") {
+        return saveA.promise;
+      }
+
+      throw new Error("Workspace B settings should remain as an open draft.");
+    });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { getWorkspace, listWorkspaces, saveWorkspaceSettings });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    let panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.change(within(panel).getByDisplayValue("Product Docs"), { target: { value: "Workspace A Saved" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Workspace A Saved/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "API Docs" }));
+    expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(await screen.findByRole("button", { name: "Open settings for API Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.change(within(panel).getByDisplayValue("API Docs"), { target: { value: "Workspace B Draft" } });
+
+    await act(async () => {
+      workspaces["product-docs"] = createWorkspace({ name: "Workspace A Saved" });
+      saveA.resolve({ state: "succeeded" as const, workspace: workspaces["product-docs"] });
+      await Promise.resolve();
+    });
+
+    panel = screen.getByRole("complementary", { name: "Workspace Settings" });
+    expect(within(panel).getByDisplayValue("Workspace B Draft")).toBeInTheDocument();
+    expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a failed dismissed Workspace Settings draft recoverable after another workspace saves", async () => {
+    const saveA = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
+    const saveB = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
+    const workspaces: Record<string, WorkspaceViewRecord> = {
+      "api-docs": createWorkspace({ sysId: "workspace-002", slug: "api-docs", name: "API Docs" }),
+      "product-docs": createWorkspace()
+    };
+    const getWorkspace = vi.fn(async (workspaceSlug: string) => ({ workspace: workspaces[workspaceSlug] ?? null }));
+    const saveWorkspaceSettings = vi.fn((input) => (input.workspaceSysId === "workspace-001" ? saveA.promise : saveB.promise));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { getWorkspace, saveWorkspaceSettings });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    let panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.change(within(panel).getByDisplayValue("Product Docs"), { target: { value: "Workspace A Failed Draft" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Workspace A Failed Draft/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "API Docs" }));
+    expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(await screen.findByRole("button", { name: "Open settings for API Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.change(within(panel).getByDisplayValue("API Docs"), { target: { value: "Workspace B Saved" } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(2));
+
+    await act(async () => {
+      workspaces["api-docs"] = createWorkspace({ sysId: "workspace-002", slug: "api-docs", name: "Workspace B Saved" });
+      saveB.resolve({ state: "succeeded" as const, workspace: workspaces["api-docs"] });
+      saveA.resolve({ errorMessage: "Workspace A failed.", state: "failed" as const });
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Workspace B Saved/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Product Docs" }));
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(await screen.findByRole("button", { name: "Open settings for Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    expect(await within(panel).findByRole("alert")).toHaveTextContent("Workspace A failed.");
+    expect(within(panel).getByDisplayValue("Workspace A Failed Draft")).toBeInTheDocument();
+  });
+
+  it("cleans abandoned settings-staged uploaded icons when replaced or dismissed for the canonical icon", async () => {
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: vi.fn(() => "blob:workspace-icon") });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: vi.fn() });
+    const cleanupWorkspaceSettingsIcon = vi.fn(async () => {
+      throw new Error("cleanup failed");
+    });
+    const uploadWorkspaceIcon = vi
+      .fn()
+      .mockResolvedValueOnce({
+        icon: { type: "uploaded" as const, key: "wsi_first", label: "first.png", assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_first" },
+        state: "succeeded" as const
+      })
+      .mockResolvedValueOnce({
+        icon: { type: "uploaded" as const, key: "wsi_second", label: "second.png", assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_second" },
+        state: "succeeded" as const
+      });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      cleanupWorkspaceSettingsIcon,
+      uploadWorkspaceIcon
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    const fileInput = within(panel).getByLabelText("Upload custom workspace icon");
+    fireEvent.change(fileInput, { target: { files: [new File(["one"], "first.png", { type: "image/png" })] } });
+    await waitFor(() => expect(uploadWorkspaceIcon).toHaveBeenCalledTimes(1));
+    await within(panel).findByText("Custom image uploaded.");
+    fireEvent.change(fileInput, { target: { files: [new File(["two"], "second.png", { type: "image/png" })] } });
+    await waitFor(() => expect(uploadWorkspaceIcon).toHaveBeenCalledTimes(2));
+    expect(cleanupWorkspaceSettingsIcon).toHaveBeenCalledWith({ assetKey: "wsi_first", workspaceSysId: "workspace-001" });
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Docsera workspace icon" }));
+    expect(cleanupWorkspaceSettingsIcon).toHaveBeenCalledWith({ assetKey: "wsi_second", workspaceSysId: "workspace-001" });
+  });
+
+  it("aligns Workspace Settings field limits to the 55A mutation boundary", async () => {
+    const saveWorkspaceSettings = vi.fn(async (input) => ({
+      state: "succeeded" as const,
+      workspace: createWorkspace({
+        name: input.name,
+        shortDescription: input.shortDescription
+      })
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { saveWorkspaceSettings });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    const nameInput = within(panel).getByDisplayValue("Product Docs");
+    const descriptionInput = within(panel).getByDisplayValue("Release notes and launch guidance.");
+    const validName = "N".repeat(160);
+    const validDescription = "D".repeat(240);
+
+    fireEvent.change(nameInput, { target: { value: validName } });
+    fireEvent.change(descriptionInput, { target: { value: validDescription } });
+    expect(within(panel).queryByText("Workspace name must be 160 characters or fewer.")).not.toBeInTheDocument();
+    expect(within(panel).queryByText("Short description must be 240 characters or fewer.")).not.toBeInTheDocument();
+
+    fireEvent.change(nameInput, { target: { value: `${validName}X` } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+    expect(within(panel).getByText("Workspace name must be 160 characters or fewer.")).toBeInTheDocument();
+
+    fireEvent.change(nameInput, { target: { value: validName } });
+    fireEvent.change(descriptionInput, { target: { value: `${validDescription}X` } });
+    fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
+    expect(within(panel).getByText("Short description must be 240 characters or fewer.")).toBeInTheDocument();
+  });
+
+  it("removes the workspace ToC surface while preserving explicit collapsed preference for re-enable", async () => {
+    window.localStorage.setItem("docsera.workspace-toc-collapsed.v1:product-docs", "false");
+    const getWorkspace = vi.fn(async () => ({
+      workspace: createWorkspace({
+        layout: { tocVisible: false }
+      })
+    }));
+
+    const firstRender = renderApp("/?workspace=product-docs", {
+      getWorkspace
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /table of contents/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Page outline" })).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("docsera.workspace-toc-collapsed.v1:product-docs")).toBe("false");
+    expect(window.localStorage.getItem("docsera.workspace-toc-collapsed-explicit.v2:product-docs")).toBeNull();
+
+    firstRender.unmount();
+    const secondRender = renderApp("/?workspace=product-docs", {
+      getWorkspace: vi.fn(async () => ({
+        workspace: createWorkspace({
+          layout: { tocVisible: false }
+        })
+      }))
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /table of contents/i })).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("docsera.workspace-toc-collapsed-explicit.v2:product-docs")).toBeNull();
+
+    secondRender.unmount();
+    window.localStorage.setItem("docsera.workspace-toc-collapsed-explicit.v2:product-docs", "true");
+    const thirdRender = renderApp("/?workspace=product-docs", {
+      getWorkspace: vi.fn(async () => ({
+        workspace: createWorkspace({
+          layout: { tocVisible: false }
+        })
+      }))
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /table of contents/i })).not.toBeInTheDocument();
+    expect(window.localStorage.getItem("docsera.workspace-toc-collapsed-explicit.v2:product-docs")).toBe("true");
+
+    thirdRender.unmount();
+    renderApp("/?workspace=product-docs", {
+      getWorkspace: vi.fn(async () => ({
+        workspace: createWorkspace({
+          layout: { tocVisible: true }
+        })
+      }))
+    });
+
+    expect(await screen.findByRole("button", { name: "Expand table of contents" })).toBeInTheDocument();
+  });
 });

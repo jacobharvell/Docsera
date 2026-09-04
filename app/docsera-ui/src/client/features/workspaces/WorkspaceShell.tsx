@@ -102,7 +102,8 @@ type WorkspaceShellProps = {
   theme: "dark" | "light";
   treeFilter: string;
   treePages: WorkspacePageView[];
-  workspaceSettingsNotice?: boolean;
+  workspaceSettingsOverlay?: ReactNode;
+  workspaceTocAvailable: boolean;
   onTreeFilterChange: (value: string) => void;
 };
 
@@ -110,7 +111,7 @@ export const DEFAULT_WORKSPACE_NAV_WIDTH = 280;
 const MIN_WORKSPACE_NAV_WIDTH = 180;
 const MAX_WORKSPACE_NAV_WIDTH = 480;
 const WORKSPACE_NAV_WIDTH_STORAGE_KEY_PREFIX = "docsera.workspace-nav-width.v2";
-const WORKSPACE_TOC_COLLAPSED_STORAGE_KEY_PREFIX = "docsera.workspace-toc-collapsed.v1";
+const WORKSPACE_TOC_COLLAPSED_EXPLICIT_STORAGE_KEY_PREFIX = "docsera.workspace-toc-collapsed-explicit.v2";
 
 export function clampWorkspaceNavWidth(value: number): number {
   return Math.max(MIN_WORKSPACE_NAV_WIDTH, Math.min(MAX_WORKSPACE_NAV_WIDTH, value));
@@ -135,17 +136,18 @@ export function readStoredWorkspaceNavWidth(workspaceSlug: string): number {
   return Number.isFinite(storedValue) ? clampWorkspaceNavWidth(storedValue) : DEFAULT_WORKSPACE_NAV_WIDTH;
 }
 
-function readStoredWorkspaceTocCollapsed(workspaceSlug: string): boolean {
+function readStoredWorkspaceTocCollapsedPreference(workspaceSlug: string): boolean | null {
   if (typeof window === "undefined") {
-    return false;
+    return null;
   }
 
   const normalizedWorkspaceSlug = workspaceSlug.trim();
   if (!normalizedWorkspaceSlug) {
-    return false;
+    return null;
   }
 
-  return window.localStorage.getItem(`${WORKSPACE_TOC_COLLAPSED_STORAGE_KEY_PREFIX}:${normalizedWorkspaceSlug}`) === "true";
+  const storedValue = window.localStorage.getItem(`${WORKSPACE_TOC_COLLAPSED_EXPLICIT_STORAGE_KEY_PREFIX}:${normalizedWorkspaceSlug}`);
+  return storedValue === null ? null : storedValue === "true";
 }
 
 export function WorkspaceShell({
@@ -224,10 +226,12 @@ export function WorkspaceShell({
   theme,
   treeFilter,
   treePages,
-  workspaceSettingsNotice,
+  workspaceSettingsOverlay,
+  workspaceTocAvailable,
   onTreeFilterChange
 }: WorkspaceShellProps) {
-  const [tocCollapsed, setTocCollapsed] = useState(() => readStoredWorkspaceTocCollapsed(currentWorkspaceSlug));
+  const [tocCollapsed, setTocCollapsed] = useState(() => readStoredWorkspaceTocCollapsedPreference(currentWorkspaceSlug) ?? false);
+  const tocCollapsedHasUserPreferenceRef = useRef(readStoredWorkspaceTocCollapsedPreference(currentWorkspaceSlug) !== null);
   const resizeStateRef = useRef<{ active: boolean }>({ active: false });
   const currentNavWidth = sidebarCollapsed ? 0 : workspaceNavWidth;
   const shellStyle = {
@@ -236,8 +240,10 @@ export function WorkspaceShell({
   } as CSSProperties;
 
   useEffect(() => {
-    setTocCollapsed(readStoredWorkspaceTocCollapsed(currentWorkspaceSlug));
-  }, [currentWorkspaceSlug]);
+    const storedPreference = readStoredWorkspaceTocCollapsedPreference(currentWorkspaceSlug);
+    tocCollapsedHasUserPreferenceRef.current = storedPreference !== null;
+    setTocCollapsed(storedPreference ?? false);
+  }, [currentWorkspaceSlug, workspaceTocAvailable]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -262,7 +268,9 @@ export function WorkspaceShell({
       return;
     }
 
-    window.localStorage.setItem(`${WORKSPACE_TOC_COLLAPSED_STORAGE_KEY_PREFIX}:${normalizedWorkspaceSlug}`, String(tocCollapsed));
+    if (tocCollapsedHasUserPreferenceRef.current) {
+      window.localStorage.setItem(`${WORKSPACE_TOC_COLLAPSED_EXPLICIT_STORAGE_KEY_PREFIX}:${normalizedWorkspaceSlug}`, String(tocCollapsed));
+    }
   }, [currentWorkspaceSlug, tocCollapsed]);
 
   useEffect(() => {
@@ -302,21 +310,17 @@ export function WorkspaceShell({
     document.body.style.userSelect = "none";
   }
 
+  function toggleTocCollapsed() {
+    tocCollapsedHasUserPreferenceRef.current = true;
+    setTocCollapsed((current) => !current);
+  }
+
   const selectedPageViewForShell = shellStatus === "ready" ? selectedPage : null;
   const outlinePageForShell = shellStatus === "ready" ? outlinePage : null;
   const showWorkspaceLoading = shellStatus !== "ready";
 
   return (
     <div className="docsera-shell" style={shellStyle}>
-      {workspaceSettingsNotice ? (
-        <div className="docsera-shell__notice" role="status">
-          <p className="docsera-shell__notice-eyebrow">Workspace settings</p>
-          <p className="docsera-shell__notice-copy">
-            The settings route was preserved, but the full settings surface is not implemented in this slice.
-          </p>
-        </div>
-      ) : null}
-
       <div className={`docsera-workspace${sidebarCollapsed ? " docsera-workspace--sidebar-collapsed" : ""}`}>
         {!sidebarCollapsed ? (
           <div className="docsera-workspace__nav-frame">
@@ -409,19 +413,22 @@ export function WorkspaceShell({
           workspaceMode={mode}
         />
 
-        <div className={`docsera-workspace__aside${tocCollapsed ? " docsera-workspace__aside--collapsed" : ""}`}>
-          <WorkspaceToc
-            collapsed={tocCollapsed}
-            isLoading={showWorkspaceLoading}
-            showPendingState={showPendingState}
-            page={outlinePageForShell}
-            panelId={`docsera-workspace-toc-${currentWorkspaceSlug || "workspace"}`}
-            onToggleCollapsed={() => setTocCollapsed((current) => !current)}
-          />
-        </div>
+        {workspaceTocAvailable ? (
+          <div className={`docsera-workspace__aside${tocCollapsed ? " docsera-workspace__aside--collapsed" : ""}`}>
+            <WorkspaceToc
+              collapsed={tocCollapsed}
+              isLoading={showWorkspaceLoading}
+              showPendingState={showPendingState}
+              page={outlinePageForShell}
+              panelId={`docsera-workspace-toc-${currentWorkspaceSlug || "workspace"}`}
+              onToggleCollapsed={toggleTocCollapsed}
+            />
+          </div>
+        ) : null}
       </div>
 
       {pageSettingsOverlay}
+      {workspaceSettingsOverlay}
     </div>
   );
 }

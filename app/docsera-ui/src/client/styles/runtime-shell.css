@@ -815,32 +815,27 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
   position: fixed;
   inset: 0 auto 0 var(--docsera-workspace-nav-width);
   z-index: 35;
-  display: grid;
-  align-content: start;
-  gap: 18px;
+  display: flex;
+  flex-direction: column;
   width: min(432px, calc(100vw - var(--docsera-workspace-nav-width)));
+  max-width: 100vw;
+  min-width: 0;
   padding: 0 20px 24px;
   border-right: 1px solid var(--docsera-border);
   background: var(--docsera-surface);
-  box-shadow: none;
+  box-shadow: 18px 0 36px -30px rgba(15, 23, 42, 0.24);
   isolation: isolate;
-  overflow-x: visible;
+  overflow-x: clip;
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
 .docsera-page-settings::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  right: -24px;
-  bottom: 0;
-  width: 24px;
-  pointer-events: none;
-  box-shadow: 18px 0 36px rgba(15, 23, 42, 0.12);
+  content: none;
 }
 
 .docsera-page-settings__header {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -895,6 +890,7 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
 .docsera-page-settings__rows {
   display: grid;
   gap: 14px;
+  min-width: 0;
 }
 
 .docsera-page-settings__row {
@@ -1031,6 +1027,165 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
 
 .docsera-page-settings__delete-panel {
   width: min(100%, 480px);
+}
+
+.docsera-workspace-settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  display: flex;
+  justify-content: flex-end;
+  width: 100vw;
+  max-width: 100vw;
+  min-width: 0;
+  background: transparent;
+  overflow: clip;
+  overscroll-behavior: contain;
+  isolation: isolate;
+}
+
+.docsera-workspace-settings-overlay::after {
+  content: none;
+}
+
+.docsera-workspace-settings-overlay__panel {
+  display: flex;
+  flex-direction: column;
+  width: min(456px, 100vw);
+  min-width: 0;
+  height: 100%;
+  border-left: 1px solid var(--docsera-border);
+  background: var(--docsera-surface);
+  box-shadow: -18px 0 36px -30px rgba(15, 23, 42, 0.24);
+  overflow: clip;
+}
+
+.docsera-workspace-settings-overlay__header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  min-height: var(--docsera-header-height);
+  border-bottom: 1px solid var(--docsera-border);
+}
+
+.docsera-workspace-settings-overlay__title {
+  margin: 0;
+}
+
+.docsera-workspace-settings-overlay__label {
+  color: var(--docsera-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  text-transform: uppercase;
+}
+
+.docsera-workspace-settings-overlay__title {
+  color: var(--docsera-text);
+  font-family: Geist, Inter, "Segoe UI", sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.docsera-workspace-settings-overlay__close {
+  width: 32px;
+  height: 32px;
+}
+
+.docsera-workspace-settings-overlay__close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.docsera-workspace-settings-overlay__body {
+  flex: 1 1 auto;
+  display: grid;
+  align-content: start;
+  gap: 18px;
+  min-width: 0;
+  min-height: 0;
+  padding: 20px;
+  overflow-x: clip;
+  overflow-y: auto;
+}
+
+.docsera-workspace-settings-overlay__alert {
+  margin: 16px 20px 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(186, 26, 26, 0.16);
+  border-radius: 4px;
+  background: rgba(186, 26, 26, 0.08);
+  color: var(--docsera-error);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.docsera-workspace-settings-overlay__field {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.docsera-workspace-settings-overlay__input {
+  width: 100%;
+  min-height: 34px;
+  padding: 8px 12px;
+  border: 1px solid var(--docsera-border);
+  border-radius: 4px;
+  background: var(--docsera-surface);
+  color: var(--docsera-text);
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.docsera-workspace-settings-overlay__input:focus {
+  outline: none;
+  border-color: var(--docsera-primary);
+}
+
+.docsera-workspace-settings-overlay__input--invalid {
+  border-color: rgba(186, 26, 26, 0.45);
+}
+
+.docsera-workspace-settings-overlay__field-error {
+  color: var(--docsera-error);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.docsera-workspace-settings-overlay__check {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--docsera-text);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.docsera-workspace-settings-overlay__check input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--docsera-primary);
+}
+
+.docsera-workspace-settings-overlay__helper {
+  margin: 0;
+  color: var(--docsera-text-soft);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.docsera-workspace-settings-overlay__close:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .docsera-modal__form {
@@ -1177,8 +1332,7 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
 
 .docsera-workspace-icon-picker__upload-row {
   display: grid;
-  gap: 6px;
-  margin-top: 10px;
+  gap: 8px;
 }
 
 .docsera-workspace-icon-picker__file-input {
@@ -1288,7 +1442,10 @@ html[data-docsera-theme="dark"] .docsera-page-settings__value:hover {
 }
 
 html[data-docsera-theme="dark"] .docsera-page-settings__value,
-html[data-docsera-theme="dark"] .docsera-page-settings__input {
+html[data-docsera-theme="dark"] .docsera-page-settings__input,
+html[data-docsera-theme="dark"] .docsera-workspace-settings-overlay__input,
+html[data-docsera-theme="dark"] .docsera-workspace-settings-overlay__close,
+html[data-docsera-theme="dark"] .docsera-workspace-settings-overlay__secondary {
   background: rgba(17, 22, 29, 0.92);
 }
 
@@ -4119,7 +4276,12 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 
   .docsera-page-settings {
     inset: var(--docsera-header-height) auto 0 0;
-    width: min(432px, 100vw);
+    width: min(456px, 100vw);
+  }
+
+  .docsera-workspace-settings-overlay {
+    inset: var(--docsera-header-height) 0 0;
+    width: 100vw;
   }
 }
 

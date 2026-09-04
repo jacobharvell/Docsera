@@ -26,7 +26,7 @@ const workspace: WorkspaceRecord = {
   editorGroupSysId: "group-editor",
   creatorUserSysId: "user-001",
   layout: {
-    tocVisibleByDefault: true,
+    tocVisible: true,
     pageWidth: "readable"
   }
 };

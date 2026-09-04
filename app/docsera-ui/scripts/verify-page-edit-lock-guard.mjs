@@ -245,7 +245,7 @@ function buildWorkspacePayload(name) {
     },
     layout: {
       pageWidth: "readable",
-      tocVisibleByDefault: true
+      tocVisible: true
     },
     name,
     shortDescription: "Temporary verification workspace for the page edit lock guard"

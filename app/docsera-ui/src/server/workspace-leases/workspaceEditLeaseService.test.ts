@@ -53,7 +53,7 @@ function createHarness() {
   };
 }
 
-const workspace = { sysId: "workspace-1", slug: "product-docs", name: "Product Docs", shortDescription: null, icon: { type: "builtin" as const, key: "docsera-workspace", label: "Docsera" }, status: "active" as const, adminGroupSysId: "admins", editorGroupSysId: "editors", creatorUserSysId: "user-1", layout: { pageWidth: "readable" as const, tocVisibleByDefault: true } };
+const workspace = { sysId: "workspace-1", slug: "product-docs", name: "Product Docs", shortDescription: null, icon: { type: "builtin" as const, key: "docsera-workspace", label: "Docsera" }, status: "active" as const, adminGroupSysId: "admins", editorGroupSysId: "editors", creatorUserSysId: "user-1", layout: { pageWidth: "readable" as const, tocVisible: true } };
 
 describe("workspace edit lease service", () => {
   it("allows exactly one holder, rejects a second same-user tab, and releases only the matching lease", async () => {

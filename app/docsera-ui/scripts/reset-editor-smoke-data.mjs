@@ -561,7 +561,7 @@ async function createTemporaryVerificationWorkspace(instanceUrl, session, worksp
         label: "Docsera workspace icon"
       },
       layout: {
-        tocVisibleByDefault: true,
+        tocVisible: true,
         pageWidth: "readable"
       }
     })

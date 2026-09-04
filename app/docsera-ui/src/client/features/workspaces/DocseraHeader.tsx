@@ -34,6 +34,7 @@ function listFocusableElements(root: HTMLElement | null): HTMLElement[] {
 export type HeaderIdentity =
   | (Pick<WorkspaceViewRecord, "icon" | "name"> & {
       kind: "docsera" | "workspace";
+      ownedPreviewObjectUrl?: string;
     })
   | {
       kind: "workspace-loading";
@@ -47,6 +48,7 @@ type DocseraHeaderProps = {
   onOpenMyWorkspaces: () => void;
   onOpenWorkspace: (workspaceSlug: string, item?: RecentWorkspaceItem) => void;
   onOpenWorkspaceSettings?: () => void;
+  onReleaseWorkspaceSettingsPreviewObjectUrl?: (objectUrl: string) => void;
   onSelectBreadcrumb?: (pageId: string) => void;
   onToggleSidebar?: () => void;
   recentWorkspaces: RecentWorkspaceItem[];
@@ -194,7 +196,15 @@ function CurrentPageSaveStatusIndicator({ status }: { status: CurrentPageSaveSta
   );
 }
 
-function HeaderIdentityIcon({ identity, loadUploadedIcon }: { identity: HeaderIdentity; loadUploadedIcon?: WorkspaceUploadedIconLoader }) {
+function HeaderIdentityIcon({
+  identity,
+  loadUploadedIcon,
+  onReleaseWorkspaceSettingsPreviewObjectUrl
+}: {
+  identity: HeaderIdentity;
+  loadUploadedIcon?: WorkspaceUploadedIconLoader;
+  onReleaseWorkspaceSettingsPreviewObjectUrl?: (objectUrl: string) => void;
+}) {
   if (identity.kind === "workspace-loading") {
     return <span className="docsera-header__workspace-icon docsera-header__workspace-icon--loading" aria-hidden="true" />;
   }
@@ -207,7 +217,15 @@ function HeaderIdentityIcon({ identity, loadUploadedIcon }: { identity: HeaderId
     );
   }
 
-  return <WorkspaceIconBadge workspace={identity} className="docsera-header__workspace-icon" loadUploadedIcon={loadUploadedIcon} />;
+  return (
+    <WorkspaceIconBadge
+      workspace={identity}
+      className="docsera-header__workspace-icon"
+      loadUploadedIcon={loadUploadedIcon}
+      ownedExternalObjectUrl={"ownedPreviewObjectUrl" in identity ? identity.ownedPreviewObjectUrl : undefined}
+      onReleaseOwnedExternalObjectUrl={onReleaseWorkspaceSettingsPreviewObjectUrl}
+    />
+  );
 }
 
 export function DocseraHeader({
@@ -219,6 +237,7 @@ export function DocseraHeader({
   onOpenMyWorkspaces,
   onOpenWorkspace,
   onOpenWorkspaceSettings,
+  onReleaseWorkspaceSettingsPreviewObjectUrl,
   onDismissPendingChangesPublishToast,
   onOpenPendingPage,
   onDiscardAllPendingChanges,
@@ -575,7 +594,7 @@ export function DocseraHeader({
                 setMenuOpen((current) => !current);
               }}
             >
-              <HeaderIdentityIcon identity={identity} loadUploadedIcon={loadUploadedIcon} />
+              <HeaderIdentityIcon identity={identity} loadUploadedIcon={loadUploadedIcon} onReleaseWorkspaceSettingsPreviewObjectUrl={onReleaseWorkspaceSettingsPreviewObjectUrl} />
               <div className="docsera-header__workspace-copy">
                 {identity.kind === "workspace-loading" ? (
                   <span className="docsera-header__workspace-name-skeleton" aria-hidden="true" />
@@ -928,14 +947,6 @@ export function DocseraHeader({
               ) : null}
             </div>
           ) : null}
-          <button
-            type="button"
-            className="docsera-header__ghost-button docsera-header__ghost-button--theme"
-            aria-label="Toggle theme"
-            onClick={onToggleTheme}
-          >
-            {theme === "dark" ? <SunIcon /> : <MoonIcon />}
-          </button>
           <div className="docsera-header__action-slot docsera-header__action-slot--settings">
             {showWorkspaceSettings && onOpenWorkspaceSettings ? (
               <button
@@ -951,6 +962,14 @@ export function DocseraHeader({
               <span className="docsera-header__action-slot-placeholder" aria-hidden="true" />
             )}
           </div>
+          <button
+            type="button"
+            className="docsera-header__ghost-button docsera-header__ghost-button--theme"
+            aria-label="Toggle theme"
+            onClick={onToggleTheme}
+          >
+            {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+          </button>
           <button type="button" className="docsera-header__profile" aria-label="Current user">
             J
           </button>

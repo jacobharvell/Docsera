@@ -76,7 +76,7 @@ export type WorkspaceIconServiceDependencies = {
   createAsset: (input: { assetKey: string; requestedBy: string }) => string | null;
   deleteAsset: (assetSysId: string) => void;
   deleteAttachment: (attachmentSysId: string) => void;
-  evaluateWorkspaceCapabilities: (workspace: WorkspaceRecord) => { canViewWorkspace: boolean };
+  evaluateWorkspaceCapabilities: (workspace: WorkspaceRecord) => { canAdminWorkspace?: boolean; canViewWorkspace: boolean };
   getAttachmentBySysId: (attachmentSysId: string) => WorkspaceIconAttachmentRecord | null;
   getAttachmentBytes: (attachmentSysId: string) => Uint8Array | null;
   getAttachmentContentStream: (attachmentSysId: string) => unknown;
@@ -84,10 +84,14 @@ export type WorkspaceIconServiceDependencies = {
   loadAssetByKey: (assetKey: string) => WorkspaceIconAssetRecord | null;
   loadWorkspaceBySysId: (workspaceSysId: string) => WorkspaceRecord | null;
   markAssetInvalid: (assetSysId: string) => void;
-  restoreAssetToStaged: (assetSysId: string) => void;
+  restoreAssetToStaged: (assetSysId: string, input?: { provisionRequestSysId?: string; workspaceSysId?: string }) => void;
   setAssetValidated: (assetSysId: string, input: WorkspaceIconAssetRecord) => void;
+  setAssetStagedWorkspace: (assetSysId: string, workspaceSysId: string) => boolean;
   setAssetWorkspace: (assetSysId: string, input: { provisionRequestSysId: string; workspaceSysId: string }) => boolean;
+  tryClaimSettingsAsset: (assetSysId: string, workspaceSysId: string) => boolean;
   tryClaimAsset: (assetSysId: string, provisionRequestSysId: string) => boolean;
+  tryDeleteStagedSettingsAsset: (assetSysId: string, workspaceSysId: string, requestedBy: string) => string | null;
+  tryRetireClaimedAsset: (assetSysId: string, workspaceSysId: string) => string | null;
   writeAttachmentToAsset: (input: { assetSysId: string; contentType: WorkspaceIconImageMetadata["contentType"]; dataStream: unknown; fileName: string }) => string | null;
 };
 
@@ -229,11 +233,12 @@ function createDefaultDependencies(): WorkspaceIconServiceDependencies {
         record.update();
       }
     },
-    restoreAssetToStaged(assetSysId) {
+    restoreAssetToStaged(assetSysId, input = {}) {
       const record = new GlideRecord(DOCSERA_WORKSPACE_ICON_ASSET_TABLE);
       if (record.get("sys_id", cleanText(assetSysId))) {
         record.setValue("state", "staged");
-        record.setValue("provision_request", "");
+        record.setValue("provision_request", cleanText(input.provisionRequestSysId));
+        record.setValue("workspace", cleanText(input.workspaceSysId));
         record.update();
       }
     },
@@ -249,6 +254,24 @@ function createDefaultDependencies(): WorkspaceIconServiceDependencies {
         record.setValue("state", "staged");
         record.update();
       }
+    },
+    setAssetStagedWorkspace(assetSysId, workspaceSysId) {
+      const sysId = cleanText(assetSysId);
+      const targetWorkspaceSysId = cleanText(workspaceSysId);
+      const record = new GlideRecord(DOCSERA_WORKSPACE_ICON_ASSET_TABLE);
+      record.addQuery("sys_id", sysId);
+      record.addQuery("state", "staged");
+      record.addQuery("provision_request", "");
+      record.addQuery("workspace", "");
+      record.setValue("workspace", targetWorkspaceSysId);
+      record.updateMultiple();
+      const verified = new GlideRecord(DOCSERA_WORKSPACE_ICON_ASSET_TABLE);
+      return (
+        verified.get("sys_id", sysId) &&
+        cleanText(verified.getValue("state")) === "staged" &&
+        cleanText(verified.getValue("provision_request")) === "" &&
+        cleanText(verified.getValue("workspace")) === targetWorkspaceSysId
+      );
     },
     setAssetWorkspace(assetSysId, input) {
       const sysId = cleanText(assetSysId);
@@ -290,6 +313,59 @@ function createDefaultDependencies(): WorkspaceIconServiceDependencies {
         cleanText(verified.getValue("workspace")) === ""
       );
     },
+    tryClaimSettingsAsset(assetSysId, workspaceSysId) {
+      const sysId = cleanText(assetSysId);
+      const targetWorkspaceSysId = cleanText(workspaceSysId);
+      const record = new GlideRecord(DOCSERA_WORKSPACE_ICON_ASSET_TABLE);
+      record.addQuery("sys_id", sysId);
+      record.addQuery("state", "staged");
+      record.addQuery("provision_request", "");
+      record.addQuery("workspace", targetWorkspaceSysId);
+      record.setValue("state", "claimed");
+      record.updateMultiple();
+      const verified = new GlideRecord(DOCSERA_WORKSPACE_ICON_ASSET_TABLE);
+      return (
+        verified.get("sys_id", sysId) &&
+        cleanText(verified.getValue("state")) === "claimed" &&
+        cleanText(verified.getValue("provision_request")) === "" &&
+        cleanText(verified.getValue("workspace")) === targetWorkspaceSysId
+      );
+    },
+    tryDeleteStagedSettingsAsset(assetSysId, workspaceSysId, requestedBy) {
+      const sysId = cleanText(assetSysId);
+      const targetWorkspaceSysId = cleanText(workspaceSysId);
+      const userSysId = cleanText(requestedBy);
+      const record = new GlideRecord(DOCSERA_WORKSPACE_ICON_ASSET_TABLE);
+      record.addQuery("sys_id", sysId);
+      record.addQuery("state", "staged");
+      record.addQuery("workspace", targetWorkspaceSysId);
+      record.addQuery("requested_by", userSysId);
+      record.addQuery("provision_request", "");
+      record.setLimit(1);
+      record.query();
+      if (!record.next()) {
+        return null;
+      }
+      const attachmentSysId = cleanText(record.getValue("attachment"));
+      record.deleteRecord();
+      return attachmentSysId;
+    },
+    tryRetireClaimedAsset(assetSysId, workspaceSysId) {
+      const sysId = cleanText(assetSysId);
+      const targetWorkspaceSysId = cleanText(workspaceSysId);
+      const record = new GlideRecord(DOCSERA_WORKSPACE_ICON_ASSET_TABLE);
+      record.addQuery("sys_id", sysId);
+      record.addQuery("state", "claimed");
+      record.addQuery("workspace", targetWorkspaceSysId);
+      record.setLimit(1);
+      record.query();
+      if (!record.next()) {
+        return null;
+      }
+      const attachmentSysId = cleanText(record.getValue("attachment"));
+      record.deleteRecord();
+      return attachmentSysId;
+    },
     writeAttachmentToAsset(input) {
       const asset = new GlideRecord(DOCSERA_WORKSPACE_ICON_ASSET_TABLE);
       if (!asset.get("sys_id", cleanText(input.assetSysId))) {
@@ -308,14 +384,18 @@ export function createWorkspaceIconService(dependencies: WorkspaceIconServiceDep
     dependencies.deleteAsset(assetSysId);
   }
 
-  function validateClaimableAsset(assetKey: string): WorkspaceIconAssetRecord | WorkspaceIconFailure {
+  function validateClaimableAsset(assetKey: string, options: { workspaceSysId?: string } = {}): WorkspaceIconAssetRecord | WorkspaceIconFailure {
     const asset = dependencies.loadAssetByKey(assetKey);
     const currentUserSysId = cleanText(dependencies.getCurrentUserSysId());
+    const targetWorkspaceSysId = cleanText(options.workspaceSysId);
     if (!asset || asset.assetKey !== cleanText(assetKey)) {
       return toFailure(400, "The uploaded workspace icon could not be found.");
     }
-    if (asset.state !== "staged" || asset.workspaceSysId || asset.provisionRequestSysId) {
+    if (asset.state !== "staged" || asset.provisionRequestSysId) {
       return toFailure(400, "The uploaded workspace icon has already been used.");
+    }
+    if (targetWorkspaceSysId ? asset.workspaceSysId !== targetWorkspaceSysId : Boolean(asset.workspaceSysId)) {
+      return toFailure(400, "The uploaded workspace icon was staged for another workspace.");
     }
     if (asset.requestedBy !== currentUserSysId) {
       return toFailure(403, "The uploaded workspace icon belongs to another user.");
@@ -334,8 +414,17 @@ export function createWorkspaceIconService(dependencies: WorkspaceIconServiceDep
   }
 
   return {
-    async uploadWorkspaceIcon(input: { contentLengthBytes?: number | null; contentType: string; dataStream: unknown; fileName: string }): Promise<WorkspaceIconUploadResult> {
-      if (!dependencies.canCreateWorkspaces()) {
+    async uploadWorkspaceIcon(input: { contentLengthBytes?: number | null; contentType: string; dataStream: unknown; fileName: string; workspaceSysId?: string }): Promise<WorkspaceIconUploadResult> {
+      const targetWorkspaceSysId = cleanText(input.workspaceSysId);
+      if (targetWorkspaceSysId) {
+        const targetWorkspace = dependencies.loadWorkspaceBySysId(targetWorkspaceSysId);
+        if (!targetWorkspace || cleanText(targetWorkspace.sysId) !== targetWorkspaceSysId) {
+          return toFailure(404, "Workspace could not be found.");
+        }
+        if (!dependencies.evaluateWorkspaceCapabilities(targetWorkspace).canAdminWorkspace) {
+          return toFailure(403, "You do not have permission to upload workspace icons.");
+        }
+      } else if (!dependencies.canCreateWorkspaces()) {
         return toFailure(403, "You do not have permission to upload workspace icons.");
       }
       if (input.dataStream === undefined || input.dataStream === null) {
@@ -396,6 +485,10 @@ export function createWorkspaceIconService(dependencies: WorkspaceIconServiceDep
           provisionRequestSysId: ""
         };
         dependencies.setAssetValidated(assetSysId, asset);
+        if (targetWorkspaceSysId && !dependencies.setAssetStagedWorkspace(assetSysId, targetWorkspaceSysId)) {
+          cleanupFailedUpload(assetSysId, attachmentSysId);
+          return toFailure(500, "Something went wrong while preparing the icon asset. Please try again.");
+        }
         return {
           asset: {
             assetKey,
@@ -434,8 +527,32 @@ export function createWorkspaceIconService(dependencies: WorkspaceIconServiceDep
       };
     },
 
-    restoreWorkspaceIconClaim(assetSysId: string): void {
-      dependencies.restoreAssetToStaged(assetSysId);
+    claimWorkspaceSettingsIcon(assetKey: string, workspaceSysId: string): WorkspaceIconClaimResult {
+      const targetWorkspaceSysId = cleanText(workspaceSysId);
+      if (!targetWorkspaceSysId) {
+        return toFailure(400, "A workspace reference is required.");
+      }
+      const asset = validateClaimableAsset(assetKey, { workspaceSysId: targetWorkspaceSysId });
+      if ("kind" in asset) {
+        return asset;
+      }
+      if (!dependencies.tryClaimSettingsAsset(asset.sysId, targetWorkspaceSysId)) {
+        return toFailure(400, "The uploaded workspace icon has already been used.");
+      }
+      return {
+        asset: { ...asset, provisionRequestSysId: "", state: "claimed", workspaceSysId: targetWorkspaceSysId },
+        icon: {
+          assetPath: assetFileUrl(asset.assetKey),
+          key: asset.assetKey,
+          label: asset.fileName || "Uploaded workspace icon",
+          type: "uploaded"
+        },
+        kind: "succeeded"
+      };
+    },
+
+    restoreWorkspaceIconClaim(assetSysId: string, input?: { provisionRequestSysId?: string; workspaceSysId?: string }): void {
+      dependencies.restoreAssetToStaged(assetSysId, input);
     },
 
     attachClaimedIconToWorkspace(assetSysId: string, provisionRequestSysId: string, workspaceSysId: string): WorkspaceIconFailure | { kind: "succeeded" } {
@@ -443,6 +560,31 @@ export function createWorkspaceIconService(dependencies: WorkspaceIconServiceDep
         return toFailure(400, "The uploaded workspace icon could not be finalized for the new workspace.");
       }
       return { kind: "succeeded" };
+    },
+
+    cleanupStagedWorkspaceSettingsIcon(assetKey: string, workspaceSysId: string): void {
+      const asset = dependencies.loadAssetByKey(assetKey);
+      const targetWorkspaceSysId = cleanText(workspaceSysId);
+      const currentUserSysId = cleanText(dependencies.getCurrentUserSysId());
+      if (!asset || asset.state !== "staged" || asset.workspaceSysId !== targetWorkspaceSysId || asset.requestedBy !== currentUserSysId || asset.provisionRequestSysId) {
+        return;
+      }
+      const attachmentSysId = dependencies.tryDeleteStagedSettingsAsset(asset.sysId, targetWorkspaceSysId, currentUserSysId);
+      if (attachmentSysId) {
+        dependencies.deleteAttachment(attachmentSysId);
+      }
+    },
+
+    retireClaimedWorkspaceIcon(assetKey: string, workspaceSysId: string): void {
+      const asset = dependencies.loadAssetByKey(assetKey);
+      const targetWorkspaceSysId = cleanText(workspaceSysId);
+      if (!asset || asset.state !== "claimed" || asset.workspaceSysId !== targetWorkspaceSysId) {
+        return;
+      }
+      const attachmentSysId = dependencies.tryRetireClaimedAsset(asset.sysId, targetWorkspaceSysId);
+      if (attachmentSysId) {
+        dependencies.deleteAttachment(attachmentSysId);
+      }
     },
 
     async getWorkspaceIconFile(input: { assetKey: string }): Promise<WorkspaceIconFileResult> {
@@ -459,6 +601,34 @@ export function createWorkspaceIconService(dependencies: WorkspaceIconServiceDep
       }
       const attachment = dependencies.getAttachmentBySysId(asset.attachmentSysId);
       if (!attachment || attachment.tableName !== DOCSERA_WORKSPACE_ICON_ASSET_TABLE || attachment.tableSysId !== asset.sysId) {
+        return toFailure(404, "Workspace icon could not be found.");
+      }
+      const stream = dependencies.getAttachmentContentStream(asset.attachmentSysId);
+      if (stream === null || stream === undefined) {
+        return toFailure(404, "Workspace icon could not be found.");
+      }
+      return { asset, contentStream: stream, contentType: asset.contentType, kind: "succeeded" };
+    },
+
+    async getWorkspaceSettingsIconPreviewFile(input: { assetKey: string; workspaceSysId: string }): Promise<WorkspaceIconFileResult> {
+      const targetWorkspaceSysId = cleanText(input.workspaceSysId);
+      const asset = dependencies.loadAssetByKey(input.assetKey);
+      if (!targetWorkspaceSysId || !asset || asset.assetKey !== cleanText(input.assetKey) || asset.state !== "staged" || asset.workspaceSysId !== targetWorkspaceSysId || asset.provisionRequestSysId) {
+        return toFailure(404, "Workspace icon could not be found.");
+      }
+      const currentUserSysId = cleanText(dependencies.getCurrentUserSysId());
+      if (!currentUserSysId || asset.requestedBy !== currentUserSysId) {
+        return toFailure(403, "You do not have permission to view this workspace icon.");
+      }
+      const workspace = dependencies.loadWorkspaceBySysId(targetWorkspaceSysId);
+      if (!workspace) {
+        return toFailure(404, "Workspace could not be found.");
+      }
+      if (!dependencies.evaluateWorkspaceCapabilities(workspace).canAdminWorkspace) {
+        return toFailure(403, "You do not have permission to view this workspace icon.");
+      }
+      const attachment = dependencies.getAttachmentBySysId(asset.attachmentSysId);
+      if (!attachment || attachment.mediaId !== asset.attachmentSysId || attachment.tableName !== DOCSERA_WORKSPACE_ICON_ASSET_TABLE || attachment.tableSysId !== asset.sysId || attachment.fileName !== asset.fileName || attachment.contentType !== asset.contentType || attachment.sizeBytes !== asset.sizeBytes) {
         return toFailure(404, "Workspace icon could not be found.");
       }
       const stream = dependencies.getAttachmentContentStream(asset.attachmentSysId);

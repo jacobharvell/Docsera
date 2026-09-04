@@ -113,8 +113,8 @@ describe("DocseraHeader workspace shell", () => {
       "docsera-header__action-divider docsera-header__action-divider--mode-surface",
       "docsera-header__action-slot docsera-header__action-slot--surface",
       "docsera-header__publish-panel",
-      "docsera-header__ghost-button docsera-header__ghost-button--theme",
       "docsera-header__action-slot docsera-header__action-slot--settings",
+      "docsera-header__ghost-button docsera-header__ghost-button--theme",
       "docsera-header__profile"
     ]);
     expect(Array.from(editPublishPanel?.children ?? []).map((child) => (child as HTMLElement).className)).toEqual([
@@ -171,8 +171,8 @@ describe("DocseraHeader workspace shell", () => {
       "docsera-header__action-divider docsera-header__action-divider--mode-surface docsera-header__action-divider--hidden",
       "docsera-header__action-slot docsera-header__action-slot--surface",
       "docsera-header__publish-panel docsera-header__publish-panel--hidden",
-      "docsera-header__ghost-button docsera-header__ghost-button--theme",
       "docsera-header__action-slot docsera-header__action-slot--settings",
+      "docsera-header__ghost-button docsera-header__ghost-button--theme",
       "docsera-header__profile"
     ]);
     expect(Array.from(livePublishPanel?.children ?? []).map((child) => (child as HTMLElement).className)).toEqual([

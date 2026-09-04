@@ -210,7 +210,7 @@ async function createWorkspace(instanceUrl, session, workspaceName) {
     name: workspaceName,
     shortDescription: "Disposable verification workspace owned by verify-e3-t13-workspace-discard-all.mjs",
     icon: { type: "builtin", key: "docsera-workspace", label: "Docsera workspace icon" },
-    layout: { tocVisibleByDefault: true, pageWidth: "readable" }
+    layout: { tocVisible: true, pageWidth: "readable" }
   });
   assertStatus("workspace create", result, [201, 202]);
   const created = requireObject("workspace create", normalizePayload(result.payload));

@@ -17,7 +17,7 @@ function createWorkspace(): WorkspaceRecord {
     },
     layout: {
       pageWidth: "readable",
-      tocVisibleByDefault: true
+      tocVisible: true
     },
     name: "Product Docs",
     shortDescription: "Workspace",

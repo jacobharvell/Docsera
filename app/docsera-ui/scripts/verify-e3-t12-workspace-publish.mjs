@@ -136,7 +136,7 @@ async function createWorkspace(instanceUrl, session, workspaceName) {
     name: workspaceName,
     shortDescription: "Disposable verification workspace owned by verify-e3-t12-workspace-publish.mjs",
     icon: { type: "builtin", key: "docsera-workspace", label: "Docsera workspace icon" },
-    layout: { tocVisibleByDefault: true, pageWidth: "readable" }
+    layout: { tocVisible: true, pageWidth: "readable" }
   });
   if (![201, 202].includes(result.status)) throw new Error(`Workspace create failed with HTTP ${result.status}: ${result.text}`);
   const created = normalizePayload(result.payload);

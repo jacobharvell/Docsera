@@ -35,7 +35,7 @@ export type WorkspaceIcon = {
 };
 
 export type WorkspaceLayoutDefaults = {
-  tocVisibleByDefault: boolean;
+  tocVisible: boolean;
   pageWidth: WorkspacePageWidth;
 };
 
@@ -78,7 +78,7 @@ export type WorkspaceSettingsInput = {
   name?: string | null;
   shortDescription?: string | null;
   icon?: Partial<WorkspaceIcon> | string | null;
-  layout?: Partial<Pick<WorkspaceLayoutDefaults, "tocVisibleByDefault">> | null;
+  layout?: Partial<Pick<WorkspaceLayoutDefaults, "tocVisible">> | null;
 };
 
 export type WorkspaceSettingsValidation =
@@ -178,7 +178,7 @@ const DEFAULT_WORKSPACE_ICON = Object.freeze({
 });
 
 const DEFAULT_WORKSPACE_LAYOUT = Object.freeze({
-  tocVisibleByDefault: true,
+  tocVisible: true,
   pageWidth: "readable" as const
 });
 
@@ -312,10 +312,10 @@ export function normalizeWorkspaceIcon(icon?: Partial<WorkspaceIcon> | string | 
 
 export function normalizeWorkspaceLayout(layout?: Partial<WorkspaceLayoutDefaults> | null): WorkspaceLayoutDefaults {
   return {
-    tocVisibleByDefault:
-      typeof layout?.tocVisibleByDefault === "boolean"
-        ? layout.tocVisibleByDefault
-        : DEFAULT_WORKSPACE_LAYOUT.tocVisibleByDefault,
+    tocVisible:
+      typeof layout?.tocVisible === "boolean"
+        ? layout.tocVisible
+        : DEFAULT_WORKSPACE_LAYOUT.tocVisible,
     pageWidth: layout?.pageWidth === "full" ? "full" : DEFAULT_WORKSPACE_LAYOUT.pageWidth
   };
 }
@@ -387,13 +387,6 @@ export function applyWorkspaceSettings(
 
   let icon = currentWorkspace.icon;
   if (hasOwnProperty(input, "icon") && input.icon != null) {
-    if (typeof input.icon === "object" && input.icon.type === "uploaded") {
-      return {
-        valid: false,
-        error: "Replacing a workspace icon with an uploaded icon is not supported here."
-      };
-    }
-
     try {
       icon = normalizeWorkspaceIcon(input.icon);
     } catch {
@@ -404,10 +397,10 @@ export function applyWorkspaceSettings(
     }
   }
 
-  const tocVisibleByDefault =
-    input.layout && typeof input.layout.tocVisibleByDefault === "boolean"
-      ? input.layout.tocVisibleByDefault
-      : currentWorkspace.layout.tocVisibleByDefault;
+  const tocVisible =
+    input.layout && typeof input.layout.tocVisible === "boolean"
+      ? input.layout.tocVisible
+      : currentWorkspace.layout.tocVisible;
 
   return {
     valid: true,
@@ -418,7 +411,7 @@ export function applyWorkspaceSettings(
       icon,
       layout: {
         ...currentWorkspace.layout,
-        tocVisibleByDefault
+        tocVisible
       }
     }
   };

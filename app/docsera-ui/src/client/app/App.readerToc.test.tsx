@@ -55,7 +55,7 @@ function createWorkspace(overrides: Partial<WorkspaceViewRecord> = {}): Workspac
       label: "Docsera workspace icon"
     },
     layout: {
-      tocVisibleByDefault: true
+      tocVisible: true
     },
     status: "active",
     roleLabel: "Admin",

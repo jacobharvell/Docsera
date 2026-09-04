@@ -61,9 +61,12 @@ describe("WorkspaceCreateModal", () => {
       "utf8"
     );
     const uploadButtonBlock = source.match(/\.docsera-workspace-icon-picker__upload-button \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const uploadRowBlock = source.match(/\.docsera-workspace-icon-picker__upload-row \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const constraintsBlock = source.match(/\.docsera-workspace-icon-picker__constraints,\n\.docsera-workspace-icon-picker__status \{([\s\S]*?)\n\}/)?.[1] ?? "";
 
     expect(uploadButtonBlock).toContain("justify-self: center;");
+    expect(uploadRowBlock).toContain("gap: 8px;");
+    expect(uploadRowBlock).not.toContain("margin-top:");
     expect(constraintsBlock).not.toContain("text-align: center;");
   });
 

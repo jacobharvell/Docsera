@@ -62,7 +62,7 @@ function normalizeWorkspaceInput(request: RequestLike): WorkspaceDraftInput {
     status: body.status === "inactive" ? "inactive" : "active",
     layout: layout
       ? {
-          tocVisibleByDefault: typeof layout.tocVisibleByDefault === "boolean" ? layout.tocVisibleByDefault : undefined,
+          tocVisible: typeof layout.tocVisible === "boolean" ? layout.tocVisible : undefined,
           pageWidth: layout.pageWidth === "full" ? "full" : "readable"
         }
       : undefined

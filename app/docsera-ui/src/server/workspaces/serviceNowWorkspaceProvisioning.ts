@@ -193,7 +193,7 @@ function createProvisionRequest(input: WorkspaceDraftInput): string {
   record.setValue("icon_label", draft.icon.label);
   record.setValue("icon_asset_path", draft.icon.assetPath ?? "");
   record.setValue("workspace_status", draft.status);
-  record.setValue("toc_default_visible", draft.layout.tocVisibleByDefault);
+  record.setValue("toc_default_visible", draft.layout.tocVisible);
   record.setValue("page_width", draft.layout.pageWidth);
   record.setValue("requested_by", draft.creatorUserSysId);
   record.setValue("state", "requested");

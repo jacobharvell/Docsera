@@ -115,6 +115,27 @@ describe("WorkspaceIconBadge", () => {
     expect(container.querySelector("img")).toHaveAttribute("src", "blob:local-preview");
   });
 
+  it("renders local uploaded previews directly even when an authenticated loader is supplied", () => {
+    const loadUploadedIcon = vi.fn(async () => new Blob(["icon"], { type: "image/png" }));
+    const { container } = render(
+      <WorkspaceIconBadge
+        loadUploadedIcon={loadUploadedIcon}
+        workspace={{
+          icon: {
+            type: "uploaded",
+            key: "asset-key-001",
+            label: "Custom icon",
+            assetPath: "blob:local-preview"
+          },
+          name: "Custom Docs"
+        }}
+      />
+    );
+
+    expect(container.querySelector("img")).toHaveAttribute("src", "blob:local-preview");
+    expect(loadUploadedIcon).not.toHaveBeenCalled();
+  });
+
   it("falls back gracefully when authenticated uploaded workspace icon retrieval fails", async () => {
     const loadUploadedIcon = vi.fn(async () => null);
     const { container } = render(
@@ -161,6 +182,30 @@ describe("WorkspaceIconBadge", () => {
     await waitFor(() => expect(container.querySelector("img")).toHaveAttribute("src", "blob:second"));
     unmount();
     expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:second");
+  });
+
+  it("releases an authenticated object URL when replaced by a local uploaded preview", async () => {
+    mockObjectUrl();
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:authenticated");
+    const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+    const loadUploadedIcon = vi.fn(async () => new Blob(["icon"], { type: "image/png" }));
+    const { container, rerender } = render(
+      <WorkspaceIconBadge
+        loadUploadedIcon={loadUploadedIcon}
+        workspace={{ icon: { type: "uploaded", key: "asset-1", label: "One", assetPath: "/icons/file?assetKey=asset-1" }, name: "One" }}
+      />
+    );
+
+    await waitFor(() => expect(container.querySelector("img")).toHaveAttribute("src", "blob:authenticated"));
+    rerender(
+      <WorkspaceIconBadge
+        loadUploadedIcon={loadUploadedIcon}
+        workspace={{ icon: { type: "uploaded", key: "asset-2", label: "Two", assetPath: "blob:local-preview" }, name: "Two" }}
+      />
+    );
+
+    expect(container.querySelector("img")).toHaveAttribute("src", "blob:local-preview");
+    expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:authenticated");
   });
 
   it("prevents stale uploaded icon loads from replacing a newer icon", async () => {

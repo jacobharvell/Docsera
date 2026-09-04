@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { DocseraHeader, type HeaderIdentity } from "../features/workspaces/DocseraHeader";
 import { DirtyTransitionDialog } from "../features/workspaces/DirtyTransitionDialog";
 import { MyWorkspacesScreen } from "../features/workspaces/MyWorkspacesScreen";
@@ -7,6 +7,7 @@ import { PageSettingsOverlay } from "../features/workspaces/PageSettingsOverlay"
 import type { InlinePageCreateState } from "../features/workspaces/PageTree";
 import type { RecentWorkspaceItem } from "../features/workspaces/RecentWorkspacesMenu";
 import { DEFAULT_WORKSPACE_NAV_WIDTH, readStoredWorkspaceNavWidth, WorkspaceShell } from "../features/workspaces/WorkspaceShell";
+import { WorkspaceSettingsOverlay, type WorkspaceSettingsSubmitInput } from "../features/workspaces/WorkspaceSettingsOverlay";
 import type {
   PageEditorCanonicalHandoffResult,
   PageEditorHostFailure,
@@ -64,6 +65,7 @@ import type {
   WorkspacePendingChangesResult,
   WorkspacePublishResult,
   WorkspacePageRecord,
+  WorkspaceSettingsSaveResult,
   WorkspaceViewRecord
 } from "../shared/types/docsera";
 import type { EditorMediaAdapter } from "../editor/contracts";
@@ -188,7 +190,22 @@ type WorkspaceSwitcherState =
   | { items: WorkspaceViewRecord[]; status: "success" }
   | { status: "error" };
 
+type WorkspaceSettingsPanelState =
+  | { status: "closed" }
+  | { errorMessage?: string; recoveryInput?: WorkspaceSettingsSubmitInput; status: "open" | "saving"; workspaceSlug: string; workspaceSysId: string };
+
+type PendingWorkspaceSettingsSave = {
+  id: number;
+  ownedPreviewObjectUrl: string;
+  previewIdentity: WorkspaceSettingsPreviewIdentity;
+  input: WorkspaceSettingsSubmitInput;
+  workspaceSlug: string;
+  workspaceSysId: string;
+};
+type PendingWorkspaceSettingsSaves = Record<string, PendingWorkspaceSettingsSave>;
+
 type PendingWorkspaceIdentity = Pick<WorkspaceViewRecord, "icon" | "name" | "slug">;
+type WorkspaceSettingsPreviewIdentity = Pick<WorkspaceViewRecord, "icon" | "name"> & { ownedPreviewObjectUrl?: string; workspaceSysId: string };
 type WorkspaceHeaderPresentation = {
   showEditModeToggle: boolean;
   showWorkspaceMode: WorkspaceMode;
@@ -1127,7 +1144,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     isInvalid: false,
     pageSysId: ""
   });
-  const [workspaceSettingsNotice, setWorkspaceSettingsNotice] = useState(false);
+  const [workspaceSettingsPanelState, setWorkspaceSettingsPanelState] = useState<WorkspaceSettingsPanelState>({ status: "closed" });
+  const [workspaceSettingsPreviewIdentity, setWorkspaceSettingsPreviewIdentity] = useState<WorkspaceSettingsPreviewIdentity | null>(null);
+  const workspaceSettingsRecoveryRef = useRef<Record<string, { errorMessage: string; input: WorkspaceSettingsSubmitInput }>>({});
+  const workspaceSettingsSaveGenerationRef = useRef(0);
+  const pendingWorkspaceSettingsSaveRef = useRef<PendingWorkspaceSettingsSaves>({});
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalPhase, setCreateModalPhase] = useState<"idle" | "submitting" | "polling">("idle");
   const [createModalError, setCreateModalError] = useState<string | undefined>();
@@ -2070,14 +2091,29 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const currentModeStateKey = buildModeStateKey(currentWorkspaceSlug, activeWorkspaceMode);
   const currentModeUiState = modeUiState[currentModeStateKey] ?? createWorkspaceModeUiState();
   const workspaceHeaderIdentity = useMemo(
-    () =>
-      buildWorkspaceHeaderIdentity({
+    () => {
+      const canonicalIdentity = buildWorkspaceHeaderIdentity({
         currentWorkspaceSlug,
         pendingWorkspaceIdentity,
         recentWorkspaceItems,
         workspaceState
-      }),
-    [currentWorkspaceSlug, pendingWorkspaceIdentity, recentWorkspaceItems, workspaceState]
+      });
+      if (
+        canonicalIdentity.kind === "workspace" &&
+        workspaceState.status === "success" &&
+        workspaceSettingsPreviewIdentity &&
+        cleanText(workspaceSettingsPreviewIdentity.workspaceSysId) === cleanText(workspaceState.data.sysId)
+      ) {
+        return {
+          ...canonicalIdentity,
+          icon: workspaceSettingsPreviewIdentity.icon,
+          name: cleanText(workspaceSettingsPreviewIdentity.name) || canonicalIdentity.name,
+          ownedPreviewObjectUrl: workspaceSettingsPreviewIdentity.ownedPreviewObjectUrl
+        };
+      }
+      return canonicalIdentity;
+    },
+    [currentWorkspaceSlug, pendingWorkspaceIdentity, recentWorkspaceItems, workspaceSettingsPreviewIdentity, workspaceState]
   );
   const currentWorkspaceHeaderPresentation = useMemo(() => {
     if (route.mode !== "workspace" || workspaceState.status !== "success" || workspaceState.data.slug !== currentWorkspaceSlug) {
@@ -2087,7 +2123,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     return {
       showEditModeToggle: hasAuthoringCapability,
       showWorkspaceMode: activeWorkspaceMode,
-      showWorkspaceSettings: Boolean(workspaceState.data.canManageSettings),
+      showWorkspaceSettings: activeWorkspaceMode === "edit" && Boolean(workspaceState.data.canManageSettings),
       showWorkspaceSwitcher: Boolean(workspaceState.data.roleLabel) || recentWorkspaceItems.length > 0
     };
   }, [
@@ -3040,12 +3076,26 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
   useEffect(() => {
     if (route.mode !== "workspace") {
-      setWorkspaceSettingsNotice(false);
+      setWorkspaceSettingsPanelState({ status: "closed" });
       return;
     }
 
     if (loadedWorkspaceSlug === currentWorkspaceSlug) {
-      setWorkspaceSettingsNotice(currentWorkspaceSettingsIntent && Boolean(workspaceState.status === "success" && workspaceState.data.canManageSettings));
+      if (currentWorkspaceSettingsIntent && workspaceState.status === "success" && workspaceState.data.canManageSettings) {
+        const workspaceSysId = cleanText(workspaceState.data.sysId);
+        if (!pendingWorkspaceSettingsSaveRef.current[workspaceSysId]) {
+          const recovered = workspaceSettingsRecoveryRef.current[workspaceSysId];
+          setWorkspaceSettingsPanelState({
+            errorMessage: recovered?.errorMessage,
+            recoveryInput: recovered?.input,
+            status: "open",
+            workspaceSlug: workspaceState.data.slug,
+            workspaceSysId
+          });
+        }
+      } else if (currentWorkspaceSettingsIntent) {
+        setWorkspaceSettingsPanelState({ status: "closed" });
+      }
 
       if (currentWorkspaceSettingsIntent) {
         navigateTo(
@@ -3064,7 +3114,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
     let canceled = false;
     setWorkspaceState({ status: "loading" });
-    setWorkspaceSettingsNotice(false);
+    setWorkspaceSettingsPanelState({ status: "closed" });
     setEditAccessLost(false);
     setEditorFailure(null);
 
@@ -3080,7 +3130,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
             errorMessage: "Workspace could not be found.",
             status: "error"
           });
-          setWorkspaceSettingsNotice(false);
+          setWorkspaceSettingsPanelState({ status: "closed" });
           return;
         }
 
@@ -3091,7 +3141,21 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
             workspaceSysId: cleanText(result.workspace.sysId)
           });
         }
-        setWorkspaceSettingsNotice(currentWorkspaceSettingsIntent && result.workspace.canManageSettings);
+        if (currentWorkspaceSettingsIntent && result.workspace.canManageSettings) {
+          const workspaceSysId = cleanText(result.workspace.sysId);
+          if (!pendingWorkspaceSettingsSaveRef.current[workspaceSysId]) {
+            const recovered = workspaceSettingsRecoveryRef.current[workspaceSysId];
+            setWorkspaceSettingsPanelState({
+              errorMessage: recovered?.errorMessage,
+              recoveryInput: recovered?.input,
+              status: "open",
+              workspaceSlug: result.workspace.slug,
+              workspaceSysId
+            });
+          }
+        } else {
+          setWorkspaceSettingsPanelState({ status: "closed" });
+        }
 
         if (currentWorkspaceSettingsIntent) {
           navigateTo(
@@ -3111,7 +3175,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
             errorMessage: "Unable to load workspace.",
             status: "error"
           });
-          setWorkspaceSettingsNotice(false);
+          setWorkspaceSettingsPanelState({ status: "closed" });
         }
       });
 
@@ -3125,7 +3189,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     loadedWorkspaceSlug,
     requestedWorkspaceMode,
     route.mode,
-    serviceNowClient
+    serviceNowClient,
+    workspaceSettingsPanelState.status
   ]);
 
   useEffect(() => {
@@ -3915,7 +3980,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       reason: "open_launcher",
       replace: false,
       beforeCommit: () => {
-        setWorkspaceSettingsNotice(false);
+        setWorkspaceSettingsPanelState({ status: "closed" });
         setPendingWorkspaceIdentity(null);
         pageSettingsPendingOpenPageIdRef.current = "";
       }
@@ -3938,7 +4003,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       replace: false,
       beforeCommit: () => {
         rememberRecentWorkspaceSlug(workspaceSlug);
-        setWorkspaceSettingsNotice(settingsIntent);
+        if (!settingsIntent) {
+          setWorkspaceSettingsPanelState({ status: "closed" });
+        }
         setPendingWorkspaceIdentity(
           optimisticIdentity && cleanText(optimisticIdentity.slug) === cleanText(workspaceSlug) ? optimisticIdentity : null
         );
@@ -4863,6 +4930,204 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     setLauncherRefreshToken((value) => value + 1);
     setWorkspaceState({ data: workspace, status: "success" });
     openWorkspace(workspace.slug);
+  }
+
+  function openCurrentWorkspaceSettingsPanel() {
+    if (
+      route.mode !== "workspace" ||
+      workspaceState.status !== "success" ||
+      cleanText(workspaceState.data.slug) !== currentWorkspaceSlug ||
+      !workspaceState.data.canManageSettings
+    ) {
+      return;
+    }
+    const workspaceSysId = cleanText(workspaceState.data.sysId);
+    if (pendingWorkspaceSettingsSaveRef.current[workspaceSysId]) {
+      return;
+    }
+    const recovered = workspaceSettingsRecoveryRef.current[workspaceSysId];
+    setWorkspaceSettingsPanelState({
+      errorMessage: recovered?.errorMessage,
+      recoveryInput: recovered?.input,
+      status: "open",
+      workspaceSlug: workspaceState.data.slug,
+      workspaceSysId
+    });
+  }
+
+  function reconcileWorkspaceIdentity(workspace: WorkspaceViewRecord) {
+    setWorkspaceState((current) => {
+      if (current.status !== "success" || cleanText(current.data.sysId) !== cleanText(workspace.sysId)) {
+        return current;
+      }
+      return { data: workspace, status: "success" };
+    });
+    setPendingWorkspaceIdentity({ icon: workspace.icon, name: workspace.name, slug: workspace.slug });
+    setWorkspaceSwitcherState((current) => {
+      if (current.status !== "success") {
+        return current;
+      }
+      return {
+        ...current,
+        items: current.items.map((item) => cleanText(item.sysId) === cleanText(workspace.sysId) || cleanText(item.slug) === cleanText(workspace.slug) ? workspace : item)
+      };
+    });
+    setLauncherState((current) => {
+      if (current.status !== "success" && current.status !== "refreshing") {
+        return current;
+      }
+      return {
+        ...current,
+        data: {
+          ...current.data,
+          items: current.data.items.map((item) => cleanText(item.sysId) === cleanText(workspace.sysId) || cleanText(item.slug) === cleanText(workspace.slug) ? workspace : item)
+        }
+      };
+    });
+  }
+
+  function releaseWorkspaceSettingsPreviewIdentity(workspaceSysId: string) {
+    setWorkspaceSettingsPreviewIdentity((current) => {
+      if (cleanText(current?.workspaceSysId) !== workspaceSysId) {
+        return current;
+      }
+      return null;
+    });
+  }
+
+  const releaseWorkspaceSettingsOwnedPreviewObjectUrl = useCallback((objectUrl: string) => {
+    const normalizedObjectUrl = cleanText(objectUrl);
+    if (!normalizedObjectUrl) return;
+    setWorkspaceSettingsPreviewIdentity((current) => {
+      if (current?.ownedPreviewObjectUrl === normalizedObjectUrl) {
+        return { ...current, ownedPreviewObjectUrl: undefined };
+      }
+      return current;
+    });
+    Object.values(pendingWorkspaceSettingsSaveRef.current).forEach((pendingSave) => {
+      if (pendingSave.ownedPreviewObjectUrl === normalizedObjectUrl) {
+        pendingSave.ownedPreviewObjectUrl = "";
+      }
+    });
+    URL.revokeObjectURL(normalizedObjectUrl);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      Object.values(pendingWorkspaceSettingsSaveRef.current).forEach((pendingSave) => {
+        if (pendingSave.ownedPreviewObjectUrl) {
+          URL.revokeObjectURL(pendingSave.ownedPreviewObjectUrl);
+          pendingSave.ownedPreviewObjectUrl = "";
+        }
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    const activeWorkspaceSysId = route.mode === "workspace" && workspaceState.status === "success" ? cleanText(workspaceState.data.sysId) : "";
+    Object.values(pendingWorkspaceSettingsSaveRef.current).forEach((pendingSave) => {
+      if (pendingSave.ownedPreviewObjectUrl && cleanText(pendingSave.workspaceSysId) !== activeWorkspaceSysId) {
+        releaseWorkspaceSettingsOwnedPreviewObjectUrl(pendingSave.ownedPreviewObjectUrl);
+      }
+    });
+  }, [releaseWorkspaceSettingsOwnedPreviewObjectUrl, route.mode, workspaceState]);
+
+  async function submitWorkspaceSettings(input: WorkspaceSettingsSubmitInput) {
+    if (
+      workspaceSettingsPanelState.status !== "open" ||
+      route.mode !== "workspace" ||
+      workspaceState.status !== "success" ||
+      !workspaceState.data.canManageSettings ||
+      !serviceNowClient.saveWorkspaceSettings
+    ) {
+      return;
+    }
+
+    const workspaceSlug = workspaceState.data.slug;
+    const workspaceSysId = cleanText(workspaceState.data.sysId);
+    const requestGeneration = workspaceSettingsSaveGenerationRef.current + 1;
+    workspaceSettingsSaveGenerationRef.current = requestGeneration;
+    const previewIdentity: WorkspaceSettingsPreviewIdentity = {
+      icon: input.previewIdentity?.icon ?? input.icon ?? workspaceState.data.icon,
+      name: input.previewIdentity?.name ?? input.name,
+      ownedPreviewObjectUrl: cleanText(input.ownedPreviewObjectUrl) || undefined,
+      workspaceSysId
+    };
+    const priorPendingSave = pendingWorkspaceSettingsSaveRef.current[workspaceSysId];
+    if (priorPendingSave?.ownedPreviewObjectUrl && priorPendingSave.ownedPreviewObjectUrl !== previewIdentity.ownedPreviewObjectUrl) {
+      releaseWorkspaceSettingsOwnedPreviewObjectUrl(priorPendingSave.ownedPreviewObjectUrl);
+    }
+    setWorkspaceSettingsPreviewIdentity(previewIdentity);
+    pendingWorkspaceSettingsSaveRef.current = {
+      ...pendingWorkspaceSettingsSaveRef.current,
+      [workspaceSysId]: { id: requestGeneration, input, ownedPreviewObjectUrl: cleanText(input.ownedPreviewObjectUrl), previewIdentity, workspaceSlug, workspaceSysId }
+    };
+    setWorkspaceSettingsPanelState({ status: "closed" });
+
+    let result: WorkspaceSettingsSaveResult;
+    try {
+      const saveInput = {
+        workspaceSlug,
+        workspaceSysId,
+        name: input.name,
+        shortDescription: input.shortDescription,
+        layout: input.layout
+      };
+      result = await serviceNowClient.saveWorkspaceSettings(input.icon ? { ...saveInput, icon: input.icon } : saveInput);
+    } catch {
+      result = {
+        errorMessage: "Something went wrong while saving workspace settings. Your changes were not saved. Please try again.",
+        state: "failed"
+      };
+    }
+
+    const pendingSave = pendingWorkspaceSettingsSaveRef.current[workspaceSysId];
+    if (!pendingSave || pendingSave.id !== requestGeneration || pendingSave.workspaceSysId !== workspaceSysId) {
+      return;
+    }
+    const nextPendingSaves = { ...pendingWorkspaceSettingsSaveRef.current };
+    delete nextPendingSaves[workspaceSysId];
+    pendingWorkspaceSettingsSaveRef.current = nextPendingSaves;
+
+    if (!result || result.state === "failed") {
+      if (pendingSave.ownedPreviewObjectUrl) {
+        releaseWorkspaceSettingsOwnedPreviewObjectUrl(pendingSave.ownedPreviewObjectUrl);
+      }
+      releaseWorkspaceSettingsPreviewIdentity(workspaceSysId);
+      workspaceSettingsRecoveryRef.current = {
+        ...workspaceSettingsRecoveryRef.current,
+        [workspaceSysId]: {
+          errorMessage: result?.errorMessage ?? "Something went wrong while saving workspace settings. Your changes were not saved. Please try again.",
+          input
+        }
+      };
+      return;
+    }
+
+    reconcileWorkspaceIdentity(result.workspace);
+    if (
+      pendingSave.ownedPreviewObjectUrl &&
+      (route.mode !== "workspace" || workspaceState.status !== "success" || cleanText(workspaceState.data.sysId) !== workspaceSysId)
+    ) {
+      releaseWorkspaceSettingsOwnedPreviewObjectUrl(pendingSave.ownedPreviewObjectUrl);
+    } else if (pendingSave.ownedPreviewObjectUrl) {
+      setWorkspaceSettingsPreviewIdentity((current) => {
+        if (!current || cleanText(current.workspaceSysId) !== workspaceSysId || current.ownedPreviewObjectUrl !== pendingSave.ownedPreviewObjectUrl) {
+          return current;
+        }
+        return {
+          icon: result.workspace.icon,
+          name: result.workspace.name,
+          ownedPreviewObjectUrl: pendingSave.ownedPreviewObjectUrl,
+          workspaceSysId
+        };
+      });
+    } else if (!pendingSave.ownedPreviewObjectUrl) {
+      releaseWorkspaceSettingsPreviewIdentity(workspaceSysId);
+    }
+    const nextRecovery = { ...workspaceSettingsRecoveryRef.current };
+    delete nextRecovery[workspaceSysId];
+    workspaceSettingsRecoveryRef.current = nextRecovery;
   }
 
   function updateInlinePageCreateTitle(value: string) {
@@ -6093,7 +6358,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const appHeaderSidebarCollapsed = route.mode === "workspace" ? sidebarCollapsed : false;
   const appHeaderWorkspaceNavWidth = route.mode === "workspace" ? workspaceNavWidth : undefined;
   const appHeaderShowWorkspaceSettings =
-    route.mode === "workspace" ? Boolean(workspaceHeaderPresentation?.showWorkspaceSettings) : false;
+    route.mode === "workspace" && appHeaderWorkspaceMode === "edit" ? Boolean(workspaceHeaderPresentation?.showWorkspaceSettings) : false;
   const appHeaderShowEditToggle = route.mode === "workspace" ? Boolean(workspaceHeaderPresentation?.showEditModeToggle) : false;
   const appHeaderShowAuthoringSurfaceToggle = route.mode === "workspace" && appHeaderWorkspaceMode === "edit" && hasAuthoringCapability;
   const appHeaderAuthoringSurface = route.mode === "workspace" ? currentWorkspaceAuthoringSurface : "visual";
@@ -6101,6 +6366,33 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     route.mode === "workspace"
       ? Boolean(workspaceHeaderPresentation?.showWorkspaceSwitcher)
       : recentWorkspaceItems.length > 0;
+  const workspaceSettingsPanelWorkspace =
+    route.mode === "workspace" &&
+    workspaceState.status === "success" &&
+    workspaceSettingsPanelState.status !== "closed" &&
+    cleanText(workspaceState.data.sysId) === cleanText(workspaceSettingsPanelState.workspaceSysId)
+      ? workspaceState.data
+      : null;
+  const handleWorkspaceSettingsDraftIdentityChange = useCallback((identity: Pick<WorkspaceViewRecord, "icon" | "name"> | null) => {
+    setWorkspaceSettingsPreviewIdentity((current) => {
+      if (!identity || !workspaceSettingsPanelWorkspace) {
+        if (current && pendingWorkspaceSettingsSaveRef.current[cleanText(current.workspaceSysId)]?.previewIdentity === current) {
+          return current;
+        }
+        return current ? null : current;
+      }
+      const next = { ...identity, workspaceSysId: cleanText(workspaceSettingsPanelWorkspace.sysId) };
+      if (
+        current &&
+        cleanText(current.workspaceSysId) === cleanText(next.workspaceSysId) &&
+        cleanText(current.name) === cleanText(next.name) &&
+        JSON.stringify(current.icon) === JSON.stringify(next.icon)
+      ) {
+        return current;
+      }
+      return next;
+    });
+  }, [workspaceSettingsPanelWorkspace]);
   const appHeaderWorkspaceControlsLocked = isRetainingWorkspaceHeaderPresentation || workspaceCommandBlocksCurrentWorkspaceWrites;
   const editorStatusLabel = cleanText(editorTransitionState.status) || "Saved";
   const currentPageAuthoringReadiness = resolveCurrentPageAuthoringReadiness({
@@ -6764,11 +7056,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         currentWorkspaceSlug={appHeaderWorkspaceSlug}
         identity={appHeaderIdentity}
         loadUploadedIcon={serviceNowClient.loadWorkspaceIcon}
+        onReleaseWorkspaceSettingsPreviewObjectUrl={releaseWorkspaceSettingsOwnedPreviewObjectUrl}
         mode={appHeaderMode}
         onDismissPendingChangesPublishToast={clearWorkspacePublishToast}
         onOpenMyWorkspaces={openLauncher}
         onOpenWorkspace={openWorkspace}
-        onOpenWorkspaceSettings={route.mode === "workspace" ? () => openWorkspace(route.workspaceSlug, true) : undefined}
+        onOpenWorkspaceSettings={route.mode === "workspace" ? openCurrentWorkspaceSettingsPanel : undefined}
         onOpenPendingPage={route.mode === "workspace" ? openWorkspacePage : undefined}
         onSelectBreadcrumb={route.mode === "workspace" ? openWorkspacePage : undefined}
         onToggleSidebar={route.mode === "workspace" ? () => setSidebarCollapsed((collapsed) => !collapsed) : undefined}
@@ -6900,6 +7193,28 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
                   onStartField={startPageSettingsField}
                 />
               }
+              workspaceSettingsOverlay={
+                <WorkspaceSettingsOverlay
+                  errorMessage={workspaceSettingsPanelState.status === "open" ? workspaceSettingsPanelState.errorMessage : undefined}
+                  loadUploadedIcon={serviceNowClient.loadWorkspaceIcon}
+                  open={workspaceSettingsPanelState.status !== "closed"}
+                  pending={workspaceSettingsPanelState.status === "saving"}
+                  recoveryInput={workspaceSettingsPanelState.status === "open" ? workspaceSettingsPanelState.recoveryInput : undefined}
+                  workspace={workspaceSettingsPanelWorkspace}
+                  onCancel={() => {
+                    setWorkspaceSettingsPanelState({ status: "closed" });
+                    setWorkspaceSettingsPreviewIdentity(null);
+                  }}
+                  onDraftIdentityChange={handleWorkspaceSettingsDraftIdentityChange}
+                  onCleanupStagedIcon={(input) => {
+                    void serviceNowClient.cleanupWorkspaceSettingsIcon?.(input).catch(() => {
+                      // Staged-icon cleanup is intentionally best effort.
+                    });
+                  }}
+                  onUploadIcon={serviceNowClient.uploadWorkspaceIcon}
+                  onSubmit={submitWorkspaceSettings}
+                />
+              }
               pageTitleActive={
                 pageSettingsState.open &&
                 pageSettingsState.pageSysId === displayedSelectedPageId &&
@@ -6935,10 +7250,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               treePages={displayedTreePages}
               loadMedia={workspaceMediaAdapter?.load}
               workspaceNavWidth={workspaceNavWidth}
+              workspaceTocAvailable={workspaceState.status === "success" ? workspaceState.data.layout?.tocVisible ?? true : true}
               onSidebarCollapsedChange={setSidebarCollapsed}
               onWorkspaceNavWidthChange={setWorkspaceNavWidth}
               theme={theme}
-              workspaceSettingsNotice={workspaceSettingsNotice}
               onTreeFilterChange={(value) => {
                 updateCurrentModeUiState((current) => ({
                   ...current,
