@@ -142,6 +142,7 @@ function renderSidebar(overrides: Partial<Parameters<typeof WorkspaceSidebar>[0]
       onCommitInlineCreate={vi.fn()}
       onInlineCreateTitleChange={vi.fn()}
       onMovePage={onMovePage}
+      onRequestDeletePage={vi.fn()}
       onSelectPage={onSelectPage}
       onShowChildPageCreate={vi.fn()}
       onShowCreatePage={vi.fn()}

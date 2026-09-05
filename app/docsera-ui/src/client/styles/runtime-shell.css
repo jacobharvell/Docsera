@@ -3122,6 +3122,46 @@ html[data-docsera-theme="dark"] .docsera-page-tree__row--selected:hover {
   color: var(--docsera-primary);
 }
 
+.docsera-page-tree__context-menu {
+  position: fixed;
+  z-index: 80;
+  min-width: 176px;
+  padding: 6px;
+  border: 1px solid var(--docsera-border);
+  border-radius: 8px;
+  background: var(--docsera-surface);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16);
+}
+
+.docsera-page-tree__context-menu-item {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--docsera-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+  text-align: left;
+}
+
+.docsera-page-tree__context-menu-item:hover,
+.docsera-page-tree__context-menu-item:focus-visible {
+  outline: none;
+  background: var(--docsera-surface-muted);
+}
+
+.docsera-page-tree__context-menu-item--destructive {
+  color: var(--docsera-danger);
+}
+
+html[data-docsera-theme="dark"] .docsera-page-tree__context-menu {
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.36);
+}
+
 .docsera-page-tree__children {
   list-style: none;
   margin: 4px 0 0 4px;

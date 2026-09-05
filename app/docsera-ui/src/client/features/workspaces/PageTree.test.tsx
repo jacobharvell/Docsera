@@ -87,6 +87,7 @@ function renderTree(pages: WorkspacePageView[], overrides: Partial<Parameters<ty
       onCollapsedPageIdsChange={vi.fn()}
       onCommitInlineCreate={vi.fn()}
       onInlineCreateTitleChange={vi.fn()}
+      onRequestDeletePage={vi.fn()}
       onSelectPage={vi.fn()}
       onShowCreatePage={vi.fn()}
       onShowChildPageCreate={vi.fn()}
@@ -123,6 +124,7 @@ function renderTreeWithCollapsedState(
         }}
         onCommitInlineCreate={vi.fn()}
         onInlineCreateTitleChange={vi.fn()}
+        onRequestDeletePage={vi.fn()}
         onSelectPage={vi.fn()}
         onShowCreatePage={vi.fn()}
         onShowChildPageCreate={vi.fn()}
@@ -330,6 +332,171 @@ describe("PageTree row interaction", () => {
     expect(screen.queryByRole("button", { name: "Add child page to Parent" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Open settings for Parent" })).not.toBeInTheDocument();
   });
+
+  it("opens the page context menu on right-click without activating the row", async () => {
+    const onSelectPage = vi.fn();
+    const onCollapsedPageIdsChange = vi.fn();
+    renderTree(
+      [
+        page({
+          id: "parent",
+          title: "Parent",
+          children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
+        })
+      ],
+      {
+        canCreatePage: true,
+        onCollapsedPageIdsChange,
+        onSelectPage
+      }
+    );
+
+    fireEvent.contextMenu(row("Parent"), { clientX: 20, clientY: 30 });
+
+    expect(await screen.findByRole("menu", { name: "Page actions for Parent" })).toBeInTheDocument();
+    expect(onSelectPage).not.toHaveBeenCalled();
+    expect(onCollapsedPageIdsChange).not.toHaveBeenCalled();
+  });
+
+  it("offers Add child page for a leaf page and invokes the existing child creation callback for that target", async () => {
+    const onShowChildPageCreate = vi.fn();
+    renderTree([page({ id: "leaf", title: "Leaf" })], {
+      canCreatePage: true,
+      onShowChildPageCreate
+    });
+
+    fireEvent.contextMenu(row("Leaf"), { clientX: 20, clientY: 30 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Add child page" }));
+
+    expect(onShowChildPageCreate).toHaveBeenCalledWith("leaf", "Leaf");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("does not offer Add child page from the context menu while page creation is pending", async () => {
+    const onShowChildPageCreate = vi.fn();
+    renderTree([page({ id: "leaf", title: "Leaf" })], {
+      canCreatePage: true,
+      isCreatingPage: true,
+      onShowChildPageCreate
+    });
+
+    fireEvent.contextMenu(row("Leaf"), { clientX: 20, clientY: 30 });
+
+    expect(await screen.findByRole("menu", { name: "Page actions for Leaf" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Add child page" })).not.toBeInTheDocument();
+    expect(onShowChildPageCreate).not.toHaveBeenCalled();
+  });
+
+  it("filters context menu actions by authoring authorization and suppresses empty viewer menus", async () => {
+    const { rerender } = renderTree([page({ id: "leaf", title: "Leaf" })], {
+      canCreatePage: true,
+      canManagePageSettings: false
+    });
+
+    fireEvent.contextMenu(row("Leaf"), { clientX: 20, clientY: 30 });
+    expect(await screen.findByRole("menuitem", { name: "Add child page" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Page Settings" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Delete page" })).not.toBeInTheDocument();
+
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+
+    rerender(
+      <PageTree
+        canCreatePage={false}
+        canManagePageSettings={false}
+        collapsedPageIds={[]}
+        filterText=""
+        inlineCreateState={null}
+        isCreatingPage={false}
+        onCollapsedPageIdsChange={vi.fn()}
+        onCommitInlineCreate={vi.fn()}
+        onInlineCreateTitleChange={vi.fn()}
+        onRequestDeletePage={vi.fn()}
+        onSelectPage={vi.fn()}
+        onShowCreatePage={vi.fn()}
+        onShowChildPageCreate={vi.fn()}
+        onTogglePageSettings={vi.fn()}
+        pageSettingsOpenPageId=""
+        pages={[page({ id: "viewer", title: "Viewer" })]}
+        selectedPageId=""
+      />
+    );
+
+    fireEvent.contextMenu(row("Viewer"), { clientX: 20, clientY: 30 });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("keeps actions bound to the page that opened the context menu even when another page is selected", async () => {
+    const onSelectPage = vi.fn();
+    const onTogglePageSettings = vi.fn();
+    const onRequestDeletePage = vi.fn();
+    renderTree([page({ id: "selected", title: "Selected" }), page({ id: "target", title: "Target" })], {
+      canCreatePage: true,
+      onRequestDeletePage,
+      onSelectPage,
+      onTogglePageSettings,
+      selectedPageId: "selected"
+    });
+
+    fireEvent.contextMenu(row("Target"), { clientX: 20, clientY: 30 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Page Settings" }));
+
+    expect(onTogglePageSettings).toHaveBeenCalledWith("target");
+    expect(onSelectPage).not.toHaveBeenCalled();
+
+    fireEvent.contextMenu(row("Target"), { clientX: 20, clientY: 30 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete page" }));
+
+    expect(onRequestDeletePage).toHaveBeenCalledWith("target");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("supports keyboard opening, menu navigation, activation, Escape focus return, and outside dismissal", async () => {
+    const onShowChildPageCreate = vi.fn();
+    const onRequestDeletePage = vi.fn();
+    renderTree([page({ id: "keyboard", title: "Keyboard" })], {
+      canCreatePage: true,
+      onRequestDeletePage,
+      onShowChildPageCreate
+    });
+
+    const keyboardRow = screen.getByRole("button", { name: "Keyboard" });
+    keyboardRow.focus();
+    fireEvent.keyDown(keyboardRow, { key: "ContextMenu" });
+
+    expect(await screen.findByRole("menu", { name: "Page actions for Keyboard" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("menuitem", { name: "Add child page" })).toHaveFocus());
+
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
+    expect(screen.getByRole("menuitem", { name: "Page Settings" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "End" });
+    expect(screen.getByRole("menuitem", { name: "Delete page" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Home" });
+    expect(screen.getByRole("menuitem", { name: "Add child page" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowUp" });
+    expect(screen.getByRole("menuitem", { name: "Delete page" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Delete page" }), { key: "Enter" });
+    expect(onRequestDeletePage).toHaveBeenCalledWith("keyboard");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+
+    fireEvent.keyDown(keyboardRow, { key: "F10", shiftKey: true });
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Add child page" }), { key: " " });
+    expect(onShowChildPageCreate).toHaveBeenCalledWith("keyboard", "Keyboard");
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+
+    fireEvent.keyDown(keyboardRow, { key: "F10", shiftKey: true });
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    await waitFor(() => expect(keyboardRow).toHaveFocus());
+
+    fireEvent.keyDown(keyboardRow, { key: "ContextMenu" });
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+  });
 });
 
 describe("PageTree drag destination indicators", () => {
@@ -364,6 +531,7 @@ describe("PageTree drag destination indicators", () => {
         isCreatingPage={false}
         onCommitInlineCreate={vi.fn()}
         onInlineCreateTitleChange={vi.fn()}
+        onRequestDeletePage={vi.fn()}
         onSelectPage={vi.fn()}
         onShowCreatePage={vi.fn()}
         onShowChildPageCreate={vi.fn()}
@@ -1158,6 +1326,7 @@ describe("PageTree movement drag and drop", () => {
         onCommitInlineCreate={vi.fn()}
         onInlineCreateTitleChange={vi.fn()}
         onMovePage={onMovePage}
+        onRequestDeletePage={vi.fn()}
         onSelectPage={vi.fn()}
         onShowCreatePage={vi.fn()}
         onShowChildPageCreate={vi.fn()}

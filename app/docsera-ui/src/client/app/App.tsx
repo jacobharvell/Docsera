@@ -3637,7 +3637,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
-    if (pageSettingsState.pageSysId && pageSettingsState.pageSysId !== selectedWorkspacePageId) {
+    if (!pageSettingsState.deleteOpen && pageSettingsState.pageSysId && pageSettingsState.pageSysId !== selectedWorkspacePageId) {
       setPageSettingsState((current) => {
         if (isPageSettingsStateEmpty(current)) {
           return current;
@@ -3648,7 +3648,16 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         return nextState;
       });
     }
-  }, [currentWorkspaceSlug, pageSettingsState.open, pageSettingsState.pageSysId, route.mode, selectedWorkspacePageId, workspaceStateData, workspaceState.status]);
+  }, [
+    currentWorkspaceSlug,
+    pageSettingsState.deleteOpen,
+    pageSettingsState.open,
+    pageSettingsState.pageSysId,
+    route.mode,
+    selectedWorkspacePageId,
+    workspaceStateData,
+    workspaceState.status
+  ]);
 
   useEffect(() => {
     const pendingPageId = cleanText(pageSettingsPendingOpenPageIdRef.current);
@@ -4667,17 +4676,29 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }, 0);
   }
 
-  function requestOpenDeletePageSettings() {
-    if (!pageSettingsStateRef.current.open || !canManagePageSettings || !pageSettingsPage) {
+  function requestOpenDeletePageSettings(pageSysId = pageSettingsStateRef.current.pageSysId) {
+    if (!canManagePageSettings || !workspacePagesLoaded || workspaceState.status !== "success") {
       return;
     }
 
-    setPageSettingsState((current) => ({
-      ...current,
+    const targetPageSysId = cleanText(pageSysId);
+    const targetPage = targetPageSysId ? findWorkspacePageBySysId(currentWorkspacePages, targetPageSysId) : null;
+    if (!targetPage) {
+      return;
+    }
+
+    const baseState =
+      pageSettingsStateRef.current.open && pageSettingsStateRef.current.pageSysId === targetPageSysId
+        ? pageSettingsStateRef.current
+        : createPageSettingsStateFromPage(targetPage, { panelOpen: false });
+    const nextState: PageSettingsState = {
+      ...baseState,
       deleteOpen: true,
       deletePending: false,
       deleteError: ""
-    }));
+    };
+    pageSettingsStateRef.current = nextState;
+    setPageSettingsState(nextState);
   }
 
   function requestCloseDeletePageSettings() {
@@ -4686,17 +4707,19 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         return current;
       }
 
-      return {
+      const nextState = {
         ...current,
         deleteOpen: false,
         deleteError: ""
       };
+      pageSettingsStateRef.current = nextState;
+      return nextState;
     });
   }
 
   async function confirmDeletePageSettings() {
     const currentPageSettingsState = pageSettingsStateRef.current;
-    if (!currentPageSettingsState.open || !currentPageSettingsState.deleteOpen) {
+    if (!currentPageSettingsState.deleteOpen) {
       return;
     }
 
@@ -4704,7 +4727,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       setPageSettingsState((current) => ({
         ...current,
         deletePending: false,
-        deleteError: "Unable to delete this page right now. Please reopen Page Settings and try again."
+        deleteError: "Unable to delete this page right now. Please try again."
       }));
       return;
     }
@@ -4714,7 +4737,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       setPageSettingsState((current) => ({
         ...current,
         deletePending: false,
-        deleteError: "Unable to delete this page right now. Please reopen Page Settings and try again."
+        deleteError: "Unable to delete this page right now. Please try again."
       }));
       return;
     }
@@ -7165,6 +7188,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               onStatusChange={(state) => handleEditorStatusChange(selectedWorkspacePageId, state)}
               onSelectPage={openWorkspacePage}
               onMovePage={moveWorkspacePage}
+              onRequestDeletePage={requestOpenDeletePageSettings}
               onShowChildPageCreate={openCreatePageModal}
               onShowCreatePage={() => openCreatePageModal()}
               onTogglePageSettings={requestTogglePageSettings}
@@ -7189,7 +7213,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
                   onRequestClose={() => {
                     requestClosePageSettingsPanel(pageSettingsStateRef.current.pageSysId);
                   }}
-                  onRequestDelete={requestOpenDeletePageSettings}
+                  onRequestDelete={() => requestOpenDeletePageSettings(pageSettingsStateRef.current.pageSysId)}
                   onStartField={startPageSettingsField}
                 />
               }

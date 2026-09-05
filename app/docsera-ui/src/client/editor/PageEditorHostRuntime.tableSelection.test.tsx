@@ -771,6 +771,7 @@ function renderTableNavigationHarness(options: {
             setInlineCreateState((current) => (current ? { ...current, title: value } : current));
           }}
           onMovePage={undefined}
+          onRequestDeletePage={() => undefined}
           onSelectPage={(pageId) => {
             setSelectedPageId(pageId);
           }}

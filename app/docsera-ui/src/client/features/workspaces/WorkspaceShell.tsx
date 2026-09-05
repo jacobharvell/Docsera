@@ -75,6 +75,7 @@ type WorkspaceShellProps = {
   }) => void;
   onSelectPage: (pageId: string) => void;
   onMovePage?: (input: { pageSysId: string; parentPageSysId: string | null; siblingOrder: string | number }) => void;
+  onRequestDeletePage: (pageId: string) => void;
   onShowChildPageCreate: (parentPageId: string, parentPageTitle: string) => void;
   onShowCreatePage: () => void;
   onTogglePageSettings: (pageId: string) => void;
@@ -199,6 +200,7 @@ export function WorkspaceShell({
   onStatusChange,
   onSelectPage,
   onMovePage,
+  onRequestDeletePage,
   onShowChildPageCreate,
   onShowCreatePage,
   onTogglePageSettings,
@@ -339,6 +341,7 @@ export function WorkspaceShell({
               onInlineCreateTitleChange={onInlineCreateTitleChange}
               onSelectPage={onSelectPage}
               onMovePage={onMovePage}
+              onRequestDeletePage={onRequestDeletePage}
               onShowCreatePage={onShowCreatePage}
               onShowChildPageCreate={onShowChildPageCreate}
               onTogglePageSettings={onTogglePageSettings}

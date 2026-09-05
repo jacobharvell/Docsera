@@ -322,6 +322,72 @@ describe("App workspace shell integration", () => {
     expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
   });
 
+  it("opens page deletion from the page-tree context menu without opening Page Settings or changing selection", async () => {
+    const pages = [
+      createPageRecord({
+        sysId: "page-selected",
+        draftTitle: "Selected",
+        draftSlug: "selected",
+        draftSlugNormalized: "selected",
+        publishedTitle: "Selected",
+        publishedSlug: "selected",
+        publishedSlugNormalized: "selected"
+      }),
+      createPageRecord({
+        sysId: "page-target",
+        draftTitle: "Target",
+        draftSlug: "target",
+        draftSlugNormalized: "target",
+        publishedTitle: "Target",
+        publishedSlug: "target",
+        publishedSlugNormalized: "target",
+        siblingOrder: 2
+      })
+    ];
+    const listPages = vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", workspaceSlug, pages)
+    );
+    const deletePage = vi.fn(async () => ({
+      state: "succeeded" as const,
+      nextPageSysId: "page-selected"
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=selected", { deletePage, listPages });
+
+    expect(await screen.findByRole("heading", { name: "Selected" })).toBeInTheDocument();
+    fireEvent.contextMenu(screen.getByRole("button", { name: "Target" }).closest(".docsera-page-tree__row")!, { clientX: 20, clientY: 30 });
+    expect(await screen.findByRole("menu", { name: "Page actions for Target" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete page" }));
+
+    expect(screen.queryByRole("complementary", { name: "Page Settings" })).not.toBeInTheDocument();
+    const deleteDialog = await screen.findByRole("dialog", { name: "Confirm deletion" });
+    expect(within(deleteDialog).getByText("This will permanently delete Target.")).toBeInTheDocument();
+
+    fireEvent.click(within(deleteDialog).getByRole("button", { name: "Delete page" }));
+
+    await waitFor(() => expect(deletePage).toHaveBeenCalledTimes(1));
+    expect(deletePage).toHaveBeenCalledWith(expect.objectContaining({ pageSysId: "page-target" }));
+    expect(screen.getByRole("heading", { name: "Selected" })).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Page Settings" })).not.toBeInTheDocument();
+  });
+
+  it("opens page deletion from the real Page Settings delete button without discarding settings state", async () => {
+    renderApp("/?workspace=product-docs&mode=edit&page=overview");
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
+    const titleInput = within(pageSettingsPanel).getByDisplayValue("Overview");
+    fireEvent.change(titleInput, { target: { value: "Overview Pending Delete" } });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Delete page" }));
+
+    const deleteDialog = await screen.findByRole("dialog", { name: "Confirm deletion" });
+    expect(within(deleteDialog).getByText("This will permanently delete Overview Pending Delete.")).toBeInTheDocument();
+    expect(within(pageSettingsPanel).getByDisplayValue("Overview Pending Delete")).toBeInTheDocument();
+  });
+
   it("keeps the workspace shell mounted during initial workspace loading and delays contained loading lines", async () => {
     let resolveListWorkspaces: (() => void) | undefined;
     const listWorkspaces = vi.fn(

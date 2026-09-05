@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
+import { createPortal } from "react-dom";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
 import type { WorkspacePageView } from "./workspaceViewModels";
@@ -38,6 +39,7 @@ type PageTreeProps = {
   onInlineCreateTitleChange: (value: string) => void;
   onSelectPage: (pageId: string) => void;
   onMovePage?: (input: { pageSysId: string; parentPageSysId: string | null; siblingOrder: string | number }) => void;
+  onRequestDeletePage: (pageId: string) => void;
   onShowCreatePage: () => void;
   onShowChildPageCreate: (parentPageId: string, parentPageTitle: string) => void;
   onTogglePageSettings: (pageId: string) => void;
@@ -59,6 +61,7 @@ type PageTreeNodeProps = Omit<PageTreeProps, "collapsedPageIds" | "dragSurfaceRe
   onDragEnd: () => void;
   onDragStart: (pageId: string) => void;
   onInlineCreateTitleChange: (value: string) => void;
+  onShowPageContextMenu: (input: { page: WorkspacePageView; x: number; y: number; origin: HTMLElement }) => void;
   onToggleCollapsed: (pageId: string) => void;
   page: WorkspacePageView;
   firstVisibleRootPageId: string | null;
@@ -73,6 +76,15 @@ type PageTreeDropPreviewState = {
   placement: PageTreeDropPreviewPlacement;
   edgeLineOffset: number | null;
 };
+
+type PageTreeContextMenuState = {
+  page: WorkspacePageView;
+  x: number;
+  y: number;
+  origin: HTMLElement;
+};
+
+type PageTreeContextMenuAction = "add-child" | "settings" | "delete";
 
 function GearIcon() {
   return <DocseraIcon icon={docseraIcons.settings} size={14} />;
@@ -397,7 +409,9 @@ function PageTreeNode({
   onInlineCreateTitleChange,
   onSelectPage,
   onMovePage,
+  onRequestDeletePage,
   onShowChildPageCreate,
+  onShowPageContextMenu,
   onToggleCollapsed,
   onTogglePageSettings,
   page,
@@ -424,6 +438,7 @@ function PageTreeNode({
   const isExpanded = hasChildren ? !collapsedPageIds.has(page.id) || mustStayExpanded : false;
   const showChildCreateButton = canCreatePage && hasChildren;
   const showSettingsButton = canManagePageSettings;
+  const hasContextMenuActions = canCreatePage || canManagePageSettings;
   const actionCount = [showChildCreateButton, showSettingsButton].filter(Boolean).length;
   const canMovePage = Boolean(onMovePage && canManagePageSettings);
   const activeDropAnchor = dropPreview?.presentationAnchor ?? null;
@@ -453,6 +468,27 @@ function PageTreeNode({
     }
   }
 
+  function openContextMenu(input: {
+    clientX: number;
+    clientY: number;
+    currentTarget: EventTarget | null;
+    preventDefault: () => void;
+    stopPropagation: () => void;
+  }) {
+    if (!hasContextMenuActions || !(input.currentTarget instanceof HTMLElement)) {
+      return;
+    }
+
+    input.preventDefault();
+    input.stopPropagation();
+    onShowPageContextMenu({
+      origin: input.currentTarget,
+      page,
+      x: input.clientX,
+      y: input.clientY
+    });
+  }
+
   return (
     <li
       className={`docsera-page-tree__item${isDropBeforeTarget && !isRootBeforeEdge ? " docsera-page-tree__item--drop-before" : ""}${
@@ -473,6 +509,7 @@ function PageTreeNode({
         data-docsera-page-id={page.id}
         data-docsera-page-tree-depth={depth}
         draggable={canMovePage}
+        onContextMenu={openContextMenu}
         onDragEnd={canMovePage ? onDragEnd : undefined}
         onDragStart={
           canMovePage
@@ -488,6 +525,20 @@ function PageTreeNode({
           type="button"
           className="docsera-page-tree__button"
           onClick={handleRowClick}
+          onKeyDown={(event) => {
+            if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) {
+              return;
+            }
+
+            const rect = event.currentTarget.getBoundingClientRect();
+            openContextMenu({
+              clientX: rect.left + Math.min(32, Math.max(0, rect.width / 2)),
+              clientY: rect.top + Math.min(24, Math.max(0, rect.height)),
+              currentTarget: event.currentTarget,
+              preventDefault: () => event.preventDefault(),
+              stopPropagation: () => event.stopPropagation()
+            });
+          }}
           aria-current={isSelected ? "page" : undefined}
           aria-expanded={hasChildren ? isExpanded : undefined}
           title={page.title}
@@ -552,8 +603,10 @@ function PageTreeNode({
               onInlineCreateTitleChange={onInlineCreateTitleChange}
               onSelectPage={onSelectPage}
               onMovePage={onMovePage}
+              onRequestDeletePage={onRequestDeletePage}
               onShowChildPageCreate={onShowChildPageCreate}
               onShowCreatePage={() => undefined}
+              onShowPageContextMenu={onShowPageContextMenu}
               onToggleCollapsed={onToggleCollapsed}
               onTogglePageSettings={onTogglePageSettings}
               page={child}
@@ -599,6 +652,7 @@ export function PageTree({
   onInlineCreateTitleChange,
   onSelectPage,
   onMovePage,
+  onRequestDeletePage,
   onShowCreatePage,
   onShowChildPageCreate,
   onTogglePageSettings,
@@ -613,6 +667,8 @@ export function PageTree({
   const [localCollapsedPageIds, setLocalCollapsedPageIds] = useState<Set<string>>(() => new Set(collapsedPageIds));
   const [draggedPageId, setDraggedPageId] = useState("");
   const [dropPreview, setDropPreview] = useState<PageTreeDropPreviewState | null>(null);
+  const [contextMenu, setContextMenu] = useState<PageTreeContextMenuState | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const draggedPageIdRef = useRef("");
   const effectiveCollapsedPageIds = useMemo(() => new Set(collapsedPageIds), [collapsedPageIds]);
   const visiblePages = useMemo(() => pages.filter((page) => matchesTreeFilter(page, filterText)), [filterText, pages]);
@@ -654,6 +710,82 @@ export function PageTree({
     pagesById,
     pagesByParent
   };
+
+  const contextMenuActions = useMemo(() => {
+    const actions: PageTreeContextMenuAction[] = [];
+    if (canCreatePage && !isCreatingPage) {
+      actions.push("add-child");
+    }
+    if (canManagePageSettings) {
+      actions.push("settings", "delete");
+    }
+    return actions;
+  }, [canCreatePage, canManagePageSettings, isCreatingPage]);
+
+  useEffect(() => {
+    if (!contextMenu) {
+      return;
+    }
+
+    const firstItem = menuRef.current?.querySelector<HTMLButtonElement>("[role='menuitem']");
+    firstItem?.focus();
+  }, [contextMenu]);
+
+  useEffect(() => {
+    if (!contextMenu) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) {
+        return;
+      }
+
+      setContextMenu(null);
+    }
+
+    window.addEventListener("pointerdown", handlePointerDown, true);
+    return () => window.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [contextMenu]);
+
+  function closeContextMenu(options: { restoreFocus?: boolean } = {}) {
+    const origin = contextMenu?.origin ?? null;
+    setContextMenu(null);
+    if (options.restoreFocus) {
+      window.setTimeout(() => origin?.focus(), 0);
+    }
+  }
+
+  function activateContextMenuAction(action: PageTreeContextMenuAction) {
+    const target = contextMenu?.page;
+    if (!target) {
+      return;
+    }
+
+    setContextMenu(null);
+    if (action === "add-child") {
+      onShowChildPageCreate(target.id, target.title);
+      return;
+    }
+    if (action === "settings") {
+      onTogglePageSettings(target.id);
+      return;
+    }
+    onRequestDeletePage(target.id);
+  }
+
+  function focusMenuItem(offset: number) {
+    const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitem']") ?? [])];
+    const currentIndex = items.findIndex((item) => item === document.activeElement);
+    const nextIndex = currentIndex < 0 ? 0 : (currentIndex + offset + items.length) % items.length;
+    items[nextIndex]?.focus();
+  }
+
+  function focusMenuBoundary(position: "first" | "last") {
+    const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>("[role='menuitem']") ?? [])];
+    const nextItem = position === "first" ? items[0] : items[items.length - 1];
+    nextItem?.focus();
+  }
 
   function toggleCollapsed(pageId: string) {
     const next = new Set(localCollapsedPageIds);
@@ -786,7 +918,81 @@ export function PageTree({
     };
   }, [canMovePage, dragSurfaceRef, treeViewportRef]);
 
+  const contextMenuElement =
+    contextMenu && contextMenuActions.length > 0
+      ? createPortal(
+          <div
+            ref={menuRef}
+            className="docsera-page-tree__context-menu"
+            role="menu"
+            aria-label={`Page actions for ${contextMenu.page.title}`}
+            style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                closeContextMenu({ restoreFocus: true });
+              } else if (event.key === "ArrowDown") {
+                event.preventDefault();
+                focusMenuItem(1);
+              } else if (event.key === "ArrowUp") {
+                event.preventDefault();
+                focusMenuItem(-1);
+              } else if (event.key === "Home") {
+                event.preventDefault();
+                focusMenuBoundary("first");
+              } else if (event.key === "End") {
+                event.preventDefault();
+                focusMenuBoundary("last");
+              } else if (event.key === "Enter" || event.key === " ") {
+                const action = event.target instanceof HTMLElement ? event.target.dataset.docseraPageTreeMenuAction : "";
+                if (action === "add-child" || action === "settings" || action === "delete") {
+                  event.preventDefault();
+                  activateContextMenuAction(action);
+                }
+              }
+            }}
+          >
+            {contextMenuActions.includes("add-child") ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="docsera-page-tree__context-menu-item"
+                data-docsera-page-tree-menu-action="add-child"
+                onClick={() => activateContextMenuAction("add-child")}
+              >
+                Add child page
+              </button>
+            ) : null}
+            {contextMenuActions.includes("settings") ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="docsera-page-tree__context-menu-item"
+                data-docsera-page-tree-menu-action="settings"
+                onClick={() => activateContextMenuAction("settings")}
+              >
+                Page Settings
+              </button>
+            ) : null}
+            {contextMenuActions.includes("delete") ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="docsera-page-tree__context-menu-item docsera-page-tree__context-menu-item--destructive"
+                data-docsera-page-tree-menu-action="delete"
+                onClick={() => activateContextMenuAction("delete")}
+              >
+                Delete page
+              </button>
+            ) : null}
+          </div>,
+          document.body
+        )
+      : null;
+
   return (
+    <>
     <div
       className="docsera-page-tree__list"
       onDragLeave={!dragSurfaceRef && canMovePage ? clearDropDestination : undefined}
@@ -868,8 +1074,15 @@ export function PageTree({
             onInlineCreateTitleChange={onInlineCreateTitleChange}
             onSelectPage={onSelectPage}
             onMovePage={onMovePage}
+            onRequestDeletePage={onRequestDeletePage}
             onShowChildPageCreate={onShowChildPageCreate}
             onShowCreatePage={onShowCreatePage}
+            onShowPageContextMenu={(input) => {
+              if (!contextMenuActions.length) {
+                return;
+              }
+              setContextMenu(input);
+            }}
             onToggleCollapsed={toggleCollapsed}
             onTogglePageSettings={onTogglePageSettings}
             page={page}
@@ -910,5 +1123,7 @@ export function PageTree({
         ) : null}
       </ul>
     </div>
+    {contextMenuElement}
+    </>
   );
 }
