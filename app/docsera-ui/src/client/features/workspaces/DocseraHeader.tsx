@@ -573,7 +573,7 @@ export function DocseraHeader({
 
   return (
     <header
-      className={`docsera-header${mode === "workspace" && sidebarCollapsed ? " docsera-header--sidebar-collapsed" : ""}`}
+      className={`docsera-header${mode === "workspace" && showWorkspaceMode === "live" ? " docsera-header--live" : ""}${mode === "workspace" && sidebarCollapsed ? " docsera-header--sidebar-collapsed" : ""}`}
       style={mode === "workspace" && workspaceNavWidth ? ({ "--docsera-workspace-nav-width": `${workspaceNavWidth}px` } as CSSProperties) : undefined}
     >
       <div className="docsera-header__workspace">

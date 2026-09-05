@@ -285,6 +285,23 @@ function renderApp(path: string, clientOverrides: Partial<ServiceNowClient> = {}
 }
 
 describe("App workspace shell integration", () => {
+  it("renders the header as a sibling outside the body scroll container without inline reserve styles", () => {
+    renderApp("/?workspace=product-docs&page=overview");
+
+    const app = document.querySelector<HTMLElement>(".docsera-app");
+    const header = document.querySelector<HTMLElement>(".docsera-header");
+    const body = document.querySelector<HTMLElement>(".docsera-app__body");
+
+    expect(app).toBeInTheDocument();
+    expect(header).toBeInTheDocument();
+    expect(body).toBeInTheDocument();
+    expect(app?.children[0]).toBe(header);
+    expect(app?.children[1]).toBe(body);
+    expect(header?.parentElement).toBe(app);
+    expect(body?.parentElement).toBe(app);
+    expect(app?.style.getPropertyValue("--docsera-document-scrollbar-reserve")).toBe("");
+  });
+
   beforeEach(() => {
     window.localStorage.clear();
   });

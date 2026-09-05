@@ -30,7 +30,7 @@ test("keeps launcher background ownership explicit without changing workspace ba
   expect(css).not.toMatch(/\.docsera-shell\s*\{[^}]*min-height:\s*100vh;/s);
   expect(css).toContain(".docsera-workspace {");
   expect(css).toContain("background: var(--docsera-workspace-bg, var(--docsera-surface));");
-  expect(css).toContain("--docsera-workspace-heading-scroll-margin: calc(var(--docsera-header-height) + 16px);");
+  expect(css).toContain("--docsera-workspace-heading-scroll-margin: 16px;");
   expect(css).toContain("--docsera-workspace-toc-top-gap: 8px;");
   expect(css).toContain("--docsera-editor-block-gutter-width: 69px;");
   expect(css).toContain("align-items: stretch;");
@@ -38,9 +38,9 @@ test("keeps launcher background ownership explicit without changing workspace ba
   expect(css).toContain("display: flex;");
   expect(css).toMatch(/\.docsera-workspace__aside\s*{[^}]*border-left:\s*1px solid var\(--docsera-border\);/s);
   expect(css).toContain(".docsera-toc-rail {");
-  expect(css).toMatch(/\.docsera-toc-rail\s*{[^}]*align-self:\s*flex-start;[^}]*height:\s*calc\(100vh - var\(--docsera-header-height\) - var\(--docsera-workspace-toc-top-gap\)\);/s);
+  expect(css).toMatch(/\.docsera-toc-rail\s*{[^}]*align-self:\s*flex-start;[^}]*height:\s*calc\(100dvh - var\(--docsera-header-height\) - var\(--docsera-workspace-toc-top-gap\)\);/s);
   expect(css).not.toMatch(/\.docsera-toc-rail\s*{[^}]*height:\s*100%;/s);
-  expect(css).toContain("top: calc(var(--docsera-header-height) + var(--docsera-workspace-toc-top-gap));");
+  expect(css).toContain("top: var(--docsera-workspace-toc-top-gap);");
   expect(css).toMatch(/\.docsera-toc-rail__body\s*{[^}]*height:\s*100%;[^}]*min-height:\s*0;/s);
   expect(css).not.toMatch(/\.docsera-toc-rail__body\s*{[^}]*border-left:/s);
   expect(css).toContain(".docsera-main__body-heading,");
@@ -61,6 +61,29 @@ test("keeps the same main-surface anchor contract when the ToC auto-hides at the
   expect(responsive).not.toContain("margin: 0 auto;");
 });
 
+test("keeps vertical scrolling owned by the app body below the full-width header", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+
+  expect(css).toMatch(/html,\s*body\s*{[^}]*height:\s*100%;[^}]*overflow:\s*hidden;/s);
+  expect(css).toMatch(/body\s*{[^}]*background:\s*var\(--docsera-bg\);/s);
+  expect(css).not.toMatch(/html\s*{[^}]*scrollbar-gutter:\s*stable;/s);
+  expect(css).not.toContain("html:has(.docsera-header)");
+  expect(css).toMatch(/\.docsera-app\s*{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*height:\s*100dvh;[^}]*overflow:\s*hidden;/s);
+  expect(css).toMatch(/\.docsera-app__body\s*{[^}]*flex:\s*1 1 auto;[^}]*min-height:\s*0;[^}]*overflow-x:\s*clip;[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;[^}]*scroll-padding-top:\s*var\(--docsera-workspace-heading-scroll-margin\);/s);
+  expect(css).toMatch(/\.docsera-header\s*{[^}]*flex:\s*0 0 auto;[^}]*border-bottom:\s*1px solid var\(--docsera-border\);/s);
+  expect(css).not.toMatch(/\.docsera-header\s*{[^}]*position:\s*sticky;/s);
+  expect(css).not.toMatch(/\.docsera-header\s*{[^}]*margin-inline-end:/s);
+  expect(css).toMatch(/\.docsera-header\s*{[^}]*border-bottom:\s*1px solid var\(--docsera-border\);/s);
+  expect(css).toMatch(/\.docsera-header__bar\s*{[^}]*padding:\s*0 16px;/s);
+  expect(css).not.toMatch(/html:has\(\.docsera-header\) body\s*{[^}]*background:\s*transparent;/s);
+  expect(css).not.toContain(".docsera-header::after");
+  expect(css).not.toContain("100vw - 100%");
+  expect(css).not.toContain("--docsera-document-scrollbar-reserve");
+  expect(css).not.toMatch(/html\s*{[^}]*overflow-y:\s*scroll;/s);
+  expect(css).not.toMatch(/body\s*{[^}]*overflow-y:\s*scroll;/s);
+  expect(css).not.toMatch(/\.docsera-workspace\s*{[^}]*overflow-y:\s*auto;/s);
+});
+
 test("keeps the collapsed workspace ToC tab outside the outer aside clip boundary", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
 
@@ -79,6 +102,8 @@ test("keeps workspace mode controls in the right-side header cluster with matche
   expect(css).not.toMatch(/\.docsera-header__action-slot--mode\s*{[^}]*transform:\s*translate\(-50%, -50%\);/s);
   expect(css).toMatch(/\.docsera-header__action-divider\s*{[^}]*width:\s*1px;[^}]*height:\s*20px;[^}]*background:\s*var\(--docsera-border\);/s);
   expect(css).toMatch(/\.docsera-header__action-divider--mode-surface\s*{[^}]*margin-inline:\s*-2px;/s);
+  expect(css).toMatch(/\.docsera-header__actions::before\s*{[^}]*content:\s*"";[^}]*width:\s*1px;[^}]*height:\s*26px;[^}]*background:\s*var\(--docsera-border\);/s);
+  expect(css).toMatch(/\.docsera-header--live \.docsera-header__actions::before\s*{[^}]*background:\s*transparent;/s);
   expect(css).toMatch(/\.docsera-header__mode-toggle\s*{[^}]*height:\s*32px;[^}]*box-sizing:\s*border-box;/s);
   expect(css).toMatch(/\.docsera-header__surface-toggle\s*{[^}]*height:\s*32px;[^}]*box-sizing:\s*border-box;/s);
   expect(css).toMatch(/\.docsera-header__mode-segment,\s*\.docsera-header__surface-segment\s*{[^}]*height:\s*100%;[^}]*box-sizing:\s*border-box;/s);

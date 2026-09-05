@@ -18,6 +18,15 @@ const baseProps = {
 };
 
 describe("DocseraHeader workspace shell", () => {
+  it("shows the leading action-cluster divider in edit and hides only its paint in live", () => {
+    const editRender = render(<DocseraHeader {...baseProps} showWorkspaceMode="edit" />);
+    expect(editRender.container.querySelector(".docsera-header")).not.toHaveClass("docsera-header--live");
+    editRender.unmount();
+
+    const liveRender = render(<DocseraHeader {...baseProps} showWorkspaceMode="live" />);
+    expect(liveRender.container.querySelector(".docsera-header")).toHaveClass("docsera-header--live");
+  });
+
   it("keeps the persistent workspace label truncated inside the header identity block", () => {
     const longName = "Engineering Platform Documentation Workspace for Release Readiness and Partner Enablement";
 

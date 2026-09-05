@@ -18,7 +18,7 @@
   --docsera-error: #ba1a1a;
   --docsera-toc-surface: #ffffff;
   --docsera-segmented-track: color-mix(in srgb, var(--docsera-surface) 72%, var(--docsera-surface-muted) 28%);
-  --docsera-workspace-heading-scroll-margin: calc(var(--docsera-header-height) + 16px);
+  --docsera-workspace-heading-scroll-margin: 16px;
   --docsera-workspace-toc-top-gap: 8px;
   --docsera-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
   --docsera-header-height: 64px;
@@ -59,18 +59,19 @@
 
 html,
 body {
-  min-height: 100%;
-  scroll-padding-top: var(--docsera-workspace-heading-scroll-margin);
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
 }
 
 #docsera-root {
-  min-height: 100%;
+  width: 100%;
+  height: 100%;
   --docsera-runtime-probe-size: 18px;
 }
 
 body {
   margin: 0;
-  min-height: 100vh;
   background: var(--docsera-bg);
   transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
 }
@@ -110,13 +111,17 @@ svg {
 
 .app-shell,
 .docsera-app {
-  min-height: 100vh;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
 }
 
 .docsera-app {
   display: flex;
   flex-direction: column;
+  height: 100dvh;
   background: var(--docsera-bg);
+  overflow: hidden;
 }
 
 .docsera-app--launcher {
@@ -131,6 +136,11 @@ html[data-docsera-theme="dark"] .docsera-app--launcher {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  overflow-x: clip;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scroll-padding-top: var(--docsera-workspace-heading-scroll-margin);
 }
 
 .docsera-app--launcher .docsera-app__body,
@@ -261,11 +271,11 @@ html[data-docsera-theme="dark"] .docsera-app--launcher .docsera-launcher-screen 
 }
 
 .docsera-app-frame__body {
-  min-height: calc(100vh - var(--docsera-header-height));
+  min-height: 100%;
 }
 
 .docsera-launcher-screen {
-  min-height: 100vh;
+  min-height: 100%;
   background: var(--docsera-surface);
 }
 
@@ -1489,14 +1499,13 @@ html[data-docsera-theme="dark"] .docsera-modal__primary--destructive:hover {
 }
 
 .docsera-header {
-  position: sticky;
-  top: 0;
+  flex: 0 0 auto;
   z-index: 30;
   display: grid;
   grid-template-columns: var(--docsera-workspace-nav-width) minmax(0, 1fr);
   min-height: var(--docsera-header-height);
-  border-bottom: 1px solid var(--docsera-border);
   background: color-mix(in srgb, var(--docsera-surface) 92%, transparent);
+  border-bottom: 1px solid var(--docsera-border);
   backdrop-filter: blur(12px);
 }
 
@@ -1829,6 +1838,10 @@ html[data-docsera-theme="dark"] .docsera-header__bar {
   margin-right: 2px;
   background: var(--docsera-border);
   order: 2;
+}
+
+.docsera-header--live .docsera-header__actions::before {
+  background: transparent;
 }
 
 .docsera-header__action-slot {
@@ -2665,7 +2678,7 @@ html[data-docsera-theme="dark"] .docsera-shell {
   display: grid;
   align-items: stretch;
   grid-template-columns: var(--docsera-workspace-nav-width) minmax(0, 1fr) auto;
-  min-height: calc(100vh - var(--docsera-header-height));
+  min-height: 100%;
 }
 
 .docsera-workspace--sidebar-collapsed {
@@ -3996,10 +4009,10 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 
 .docsera-toc-rail {
   position: sticky;
-  top: calc(var(--docsera-header-height) + var(--docsera-workspace-toc-top-gap));
+  top: var(--docsera-workspace-toc-top-gap);
   align-self: flex-start;
-  height: calc(100vh - var(--docsera-header-height) - var(--docsera-workspace-toc-top-gap));
-  max-height: calc(100vh - var(--docsera-header-height) - var(--docsera-workspace-toc-top-gap));
+  height: calc(100dvh - var(--docsera-header-height) - var(--docsera-workspace-toc-top-gap));
+  max-height: calc(100dvh - var(--docsera-header-height) - var(--docsera-workspace-toc-top-gap));
   width: 100%;
   min-width: 0;
   overflow: visible;
@@ -4086,13 +4099,7 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   height: 100%;
   width: 100%;
   min-width: 0;
-  min-height: calc(100vh - var(--docsera-header-height) - 40px);
-}
-
-.docsera-main,
-.docsera-main__surface,
-.docsera-main__reader {
-  scroll-padding-top: var(--docsera-workspace-heading-scroll-margin);
+  min-height: calc(100dvh - var(--docsera-header-height) - 40px);
 }
 
 .docsera-toc__eyebrow {
