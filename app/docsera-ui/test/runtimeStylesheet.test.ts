@@ -61,6 +61,21 @@ test("keeps the same main-surface anchor contract when the ToC auto-hides at the
   expect(responsive).not.toContain("margin: 0 auto;");
 });
 
+test("keeps Page Settings flex spacing and header divider alignment", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+
+  expect(css).toMatch(
+    /\.docsera-page-settings\s*{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*gap:\s*18px;[^}]*width:\s*min\(432px, calc\(100vw - var\(--docsera-workspace-nav-width\)\)\);[^}]*overflow-x:\s*clip;[^}]*overflow-y:\s*auto;/s
+  );
+  expect(css).toMatch(
+    /\.docsera-page-settings__header\s*{[^}]*flex:\s*0 0 auto;[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*min-height:\s*var\(--docsera-header-height\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-page-settings__header-divider\s*{[^}]*height:\s*1px;[^}]*margin:\s*-18px -20px 0;[^}]*background:\s*var\(--docsera-border\);/s
+  );
+  expect(css).toMatch(/\.docsera-page-settings__rows\s*{[^}]*display:\s*grid;[^}]*gap:\s*14px;[^}]*min-width:\s*0;/s);
+});
+
 test("keeps vertical scrolling owned by the app body below the full-width header", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
 
