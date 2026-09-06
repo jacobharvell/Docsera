@@ -994,6 +994,64 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     expect(changeSetRow()?.fields.change_set_revision).toBe(1);
   });
 
+  it("deletes an Added draft-only page through the delete mutation without creating a removal batch", () => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({
+          pageId: "page-001",
+          draftTitle: "Root",
+          publishedTitle: "Root",
+          siblingOrder: "1"
+        })
+      ]
+    });
+    const service = createService();
+    const liveBefore = expectSucceeded(service.listPages(workspaceRef(), "live")).pages;
+    const created = expectSucceeded(service.createPage({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      parentPageSysId: "page-001",
+      title: "Draft-only child",
+      workspace: workspaceRef()
+    }));
+    const addedPageId = created.result.page.sysId ?? "";
+
+    expect(addedPageId).toBeTruthy();
+    expect(pendingRows(service)).toEqual([
+      expect.objectContaining({
+        category: "Added",
+        pageSysId: addedPageId
+      })
+    ]);
+
+    const deleted = expectSucceeded(service.deletePage({
+      authority: created.authority,
+      pageSysId: addedPageId,
+      workspace: workspaceRef()
+    }));
+
+    expect(deleted.authority).toEqual({ changeSetId: "change-set-001", changeSetRevision: 2 });
+    expect(deleted.result).toEqual({
+      deletedPageSysId: addedPageId,
+      nextPageSysId: "page-001"
+    });
+    expect(expectSucceeded(service.listPages(workspaceRef(), "edit")).pages.map((page) => page.sysId)).toEqual(["page-001"]);
+    expect(expectSucceeded(service.listPages(workspaceRef(), "live")).pages).toEqual(liveBefore);
+    expect(pageRow(addedPageId)).toBeUndefined();
+    expect(getRows(changeEntryTable)).toEqual([]);
+    expect(getRows(removalBatchTable)).toEqual([]);
+    expect(getRows(removalMemberTable)).toEqual([]);
+    expect(changeSetRow()?.fields.change_set_revision).toBe(2);
+    expect(claimRow("change-set-001:1")).toEqual(expect.objectContaining({
+      fields: expect.objectContaining({
+        execution_phase: "finalized",
+        mutation_kind: "delete",
+        target_next_page_sys_id: "page-001",
+        target_page_sys_id: addedPageId,
+        target_removal_batch_key: ""
+      })
+    }));
+  });
+
   it("returns a stale-generation failure when a different mutation kind wins the same generation-pair insert race", () => {
     seedWorkspaceFoundation();
     let seeded = false;

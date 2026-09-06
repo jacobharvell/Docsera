@@ -2592,6 +2592,31 @@ function advanceRecoveredRemovalState(state: WorkspaceChangeSetState, batchKey: 
   return next;
 }
 
+function advanceRecoveredAddedDraftRemovalState(state: WorkspaceChangeSetState, memberPageIds: string[]): WorkspaceChangeSetState {
+  const removedIds = new Set(memberPageIds.map((pageId) => cleanText(pageId)).filter(Boolean));
+  const next: WorkspaceChangeSetState = {
+    ...state,
+    selectors: { ...state.selectors },
+    changeSets: state.changeSets.map((changeSet) => ({ ...changeSet })),
+    snapshotSets: state.snapshotSets.map((snapshot) => ({ ...snapshot, pages: snapshot.pages.map((page) => ({ ...page })) })),
+    draftPages: state.draftPages.map((draftPage) => ({ ...draftPage })),
+    entries: state.entries.map((entry) => ({ ...entry })),
+    removalBatches: state.removalBatches.map((batch) => ({
+      ...batch,
+      members: batch.members.map((member) => ({ ...member }))
+    })),
+    commands: state.commands.map((command) => ({ ...command, result: { ...command.result } }))
+  };
+  const activeChangeSet = next.changeSets.find((changeSet) => changeSet.id === next.selectors.activeChangeSetId && changeSet.state === "active");
+  if (!activeChangeSet || removedIds.size === 0) {
+    throw new Error("Recovered Added draft removal state is invalid.");
+  }
+  next.draftPages = next.draftPages.filter((draftPage) => !removedIds.has(draftPage.pageId));
+  next.entries = next.entries.filter((entry) => !(entry.changeSetId === activeChangeSet.id && removedIds.has(entry.pageId)));
+  activeChangeSet.revision += 1;
+  return next;
+}
+
 export function createServiceNowWorkspaceChangeSetPersistenceService(
   overrides: Partial<WorkspaceChangeSetPersistenceDependencies> = {}
 ) {
@@ -3285,17 +3310,22 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
           if (!memberPageIds.length) {
             return { kind: "failed", errorMessage: "Page could not be found.", status: 404 };
           }
+          const targetCategory = deriveChangeCategory(loaded.state, pageId);
           const addedIds = new Set(loaded.state.draftPages.filter((page) => !page.hasPublishedIdentity).map((page) => page.pageId));
-          if (memberPageIds.some((memberPageId) => addedIds.has(memberPageId))) {
+          const containsAddedDescendant = memberPageIds.some((memberPageId) => memberPageId !== pageId && addedIds.has(memberPageId));
+          if (targetCategory !== "Added" && containsAddedDescendant) {
             return {
               kind: "failed",
               code: "unsupported",
-              errorMessage: "Removing Added draft-only pages is not supported yet.",
+              errorMessage: "Removing published subtrees with Added draft-only descendants is not supported yet.",
               status: 400
             };
           }
           nextPageSysId = pickNextVisiblePageAfterDelete(editProjection.pages, pageId);
         }
+        const deletesAddedDraftOnlyPage = !loaded.state.snapshotSets
+          .find((snapshot) => snapshot.id === loaded.state.selectors.publishedSnapshotSetId && snapshot.workspaceId === loaded.state.selectors.workspaceId)
+          ?.pages.some((page) => page.pageId === pageId);
         let claim = existingClaim ?? {
           sysId: "",
           workspaceId: cleanText(loaded.workspace.sysId),
@@ -3321,7 +3351,7 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
           },
           targetNextPageSysId: nextPageSysId,
           targetPageSysId: pageId,
-          targetRemovalBatchKey: `${input.authority.changeSetId}:${input.authority.changeSetRevision}:${pageId}`
+          targetRemovalBatchKey: deletesAddedDraftOnlyPage ? undefined : `${input.authority.changeSetId}:${input.authority.changeSetRevision}:${pageId}`
         };
         const acquired = acquireMutationClaim(dependencies, loaded.state, claim);
         if (acquired.kind === "failed") {
@@ -3338,23 +3368,45 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
         const executorKey = acquired.executorKey;
         if (claim.phase === "claimed") {
           claim = requireClaimOwner(claim, executorKey);
-          const existingBatch = loaded.state.removalBatches.find((batch) => batch.id === claim.targetRemovalBatchKey);
+          const existingBatch = claim.targetRemovalBatchKey
+            ? loaded.state.removalBatches.find((batch) => batch.id === claim.targetRemovalBatchKey)
+            : null;
           if (!existingBatch) {
             const changedOn = dependencies.currentTimestamp();
-            const changed = createRemovalBatch(loaded.state, {
-              expectedChangeSetId: input.authority.changeSetId,
-              expectedChangeSetRevision: input.authority.changeSetRevision
-            }, {
-              batchId: claim.targetRemovalBatchKey ?? "",
-              rootPageId: pageId,
-              memberPageIds,
-              actorId: dependencies.currentUserSysId(),
-              changedOn
-            });
+            const changed = claim.targetRemovalBatchKey
+              ? createRemovalBatch(loaded.state, {
+                  expectedChangeSetId: input.authority.changeSetId,
+                  expectedChangeSetRevision: input.authority.changeSetRevision
+                }, {
+                  batchId: claim.targetRemovalBatchKey,
+                  rootPageId: pageId,
+                  memberPageIds,
+                  actorId: dependencies.currentUserSysId(),
+                  changedOn
+                })
+              : discardPageChanges(loaded.state, {
+                  expectedChangeSetId: input.authority.changeSetId,
+                  expectedChangeSetRevision: input.authority.changeSetRevision
+                }, {
+                  actorId: dependencies.currentUserSysId(),
+                  changedOn,
+                  pageId,
+                  targetAffectedPageIds: memberPageIds,
+                  targetCategory: "Added"
+                });
             if (changed.kind !== "applied") {
-              return staleFailure(changed.current);
+              return changed.kind === "stale"
+                ? staleFailure(changed.current)
+                : { kind: "failed", code: "invalid", errorMessage: changed.reason, status: 400 };
             }
-            replaceRemovalBatches(changed.state);
+            if (claim.targetRemovalBatchKey) {
+              replaceRemovalBatches(changed.state);
+            } else {
+              for (const memberPageId of memberPageIds) {
+                upsertChangeEntry(changed.state, memberPageId);
+              }
+              deleteDraftPageRecords(memberPageIds);
+            }
             claim = persistClaimProgress(dependencies, claim, {
               appliedOn: changedOn,
               phase: "removal_persisted"
@@ -3395,10 +3447,9 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
         }
         if (!resultAuthority) {
           claim = requireClaimOwner(claim, executorKey);
-          if (!claim.targetRemovalBatchKey) {
-            throw new Error("Recovered removal batch could not be loaded.");
-          }
-          const nextState = advanceRecoveredRemovalState(recovered.state, claim.targetRemovalBatchKey);
+          const nextState = claim.targetRemovalBatchKey
+            ? advanceRecoveredRemovalState(recovered.state, claim.targetRemovalBatchKey)
+            : advanceRecoveredAddedDraftRemovalState(recovered.state, memberPageIds);
           const persistedResult = {
             deletedPageSysId: pageId,
             nextPageSysId: cleanText(claim.targetNextPageSysId)

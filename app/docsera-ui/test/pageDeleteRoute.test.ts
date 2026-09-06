@@ -208,6 +208,53 @@ describe("page delete action route", () => {
     });
   });
 
+  it("returns success for Added draft-only page deletion instead of unsupported", async () => {
+    const deletePage = vi.fn(() => ({
+      authority: {
+        changeSetId: "change-set-001",
+        changeSetRevision: 10
+      },
+      kind: "succeeded" as const,
+      result: {
+        deletedPageSysId: "added-draft-page",
+        nextPageSysId: "page-001"
+      }
+    }));
+    vi.mocked(createServiceNowWorkspaceChangeSetPersistenceService).mockReturnValue({
+      deletePage,
+      listPages: vi.fn()
+    } as never);
+
+    const response = createResponseRecorder();
+
+    await processDeletePageAction(
+      {
+        body: {
+          data: {
+            workspaceSlug: "product-docs",
+            workspaceSysId: "workspace-001",
+            pageSysId: "added-draft-page",
+            workspaceLeaseToken: "workspace-lease-token",
+            expectedChangeSetId: "change-set-001",
+            expectedChangeSetRevision: 9
+          }
+        }
+      },
+      response
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      result: {
+        changeSetId: "change-set-001",
+        changeSetRevision: 10,
+        mode: "servicenow",
+        deletedPageSysId: "added-draft-page",
+        nextPageSysId: "page-001"
+      }
+    });
+  });
+
   it("returns the workspace lease failure before calling the delete service", async () => {
     const deletePage = vi.fn();
     vi.mocked(createServiceNowWorkspaceChangeSetPersistenceService).mockReturnValue({
