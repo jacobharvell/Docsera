@@ -46,6 +46,7 @@ export const testSuites = [
     description: "settings panel; title and slug editing; dismissal; validation; deletion entry points.",
     files: [
       "src/client/app/App.pageSettings.test.tsx",
+      "src/client/features/workspaces/PageSettingsDeleteDialog.test.tsx",
       "src/server/pages/serviceNowPageSettings.test.ts",
       "src/server/pages/serverPageDomain.test.ts",
       "src/shared/pages/domain.test.ts",

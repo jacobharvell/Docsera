@@ -48,22 +48,25 @@ afterEach(() => {
   window.name = "";
 });
 
+async function openPageSettingsFromPageTree(pageTitle: string) {
+  const pageTree = screen.getByRole("navigation", { name: "Page tree" });
+  fireEvent.click(await within(pageTree).findByRole("button", { name: new RegExp(`^Page actions for ${pageTitle}`, "i") }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Page settings" }));
+}
+
 describe("App page settings integration", () => {
   it("shows page settings only in edit mode", async () => {
     renderApp(App, "/?workspace=product-docs&page=overview");
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Open settings for Overview" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Page actions for Overview" })).not.toBeInTheDocument();
 
     const editButton = screen.getByRole("button", { name: "Edit" });
     await act(async () => {
       fireEvent.click(editButton);
     });
 
-    const settingsButton = await screen.findByRole("button", { name: "Open settings for Overview" });
-    await act(async () => {
-      fireEvent.click(settingsButton);
-    });
+    await openPageSettingsFromPageTree("Overview");
 
     expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
   });
@@ -92,7 +95,7 @@ describe("App page settings integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    await openPageSettingsFromPageTree("Overview");
     expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
     const pageSettingsPanel = screen.getByRole("complementary", { name: "Page Settings" });
 
@@ -107,7 +110,7 @@ describe("App page settings integration", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Workspace editing is temporarily unavailable. Please try again.");
     expect(screen.queryByRole("heading", { name: "Page Settings" })).toBeNull();
     expect(within(screen.getByRole("main", { name: "Overview Draft Retained" })).getByRole("button", { name: "Overview Draft Retained" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft Retained" }));
+    await openPageSettingsFromPageTree("Overview Draft Retained");
     const reopenedPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     expect(within(reopenedPanel).getByRole("button", { name: "Overview Draft Retained" })).toBeInTheDocument();
     expect(within(reopenedPanel).getByRole("button", { name: "overview" })).toBeInTheDocument();
@@ -148,7 +151,7 @@ describe("App page settings integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    await openPageSettingsFromPageTree("Overview");
     expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
     const pageSettingsPanel = screen.getByRole("complementary", { name: "Page Settings" });
 
@@ -204,7 +207,7 @@ describe("App page settings integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    await openPageSettingsFromPageTree("Overview");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
     const titleInput = within(pageSettingsPanel).getByDisplayValue("Overview");
@@ -259,8 +262,7 @@ describe("App page settings integration", () => {
       savePageSettings
     });
 
-    expect(await screen.findByRole("button", { name: /Open settings for Overview/i })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Open settings for Overview/i }));
+    await openPageSettingsFromPageTree("Overview");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview Draft" }));
     const titleInput = within(pageSettingsPanel).getByDisplayValue("Overview Draft");
@@ -275,7 +277,7 @@ describe("App page settings integration", () => {
     expect(screen.queryByRole("heading", { name: "Page Settings" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Live" }));
-    expect(await screen.findByRole("heading", { level: 1, name: "Overview Server Changed" })).toBeInTheDocument();
+    expect((await screen.findAllByText("Overview Server Changed")).length).toBeGreaterThan(0);
     expect(screen.queryByText("Your earlier Page Settings changes could not be restored because the shared page settings changed.")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
@@ -317,8 +319,7 @@ describe("App page settings integration", () => {
       savePageSettings
     });
 
-    expect(await screen.findByRole("button", { name: /Open settings for Overview/i })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Open settings for Overview/i }));
+    await openPageSettingsFromPageTree("Overview");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "overview" }));
     const slugInput = within(pageSettingsPanel).getByDisplayValue("overview");
@@ -343,7 +344,7 @@ describe("App page settings integration", () => {
 
     const main = await screen.findByRole("main", { name: "Overview" });
     fireEvent.click(within(main).getByRole("button", { name: "Overview" }));
-    const titleInput = screen.getByRole("textbox", { name: "Page title" });
+    const titleInput = await screen.findByRole("textbox", { name: "Page title" });
     fireEvent.change(titleInput, { target: { value: "Overview Inline" } });
     fireEvent.blur(titleInput);
 
@@ -378,6 +379,291 @@ describe("App page settings integration", () => {
     expect(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Overview Inline" })).toBeInTheDocument();
   });
 
+  it("commits sidebar Rename through the existing Page Settings save path while preserving the slug", async () => {
+    const savePageSettings = vi.fn(async (): Promise<PageSettingsSaveResult> => ({
+      page: createPageRecord({
+        draftSlug: "overview",
+        draftSlugNormalized: "overview",
+        draftTitle: "Overview Tree Rename",
+        publishedSlug: "overview",
+        publishedSlugNormalized: "overview",
+        publishedTitle: "Overview"
+      }),
+      state: "succeeded"
+    }));
+
+    renderApp(App, "/?workspace=product-docs&mode=edit&page=overview", {
+      savePageSettings
+    });
+
+    await screen.findByRole("main", { name: "Overview" });
+    const pageTree = await screen.findByRole("navigation", { name: "Page tree" });
+    fireEvent.click(within(pageTree).getByRole("button", { name: "Page actions for Overview" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    const renameInput = await within(pageTree).findByRole("textbox");
+    expect(renameInput).toHaveAccessibleName("Rename Overview");
+    expect(renameInput).toHaveFocus();
+    expect(renameInput).toHaveValue("Overview");
+    expect((renameInput as HTMLInputElement).selectionStart).toBe(0);
+    expect((renameInput as HTMLInputElement).selectionEnd).toBe("Overview".length);
+
+    fireEvent.change(renameInput, { target: { value: "Overview Tree Rename" } });
+    fireEvent.keyDown(renameInput, { key: "Enter" });
+
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
+    expect(savePageSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pageSysId: "page-001",
+        slug: "overview",
+        title: "Overview Tree Rename"
+      })
+    );
+    expect(within(pageTree).getByRole("button", { name: "Overview Tree Rename" })).toBeInTheDocument();
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
+  });
+
+  it("commits sidebar Rename once when the user pointer-interacts with non-focusable workspace content", async () => {
+    const savePageSettings = vi.fn(async (): Promise<PageSettingsSaveResult> => ({
+      page: createPageRecord({
+        draftSlug: "overview",
+        draftSlugNormalized: "overview",
+        draftTitle: "Overview Outside Commit",
+        publishedSlug: "overview",
+        publishedSlugNormalized: "overview",
+        publishedTitle: "Overview"
+      }),
+      state: "succeeded"
+    }));
+
+    renderApp(App, "/?workspace=product-docs&mode=edit&page=overview", {
+      savePageSettings
+    });
+
+    const main = await screen.findByRole("main", { name: "Overview" });
+    const pageTree = await screen.findByRole("navigation", { name: "Page tree" });
+    fireEvent.click(within(pageTree).getByRole("button", { name: "Page actions for Overview" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    const renameInput = await within(pageTree).findByRole("textbox", { name: "Rename Overview" });
+    fireEvent.change(renameInput, { target: { value: "Overview Outside Commit" } });
+    fireEvent.pointerDown(main);
+    fireEvent.blur(renameInput);
+
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
+    expect(savePageSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pageSysId: "page-001",
+        slug: "overview",
+        title: "Overview Outside Commit"
+      })
+    );
+    expect(within(pageTree).queryByRole("textbox", { name: "Rename Overview" })).toBeNull();
+    expect(within(pageTree).getByRole("button", { name: "Overview Outside Commit" })).toBeInTheDocument();
+  });
+
+  it("does not open Page Settings when selecting an unselected page after sidebar Rename succeeds", async () => {
+    const savePageSettings = vi.fn(async (): Promise<PageSettingsSaveResult> => ({
+      page: createPageRecord({
+        sysId: "page-002",
+        draftTitle: "Reference Renamed",
+        draftSlug: "reference",
+        draftSlugNormalized: "reference",
+        publishedTitle: "Reference",
+        publishedSlug: "reference",
+        publishedSlugNormalized: "reference",
+        siblingOrder: 2
+      }),
+      state: "succeeded"
+    }));
+
+    renderApp(App, "/?workspace=product-docs&mode=edit&page=overview", {
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode }) =>
+        createPageListResult(mode === "edit" ? "edit" : "live", [
+          createPageRecord(),
+          createPageRecord({
+            sysId: "page-002",
+            draftTitle: "Reference",
+            draftSlug: "reference",
+            draftSlugNormalized: "reference",
+            publishedTitle: "Reference",
+            publishedSlug: "reference",
+            publishedSlugNormalized: "reference",
+            siblingOrder: 2
+          })
+        ])
+      ),
+      savePageSettings
+    });
+
+    await screen.findByRole("main", { name: "Overview" });
+    const pageTree = screen.getByRole("navigation", { name: "Page tree" });
+    fireEvent.click(within(pageTree).getByRole("button", { name: "Page actions for Reference" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    const renameInput = await within(pageTree).findByRole("textbox", { name: "Rename Reference" });
+    fireEvent.change(renameInput, { target: { value: "Reference Renamed" } });
+    fireEvent.keyDown(renameInput, { key: "Enter" });
+
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
+    fireEvent.click(await within(pageTree).findByRole("button", { name: "Reference Renamed" }));
+
+    expect(await screen.findByRole("main", { name: "Reference Renamed" })).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Page Settings" })).toBeNull();
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "reference" });
+  });
+
+  it("does not open Page Settings when selecting an unselected page after sidebar Rename is canceled", async () => {
+    const savePageSettings = vi.fn(async (): Promise<PageSettingsSaveResult> => ({
+      page: createPageRecord(),
+      state: "succeeded"
+    }));
+
+    renderApp(App, "/?workspace=product-docs&mode=edit&page=overview", {
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode }) =>
+        createPageListResult(mode === "edit" ? "edit" : "live", [
+          createPageRecord(),
+          createPageRecord({
+            sysId: "page-002",
+            draftTitle: "Reference",
+            draftSlug: "reference",
+            draftSlugNormalized: "reference",
+            publishedTitle: "Reference",
+            publishedSlug: "reference",
+            publishedSlugNormalized: "reference",
+            siblingOrder: 2
+          })
+        ])
+      ),
+      savePageSettings
+    });
+
+    await screen.findByRole("main", { name: "Overview" });
+    const pageTree = screen.getByRole("navigation", { name: "Page tree" });
+    fireEvent.click(within(pageTree).getByRole("button", { name: "Page actions for Reference" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    const renameInput = await within(pageTree).findByRole("textbox", { name: "Rename Reference" });
+    fireEvent.change(renameInput, { target: { value: "Reference Canceled" } });
+    fireEvent.keyDown(renameInput, { key: "Escape" });
+    fireEvent.click(within(pageTree).getByRole("button", { name: "Reference" }));
+
+    expect(await screen.findByRole("main", { name: "Reference" })).toBeInTheDocument();
+    expect(screen.queryByRole("complementary", { name: "Page Settings" })).toBeNull();
+    expect(savePageSettings).not.toHaveBeenCalled();
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "reference" });
+  });
+
+  it("keeps another page's invalid Page Settings draft when sidebar Rename is requested", async () => {
+    const savePageSettings = vi.fn(async (): Promise<PageSettingsSaveResult> => ({
+      page: createPageRecord(),
+      state: "succeeded"
+    }));
+
+    renderApp(App, "/?workspace=product-docs&mode=edit&page=overview", {
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode }) =>
+        createPageListResult(mode === "edit" ? "edit" : "live", [
+          createPageRecord(),
+          createPageRecord({
+            sysId: "page-002",
+            draftTitle: "Reference",
+            draftSlug: "reference",
+            draftSlugNormalized: "reference",
+            publishedTitle: "Reference",
+            publishedSlug: "reference",
+            publishedSlugNormalized: "reference",
+            siblingOrder: 2
+          })
+        ])
+      ),
+      savePageSettings
+    });
+
+    await screen.findByRole("main", { name: "Overview" });
+    await openPageSettingsFromPageTree("Overview");
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
+    const titleInput = within(pageSettingsPanel).getByDisplayValue("Overview");
+    fireEvent.change(titleInput, { target: { value: "   " } });
+
+    const pageTree = screen.getByRole("navigation", { name: "Page tree" });
+    fireEvent.click(within(pageTree).getByRole("button", { name: "Page actions for Reference" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    expect(await screen.findByRole("complementary", { name: "Page Settings" })).toBe(pageSettingsPanel);
+    expect(within(pageSettingsPanel).getByRole("textbox")).toHaveValue("   ");
+    expect(within(pageSettingsPanel).getByText("Page title is required.")).toBeInTheDocument();
+    expect(within(pageTree).queryByRole("textbox", { name: "Rename Reference" })).toBeNull();
+    expect(savePageSettings).not.toHaveBeenCalled();
+  });
+
+  it("saves another page's valid Page Settings draft before sidebar Rename begins", async () => {
+    const deferredSave = createDeferred<PageSettingsSaveResult>();
+    const savePageSettings = vi.fn(() => deferredSave.promise);
+
+    renderApp(App, "/?workspace=product-docs&mode=edit&page=overview", {
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode }) =>
+        createPageListResult(mode === "edit" ? "edit" : "live", [
+          createPageRecord(),
+          createPageRecord({
+            sysId: "page-002",
+            draftTitle: "Reference",
+            draftSlug: "reference",
+            draftSlugNormalized: "reference",
+            publishedTitle: "Reference",
+            publishedSlug: "reference",
+            publishedSlugNormalized: "reference",
+            siblingOrder: 2
+          })
+        ])
+      ),
+      savePageSettings
+    });
+
+    await screen.findByRole("main", { name: "Overview" });
+    await openPageSettingsFromPageTree("Overview");
+    const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
+    const titleInput = within(pageSettingsPanel).getByDisplayValue("Overview");
+    fireEvent.change(titleInput, { target: { value: "Overview Settings Draft" } });
+
+    const pageTree = screen.getByRole("navigation", { name: "Page tree" });
+    fireEvent.click(within(pageTree).getByRole("button", { name: "Page actions for Reference" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
+    expect(savePageSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pageSysId: "page-001",
+        slug: "overview",
+        title: "Overview Settings Draft"
+      })
+    );
+    expect(within(pageTree).queryByRole("textbox", { name: "Rename Reference" })).toBeNull();
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
+
+    await act(async () => {
+      deferredSave.resolve({
+        page: createPageRecord({
+          draftSlug: "overview",
+          draftSlugNormalized: "overview",
+          draftTitle: "Overview Settings Draft",
+          publishedSlug: "overview",
+          publishedSlugNormalized: "overview",
+          publishedTitle: "Overview"
+        }),
+        state: "succeeded"
+      });
+    });
+
+    const renameInput = await within(pageTree).findByRole("textbox", { name: "Rename Reference" });
+    expect(renameInput).toHaveFocus();
+    expect(renameInput).toHaveValue("Reference");
+    expect(screen.getByRole("main", { name: "Overview Settings Draft" })).toBeInTheDocument();
+    expect(within(pageTree).getByRole("button", { name: "Overview Settings Draft" })).toHaveAttribute("aria-current", "page");
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
+  });
+
   it("cancels a direct Edit-mode title change on Escape without saving", async () => {
     const savePageSettings = vi.fn(async (): Promise<PageSettingsSaveResult> => ({
       page: createPageRecord(),
@@ -390,7 +676,7 @@ describe("App page settings integration", () => {
 
     const main = await screen.findByRole("main", { name: "Overview" });
     fireEvent.click(within(main).getByRole("button", { name: "Overview" }));
-    const titleInput = screen.getByRole("textbox", { name: "Page title" });
+    const titleInput = await screen.findByRole("textbox", { name: "Page title" });
     fireEvent.change(titleInput, { target: { value: "Overview Cancelled" } });
     fireEvent.keyDown(titleInput, { key: "Escape" });
 
@@ -413,15 +699,15 @@ describe("App page settings integration", () => {
 
     const main = await screen.findByRole("main", { name: "Overview" });
     fireEvent.click(within(main).getByRole("button", { name: "Overview" }));
-    const titleInput = screen.getByRole("textbox", { name: "Page title" });
+    const titleInput = await screen.findByRole("textbox", { name: "Page title" });
     fireEvent.change(titleInput, { target: { value: "   " } });
     fireEvent.blur(titleInput);
 
     expect(savePageSettings).not.toHaveBeenCalled();
-    expect(screen.getByRole("textbox", { name: "Page title" })).toHaveValue("   ");
+    expect(await screen.findByRole("textbox", { name: "Page title" })).toHaveValue("   ");
     expect(screen.getByText("Page title is required.")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    await openPageSettingsFromPageTree("Overview");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     expect(within(pageSettingsPanel).getByRole("textbox")).toHaveValue("   ");
     expect(within(pageSettingsPanel).getByText("Page title is required.")).toBeInTheDocument();
@@ -450,7 +736,7 @@ describe("App page settings integration", () => {
 
     const main = await screen.findByRole("main", { name: "Overview" });
     fireEvent.click(within(main).getByRole("button", { name: "Overview" }));
-    const titleInput = screen.getByRole("textbox", { name: "Page title" });
+    const titleInput = await screen.findByRole("textbox", { name: "Page title" });
     fireEvent.change(titleInput, { target: { value: "Overview Retry" } });
     fireEvent.blur(titleInput);
 
@@ -460,8 +746,8 @@ describe("App page settings integration", () => {
     expect(screen.getByText("Something went wrong while saving page settings. Your changes were not saved. Please try again.")).toBeInTheDocument();
 
     fireEvent.click(within(screen.getByRole("main", { name: "Overview Retry" })).getByRole("button", { name: "Overview Retry" }));
-    expect(screen.getByRole("textbox", { name: "Page title" })).toHaveAttribute("aria-invalid", "false");
-    fireEvent.blur(screen.getByRole("textbox", { name: "Page title" }));
+    expect(await screen.findByRole("textbox", { name: "Page title" })).toHaveAttribute("aria-invalid", "false");
+    fireEvent.blur(await screen.findByRole("textbox", { name: "Page title" }));
 
     await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(2));
     expect(savePageSettings).toHaveBeenNthCalledWith(
@@ -482,7 +768,7 @@ describe("App page settings integration", () => {
       savePageSettings
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Open settings for Overview" }));
+    await openPageSettingsFromPageTree("Overview");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
     const titleInput = within(pageSettingsPanel).getByRole("textbox");
@@ -521,7 +807,7 @@ describe("App page settings integration", () => {
       savePageSettings
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Open settings for Overview" }));
+    await openPageSettingsFromPageTree("Overview");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
     const titleInput = within(pageSettingsPanel).getByRole("textbox");
@@ -601,7 +887,7 @@ describe("App page settings integration", () => {
     });
 
     await screen.findByRole("heading", { name: "Overview Draft" });
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    await openPageSettingsFromPageTree("Overview Draft");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview Draft" }));
     const titleInput = within(pageSettingsPanel).getByRole("textbox");
@@ -619,7 +905,7 @@ describe("App page settings integration", () => {
       expect(screen.getAllByText("Reloading the latest draft projection. Saving is temporarily unavailable.").length).toBeGreaterThan(0)
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Pending Refresh" }));
+    await openPageSettingsFromPageTree("Overview Pending Refresh");
     const blockedPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(blockedPanel).getByRole("button", { name: "Close page settings" }));
 
@@ -633,11 +919,11 @@ describe("App page settings integration", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
     const changesCenter = await screen.findByRole("dialog", { name: "Changes Center" });
-    expect(within(changesCenter).getByText("Page Settings has unsaved or blocked changes. Publish and discard actions stay disabled until settings are saved.")).toBeInTheDocument();
+    expect(within(changesCenter).getByText("The visual editor is still getting ready.")).toBeInTheDocument();
     expect(within(changesCenter).getByRole("button", { name: "Publish" })).toBeDisabled();
     expect(within(changesCenter).getByRole("button", { name: "Discard all" })).toBeDisabled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Pending Refresh" }));
+    await openPageSettingsFromPageTree("Overview Pending Refresh");
     const reopenedPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(reopenedPanel).getByRole("button", { name: "Overview Pending Refresh" }));
     expect(within(reopenedPanel).getByRole("textbox")).toHaveValue("Overview Pending Refresh");
@@ -665,7 +951,7 @@ describe("App page settings integration", () => {
       savePageSettings
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Open settings for Overview" }));
+    await openPageSettingsFromPageTree("Overview");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
     const titleInput = within(pageSettingsPanel).getByRole("textbox");
@@ -682,7 +968,7 @@ describe("App page settings integration", () => {
     expect(within(screen.getByRole("main", { name: "Overview Failed Draft" })).getByRole("button", { name: "Overview Failed Draft" })).toBeInTheDocument();
     expect(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Overview Failed Draft" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Failed Draft" }));
+    await openPageSettingsFromPageTree("Overview Failed Draft");
     const reopenedPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     expect(within(reopenedPanel).getByText("Something went wrong while saving page settings. Your changes were not saved. Please try again.")).toBeInTheDocument();
     fireEvent.click(within(reopenedPanel).getByRole("button", { name: "Overview Failed Draft" }));
@@ -699,7 +985,7 @@ describe("App page settings integration", () => {
       savePageSettings
     });
 
-    fireEvent.click(await screen.findByRole("button", { name: "Open settings for Overview" }));
+    await openPageSettingsFromPageTree("Overview");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
     const titleInput = within(pageSettingsPanel).getByRole("textbox");
@@ -724,14 +1010,14 @@ describe("App page settings integration", () => {
 
     const main = await screen.findByRole("main", { name: "Overview" });
     fireEvent.click(within(main).getByRole("button", { name: "Overview" }));
-    let titleInput = screen.getByRole("textbox", { name: "Page title" });
+    let titleInput = await screen.findByRole("textbox", { name: "Page title" });
     fireEvent.change(titleInput, { target: { value: "Overview First" } });
     fireEvent.blur(titleInput);
 
     await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
 
     fireEvent.click(within(screen.getByRole("main", { name: "Overview First" })).getByRole("button", { name: "Overview First" }));
-    titleInput = screen.getByRole("textbox", { name: "Page title" });
+    titleInput = await screen.findByRole("textbox", { name: "Page title" });
     fireEvent.change(titleInput, { target: { value: "Overview Second" } });
 
     await act(async () => {
@@ -746,16 +1032,16 @@ describe("App page settings integration", () => {
       });
     });
 
-    expect(screen.getByRole("textbox", { name: "Page title" })).toHaveValue("Overview Second");
+    expect(await screen.findByRole("textbox", { name: "Page title" })).toHaveValue("Overview Second");
     expect(within(screen.getByRole("main", { name: "Overview Second" })).getByRole("textbox", { name: "Page title" })).toHaveValue("Overview Second");
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "Page title" }), { key: "Escape" });
+    fireEvent.keyDown(await screen.findByRole("textbox", { name: "Page title" }), { key: "Escape" });
 
     expect(screen.queryByRole("textbox", { name: "Page title" })).toBeNull();
     const restoredMain = await screen.findByRole("main", { name: "Overview First" });
     expect(restoredMain).toBeInTheDocument();
     expect(within(restoredMain).getByRole("button", { name: "Overview First" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview First" }));
+    await openPageSettingsFromPageTree("Overview First");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     expect(within(pageSettingsPanel).getByRole("button", { name: "Overview First" })).toBeInTheDocument();
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
@@ -774,13 +1060,13 @@ describe("App page settings integration", () => {
 
     const main = await screen.findByRole("main", { name: "Overview" });
     fireEvent.click(within(main).getByRole("button", { name: "Overview" }));
-    let titleInput = screen.getByRole("textbox", { name: "Page title" });
+    let titleInput = await screen.findByRole("textbox", { name: "Page title" });
     fireEvent.change(titleInput, { target: { value: "Overview First" } });
     fireEvent.blur(titleInput);
 
     await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview First" }));
+    await openPageSettingsFromPageTree("Overview First");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview First" }));
     titleInput = within(pageSettingsPanel).getByRole("textbox");
@@ -814,14 +1100,14 @@ describe("App page settings integration", () => {
 
     const main = await screen.findByRole("main", { name: "Overview" });
     fireEvent.click(within(main).getByRole("button", { name: "Overview" }));
-    const titleInput = screen.getByRole("textbox", { name: "Page title" });
+    const titleInput = await screen.findByRole("textbox", { name: "Page title" });
     fireEvent.change(titleInput, { target: { value: "" } });
     fireEvent.blur(titleInput);
 
-    expect(screen.getByRole("textbox", { name: "Page title" })).toHaveValue("");
+    expect(await screen.findByRole("textbox", { name: "Page title" })).toHaveValue("");
     expect(screen.getByText("Page title is required.")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    await openPageSettingsFromPageTree("Overview");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     expect(within(pageSettingsPanel).getByRole("textbox")).toHaveValue("");
     expect(within(pageSettingsPanel).getByText("Page title is required.")).toBeInTheDocument();

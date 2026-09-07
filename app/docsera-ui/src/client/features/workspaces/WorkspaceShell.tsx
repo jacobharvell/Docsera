@@ -41,14 +41,20 @@ type WorkspaceShellProps = {
   onSourceInvalidChange?: (state: { errorMessage: string; isInvalid: boolean; isUnavailable: boolean; pageSysId: string }) => void;
   onSourceTitleChange?: (title: string) => void;
   inlineCreateState: InlinePageCreateState | null;
+  inlineRenameErrorMessage: string;
+  inlineRenamePageId: string;
+  inlineRenameValue: string;
   isCreatingPage: boolean;
   mode: WorkspaceMode;
   onAccessLost: () => void;
   onCollapsedPageIdsChange: (pageIds: string[]) => void;
+  onCancelInlineRename: () => void;
   onCommitInlineCreate: () => void;
+  onCommitInlineRename: () => Promise<boolean> | boolean;
   onEditorFailureChange: (failure: PageEditorHostFailure | null) => void;
   onEditorReadyStateChange: (ready: boolean) => void;
   onInlineCreateTitleChange: (value: string) => void;
+  onInlineRenameTitleChange: (value: string) => void;
   onModeChange: (mode: WorkspaceMode) => void;
   onOutlineChange: (pageSysId: string, outline: WorkspacePageOutlineItem[]) => void;
   onPageTitleCancel: () => void;
@@ -76,6 +82,7 @@ type WorkspaceShellProps = {
   onSelectPage: (pageId: string) => void;
   onMovePage?: (input: { pageSysId: string; parentPageSysId: string | null; siblingOrder: string | number }) => void;
   onRequestDeletePage: (pageId: string) => void;
+  onStartInlineRename: (pageId: string) => void;
   onShowChildPageCreate: (parentPageId: string, parentPageTitle: string) => void;
   onShowCreatePage: () => void;
   onTogglePageSettings: (pageId: string) => void;
@@ -178,14 +185,20 @@ export function WorkspaceShell({
   onSourceInvalidChange,
   onSourceTitleChange,
   inlineCreateState,
+  inlineRenameErrorMessage,
+  inlineRenamePageId,
+  inlineRenameValue,
   isCreatingPage,
   mode,
   onAccessLost,
   onCollapsedPageIdsChange,
+  onCancelInlineRename,
   onCommitInlineCreate,
+  onCommitInlineRename,
   onEditorFailureChange,
   onEditorReadyStateChange,
   onInlineCreateTitleChange,
+  onInlineRenameTitleChange,
   onModeChange,
   onOutlineChange,
   onPageTitleCancel,
@@ -201,6 +214,7 @@ export function WorkspaceShell({
   onSelectPage,
   onMovePage,
   onRequestDeletePage,
+  onStartInlineRename,
   onShowChildPageCreate,
   onShowCreatePage,
   onTogglePageSettings,
@@ -332,16 +346,23 @@ export function WorkspaceShell({
               canManagePageSettings={canManagePageSettings}
               collapsedPageIds={collapsedPageIds}
               inlineCreateState={inlineCreateState}
+              inlineRenameErrorMessage={inlineRenameErrorMessage}
+              inlineRenamePageId={inlineRenamePageId}
+              inlineRenameValue={inlineRenameValue}
               isCreatingPage={isCreatingPage}
               isLoading={showWorkspaceLoading}
               showPendingState={showPendingState}
               mode={mode}
               onCollapsedPageIdsChange={onCollapsedPageIdsChange}
+              onCancelInlineRename={onCancelInlineRename}
               onCommitInlineCreate={onCommitInlineCreate}
+              onCommitInlineRename={onCommitInlineRename}
               onInlineCreateTitleChange={onInlineCreateTitleChange}
+              onInlineRenameTitleChange={onInlineRenameTitleChange}
               onSelectPage={onSelectPage}
               onMovePage={onMovePage}
               onRequestDeletePage={onRequestDeletePage}
+              onStartInlineRename={onStartInlineRename}
               onShowCreatePage={onShowCreatePage}
               onShowChildPageCreate={onShowChildPageCreate}
               onTogglePageSettings={onTogglePageSettings}

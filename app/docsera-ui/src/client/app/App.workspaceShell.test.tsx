@@ -134,6 +134,12 @@ function createDeferred<T>() {
   };
 }
 
+async function openPageSettingsFromPageTree(pageTitle: string) {
+  const pageTree = screen.getByRole("navigation", { name: "Page tree" });
+  fireEvent.click(await within(pageTree).findByRole("button", { name: new RegExp(`^Page actions for ${pageTitle}`, "i") }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Page settings" }));
+}
+
 function createBreadcrumbPages() {
   return [
     createPageRecord({
@@ -357,7 +363,7 @@ describe("App workspace shell integration", () => {
     expect(await screen.findByRole("heading", { name: "Selected" })).toBeInTheDocument();
     fireEvent.contextMenu(screen.getByRole("button", { name: "Target" }).closest(".docsera-page-tree__row")!, { clientX: 20, clientY: 30 });
     expect(await screen.findByRole("menu", { name: "Page actions for Target" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("menuitem", { name: "Delete page" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Delete" }));
 
     expect(screen.queryByRole("complementary", { name: "Page Settings" })).not.toBeInTheDocument();
     const deleteDialog = await screen.findByRole("dialog", { name: "Confirm deletion" });
@@ -375,7 +381,7 @@ describe("App workspace shell integration", () => {
     renderApp("/?workspace=product-docs&mode=edit&page=overview");
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    await openPageSettingsFromPageTree("Overview");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
 
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
@@ -673,7 +679,7 @@ describe("App workspace shell integration", () => {
     await act(async () => {
       fireEvent.click(editButton);
     });
-    expect(await screen.findByRole("button", { name: "Open settings for Overview" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Page actions for Overview" })).toBeInTheDocument();
 
     const workspaceSwitcherButton = screen.getByRole("button", { name: "Workspace switcher: Product Docs" });
     await act(async () => {
@@ -685,7 +691,7 @@ describe("App workspace shell integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Open settings for API Overview" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Page actions for API Overview" })).not.toBeInTheDocument();
   });
 
   it("opens Workspace Settings from the header and saves core settings through the workspace boundary", async () => {
@@ -1300,7 +1306,7 @@ describe("App workspace shell integration", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "API Docs" }));
     expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(await screen.findByRole("button", { name: "Open settings for API Overview" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Page actions for API Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
     panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
     fireEvent.change(within(panel).getByDisplayValue("API Docs"), { target: { value: "Workspace B Saved" } });
@@ -1324,7 +1330,7 @@ describe("App workspace shell integration", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Workspace A Saved" }));
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(await screen.findByRole("button", { name: "Open settings for Overview" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Page actions for Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
     panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
     expect(within(panel).getByDisplayValue("Workspace A Saved")).toBeInTheDocument();
@@ -1367,7 +1373,7 @@ describe("App workspace shell integration", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "API Docs" }));
     expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(await screen.findByRole("button", { name: "Open settings for API Overview" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Page actions for API Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
     panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
     fireEvent.change(within(panel).getByDisplayValue("API Docs"), { target: { value: "Workspace B Draft" } });
@@ -1406,7 +1412,7 @@ describe("App workspace shell integration", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "API Docs" }));
     expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(await screen.findByRole("button", { name: "Open settings for API Overview" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Page actions for API Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
     panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
     fireEvent.change(within(panel).getByDisplayValue("API Docs"), { target: { value: "Workspace B Saved" } });
@@ -1424,7 +1430,7 @@ describe("App workspace shell integration", () => {
     fireEvent.click(await screen.findByRole("menuitem", { name: "Product Docs" }));
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(await screen.findByRole("button", { name: "Open settings for Overview" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Page actions for Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
     panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
     expect(await within(panel).findByRole("alert")).toHaveTextContent("Workspace A failed.");

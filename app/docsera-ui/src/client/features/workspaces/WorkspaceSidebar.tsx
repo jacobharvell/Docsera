@@ -16,9 +16,16 @@ type WorkspaceSidebarProps = {
   onRequestDeletePage: (pageId: string) => void;
   canManagePageSettings: boolean;
   inlineCreateState: InlinePageCreateState | null;
+  inlineRenameErrorMessage?: string;
+  inlineRenamePageId?: string;
+  inlineRenameValue?: string;
   pageSettingsOpenPageId: string;
+  onCancelInlineRename?: () => void;
   onCommitInlineCreate: () => void;
+  onCommitInlineRename?: () => Promise<boolean> | boolean;
   onInlineCreateTitleChange: (value: string) => void;
+  onInlineRenameTitleChange?: (value: string) => void;
+  onStartInlineRename?: (pageId: string) => void;
   onTogglePageSettings: (pageId: string) => void;
   treeFilter: string;
   onTreeFilterChange: (value: string) => void;
@@ -51,9 +58,16 @@ export function WorkspaceSidebar({
   onRequestDeletePage,
   canManagePageSettings,
   inlineCreateState,
+  inlineRenameErrorMessage = "",
+  inlineRenamePageId = "",
+  inlineRenameValue = "",
   pageSettingsOpenPageId,
+  onCancelInlineRename = () => undefined,
   onCommitInlineCreate,
+  onCommitInlineRename = () => true,
   onInlineCreateTitleChange,
+  onInlineRenameTitleChange = () => undefined,
+  onStartInlineRename = () => undefined,
   onTogglePageSettings,
   treeFilter,
   onTreeFilterChange,
@@ -131,15 +145,22 @@ export function WorkspaceSidebar({
             collapsedPageIds={collapsedPageIds}
             filterText={treeFilter}
             inlineCreateState={inlineCreateState}
+            inlineRenameErrorMessage={inlineRenameErrorMessage}
+            inlineRenamePageId={inlineRenamePageId}
+            inlineRenameValue={inlineRenameValue}
             isCreatingPage={isCreatingPage}
+            onCancelInlineRename={onCancelInlineRename}
             onCollapsedPageIdsChange={onCollapsedPageIdsChange}
             onCommitInlineCreate={onCommitInlineCreate}
+            onCommitInlineRename={onCommitInlineRename}
             onInlineCreateTitleChange={onInlineCreateTitleChange}
+            onInlineRenameTitleChange={onInlineRenameTitleChange}
             onSelectPage={onSelectPage}
             onMovePage={onMovePage}
             onRequestDeletePage={onRequestDeletePage}
             onShowCreatePage={onShowCreatePage}
             onShowChildPageCreate={onShowChildPageCreate}
+            onStartInlineRename={onStartInlineRename}
             onTogglePageSettings={onTogglePageSettings}
             pageSettingsOpenPageId={pageSettingsOpenPageId}
             pages={pages}

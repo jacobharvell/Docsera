@@ -1176,6 +1176,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [modeUiState, setModeUiState] = useState<Record<string, WorkspaceModeUiState>>({});
   const [pageOutlineOverrides, setPageOutlineOverrides] = useState<Record<string, WorkspacePageOutlineItem[]>>({});
   const [pageSettingsState, setPageSettingsState] = useState<PageSettingsState>(createEmptyPageSettingsState);
+  const [inlineRenamePageId, setInlineRenamePageId] = useState("");
   const [showTransitionProgress, setShowTransitionProgress] = useState(false);
   const [isEditorReady, setIsEditorReady] = useState(false);
   const [editorCanonicalHandoffReady, setEditorCanonicalHandoffReady] = useState(false);
@@ -1196,6 +1197,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const pageSettingsPanelRef = useRef<HTMLElement>(null);
   const pageSettingsCloseTargetRef = useRef("");
   const pageSettingsCloseTimerRef = useRef<number | null>(null);
+  const pageSettingsClosePromiseRef = useRef<Promise<boolean> | null>(null);
   const workspacePublishToastTimerRef = useRef<number | null>(null);
   const workspacePublishToastSequenceRef = useRef(0);
   const editReentryRequestedRef = useRef(false);
@@ -4404,6 +4406,58 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
   }
 
+  async function startInlinePageTreeRename(pageSysId: string) {
+    const normalizedPageSysId = cleanText(pageSysId);
+    if (!normalizedPageSysId) {
+      return;
+    }
+
+    const currentState = pageSettingsStateRef.current;
+    if (currentState.open && currentState.pageSysId && currentState.pageSysId !== normalizedPageSysId) {
+      if (pageSettingsCloseTimerRef.current !== null) {
+        window.clearTimeout(pageSettingsCloseTimerRef.current);
+        pageSettingsCloseTimerRef.current = null;
+      }
+      pageSettingsCloseTargetRef.current = "";
+
+      const pendingClose = pageSettingsClosePromiseRef.current;
+      const closed = pendingClose
+        ? await pendingClose
+        : await closePageSettingsPanel(currentState.pageSysId, { keepProjectionOnSuccess: true });
+      if (!closed) {
+        return;
+      }
+    }
+
+    pageSettingsPendingOpenPageIdRef.current = normalizedPageSysId;
+    setInlineRenamePageId(normalizedPageSysId);
+    startDirectPageTitleEdit(normalizedPageSysId);
+  }
+
+  function clearInlineRenamePendingOpenMarker(pageSysId: string) {
+    const normalizedPageSysId = cleanText(pageSysId);
+    if (normalizedPageSysId && pageSettingsPendingOpenPageIdRef.current === normalizedPageSysId) {
+      pageSettingsPendingOpenPageIdRef.current = "";
+    }
+  }
+
+  async function commitInlinePageTreeRename(): Promise<boolean> {
+    const renamePageSysId = cleanText(inlineRenamePageId);
+    const committed = await commitDirectPageTitleEdit();
+    if (committed) {
+      clearInlineRenamePendingOpenMarker(renamePageSysId);
+      setInlineRenamePageId("");
+    }
+    return committed;
+  }
+
+  function cancelInlinePageTreeRename() {
+    const renamePageSysId = cleanText(inlineRenamePageId);
+    setInlineRenamePageId("");
+    cancelDirectPageTitleEdit();
+    clearInlineRenamePendingOpenMarker(renamePageSysId);
+  }
+
   async function closePageSettingsPanel(
     nextSelectedPageId = pageSettingsStateRef.current.pageSysId,
     options: { keepProjectionOnSuccess?: boolean } = {}
@@ -4672,7 +4726,13 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
     pageSettingsCloseTimerRef.current = window.setTimeout(() => {
       pageSettingsCloseTimerRef.current = null;
-      void closePageSettingsPanel(pageSettingsCloseTargetRef.current);
+      const closePromise = closePageSettingsPanel(pageSettingsCloseTargetRef.current);
+      pageSettingsClosePromiseRef.current = closePromise;
+      void closePromise.finally(() => {
+        if (pageSettingsClosePromiseRef.current === closePromise) {
+          pageSettingsClosePromiseRef.current = null;
+        }
+      });
     }, 0);
   }
 
@@ -7170,13 +7230,37 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               onCommitInlineCreate={submitInlinePageCreation}
               onEditorFailureChange={(failure) => handleEditorFailureChangeForSession(renderedEditorSession, failure)}
               onEditorReadyStateChange={handleEditorReadyStateChange}
+              inlineRenameErrorMessage={
+                inlineRenamePageId && hasNonOverlayPageSettingsState(pageSettingsState) && pageSettingsState.activeField === "title"
+                  ? pageSettingsState.titleError
+                  : ""
+              }
+              inlineRenamePageId={
+                inlineRenamePageId &&
+                hasNonOverlayPageSettingsState(pageSettingsState) &&
+                pageSettingsState.activeField === "title" &&
+                cleanText(pageSettingsState.pageSysId) === cleanText(inlineRenamePageId)
+                  ? inlineRenamePageId
+                  : ""
+              }
+              inlineRenameValue={
+                inlineRenamePageId &&
+                hasNonOverlayPageSettingsState(pageSettingsState) &&
+                pageSettingsState.activeField === "title" &&
+                cleanText(pageSettingsState.pageSysId) === cleanText(inlineRenamePageId)
+                  ? pageSettingsState.title
+                  : ""
+              }
               onInlineCreateTitleChange={updateInlinePageCreateTitle}
+              onInlineRenameTitleChange={(value) => updatePageSettingsField("title", value)}
               onModeChange={changeWorkspaceMode}
               onOutlineChange={handleOutlineChange}
               onPageTitleCancel={cancelDirectPageTitleEdit}
               onPageTitleChange={(value) => updatePageSettingsField("title", value)}
               onPageTitleCommit={() => void commitDirectPageTitleEdit()}
               onPageTitleStart={startDirectPageTitleEdit}
+              onCancelInlineRename={cancelInlinePageTreeRename}
+              onCommitInlineRename={commitInlinePageTreeRename}
               onReturnToMyWorkspaces={openLauncher}
               onReturnToLive={handleReturnToLive}
               onRetryWorkspace={retryWorkspaceProjectionLoad}
@@ -7189,6 +7273,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               onSelectPage={openWorkspacePage}
               onMovePage={moveWorkspacePage}
               onRequestDeletePage={requestOpenDeletePageSettings}
+              onStartInlineRename={startInlinePageTreeRename}
               onShowChildPageCreate={openCreatePageModal}
               onShowCreatePage={() => openCreatePageModal()}
               onTogglePageSettings={requestTogglePageSettings}
@@ -7240,6 +7325,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
                 />
               }
               pageTitleActive={
+                !inlineRenamePageId &&
                 pageSettingsState.open &&
                 pageSettingsState.pageSysId === displayedSelectedPageId &&
                 pageSettingsState.activeField === "title" &&

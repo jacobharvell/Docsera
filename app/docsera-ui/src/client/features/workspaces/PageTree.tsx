@@ -34,12 +34,19 @@ type PageTreeProps = {
   dragSurfaceRef?: RefObject<HTMLElement>;
   filterText: string;
   inlineCreateState: InlinePageCreateState | null;
+  inlineRenameErrorMessage?: string;
+  inlineRenamePageId?: string;
+  inlineRenameValue?: string;
   isCreatingPage: boolean;
+  onCancelInlineRename?: () => void;
   onCommitInlineCreate: () => void;
+  onCommitInlineRename?: () => Promise<boolean> | boolean;
   onInlineCreateTitleChange: (value: string) => void;
+  onInlineRenameTitleChange?: (value: string) => void;
   onSelectPage: (pageId: string) => void;
   onMovePage?: (input: { pageSysId: string; parentPageSysId: string | null; siblingOrder: string | number }) => void;
   onRequestDeletePage: (pageId: string) => void;
+  onStartInlineRename?: (pageId: string) => void;
   onShowCreatePage: () => void;
   onShowChildPageCreate: (parentPageId: string, parentPageTitle: string) => void;
   onTogglePageSettings: (pageId: string) => void;
@@ -61,9 +68,10 @@ type PageTreeNodeProps = Omit<PageTreeProps, "collapsedPageIds" | "dragSurfaceRe
   onDragEnd: () => void;
   onDragStart: (pageId: string) => void;
   onInlineCreateTitleChange: (value: string) => void;
-  onShowPageContextMenu: (input: { page: WorkspacePageView; x: number; y: number; origin: HTMLElement }) => void;
+  onShowPageContextMenu: (input: PageTreeContextMenuState) => void;
   onToggleCollapsed: (pageId: string) => void;
   page: WorkspacePageView;
+  contextMenuPageId: string;
   firstVisibleRootPageId: string | null;
   lastVisibleRootPageId: string | null;
 };
@@ -82,20 +90,29 @@ type PageTreeContextMenuState = {
   x: number;
   y: number;
   origin: HTMLElement;
+  placement: "pointer" | "control";
 };
 
-type PageTreeContextMenuAction = "add-child" | "settings" | "delete";
+type PageTreeContextMenuAction = "settings" | "rename" | "delete" | "add-child";
 
-function GearIcon() {
-  return <DocseraIcon icon={docseraIcons.settings} size={14} />;
-}
-
-function CollapseIcon() {
-  return <DocseraIcon icon={docseraIcons.chevronRight} size={14} />;
+function EllipsisIcon() {
+  return <DocseraIcon icon={docseraIcons.ellipsis} size={14} />;
 }
 
 function PlusIcon() {
   return <DocseraIcon icon={docseraIcons.plus} size={14} />;
+}
+
+function PageTreeMenuIcon({ action }: { action: PageTreeContextMenuAction }) {
+  const icon =
+    action === "settings"
+      ? docseraIcons.sliders
+      : action === "rename"
+        ? docseraIcons.squarePen
+        : action === "delete"
+          ? docseraIcons.trash
+          : docseraIcons.plus;
+  return <DocseraIcon icon={icon} size={14} />;
 }
 
 function ChevronIcon({ expanded }: { expanded: boolean }) {
@@ -393,6 +410,118 @@ function InlineCreateRow({
   );
 }
 
+function InlineRenameField({
+  errorMessage,
+  pageId,
+  pageTitle,
+  value,
+  onCancel,
+  onCommit,
+  onTitleChange
+}: {
+  errorMessage: string;
+  pageId: string;
+  pageTitle: string;
+  value: string;
+  onCancel: () => void;
+  onCommit: () => Promise<boolean> | boolean;
+  onTitleChange: (value: string) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const fieldRef = useRef<HTMLLabelElement>(null);
+  const cancelledRef = useRef(false);
+  const commitInFlightRef = useRef(false);
+  const errorId = `docsera-page-tree-rename-${pageId.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-error`;
+
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!input) {
+      return;
+    }
+
+    input.focus();
+    input.select();
+  }, []);
+
+  function commit() {
+    if (cancelledRef.current || commitInFlightRef.current) {
+      return;
+    }
+    commitInFlightRef.current = true;
+    void Promise.resolve(onCommit()).then(
+      (committed) => {
+        if (!committed) {
+          commitInFlightRef.current = false;
+        }
+      },
+      () => {
+        commitInFlightRef.current = false;
+      }
+    );
+  }
+
+  function cancel() {
+    cancelledRef.current = true;
+    onCancel();
+  }
+
+  useEffect(() => {
+    const input = inputRef.current;
+    const ownerDocument = input?.ownerDocument;
+    if (!input || !ownerDocument) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!(event.target instanceof Node)) {
+        return;
+      }
+      if (fieldRef.current?.contains(event.target)) {
+        return;
+      }
+      commit();
+    }
+
+    ownerDocument.addEventListener("pointerdown", handlePointerDown, true);
+    return () => ownerDocument.removeEventListener("pointerdown", handlePointerDown, true);
+  }, []);
+
+  return (
+    <label ref={fieldRef} className="docsera-page-tree__inline-field docsera-page-tree__inline-field--rename">
+      <span className="docsera-page-tree__inline-field-label">Rename page</span>
+      <input
+        ref={inputRef}
+        aria-describedby={errorMessage ? errorId : undefined}
+        aria-invalid={errorMessage ? "true" : undefined}
+        aria-label={`Rename ${pageTitle}`}
+        className={`docsera-page-tree__inline-input${errorMessage ? " docsera-page-tree__inline-input--invalid" : ""}`}
+        onBlur={commit}
+        onChange={(event) => onTitleChange(event.target.value)}
+        onClick={(event) => event.stopPropagation()}
+        onDragStart={(event) => event.preventDefault()}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          if (event.key === "Enter") {
+            event.preventDefault();
+            commit();
+          } else if (event.key === "Escape") {
+            event.preventDefault();
+            cancel();
+          }
+        }}
+        onPointerDown={(event) => event.stopPropagation()}
+        type="text"
+        value={value}
+      />
+      {errorMessage ? (
+        <span className="docsera-page-tree__inline-error docsera-page-tree__inline-error--rename" id={errorId} role="alert">
+          {errorMessage}
+        </span>
+      ) : null}
+    </label>
+  );
+}
+
 function PageTreeNode({
   canCreatePage,
   canManagePageSettings,
@@ -404,17 +533,25 @@ function PageTreeNode({
   inlineCreateState,
   isCreatingPage,
   onCommitInlineCreate,
+  inlineRenamePageId = "",
+  inlineRenameErrorMessage = "",
+  inlineRenameValue = "",
+  onCancelInlineRename = () => undefined,
+  onCommitInlineRename = () => true,
   onDragEnd,
   onDragStart,
   onInlineCreateTitleChange,
+  onInlineRenameTitleChange = () => undefined,
   onSelectPage,
   onMovePage,
   onRequestDeletePage,
+  onStartInlineRename = () => undefined,
   onShowChildPageCreate,
   onShowPageContextMenu,
   onToggleCollapsed,
   onTogglePageSettings,
   page,
+  contextMenuPageId,
   firstVisibleRootPageId,
   lastVisibleRootPageId,
   pageSettingsOpenPageId,
@@ -425,9 +562,12 @@ function PageTreeNode({
   }
 
   const hasChildren = Boolean(page.children?.length);
+  const pageIdentity = page.sysId || page.id;
   const isSelected = page.id === selectedPageId;
   const isPageSettingsOpen = page.id === pageSettingsOpenPageId;
+  const isContextMenuOpen = page.id === contextMenuPageId || pageIdentity === contextMenuPageId;
   const isInlineCreateParent = inlineCreateState?.parentPageSysId === page.id;
+  const isInlineRenaming = inlineRenamePageId === pageIdentity;
   const mustStayExpanded =
     hasChildren &&
     (
@@ -437,9 +577,9 @@ function PageTreeNode({
     );
   const isExpanded = hasChildren ? !collapsedPageIds.has(page.id) || mustStayExpanded : false;
   const showChildCreateButton = canCreatePage && hasChildren;
-  const showSettingsButton = canManagePageSettings;
+  const showActionsButton = canManagePageSettings;
   const hasContextMenuActions = canCreatePage || canManagePageSettings;
-  const actionCount = [showChildCreateButton, showSettingsButton].filter(Boolean).length;
+  const actionCount = [showChildCreateButton, showActionsButton].filter(Boolean).length;
   const canMovePage = Boolean(onMovePage && canManagePageSettings);
   const activeDropAnchor = dropPreview?.presentationAnchor ?? null;
   const isDropBeforeTarget = activeDropAnchor?.targetPageId === page.id && activeDropAnchor.position === "before";
@@ -483,6 +623,7 @@ function PageTreeNode({
     input.stopPropagation();
     onShowPageContextMenu({
       origin: input.currentTarget,
+      placement: "pointer",
       page,
       x: input.clientX,
       y: input.clientY
@@ -503,7 +644,7 @@ function PageTreeNode({
       <div
         className={`docsera-page-tree__row${isSelected ? " docsera-page-tree__row--selected" : ""}${
           isPageSettingsOpen ? " docsera-page-tree__row--settings-open" : ""
-        }${draggedPageId === page.id ? " docsera-page-tree__row--dragging" : ""}${
+        }${isContextMenuOpen ? " docsera-page-tree__row--menu-open" : ""}${draggedPageId === page.id ? " docsera-page-tree__row--dragging" : ""}${
           isDropInsideTarget ? " docsera-page-tree__row--drop-inside" : ""
         }`}
         data-docsera-page-id={page.id}
@@ -521,39 +662,62 @@ function PageTreeNode({
             : undefined
         }
       >
-        <button
-          type="button"
-          className="docsera-page-tree__button"
-          onClick={handleRowClick}
-          onKeyDown={(event) => {
-            if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) {
-              return;
-            }
+        {isInlineRenaming ? (
+          <div className="docsera-page-tree__button docsera-page-tree__button--inline-rename">
+            <span className="docsera-page-tree__row-main">
+              {hasChildren ? (
+                <span className="docsera-page-tree__chevron" aria-hidden="true">
+                  <ChevronIcon expanded={isExpanded} />
+                </span>
+              ) : (
+                <span className="docsera-page-tree__chevron-spacer" aria-hidden="true" />
+              )}
+              <InlineRenameField
+                errorMessage={inlineRenameErrorMessage}
+                pageId={pageIdentity}
+                pageTitle={page.title}
+                value={inlineRenameValue}
+                onCancel={onCancelInlineRename}
+                onCommit={onCommitInlineRename}
+                onTitleChange={onInlineRenameTitleChange}
+              />
+            </span>
+          </div>
+        ) : (
+          <button
+            type="button"
+            className="docsera-page-tree__button"
+            onClick={handleRowClick}
+            onKeyDown={(event) => {
+              if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) {
+                return;
+              }
 
-            const rect = event.currentTarget.getBoundingClientRect();
-            openContextMenu({
-              clientX: rect.left + Math.min(32, Math.max(0, rect.width / 2)),
-              clientY: rect.top + Math.min(24, Math.max(0, rect.height)),
-              currentTarget: event.currentTarget,
-              preventDefault: () => event.preventDefault(),
-              stopPropagation: () => event.stopPropagation()
-            });
-          }}
-          aria-current={isSelected ? "page" : undefined}
-          aria-expanded={hasChildren ? isExpanded : undefined}
-          title={page.title}
-        >
-          <span className="docsera-page-tree__row-main">
-            {hasChildren ? (
-              <span className="docsera-page-tree__chevron" aria-hidden="true">
-                <ChevronIcon expanded={isExpanded} />
-              </span>
-            ) : (
-              <span className="docsera-page-tree__chevron-spacer" aria-hidden="true" />
-            )}
-            <span className="docsera-page-tree__title">{page.title}</span>
-          </span>
-        </button>
+              const rect = event.currentTarget.getBoundingClientRect();
+              openContextMenu({
+                clientX: rect.left + Math.min(32, Math.max(0, rect.width / 2)),
+                clientY: rect.top + Math.min(24, Math.max(0, rect.height)),
+                currentTarget: event.currentTarget,
+                preventDefault: () => event.preventDefault(),
+                stopPropagation: () => event.stopPropagation()
+              });
+            }}
+            aria-current={isSelected ? "page" : undefined}
+            aria-expanded={hasChildren ? isExpanded : undefined}
+            title={page.title}
+          >
+            <span className="docsera-page-tree__row-main">
+              {hasChildren ? (
+                <span className="docsera-page-tree__chevron" aria-hidden="true">
+                  <ChevronIcon expanded={isExpanded} />
+                </span>
+              ) : (
+                <span className="docsera-page-tree__chevron-spacer" aria-hidden="true" />
+              )}
+              <span className="docsera-page-tree__title">{page.title}</span>
+            </span>
+          </button>
+        )}
 
         {actionCount > 0 ? (
           <div className="docsera-page-tree__actions">
@@ -562,21 +726,32 @@ function PageTreeNode({
                 type="button"
                 className="docsera-page-tree__action-button"
                 aria-label={`Add child page to ${page.title}`}
-                onClick={() => onShowChildPageCreate(page.id, page.title)}
+                onClick={() => onShowChildPageCreate(pageIdentity, page.title)}
                 disabled={isCreatingPage}
               >
                 <PlusIcon />
               </button>
             ) : null}
-            {showSettingsButton ? (
+            {showActionsButton ? (
               <button
                 type="button"
-                className="docsera-page-tree__action-button docsera-page-tree__action-button--settings"
-                aria-label={isPageSettingsOpen ? `Collapse settings for ${page.title}` : `Open settings for ${page.title}`}
-                data-docsera-page-settings-trigger="true"
-                onClick={() => onTogglePageSettings(page.id)}
+                className="docsera-page-tree__action-button docsera-page-tree__action-button--actions"
+                aria-label={`Page actions for ${page.title}`}
+                aria-haspopup="menu"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  onShowPageContextMenu({
+                    origin: event.currentTarget,
+                    placement: "control",
+                    page,
+                    x: rect.left,
+                    y: rect.bottom + 4
+                  });
+                }}
               >
-                {isPageSettingsOpen ? <CollapseIcon /> : <GearIcon />}
+                <EllipsisIcon />
               </button>
             ) : null}
           </div>
@@ -597,19 +772,27 @@ function PageTreeNode({
               inlineCreateState={inlineCreateState}
               isCreatingPage={isCreatingPage}
               onCommitInlineCreate={onCommitInlineCreate}
+              inlineRenamePageId={inlineRenamePageId}
+              inlineRenameErrorMessage={inlineRenameErrorMessage}
+              inlineRenameValue={inlineRenameValue}
               draggedPageId={draggedPageId}
+              onCancelInlineRename={onCancelInlineRename}
+              onCommitInlineRename={onCommitInlineRename}
               onDragEnd={onDragEnd}
               onDragStart={onDragStart}
               onInlineCreateTitleChange={onInlineCreateTitleChange}
+              onInlineRenameTitleChange={onInlineRenameTitleChange}
               onSelectPage={onSelectPage}
               onMovePage={onMovePage}
               onRequestDeletePage={onRequestDeletePage}
+              onStartInlineRename={onStartInlineRename}
               onShowChildPageCreate={onShowChildPageCreate}
               onShowCreatePage={() => undefined}
               onShowPageContextMenu={onShowPageContextMenu}
               onToggleCollapsed={onToggleCollapsed}
               onTogglePageSettings={onTogglePageSettings}
               page={child}
+              contextMenuPageId={contextMenuPageId}
               firstVisibleRootPageId={firstVisibleRootPageId}
               lastVisibleRootPageId={lastVisibleRootPageId}
               pageSettingsOpenPageId={pageSettingsOpenPageId}
@@ -647,12 +830,19 @@ export function PageTree({
   dragSurfaceRef,
   filterText,
   inlineCreateState,
+  inlineRenameErrorMessage = "",
+  inlineRenamePageId = "",
+  inlineRenameValue = "",
   isCreatingPage,
+  onCancelInlineRename = () => undefined,
   onCommitInlineCreate,
+  onCommitInlineRename = () => true,
   onInlineCreateTitleChange,
+  onInlineRenameTitleChange = () => undefined,
   onSelectPage,
   onMovePage,
   onRequestDeletePage,
+  onStartInlineRename = () => undefined,
   onShowCreatePage,
   onShowChildPageCreate,
   onTogglePageSettings,
@@ -689,6 +879,7 @@ export function PageTree({
     }
     return groups;
   }, [flatPages]);
+  const contextMenuPageId = contextMenu ? contextMenu.page.sysId || contextMenu.page.id : "";
   const dragContextRef = useRef({
     canManagePageSettings,
     firstVisibleRootPageId,
@@ -713,11 +904,11 @@ export function PageTree({
 
   const contextMenuActions = useMemo(() => {
     const actions: PageTreeContextMenuAction[] = [];
+    if (canManagePageSettings) {
+      actions.push("settings", "rename", "delete");
+    }
     if (canCreatePage && !isCreatingPage) {
       actions.push("add-child");
-    }
-    if (canManagePageSettings) {
-      actions.push("settings", "delete");
     }
     return actions;
   }, [canCreatePage, canManagePageSettings, isCreatingPage]);
@@ -764,14 +955,18 @@ export function PageTree({
 
     setContextMenu(null);
     if (action === "add-child") {
-      onShowChildPageCreate(target.id, target.title);
+      onShowChildPageCreate(target.sysId || target.id, target.title);
       return;
     }
     if (action === "settings") {
-      onTogglePageSettings(target.id);
+      onTogglePageSettings(target.sysId || target.id);
       return;
     }
-    onRequestDeletePage(target.id);
+    if (action === "rename") {
+      onStartInlineRename(target.sysId || target.id);
+      return;
+    }
+    onRequestDeletePage(target.sysId || target.id);
   }
 
   function focusMenuItem(offset: number) {
@@ -923,7 +1118,7 @@ export function PageTree({
       ? createPortal(
           <div
             ref={menuRef}
-            className="docsera-page-tree__context-menu"
+            className={`docsera-page-tree__context-menu docsera-page-tree__context-menu--${contextMenu.placement}`}
             role="menu"
             aria-label={`Page actions for ${contextMenu.page.title}`}
             style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
@@ -946,46 +1141,38 @@ export function PageTree({
                 focusMenuBoundary("last");
               } else if (event.key === "Enter" || event.key === " ") {
                 const action = event.target instanceof HTMLElement ? event.target.dataset.docseraPageTreeMenuAction : "";
-                if (action === "add-child" || action === "settings" || action === "delete") {
+                if (action === "add-child" || action === "settings" || action === "rename" || action === "delete") {
                   event.preventDefault();
                   activateContextMenuAction(action);
                 }
               }
             }}
           >
-            {contextMenuActions.includes("add-child") ? (
+            {contextMenuActions.map((action) => (
               <button
+                key={action}
                 type="button"
                 role="menuitem"
-                className="docsera-page-tree__context-menu-item"
-                data-docsera-page-tree-menu-action="add-child"
-                onClick={() => activateContextMenuAction("add-child")}
+                className={`docsera-page-tree__context-menu-item${
+                  action === "delete" ? " docsera-page-tree__context-menu-item--destructive" : ""
+                }`}
+                data-docsera-page-tree-menu-action={action}
+                onClick={() => activateContextMenuAction(action)}
               >
-                Add child page
+                <span className="docsera-page-tree__context-menu-icon" aria-hidden="true">
+                  <PageTreeMenuIcon action={action} />
+                </span>
+                <span>
+                  {action === "settings"
+                    ? "Page settings"
+                    : action === "rename"
+                      ? "Rename"
+                      : action === "delete"
+                        ? "Delete"
+                        : "Add child page"}
+                </span>
               </button>
-            ) : null}
-            {contextMenuActions.includes("settings") ? (
-              <button
-                type="button"
-                role="menuitem"
-                className="docsera-page-tree__context-menu-item"
-                data-docsera-page-tree-menu-action="settings"
-                onClick={() => activateContextMenuAction("settings")}
-              >
-                Page Settings
-              </button>
-            ) : null}
-            {contextMenuActions.includes("delete") ? (
-              <button
-                type="button"
-                role="menuitem"
-                className="docsera-page-tree__context-menu-item docsera-page-tree__context-menu-item--destructive"
-                data-docsera-page-tree-menu-action="delete"
-                onClick={() => activateContextMenuAction("delete")}
-              >
-                Delete page
-              </button>
-            ) : null}
+            ))}
           </div>,
           document.body
         )
@@ -1061,6 +1248,9 @@ export function PageTree({
             inlineCreateState={inlineCreateState}
             isCreatingPage={isCreatingPage}
             onCommitInlineCreate={onCommitInlineCreate}
+            inlineRenamePageId={inlineRenamePageId}
+            inlineRenameErrorMessage={inlineRenameErrorMessage}
+            inlineRenameValue={inlineRenameValue}
             onDragEnd={() => {
               setDraggedPageId("");
               draggedPageIdRef.current = "";
@@ -1071,10 +1261,14 @@ export function PageTree({
               setDraggedPageId(pageId);
               setDropPreview(null);
             }}
+            onCancelInlineRename={onCancelInlineRename}
+            onCommitInlineRename={onCommitInlineRename}
             onInlineCreateTitleChange={onInlineCreateTitleChange}
+            onInlineRenameTitleChange={onInlineRenameTitleChange}
             onSelectPage={onSelectPage}
             onMovePage={onMovePage}
             onRequestDeletePage={onRequestDeletePage}
+            onStartInlineRename={onStartInlineRename}
             onShowChildPageCreate={onShowChildPageCreate}
             onShowCreatePage={onShowCreatePage}
             onShowPageContextMenu={(input) => {
@@ -1086,6 +1280,7 @@ export function PageTree({
             onToggleCollapsed={toggleCollapsed}
             onTogglePageSettings={onTogglePageSettings}
             page={page}
+            contextMenuPageId={contextMenuPageId}
             firstVisibleRootPageId={firstVisibleRootPageId}
             lastVisibleRootPageId={lastVisibleRootPageId}
             pageSettingsOpenPageId={pageSettingsOpenPageId}

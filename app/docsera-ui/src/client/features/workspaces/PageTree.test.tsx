@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 // @ts-expect-error node builtin types are not included in the client test tsconfig
 import { join } from "node:path";
 import { useState } from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createEmptyDocseraDocumentEnvelope } from "../../../shared/editor/document";
 import { PageTree } from "./PageTree";
@@ -83,11 +83,18 @@ function renderTree(pages: WorkspacePageView[], overrides: Partial<Parameters<ty
       collapsedPageIds={[]}
       filterText=""
       inlineCreateState={null}
+      inlineRenameErrorMessage=""
+      inlineRenamePageId=""
+      inlineRenameValue=""
       isCreatingPage={false}
+      onCancelInlineRename={vi.fn()}
       onCollapsedPageIdsChange={vi.fn()}
       onCommitInlineCreate={vi.fn()}
+      onCommitInlineRename={vi.fn()}
       onInlineCreateTitleChange={vi.fn()}
+      onInlineRenameTitleChange={vi.fn()}
       onRequestDeletePage={vi.fn()}
+      onStartInlineRename={vi.fn()}
       onSelectPage={vi.fn()}
       onShowCreatePage={vi.fn()}
       onShowChildPageCreate={vi.fn()}
@@ -117,14 +124,21 @@ function renderTreeWithCollapsedState(
         collapsedPageIds={collapsedPageIds}
         filterText=""
         inlineCreateState={null}
+        inlineRenameErrorMessage=""
+        inlineRenamePageId=""
+        inlineRenameValue=""
         isCreatingPage={false}
+        onCancelInlineRename={vi.fn()}
         onCollapsedPageIdsChange={(pageIds) => {
           onCollapsedPageIdsChange(pageIds);
           setCollapsedPageIds(pageIds);
         }}
         onCommitInlineCreate={vi.fn()}
+        onCommitInlineRename={vi.fn()}
         onInlineCreateTitleChange={vi.fn()}
+        onInlineRenameTitleChange={vi.fn()}
         onRequestDeletePage={vi.fn()}
+        onStartInlineRename={vi.fn()}
         onSelectPage={vi.fn()}
         onShowCreatePage={vi.fn()}
         onShowChildPageCreate={vi.fn()}
@@ -150,6 +164,46 @@ describe("PageTree presentation", () => {
     expect(screen.getByRole("button", { name: "Draft Only" })).toBeInTheDocument();
     expect(screen.queryByText("Draft")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Draft Only Draft" })).not.toBeInTheDocument();
+  });
+
+  it("keeps inline Rename from adding the shared inline input padding to page rows", () => {
+    renderTree([page({ id: "parent", title: "Parent" })], {
+      inlineRenamePageId: "parent",
+      inlineRenameValue: "Parent"
+    });
+
+    const input = screen.getByRole("textbox", { name: "Rename Parent" });
+    expect(input).toHaveClass("docsera-page-tree__inline-input");
+    expect(input.closest(".docsera-page-tree__inline-field--rename")).toBeInTheDocument();
+
+    const cwd = new Function("return process.cwd()")() as string;
+    const cssSource = readFileSync(join(cwd, "src/client/styles/runtime-shell.css"), "utf8").replace(/\r\n/g, "\n");
+    expect(cssSource).toContain(".docsera-page-tree__inline-input {\n  width: 100%;\n  min-width: 0;\n  padding: 6px 12px;");
+    expect(cssSource).toContain(".docsera-page-tree__inline-field--rename .docsera-page-tree__inline-input {\n  padding: 0;");
+  });
+
+  it("keeps inline page creation on the shared inline input spacing", () => {
+    renderTree([], {
+      canCreatePage: true,
+      inlineCreateState: {
+        errorMessage: "",
+        focusToken: 1,
+        noticeMessage: "",
+        parentPageSysId: "",
+        pending: false,
+        showInput: true,
+        title: "New page"
+      }
+    });
+
+    const input = screen.getByRole("textbox", { name: "New page title" });
+    expect(input).toHaveClass("docsera-page-tree__inline-input");
+    expect(input.closest(".docsera-page-tree__inline-field--rename")).not.toBeInTheDocument();
+
+    const cwd = new Function("return process.cwd()")() as string;
+    const cssSource = readFileSync(join(cwd, "src/client/styles/runtime-shell.css"), "utf8").replace(/\r\n/g, "\n");
+    expect(cssSource).toContain(".docsera-page-tree__inline-input {\n  width: 100%;\n  min-width: 0;\n  padding: 6px 12px;");
+    expect(cssSource).not.toContain(".docsera-page-tree__row--inline-create .docsera-page-tree__inline-input {\n  padding: 0;");
   });
 });
 
@@ -288,9 +342,10 @@ describe("PageTree row interaction", () => {
     expect(onCollapsedPageIdsChange).not.toHaveBeenCalled();
   });
 
-  it("keeps the Page Settings gear independent from row activation", () => {
+  it("replaces the Page Settings gear with an ellipsis menu that stays independent from row activation", async () => {
     const onSelectPage = vi.fn();
     const onTogglePageSettings = vi.fn();
+    const onStartInlineRename = vi.fn();
     const onCollapsedPageIdsChange = vi.fn();
     renderTree(
       [
@@ -301,17 +356,187 @@ describe("PageTree row interaction", () => {
         })
       ],
       {
+        canCreatePage: true,
         onCollapsedPageIdsChange,
         onSelectPage,
+        onStartInlineRename,
         onTogglePageSettings
       }
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Parent" }));
+    expect(screen.queryByRole("button", { name: "Open settings for Parent" })).not.toBeInTheDocument();
+    const actionsButton = screen.getByRole("button", { name: "Page actions for Parent" });
+    fireEvent.click(actionsButton);
 
+    const menu = await screen.findByRole("menu", { name: "Page actions for Parent" });
+    expect(menu).toHaveClass("docsera-page-tree__context-menu--control");
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Page settings",
+      "Rename",
+      "Delete",
+      "Add child page"
+    ]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Page settings" }));
     expect(onTogglePageSettings).toHaveBeenCalledWith("parent");
+    expect(onStartInlineRename).not.toHaveBeenCalled();
     expect(onSelectPage).not.toHaveBeenCalled();
     expect(onCollapsedPageIdsChange).not.toHaveBeenCalled();
+  });
+
+  it("starts Rename from the actions menu without selecting or toggling the row", async () => {
+    const onCollapsedPageIdsChange = vi.fn();
+    const onSelectPage = vi.fn();
+    const onStartInlineRename = vi.fn();
+    renderTree(
+      [
+        page({
+          id: "parent",
+          sysId: "page-parent",
+          title: "Parent",
+          children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
+        })
+      ],
+      {
+        canCreatePage: true,
+        onCollapsedPageIdsChange,
+        onSelectPage,
+        onStartInlineRename
+      }
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Page actions for Parent" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Rename" }));
+
+    expect(onStartInlineRename).toHaveBeenCalledWith("page-parent");
+    expect(onSelectPage).not.toHaveBeenCalled();
+    expect(onCollapsedPageIdsChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps the context menu owner row active until menu ownership clears or transfers", async () => {
+    const onSelectPage = vi.fn();
+    const pages = [
+      page({ id: "page-a", title: "Page A" }),
+      page({ id: "page-b", title: "Page B", siblingOrder: 2 }),
+      page({ id: "page-c", title: "Page C", siblingOrder: 3 })
+    ];
+    renderTree(pages, {
+      canCreatePage: true,
+      onSelectPage,
+      selectedPageId: "page-a"
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Page actions for Page B" }));
+
+    const pageARow = row("Page A");
+    const pageBRow = row("Page B");
+    const pageCRow = row("Page C");
+    expect(pageARow).toHaveClass("docsera-page-tree__row--selected");
+    expect(pageBRow).toHaveClass("docsera-page-tree__row--menu-open");
+    expect(pageBRow).not.toHaveClass("docsera-page-tree__row--selected");
+    expect(pageCRow).not.toHaveClass("docsera-page-tree__row--menu-open");
+    expect(onSelectPage).not.toHaveBeenCalled();
+
+    const menu = await screen.findByRole("menu", { name: "Page actions for Page B" });
+    within(menu).getByRole("menuitem", { name: "Rename" }).focus();
+    expect(pageBRow).toHaveClass("docsera-page-tree__row--menu-open");
+
+    fireEvent.click(screen.getByRole("button", { name: "Page actions for Page C" }));
+    await screen.findByRole("menu", { name: "Page actions for Page C" });
+    expect(pageBRow).not.toHaveClass("docsera-page-tree__row--menu-open");
+    expect(pageCRow).toHaveClass("docsera-page-tree__row--menu-open");
+
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    expect(pageCRow).not.toHaveClass("docsera-page-tree__row--menu-open");
+  });
+
+  it("keeps inline Rename editable for validation errors and wires commit and cancel keys", () => {
+    const onCancelInlineRename = vi.fn();
+    const onCommitInlineRename = vi.fn(() => false);
+    const onInlineRenameTitleChange = vi.fn();
+    renderTree([page({ id: "parent", title: "Parent" })], {
+      inlineRenameErrorMessage: "Page title is required.",
+      inlineRenamePageId: "parent",
+      inlineRenameValue: "",
+      onCancelInlineRename,
+      onCommitInlineRename,
+      onInlineRenameTitleChange
+    });
+
+    const input = screen.getByRole("textbox", { name: "Rename Parent" });
+    expect(input).toHaveFocus();
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent("Page title is required.");
+
+    fireEvent.change(input, { target: { value: "Renamed Parent" } });
+    expect(onInlineRenameTitleChange).toHaveBeenCalledWith("Renamed Parent");
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(onCommitInlineRename).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(onCancelInlineRename).toHaveBeenCalledTimes(1);
+  });
+
+  it("commits inline Rename on outside pointer interaction without committing inside the field or double-saving on blur", async () => {
+    const onCommitInlineRename = vi.fn(async () => true);
+    render(
+      <div>
+        <PageTree
+          canCreatePage={false}
+          canManagePageSettings
+          collapsedPageIds={[]}
+          filterText=""
+          inlineCreateState={null}
+          inlineRenameErrorMessage=""
+          inlineRenamePageId="parent"
+          inlineRenameValue="Parent Draft"
+          isCreatingPage={false}
+          onCancelInlineRename={vi.fn()}
+          onCollapsedPageIdsChange={vi.fn()}
+          onCommitInlineCreate={vi.fn()}
+          onCommitInlineRename={onCommitInlineRename}
+          onInlineCreateTitleChange={vi.fn()}
+          onInlineRenameTitleChange={vi.fn()}
+          onRequestDeletePage={vi.fn()}
+          onSelectPage={vi.fn()}
+          onShowCreatePage={vi.fn()}
+          onShowChildPageCreate={vi.fn()}
+          onTogglePageSettings={vi.fn()}
+          pageSettingsOpenPageId=""
+          pages={[page({ id: "parent", title: "Parent" }), page({ id: "sibling", title: "Sibling", siblingOrder: 2 })]}
+          selectedPageId=""
+        />
+        <div data-testid="workspace-surface" />
+      </div>
+    );
+
+    const input = screen.getByRole("textbox", { name: "Rename Parent" });
+    fireEvent.pointerDown(input);
+    expect(onCommitInlineRename).not.toHaveBeenCalled();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Sibling" }));
+    fireEvent.blur(input);
+    await waitFor(() => expect(onCommitInlineRename).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps inline Rename active and retryable when outside pointer commit fails", async () => {
+    const onCommitInlineRename = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    renderTree([page({ id: "parent", title: "Parent" })], {
+      inlineRenameErrorMessage: "Could not save page title.",
+      inlineRenamePageId: "parent",
+      inlineRenameValue: "Parent Draft",
+      onCommitInlineRename
+    });
+
+    const input = screen.getByRole("textbox", { name: "Rename Parent" });
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(onCommitInlineRename).toHaveBeenCalledTimes(1));
+    expect(input).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Could not save page title.");
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(onCommitInlineRename).toHaveBeenCalledTimes(2));
   });
 
   it("does not add authoring controls to viewer rows", () => {
@@ -330,7 +555,7 @@ describe("PageTree row interaction", () => {
     );
 
     expect(screen.queryByRole("button", { name: "Add child page to Parent" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Open settings for Parent" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Page actions for Parent" })).not.toBeInTheDocument();
   });
 
   it("opens the page context menu on right-click without activating the row", async () => {
@@ -395,8 +620,9 @@ describe("PageTree row interaction", () => {
 
     fireEvent.contextMenu(row("Leaf"), { clientX: 20, clientY: 30 });
     expect(await screen.findByRole("menuitem", { name: "Add child page" })).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Page Settings" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Delete page" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Page settings" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Rename" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Delete" })).not.toBeInTheDocument();
 
     fireEvent.pointerDown(document.body);
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
@@ -440,13 +666,13 @@ describe("PageTree row interaction", () => {
     });
 
     fireEvent.contextMenu(row("Target"), { clientX: 20, clientY: 30 });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Page Settings" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Page settings" }));
 
     expect(onTogglePageSettings).toHaveBeenCalledWith("target");
     expect(onSelectPage).not.toHaveBeenCalled();
 
     fireEvent.contextMenu(row("Target"), { clientX: 20, clientY: 30 });
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete page" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
 
     expect(onRequestDeletePage).toHaveBeenCalledWith("target");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
@@ -466,17 +692,17 @@ describe("PageTree row interaction", () => {
     fireEvent.keyDown(keyboardRow, { key: "ContextMenu" });
 
     expect(await screen.findByRole("menu", { name: "Page actions for Keyboard" })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("menuitem", { name: "Add child page" })).toHaveFocus());
+    await waitFor(() => expect(screen.getByRole("menuitem", { name: "Page settings" })).toHaveFocus());
 
     fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
-    expect(screen.getByRole("menuitem", { name: "Page Settings" })).toHaveFocus();
+    expect(screen.getByRole("menuitem", { name: "Rename" })).toHaveFocus();
     fireEvent.keyDown(screen.getByRole("menu"), { key: "End" });
-    expect(screen.getByRole("menuitem", { name: "Delete page" })).toHaveFocus();
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "Home" });
     expect(screen.getByRole("menuitem", { name: "Add child page" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Home" });
+    expect(screen.getByRole("menuitem", { name: "Page settings" })).toHaveFocus();
     fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowUp" });
-    expect(screen.getByRole("menuitem", { name: "Delete page" })).toHaveFocus();
-    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Delete page" }), { key: "Enter" });
+    expect(screen.getByRole("menuitem", { name: "Add child page" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Delete" }), { key: "Enter" });
     expect(onRequestDeletePage).toHaveBeenCalledWith("keyboard");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 
