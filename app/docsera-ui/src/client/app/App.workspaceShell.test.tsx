@@ -312,6 +312,30 @@ describe("App workspace shell integration", () => {
     window.localStorage.clear();
   });
 
+  it("surfaces the successful runtime ping user to the shared launcher header", async () => {
+    const client = createClient({
+      ping: vi.fn(async () => ({
+        authenticated: true,
+        scope: "x_82900_docsera",
+        status: "ok",
+        timestamp: "2026-09-07 10:15:00",
+        userDisplayName: "Priya Writer",
+        userName: "pwriter",
+        userSysId: "6816f79cc0a8016401c5a33be04be441"
+      }))
+    });
+
+    render(
+      <App
+        runtime={{ ...createRuntime(), config: { backendPingPath: "/api/x_82900_docsera/docsera_runtime/ping" } }}
+        serviceNowClient={client}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Current user loading" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Current user: Priya Writer" })).toHaveTextContent("PW");
+  });
+
   it("defaults to live mode, requests published pages, and does not mount the editor", async () => {
     const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
       createPageListResult(mode === "edit" ? "edit" : "live", "product-docs", [createPageRecord()])

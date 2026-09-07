@@ -20,6 +20,7 @@ export type PingResult = {
   scope: string;
   status: string;
   timestamp: string;
+  userDisplayName: string;
   userName: string;
   userSysId: string;
 };
@@ -35,8 +36,10 @@ export type RawPingPayload = {
   scope?: string;
   status?: string;
   timestamp?: string;
+  user_display_name?: string;
   user_name?: string;
   user_sys_id?: string;
+  userDisplayName?: string;
   userName?: string;
   userSysId?: string;
 };

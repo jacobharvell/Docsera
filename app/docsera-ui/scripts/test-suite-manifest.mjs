@@ -199,6 +199,7 @@ export const testSuites = [
       "src/client/main.test.ts",
       "src/client/runtimeLaunch.test.ts",
       "src/client/shared/icons/DocseraIcon.test.tsx",
+      "src/server/api/docsera-runtime-ping.test.ts",
       "src/server/workspaces/serverWorkspaceIconImage.test.ts",
       "src/server/workspaces/serviceNowWorkspaceIcons.test.ts",
       "test/runtimeApiErrors.test.ts",

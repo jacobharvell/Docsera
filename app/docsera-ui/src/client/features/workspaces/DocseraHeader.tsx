@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Code2, Eye } from "lucide-react";
-import type { WorkspaceMode, WorkspacePendingChangesResult, WorkspaceViewRecord } from "../../shared/types/docsera";
+import type { PingResult, WorkspaceMode, WorkspacePendingChangesResult, WorkspaceViewRecord } from "../../shared/types/docsera";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
 import {
@@ -17,6 +17,10 @@ import { RecentWorkspacesMenu, type RecentWorkspaceItem } from "./RecentWorkspac
 import { WorkspaceIconBadge, type WorkspaceUploadedIconLoader } from "./WorkspacePrimitives";
 import type { WorkspacePageView } from "./workspaceViewModels";
 import type { WorkspaceAuthoringSurface } from "./workspaceAuthoringSurface";
+
+function cleanText(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
 
 type CurrentPageSaveStatus = "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
 
@@ -43,6 +47,7 @@ export type HeaderIdentity =
 type DocseraHeaderProps = {
   breadcrumbs?: WorkspacePageView[];
   currentWorkspaceSlug?: string;
+  currentUser?: Pick<PingResult, "userDisplayName" | "userName"> | null;
   identity: HeaderIdentity;
   mode: "launcher" | "workspace";
   onOpenMyWorkspaces: () => void;
@@ -93,6 +98,25 @@ type DocseraHeaderProps = {
   loadUploadedIcon?: WorkspaceUploadedIconLoader;
   workspaceNavWidth?: number;
 };
+
+function getCurrentUserInitials(currentUser: Pick<PingResult, "userDisplayName" | "userName">): string {
+  const source = cleanText(currentUser.userDisplayName) || cleanText(currentUser.userName);
+  if (!source) {
+    return "";
+  }
+
+  const words = source
+    .replace(/[_@.]+/g, " ")
+    .split(/\s+/)
+    .map((word) => word.trim())
+    .filter(Boolean);
+  const initials = words.length > 1 ? `${words[0]![0]}${words[words.length - 1]![0]}` : words[0]!.slice(0, 2);
+  return initials.toUpperCase();
+}
+
+function navigateToNativeLogout(): void {
+  window.location.assign("/logout.do");
+}
 
 function PublishChevron({ open }: { open: boolean }) {
   return (
@@ -231,6 +255,7 @@ function HeaderIdentityIcon({
 export function DocseraHeader({
   breadcrumbs = [],
   currentWorkspaceSlug = "",
+  currentUser = null,
   identity,
   loadUploadedIcon,
   mode,
@@ -281,12 +306,15 @@ export function DocseraHeader({
   onToggleTheme,
   workspaceNavWidth
 }: DocseraHeaderProps) {
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [changesOpen, setChangesOpen] = useState(false);
   const [discardAllModalOpen, setDiscardAllModalOpen] = useState(false);
   const [discardPageTarget, setDiscardPageTarget] = useState<{ pageSysId: string; title: string } | null>(null);
   const [changesCenterStyle, setChangesCenterStyle] = useState<CSSProperties | undefined>(undefined);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const workspaceMenuRef = useRef<HTMLDivElement>(null);
+  const accountMenuRef = useRef<HTMLDivElement>(null);
+  const accountTriggerRef = useRef<HTMLButtonElement>(null);
   const publishPanelRef = useRef<HTMLDivElement>(null);
   const changesCenterRef = useRef<HTMLElement>(null);
   const publishButtonRef = useRef<HTMLButtonElement>(null);
@@ -361,6 +389,10 @@ export function DocseraHeader({
     : `Are you sure you want to discard ${pendingCount} changes? This action cannot be undone.`;
 
   const showCurrentPageSaveStatus = showPublishControl && Boolean(saveStatus);
+  const currentUserDisplayName = currentUser ? cleanText(currentUser.userDisplayName) : "";
+  const currentUserName = currentUser ? cleanText(currentUser.userName) : "";
+  const currentUserInitials = currentUser ? getCurrentUserInitials(currentUser) : "";
+  const currentUserAvailable = Boolean(currentUserDisplayName || currentUserName);
 
   useLayoutEffect(() => {
     if (!changesOpen || typeof window === "undefined") {
@@ -394,21 +426,21 @@ export function DocseraHeader({
   }, [changesOpen, pendingChangesPublishToastMessage, showCurrentPageSaveStatus]);
 
   useEffect(() => {
-    if (!menuOpen) {
+    if (!workspaceMenuOpen) {
       return;
     }
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (menuRef.current?.contains(event.target as Node)) {
+      if (workspaceMenuRef.current?.contains(event.target as Node)) {
         return;
       }
 
-      setMenuOpen(false);
+      setWorkspaceMenuOpen(false);
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setMenuOpen(false);
+        setWorkspaceMenuOpen(false);
       }
     };
 
@@ -418,7 +450,35 @@ export function DocseraHeader({
       document.removeEventListener("pointerdown", handlePointerDown, true);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [menuOpen]);
+  }, [workspaceMenuOpen]);
+
+  useEffect(() => {
+    if (!accountMenuOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      if (accountMenuRef.current?.contains(event.target as Node)) {
+        return;
+      }
+
+      setAccountMenuOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setAccountMenuOpen(false);
+        accountTriggerRef.current?.focus();
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [accountMenuOpen]);
 
   useEffect(() => {
     if (!changesOpen) {
@@ -578,11 +638,11 @@ export function DocseraHeader({
     >
       <div className="docsera-header__workspace">
         {mode === "workspace" && sidebarCollapsed ? null : (
-          <div className="docsera-header__workspace-panel" ref={menuRef}>
+          <div className="docsera-header__workspace-panel" ref={workspaceMenuRef}>
             <button
               type="button"
               className={`docsera-header__workspace-button${canSwitchWorkspaces ? "" : " docsera-header__workspace-button--static"}`}
-              aria-expanded={canSwitchWorkspaces ? menuOpen : undefined}
+              aria-expanded={canSwitchWorkspaces ? workspaceMenuOpen : undefined}
               aria-haspopup={canSwitchWorkspaces ? "menu" : undefined}
               aria-label={workspaceButtonLabel}
               disabled={!canSwitchWorkspaces}
@@ -591,7 +651,8 @@ export function DocseraHeader({
                   return;
                 }
 
-                setMenuOpen((current) => !current);
+                setAccountMenuOpen(false);
+                setWorkspaceMenuOpen((current) => !current);
               }}
             >
               <HeaderIdentityIcon identity={identity} loadUploadedIcon={loadUploadedIcon} onReleaseWorkspaceSettingsPreviewObjectUrl={onReleaseWorkspaceSettingsPreviewObjectUrl} />
@@ -607,17 +668,17 @@ export function DocseraHeader({
               {canSwitchWorkspaces ? <DoubleChevronIcon /> : null}
             </button>
 
-            {menuOpen ? (
+            {workspaceMenuOpen ? (
               <RecentWorkspacesMenu
                 currentWorkspaceSlug={currentWorkspaceSlug}
                 items={recentWorkspaces}
                 loadUploadedIcon={loadUploadedIcon}
                 onOpenMyWorkspaces={() => {
-                  setMenuOpen(false);
+                  setWorkspaceMenuOpen(false);
                   onOpenMyWorkspaces();
                 }}
                 onOpenWorkspace={(workspaceSlug) => {
-                  setMenuOpen(false);
+                  setWorkspaceMenuOpen(false);
                   onOpenWorkspace(workspaceSlug);
                 }}
               />
@@ -970,9 +1031,40 @@ export function DocseraHeader({
           >
             {theme === "dark" ? <SunIcon /> : <MoonIcon />}
           </button>
-          <button type="button" className="docsera-header__profile" aria-label="Current user">
-            J
-          </button>
+          <div className="docsera-header__account" ref={accountMenuRef}>
+            <button
+              ref={accountTriggerRef}
+              type="button"
+              className={`docsera-header__profile${currentUserAvailable ? "" : " docsera-header__profile--placeholder"}`}
+              aria-expanded={accountMenuOpen}
+              aria-haspopup="menu"
+              aria-label={currentUserAvailable ? `Current user: ${currentUserDisplayName || currentUserName}` : "Current user loading"}
+              onClick={() => {
+                setWorkspaceMenuOpen(false);
+                setAccountMenuOpen((current) => !current);
+              }}
+            >
+              {currentUserInitials ? <span aria-hidden="true">{currentUserInitials}</span> : <span className="docsera-header__profile-placeholder-dot" aria-hidden="true" />}
+            </button>
+            {accountMenuOpen ? (
+              <div className="docsera-account-menu" role="menu" aria-label="Account menu">
+                {currentUserAvailable ? (
+                  <div className="docsera-account-menu__identity" role="presentation">
+                    <strong>{currentUserDisplayName || currentUserName}</strong>
+                    <span>{currentUserName}</span>
+                  </div>
+                ) : (
+                  <div className="docsera-account-menu__identity docsera-account-menu__identity--placeholder" role="presentation">
+                    <strong>Current user</strong>
+                    <span>Loading session</span>
+                  </div>
+                )}
+                <button type="button" className="docsera-account-menu__item" role="menuitem" onClick={navigateToNativeLogout}>
+                  Sign out
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
       {typeof document !== "undefined"

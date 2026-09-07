@@ -9,6 +9,7 @@ export function process(_request: unknown, response: { setBody: (payload: unknow
       scope: DOCSERA_SCOPE,
       status: "ok",
       timestamp: new GlideDateTime().getDisplayValue(),
+      userDisplayName: gs.getUserDisplayName(),
       userName: gs.getUserName(),
       userSysId: gs.getUserID()
     }

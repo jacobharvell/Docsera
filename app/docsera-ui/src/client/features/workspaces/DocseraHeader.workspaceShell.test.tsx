@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DocseraHeader } from "./DocseraHeader";
 
@@ -10,6 +10,7 @@ const baseProps = {
   onOpenWorkspace: vi.fn(),
   onToggleTheme: vi.fn(),
   onWorkspaceModeChange: vi.fn(),
+  currentUser: { userDisplayName: "Priya Writer", userName: "pwriter" },
   recentWorkspaces: [],
   showEditModeToggle: true,
   showAuthoringSurfaceToggle: true,
@@ -124,7 +125,7 @@ describe("DocseraHeader workspace shell", () => {
       "docsera-header__publish-panel",
       "docsera-header__action-slot docsera-header__action-slot--settings",
       "docsera-header__ghost-button docsera-header__ghost-button--theme",
-      "docsera-header__profile"
+      "docsera-header__account"
     ]);
     expect(Array.from(editPublishPanel?.children ?? []).map((child) => (child as HTMLElement).className)).toEqual([
       "docsera-header__save-status docsera-header__save-status--saved",
@@ -134,6 +135,15 @@ describe("DocseraHeader workspace shell", () => {
     expect(editPublishPanel).toContainElement(editSaveStatus);
     expect(editPublishPanel).toContainElement(editPublishDivider);
     expect(editPublishPanel).toContainElement(editPublishButton);
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const runtimeShellCss = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+    expect(runtimeShellCss).toMatch(/\.docsera-header__account\s*{[^}]*flex:\s*0 0 32px;[^}]*order:\s*3;[^}]*width:\s*32px;[^}]*height:\s*32px;/s);
 
     editRender.unmount();
 
@@ -182,7 +192,7 @@ describe("DocseraHeader workspace shell", () => {
       "docsera-header__publish-panel docsera-header__publish-panel--hidden",
       "docsera-header__action-slot docsera-header__action-slot--settings",
       "docsera-header__ghost-button docsera-header__ghost-button--theme",
-      "docsera-header__profile"
+      "docsera-header__account"
     ]);
     expect(Array.from(livePublishPanel?.children ?? []).map((child) => (child as HTMLElement).className)).toEqual([
       "docsera-header__save-status docsera-header__save-status--reserved",
@@ -196,5 +206,44 @@ describe("DocseraHeader workspace shell", () => {
     for (const button of liveRender.container.querySelectorAll<HTMLButtonElement>(".docsera-header__surface-segment")) {
       expect(button).toBeDisabled();
     }
+  });
+
+  it("keeps launcher and workspace account menus separate from Docsera identity and route state", () => {
+    const beforeRoute = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const launcherRender = render(
+      <DocseraHeader
+        {...baseProps}
+        identity={{ kind: "docsera", icon: { type: "builtin", key: "docsera-workspace", label: "Docsera" }, name: "Docsera" }}
+        mode="launcher"
+        showEditModeToggle={false}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Current user: Priya Writer" }));
+    expect(screen.getByRole("menu", { name: "Account menu" })).toHaveTextContent("Priya Writer");
+    expect(`${window.location.pathname}${window.location.search}${window.location.hash}`).toBe(beforeRoute);
+    launcherRender.unmount();
+
+    const onWorkspaceModeChange = vi.fn();
+    render(
+      <DocseraHeader
+        {...baseProps}
+        currentWorkspaceSlug="docs"
+        onWorkspaceModeChange={onWorkspaceModeChange}
+        recentWorkspaces={[
+          { icon: { type: "builtin", key: "docs", label: "Docs" }, name: "Docs", slug: "docs" },
+          { icon: { type: "builtin", key: "api", label: "API" }, name: "API", slug: "api" }
+        ]}
+        showWorkspaceSwitcher
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Workspace switcher: Docs" }));
+    expect(screen.getByRole("menu", { name: "Recent workspaces" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Current user: Priya Writer" }));
+    expect(screen.queryByRole("menu", { name: "Recent workspaces" })).not.toBeInTheDocument();
+    expect(screen.getByRole("menu", { name: "Account menu" })).toBeInTheDocument();
+    expect(onWorkspaceModeChange).not.toHaveBeenCalled();
+    expect(`${window.location.pathname}${window.location.search}${window.location.hash}`).toBe(beforeRoute);
   });
 });

@@ -29,6 +29,7 @@ function createPingEnvelope(): PingEnvelope {
       scope: "x_82900_docsera",
       status: "ok",
       timestamp: "2026-07-03 11:16:20",
+      userDisplayName: "System Administrator",
       userName: "admin",
       userSysId: "6816f79cc0a8016401c5a33be04be441"
     }
@@ -90,6 +91,11 @@ test("ping sends the ServiceNow user token when one is available", async () => {
     authenticated: true,
     scope: "x_82900_docsera",
     status: "ok"
+  });
+  expect(result).toMatchObject({
+    userDisplayName: "System Administrator",
+    userName: "admin",
+    userSysId: "6816f79cc0a8016401c5a33be04be441"
   });
 });
 

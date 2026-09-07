@@ -1120,7 +1120,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     initialRoute.mode === "workspace" ? readStoredWorkspaceNavWidth(initialRoute.workspaceSlug) : DEFAULT_WORKSPACE_NAV_WIDTH
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [, setPingState] = useState<RuntimeProbeState>(() => createInitialPingState(runtime));
+  const [pingState, setPingState] = useState<RuntimeProbeState>(() => createInitialPingState(runtime));
   const [launcherSearchText, setLauncherSearchText] = useState("");
   const [launcherPage, setLauncherPage] = useState(1);
   const [launcherRefreshToken, setLauncherRefreshToken] = useState(0);
@@ -7138,6 +7138,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         breadcrumbs={displayedSelectedPagePath}
         currentWorkspaceSlug={appHeaderWorkspaceSlug}
         identity={appHeaderIdentity}
+        currentUser={pingState.status === "success" ? pingState.payload : null}
         loadUploadedIcon={serviceNowClient.loadWorkspaceIcon}
         onReleaseWorkspaceSettingsPreviewObjectUrl={releaseWorkspaceSettingsOwnedPreviewObjectUrl}
         mode={appHeaderMode}

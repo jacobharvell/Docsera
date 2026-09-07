@@ -36,6 +36,86 @@ describe("DocseraHeader publishing changes", () => {
     vi.restoreAllMocks();
   });
 
+  it("shows a neutral account placeholder before authenticated identity is available", () => {
+    const { container } = render(<DocseraHeader {...baseProps} currentUser={null} />);
+
+    const trigger = screen.getByRole("button", { name: "Current user loading" });
+    expect(trigger).toHaveClass("docsera-header__profile");
+    expect(trigger).toHaveClass("docsera-header__profile--placeholder");
+    expect(trigger).not.toHaveTextContent("J");
+    expect(container.querySelector(".docsera-header__profile-placeholder-dot")).toBeInTheDocument();
+  });
+
+  it("uses deterministic current-user initials from display name with username fallback", () => {
+    const { rerender } = render(
+      <DocseraHeader
+        {...baseProps}
+        currentUser={{ userDisplayName: "Priya Writer", userName: "pwriter" }}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Current user: Priya Writer" })).toHaveTextContent("PW");
+
+    rerender(
+      <DocseraHeader
+        {...baseProps}
+        currentUser={{ userDisplayName: "", userName: "api.editor@example.com" }}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Current user: api.editor@example.com" })).toHaveTextContent("AC");
+    expect(screen.queryByText("J")).not.toBeInTheDocument();
+  });
+
+  it("opens an accessible account menu with session identity and native Sign out", () => {
+    const assign = vi.fn();
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: { ...window.location, assign }
+    });
+    render(
+      <DocseraHeader
+        {...baseProps}
+        currentUser={{ userDisplayName: "Priya Writer", userName: "pwriter" }}
+      />
+    );
+
+    const trigger = screen.getByRole("button", { name: "Current user: Priya Writer" });
+    fireEvent.click(trigger);
+
+    const menu = screen.getByRole("menu", { name: "Account menu" });
+    expect(menu).toHaveTextContent("Priya Writer");
+    expect(menu).toHaveTextContent("pwriter");
+    expect(within(menu).getByRole("menuitem", { name: "Sign out" })).toBeInTheDocument();
+
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Sign out" }));
+    expect(assign).toHaveBeenCalledTimes(1);
+    expect(assign).toHaveBeenCalledWith("/logout.do");
+  });
+
+  it("dismisses the account menu on outside pointer and Escape while returning focus on Escape", async () => {
+    render(
+      <div>
+        <DocseraHeader
+          {...baseProps}
+          currentUser={{ userDisplayName: "Priya Writer", userName: "pwriter" }}
+        />
+        <button type="button">Outside</button>
+      </div>
+    );
+
+    const trigger = screen.getByRole("button", { name: "Current user: Priya Writer" });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menu", { name: "Account menu" })).toBeInTheDocument();
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Outside" }));
+    expect(screen.queryByRole("menu", { name: "Account menu" })).not.toBeInTheDocument();
+
+    fireEvent.click(trigger);
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "Account menu" })).not.toBeInTheDocument());
+    expect(trigger).toHaveFocus();
+  });
+
   it("renders non-default built-in workspace icons as transparent primary glyphs in the header identity", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;

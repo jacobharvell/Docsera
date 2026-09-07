@@ -364,6 +364,7 @@ function normalizePingPayload(payload: PingEnvelope): PingResult {
     scope: result.scope ?? "unknown",
     status: result.status ?? "unknown",
     timestamp: result.timestamp ?? "unknown",
+    userDisplayName: cleanText(result.userDisplayName ?? result.user_display_name) || "unknown",
     userName: result.userName ?? result.user_name ?? "unknown",
     userSysId: result.userSysId ?? result.user_sys_id ?? "unknown"
   };
