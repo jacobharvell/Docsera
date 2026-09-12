@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "artifactRevision": "worker-queue-companion-r2",
   "buildType": "global",
-  "generatedAt": "2026-09-02 17:12:07",
+  "generatedAt": "2026-09-12 23:12:33",
   "remoteUpdateSetSysId": "cbb4d31e2a5358f32458ac92ba22a522",
   "sourceDistRoot": "dist",
   "artifactFile": "sys_remote_update_set_docsera_global_workspace_provisioning_worker_queue_0_1_0_companion.xml",
@@ -21,6 +21,20 @@
       "targetName": "global",
       "targetSysId": "global",
       "updateName": "sys_scope_global"
+    },
+    {
+      "sourceFile": "synthetic/sys_restricted_caller_access_449a6d8fb9d6e5b6c84e14c4314d8ccb.xml",
+      "table": "sys_restricted_caller_access",
+      "targetName": "global.DocseraGlobalWorkspaceMembershipBridge",
+      "targetSysId": "449a6d8fb9d6e5b6c84e14c4314d8ccb",
+      "updateName": "sys_restricted_caller_access_449a6d8fb9d6e5b6c84e14c4314d8ccb"
+    },
+    {
+      "sourceFile": "update/sys_module_7efb96fd25084bb886188a7b24bbbec0.xml",
+      "table": "sys_module",
+      "targetName": "/global/docsera-global-workspace-bridge/0.1.0/src/server/script-includes/docsera-global-workspace-membership-bridge.js",
+      "targetSysId": "7efb96fd25084bb886188a7b24bbbec0",
+      "updateName": "sys_module_7efb96fd25084bb886188a7b24bbbec0"
     },
     {
       "sourceFile": "update/sys_module_c91f8afbb5884bea9f4169994811d937.xml",
@@ -105,6 +119,13 @@
       "targetName": "Docsera Workspace Provision Request Worker",
       "targetSysId": "fa8109eeb6ed4c3e91c11238db780568",
       "updateName": "sys_script_fa8109eeb6ed4c3e91c11238db780568"
+    },
+    {
+      "sourceFile": "update/sys_script_include_5bf5c028daaa417d88de36616e4c8300.xml",
+      "table": "sys_script_include",
+      "targetName": "DocseraGlobalWorkspaceMembershipBridge",
+      "targetSysId": "5bf5c028daaa417d88de36616e4c8300",
+      "updateName": "sys_script_include_5bf5c028daaa417d88de36616e4c8300"
     },
     {
       "sourceFile": "update/sys_script_include_abf83bf6db1e46dea88c97ec493153bc.xml",

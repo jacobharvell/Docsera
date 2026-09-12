@@ -16,7 +16,30 @@ const serviceNowWorkspaceSettingsPath = join(packageRoot, "src", "server", "work
 const workspaceTablePath = join(packageRoot, "src", "fluent", "tables", "docsera-workspace.now.ts");
 const globalBridgeQueueAccessPath = resolve(packageRoot, "..", "docsera-global-bridge", "src", "fluent", "security", "docsera-workspace-provisioning-queue-access.now.ts");
 const globalBridgeVerifyPath = resolve(packageRoot, "..", "docsera-global-bridge", "scripts", "verify-global-bridge.mjs");
+const globalBridgeUpdateSetGeneratorPath = resolve(
+  packageRoot,
+  "..",
+  "docsera-global-bridge",
+  "scripts",
+  "generate-update-set-artifact.mjs"
+);
+const globalBridgeUpdateSetManifestPath = resolve(
+  packageRoot,
+  "..",
+  "docsera-global-bridge",
+  "update-set",
+  "docsera-global-workspace-bridge.update-set.json"
+);
+const globalBridgeUpdateSetXmlPath = resolve(
+  packageRoot,
+  "..",
+  "docsera-global-bridge",
+  "update-set",
+  "sys_remote_update_set_docsera_global_workspace_provisioning_worker_queue_0_1_0_companion.xml"
+);
 const globalBridgeWorkerPath = resolve(packageRoot, "..", "docsera-global-bridge", "src", "server", "script-includes", "docsera-global-workspace-provisioning-bridge.js");
+const globalMembershipBridgeAccessPath = join(packageRoot, "src", "fluent", "security", "docsera-workspace-membership-bridge-access.now.ts");
+const globalMembershipBridgePath = resolve(packageRoot, "..", "docsera-global-bridge", "src", "server", "script-includes", "docsera-global-workspace-membership-bridge.js");
 const globalBridgeBusinessRulePath = resolve(packageRoot, "..", "docsera-global-bridge", "src", "fluent", "business-rules", "docsera-workspace-provision-request-worker.now.ts");
 const explicitSourceExtensionPattern = /\.(?:ts|tsx)$/;
 
@@ -190,6 +213,76 @@ describe("server module boundaries", () => {
     expect(bridgeAccessSource).toContain('operation: "delete"');
     expect(bridgeAccessSource).toContain('targetName: "x_82900_docsera_workspace"');
     expect(readFileSync(globalBridgeVerifyPath, "utf8")).toContain("delete_access");
+  });
+
+  it("keeps workspace membership mutation constrained by scoped execute privilege and workspace group-pair validation", () => {
+    const accessSource = readFileSync(globalMembershipBridgeAccessPath, "utf8");
+    const bridgeSource = readFileSync(globalMembershipBridgePath, "utf8");
+    const verifierSource = readFileSync(globalBridgeVerifyPath, "utf8");
+
+    expect(accessSource).toContain('$id: Now.ID["docsera-global-workspace-membership-bridge-execute"]');
+    expect(accessSource).toContain('operation: "execute"');
+    expect(accessSource).toContain('targetName: "global.DocseraGlobalWorkspaceMembershipBridge"');
+    expect(accessSource).toContain('targetScope: "global"');
+    expect(accessSource).toContain('targetType: "sys_script_include"');
+
+    expect(bridgeSource).toContain("_validateWorkspaceGroupPair");
+    expect(bridgeSource).toContain("new GlideRecord('x_82900_docsera_workspace')");
+    expect(bridgeSource).toContain("workspace.addQuery('admin_group', adminGroupSysId)");
+    expect(bridgeSource).toContain("workspace.addQuery('editor_group', editorGroupSysId)");
+
+    expect(verifierSource).toContain("source_scope=${defaults.scopedScopeId}");
+    expect(verifierSource).toContain("target_type=sys_script_include");
+    expect(verifierSource).toContain("target_name=global.${defaults.membershipBridgeName}");
+    expect(verifierSource).toContain("operation=${defaults.rca.operationExecuteApi}");
+    expect(verifierSource).toContain("status=allowed");
+    expect(verifierSource).toContain('table: "sys_restricted_caller_access"');
+    expect(verifierSource).toContain("target_table=sys_script_include");
+    expect(verifierSource).toContain("isAllowedAccessValue(membershipBridgeRestrictedCallerAccessRecord?.status)");
+    expect(verifierSource).toContain('sourceTypeScope: "5"');
+    expect(verifierSource).toContain('statusAllowed: "2"');
+    expect(verifierSource).toContain('targetTypeScriptInclude: "2"');
+    expect(verifierSource).toContain('rcaTypeRealRca: "real_rca"');
+    expect(verifierSource).toContain('cleanText(membershipBridgeRestrictedCallerAccessRecord?.sys_scope) === "global"');
+  });
+
+  it("keeps the global companion artifact generator responsible for membership bridge restricted caller access", () => {
+    const generatorSource = readFileSync(globalBridgeUpdateSetGeneratorPath, "utf8");
+    const manifest = JSON.parse(readFileSync(globalBridgeUpdateSetManifestPath, "utf8")) as {
+      records: Array<{ table: string; targetName: string; sourceFile: string }>;
+    };
+    const updateSetXml = readFileSync(globalBridgeUpdateSetXmlPath, "utf8");
+
+    expect(generatorSource).toContain("buildRestrictedCallerAccessRecords");
+    expect(generatorSource).toContain('"sys_restricted_caller_access"');
+    expect(generatorSource).toContain('sourceTypeScope: "5"');
+    expect(generatorSource).toContain('statusAllowed: "2"');
+    expect(generatorSource).toContain('targetTypeScriptInclude: "2"');
+    expect(generatorSource).toContain('rcaTypeRealRca: "real_rca"');
+    expect(generatorSource).toContain('"DocseraGlobalWorkspaceMembershipBridge"');
+    expect(generatorSource).toContain('"global.DocseraGlobalWorkspaceMembershipBridge"');
+    expect(generatorSource).toContain('"sys_script_include"');
+    expect(generatorSource).toContain('operationExecuteApi: "execute"');
+    expect(generatorSource).toContain("[...baseRecords, ...restrictedCallerAccessRecords, ...builtRecords]");
+
+    expect(
+      manifest.records.some((record) => {
+        return (
+          record.table === "sys_restricted_caller_access" &&
+          record.targetName === "global.DocseraGlobalWorkspaceMembershipBridge" &&
+          record.sourceFile.startsWith("synthetic/sys_restricted_caller_access_")
+        );
+      })
+    ).toBe(true);
+    expect(updateSetXml).toContain("&lt;record_update table=&quot;sys_restricted_caller_access&quot;&gt;");
+    expect(updateSetXml).toContain("&lt;rca_type&gt;real_rca&lt;/rca_type&gt;");
+    expect(updateSetXml).toContain("&lt;source_scope display_value=&quot;x_82900_docsera&quot;&gt;6997f092c3fd8310c569bf0d0501314d&lt;/source_scope&gt;");
+    expect(updateSetXml).toContain("&lt;source_type&gt;5&lt;/source_type&gt;");
+    expect(updateSetXml).toContain("&lt;target display_value=&quot;DocseraGlobalWorkspaceMembershipBridge&quot;&gt;5bf5c028daaa417d88de36616e4c8300&lt;/target&gt;");
+    expect(updateSetXml).toContain("&lt;target_type&gt;2&lt;/target_type&gt;");
+    expect(updateSetXml).toContain("&lt;operation&gt;execute&lt;/operation&gt;");
+    expect(updateSetXml).toContain("&lt;status&gt;2&lt;/status&gt;");
+    expect(updateSetXml).toContain("&lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;");
   });
 
   it("keeps workspace settings outside the workspace edit lease module boundary", () => {

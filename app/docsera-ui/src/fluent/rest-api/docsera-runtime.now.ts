@@ -20,6 +20,11 @@ import { process as getWorkspaceMediaFile } from "../../server/api/docsera-runti
 import { process as uploadWorkspaceIcon } from "../../server/api/docsera-runtime-workspace-icon-upload.ts";
 import { process as getWorkspaceIconFile } from "../../server/api/docsera-runtime-workspace-icon-file.ts";
 import { process as workspaceProvisioningStatus } from "../../server/api/docsera-runtime-workspace-provisioning-status";
+import {
+  listWorkspaceMembers,
+  removeWorkspaceMemberAccess,
+  setWorkspaceMemberAccess
+} from "../../server/api/docsera-runtime-workspace-members.ts";
 import { process as workspaceDiscardAll } from "../../server/api/docsera-runtime-workspace-discard-all";
 import { process as workspaceDiscardPage } from "../../server/api/docsera-runtime-workspace-discard-page";
 import { process as workspacePendingChanges } from "../../server/api/docsera-runtime-workspace-pending-changes";
@@ -86,6 +91,35 @@ RestApi({
       produces: "application/json",
       shortDescription: "Persist authorized workspace identity and layout defaults without requiring the Edit lease.",
       script: saveWorkspaceSettings
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-members-get"],
+      name: "workspace_members",
+      path: "/workspaces/members",
+      method: "GET",
+      produces: "application/json",
+      shortDescription: "List authorized workspace Admin and Editor members from native ServiceNow groups.",
+      script: listWorkspaceMembers
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-members-put"],
+      name: "workspace_members_set_access",
+      path: "/workspaces/members",
+      method: "PUT",
+      consumes: "application/json",
+      produces: "application/json",
+      shortDescription: "Set a user's workspace Admin or Editor access through native ServiceNow groups.",
+      script: setWorkspaceMemberAccess
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-members-remove-post"],
+      name: "workspace_members_remove_access",
+      path: "/workspaces/members/remove",
+      method: "POST",
+      consumes: "application/json",
+      produces: "application/json",
+      shortDescription: "Remove a user's workspace Admin and Editor access through native ServiceNow groups.",
+      script: removeWorkspaceMemberAccess
     },
     {
       $id: Now.ID["docsera-runtime-workspace-pending-changes-post"], name: "workspace_pending_changes", path: "/workspaces/pending-changes", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Read the active workspace pending changes through the held Edit lease.", script: workspacePendingChanges

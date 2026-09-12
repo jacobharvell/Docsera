@@ -8,6 +8,7 @@ const sdkCliPath = fileURLToPath(new URL("../node_modules/@servicenow/sdk/bin/in
 
 const defaults = {
   authAlias: "docsera-pdi",
+  membershipBridgeName: "DocseraGlobalWorkspaceMembershipBridge",
   workerName: "DocseraGlobalWorkspaceProvisioningBridge",
   workerRuleName: "Docsera Workspace Provision Request Worker",
   packageRuntimePathPrefix: "/global/docsera-global-workspace-bridge/0.1.0/",
@@ -17,7 +18,15 @@ const defaults = {
   expectedRuntimeAccessTracking: "permissive",
   scopedRequestTable: "x_82900_docsera_workspace_provision_request",
   scopedWorkspaceIconAssetTable: "x_82900_docsera_workspace_icon_asset",
-  scopedWorkspaceTable: "x_82900_docsera_workspace"
+  scopedWorkspaceTable: "x_82900_docsera_workspace",
+  scopedScopeId: "6997f092c3fd8310c569bf0d0501314d",
+  rca: Object.freeze({
+    operationExecuteApi: "execute",
+    rcaTypeRealRca: "real_rca",
+    sourceTypeScope: "5",
+    statusAllowed: "2",
+    targetTypeScriptInclude: "2"
+  })
 };
 
 function readEnv(...names) {
@@ -97,6 +106,18 @@ function isRestrictedCallerValue(value) {
   return normalized === "2" || normalized.toLowerCase() === "restriction";
 }
 
+function isAllowedAccessValue(value) {
+  return cleanText(value) === defaults.rca.statusAllowed;
+}
+
+function isScopeSourceValue(value) {
+  return cleanText(value) === defaults.rca.sourceTypeScope;
+}
+
+function isScriptIncludeTargetValue(value) {
+  return cleanText(value) === defaults.rca.targetTypeScriptInclude;
+}
+
 function main() {
   const parsedArgs = parseArgs({
     allowPositionals: false,
@@ -156,6 +177,122 @@ function main() {
     ok: cleanText(workerRecord?.sys_scope) === "global",
     label: "global worker script include is installed in the global scope",
     detail: JSON.stringify(workerRecord)
+  });
+
+  const membershipBridgeRecords = runQuery({
+    authAlias,
+    table: "sys_script_include",
+    query: `name=${defaults.membershipBridgeName}`,
+    fields: "sys_id,name,api_name,access,caller_access,sys_scope"
+  });
+  const membershipBridgeRecord = membershipBridgeRecords[0] ?? null;
+
+  checks.push({
+    ok: membershipBridgeRecords.length === 1,
+    label: "global membership bridge script include is installed",
+    detail: JSON.stringify(membershipBridgeRecords)
+  });
+  checks.push({
+    ok: membershipBridgeRecords.length <= 1,
+    label: "global membership bridge script include is not duplicated",
+    detail: JSON.stringify(membershipBridgeRecords)
+  });
+  checks.push({
+    ok: cleanText(membershipBridgeRecord?.api_name) === `global.${defaults.membershipBridgeName}`,
+    label: "global membership bridge api_name matches expected value",
+    detail: JSON.stringify(membershipBridgeRecord)
+  });
+  checks.push({
+    ok: cleanText(membershipBridgeRecord?.access) === "public",
+    label: "global membership bridge is callable from approved external scopes",
+    detail: JSON.stringify(membershipBridgeRecord)
+  });
+  checks.push({
+    ok: isRestrictedCallerValue(membershipBridgeRecord?.caller_access),
+    label: "global membership bridge uses restricted caller access",
+    detail: JSON.stringify(membershipBridgeRecord)
+  });
+  checks.push({
+    ok: cleanText(membershipBridgeRecord?.sys_scope) === "global",
+    label: "global membership bridge script include is installed in the global scope",
+    detail: JSON.stringify(membershipBridgeRecord)
+  });
+
+  const membershipBridgePrivilegeRecords = runQuery({
+    authAlias,
+    table: "sys_scope_privilege",
+    query: `source_scope=${defaults.scopedScopeId}^target_scope=global^target_type=sys_script_include^target_name=global.${defaults.membershipBridgeName}^operation=${defaults.rca.operationExecuteApi}^status=allowed`,
+    fields: "sys_id,target_name,target_scope,target_type,operation,status,source_scope"
+  });
+
+  checks.push({
+    ok: membershipBridgePrivilegeRecords.length >= 1,
+    label: "scoped app owns an allowed execute cross-scope privilege for the global membership bridge",
+    detail: JSON.stringify(membershipBridgePrivilegeRecords)
+  });
+
+  const membershipBridgeRestrictedCallerAccessRecords = runQuery({
+    authAlias,
+    table: "sys_restricted_caller_access",
+    query: `source_scope=${defaults.scopedScopeId}^target_scope=global^target_table=sys_script_include^target=${cleanText(membershipBridgeRecord?.sys_id)}`,
+    fields: "sys_id,sys_scope,source_scope,source_type,source_table,source,target_scope,target_type,target_table,target,operation,status,rca_type,description"
+  });
+  const membershipBridgeRestrictedCallerAccessRecord =
+    membershipBridgeRestrictedCallerAccessRecords.find((record) => {
+      return (
+        cleanText(record.source_scope) === defaults.scopedScopeId &&
+        cleanText(record.target_scope) === "global" &&
+        cleanText(record.target_table) === "sys_script_include" &&
+        cleanText(record.target) === cleanText(membershipBridgeRecord?.sys_id)
+      );
+    });
+
+  checks.push({
+    ok: Boolean(membershipBridgeRestrictedCallerAccessRecord),
+    label: "restricted caller access relationship exists for the scoped membership bridge caller",
+    detail: JSON.stringify(membershipBridgeRestrictedCallerAccessRecords)
+  });
+  checks.push({
+    ok: isScopeSourceValue(membershipBridgeRestrictedCallerAccessRecord?.source_type),
+    label: "restricted caller access source type stores the canonical Scope value",
+    detail: JSON.stringify(membershipBridgeRestrictedCallerAccessRecord)
+  });
+  checks.push({
+    ok: isAllowedAccessValue(membershipBridgeRestrictedCallerAccessRecord?.status),
+    label: "restricted caller access status stores the canonical Allowed value",
+    detail: JSON.stringify(membershipBridgeRestrictedCallerAccessRecord)
+  });
+  checks.push({
+    ok: isScriptIncludeTargetValue(membershipBridgeRestrictedCallerAccessRecord?.target_type),
+    label: "restricted caller access target type stores the canonical Script Include value",
+    detail: JSON.stringify(membershipBridgeRestrictedCallerAccessRecord)
+  });
+  checks.push({
+    ok: cleanText(membershipBridgeRestrictedCallerAccessRecord?.operation) === defaults.rca.operationExecuteApi,
+    label: "restricted caller access operation stores the canonical Execute API value",
+    detail: JSON.stringify(membershipBridgeRestrictedCallerAccessRecord)
+  });
+  checks.push({
+    ok: cleanText(membershipBridgeRestrictedCallerAccessRecord?.rca_type) === defaults.rca.rcaTypeRealRca,
+    label: "restricted caller access type stores the canonical Real RCA value",
+    detail: JSON.stringify(membershipBridgeRestrictedCallerAccessRecord)
+  });
+  checks.push({
+    ok:
+      cleanText(membershipBridgeRestrictedCallerAccessRecord?.source_scope) === defaults.scopedScopeId &&
+      cleanText(membershipBridgeRestrictedCallerAccessRecord?.source_table) === "sys_scope",
+    label: "restricted caller access source scope is the Docsera scoped application",
+    detail: JSON.stringify(membershipBridgeRestrictedCallerAccessRecord)
+  });
+  checks.push({
+    ok: cleanText(membershipBridgeRestrictedCallerAccessRecord?.target) === cleanText(membershipBridgeRecord?.sys_id),
+    label: "restricted caller access target is the installed membership Script Include",
+    detail: JSON.stringify(membershipBridgeRestrictedCallerAccessRecord)
+  });
+  checks.push({
+    ok: cleanText(membershipBridgeRestrictedCallerAccessRecord?.sys_scope) === "global",
+    label: "restricted caller access record is owned by the Global application scope",
+    detail: JSON.stringify(membershipBridgeRestrictedCallerAccessRecord)
   });
 
   const workerRules = runQuery({
@@ -313,6 +450,13 @@ function main() {
   });
   checks.push({
     ok: runtimeModulePaths.has(
+      `${defaults.packageRuntimePathPrefix}src/server/script-includes/docsera-global-workspace-membership-bridge.js`
+    ),
+    label: "global membership bridge script sys_module is installed",
+    detail: JSON.stringify(runtimeModuleRecords)
+  });
+  checks.push({
+    ok: runtimeModulePaths.has(
       `${defaults.packageRuntimePathPrefix}src/server/business-rules/process-workspace-provision-request.js`
     ),
     label: "global worker business rule script sys_module is installed",
@@ -369,6 +513,12 @@ function main() {
 
   console.log("Scoped table privilege diagnostics");
   console.log(JSON.stringify(privilegeRecords, null, 2));
+  console.log("");
+  console.log("Scoped membership bridge execute privilege diagnostics");
+  console.log(JSON.stringify(membershipBridgePrivilegeRecords, null, 2));
+  console.log("");
+  console.log("Global membership bridge restricted caller access diagnostics");
+  console.log(JSON.stringify(membershipBridgeRestrictedCallerAccessRecords, null, 2));
   console.log("");
   console.log("Global package runtime sys_module diagnostics");
   console.log(JSON.stringify(runtimeModuleRecords, null, 2));

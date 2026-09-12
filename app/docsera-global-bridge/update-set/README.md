@@ -32,6 +32,7 @@ Included worker records:
   - `x_82900_docsera_workspace_provision_request` read/write
   - `x_82900_docsera_workspace` read/create/delete
   - `x_82900_docsera_workspace_icon_asset` read/write
+- `sys_restricted_caller_access` row allowing source scope `x_82900_docsera` to execute target `global.DocseraGlobalWorkspaceMembershipBridge`
 - `sys_module:/global/docsera-global-workspace-bridge/0.1.0/package.json`
 - `sys_module:/global/docsera-global-workspace-bridge/0.1.0/bom.json`
 - `sys_module:/global/docsera-global-workspace-bridge/0.1.0/src/server/script-includes/docsera-global-workspace-provisioning-bridge.js`

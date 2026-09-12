@@ -9,6 +9,10 @@ declare global {
                         table: 'sys_module'
                         id: 'd9b48b4fd7c4406583535934478c82db'
                     }
+                    'docsera-global-workspace-membership-bridge': {
+                        table: 'sys_script_include'
+                        id: '5bf5c028daaa417d88de36616e4c8300'
+                    }
                     'docsera-global-workspace-provisioning-bridge': {
                         table: 'sys_script_include'
                         id: 'abf83bf6db1e46dea88c97ec493153bc'
@@ -52,6 +56,10 @@ declare global {
                     'src_server_business-rules_process-workspace-provision-request_js': {
                         table: 'sys_module'
                         id: 'c91f8afbb5884bea9f4169994811d937'
+                    }
+                    'src_server_script-includes_docsera-global-workspace-membership-bridge_js': {
+                        table: 'sys_module'
+                        id: '7efb96fd25084bb886188a7b24bbbec0'
                     }
                     'src_server_script-includes_docsera-global-workspace-provisioning-bridge_js': {
                         table: 'sys_module'

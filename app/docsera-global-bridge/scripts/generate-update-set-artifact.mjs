@@ -41,6 +41,20 @@ function readScopedAppConfig() {
 
 const scopedAppConfig = readScopedAppConfig();
 
+const docseraMembershipBridge = Object.freeze({
+  name: "DocseraGlobalWorkspaceMembershipBridge",
+  sysId: "5bf5c028daaa417d88de36616e4c8300",
+  apiName: "global.DocseraGlobalWorkspaceMembershipBridge"
+});
+
+const restrictedCallerAccessValues = Object.freeze({
+  operationExecuteApi: "execute",
+  rcaTypeRealRca: "real_rca",
+  sourceTypeScope: "5",
+  statusAllowed: "2",
+  targetTypeScriptInclude: "2"
+});
+
 function stableSysId(seed) {
   return createHash("md5").update(seed).digest("hex");
 }
@@ -225,11 +239,55 @@ function buildGlobalBaseRecords() {
   return [packageRecord, scopeRecord];
 }
 
+function buildRestrictedCallerAccessRecords() {
+  const sysId = stableSysId(
+    `sys_restricted_caller_access:${scopedAppConfig.scopeId}:global:${docseraMembershipBridge.apiName}:execute`
+  );
+  const updateName = `sys_restricted_caller_access_${sysId}`;
+  const relativePath = `synthetic/${updateName}.xml`;
+
+  return [
+    {
+      absolutePath: relativePath,
+      content: buildRecordUpdateXml("sys_restricted_caller_access", sysId, [
+        {
+          name: "description",
+          value:
+            "Allow the Docsera scoped app to execute the Global workspace membership bridge under Caller Restriction."
+        },
+        { name: "operation", value: restrictedCallerAccessValues.operationExecuteApi },
+        { name: "rca_type", value: restrictedCallerAccessValues.rcaTypeRealRca },
+        { name: "source", value: scopedAppConfig.scopeId, attributes: ` display_value="${xmlEscape(scopedAppConfig.scope)}"` },
+        { name: "source_scope", value: scopedAppConfig.scopeId, attributes: ` display_value="${xmlEscape(scopedAppConfig.scope)}"` },
+        { name: "source_table", value: "sys_scope" },
+        { name: "source_type", value: restrictedCallerAccessValues.sourceTypeScope },
+        { name: "status", value: restrictedCallerAccessValues.statusAllowed },
+        { name: "sys_scope", value: "global", attributes: ' display_value="Global"' },
+        {
+          name: "target",
+          value: docseraMembershipBridge.sysId,
+          attributes: ` display_value="${xmlEscape(docseraMembershipBridge.name)}"`
+        },
+        { name: "target_scope", value: "global", attributes: ' display_value="Global"' },
+        { name: "target_table", value: "sys_script_include" },
+        { name: "target_type", value: restrictedCallerAccessValues.targetTypeScriptInclude }
+      ]),
+      relativePath,
+      tableName: "sys_restricted_caller_access",
+      targetName: docseraMembershipBridge.apiName,
+      targetSysId: sysId,
+      updateName,
+      updateXmlSysId: stableSysId(`sys_update_xml:${relativePath}`)
+    }
+  ];
+}
+
 function buildCompanionRecords() {
   const baseRecords = buildGlobalBaseRecords();
+  const restrictedCallerAccessRecords = buildRestrictedCallerAccessRecords();
   const builtRecords = readRecordEntries().filter((relativePath) => !relativePath.startsWith("scope/")).map(parseRecord);
 
-  return [...baseRecords, ...builtRecords];
+  return [...baseRecords, ...restrictedCallerAccessRecords, ...builtRecords];
 }
 
 function buildRemoteUpdateSetXml({ remoteUpdateSetSysId, createdAt, records }) {

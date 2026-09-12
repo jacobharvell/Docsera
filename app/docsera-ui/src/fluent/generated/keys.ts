@@ -182,6 +182,10 @@ declare global {
                         table: 'sys_app_application'
                         id: 'e2cd229c013f4b10bfcd04d39ea4cacb'
                     }
+                    'docsera-global-workspace-membership-bridge-execute': {
+                        table: 'sys_scope_privilege'
+                        id: '6f11653b8d5047f696e45c5f533c3d56'
+                    }
                     'docsera-global-workspace-provisioning-bridge-execute': {
                         table: 'sys_scope_privilege'
                         id: 'b523541000134b7ba376fb9302a1857f'
@@ -298,6 +302,18 @@ declare global {
                     'docsera-runtime-workspace-media-post': {
                         table: 'sys_ws_operation'
                         id: '7010f50adafe409c82ccf41b0d0acb19'
+                    }
+                    'docsera-runtime-workspace-members-get': {
+                        table: 'sys_ws_operation'
+                        id: '66a7da731e68449388dbfed54873450e'
+                    }
+                    'docsera-runtime-workspace-members-put': {
+                        table: 'sys_ws_operation'
+                        id: '9e696343d13249d29fd953d57163c7b1'
+                    }
+                    'docsera-runtime-workspace-members-remove-post': {
+                        table: 'sys_ws_operation'
+                        id: '73057242d6724c329aab2f910190e2bb'
                     }
                     'docsera-runtime-workspace-pending-changes-post': {
                         table: 'sys_ws_operation'
@@ -444,6 +460,10 @@ declare global {
                         table: 'sys_module'
                         id: 'afd67e96467f44cbaf80ac420ec03e3b'
                     }
+                    'src_server_api_docsera-runtime-workspace-members_ts': {
+                        table: 'sys_module'
+                        id: '94082884f01b4086b2bb9e08c32b5a3d'
+                    }
                     'src_server_api_docsera-runtime-workspace-pending-changes_ts': {
                         table: 'sys_module'
                         id: '89d5e8db71cc41309d4276b8064fe28a'
@@ -571,6 +591,10 @@ declare global {
                     src_server_workspaces_serviceNowWorkspaceMedia_ts: {
                         table: 'sys_module'
                         id: 'ee1288870b964d52b59f01c3c1b5499f'
+                    }
+                    src_server_workspaces_serviceNowWorkspaceMembers_ts: {
+                        table: 'sys_module'
+                        id: '623ab8acdf4c468296dc3a3e53dae017'
                     }
                     src_server_workspaces_serviceNowWorkspaceProvisioning_ts: {
                         table: 'sys_module'
