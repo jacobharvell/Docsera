@@ -27,6 +27,7 @@ describe("WorkspaceList", () => {
         items={[
           {
             canManageSettings: false,
+            canManageWorkspaceMembers: false,
             icon: { type: "uploaded", key: "asset-key-001", label: "Custom", assetPath: "/icons/file?assetKey=asset-key-001" },
             name: "Custom Docs",
             layout: {

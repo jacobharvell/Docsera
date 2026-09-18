@@ -152,6 +152,7 @@ export type WorkspaceCapabilityDependencies = {
 
 export type WorkspaceListItem = WorkspaceRecord & {
   roleLabel: WorkspaceCapabilityLabel | null;
+  canManageWorkspaceMembers: boolean;
   canManageSettings: boolean;
 };
 
@@ -512,7 +513,8 @@ export function buildWorkspaceListItem(
   return {
     ...workspace,
     roleLabel,
-    canManageSettings: capability.canAdminWorkspace
+    canManageSettings: capability.canAdminWorkspace,
+    canManageWorkspaceMembers: capability.canManageWorkspaceMembers
   };
 }
 

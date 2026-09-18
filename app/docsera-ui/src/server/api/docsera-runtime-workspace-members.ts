@@ -68,11 +68,33 @@ export function listWorkspaceMembers(request: RequestLike, response: ResponseLik
   try {
     const service = createServiceNowWorkspaceMembershipService();
     const outcome = service.listMembers(readWorkspaceRef(request, {}));
-    setOutcome(response, outcome, outcome.kind === "succeeded" ? { members: outcome.members } : {});
+    setOutcome(response, outcome, outcome.kind === "succeeded" ? { callerCapabilities: outcome.callerCapabilities, members: outcome.members } : {});
   } catch (error) {
     response.setStatus?.(500);
     logUnexpectedWorkspaceMemberError(error, { operation: "list", queryString: cleanText(request?.queryString) });
     response.setBody({ error: { message: "Unable to load workspace members. Please try again." } });
+  }
+}
+
+export function searchWorkspaceMemberUsers(request: RequestLike, response: ResponseLike) {
+  try {
+    const service = createServiceNowWorkspaceMembershipService();
+    const limit = Number(readQueryParam(request, "limit")) || 10;
+    const excludedUserSysIds = (readQueryParam(request, "exclude") || "")
+      .split(",")
+      .map(cleanText)
+      .filter(Boolean);
+    const outcome = service.searchUsers({
+      ...readWorkspaceRef(request, {}),
+      excludedUserSysIds,
+      limit,
+      term: readQueryParam(request, "q") || readQueryParam(request, "term")
+    });
+    setOutcome(response, outcome, outcome.kind === "succeeded" ? { callerCapabilities: outcome.callerCapabilities, users: outcome.users } : {});
+  } catch (error) {
+    response.setStatus?.(500);
+    logUnexpectedWorkspaceMemberError(error, { operation: "search", queryString: cleanText(request?.queryString) });
+    response.setBody({ error: { message: "Unable to search users. Please try again." } });
   }
 }
 
@@ -85,7 +107,7 @@ export function setWorkspaceMemberAccess(request: RequestLike, response: Respons
       accessLevel: cleanText(body.accessLevel),
       userSysId: cleanText(body.userSysId)
     });
-    setOutcome(response, outcome, outcome.kind === "succeeded" ? { member: outcome.member } : {});
+    setOutcome(response, outcome, outcome.kind === "succeeded" ? { callerCapabilities: outcome.callerCapabilities, member: outcome.member, members: outcome.members } : {});
   } catch (error) {
     response.setStatus?.(500);
     logUnexpectedWorkspaceMemberError(error, { operation: "set", workspaceSysId: cleanText(body.workspaceSysId) });
@@ -101,7 +123,7 @@ export function removeWorkspaceMemberAccess(request: RequestLike, response: Resp
       ...readWorkspaceRef(request, body),
       userSysId: cleanText(body.userSysId)
     });
-    setOutcome(response, outcome, outcome.kind === "succeeded" ? { members: outcome.members } : {});
+    setOutcome(response, outcome, outcome.kind === "succeeded" ? { callerCapabilities: outcome.callerCapabilities, members: outcome.members } : {});
   } catch (error) {
     response.setStatus?.(500);
     logUnexpectedWorkspaceMemberError(error, { operation: "remove", workspaceSysId: cleanText(body.workspaceSysId) });

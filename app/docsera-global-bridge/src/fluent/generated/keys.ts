@@ -33,6 +33,18 @@ declare global {
                         table: 'sys_scope_privilege'
                         id: '0d4d751c513343088b88326ab5354c71'
                     }
+                    'docsera-workspace-member-mutation-command-read': {
+                        table: 'sys_scope_privilege'
+                        id: '1bbfe8f3691f4d7981a769118c65249f'
+                    }
+                    'docsera-workspace-member-mutation-command-worker': {
+                        table: 'sys_script'
+                        id: '0d2f3146f31d4c439ea6b6cd50a105a2'
+                    }
+                    'docsera-workspace-member-mutation-command-write': {
+                        table: 'sys_scope_privilege'
+                        id: '86ca73048d744baeb377d39abd8b9e09'
+                    }
                     'docsera-workspace-provision-request-read': {
                         table: 'sys_scope_privilege'
                         id: '9bee1d780be04e5790100aedb520cf64'
@@ -52,6 +64,10 @@ declare global {
                     package_json: {
                         table: 'sys_module'
                         id: 'e1db765a6cbc4f568b5196435a42ef7b'
+                    }
+                    'src_server_business-rules_process-workspace-member-mutation-command_js': {
+                        table: 'sys_module'
+                        id: '0e5b8251286449d9b67bcc50a68c489a'
                     }
                     'src_server_business-rules_process-workspace-provision-request_js': {
                         table: 'sys_module'

@@ -96,6 +96,7 @@ export type WorkspaceViewRecord = {
   };
   status: "active" | "inactive";
   roleLabel: WorkspaceRoleLabel | null;
+  canManageWorkspaceMembers: boolean;
   canManageSettings: boolean;
 };
 
@@ -148,6 +149,55 @@ export type WorkspaceSettingsSaveResult =
       errorMessage: string;
       state: "failed";
     };
+
+export type WorkspaceMemberAccessLevel = "admin" | "editor";
+
+export type WorkspaceMemberRecord = {
+  accessLevel: WorkspaceMemberAccessLevel;
+  active: boolean;
+  displayName: string;
+  email: string;
+  userName: string;
+  userSysId: string;
+};
+
+export type WorkspaceMemberUserSearchRecord = {
+  displayName: string;
+  email: string;
+  userName: string;
+  userSysId: string;
+};
+
+export type WorkspaceMemberCallerCapabilities = {
+  canManageWorkspaceMembers: boolean;
+};
+
+export type WorkspaceMembersSucceeded = {
+  callerCapabilities: WorkspaceMemberCallerCapabilities;
+  members: WorkspaceMemberRecord[];
+  state: "succeeded";
+};
+
+export type WorkspaceMembersFailed = {
+  code?: "forbidden" | "invalid" | "not_found" | "transient";
+  errorMessage: string;
+  retryable?: boolean;
+  state: "failed";
+};
+
+export type WorkspaceMembersResult = WorkspaceMembersSucceeded | WorkspaceMembersFailed;
+
+export type WorkspaceMemberMutationResult =
+  | (WorkspaceMembersSucceeded & { member?: WorkspaceMemberRecord | null })
+  | WorkspaceMembersFailed;
+
+export type WorkspaceMemberUserSearchResult =
+  | {
+      callerCapabilities: WorkspaceMemberCallerCapabilities;
+      state: "succeeded";
+      users: WorkspaceMemberUserSearchRecord[];
+    }
+  | WorkspaceMembersFailed;
 
 export type PageCreateInput = {
   workspaceSlug: string;
@@ -591,6 +641,10 @@ export type ServiceNowClient = {
   listPages: (input: { mode?: WorkspaceMode; workspaceSlug: string }) => Promise<PageListResult>;
   createWorkspace: (input: WorkspaceCreateInput) => Promise<WorkspaceCreateResult>;
   saveWorkspaceSettings?: (input: WorkspaceSettingsSaveInput) => Promise<WorkspaceSettingsSaveResult>;
+  listWorkspaceMembers?: (input: { workspaceSlug: string; workspaceSysId?: string }) => Promise<WorkspaceMembersResult>;
+  searchWorkspaceMemberUsers?: (input: { excludedUserSysIds?: string[]; term: string; workspaceSlug: string; workspaceSysId?: string }) => Promise<WorkspaceMemberUserSearchResult>;
+  setWorkspaceMemberAccess?: (input: { accessLevel: WorkspaceMemberAccessLevel; userSysId: string; workspaceSlug: string; workspaceSysId?: string }) => Promise<WorkspaceMemberMutationResult>;
+  removeWorkspaceMemberAccess?: (input: { userSysId: string; workspaceSlug: string; workspaceSysId?: string }) => Promise<WorkspaceMemberMutationResult>;
   getWorkspaceProvisioningStatus: (statusPath: string) => Promise<WorkspaceCreateResult>;
   createPage: (input: PageCreateInput) => Promise<PageCreateResult>;
   listWorkspaceMedia?: (input: { workspaceSysId: string }) => Promise<WorkspaceMediaListResult>;

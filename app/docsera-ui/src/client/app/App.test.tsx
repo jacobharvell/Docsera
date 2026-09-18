@@ -193,6 +193,7 @@ function createWorkspace(overrides: Partial<WorkspaceViewRecord> = {}): Workspac
     },
     status: "active",
     roleLabel: "Admin",
+    canManageWorkspaceMembers: true,
     canManageSettings: true,
     ...overrides
   };

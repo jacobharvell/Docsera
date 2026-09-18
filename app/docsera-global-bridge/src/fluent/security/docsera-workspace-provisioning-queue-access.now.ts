@@ -20,6 +20,24 @@ CrossScopePrivilege({
 });
 
 CrossScopePrivilege({
+  $id: Now.ID["docsera-workspace-member-mutation-command-read"],
+  operation: "read",
+  status: "allowed",
+  targetName: "x_82900_docsera_workspace_member_mutation_command",
+  targetScope: "x_82900_docsera",
+  targetType: "sys_db_object"
+});
+
+CrossScopePrivilege({
+  $id: Now.ID["docsera-workspace-member-mutation-command-write"],
+  operation: "write",
+  status: "allowed",
+  targetName: "x_82900_docsera_workspace_member_mutation_command",
+  targetScope: "x_82900_docsera",
+  targetType: "sys_db_object"
+});
+
+CrossScopePrivilege({
   $id: Now.ID["docsera-workspace-read"],
   operation: "read",
   status: "allowed",

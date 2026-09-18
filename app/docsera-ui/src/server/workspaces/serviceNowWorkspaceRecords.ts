@@ -56,6 +56,7 @@ export function cleanWorkspaceSlug(value: unknown): string {
 }
 
 export function toWorkspaceViewRecord(workspace: ServerWorkspaceRecord, roleLabel: WorkspaceRoleLabel | null = null): WorkspaceViewRecord {
+  const canManageWorkspaceMembers = Boolean(roleLabel === "Admin");
   return {
     sysId: cleanText(workspace.sysId),
     slug: cleanText(workspace.slug),
@@ -67,6 +68,7 @@ export function toWorkspaceViewRecord(workspace: ServerWorkspaceRecord, roleLabe
     },
     status: workspace.status,
     roleLabel,
-    canManageSettings: Boolean(roleLabel === "Admin")
+    canManageSettings: canManageWorkspaceMembers,
+    canManageWorkspaceMembers
   };
 }

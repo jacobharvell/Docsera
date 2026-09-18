@@ -182,6 +182,7 @@ export const testSuites = [
       "src/server/workspaces/serviceNowWorkspaceMembers.test.ts",
       "src/server/workspace-leases/workspaceEditLeaseService.test.ts",
       "test/globalWorkspaceMembershipBridge.test.ts",
+      "test/globalWorkspaceMembershipWorker.test.ts",
       "test/workspaceDomain.test.ts"
     ]
   },

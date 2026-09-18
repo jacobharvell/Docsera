@@ -1,11 +1,7 @@
-import { GlideRecord } from "@servicenow/glide";
+import { GlideRecord, gs } from "@servicenow/glide";
 import { DOCSERA_WORKSPACE_TABLE, type WorkspaceRecord } from "./serverWorkspaceDomain.ts";
 import { evaluateCurrentUserWorkspaceCapabilities } from "./serviceNowWorkspaceCapabilities.ts";
 import { mapWorkspaceRecord } from "./serviceNowWorkspaceRecords.ts";
-
-declare const DocseraGlobalWorkspaceMembershipBridge: {
-  new (): WorkspaceMemberMutationBridge;
-};
 
 export type WorkspaceMembershipAccessLevel = "editor" | "admin";
 
@@ -16,6 +12,17 @@ export type WorkspaceMember = {
   email: string;
   active: boolean;
   accessLevel: WorkspaceMembershipAccessLevel;
+};
+
+export type WorkspaceMemberUserSearchResult = {
+  userSysId: string;
+  userName: string;
+  displayName: string;
+  email: string;
+};
+
+export type WorkspaceMemberCallerCapabilities = {
+  canManageWorkspaceMembers: boolean;
 };
 
 export type WorkspaceMemberMutationInput = {
@@ -31,18 +38,16 @@ export type WorkspaceMemberRemoveInput = {
   userSysId?: string | null;
 };
 
-export type WorkspaceMemberMutationBridge = {
-  setWorkspaceMembership: (
-    adminGroupSysId: string,
-    editorGroupSysId: string,
-    userSysId: string,
-    accessLevel: WorkspaceMembershipAccessLevel
-  ) => { status?: string; errorMessage?: string };
-  removeWorkspaceMembership: (
-    adminGroupSysId: string,
-    editorGroupSysId: string,
-    userSysId: string
-  ) => { status?: string; errorMessage?: string };
+export type WorkspaceMembershipMutationKind = "set" | "remove";
+
+export const DOCSERA_WORKSPACE_MEMBERSHIP_MUTATION_COMMAND_TABLE =
+  "x_82900_docsera_workspace_member_mutation_command";
+
+export type WorkspaceMemberMutationCommand = {
+  accessLevel: WorkspaceMembershipAccessLevel | null;
+  kind: WorkspaceMembershipMutationKind;
+  targetUserSysId: string;
+  workspaceSysId: string;
 };
 
 export type WorkspaceMembershipDependencies = {
@@ -51,25 +56,31 @@ export type WorkspaceMembershipDependencies = {
   };
   hasDocseraAdminAccess: () => boolean;
   listGroupMembers: (groupSysId: string, accessLevel: WorkspaceMembershipAccessLevel) => WorkspaceMember[];
+  searchActiveUsers: (term: string, excludedUserSysIds: string[], limit: number) => WorkspaceMemberUserSearchResult[];
   loadWorkspaceBySlug: (workspaceSlug: string) => WorkspaceRecord | null;
   loadWorkspaceBySysId: (workspaceSysId: string) => WorkspaceRecord | null;
-  mutationBridge: WorkspaceMemberMutationBridge;
+  createMutationCommand: (command: WorkspaceMemberMutationCommand) => string | null;
 };
 
 export type WorkspaceMembersOutcome =
   | { kind: "failed"; errorMessage: string; status: 400 | 404 | 500 }
   | { kind: "forbidden"; errorMessage: string }
-  | { kind: "succeeded"; members: WorkspaceMember[] };
+  | { kind: "succeeded"; callerCapabilities: WorkspaceMemberCallerCapabilities; members: WorkspaceMember[] };
 
 export type WorkspaceMemberMutationOutcome =
   | { kind: "failed"; errorMessage: string; status: 400 | 404 | 500 }
   | { kind: "forbidden"; errorMessage: string }
-  | { kind: "succeeded"; member: WorkspaceMember | null };
+  | { kind: "succeeded"; callerCapabilities: WorkspaceMemberCallerCapabilities; member: WorkspaceMember | null; members: WorkspaceMember[] };
 
 export type WorkspaceMemberRemoveOutcome =
   | { kind: "failed"; errorMessage: string; status: 400 | 404 | 500 }
   | { kind: "forbidden"; errorMessage: string }
-  | { kind: "succeeded"; members: WorkspaceMember[] };
+  | { kind: "succeeded"; callerCapabilities: WorkspaceMemberCallerCapabilities; members: WorkspaceMember[] };
+
+export type WorkspaceMemberUserSearchOutcome =
+  | { kind: "failed"; errorMessage: string; status: 400 | 404 | 500 }
+  | { kind: "forbidden"; errorMessage: string }
+  | { kind: "succeeded"; callerCapabilities: WorkspaceMemberCallerCapabilities; users: WorkspaceMemberUserSearchResult[] };
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -91,6 +102,12 @@ function normalizeAccessLevel(value: unknown): WorkspaceMembershipAccessLevel | 
   }
 
   return null;
+}
+
+function callerCapabilities(dependencies: WorkspaceMembershipDependencies): WorkspaceMemberCallerCapabilities {
+  return {
+    canManageWorkspaceMembers: true
+  };
 }
 
 function loadWorkspaceBySysId(workspaceSysId: string): WorkspaceRecord | null {
@@ -167,6 +184,40 @@ function listGroupMembers(groupSysId: string, accessLevel: WorkspaceMembershipAc
   return members;
 }
 
+export function searchActiveUsers(term: string, excludedUserSysIds: string[], limit: number): WorkspaceMemberUserSearchResult[] {
+  const cleanTerm = cleanText(term);
+  const excluded = new Set(excludedUserSysIds.map(cleanText).filter(Boolean));
+  const users = new GlideRecord("sys_user");
+  users.addQuery("active", true);
+  if (excluded.size > 0) {
+    users.addQuery("sys_id", "NOT IN", [...excluded].join(","));
+  }
+  if (cleanTerm) {
+    const nameQuery = users.addQuery("name", "CONTAINS", cleanTerm);
+    nameQuery.addOrCondition("user_name", "CONTAINS", cleanTerm);
+    nameQuery.addOrCondition("email", "CONTAINS", cleanTerm);
+  }
+  users.orderBy("name");
+  users.setLimit(Math.max(1, Math.min(limit, 20)));
+  users.query();
+
+  const results: WorkspaceMemberUserSearchResult[] = [];
+  while (users.next()) {
+    const userSysId = cleanText(users.getValue("sys_id"));
+    if (!userSysId || excluded.has(userSysId)) {
+      continue;
+    }
+    results.push({
+      displayName: cleanText(users.getDisplayValue("name")) || cleanText(users.getValue("name")) || cleanText(users.getValue("user_name")),
+      email: cleanText(users.getValue("email")),
+      userName: cleanText(users.getValue("user_name")),
+      userSysId
+    });
+  }
+
+  return results;
+}
+
 function resolveWorkspace(
   dependencies: WorkspaceMembershipDependencies,
   input: { workspaceSlug?: string | null; workspaceSysId?: string | null }
@@ -218,6 +269,41 @@ function listWorkspaceMembers(
   );
 }
 
+function hasGroupMembership(
+  workspace: WorkspaceRecord,
+  dependencies: WorkspaceMembershipDependencies,
+  groupSysId: string,
+  accessLevel: WorkspaceMembershipAccessLevel,
+  userSysId: string
+): boolean {
+  return dependencies
+    .listGroupMembers(groupSysId, accessLevel)
+    .some((member) => member.userSysId === userSysId);
+}
+
+function verifyMutationEndState(
+  workspace: WorkspaceRecord,
+  dependencies: WorkspaceMembershipDependencies,
+  command: WorkspaceMemberMutationCommand
+): boolean {
+  const inAdmin = hasGroupMembership(workspace, dependencies, workspace.adminGroupSysId, "admin", command.targetUserSysId);
+  const inEditor = hasGroupMembership(workspace, dependencies, workspace.editorGroupSysId, "editor", command.targetUserSysId);
+
+  if (command.kind === "remove") {
+    return !inAdmin && !inEditor;
+  }
+
+  if (command.accessLevel === "admin") {
+    return inAdmin && !inEditor;
+  }
+
+  if (command.accessLevel === "editor") {
+    return inEditor && !inAdmin;
+  }
+
+  return false;
+}
+
 function countActiveAdmins(workspace: WorkspaceRecord, dependencies: WorkspaceMembershipDependencies): number {
   return dependencies
     .listGroupMembers(workspace.adminGroupSysId, "admin")
@@ -241,10 +327,6 @@ function isLastActiveAdminChangeForbidden(
   targetUserSysId: string,
   nextAccessLevel: WorkspaceMembershipAccessLevel | null
 ): boolean {
-  if (dependencies.hasDocseraAdminAccess()) {
-    return false;
-  }
-
   if (nextAccessLevel === "admin") {
     return false;
   }
@@ -297,8 +379,39 @@ export function createWorkspaceMembershipService(dependencies: WorkspaceMembersh
       }
 
       return {
+        callerCapabilities: callerCapabilities(dependencies),
         kind: "succeeded",
         members: listWorkspaceMembers(workspace, dependencies)
+      };
+    },
+
+    searchUsers(input: { excludedUserSysIds?: string[] | null; limit?: number | null; term?: string | null; workspaceSlug?: string | null; workspaceSysId?: string | null }): WorkspaceMemberUserSearchOutcome {
+      const term = cleanText(input.term);
+
+      const workspace = resolveWorkspace(dependencies, input);
+      if (!workspace) {
+        return { kind: "failed", errorMessage: "Workspace could not be found.", status: 404 };
+      }
+
+      const authorization = ensureCanManageMembers(workspace, dependencies);
+      if (authorization.allowed === false) {
+        return authorization.outcome;
+      }
+
+      const groupError = validateGroupReferences(workspace);
+      if (groupError) {
+        return { kind: "failed", errorMessage: groupError, status: 500 };
+      }
+
+      const members = listWorkspaceMembers(workspace, dependencies);
+      const excluded = [
+        ...members.map((member) => member.userSysId),
+        ...(Array.isArray(input.excludedUserSysIds) ? input.excludedUserSysIds : [])
+      ];
+      return {
+        callerCapabilities: callerCapabilities(dependencies),
+        kind: "succeeded",
+        users: dependencies.searchActiveUsers(term, excluded, input.limit ?? 10)
       };
     },
 
@@ -331,24 +444,27 @@ export function createWorkspaceMembershipService(dependencies: WorkspaceMembersh
         };
       }
 
-      const bridgeResult = dependencies.mutationBridge.setWorkspaceMembership(
-        workspace.adminGroupSysId,
-        workspace.editorGroupSysId,
-        userSysId,
-        accessLevel
-      );
-      if (bridgeResult.status !== "succeeded") {
+      const command = {
+        accessLevel,
+        kind: "set" as const,
+        targetUserSysId: userSysId,
+        workspaceSysId: cleanText(workspace.sysId)
+      };
+      if (!dependencies.createMutationCommand(command) || !verifyMutationEndState(workspace, dependencies, command)) {
         return {
           kind: "failed",
-          errorMessage: cleanText(bridgeResult.errorMessage) || "Workspace membership could not be updated.",
+          errorMessage: "Workspace membership could not be updated.",
           status: 500
         };
       }
 
-      const member = listWorkspaceMembers(workspace, dependencies).find((candidate) => candidate.userSysId === userSysId) ?? null;
+      const members = listWorkspaceMembers(workspace, dependencies);
+      const member = members.find((candidate) => candidate.userSysId === userSysId) ?? null;
       return {
+        callerCapabilities: callerCapabilities(dependencies),
         kind: "succeeded",
-        member
+        member,
+        members
       };
     },
 
@@ -380,20 +496,22 @@ export function createWorkspaceMembershipService(dependencies: WorkspaceMembersh
         };
       }
 
-      const bridgeResult = dependencies.mutationBridge.removeWorkspaceMembership(
-        workspace.adminGroupSysId,
-        workspace.editorGroupSysId,
-        userSysId
-      );
-      if (bridgeResult.status !== "succeeded") {
+      const command = {
+        accessLevel: null,
+        kind: "remove" as const,
+        targetUserSysId: userSysId,
+        workspaceSysId: cleanText(workspace.sysId)
+      };
+      if (!dependencies.createMutationCommand(command) || !verifyMutationEndState(workspace, dependencies, command)) {
         return {
           kind: "failed",
-          errorMessage: cleanText(bridgeResult.errorMessage) || "Workspace membership could not be removed.",
+          errorMessage: "Workspace membership could not be removed.",
           status: 500
         };
       }
 
       return {
+        callerCapabilities: callerCapabilities(dependencies),
         kind: "succeeded",
         members: listWorkspaceMembers(workspace, dependencies)
       };
@@ -401,8 +519,29 @@ export function createWorkspaceMembershipService(dependencies: WorkspaceMembersh
   };
 }
 
-function createGlobalMembershipBridge(): WorkspaceMemberMutationBridge {
-  return new DocseraGlobalWorkspaceMembershipBridge() as WorkspaceMemberMutationBridge;
+export function createMembershipMutationCommand(command: WorkspaceMemberMutationCommand): string | null {
+  const workspaceSysId = cleanText(command.workspaceSysId);
+  const targetUserSysId = cleanText(command.targetUserSysId);
+  const kind = cleanText(command.kind);
+  const accessLevel = command.accessLevel ? normalizeAccessLevel(command.accessLevel) : null;
+
+  if (!workspaceSysId || !targetUserSysId || (kind !== "set" && kind !== "remove")) {
+    return null;
+  }
+
+  if (kind === "set" && !accessLevel) {
+    return null;
+  }
+
+  const commandRecord = new GlideRecord(DOCSERA_WORKSPACE_MEMBERSHIP_MUTATION_COMMAND_TABLE);
+  commandRecord.initialize();
+  commandRecord.setValue("workspace", workspaceSysId);
+  commandRecord.setValue("target_user", targetUserSysId);
+  commandRecord.setValue("mutation_kind", kind);
+  commandRecord.setValue("access_level", kind === "set" ? accessLevel : "");
+  commandRecord.setValue("requested_by", gs.getUserID());
+  commandRecord.setValue("state", "requested");
+  return cleanText(commandRecord.insert()) || null;
 }
 
 export function createServiceNowWorkspaceMembershipService() {
@@ -422,6 +561,7 @@ export function createServiceNowWorkspaceMembershipService() {
     listGroupMembers,
     loadWorkspaceBySlug,
     loadWorkspaceBySysId,
-    mutationBridge: createGlobalMembershipBridge()
+    createMutationCommand: createMembershipMutationCommand,
+    searchActiveUsers
   });
 }

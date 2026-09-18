@@ -7,6 +7,7 @@ import { PageSettingsOverlay } from "../features/workspaces/PageSettingsOverlay"
 import type { InlinePageCreateState } from "../features/workspaces/PageTree";
 import type { RecentWorkspaceItem } from "../features/workspaces/RecentWorkspacesMenu";
 import { DEFAULT_WORKSPACE_NAV_WIDTH, readStoredWorkspaceNavWidth, WorkspaceShell } from "../features/workspaces/WorkspaceShell";
+import { WorkspaceManageAccessOverlay } from "../features/workspaces/WorkspaceManageAccessOverlay";
 import { WorkspaceSettingsOverlay, type WorkspaceSettingsSubmitInput } from "../features/workspaces/WorkspaceSettingsOverlay";
 import type {
   PageEditorCanonicalHandoffResult,
@@ -1145,9 +1146,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     pageSysId: ""
   });
   const [workspaceSettingsPanelState, setWorkspaceSettingsPanelState] = useState<WorkspaceSettingsPanelState>({ status: "closed" });
+  const [manageAccessOpen, setManageAccessOpen] = useState(false);
   const [workspaceSettingsPreviewIdentity, setWorkspaceSettingsPreviewIdentity] = useState<WorkspaceSettingsPreviewIdentity | null>(null);
   const workspaceSettingsRecoveryRef = useRef<Record<string, { errorMessage: string; input: WorkspaceSettingsSubmitInput }>>({});
   const workspaceSettingsSaveGenerationRef = useRef(0);
+  const openManageAccessAfterSettingsSaveRef = useRef("");
+  const activeWorkspaceSysIdRef = useRef("");
   const pendingWorkspaceSettingsSaveRef = useRef<PendingWorkspaceSettingsSaves>({});
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createModalPhase, setCreateModalPhase] = useState<"idle" | "submitting" | "polling">("idle");
@@ -2012,6 +2016,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     [currentWorkspaceSlug, workspaceSwitcherState]
   );
   const workspaceStateData = workspaceState.status === "success" ? workspaceState.data : null;
+  activeWorkspaceSysIdRef.current = route.mode === "workspace" ? cleanText(workspaceStateData?.sysId) : "";
   const hasAuthoringCapability = Boolean(workspaceState.status === "success" && workspaceState.data.roleLabel);
   const workspaceEditLeasePending =
     route.mode === "workspace" &&
@@ -2178,6 +2183,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const currentWorkspaceCommandSourceChangeSetRevision =
     currentWorkspaceCommandAuthority?.changeSetRevision ?? (pendingChangesResult?.state === "succeeded" ? pendingChangesResult.changeSetRevision : -1);
   const currentWorkspaceCommandContextKey = currentWorkspaceMutationContextKey({ scope: "workspace" });
+
+  useEffect(() => {
+    if (workspaceState.status === "success" && !workspaceState.data.canManageWorkspaceMembers) {
+      setManageAccessOpen(false);
+    }
+  }, [workspaceState]);
   const workspaceDiscardAllRecoveryRequired =
     route.mode === "workspace" &&
     workspaceDiscardAllState.status === "error" &&
@@ -3079,6 +3090,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   useEffect(() => {
     if (route.mode !== "workspace") {
       setWorkspaceSettingsPanelState({ status: "closed" });
+      setManageAccessOpen(false);
       return;
     }
 
@@ -3117,6 +3129,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     let canceled = false;
     setWorkspaceState({ status: "loading" });
     setWorkspaceSettingsPanelState({ status: "closed" });
+    setManageAccessOpen(false);
     setEditAccessLost(false);
     setEditorFailure(null);
 
@@ -5038,6 +5051,76 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     });
   }
 
+  async function refreshCurrentWorkspaceCapabilityState() {
+    if (route.mode !== "workspace" || workspaceState.status !== "success") {
+      return;
+    }
+    try {
+      const result = await serviceNowClient.getWorkspace(workspaceState.data.slug);
+      if (result.workspace) {
+        setWorkspaceState({ data: result.workspace, status: "success" });
+        reconcileWorkspaceIdentity(result.workspace);
+      }
+    } catch {
+      // Capability refresh failure should not fabricate access state.
+    }
+  }
+
+  function openManageAccessFromSettings(input: { waitForSettingsSave: boolean; workspaceSysId: string }) {
+    if (!workspaceStateData?.canManageWorkspaceMembers) {
+      return;
+    }
+    if (input.waitForSettingsSave) {
+      openManageAccessAfterSettingsSaveRef.current = cleanText(input.workspaceSysId);
+      return;
+    }
+    setManageAccessOpen(true);
+  }
+
+  function clearDeferredManageAccessIntent(workspaceSysId: string) {
+    if (openManageAccessAfterSettingsSaveRef.current === workspaceSysId) {
+      openManageAccessAfterSettingsSaveRef.current = "";
+    }
+  }
+
+  async function loadManageAccessMembers(workspace: WorkspaceViewRecord) {
+    if (!serviceNowClient.listWorkspaceMembers) {
+      return { errorMessage: "Workspace member management is unavailable.", retryable: false, status: "error" as const };
+    }
+    const result = await serviceNowClient.listWorkspaceMembers({ workspaceSlug: workspace.slug, workspaceSysId: cleanText(workspace.sysId) });
+    if (result.state === "failed") {
+      return { errorMessage: result.errorMessage, retryable: Boolean(result.retryable), status: "error" as const };
+    }
+    return { callerCapabilities: result.callerCapabilities, members: result.members, status: "success" as const };
+  }
+
+  async function searchManageAccessUsers(workspace: WorkspaceViewRecord, term: string, excludedUserSysIds: string[] = []) {
+    if (!serviceNowClient.searchWorkspaceMemberUsers) {
+      return { errorMessage: "Workspace member search is unavailable.", status: "error" as const, users: [] };
+    }
+    const result = await serviceNowClient.searchWorkspaceMemberUsers({ excludedUserSysIds, term, workspaceSlug: workspace.slug, workspaceSysId: cleanText(workspace.sysId) });
+    if (result.state === "failed") {
+      return { errorMessage: result.errorMessage, status: "error" as const, users: [] };
+    }
+    return { status: "success" as const, users: result.users };
+  }
+
+  async function setManageAccessMember(workspace: WorkspaceViewRecord, userSysId: string, accessLevel: "admin" | "editor") {
+    if (!serviceNowClient.setWorkspaceMemberAccess) {
+      return { errorMessage: "Workspace member management is unavailable.", ok: false };
+    }
+    const result = await serviceNowClient.setWorkspaceMemberAccess({ accessLevel, userSysId, workspaceSlug: workspace.slug, workspaceSysId: cleanText(workspace.sysId) });
+    return result.state === "succeeded" ? { ok: true } : { errorMessage: result.errorMessage, ok: false };
+  }
+
+  async function removeManageAccessMember(workspace: WorkspaceViewRecord, userSysId: string) {
+    if (!serviceNowClient.removeWorkspaceMemberAccess) {
+      return { errorMessage: "Workspace member management is unavailable.", ok: false };
+    }
+    const result = await serviceNowClient.removeWorkspaceMemberAccess({ userSysId, workspaceSlug: workspace.slug, workspaceSysId: cleanText(workspace.sysId) });
+    return result.state === "succeeded" ? { ok: true } : { errorMessage: result.errorMessage, ok: false };
+  }
+
   function reconcileWorkspaceIdentity(workspace: WorkspaceViewRecord) {
     setWorkspaceState((current) => {
       if (current.status !== "success" || cleanText(current.data.sysId) !== cleanText(workspace.sysId)) {
@@ -5173,6 +5256,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     pendingWorkspaceSettingsSaveRef.current = nextPendingSaves;
 
     if (!result || result.state === "failed") {
+      if (openManageAccessAfterSettingsSaveRef.current === workspaceSysId) {
+        openManageAccessAfterSettingsSaveRef.current = "";
+      }
       if (pendingSave.ownedPreviewObjectUrl) {
         releaseWorkspaceSettingsOwnedPreviewObjectUrl(pendingSave.ownedPreviewObjectUrl);
       }
@@ -5188,6 +5274,13 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
 
     reconcileWorkspaceIdentity(result.workspace);
+    const savedWorkspaceStillActive = activeWorkspaceSysIdRef.current === workspaceSysId;
+    if (openManageAccessAfterSettingsSaveRef.current === workspaceSysId && savedWorkspaceStillActive && result.workspace.canManageWorkspaceMembers) {
+      clearDeferredManageAccessIntent(workspaceSysId);
+      setManageAccessOpen(true);
+    } else if (openManageAccessAfterSettingsSaveRef.current === workspaceSysId) {
+      clearDeferredManageAccessIntent(workspaceSysId);
+    }
     if (
       pendingSave.ownedPreviewObjectUrl &&
       (route.mode !== "workspace" || workspaceState.status !== "success" || cleanText(workspaceState.data.sysId) !== workspaceSysId)
@@ -7304,26 +7397,39 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
                 />
               }
               workspaceSettingsOverlay={
-                <WorkspaceSettingsOverlay
-                  errorMessage={workspaceSettingsPanelState.status === "open" ? workspaceSettingsPanelState.errorMessage : undefined}
-                  loadUploadedIcon={serviceNowClient.loadWorkspaceIcon}
-                  open={workspaceSettingsPanelState.status !== "closed"}
-                  pending={workspaceSettingsPanelState.status === "saving"}
-                  recoveryInput={workspaceSettingsPanelState.status === "open" ? workspaceSettingsPanelState.recoveryInput : undefined}
-                  workspace={workspaceSettingsPanelWorkspace}
-                  onCancel={() => {
-                    setWorkspaceSettingsPanelState({ status: "closed" });
-                    setWorkspaceSettingsPreviewIdentity(null);
-                  }}
-                  onDraftIdentityChange={handleWorkspaceSettingsDraftIdentityChange}
-                  onCleanupStagedIcon={(input) => {
-                    void serviceNowClient.cleanupWorkspaceSettingsIcon?.(input).catch(() => {
-                      // Staged-icon cleanup is intentionally best effort.
-                    });
-                  }}
-                  onUploadIcon={serviceNowClient.uploadWorkspaceIcon}
-                  onSubmit={submitWorkspaceSettings}
-                />
+                <>
+                  <WorkspaceSettingsOverlay
+                    errorMessage={workspaceSettingsPanelState.status === "open" ? workspaceSettingsPanelState.errorMessage : undefined}
+                    loadUploadedIcon={serviceNowClient.loadWorkspaceIcon}
+                    open={workspaceSettingsPanelState.status !== "closed"}
+                    pending={workspaceSettingsPanelState.status === "saving"}
+                    recoveryInput={workspaceSettingsPanelState.status === "open" ? workspaceSettingsPanelState.recoveryInput : undefined}
+                    workspace={workspaceSettingsPanelWorkspace}
+                    onCancel={() => {
+                      setWorkspaceSettingsPanelState({ status: "closed" });
+                      setWorkspaceSettingsPreviewIdentity(null);
+                    }}
+                    onDraftIdentityChange={handleWorkspaceSettingsDraftIdentityChange}
+                    onManageAccess={openManageAccessFromSettings}
+                    onCleanupStagedIcon={(input) => {
+                      void serviceNowClient.cleanupWorkspaceSettingsIcon?.(input).catch(() => {
+                        // Staged-icon cleanup is intentionally best effort.
+                      });
+                    }}
+                    onUploadIcon={serviceNowClient.uploadWorkspaceIcon}
+                    onSubmit={submitWorkspaceSettings}
+                  />
+                  <WorkspaceManageAccessOverlay
+                    loadMembers={loadManageAccessMembers}
+                    onClose={() => setManageAccessOpen(false)}
+                    onMutationCommitted={refreshCurrentWorkspaceCapabilityState}
+                    open={manageAccessOpen && Boolean(workspaceStateData?.canManageWorkspaceMembers)}
+                    removeMemberAccess={removeManageAccessMember}
+                    searchUsers={searchManageAccessUsers}
+                    setMemberAccess={setManageAccessMember}
+                    workspace={workspaceStateData}
+                  />
+                </>
               }
               pageTitleActive={
                 !inlineRenamePageId &&

@@ -207,6 +207,7 @@ export function createWorkspace(overrides: Partial<WorkspaceViewRecord> = {}): W
     },
     status: "active",
     roleLabel: "Admin",
+    canManageWorkspaceMembers: true,
     canManageSettings: true,
     ...overrides
   };

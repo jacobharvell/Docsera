@@ -23,6 +23,7 @@ import { process as workspaceProvisioningStatus } from "../../server/api/docsera
 import {
   listWorkspaceMembers,
   removeWorkspaceMemberAccess,
+  searchWorkspaceMemberUsers,
   setWorkspaceMemberAccess
 } from "../../server/api/docsera-runtime-workspace-members.ts";
 import { process as workspaceDiscardAll } from "../../server/api/docsera-runtime-workspace-discard-all";
@@ -100,6 +101,15 @@ RestApi({
       produces: "application/json",
       shortDescription: "List authorized workspace Admin and Editor members from native ServiceNow groups.",
       script: listWorkspaceMembers
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-members-search-get"],
+      name: "workspace_members_user_search",
+      path: "/workspaces/members/search-users",
+      method: "GET",
+      produces: "application/json",
+      shortDescription: "Search active ServiceNow users for authorized workspace member assignment.",
+      script: searchWorkspaceMemberUsers
     },
     {
       $id: Now.ID["docsera-runtime-workspace-members-put"],

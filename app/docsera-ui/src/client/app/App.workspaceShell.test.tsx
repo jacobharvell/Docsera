@@ -9,6 +9,7 @@ import type {
   PageBodySaveResult,
   PageListResult,
   WorkspaceListResult,
+  WorkspaceMemberRecord,
   ServiceNowClient,
   WorkspaceMode,
   WorkspacePageRecord,
@@ -64,6 +65,7 @@ function createWorkspace(overrides: Partial<WorkspaceViewRecord> = {}): Workspac
     },
     status: "active",
     roleLabel: "Admin",
+    canManageWorkspaceMembers: true,
     canManageSettings: true,
     ...overrides
   };
@@ -102,6 +104,18 @@ function createPageListResult(mode: WorkspaceMode, workspaceSlug: string, items:
     workspaceSlug,
     workspaceSysId,
     totalCount: items.length
+  };
+}
+
+function createMember(overrides: Partial<WorkspaceMemberRecord> = {}): WorkspaceMemberRecord {
+  return {
+    accessLevel: "editor",
+    active: true,
+    displayName: "Editor One",
+    email: "editor@example.com",
+    userName: "editor.one",
+    userSysId: "user-editor",
+    ...overrides
   };
 }
 
@@ -911,6 +925,451 @@ describe("App workspace shell integration", () => {
     await waitFor(() => expect(screen.queryByRole("complementary", { name: "Workspace Settings" })).not.toBeInTheDocument());
   });
 
+  it("opens Manage access from Workspace Settings only for member managers and lists searchable members", async () => {
+    const listWorkspaceMembers = vi.fn(async () => ({
+      callerCapabilities: {
+        canManageWorkspaceMembers: true
+      },
+      members: [
+        createMember({ accessLevel: "admin", displayName: "Admin One", email: "admin@example.com", userSysId: "user-admin" }),
+        createMember({ active: false, displayName: "Inactive Editor", email: "inactive@example.com", userSysId: "user-inactive" })
+      ],
+      state: "succeeded" as const
+    }));
+
+    renderApp("/?workspace=product-docs&page=overview&mode=edit", { listWorkspaceMembers });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    const settings = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.click(within(settings).getByRole("button", { name: "Manage access" }));
+
+    const pane = await screen.findByRole("complementary", { name: "Manage access" });
+    expect(within(pane).getByRole("heading", { name: "Manage access" })).toBeInTheDocument();
+    expect(within(pane).queryByText("Members")).not.toBeInTheDocument();
+    expect(within(pane).getByText("Admin One")).toBeInTheDocument();
+    expect(within(pane).getByText(/Inactive Editor/)).toBeInTheDocument();
+    expect(within(pane).getByText(/inactive/)).toBeInTheDocument();
+
+    fireEvent.change(within(pane).getByRole("textbox", { name: "Search members" }), { target: { value: "admin@example.com" } });
+    expect(within(pane).getByText("Admin One")).toBeInTheDocument();
+    expect(within(pane).queryByText("Inactive Editor")).not.toBeInTheDocument();
+  });
+
+  it("dismisses Manage access on outside pointer-down without closing for inside-panel or nested modal interaction", async () => {
+    const listWorkspaceMembers = vi.fn(async () => ({
+      callerCapabilities: { canManageWorkspaceMembers: true },
+      members: [
+        createMember({ accessLevel: "admin", displayName: "Admin One", userSysId: "user-admin" }),
+        createMember({ accessLevel: "editor", displayName: "Editor One", userSysId: "user-editor" })
+      ],
+      state: "succeeded" as const
+    }));
+    const searchWorkspaceMemberUsers = vi.fn(async () => ({
+      callerCapabilities: { canManageWorkspaceMembers: true },
+      state: "succeeded" as const,
+      users: [{ displayName: "New Editor", email: "new@example.com", userName: "new.editor", userSysId: "user-new" }]
+    }));
+
+    renderApp("/?workspace=product-docs&page=overview&mode=edit", { listWorkspaceMembers, searchWorkspaceMemberUsers });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage access" }));
+    let pane = await screen.findByRole("complementary", { name: "Manage access" });
+
+    fireEvent.pointerDown(pane);
+    expect(screen.getByRole("complementary", { name: "Manage access" })).toBeInTheDocument();
+
+    fireEvent.click(within(pane).getByRole("button", { name: "Add members" }));
+    expect(await screen.findByRole("dialog", { name: "Add members" })).toBeInTheDocument();
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Workspace switcher: Product Docs" }));
+    expect(screen.getByRole("dialog", { name: "Add members" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Manage access" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add members" })).not.toBeInTheDocument());
+    expect(screen.getByRole("complementary", { name: "Manage access" })).toBeInTheDocument();
+
+    pane = screen.getByRole("complementary", { name: "Manage access" });
+    fireEvent.click(within(pane).getAllByRole("button", { name: "Remove" }).find((button) => !button.hasAttribute("disabled"))!);
+    expect(await screen.findByRole("dialog", { name: "Remove access" })).toBeInTheDocument();
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Workspace switcher: Product Docs" }));
+    expect(screen.getByRole("dialog", { name: "Remove access" })).toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Manage access" })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Remove access" })).not.toBeInTheDocument());
+    expect(screen.getByRole("complementary", { name: "Manage access" })).toBeInTheDocument();
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Workspace switcher: Product Docs" }));
+    await waitFor(() => expect(screen.queryByRole("complementary", { name: "Manage access" })).not.toBeInTheDocument());
+  });
+
+  it("waits for a valid Workspace Settings save before opening Manage access", async () => {
+    const deferredSave = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
+    const saveWorkspaceSettings = vi.fn<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>(() => deferredSave.promise);
+    const listWorkspaceMembers = vi.fn(async () => ({
+      callerCapabilities: { canManageWorkspaceMembers: true },
+      members: [createMember({ accessLevel: "admin", displayName: "Admin One", userSysId: "user-admin" })],
+      state: "succeeded" as const
+    }));
+
+    renderApp("/?workspace=product-docs&page=overview&mode=edit", { listWorkspaceMembers, saveWorkspaceSettings });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    const settings = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.change(within(settings).getByDisplayValue("Product Docs"), { target: { value: "Access Docs" } });
+    fireEvent.click(within(settings).getByRole("button", { name: "Manage access" }));
+
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("complementary", { name: "Manage access" })).not.toBeInTheDocument();
+
+    await act(async () => {
+      deferredSave.resolve({ state: "succeeded", workspace: createWorkspace({ name: "Access Docs" }) });
+      await deferredSave.promise;
+    });
+
+    expect(await screen.findByRole("complementary", { name: "Manage access" })).toBeInTheDocument();
+    expect(listWorkspaceMembers).toHaveBeenCalled();
+  });
+
+  it("does not open Manage access for another workspace when a deferred settings save resolves after navigation", async () => {
+    const deferredSave = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
+    const workspaces: Record<string, WorkspaceViewRecord> = {
+      "api-docs": createWorkspace({ sysId: "workspace-002", slug: "api-docs", name: "API Docs" }),
+      "product-docs": createWorkspace()
+    };
+    const getWorkspace = vi.fn(async (workspaceSlug: string) => ({ workspace: workspaces[workspaceSlug] ?? null }));
+    const listWorkspaces = vi.fn(async (): Promise<WorkspaceListResult> => ({
+      canCreateWorkspaces: true,
+      hasNextPage: false,
+      items: [workspaces["product-docs"], workspaces["api-docs"]],
+      page: 1,
+      pageSize: 10,
+      searchText: "",
+      totalCount: 2
+    }));
+    const saveWorkspaceSettings = vi.fn<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>(() => deferredSave.promise);
+    const listWorkspaceMembers = vi.fn(async () => ({
+      callerCapabilities: { canManageWorkspaceMembers: true },
+      members: [createMember({ accessLevel: "admin", displayName: "Admin One", userSysId: "user-admin" })],
+      state: "succeeded" as const
+    }));
+
+    renderApp("/?workspace=product-docs&page=overview&mode=edit", { getWorkspace, listWorkspaceMembers, listWorkspaces, saveWorkspaceSettings });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    const settings = await screen.findByRole("complementary", { name: "Workspace Settings" });
+    fireEvent.change(within(settings).getByDisplayValue("Product Docs"), { target: { value: "Access Docs" } });
+    fireEvent.click(within(settings).getByRole("button", { name: "Manage access" }));
+
+    await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("complementary", { name: "Manage access" })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Access Docs/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "API Docs" }));
+    expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+
+    await act(async () => {
+      workspaces["product-docs"] = createWorkspace({ name: "Access Docs" });
+      deferredSave.resolve({ state: "succeeded", workspace: workspaces["product-docs"] });
+      await deferredSave.promise;
+    });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Workspace switcher: API Docs" })).toBeInTheDocument());
+    expect(screen.queryByRole("complementary", { name: "Manage access" })).not.toBeInTheDocument();
+    expect(listWorkspaceMembers).not.toHaveBeenCalled();
+  });
+
+  it("loads eligible users immediately, searches from the server, and stages selected users with independent access levels", async () => {
+    const getWorkspace = vi.fn(async () => ({ workspace: createWorkspace() }));
+    const listWorkspaceMembers = vi.fn(async () => ({
+      callerCapabilities: { canManageWorkspaceMembers: true },
+      members: [createMember({ accessLevel: "admin", displayName: "Admin One", userSysId: "user-admin" })],
+      state: "succeeded" as const
+    }));
+    const searchWorkspaceMemberUsers = vi.fn(async (input: { excludedUserSysIds?: string[]; term: string }) => {
+      const users = input.term === "admin"
+        ? [{ displayName: "New Admin", email: "admin@example.com", userName: "new.admin", userSysId: "user-new-admin" }]
+        : [
+            { displayName: "New Editor", email: "new@example.com", userName: "new.editor", userSysId: "user-new" },
+            { displayName: "New Writer", email: "writer@example.com", userName: "new.writer", userSysId: "user-writer" },
+            { displayName: "New Admin", email: "admin@example.com", userName: "new.admin", userSysId: "user-new-admin" },
+            ...Array.from({ length: 7 }, (_, index) => ({
+              displayName: `Paged User ${index + 1}`,
+              email: `paged-${index + 1}@example.com`,
+              userName: `paged.${index + 1}`,
+              userSysId: `user-paged-${index + 1}`
+            }))
+          ];
+      return {
+        callerCapabilities: { canManageWorkspaceMembers: true },
+        state: "succeeded" as const,
+        users: users.filter((user) => !(input.excludedUserSysIds ?? []).includes(user.userSysId))
+      };
+    });
+    const setWorkspaceMemberAccess = vi.fn(async () => ({
+      callerCapabilities: { canManageWorkspaceMembers: true },
+      members: [],
+      state: "succeeded" as const
+    }));
+
+    renderApp("/?workspace=product-docs&page=overview&mode=edit", { getWorkspace, listWorkspaceMembers, searchWorkspaceMemberUsers, setWorkspaceMemberAccess });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage access" }));
+    const pane = await screen.findByRole("complementary", { name: "Manage access" });
+    fireEvent.click(within(pane).getByRole("button", { name: "Add members" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add members" });
+    expect(within(dialog).getByRole("button", { name: "Add members" })).toBeDisabled();
+    expect(within(dialog).getByRole("heading", { name: "Users" })).toBeInTheDocument();
+    expect(dialog.querySelector(".docsera-manage-access__list-align-spacer")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Search active users")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Searching users...")).not.toBeInTheDocument();
+    expect(await within(dialog).findByRole("option", { name: /New Editor/ })).toBeInTheDocument();
+    expect(searchWorkspaceMemberUsers).toHaveBeenCalledWith({
+      excludedUserSysIds: [],
+      term: "",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    });
+    const usersList = within(dialog).getByRole("listbox", { name: "Users" });
+    Object.defineProperty(usersList, "clientHeight", { configurable: true, value: 100 });
+    Object.defineProperty(usersList, "scrollHeight", { configurable: true, value: 100 });
+    Object.defineProperty(usersList, "scrollTop", { configurable: true, value: 100 });
+    fireEvent.scroll(usersList);
+    await waitFor(() => expect(searchWorkspaceMemberUsers).toHaveBeenCalledWith({
+      excludedUserSysIds: expect.arrayContaining(["user-new", "user-writer", "user-new-admin", "user-paged-7"]),
+      term: "",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+
+    const newEditorOption = within(dialog).getByRole("option", { name: /New Editor/ });
+    const newWriterOption = within(dialog).getByRole("option", { name: /New Writer/ });
+    const newAdminOption = within(dialog).getByRole("option", { name: /New Admin/ });
+    fireEvent.click(newEditorOption);
+    fireEvent.click(newAdminOption, { shiftKey: true });
+    expect(newEditorOption).toHaveAttribute("aria-selected", "true");
+    expect(newWriterOption).toHaveAttribute("aria-selected", "true");
+    expect(newAdminOption).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(newEditorOption);
+    fireEvent.click(newWriterOption, { ctrlKey: true });
+    expect(setWorkspaceMemberAccess).not.toHaveBeenCalled();
+    expect(newEditorOption).toHaveAttribute("aria-selected", "true");
+    expect(newWriterOption).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Stage selected users" }));
+    expect(within(dialog).getByText("New Editor")).toBeInTheDocument();
+    expect(within(dialog).getByText("New Writer")).toBeInTheDocument();
+    expect(within(usersList).queryByRole("option", { name: /New Editor/ })).not.toBeInTheDocument();
+
+    fireEvent.change(within(dialog).getByPlaceholderText("Search"), { target: { value: "admin" } });
+    await waitFor(() => expect(searchWorkspaceMemberUsers).toHaveBeenLastCalledWith({
+      excludedUserSysIds: [],
+      term: "admin",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+    expect(within(dialog).getByText("New Editor")).toBeInTheDocument();
+    fireEvent.click(await within(dialog).findByRole("option", { name: /New Admin/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Stage selected users" }));
+    fireEvent.change(within(dialog).getByLabelText("Access level for New Admin"), { target: { value: "admin" } });
+    expect(within(dialog).getByText("New Admin").closest(".docsera-manage-access__staged-member")).not.toHaveAttribute("aria-selected", "true");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add members" }));
+
+    await waitFor(() => expect(setWorkspaceMemberAccess).toHaveBeenCalledWith({
+      accessLevel: "editor",
+      userSysId: "user-new",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+    expect(setWorkspaceMemberAccess).toHaveBeenCalledWith({
+      accessLevel: "editor",
+      userSysId: "user-writer",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    });
+    expect(setWorkspaceMemberAccess).toHaveBeenCalledWith({
+      accessLevel: "admin",
+      userSysId: "user-new-admin",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    });
+    await waitFor(() => expect(getWorkspace).toHaveBeenCalledWith("product-docs"));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add members" })).not.toBeInTheDocument());
+  });
+
+  it("moves staged users back and discards staging on cancel without mutating membership", async () => {
+    const listWorkspaceMembers = vi.fn(async () => ({
+      callerCapabilities: { canManageWorkspaceMembers: true },
+      members: [createMember({ accessLevel: "admin", displayName: "Admin One", userSysId: "user-admin" })],
+      state: "succeeded" as const
+    }));
+    const searchWorkspaceMemberUsers = vi.fn(async () => ({
+      callerCapabilities: { canManageWorkspaceMembers: true },
+      state: "succeeded" as const,
+      users: [
+        { displayName: "New Editor", email: "new@example.com", userName: "new.editor", userSysId: "user-new" },
+        { displayName: "Second Editor", email: "second@example.com", userName: "second.editor", userSysId: "user-second" }
+      ]
+    }));
+    const setWorkspaceMemberAccess = vi.fn();
+
+    renderApp("/?workspace=product-docs&page=overview&mode=edit", { listWorkspaceMembers, searchWorkspaceMemberUsers, setWorkspaceMemberAccess });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage access" }));
+    const pane = await screen.findByRole("complementary", { name: "Manage access" });
+    fireEvent.click(within(pane).getByRole("button", { name: "Add members" }));
+    let dialog = await screen.findByRole("dialog", { name: "Add members" });
+    fireEvent.click(await within(dialog).findByRole("option", { name: /New Editor/ }));
+    fireEvent.click(within(dialog).getByRole("option", { name: /Second Editor/ }), { shiftKey: true });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Stage selected users" }));
+    expect(within(dialog).queryByRole("button", { name: /Remove New Editor from members to add/ })).not.toBeInTheDocument();
+    const stagedList = dialog.querySelector<HTMLElement>(".docsera-manage-access__staged-list");
+    expect(stagedList).toBeInTheDocument();
+    fireEvent.click(within(stagedList!).getByRole("option", { name: /New Editor/ }));
+    fireEvent.click(within(stagedList!).getByRole("option", { name: /Second Editor/ }), { shiftKey: true });
+    expect(within(stagedList!).getByRole("option", { name: /New Editor/ })).toHaveAttribute("aria-selected", "true");
+    expect(within(stagedList!).getByRole("option", { name: /Second Editor/ })).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove selected staged members" }));
+    expect(within(stagedList!).queryByText("New Editor")).not.toBeInTheDocument();
+    expect(within(stagedList!).queryByText("Second Editor")).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Add members" })).toBeDisabled();
+
+    fireEvent.click(await within(dialog).findByRole("option", { name: /New Editor/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Stage selected users" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(setWorkspaceMemberAccess).not.toHaveBeenCalled();
+
+    fireEvent.click(within(pane).getByRole("button", { name: "Add members" }));
+    dialog = await screen.findByRole("dialog", { name: "Add members" });
+    expect(within(dialog).queryByText("New Editor")).not.toBeInTheDocument();
+  });
+
+  it("keeps failed staged additions visible with row feedback after successful additions refresh", async () => {
+    const getWorkspace = vi.fn(async () => ({ workspace: createWorkspace() }));
+    const listWorkspaceMembers = vi.fn(async () => ({
+      callerCapabilities: { canManageWorkspaceMembers: true },
+      members: [createMember({ accessLevel: "admin", displayName: "Admin One", userSysId: "user-admin" })],
+      state: "succeeded" as const
+    }));
+    const searchWorkspaceMemberUsers = vi.fn(async () => ({
+      callerCapabilities: { canManageWorkspaceMembers: true },
+      state: "succeeded" as const,
+      users: [
+        { displayName: "New Editor", email: "new@example.com", userName: "new.editor", userSysId: "user-new" },
+        { displayName: "Blocked Editor", email: "blocked@example.com", userName: "blocked.editor", userSysId: "user-blocked" }
+      ]
+    }));
+    const setWorkspaceMemberAccess = vi.fn(async (input: { userSysId: string }) => input.userSysId === "user-blocked"
+      ? { errorMessage: "Blocked Editor could not be added.", state: "failed" as const }
+      : { callerCapabilities: { canManageWorkspaceMembers: true }, members: [], state: "succeeded" as const }
+    );
+
+    renderApp("/?workspace=product-docs&page=overview&mode=edit", { getWorkspace, listWorkspaceMembers, searchWorkspaceMemberUsers, setWorkspaceMemberAccess });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage access" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Manage access" })).getByRole("button", { name: "Add members" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add members" });
+    fireEvent.click(await within(dialog).findByRole("option", { name: /New Editor/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Stage selected users" }));
+    fireEvent.click(within(dialog).getByRole("option", { name: /Blocked Editor/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Stage selected users" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add members" }));
+
+    const stagedList = dialog.querySelector<HTMLElement>(".docsera-manage-access__staged-list");
+    expect(stagedList).toBeInTheDocument();
+    await waitFor(() => expect(within(stagedList!).queryByText("New Editor")).not.toBeInTheDocument());
+    expect(within(dialog).getByText("Blocked Editor")).toBeInTheDocument();
+    expect(within(dialog).getByText("Blocked Editor could not be added.")).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Add members" })).toBeInTheDocument();
+    await waitFor(() => expect(getWorkspace).toHaveBeenCalledWith("product-docs"));
+  });
+
+  it("removes an existing member through the confirmation dialog and refreshes capabilities", async () => {
+    const getWorkspace = vi.fn(async () => ({ workspace: createWorkspace() }));
+    const listWorkspaceMembers = vi.fn(async () => ({
+      callerCapabilities: { canManageWorkspaceMembers: true },
+      members: [
+        createMember({ accessLevel: "admin", displayName: "Admin One", userSysId: "user-admin" }),
+        createMember({ accessLevel: "editor", displayName: "Editor One", userSysId: "user-editor" })
+      ],
+      state: "succeeded" as const
+    }));
+    const removeWorkspaceMemberAccess = vi.fn(async () => ({
+      callerCapabilities: { canManageWorkspaceMembers: true },
+      members: [],
+      state: "succeeded" as const
+    }));
+
+    renderApp("/?workspace=product-docs&page=overview&mode=edit", { getWorkspace, listWorkspaceMembers, removeWorkspaceMemberAccess });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage access" }));
+    const pane = await screen.findByRole("complementary", { name: "Manage access" });
+    const editorRow = within(pane).getByText("Editor One").closest(".docsera-manage-access__member");
+    expect(editorRow).toBeInTheDocument();
+    fireEvent.click(within(editorRow as HTMLElement).getByRole("button", { name: "Remove" }));
+    const dialog = await screen.findByRole("dialog", { name: "Remove access" });
+    expect(dialog.closest(".docsera-modal--top-biased")).toBeInTheDocument();
+    expect(dialog.querySelector(".docsera-modal__form")).toBeInTheDocument();
+    expect(dialog.querySelector(".docsera-modal__header")).toBeInTheDocument();
+    expect(dialog.querySelector(".docsera-modal__body")).toBeInTheDocument();
+    expect(dialog.querySelector(".docsera-modal__footer")).toBeInTheDocument();
+    expect(within(dialog).getByText(/Remove workspace access for Editor One/)).toHaveClass("docsera-modal__copy--warning");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove access" }));
+
+    await waitFor(() => expect(removeWorkspaceMemberAccess).toHaveBeenCalledWith({
+      userSysId: "user-editor",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+    await waitFor(() => expect(getWorkspace).toHaveBeenCalledWith("product-docs"));
+  });
+
+  it("protects the last active Workspace Admin until a second active Admin exists", async () => {
+    const listWorkspaceMembers = vi
+      .fn()
+      .mockResolvedValueOnce({
+        callerCapabilities: { canManageWorkspaceMembers: true },
+        members: [createMember({ accessLevel: "admin", displayName: "Last Admin", userSysId: "user-admin" })],
+        state: "succeeded"
+      })
+      .mockResolvedValue({
+        callerCapabilities: { canManageWorkspaceMembers: true },
+        members: [
+          createMember({ accessLevel: "admin", displayName: "Last Admin", userSysId: "user-admin" }),
+          createMember({ accessLevel: "admin", displayName: "Second Admin", userSysId: "user-second-admin" })
+        ],
+        state: "succeeded"
+      });
+
+    renderApp("/?workspace=product-docs&page=overview&mode=edit", { listWorkspaceMembers });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage access" }));
+    let pane = await screen.findByRole("complementary", { name: "Manage access" });
+    expect(within(pane).getByText("Last active Workspace Admin")).toBeInTheDocument();
+    expect(within(pane).getByRole("button", { name: "Remove" })).toBeDisabled();
+    expect(within(pane).getByLabelText("Access level for Last Admin")).toBeDisabled();
+
+    fireEvent.click(within(pane).getByRole("button", { name: "Close manage access" }));
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage access" }));
+    pane = await screen.findByRole("complementary", { name: "Manage access" });
+    await waitFor(() => expect(within(pane).getAllByRole("button", { name: "Remove" })[0]).toBeEnabled());
+    expect(within(pane).getByLabelText("Access level for Last Admin")).toBeEnabled();
+  });
+
   it("finishes Workspace Settings from the real outside surface without dismissing inside-panel interaction", async () => {
     const saveWorkspaceSettings = vi.fn(async (input) => ({
       state: "succeeded" as const,
@@ -947,7 +1406,7 @@ describe("App workspace shell integration", () => {
     fireEvent.click(within(panel).getByRole("button", { name: "Close workspace settings" }));
 
     await waitFor(() => expect(screen.queryByRole("complementary", { name: "Workspace Settings" })).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
     fireEvent.click(await screen.findByRole("button", { name: "Workspace settings" }));
     const reopenedPanel = await screen.findByRole("complementary", { name: "Workspace Settings" });
     expect(await within(reopenedPanel).findByRole("alert")).toHaveTextContent("Use a different workspace name.");

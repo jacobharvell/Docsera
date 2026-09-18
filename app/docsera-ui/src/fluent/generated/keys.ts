@@ -98,6 +98,22 @@ declare global {
                         table: 'sys_security_acl'
                         id: '57c45f7e94914669b31c6efe8e9b926b'
                     }
+                    docsera_workspace_member_mutation_command_create_deny: {
+                        table: 'sys_security_acl'
+                        id: 'ad04d00fe86849d984a723135e8d9a7f'
+                    }
+                    docsera_workspace_member_mutation_command_delete_deny: {
+                        table: 'sys_security_acl'
+                        id: 'c0dbc90172684bd79bebf8b1cf506500'
+                    }
+                    docsera_workspace_member_mutation_command_read_deny: {
+                        table: 'sys_security_acl'
+                        id: '090f5dfb707f42eeb08bbd084091a55a'
+                    }
+                    docsera_workspace_member_mutation_command_write_deny: {
+                        table: 'sys_security_acl'
+                        id: '26a3638846e34511a402b6c13b8ee50b'
+                    }
                     docsera_workspace_mutation_claim_create_deny: {
                         table: 'sys_security_acl'
                         id: '98db5ab14dbd44fdbc430c68248547c5'
@@ -314,6 +330,10 @@ declare global {
                     'docsera-runtime-workspace-members-remove-post': {
                         table: 'sys_ws_operation'
                         id: '73057242d6724c329aab2f910190e2bb'
+                    }
+                    'docsera-runtime-workspace-members-search-get': {
+                        table: 'sys_ws_operation'
+                        id: 'd170eb0d8e1f4e7ab40e30d2ff6f6a87'
                     }
                     'docsera-runtime-workspace-pending-changes-post': {
                         table: 'sys_ws_operation'
@@ -744,6 +764,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_choice'
+                        id: '091d00f16aa14ad5b60e8ce3501798cb'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'state'
+                            value: 'succeeded'
+                        }
+                    },
+                    {
                         table: 'sys_documentation'
                         id: '0920b6fe328e49e4a6454319127e9267'
                         key: {
@@ -924,6 +953,14 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_choice_set'
+                        id: '1468889f94584c30ba7a1234049415bf'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'mutation_kind'
+                        }
+                    },
+                    {
                         table: 'sys_db_object'
                         id: '14e1a92bab0641dda3aa21ddab2ab9d3'
                         key: {
@@ -953,10 +990,26 @@ declare global {
                         }
                     },
                     {
+                        table: 'ua_table_licensing_config'
+                        id: '16185a30f9774e42bc3bc4e5b3552fab'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                        }
+                    },
+                    {
                         table: 'sys_db_object'
                         id: '16345b1cb3864624a57e7263306abf84'
                         key: {
                             name: 'x_82900_docsera_workspace_removal_batch'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '16862e5e51304fe6a547e1045af77fa8'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'workspace'
+                            language: 'en'
                         }
                     },
                     {
@@ -996,11 +1049,28 @@ declare global {
                     },
                     {
                         table: 'sys_documentation'
+                        id: '184a72ad896d4cbeac7456f5126614dc'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'NULL'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
                         id: '18e9d98ff4ae4558922817b8fb560b91'
                         key: {
                             name: 'x_82900_docsera_page'
                             element: 'draft_parent_page'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '196d43dedc604faf8200a069956b4a47'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'NULL'
                         }
                     },
                     {
@@ -1252,6 +1322,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_choice'
+                        id: '2b55c28122f84e86bba2946cb0609236'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'access_level'
+                            value: 'editor'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: '2c05c8e108984f66aabb05b2a3ee2f02'
                         key: {
@@ -1266,6 +1345,15 @@ declare global {
                             name: 'x_82900_docsera_workspace_edit_lease'
                             element: 'verifier_digest'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '2cb4e40f4ad847bbaf45c56365d07955'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'access_level'
+                            value: 'admin'
                         }
                     },
                     {
@@ -1393,6 +1481,14 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_provision_request'
                             element: 'error_code'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '331163a850bf4995a03b4f699e4610e0'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'mutation_kind'
                         }
                     },
                     {
@@ -1561,6 +1657,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_page'
                             element: 'published_content_json'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '4260c66ea61945e6b97495dd8db0a91d'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'error_message'
+                            language: 'en'
                         }
                     },
                     {
@@ -1734,6 +1839,14 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_provision_request'
                             element: 'error_message'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: '4d815c2dca724b8f8b2d0704093dc51a'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'state'
                         }
                     },
                     {
@@ -2011,6 +2124,14 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_dictionary'
+                        id: '62bfd05ca04848ff95edc5e305b9866e'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'target_user'
+                        }
+                    },
+                    {
                         table: 'sys_documentation'
                         id: '64efde1f4ca24db3b8965ef60bd329a3'
                         key: {
@@ -2163,6 +2284,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_choice'
+                        id: '6dd43d2e38274e83859e219f90087ceb'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'state'
+                            value: 'requested'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: '6f604986306349ccb54830ffb2ad17d7'
                         key: {
@@ -2227,6 +2357,14 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_page'
                             element: 'draft_slug_normalized'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '740ea2cf57e14662a4eef4734db929ad'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'access_level'
                         }
                     },
                     {
@@ -2507,6 +2645,13 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_db_object'
+                        id: '81dab2e2c7064ab8a38a956b8e236e5f'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                        }
+                    },
+                    {
                         table: 'sys_documentation'
                         id: '82f019173d184e22aaeadd797b01a44d'
                         key: {
@@ -2744,6 +2889,15 @@ declare global {
                     },
                     {
                         table: 'sys_documentation'
+                        id: '91b3d494d96b427e9c2ea9ab111e46b5'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'access_level'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
                         id: '929848174fdb4e8fb840dfb25012b5ed'
                         key: {
                             name: 'x_82900_docsera_workspace'
@@ -2758,6 +2912,15 @@ declare global {
                             name: 'x_82900_docsera_workspace_provision_request'
                             element: 'workspace_status'
                             value: 'inactive'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '93185f6e7b514e05bfa5bb83bfd87384'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'mutation_kind'
+                            language: 'en'
                         }
                     },
                     {
@@ -3080,6 +3243,14 @@ declare global {
                     },
                     {
                         table: 'sys_dictionary'
+                        id: 'a86b2f498ff74018af1efe7882f9faa7'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'workspace'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
                         id: 'a874f4635f4c4883bc41800b022b041d'
                         key: {
                             name: 'x_82900_docsera_page'
@@ -3131,6 +3302,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_documentation'
+                        id: 'aa1d72a33dac4a0fa6318531d763c4f9'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'target_user'
+                            language: 'en'
+                        }
+                    },
+                    {
                         table: 'sys_choice'
                         id: 'aa790e95ebac4586971985ab588e7f94'
                         key: {
@@ -3146,6 +3326,14 @@ declare global {
                             name: 'x_82900_docsera_workspace_page_snapshot'
                             element: 'title'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'ab47fe01e67b44999a496370a9f155e5'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'error_message'
                         }
                     },
                     {
@@ -3443,6 +3631,24 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_choice'
+                        id: 'be24108a1b444a31a4b17ca8ef2c35e5'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'state'
+                            value: 'failed'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'be5b290a25e143849bcf9928a94e9f16'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'requested_by'
+                            language: 'en'
+                        }
+                    },
+                    {
                         table: 'sys_documentation'
                         id: 'be9b39d74d6147d3a8972a05c2bd28dc'
                         key: {
@@ -3517,6 +3723,14 @@ declare global {
                             name: 'x_82900_docsera_workspace_change_entry'
                             element: 'first_pending_sequence'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'c32c545b8f6e4e46941f6e7ee7c8917f'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'state'
                         }
                     },
                     {
@@ -4017,6 +4231,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_choice'
+                        id: 'dedbc1fd7d954f91963b2a4208f11076'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'mutation_kind'
+                            value: 'set'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: 'df34b992d96e4b7aa9c98563608963f0'
                         key: {
@@ -4098,6 +4321,15 @@ declare global {
                             name: 'x_82900_docsera_workspace'
                             element: 'workspace_slug'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'e558ebbb19f14c3d8a25e77ebc5a481b'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'mutation_kind'
+                            value: 'remove'
                         }
                     },
                     {
@@ -4233,6 +4465,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_mutation_claim'
                             element: 'workspace'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'eda9caf6f41c4af9bafc1733443ea750'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'state'
+                            language: 'en'
                         }
                     },
                     {
@@ -4390,6 +4631,14 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_choice_set'
+                        id: 'f6ff0287de7b4cb3ada6732448e8b2a5'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'access_level'
+                        }
+                    },
+                    {
                         table: 'sys_ux_lib_asset'
                         id: 'f8117032c4f74ba98f743499f7472240'
                         key: {
@@ -4402,6 +4651,14 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_change_entry'
                             element: 'last_changed_by'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'f8bbfeb2abfd449ea4f9e8f6dcbdb71a'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'requested_by'
                         }
                     },
                     {

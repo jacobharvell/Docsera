@@ -67,6 +67,13 @@ import type {
   WorkspaceCreateSucceeded,
   WorkspaceSettingsSaveInput,
   WorkspaceSettingsSaveResult,
+  WorkspaceMemberAccessLevel,
+  WorkspaceMemberCallerCapabilities,
+  WorkspaceMemberRecord,
+  WorkspaceMemberMutationResult,
+  WorkspaceMemberUserSearchRecord,
+  WorkspaceMemberUserSearchResult,
+  WorkspaceMembersResult,
   WorkspaceListResult,
   PageListResult,
   WorkspaceLookupResult,
@@ -101,6 +108,7 @@ const DEFAULT_WORKSPACE_MEDIA_COLLECTION_PATH = "/api/x_82900_docsera/docsera_ru
 const DEFAULT_WORKSPACE_MEDIA_FILE_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/media/file";
 const DEFAULT_WORKSPACE_ICON_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/icons";
 const DEFAULT_WORKSPACE_SETTINGS_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/settings";
+const DEFAULT_WORKSPACE_MEMBERS_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/members";
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
 const SAFE_PAGE_DELETE_ERROR_MESSAGE = "Something went wrong while deleting the page. The page was not deleted. Please try again.";
 const SAFE_PAGE_MOVE_ERROR_MESSAGE = "Something went wrong while moving the page. The page was not moved. Please try again.";
@@ -110,6 +118,9 @@ const SAFE_WORKSPACE_PUBLISH_ERROR_MESSAGE = "Something went wrong while publish
 const SAFE_WORKSPACE_MEDIA_LIST_ERROR_MESSAGE = "Unable to load workspace media. Please try again.";
 const SAFE_WORKSPACE_MEDIA_UPLOAD_ERROR_MESSAGE = "Something went wrong while uploading media. The file was not saved. Please try again.";
 const SAFE_WORKSPACE_ICON_UPLOAD_ERROR_MESSAGE = "Something went wrong while uploading the workspace icon. The file was not saved. Please try again.";
+const SAFE_WORKSPACE_MEMBERS_ERROR_MESSAGE = "Unable to load workspace members. Please try again.";
+const SAFE_WORKSPACE_MEMBER_MUTATION_ERROR_MESSAGE = "Unable to update workspace access. Please try again.";
+const SAFE_WORKSPACE_MEMBER_SEARCH_ERROR_MESSAGE = "Unable to search users. Please try again.";
 
 function readWindowUserToken(candidate: Window | null | undefined): string | undefined {
   const tokenWindow = candidate as TokenBearingWindow | null | undefined;
@@ -257,6 +268,11 @@ function resolveWorkspaceSettingsPath(workspaceCollectionPath: string): string {
   return normalizedPath.endsWith("/workspaces") ? `${normalizedPath}/settings` : DEFAULT_WORKSPACE_SETTINGS_PATH;
 }
 
+function resolveWorkspaceMembersPath(workspaceCollectionPath: string): string {
+  const normalizedPath = cleanText(workspaceCollectionPath).replace(/\/+$/g, "");
+  return normalizedPath.endsWith("/workspaces") ? `${normalizedPath}/members` : DEFAULT_WORKSPACE_MEMBERS_PATH;
+}
+
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<JsonResponse<T>> {
   const userToken = resolveUserToken();
   const response = await fetch(path, {
@@ -392,6 +408,7 @@ function normalizeWorkspaceViewRecord(candidate: unknown): WorkspaceViewRecord {
     },
     status: workspace.status === "inactive" ? "inactive" : "active",
     roleLabel: workspace.roleLabel === "Admin" ? "Admin" : workspace.roleLabel === "Editor" ? "Editor" : null,
+    canManageWorkspaceMembers: Boolean(workspace.canManageWorkspaceMembers),
     canManageSettings: Boolean(workspace.canManageSettings)
   };
 }
@@ -482,6 +499,81 @@ function normalizeWorkspaceLookupResult(body: unknown): WorkspaceLookupResult {
 
   return {
     workspace
+  };
+}
+
+function normalizeWorkspaceMember(candidate: unknown): WorkspaceMemberRecord {
+  if (!isPlainObject(candidate)) {
+    throw new Error("Workspace member payload was invalid.");
+  }
+  const accessLevel = cleanText(candidate.accessLevel) === "admin" ? "admin" : "editor";
+  return {
+    accessLevel,
+    active: typeof candidate.active === "boolean" ? candidate.active : Boolean(candidate.active),
+    displayName: cleanText(candidate.displayName),
+    email: cleanText(candidate.email),
+    userName: cleanText(candidate.userName),
+    userSysId: cleanText(candidate.userSysId)
+  };
+}
+
+function normalizeWorkspaceMemberUser(candidate: unknown): WorkspaceMemberUserSearchRecord {
+  if (!isPlainObject(candidate)) {
+    throw new Error("Workspace user payload was invalid.");
+  }
+  return {
+    displayName: cleanText(candidate.displayName),
+    email: cleanText(candidate.email),
+    userName: cleanText(candidate.userName),
+    userSysId: cleanText(candidate.userSysId)
+  };
+}
+
+function normalizeMemberCapabilities(candidate: unknown): WorkspaceMemberCallerCapabilities {
+  return {
+    canManageWorkspaceMembers: isPlainObject(candidate) ? Boolean(candidate.canManageWorkspaceMembers) : false
+  };
+}
+
+function normalizeWorkspaceMembersResult(body: unknown): Extract<WorkspaceMembersResult, { state: "succeeded" }> {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || !Array.isArray(result.members)) {
+    throw new Error("Workspace members payload was invalid.");
+  }
+  return {
+    callerCapabilities: normalizeMemberCapabilities(result.callerCapabilities),
+    members: result.members.map((item) => normalizeWorkspaceMember(item)),
+    state: "succeeded"
+  };
+}
+
+function normalizeWorkspaceMemberMutationResult(body: unknown): Extract<WorkspaceMemberMutationResult, { state: "succeeded" }> {
+  const result = normalizeWorkspaceMembersResult(body);
+  const payload = unwrapServiceNowEnvelope(body);
+  return {
+    ...result,
+    member: isPlainObject(payload) && payload.member ? normalizeWorkspaceMember(payload.member) : null
+  };
+}
+
+function normalizeWorkspaceMemberUserSearchResult(body: unknown): Extract<WorkspaceMemberUserSearchResult, { state: "succeeded" }> {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || !Array.isArray(result.users)) {
+    throw new Error("Workspace user search payload was invalid.");
+  }
+  return {
+    callerCapabilities: normalizeMemberCapabilities(result.callerCapabilities),
+    state: "succeeded",
+    users: result.users.map((item) => normalizeWorkspaceMemberUser(item))
+  };
+}
+
+function normalizeWorkspaceMembersFailedResult(body: unknown, status: number, fallback: string): WorkspaceMembersResult & { state: "failed" } {
+  return {
+    code: status === 403 ? "forbidden" : status === 400 ? "invalid" : status === 404 ? "not_found" : "transient",
+    errorMessage: extractErrorMessage(body, fallback),
+    retryable: status >= 500,
+    state: "failed"
   };
 }
 
@@ -2254,6 +2346,7 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
   const workspaceMediaFilePath = resolveWorkspaceMediaFilePath(collectionPath);
   const workspaceIconCollectionPath = resolveWorkspaceIconCollectionPath(collectionPath);
   const workspaceSettingsPath = resolveWorkspaceSettingsPath(collectionPath);
+  const workspaceMembersPath = resolveWorkspaceMembersPath(collectionPath);
   const pageDeleteActionPath = resolvePageDeleteActionPath(pageCollectionPath);
   const pageMovePath = resolvePageMovePath(pageCollectionPath);
   const pagePublishPath = resolvePagePublishPath(pageCollectionPath);
@@ -2347,6 +2440,87 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
 
     async saveWorkspaceSettings(input: WorkspaceSettingsSaveInput): Promise<WorkspaceSettingsSaveResult> {
       return resolveWorkspaceSettingsSaveResult(workspaceSettingsPath, input);
+    },
+
+    async listWorkspaceMembers(input: { workspaceSlug: string; workspaceSysId?: string }): Promise<WorkspaceMembersResult> {
+      try {
+        const path = new URL(workspaceMembersPath, window.location.origin);
+        path.searchParams.set("workspaceSlug", cleanText(input.workspaceSlug));
+        if (cleanText(input.workspaceSysId)) {
+          path.searchParams.set("workspaceSysId", cleanText(input.workspaceSysId));
+        }
+        const response = await requestJson<unknown>(path.pathname + path.search);
+        if (response.status === 200) {
+          return normalizeWorkspaceMembersResult(response.body);
+        }
+        return normalizeWorkspaceMembersFailedResult(response.body, response.status, SAFE_WORKSPACE_MEMBERS_ERROR_MESSAGE);
+      } catch {
+        return { code: "transient", errorMessage: SAFE_WORKSPACE_MEMBERS_ERROR_MESSAGE, retryable: true, state: "failed" };
+      }
+    },
+
+    async searchWorkspaceMemberUsers(input: { excludedUserSysIds?: string[]; term: string; workspaceSlug: string; workspaceSysId?: string }): Promise<WorkspaceMemberUserSearchResult> {
+      try {
+        const path = new URL(`${workspaceMembersPath.replace(/\/+$/g, "")}/search-users`, window.location.origin);
+        path.searchParams.set("workspaceSlug", cleanText(input.workspaceSlug));
+        path.searchParams.set("q", cleanText(input.term));
+        path.searchParams.set("limit", "10");
+        const excludedUserSysIds = (input.excludedUserSysIds ?? []).map(cleanText).filter(Boolean);
+        if (excludedUserSysIds.length > 0) {
+          path.searchParams.set("exclude", excludedUserSysIds.join(","));
+        }
+        if (cleanText(input.workspaceSysId)) {
+          path.searchParams.set("workspaceSysId", cleanText(input.workspaceSysId));
+        }
+        const response = await requestJson<unknown>(path.pathname + path.search);
+        if (response.status === 200) {
+          return normalizeWorkspaceMemberUserSearchResult(response.body);
+        }
+        return normalizeWorkspaceMembersFailedResult(response.body, response.status, SAFE_WORKSPACE_MEMBER_SEARCH_ERROR_MESSAGE);
+      } catch {
+        return { code: "transient", errorMessage: SAFE_WORKSPACE_MEMBER_SEARCH_ERROR_MESSAGE, retryable: true, state: "failed" };
+      }
+    },
+
+    async setWorkspaceMemberAccess(input: { accessLevel: WorkspaceMemberAccessLevel; userSysId: string; workspaceSlug: string; workspaceSysId?: string }): Promise<WorkspaceMemberMutationResult> {
+      try {
+        const response = await requestJson<unknown>(workspaceMembersPath, {
+          method: "PUT",
+          body: JSON.stringify({
+            accessLevel: input.accessLevel,
+            userSysId: cleanText(input.userSysId),
+            workspaceSlug: cleanText(input.workspaceSlug),
+            workspaceSysId: cleanText(input.workspaceSysId)
+          }),
+          headers: { "Content-Type": "application/json" }
+        });
+        if (response.status === 200) {
+          return normalizeWorkspaceMemberMutationResult(response.body);
+        }
+        return normalizeWorkspaceMembersFailedResult(response.body, response.status, SAFE_WORKSPACE_MEMBER_MUTATION_ERROR_MESSAGE);
+      } catch {
+        return { code: "transient", errorMessage: SAFE_WORKSPACE_MEMBER_MUTATION_ERROR_MESSAGE, retryable: true, state: "failed" };
+      }
+    },
+
+    async removeWorkspaceMemberAccess(input: { userSysId: string; workspaceSlug: string; workspaceSysId?: string }): Promise<WorkspaceMemberMutationResult> {
+      try {
+        const response = await requestJson<unknown>(`${workspaceMembersPath.replace(/\/+$/g, "")}/remove`, {
+          method: "POST",
+          body: JSON.stringify({
+            userSysId: cleanText(input.userSysId),
+            workspaceSlug: cleanText(input.workspaceSlug),
+            workspaceSysId: cleanText(input.workspaceSysId)
+          }),
+          headers: { "Content-Type": "application/json" }
+        });
+        if (response.status === 200) {
+          return normalizeWorkspaceMemberMutationResult(response.body);
+        }
+        return normalizeWorkspaceMembersFailedResult(response.body, response.status, SAFE_WORKSPACE_MEMBER_MUTATION_ERROR_MESSAGE);
+      } catch {
+        return { code: "transient", errorMessage: SAFE_WORKSPACE_MEMBER_MUTATION_ERROR_MESSAGE, retryable: true, state: "failed" };
+      }
     },
 
     async createPage(input: PageCreateInput): Promise<PageCreateResult> {

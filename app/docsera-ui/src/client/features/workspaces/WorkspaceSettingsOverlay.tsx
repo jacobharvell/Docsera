@@ -34,6 +34,7 @@ type WorkspaceSettingsOverlayProps = {
   onCleanupStagedIcon?: (input: { assetKey: string; workspaceSysId: string }) => void;
   onCancel: () => void;
   onDraftIdentityChange?: (identity: Pick<WorkspaceViewRecord, "icon" | "name"> | null) => void;
+  onManageAccess?: (input: { waitForSettingsSave: boolean; workspaceSysId: string }) => void;
   onUploadIcon?: (input: { file: File; workspaceSysId?: string }) => Promise<WorkspaceIconUploadResult>;
   onSubmit: (input: WorkspaceSettingsSubmitInput) => void;
   open: boolean;
@@ -95,7 +96,7 @@ function sameDraft(left: WorkspaceSettingsDraft, right: WorkspaceSettingsDraft):
     left.tocVisible === right.tocVisible;
 }
 
-export function WorkspaceSettingsOverlay({ errorMessage, loadUploadedIcon, onCancel, onCleanupStagedIcon, onDraftIdentityChange, onSubmit, onUploadIcon, open, pending, recoveryInput, workspace }: WorkspaceSettingsOverlayProps) {
+export function WorkspaceSettingsOverlay({ errorMessage, loadUploadedIcon, onCancel, onCleanupStagedIcon, onDraftIdentityChange, onManageAccess, onSubmit, onUploadIcon, open, pending, recoveryInput, workspace }: WorkspaceSettingsOverlayProps) {
   const [draft, setDraft] = useState<WorkspaceSettingsDraft | null>(null);
   const [attemptedDismiss, setAttemptedDismiss] = useState(false);
   const [uploadingIcon, setUploadingIcon] = useState(false);
@@ -185,18 +186,18 @@ export function WorkspaceSettingsOverlay({ errorMessage, loadUploadedIcon, onCan
   const selectedIcon = findBuiltInWorkspaceIcon(draft.selectedBuiltInIconKey) ?? DEFAULT_BUILT_IN_WORKSPACE_ICON;
   const showErrors = attemptedDismiss || Boolean(errorMessage);
 
-  function requestFinishEditing() {
-    if (pending || uploadingIcon) return;
+  function requestFinishEditing(): "unchanged" | "submitted" | false {
+    if (pending || uploadingIcon) return false;
     const currentDraft = draft;
     const currentCanonicalDraft = canonicalDraft;
-    if (!currentDraft || !currentCanonicalDraft) return;
+    if (!currentDraft || !currentCanonicalDraft) return false;
     const currentWorkspace = workspace;
-    if (!currentWorkspace) return;
+    if (!currentWorkspace) return false;
     setAttemptedDismiss(true);
-    if (Object.keys(errors).length > 0) return;
+    if (Object.keys(errors).length > 0) return false;
     if (sameDraft(currentDraft, currentCanonicalDraft)) {
       onCancel();
-      return;
+      return "unchanged";
     }
     const icon =
       currentDraft.iconKind === "builtin"
@@ -227,6 +228,14 @@ export function WorkspaceSettingsOverlay({ errorMessage, loadUploadedIcon, onCan
       },
       layout: { tocVisible: currentDraft.tocVisible }
     });
+    return "submitted";
+  }
+
+  function requestManageAccess() {
+    if (!workspace?.canManageWorkspaceMembers || pending || uploadingIcon) return;
+    const result = requestFinishEditing();
+    if (!result) return;
+    onManageAccess?.({ waitForSettingsSave: result === "submitted", workspaceSysId: cleanText(workspace.sysId) });
   }
 
   async function handleIconFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -344,6 +353,11 @@ export function WorkspaceSettingsOverlay({ errorMessage, loadUploadedIcon, onCan
             <input type="checkbox" checked={draft.tocVisible} disabled={pending} onChange={(event) => setDraft((current) => current ? { ...current, tocVisible: event.target.checked } : current)} />
             <span>Show table of contents</span>
           </label>
+          {workspace.canManageWorkspaceMembers ? (
+            <button type="button" className="docsera-workspace-icon-picker__upload-button" disabled={pending || uploadingIcon} onClick={requestManageAccess}>
+              Manage access
+            </button>
+          ) : null}
           <p className="docsera-workspace-settings-overlay__helper">Valid changes are saved when this panel is closed or you click outside it.</p>
         </div>
       </aside>

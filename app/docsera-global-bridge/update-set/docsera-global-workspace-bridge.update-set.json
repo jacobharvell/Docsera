@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "artifactRevision": "worker-queue-companion-r2",
   "buildType": "global",
-  "generatedAt": "2026-09-12 23:12:33",
+  "generatedAt": "2026-09-18 15:31:49",
   "remoteUpdateSetSysId": "cbb4d31e2a5358f32458ac92ba22a522",
   "sourceDistRoot": "dist",
   "artifactFile": "sys_remote_update_set_docsera_global_workspace_provisioning_worker_queue_0_1_0_companion.xml",
@@ -28,6 +28,13 @@
       "targetName": "global.DocseraGlobalWorkspaceMembershipBridge",
       "targetSysId": "449a6d8fb9d6e5b6c84e14c4314d8ccb",
       "updateName": "sys_restricted_caller_access_449a6d8fb9d6e5b6c84e14c4314d8ccb"
+    },
+    {
+      "sourceFile": "update/sys_module_0e5b8251286449d9b67bcc50a68c489a.xml",
+      "table": "sys_module",
+      "targetName": "/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-member-mutation-command.js",
+      "targetSysId": "0e5b8251286449d9b67bcc50a68c489a",
+      "updateName": "sys_module_0e5b8251286449d9b67bcc50a68c489a"
     },
     {
       "sourceFile": "update/sys_module_7efb96fd25084bb886188a7b24bbbec0.xml",
@@ -79,6 +86,20 @@
       "updateName": "sys_scope_privilege_180009d4ff894e0baadce8a57b91fd2f"
     },
     {
+      "sourceFile": "update/sys_scope_privilege_1bbfe8f3691f4d7981a769118c65249f.xml",
+      "table": "sys_scope_privilege",
+      "targetName": "sys_scope_privilege_1bbfe8f3691f4d7981a769118c65249f",
+      "targetSysId": "1bbfe8f3691f4d7981a769118c65249f",
+      "updateName": "sys_scope_privilege_1bbfe8f3691f4d7981a769118c65249f"
+    },
+    {
+      "sourceFile": "update/sys_scope_privilege_86ca73048d744baeb377d39abd8b9e09.xml",
+      "table": "sys_scope_privilege",
+      "targetName": "sys_scope_privilege_86ca73048d744baeb377d39abd8b9e09",
+      "targetSysId": "86ca73048d744baeb377d39abd8b9e09",
+      "updateName": "sys_scope_privilege_86ca73048d744baeb377d39abd8b9e09"
+    },
+    {
       "sourceFile": "update/sys_scope_privilege_957dd0a5355f409084022a37f40c35ab.xml",
       "table": "sys_scope_privilege",
       "targetName": "sys_scope_privilege_957dd0a5355f409084022a37f40c35ab",
@@ -112,6 +133,13 @@
       "targetName": "sys_scope_privilege_e5de9fae882e41f4ae5e5936a6141657",
       "targetSysId": "e5de9fae882e41f4ae5e5936a6141657",
       "updateName": "sys_scope_privilege_e5de9fae882e41f4ae5e5936a6141657"
+    },
+    {
+      "sourceFile": "update/sys_script_0d2f3146f31d4c439ea6b6cd50a105a2.xml",
+      "table": "sys_script",
+      "targetName": "Docsera Workspace Member Mutation Command Worker",
+      "targetSysId": "0d2f3146f31d4c439ea6b6cd50a105a2",
+      "updateName": "sys_script_0d2f3146f31d4c439ea6b6cd50a105a2"
     },
     {
       "sourceFile": "update/sys_script_fa8109eeb6ed4c3e91c11238db780568.xml",

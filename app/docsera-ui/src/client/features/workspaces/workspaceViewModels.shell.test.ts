@@ -18,6 +18,7 @@ function createWorkspace(): WorkspaceViewRecord {
     },
     status: "active",
     roleLabel: "Editor",
+    canManageWorkspaceMembers: false,
     canManageSettings: false
   };
 }

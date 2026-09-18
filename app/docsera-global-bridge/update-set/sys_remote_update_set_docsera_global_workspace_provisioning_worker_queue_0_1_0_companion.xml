@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<unload unload_date="2026-09-12 23:12:33" unload_version="1" syntax="glide">
+<unload unload_date="2026-09-18 15:31:49" unload_version="1" syntax="glide">
   <sys_remote_update_set action="INSERT_OR_UPDATE">
     <sys_id>cbb4d31e2a5358f32458ac92ba22a522</sys_id>
     <application display_value="Global">global</application>
@@ -115,6 +115,88 @@
     <type>sys_restricted_caller_access</type>
     <update_guid>e56a4247ff58abdb67dc25c5dab9de0f</update_guid>
     <update_guid_history>e243bc3fcc2892c50cf81ab88a98ba5c</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>025c1e6459de237046202384789f0215</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_module_0e5b8251286449d9b67bcc50a68c489a</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_module&quot;&gt;
+  &lt;sys_module action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;0e5b8251286449d9b67bcc50a68c489a&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_module_0e5b8251286449d9b67bcc50a68c489a&lt;/sys_update_name&gt;
+    &lt;content&gt;&lt;![CDATA[(function executeRule(current) {
+    function cleanText(value) {
+        return typeof value === &apos;string&apos; ? value.trim() : &apos;&apos;;
+    }
+
+    function fail(message) {
+        current.setValue(&apos;state&apos;, &apos;failed&apos;);
+        current.setValue(&apos;error_message&apos;, cleanText(message) || &apos;Workspace membership mutation failed.&apos;);
+        current.update();
+    }
+
+    if (!current) {
+        return;
+    }
+
+    if (current.getValue(&apos;state&apos;) !== &apos;requested&apos;) {
+        return;
+    }
+
+    var workspaceSysId = cleanText(current.getValue(&apos;workspace&apos;));
+    var targetUserSysId = cleanText(current.getValue(&apos;target_user&apos;));
+    var mutationKind = cleanText(current.getValue(&apos;mutation_kind&apos;));
+    var accessLevel = cleanText(current.getValue(&apos;access_level&apos;));
+
+    var workspace = new GlideRecord(&apos;x_82900_docsera_workspace&apos;);
+    if (!workspace.get(workspaceSysId)) {
+        fail(&apos;Workspace could not be found.&apos;);
+        return;
+    }
+
+    var adminGroupSysId = cleanText(workspace.getValue(&apos;admin_group&apos;));
+    var editorGroupSysId = cleanText(workspace.getValue(&apos;editor_group&apos;));
+    var bridge = new DocseraGlobalWorkspaceMembershipBridge();
+    var result;
+
+    if (mutationKind === &apos;set&apos;) {
+        result = bridge.setWorkspaceMembership(adminGroupSysId, editorGroupSysId, targetUserSysId, accessLevel);
+    } else if (mutationKind === &apos;remove&apos;) {
+        result = bridge.removeWorkspaceMembership(adminGroupSysId, editorGroupSysId, targetUserSysId);
+    } else {
+        fail(&apos;Unsupported workspace membership mutation kind.&apos;);
+        return;
+    }
+
+    if (!result || result.status !== &apos;succeeded&apos;) {
+        fail(result &amp;&amp; result.errorMessage ? result.errorMessage : &apos;Workspace membership mutation failed.&apos;);
+        return;
+    }
+
+    current.setValue(&apos;state&apos;, &apos;succeeded&apos;);
+    current.setValue(&apos;error_message&apos;, &apos;&apos;);
+    current.update();
+})(current, previous);
+]]&gt;&lt;/content&gt;
+    &lt;external_source&gt;false&lt;/external_source&gt;
+    &lt;path&gt;/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-member-mutation-command.js&lt;/path&gt;
+    &lt;sys_name&gt;/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-member-mutation-command.js&lt;/sys_name&gt;
+  &lt;/sys_module&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-member-mutation-command.js</target_name>
+    <target_sys_id>0e5b8251286449d9b67bcc50a68c489a</target_sys_id>
+    <type>sys_module</type>
+    <update_guid>031b8f8d3f0aaff2a012cd001553d20e</update_guid>
+    <update_guid_history>a7f61e02010d2e92c7d1132183197063</update_guid_history>
   </sys_update_xml>
   <sys_update_xml action="INSERT_OR_UPDATE">
     <sys_id>d2d2fd1881c56a8fffc473aeba9521e3</sys_id>
@@ -333,9 +415,9 @@ DocseraGlobalWorkspaceMembershipBridge.prototype = {
   &quot;bomFormat&quot;: &quot;CycloneDX&quot;,
   &quot;specVersion&quot;: &quot;1.6&quot;,
   &quot;version&quot;: 1,
-  &quot;serialNumber&quot;: &quot;urn:uuid:183c4740-1a88-4151-8f40-daa4b8590c0f&quot;,
+  &quot;serialNumber&quot;: &quot;urn:uuid:a07a474e-4e60-4f3e-8ff7-59adccf76e94&quot;,
   &quot;metadata&quot;: {
-    &quot;timestamp&quot;: &quot;2026-09-12T23:12:27.463Z&quot;,
+    &quot;timestamp&quot;: &quot;2026-09-18T15:29:49.018Z&quot;,
     &quot;tools&quot;: {
       &quot;components&quot;: [
         {
@@ -891,7 +973,8 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
   &quot;devDependencies&quot;: {
     &quot;@servicenow/sdk&quot;: &quot;4.8.1&quot;,
     &quot;typescript&quot;: &quot;^5.6.3&quot;
-  }
+  },
+  &quot;dependencies&quot;: {}
 }]]&gt;&lt;/content&gt;
     &lt;external_source&gt;false&lt;/external_source&gt;
     &lt;path&gt;/global/docsera-global-workspace-bridge/0.1.0/package.json&lt;/path&gt;
@@ -970,6 +1053,68 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     <type>sys_scope_privilege</type>
     <update_guid>860e9bcc72976892d5eafb9143fa3ab8</update_guid>
     <update_guid_history>cc8e380963dbf0bc5f106f158bfe19bf</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>d48941663ed77a1b3347af0cd774b8ab</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_scope_privilege_1bbfe8f3691f4d7981a769118c65249f</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_scope_privilege&quot;&gt;
+  &lt;sys_scope_privilege action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;1bbfe8f3691f4d7981a769118c65249f&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_scope_privilege_1bbfe8f3691f4d7981a769118c65249f&lt;/sys_update_name&gt;
+    &lt;operation&gt;read&lt;/operation&gt;
+    &lt;source_scope&gt;global&lt;/source_scope&gt;
+    &lt;status&gt;allowed&lt;/status&gt;
+    &lt;target_name&gt;x_82900_docsera_workspace_member_mutation_command&lt;/target_name&gt;
+    &lt;target_scope&gt;6997f092c3fd8310c569bf0d0501314d&lt;/target_scope&gt;
+    &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
+  &lt;/sys_scope_privilege&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>sys_scope_privilege_1bbfe8f3691f4d7981a769118c65249f</target_name>
+    <target_sys_id>1bbfe8f3691f4d7981a769118c65249f</target_sys_id>
+    <type>sys_scope_privilege</type>
+    <update_guid>dd98532b8b828be3e6a4a6a9c1220f1a</update_guid>
+    <update_guid_history>0087605b71ff18585a3c4fa47445fd2f</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>effa4731fbedfb06b9c54d300e6b2431</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_scope_privilege_86ca73048d744baeb377d39abd8b9e09</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_scope_privilege&quot;&gt;
+  &lt;sys_scope_privilege action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;86ca73048d744baeb377d39abd8b9e09&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_scope_privilege_86ca73048d744baeb377d39abd8b9e09&lt;/sys_update_name&gt;
+    &lt;operation&gt;write&lt;/operation&gt;
+    &lt;source_scope&gt;global&lt;/source_scope&gt;
+    &lt;status&gt;allowed&lt;/status&gt;
+    &lt;target_name&gt;x_82900_docsera_workspace_member_mutation_command&lt;/target_name&gt;
+    &lt;target_scope&gt;6997f092c3fd8310c569bf0d0501314d&lt;/target_scope&gt;
+    &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
+  &lt;/sys_scope_privilege&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>sys_scope_privilege_86ca73048d744baeb377d39abd8b9e09</target_name>
+    <target_sys_id>86ca73048d744baeb377d39abd8b9e09</target_sys_id>
+    <type>sys_scope_privilege</type>
+    <update_guid>a9383cb89f7a68f997be32110d941bfa</update_guid>
+    <update_guid_history>c17689a23a017192e4374252de0e079a</update_guid_history>
   </sys_update_xml>
   <sys_update_xml action="INSERT_OR_UPDATE">
     <sys_id>9393a4e17d2fab595211232b46211aa1</sys_id>
@@ -1125,6 +1270,115 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     <type>sys_scope_privilege</type>
     <update_guid>25813fdb9e1c94cb8a8b9f082f37ed01</update_guid>
     <update_guid_history>631cddc9abd93157888d6f666969c317</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>06c802909c8075d64149d373d1a54191</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_script_0d2f3146f31d4c439ea6b6cd50a105a2</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_script&quot;&gt;
+  &lt;sys_script action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;0d2f3146f31d4c439ea6b6cd50a105a2&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_script_0d2f3146f31d4c439ea6b6cd50a105a2&lt;/sys_update_name&gt;
+    &lt;abort_action&gt;false&lt;/abort_action&gt;
+    &lt;access&gt;package_private&lt;/access&gt;
+    &lt;action_delete&gt;false&lt;/action_delete&gt;
+    &lt;action_insert&gt;true&lt;/action_insert&gt;
+    &lt;action_query&gt;false&lt;/action_query&gt;
+    &lt;action_update&gt;false&lt;/action_update&gt;
+    &lt;active&gt;true&lt;/active&gt;
+    &lt;add_message&gt;false&lt;/add_message&gt;
+    &lt;advanced&gt;true&lt;/advanced&gt;
+    &lt;change_fields&gt;false&lt;/change_fields&gt;
+    &lt;client_callable&gt;false&lt;/client_callable&gt;
+    &lt;collection&gt;x_82900_docsera_workspace_member_mutation_command&lt;/collection&gt;
+    &lt;condition/&gt;
+    &lt;description/&gt;
+    &lt;execute_function&gt;false&lt;/execute_function&gt;
+    &lt;filter_condition&gt;state=requested&lt;/filter_condition&gt;
+    &lt;is_rest&gt;false&lt;/is_rest&gt;
+    &lt;message/&gt;
+    &lt;name&gt;Docsera Workspace Member Mutation Command Worker&lt;/name&gt;
+    &lt;order&gt;100&lt;/order&gt;
+    &lt;priority&gt;100&lt;/priority&gt;
+    &lt;rest_method/&gt;
+    &lt;rest_method_text/&gt;
+    &lt;rest_service/&gt;
+    &lt;rest_service_text/&gt;
+    &lt;rest_variables/&gt;
+    &lt;role_conditions/&gt;
+    &lt;script&gt;&lt;![CDATA[(function executeRule(current) {
+    function cleanText(value) {
+        return typeof value === &apos;string&apos; ? value.trim() : &apos;&apos;;
+    }
+
+    function fail(message) {
+        current.setValue(&apos;state&apos;, &apos;failed&apos;);
+        current.setValue(&apos;error_message&apos;, cleanText(message) || &apos;Workspace membership mutation failed.&apos;);
+        current.update();
+    }
+
+    if (!current) {
+        return;
+    }
+
+    if (current.getValue(&apos;state&apos;) !== &apos;requested&apos;) {
+        return;
+    }
+
+    var workspaceSysId = cleanText(current.getValue(&apos;workspace&apos;));
+    var targetUserSysId = cleanText(current.getValue(&apos;target_user&apos;));
+    var mutationKind = cleanText(current.getValue(&apos;mutation_kind&apos;));
+    var accessLevel = cleanText(current.getValue(&apos;access_level&apos;));
+
+    var workspace = new GlideRecord(&apos;x_82900_docsera_workspace&apos;);
+    if (!workspace.get(workspaceSysId)) {
+        fail(&apos;Workspace could not be found.&apos;);
+        return;
+    }
+
+    var adminGroupSysId = cleanText(workspace.getValue(&apos;admin_group&apos;));
+    var editorGroupSysId = cleanText(workspace.getValue(&apos;editor_group&apos;));
+    var bridge = new DocseraGlobalWorkspaceMembershipBridge();
+    var result;
+
+    if (mutationKind === &apos;set&apos;) {
+        result = bridge.setWorkspaceMembership(adminGroupSysId, editorGroupSysId, targetUserSysId, accessLevel);
+    } else if (mutationKind === &apos;remove&apos;) {
+        result = bridge.removeWorkspaceMembership(adminGroupSysId, editorGroupSysId, targetUserSysId);
+    } else {
+        fail(&apos;Unsupported workspace membership mutation kind.&apos;);
+        return;
+    }
+
+    if (!result || result.status !== &apos;succeeded&apos;) {
+        fail(result &amp;&amp; result.errorMessage ? result.errorMessage : &apos;Workspace membership mutation failed.&apos;);
+        return;
+    }
+
+    current.setValue(&apos;state&apos;, &apos;succeeded&apos;);
+    current.setValue(&apos;error_message&apos;, &apos;&apos;);
+    current.update();
+})(current, previous);
+]]&gt;&lt;/script&gt;
+    &lt;sys_policy/&gt;
+    &lt;template/&gt;
+    &lt;when&gt;after&lt;/when&gt;
+  &lt;/sys_script&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>Docsera Workspace Member Mutation Command Worker</target_name>
+    <target_sys_id>0d2f3146f31d4c439ea6b6cd50a105a2</target_sys_id>
+    <type>sys_script</type>
+    <update_guid>3dae8301233db2e85f2f7579270829c9</update_guid>
+    <update_guid_history>8b321114314320591f4cc7379a8eaf82</update_guid_history>
   </sys_update_xml>
   <sys_update_xml action="INSERT_OR_UPDATE">
     <sys_id>bebf89791f044e3b43addb4d36ddce15</sys_id>
