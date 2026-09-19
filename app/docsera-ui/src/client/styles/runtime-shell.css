@@ -3781,6 +3781,11 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   width: min(100%, var(--docsera-main-surface-max-width));
   min-width: 0;
   margin: 0;
+  --docsera-main-surface-anchor-offset: clamp(
+    24px,
+    calc((100vw - var(--docsera-workspace-nav-width) - var(--docsera-toc-panel-width) - var(--docsera-main-surface-max-width)) / 2),
+    calc(100vw - var(--docsera-workspace-nav-width) - 24px)
+  );
   margin-inline-start: clamp(
     24px,
     calc((100vw - var(--docsera-workspace-nav-width) - var(--docsera-toc-panel-width) - var(--docsera-main-surface-max-width)) / 2),
@@ -3977,6 +3982,8 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 
 .docsera-main__surface--editor {
   gap: 0;
+  width: min(100%, calc(var(--docsera-main-surface-max-width) + var(--docsera-editor-block-gutter-width)));
+  margin-inline-start: max(0px, calc(var(--docsera-main-surface-anchor-offset) - var(--docsera-editor-block-gutter-width)));
   padding-left: calc(24px + var(--docsera-editor-block-gutter-width));
 }
 

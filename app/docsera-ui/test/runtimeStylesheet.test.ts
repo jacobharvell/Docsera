@@ -61,10 +61,31 @@ test("keeps launcher background ownership explicit without changing workspace ba
   expect(css).not.toMatch(/\.docsera-toc-rail__body\s*{[^}]*border-left:/s);
   expect(css).toContain(".docsera-main__body-heading,");
   expect(css).toContain("scroll-margin-block-start: var(--docsera-workspace-heading-scroll-margin);");
+  expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*--docsera-main-surface-anchor-offset:\s*clamp\([^}]*var\(--docsera-main-surface-max-width\)[^}]*\);/s);
   expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*margin-inline-start:\s*clamp\([^}]*var\(--docsera-toc-panel-width\)/s);
   expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*display:\s*grid;[^}]*align-content:\s*start;[^}]*gap:\s*28px;/s);
-  expect(css).toMatch(/\.docsera-main__surface--editor\s*{[^}]*gap:\s*0;[^}]*padding-left:\s*calc\(24px \+ var\(--docsera-editor-block-gutter-width\)\);/s);
+  expect(css).toMatch(/\.docsera-main__surface--editor\s*{[^}]*gap:\s*0;[^}]*width:\s*min\(100%, calc\(var\(--docsera-main-surface-max-width\) \+ var\(--docsera-editor-block-gutter-width\)\)\);[^}]*margin-inline-start:\s*max\(0px, calc\(var\(--docsera-main-surface-anchor-offset\) - var\(--docsera-editor-block-gutter-width\)\)\);[^}]*padding-left:\s*calc\(24px \+ var\(--docsera-editor-block-gutter-width\)\);/s);
   expect(css).toMatch(/\.docsera-main__editor-host\s*{[^}]*margin-top:\s*40px;/s);
+});
+
+test("keeps the edit gutter outside the reader-equivalent content lane at desktop width", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+
+  const mainSurfaceMaxWidth = css.match(/--docsera-main-surface-max-width:\s*(\d+)px;/)?.[1];
+  const gutterWidth = css.match(/--docsera-editor-block-gutter-width:\s*(\d+)px;/)?.[1];
+
+  expect(mainSurfaceMaxWidth).toBe("768");
+  expect(gutterWidth).toBe("69");
+  expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*padding:\s*32px 24px 72px;/s);
+  expect(css).toMatch(
+    /\.docsera-main__surface--editor\s*{[^}]*width:\s*min\(100%, calc\(var\(--docsera-main-surface-max-width\) \+ var\(--docsera-editor-block-gutter-width\)\)\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-main__surface--editor\s*{[^}]*margin-inline-start:\s*max\(0px, calc\(var\(--docsera-main-surface-anchor-offset\) - var\(--docsera-editor-block-gutter-width\)\)\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-main__surface--editor\s*{[^}]*padding-left:\s*calc\(24px \+ var\(--docsera-editor-block-gutter-width\)\);/s
+  );
 });
 
 test("keeps the same main-surface anchor contract when the ToC auto-hides at the responsive breakpoint", () => {

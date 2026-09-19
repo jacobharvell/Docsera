@@ -58,6 +58,7 @@ The contract below was consolidated from:
 | current durable contract | The constrained document article/layout surface owns document layout and child geometry, but not every workspace hit-test decision. |
 | current durable contract | Rendered body-block geometry owns block-relative hover, selection, and placement decisions. |
 | current durable contract | The block-relative control gutter and hover row are a separate contract from the full-pane range-selection surface. |
+| current durable contract | At desktop widths where the Live reader reaches its maximum readable width, Edit preserves the same readable content anchor and width. The fixed block-control gutter is shell/editor chrome immediately to the left of that shared content lane, not part of the ProseMirror document canvas and not padding that reduces the readable document width. |
 | current durable contract | The near-block caret-intent strip is its own surface and must not be folded into the block-control gutter or the range-selection background. |
 | current durable contract | Rendered title text owns its own interaction geometry and must not be treated as the full-width title-row rectangle when blank space behaves differently. |
 | current durable contract | Overlays and shell controls are separate ownership surfaces and must not be collapsed into the editor body model. |
