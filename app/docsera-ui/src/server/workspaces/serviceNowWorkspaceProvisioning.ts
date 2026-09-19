@@ -49,10 +49,6 @@ function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function normalizeBoolean(value: unknown): boolean {
-  return value === true || value === "true" || value === 1 || value === "1";
-}
-
 function readLastErrorMessage(record: {
   getLastErrorMessage?: () => string;
 }): string {

@@ -759,15 +759,26 @@ async function main() {
       "second editor group has x_82900_docsera.editor"
     );
 
-    const membershipRecords = await tableQuery(instanceUrl, session, "sys_user_grmember", {
+    const automaticMembershipRecords = await tableQuery(instanceUrl, session, "sys_user_grmember", {
+      query: `groupIN${createdGroupSysIds.join(",")}`,
+      fields: "sys_id,group,user"
+    });
+    addCheck(
+      checks,
+      automaticMembershipRecords.length === 0,
+      "generated workspace access groups have no automatic user memberships",
+      JSON.stringify(automaticMembershipRecords)
+    );
+
+    const creatorMembershipRecords = await tableQuery(instanceUrl, session, "sys_user_grmember", {
       query: `group=${cleanText(firstWorkspace.groups?.admin?.sysId)}^user=${currentUserSysId}`,
       fields: "sys_id,group,user"
     });
     addCheck(
       checks,
-      membershipRecords.length === 1,
-      `creator ${currentUserName || currentUserSysId} is a member of the first generated admin group`,
-      JSON.stringify(membershipRecords)
+      creatorMembershipRecords.length === 0,
+      `creator ${currentUserName || currentUserSysId} was not automatically added to the first generated admin group`,
+      JSON.stringify(creatorMembershipRecords)
     );
 
     const duplicateInsert = await fetchJson(instanceUrl, session, "/api/now/table/x_82900_docsera_workspace", {

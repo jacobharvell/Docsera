@@ -46,9 +46,6 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
             stage = 'assign_editor_role';
             this._assignRoleToGroup(editorGroup.sysId, this._ROLE_NAMES.editor);
 
-            stage = 'add_creator_membership';
-            this._addUserToGroup(adminGroup.sysId, payload.requestedBySysId);
-
             stage = 'create_workspace';
             workspaceSysId = this._createWorkspaceRecord(payload, adminGroup.sysId, editorGroup.sysId);
 
@@ -236,26 +233,6 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
         }
     },
 
-    _addUserToGroup: function (groupSysId, userSysId) {
-        var membership = new GlideRecord('sys_user_grmember');
-        membership.addQuery('group', groupSysId);
-        membership.addQuery('user', userSysId);
-        membership.setLimit(1);
-        membership.query();
-
-        if (membership.next()) {
-            return;
-        }
-
-        membership.initialize();
-        membership.setValue('group', groupSysId);
-        membership.setValue('user', userSysId);
-
-        if (!this._cleanText(membership.insert())) {
-            throw new Error('The workspace creator could not be added to the admin group.');
-        }
-    },
-
     _createWorkspaceRecord: function (payload, adminGroupSysId, editorGroupSysId) {
         var workspace = new GlideRecord(this._WORKSPACE_TABLE);
         workspace.initialize();
@@ -355,8 +332,6 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
             case 'assign_admin_role':
             case 'assign_editor_role':
                 return 'role_assignment_failed';
-            case 'add_creator_membership':
-                return 'creator_membership_failed';
             case 'create_workspace':
                 return 'workspace_create_failed';
             case 'finalize_uploaded_icon':
@@ -376,8 +351,6 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
             case 'assign_admin_role':
             case 'assign_editor_role':
                 return 'Failed to assign Docsera roles to workspace groups.';
-            case 'add_creator_membership':
-                return 'Failed to add the workspace creator to the admin group.';
             case 'create_workspace':
                 return 'Failed to create the workspace record after provisioning access groups.';
             case 'finalize_uploaded_icon':

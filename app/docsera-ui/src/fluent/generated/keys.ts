@@ -307,6 +307,11 @@ declare global {
                         table: 'sys_ws_operation'
                         id: '10baec6fa9314f7488456c35aa2f6da2'
                     }
+                    'docsera-runtime-workspace-initial-admin-users-get': {
+                        table: 'sys_ws_operation'
+                        id: '9b39731f6fd8491496290fd1582f64fb'
+                        deleted: true
+                    }
                     'docsera-runtime-workspace-media-file-get': {
                         table: 'sys_ws_operation'
                         id: 'bd641d50194b4549bbfb8a59f69611b5'
@@ -467,6 +472,11 @@ declare global {
                     'src_server_api_docsera-runtime-workspace-icon-upload_ts': {
                         table: 'sys_module'
                         id: 'f61ba199a7f448b3bc28a3d26992fc7c'
+                    }
+                    'src_server_api_docsera-runtime-workspace-initial-admin-users_ts': {
+                        table: 'sys_module'
+                        id: '786211c4a2e744a59df8455d6223a82e'
+                        deleted: true
                     }
                     'src_server_api_docsera-runtime-workspace-media_ts': {
                         table: 'sys_module'
@@ -741,6 +751,16 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_documentation'
+                        id: '0763e38b7ae44c3d8dcc94e3d4805052'
+                        deleted: true
+                        key: {
+                            name: 'x_82900_docsera_workspace_provision_request'
+                            element: 'initial_admin_user'
+                            language: 'en'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: '07e678be733c4f35afcbba165c037ccd'
                         key: {
@@ -865,6 +885,15 @@ declare global {
                             name: 'x_82900_docsera_workspace_mutation_claim'
                             element: 'finalized_on'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '0cf2d645310343479bd70703822460fe'
+                        deleted: true
+                        key: {
+                            name: 'x_82900_docsera_workspace_provision_request'
+                            element: 'initial_admin_user'
                         }
                     },
                     {

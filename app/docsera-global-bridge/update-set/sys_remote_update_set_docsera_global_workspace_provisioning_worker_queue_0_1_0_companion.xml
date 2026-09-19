@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<unload unload_date="2026-09-18 15:31:49" unload_version="1" syntax="glide">
+<unload unload_date="2026-09-19 01:08:57" unload_version="1" syntax="glide">
   <sys_remote_update_set action="INSERT_OR_UPDATE">
     <sys_id>cbb4d31e2a5358f32458ac92ba22a522</sys_id>
     <application display_value="Global">global</application>
@@ -415,9 +415,9 @@ DocseraGlobalWorkspaceMembershipBridge.prototype = {
   &quot;bomFormat&quot;: &quot;CycloneDX&quot;,
   &quot;specVersion&quot;: &quot;1.6&quot;,
   &quot;version&quot;: 1,
-  &quot;serialNumber&quot;: &quot;urn:uuid:a07a474e-4e60-4f3e-8ff7-59adccf76e94&quot;,
+  &quot;serialNumber&quot;: &quot;urn:uuid:142e6372-fd18-4f76-bb58-c012b11b7d20&quot;,
   &quot;metadata&quot;: {
-    &quot;timestamp&quot;: &quot;2026-09-18T15:29:49.018Z&quot;,
+    &quot;timestamp&quot;: &quot;2026-09-19T01:08:54.437Z&quot;,
     &quot;tools&quot;: {
       &quot;components&quot;: [
         {
@@ -517,9 +517,6 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
 
             stage = &apos;assign_editor_role&apos;;
             this._assignRoleToGroup(editorGroup.sysId, this._ROLE_NAMES.editor);
-
-            stage = &apos;add_creator_membership&apos;;
-            this._addUserToGroup(adminGroup.sysId, payload.requestedBySysId);
 
             stage = &apos;create_workspace&apos;;
             workspaceSysId = this._createWorkspaceRecord(payload, adminGroup.sysId, editorGroup.sysId);
@@ -708,26 +705,6 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
         }
     },
 
-    _addUserToGroup: function (groupSysId, userSysId) {
-        var membership = new GlideRecord(&apos;sys_user_grmember&apos;);
-        membership.addQuery(&apos;group&apos;, groupSysId);
-        membership.addQuery(&apos;user&apos;, userSysId);
-        membership.setLimit(1);
-        membership.query();
-
-        if (membership.next()) {
-            return;
-        }
-
-        membership.initialize();
-        membership.setValue(&apos;group&apos;, groupSysId);
-        membership.setValue(&apos;user&apos;, userSysId);
-
-        if (!this._cleanText(membership.insert())) {
-            throw new Error(&apos;The workspace creator could not be added to the admin group.&apos;);
-        }
-    },
-
     _createWorkspaceRecord: function (payload, adminGroupSysId, editorGroupSysId) {
         var workspace = new GlideRecord(this._WORKSPACE_TABLE);
         workspace.initialize();
@@ -827,8 +804,6 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
             case &apos;assign_admin_role&apos;:
             case &apos;assign_editor_role&apos;:
                 return &apos;role_assignment_failed&apos;;
-            case &apos;add_creator_membership&apos;:
-                return &apos;creator_membership_failed&apos;;
             case &apos;create_workspace&apos;:
                 return &apos;workspace_create_failed&apos;;
             case &apos;finalize_uploaded_icon&apos;:
@@ -848,8 +823,6 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
             case &apos;assign_admin_role&apos;:
             case &apos;assign_editor_role&apos;:
                 return &apos;Failed to assign Docsera roles to workspace groups.&apos;;
-            case &apos;add_creator_membership&apos;:
-                return &apos;Failed to add the workspace creator to the admin group.&apos;;
             case &apos;create_workspace&apos;:
                 return &apos;Failed to create the workspace record after provisioning access groups.&apos;;
             case &apos;finalize_uploaded_icon&apos;:
@@ -973,8 +946,7 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
   &quot;devDependencies&quot;: {
     &quot;@servicenow/sdk&quot;: &quot;4.8.1&quot;,
     &quot;typescript&quot;: &quot;^5.6.3&quot;
-  },
-  &quot;dependencies&quot;: {}
+  }
 }]]&gt;&lt;/content&gt;
     &lt;external_source&gt;false&lt;/external_source&gt;
     &lt;path&gt;/global/docsera-global-workspace-bridge/0.1.0/package.json&lt;/path&gt;
@@ -1681,9 +1653,6 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
             stage = &apos;assign_editor_role&apos;;
             this._assignRoleToGroup(editorGroup.sysId, this._ROLE_NAMES.editor);
 
-            stage = &apos;add_creator_membership&apos;;
-            this._addUserToGroup(adminGroup.sysId, payload.requestedBySysId);
-
             stage = &apos;create_workspace&apos;;
             workspaceSysId = this._createWorkspaceRecord(payload, adminGroup.sysId, editorGroup.sysId);
 
@@ -1871,26 +1840,6 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
         }
     },
 
-    _addUserToGroup: function (groupSysId, userSysId) {
-        var membership = new GlideRecord(&apos;sys_user_grmember&apos;);
-        membership.addQuery(&apos;group&apos;, groupSysId);
-        membership.addQuery(&apos;user&apos;, userSysId);
-        membership.setLimit(1);
-        membership.query();
-
-        if (membership.next()) {
-            return;
-        }
-
-        membership.initialize();
-        membership.setValue(&apos;group&apos;, groupSysId);
-        membership.setValue(&apos;user&apos;, userSysId);
-
-        if (!this._cleanText(membership.insert())) {
-            throw new Error(&apos;The workspace creator could not be added to the admin group.&apos;);
-        }
-    },
-
     _createWorkspaceRecord: function (payload, adminGroupSysId, editorGroupSysId) {
         var workspace = new GlideRecord(this._WORKSPACE_TABLE);
         workspace.initialize();
@@ -1990,8 +1939,6 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
             case &apos;assign_admin_role&apos;:
             case &apos;assign_editor_role&apos;:
                 return &apos;role_assignment_failed&apos;;
-            case &apos;add_creator_membership&apos;:
-                return &apos;creator_membership_failed&apos;;
             case &apos;create_workspace&apos;:
                 return &apos;workspace_create_failed&apos;;
             case &apos;finalize_uploaded_icon&apos;:
@@ -2011,8 +1958,6 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
             case &apos;assign_admin_role&apos;:
             case &apos;assign_editor_role&apos;:
                 return &apos;Failed to assign Docsera roles to workspace groups.&apos;;
-            case &apos;add_creator_membership&apos;:
-                return &apos;Failed to add the workspace creator to the admin group.&apos;;
             case &apos;create_workspace&apos;:
                 return &apos;Failed to create the workspace record after provisioning access groups.&apos;;
             case &apos;finalize_uploaded_icon&apos;:

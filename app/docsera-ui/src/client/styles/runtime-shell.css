@@ -1649,6 +1649,59 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
   font-weight: 600;
 }
 
+.docsera-modal__search-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.docsera-modal__selected-user {
+  display: grid;
+  gap: 2px;
+  padding: 8px 10px;
+  border: 1px solid var(--docsera-border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--docsera-secondary) 5%, var(--docsera-surface) 95%);
+  font-size: 0.875rem;
+}
+
+.docsera-modal__selected-user span + span,
+.docsera-modal__user-result span + span {
+  color: var(--docsera-text-muted);
+  font-size: 0.8125rem;
+}
+
+.docsera-modal__user-results {
+  display: grid;
+  gap: 4px;
+  max-height: 168px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--docsera-border);
+  border-radius: 6px;
+  background: var(--docsera-surface);
+}
+
+.docsera-modal__user-result {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--docsera-text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.docsera-modal__user-result:not(:disabled):hover,
+.docsera-modal__user-result:focus-visible {
+  background: color-mix(in srgb, var(--docsera-secondary) 8%, var(--docsera-surface) 92%);
+}
+
 .docsera-workspace-icon-picker {
   border: 0;
   margin: 0;

@@ -99,7 +99,6 @@ export type WorkspaceSlugReservation = string | { slug?: string; workspaceSlug?:
 export type WorkspaceProvisioningDependencies = {
   createGroup?: (input: { name: string; description: string; type: "admin" | "editor" }) => Promise<WorkspaceGroup>;
   assignRoleToGroup?: (groupSysId: string, roleName: string) => Promise<void>;
-  addUserToGroup?: (input: { groupSysId: string; userSysId: string }) => Promise<void>;
   provisionAccessGroups?: (draft: WorkspaceDraft) => Promise<WorkspaceProvisionedAccessGroups>;
   deleteProvisionedAccessGroups?: (groups: WorkspaceProvisionedAccessGroups) => Promise<void>;
   saveWorkspace: (workspace: WorkspaceRecord) => Promise<WorkspaceRecord>;
@@ -589,10 +588,6 @@ export async function provisionWorkspace(
       throw new TypeError("An assignRoleToGroup dependency is required.");
     }
 
-    if (typeof dependencies.addUserToGroup !== "function") {
-      throw new TypeError("An addUserToGroup dependency is required.");
-    }
-
     const adminGroup = await dependencies.createGroup({
       name: draft.adminGroupName,
       description: `Workspace admin group for ${draft.name}`,
@@ -609,13 +604,6 @@ export async function provisionWorkspace(
 
     await dependencies.assignRoleToGroup(adminGroup.sysId, WORKSPACE_ROLE_NAMES.workspaceAdmin);
     await dependencies.assignRoleToGroup(editorGroup.sysId, WORKSPACE_ROLE_NAMES.editor);
-
-    if (draft.creatorUserSysId) {
-      await dependencies.addUserToGroup({
-        groupSysId: adminGroup.sysId,
-        userSysId: draft.creatorUserSysId
-      });
-    }
 
     const workspace = await dependencies.saveWorkspace({
       ...draft,

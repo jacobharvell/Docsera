@@ -99,8 +99,10 @@ The provisioning flow currently does this in order:
 2. Create the editor group.
 3. Assign `x_82900_docsera.workspace_admin` to the admin group.
 4. Assign `x_82900_docsera.editor` to the editor group.
-5. Add the creator to the admin group when a current user is available.
-6. Persist the workspace record with group sys_id references.
+5. Leave both generated groups empty after role assignment.
+6. Preserve the creator as workspace audit metadata without automatically adding the creator to either generated group.
+7. Persist the workspace record with group sys_id references.
+8. Assign the first Workspace Admin or Editor later through Manage access.
 
 The shared provisioning helper attempts group cleanup if workspace persistence fails and the adapter exposes `deleteGroup`.
 
@@ -117,7 +119,6 @@ The live ServiceNow adapter currently uses:
 - `x_82900_docsera_workspace` for workspace records
 - `sys_user_group` for workspace groups
 - `sys_group_has_role` for group-role assignment
-- `sys_user_grmember` for creator membership
 - `sys_user_role` lookup by role name
 - a server-side current-user capability helper in `app/docsera-ui/src/server/workspaces/serviceNowWorkspaceCapabilities.ts`
 
@@ -143,7 +144,8 @@ Automated validation currently covers:
 - group naming
 - default icon and layout behavior
 - workspace provisioning group reference handling
-- creator-as-admin membership behavior
+- creator audit metadata versus workspace membership behavior
+- empty generated access groups after workspace creation
 - rollback cleanup when persistence fails in a test adapter
 
 Validation is local/unit-level for this task because live PDI install and runtime verification still depend on SDK auth plus on-instance metadata installation.
@@ -180,14 +182,17 @@ When the SDK runtime is installed to a PDI, verify the live provisioning path wi
 5. Confirm `admin_group` and `editor_group` reference native `sys_user_group` records.
 6. Confirm the admin group has `x_82900_docsera.workspace_admin`.
 7. Confirm the editor group has `x_82900_docsera.editor`.
-8. Confirm the authenticated creator is a member of the generated admin group.
+8. Confirm the generated Admin and Editor groups have no automatic user membership.
+9. Confirm the authenticated creator is stored as `creator` on the workspace record and is not automatically added to the generated Admin or Editor group.
+10. Use Manage access to add the first Workspace Admin or Editor after creation.
 
 Expected result:
 
 - one workspace record
 - one admin group
 - one editor group
-- creator present in the admin group
+- generated Admin and Editor groups have their roles assigned and no automatic user membership
+- creator preserved as audit metadata only
 - stored group sys_ids on the workspace record
 
 ## Remaining Platform Gaps
@@ -195,4 +200,4 @@ Expected result:
 - No My Workspaces UI reads from the live workspace table yet.
 - A server-side capability helper now exists, but broad ACL and route consumption is still future work.
 - No workspace settings, archive/delete lifecycle UI, or slug-edit UI is added here.
-- Group creation and membership are live-adapter code paths, but they still require SDK install and PDI verification before they should be treated as proven on-instance.
+- Group creation and role assignment are live-adapter code paths, but they still require SDK install and PDI verification before they should be treated as proven on-instance.

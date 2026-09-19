@@ -140,6 +140,21 @@ describe("WorkspaceCreateModal", () => {
     });
   });
 
+  it("submits accepted workspace creation fields without membership selection", async () => {
+    const submit = vi.fn();
+    render(<WorkspaceCreateModal errorMessage="" onClose={vi.fn()} onSubmit={submit} open phase="idle" />);
+
+    fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "No Member Docs" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Workspace" }));
+
+    expect(submit).toHaveBeenCalledWith({
+      icon: { type: "builtin", key: "docsera-workspace", label: "Docsera workspace icon" },
+      name: "No Member Docs",
+      shortDescription: ""
+    });
+    expect(screen.queryByText("Initial Workspace Admin")).not.toBeInTheDocument();
+  });
+
   it("replaces a successful custom image and cleans up the old object preview URL", async () => {
     mockObjectUrl();
     vi.spyOn(URL, "createObjectURL").mockReturnValueOnce("blob:first").mockReturnValueOnce("blob:second");

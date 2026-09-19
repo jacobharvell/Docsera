@@ -46,7 +46,7 @@ This note summarizes repo-side implementation behavior only. Accepted product re
 - Workspace icon selection and upload remain deferred and are intentionally not represented in the modal until approved mockups and requirements exist.
 - The modal uses modal-specific button sizing so its `Create Workspace` and `Cancel` actions can match the prototype without affecting the page-level `New Workspace` button.
 - Duplicate slugs are handled by the existing workspace domain behavior.
-- The creator becomes a Workspace Admin when the provisioning foundation is wired.
+- Workspace creation does not select or assign an Initial Workspace Admin. Provisioning creates the role-bearing Admin and Editor groups with no automatic membership; the creator remains workspace audit metadata only, and Manage access is the supported workflow for assigning the first Workspace Admin or Editor.
 
 ## Navigation Boundary
 

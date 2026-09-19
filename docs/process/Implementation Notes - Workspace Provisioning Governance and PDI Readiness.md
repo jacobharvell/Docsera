@@ -86,7 +86,7 @@ Observed failure:
 Failed to create ServiceNow group Docsera_Verification_Workspace_Admins.
 ```
 
-That failure occurs before the runtime path can complete workspace persistence, role assignment, or membership storage.
+That failure occurs before the runtime path can complete workspace persistence or role assignment.
 
 ### Runtime Group Create Probe
 
@@ -149,17 +149,17 @@ Current Docsera source scope:
 
 - `6997f092c3fd8310c569bf0d0501314d`
 
-For runtime workspace provisioning, the minimal cross-scope privileges needed on the native global tables are:
+For workspace creation and later Manage access membership management, the minimal cross-scope privileges needed on the native global tables are:
 
 | Target table | Runtime operation needed | Why it is needed | Current PDI state |
 |---|---|---|---|
 | `sys_user_group` | `create`, `write` | Create and persist the workspace Admin/Editor groups | `read`, `create`, and `write` are allowed |
 | `sys_group_has_role` | `create`, `write` | Attach pre-existing Docsera-scoped roles to the generated groups | `read`, `create`, and `write` are allowed |
-| `sys_user_grmember` | `create`, `write` | Add the creator to the generated admin group | `read`, `create`, and `write` are allowed |
+| `sys_user_grmember` | `create`, `write` | Manage access can add workspace group membership after creation | `read`, `create`, and `write` are allowed |
 
 Delete access should be treated separately from create/write access.
 
-Delete privileges are only needed for cleanup or rollback behavior. They should not be assumed when approving the runtime provisioning path.
+Delete privileges are only needed for cleanup, rollback, or future access-removal behavior. They should not be assumed when approving the runtime provisioning path.
 
 If Docsera calls a future global bridge script include instead of creating groups directly, the scoped app will also need an `execute` cross-scope privilege for that script include.
 
@@ -194,7 +194,7 @@ The PDI is ready for workspace provisioning tasks when all of the following are 
 - the SDK install succeeds
 - the SDK runtime verifier passes
 - the workspace foundation verifier reaches the live route and completes end to end
-- the runtime route can create Docsera-owned groups, assign pre-existing Docsera roles, add creator membership, and persist the workspace record
+- the runtime route can create Docsera-owned groups, assign pre-existing Docsera roles, preserve creator audit metadata, leave generated groups empty, and persist the workspace record
 
 The PDI is ready for development/operator test-data work when the configured credential can still install, verify, and create/delete temporary test records safely, even if the runtime route is blocked.
 
@@ -207,7 +207,9 @@ For workspace provisioning, the accepted platform-safe direction is a constraine
 - only provisions Docsera-owned workspace groups
 - validates the Docsera workspace group naming convention
 - assigns only pre-existing Docsera scoped roles
-- adds only the workspace creator to the generated Admin group during workspace creation
+- leaves the generated Admin and Editor groups empty during workspace creation
+- preserves the creating Docsera Admin as audit metadata without automatically adding that creator to generated workspace access groups
+- relies on Manage access for assigning the first Workspace Admin or Editor after creation
 - does not expose general-purpose group administration behavior to the scoped app
 
 Future self-service workspace creation remains separate from this provisioning boundary.

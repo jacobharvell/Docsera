@@ -181,6 +181,7 @@ describe("workspace provisioning trigger contract", () => {
       icon_key: "asset-key-001",
       icon_label: "Canonical uploaded icon.png",
       icon_type: "uploaded",
+      requested_by: "user-001",
       state: "requested",
       sys_id: "request-uploaded-001"
     });
@@ -208,7 +209,24 @@ describe("workspace provisioning trigger contract", () => {
     expect(inserts).toHaveLength(1);
     expect(inserts[0]?.fields).toMatchObject({
       icon_type: "builtin",
+      requested_by: "user-001",
       state: "requested"
     });
+  });
+
+  it("queues workspace creation without an initial Workspace Admin", async () => {
+    const service = createServiceNowWorkspaceProvisioningService();
+
+    await expect(service.createWorkspace({ name: "No Initial Admin" })).resolves.toMatchObject({
+      kind: "pending",
+      state: "requested"
+    });
+
+    const insert = operationLog.find((entry) => entry.table === requestTable && entry.name === "insert");
+    expect(insert?.fields).toMatchObject({
+      requested_by: "user-001",
+      state: "requested"
+    });
+    expect(insert?.fields).not.toHaveProperty("initial_admin_user");
   });
 });

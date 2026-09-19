@@ -319,9 +319,6 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, onUpload
               {errors.icon ? <span className="docsera-modal__field-error" role="alert">{errors.icon}</span> : null}
             </fieldset>
 
-            <div className="docsera-modal__info-note">
-              <p className="docsera-modal__info-note-copy">The creator becomes an Admin for the new workspace.</p>
-            </div>
           </div>
           <div className="docsera-modal__footer">
             <div className="docsera-modal__actions">

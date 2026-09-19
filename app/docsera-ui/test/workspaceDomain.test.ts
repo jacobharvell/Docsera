@@ -270,7 +270,7 @@ test("evaluateWorkspaceCapabilities fails safely when workspace group references
   });
 });
 
-test("provisionWorkspace stores group references, assigns scoped roles, and adds the creator to the admin group", async () => {
+test("provisionWorkspace stores group references, assigns scoped roles, and leaves generated groups empty", async () => {
   const assignedRoles: Array<{ groupSysId: string; roleName: string }> = [];
   const groupMemberships: Array<{ groupSysId: string; userSysId: string }> = [];
 
@@ -283,7 +283,7 @@ test("provisionWorkspace stores group references, assigns scoped roles, and adds
         key: "operations",
         label: "Forged operations label"
       },
-      creatorUserSysId: "user-123"
+      creatorUserSysId: "creator-user"
     },
     {
       createGroup: async ({ name }) => ({ sysId: `${name}-sys-id`, name }),
@@ -320,11 +320,8 @@ test("provisionWorkspace stores group references, assigns scoped roles, and adds
     }
   ]);
   expect(groupMemberships).toEqual([
-    {
-      groupSysId: "Docsera_HR_Docs_2_Admins-sys-id",
-      userSysId: "user-123"
-    }
   ]);
+  expect(result.workspace.creatorUserSysId).toBe("creator-user");
 });
 
 test("provisionWorkspace rechecks reserved slugs before group creation when the adapter exposes live reservations", async () => {
@@ -337,7 +334,6 @@ test("provisionWorkspace rechecks reserved slugs before group creation when the 
       listReservedWorkspaceSlugs: async () => ["hr-docs"],
       createGroup: async ({ name }) => ({ sysId: `${name}-sys-id`, name }),
       assignRoleToGroup: async () => undefined,
-      addUserToGroup: async () => undefined,
       saveWorkspace: async (workspace) => ({
         ...workspace,
         sysId: "workspace-001"
@@ -390,7 +386,6 @@ test("provisionWorkspace rolls back created groups when persistence fails and de
       {
         createGroup: async ({ name }) => ({ sysId: `${name}-sys-id`, name }),
         assignRoleToGroup: async () => undefined,
-        addUserToGroup: async () => undefined,
         saveWorkspace: async () => {
           throw new Error("Insert failed");
         },

@@ -12,7 +12,7 @@ Docsera workspace provisioning now uses a request-backed queue boundary instead 
 scoped POST /workspaces
 -> insert x_82900_docsera_workspace_provision_request
 -> global async worker processes request
--> create groups / assign roles / add creator membership
+-> create empty groups / assign roles
 -> create x_82900_docsera_workspace
 -> update provisioning request state and refs
 ```
@@ -67,7 +67,6 @@ The worker is responsible for:
 - creating `Docsera_<Workspace_Key>_Editors`
 - assigning `x_82900_docsera.workspace_admin`
 - assigning `x_82900_docsera.editor`
-- adding the creator to the admin group
 - creating the final `x_82900_docsera_workspace` row
 - writing request refs and terminal `succeeded`/`failed` state
 - rolling back partially created groups when provisioning fails before workspace creation completes
@@ -159,7 +158,10 @@ Observed result:
 
 - the provisioning request is persisted first
 - the global worker completes group creation and role assignment from global context
-- the creator is added to the admin group
+- `requested_by` is preserved as workspace creator audit metadata
+- generated workspace groups start with no automatic user membership
+- the creator is not added to generated workspace groups merely because they created the workspace
+- Manage access remains the supported workflow for assigning the first Workspace Admin or Editor after creation
 - the workspace row is created only after access provisioning succeeds
 - the workspace foundation verifier passes end to end on the PDI
 
