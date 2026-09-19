@@ -143,7 +143,7 @@ function SaveAcknowledgeHarness(input: {
 }
 
 describe("PageEditorHostRuntime", () => {
-  it("keeps editor links on the shared primary token and preserves visited-link styling", () => {
+  it("uses inherited document-presentation tokens for editor core text while preserving editor chrome tokens", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;
       getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
@@ -153,12 +153,33 @@ describe("PageEditorHostRuntime", () => {
       "utf8"
     );
 
+    expect(source).toContain("color: var(--docsera-document-text-color, var(--docsera-editor-text));");
+    expect(source).toContain("caret-color: var(--docsera-editor-primary);");
+    expect(source).toContain("font-family: var(--docsera-document-body-font-family, Inter, \"Segoe UI\", sans-serif);");
+    expect(source).toContain("font-size: var(--docsera-document-body-font-size, 1rem);");
+    expect(source).toContain("line-height: var(--docsera-document-body-line-height, 1.7);");
+    expect(source).toContain("margin: 0 0 var(--docsera-document-block-spacing, 1rem);");
+    expect(source).toContain("margin: var(--docsera-document-heading-margin, 1.4rem 0 0.7rem);");
+    expect(source).toContain('font-family: var(--docsera-document-heading-font-family, Inter, "Segoe UI", sans-serif);');
+    expect(source).not.toContain("font-family: var(--docsera-document-heading-font-family, Geist");
+    expect(source).toContain("font-size: var(--docsera-document-h1-font-size, 1.9rem);");
+    expect(source).toContain("font-size: var(--docsera-document-h2-font-size, 1.65rem);");
+    expect(source).toContain("font-size: var(--docsera-document-h3-font-size, 1.25rem);");
+    expect(source).toContain("padding-left: var(--docsera-document-list-padding-left, 1.5rem);");
+    expect(source).toContain("margin-top: var(--docsera-document-list-item-gap, 0.35rem);");
+    expect(source).toContain("border-left: 3px solid var(--docsera-document-blockquote-border-color");
+    expect(source).toContain("padding: var(--docsera-document-code-block-padding, 0.9rem 1rem);");
+    expect(source).toContain("background: var(--docsera-document-code-block-bg");
+    expect(source).toContain("font-family: var(--docsera-document-mono-font-family");
+    expect(source).toContain("padding: var(--docsera-document-code-inline-padding, 0.12rem 0.35rem);");
+    expect(source).toContain("margin: var(--docsera-document-rule-margin, 1.5rem 0);");
     expect(source).toContain(".docsera-editor-runtime__surface .ProseMirror a {");
-    expect(source).toContain("color: var(--docsera-primary);");
+    expect(source).toContain("color: var(--docsera-document-link-color, var(--docsera-primary));");
     expect(source).toContain(".docsera-editor-runtime__surface .ProseMirror a:visited {");
     expect(source).toContain("text-decoration-color: currentColor;");
     expect(source).toContain(".docsera-editor-runtime__surface .ProseMirror a:hover,");
     expect(source).toContain(".docsera-editor-runtime__surface .ProseMirror a:focus-visible {");
+    expect(source).toContain("background: var(--docsera-document-highlight-bg");
   });
 
   it("keeps natural document width and derives gutter hit testing from an extended lane instead of widening the document canvas", () => {
@@ -356,7 +377,7 @@ describe("PageEditorHostRuntime", () => {
     expect(runtimeShellSource).toMatch(/\.docsera-main__editor-host \{\s*margin-top: 40px;\s*min-width: 0;/s);
     expect(source).toMatch(/\.docsera-editor-runtime__surface \{\s*position: relative;\s*width: 100%;\s*min-width: 0;/s);
     expect(source).toMatch(
-      /\.docsera-editor-runtime__surface \.ProseMirror \{\s*color: var\(--docsera-editor-text\);\s*caret-color: var\(--docsera-editor-primary\);\s*font-size: 1rem;\s*line-height: 1\.7;\s*outline: none;\s*min-width: 0;/s
+      /\.docsera-editor-runtime__surface \.ProseMirror \{\s*color: var\(--docsera-document-text-color, var\(--docsera-editor-text\)\);\s*caret-color: var\(--docsera-editor-primary\);[\s\S]*?min-width: 0;/s
     );
     expect(source).toMatch(
       /\.docsera-editor-runtime__surface \.ProseMirror \.tableWrapper \{[\s\S]*?overflow-x: auto;[\s\S]*?min-width: 0;/s

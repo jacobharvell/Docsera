@@ -150,7 +150,7 @@ function createAccordionHeadingIsolationEnvelope(): DocseraDocumentEnvelope {
 }
 
 describe("PublishedDocumentReader", () => {
-  it("keeps live published links unchanged while the editor link color is corrected", () => {
+  it("uses the shared document-presentation tokens for live core text styling", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;
       getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
@@ -159,12 +159,63 @@ describe("PublishedDocumentReader", () => {
       `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
       "utf8"
     );
+    const getRuleBody = (selector: string) => {
+      const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return source.match(new RegExp(`${escapedSelector}\\s*\\{(?<body>[^}]*)\\}`, "s"))?.groups?.body ?? "";
+    };
+    const readerRule = getRuleBody(".docsera-main__reader");
+    const bodyRule = getRuleBody(".docsera-main__body");
+    const listRule = getRuleBody(".docsera-main__list");
+    const blockquoteRule = getRuleBody(".docsera-main__blockquote");
+    const inlineCodeRule = getRuleBody(".docsera-main__inline-code");
 
+    expect(source).toContain("--docsera-document-title-body-gap: 40px;");
+    expect(source).toContain("--docsera-document-text-color: #16212f;");
+    expect(source).toContain('--docsera-document-heading-font-family: Inter, "Segoe UI", sans-serif;');
+    expect(source).not.toContain("--docsera-document-heading-font-family: Geist");
+    expect(source).toContain("--docsera-document-body-font-size: 1rem;");
+    expect(source).toContain("--docsera-document-body-line-height: 1.7;");
+    expect(source).toContain("--docsera-document-heading-margin: 1.4rem 0 0.7rem;");
+    expect(source).toContain("--docsera-document-list-padding-left: 1.5rem;");
+    expect(source).toContain("--docsera-document-list-item-gap: 0.35rem;");
+    expect(source).toContain("--docsera-document-code-block-padding: 0.9rem 1rem;");
+    expect(source).toContain("--docsera-document-rule-margin: 1.5rem 0;");
+    expect(source).toContain("--docsera-document-highlight-bg:");
+    expect(source).toContain(':root[data-docsera-theme="dark"] {');
+    expect(source).toContain("--docsera-document-text-color: #eef2f8;");
+    expect(source).toContain("--docsera-document-blockquote-color: #a7b3c5;");
+    expect(source).toContain("--docsera-document-code-block-bg: color-mix(in srgb, rgba(15, 18, 24, 0.98) 86%, black 14%);");
+    expect(source).toContain(".docsera-main__reader {");
+    expect(source).toMatch(/\.docsera-main__reader\s*{[^}]*margin-top:\s*calc\(var\(--docsera-document-title-body-gap\) - 28px\);/s);
+    expect(source).not.toMatch(/\.docsera-main__reader\s*{[^}]*display:\s*grid;/s);
+    expect(source).not.toMatch(/\.docsera-main__reader\s*{[^}]*gap:\s*var\(--docsera-document-block-spacing\);/s);
+    expect(source).toContain("margin-top: calc(var(--docsera-document-title-body-gap) - 28px);");
+    expect(source).toContain(".docsera-main__reader > :first-child {\n  margin-top: 0;\n}");
+    expect(source).toContain(".docsera-main__reader > :last-child {\n  margin-bottom: 0;\n}");
+    expect(readerRule).toContain("color: var(--docsera-document-text-color);");
+    expect(source).not.toMatch(/\.docsera-main__body,\s*\.docsera-main__section-copy\s*{[^}]*color:/s);
+    expect(bodyRule).not.toContain("color:");
+    expect(listRule).not.toContain("color:");
+    expect(inlineCodeRule).not.toContain("color:");
+    expect(blockquoteRule).toContain("color: var(--docsera-document-blockquote-color);");
+    expect(source).toContain("font-size: var(--docsera-document-body-font-size);");
     expect(source).toContain(".docsera-main__reader a {");
-    expect(source).toContain("color: var(--docsera-primary);");
-    expect(source).toContain(".docsera-main__reader a:hover {");
-    expect(source).toContain("color: color-mix(in srgb, var(--docsera-primary) 84%, black);");
-    expect(source).not.toContain(".docsera-main__reader a:visited {");
+    expect(source).toContain("color: var(--docsera-document-link-color);");
+    expect(source).toContain(".docsera-main__reader a:visited {");
+    expect(source).toContain("text-decoration-thickness: var(--docsera-document-link-decoration-thickness);");
+    expect(source).toContain(".docsera-main__body {\n  margin: 0 0 var(--docsera-document-block-spacing);\n}");
+    expect(source).toContain(".docsera-main__body-heading {\n  margin: var(--docsera-document-heading-margin);");
+    expect(source).toContain(".docsera-main__section-title {\n  margin: var(--docsera-document-heading-margin);");
+    expect(source).toContain(".docsera-main__subsection-title {\n  margin: var(--docsera-document-heading-margin);");
+    expect(source).toContain(".docsera-main__list {\n  margin: 0 0 var(--docsera-document-block-spacing);");
+    expect(source).toContain("padding-left: var(--docsera-document-list-padding-left);");
+    expect(source).toContain(".docsera-main__list-item + .docsera-main__list-item {");
+    expect(source).toContain("margin-top: var(--docsera-document-list-item-gap);");
+    expect(source).toContain(".docsera-main__blockquote {\n  margin: 0 0 var(--docsera-document-block-spacing);");
+    expect(source).toContain(".docsera-main__inline-code {\n  padding: var(--docsera-document-code-inline-padding);");
+    expect(source).toContain(".docsera-main__code {\n  margin: 0 0 var(--docsera-document-block-spacing);");
+    expect(source).toContain(".docsera-main__divider {\n  width: 100%;\n  height: 0;\n  margin: var(--docsera-document-rule-margin);");
+    expect(source).toMatch(/\.docsera-main__reader sup,\s*\.docsera-main__reader sub \{/);
   });
 
   it("renders the supported E2 envelope with nested lists, marks, task state, code blocks, and safe links", () => {

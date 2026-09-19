@@ -64,6 +64,15 @@ The contract below was consolidated from:
 | current durable contract | Overlays and shell controls are separate ownership surfaces and must not be collapsed into the editor body model. |
 | historical root-cause evidence | E4-T2B showed why a generic "gutter" or "editor lane" label is too broad. Different surfaces needed different hit-test and ownership rules even when they were adjacent on screen. |
 
+## Document Presentation Parity
+
+| Classification | Contract |
+| --- | --- |
+| current durable contract | Visual Edit is the semantic presentation baseline for MVP core document text. Live reader presentation should match the accepted Visual Edit rendering for equivalent canonical content; existing Live-only drift is not a separate baseline. |
+| current durable contract | Live and Visual Edit share core document-presentation CSS custom properties from the app/theme boundary. The light-DOM reader and the shadow editor runtime both consume those inherited tokens for title-to-body rhythm, body text, headings, paragraphs, lists, blockquotes, links, inline code, code blocks, horizontal rules, and supported inline marks. |
+| current durable contract | Editor-only chrome remains separately owned by editor runtime tokens and rules. Caret, selection, block controls, overlays, placeholders, validation, transient selection, and authoring affordances must not be promoted into the shared Live reader contract. |
+| current durable contract | Do not import the full runtime-shell stylesheet into the editor shadow root to achieve visual parity. Keep the boundary narrow: semantic document tokens cross the host/shadow boundary, while runtime-shell layout and authoring chrome stay owned by their existing surfaces. |
+
 ## Block-Relative Control Geometry
 
 | Classification | Contract |

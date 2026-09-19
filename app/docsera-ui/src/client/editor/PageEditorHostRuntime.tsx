@@ -6698,10 +6698,11 @@ export function PageEditorHostRuntime({
           line-height: 1.2;
         }
         .docsera-editor-runtime__surface .ProseMirror {
-          color: var(--docsera-editor-text);
+          color: var(--docsera-document-text-color, var(--docsera-editor-text));
           caret-color: var(--docsera-editor-primary);
-          font-size: 1rem;
-          line-height: 1.7;
+          font-family: var(--docsera-document-body-font-family, Inter, "Segoe UI", sans-serif);
+          font-size: var(--docsera-document-body-font-size, 1rem);
+          line-height: var(--docsera-document-body-line-height, 1.7);
           outline: none;
           min-width: 0;
           scroll-padding-top: var(--docsera-workspace-heading-scroll-margin);
@@ -6716,7 +6717,7 @@ export function PageEditorHostRuntime({
           margin-bottom: 0;
         }
         .docsera-editor-runtime__surface .ProseMirror p {
-          margin: 0 0 1rem;
+          margin: 0 0 var(--docsera-document-block-spacing, 1rem);
         }
         .docsera-editor-runtime__surface .ProseMirror > p[data-docsera-empty-paragraph="true"] {
           position: relative;
@@ -6744,29 +6745,30 @@ export function PageEditorHostRuntime({
         .docsera-editor-runtime__surface .ProseMirror h1,
         .docsera-editor-runtime__surface .ProseMirror h2,
         .docsera-editor-runtime__surface .ProseMirror h3 {
-          margin: 1.4rem 0 0.7rem;
-          line-height: 1.2;
+          margin: var(--docsera-document-heading-margin, 1.4rem 0 0.7rem);
+          font-family: var(--docsera-document-heading-font-family, Inter, "Segoe UI", sans-serif);
+          line-height: var(--docsera-document-heading-line-height, 1.2);
           scroll-margin-block-start: var(--docsera-workspace-heading-scroll-margin);
           scroll-margin-top: var(--docsera-workspace-heading-scroll-margin);
         }
         .docsera-editor-runtime__surface .ProseMirror h1 {
-          font-size: 1.9rem;
-          letter-spacing: -0.025em;
+          font-size: var(--docsera-document-h1-font-size, 1.9rem);
+          letter-spacing: var(--docsera-document-h1-letter-spacing, -0.025em);
         }
         .docsera-editor-runtime__surface .ProseMirror h2 {
-          font-size: 1.65rem;
-          letter-spacing: -0.02em;
+          font-size: var(--docsera-document-h2-font-size, 1.65rem);
+          letter-spacing: var(--docsera-document-h2-letter-spacing, -0.02em);
         }
         .docsera-editor-runtime__surface .ProseMirror h3 {
-          font-size: 1.25rem;
+          font-size: var(--docsera-document-h3-font-size, 1.25rem);
         }
         .docsera-editor-runtime__surface .ProseMirror ul,
         .docsera-editor-runtime__surface .ProseMirror ol {
-          margin: 0 0 1rem;
-          padding-left: 1.5rem;
+          margin: 0 0 var(--docsera-document-block-spacing, 1rem);
+          padding-left: var(--docsera-document-list-padding-left, 1.5rem);
         }
         .docsera-editor-runtime__surface .ProseMirror li + li {
-          margin-top: 0.35rem;
+          margin-top: var(--docsera-document-list-item-gap, 0.35rem);
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-runtime__block--selected {
           background: var(--docsera-editor-block-selection);
@@ -6774,10 +6776,10 @@ export function PageEditorHostRuntime({
           border-radius: 0;
         }
         .docsera-editor-runtime__surface .ProseMirror blockquote {
-          margin: 0 0 1rem;
-          padding-left: 1rem;
-          border-left: 3px solid color-mix(in srgb, var(--docsera-editor-primary) 24%, transparent);
-          color: var(--docsera-editor-muted);
+          margin: 0 0 var(--docsera-document-block-spacing, 1rem);
+          padding-left: var(--docsera-document-blockquote-padding-left, 1rem);
+          border-left: 3px solid var(--docsera-document-blockquote-border-color, color-mix(in srgb, var(--docsera-editor-primary) 24%, transparent));
+          color: var(--docsera-document-blockquote-color, var(--docsera-editor-muted));
         }
         .docsera-editor-runtime__surface .ProseMirror blockquote > p[data-placeholder]::before {
           content: attr(data-placeholder);
@@ -6969,46 +6971,46 @@ export function PageEditorHostRuntime({
           }
         }
         .docsera-editor-runtime__surface .ProseMirror pre {
-          margin: 0 0 1rem;
-          padding: 0.9rem 1rem;
-          border-radius: 14px;
-          background: color-mix(in srgb, var(--docsera-editor-panel) 86%, black 14%);
-          color: var(--docsera-editor-text);
+          margin: 0 0 var(--docsera-document-block-spacing, 1rem);
+          padding: var(--docsera-document-code-block-padding, 0.9rem 1rem);
+          border-radius: var(--docsera-document-code-block-radius, 14px);
+          background: var(--docsera-document-code-block-bg, color-mix(in srgb, var(--docsera-editor-panel) 86%, black 14%));
+          color: var(--docsera-document-text-color, var(--docsera-editor-text));
           overflow-x: auto;
         }
         .docsera-editor-runtime__surface .ProseMirror code {
-          font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
-          font-size: 0.92em;
+          font-family: var(--docsera-document-mono-font-family, "JetBrains Mono", "Fira Code", Consolas, monospace);
+          font-size: var(--docsera-document-code-font-size, 0.92em);
         }
         .docsera-editor-runtime__surface .ProseMirror p code {
-          padding: 0.12rem 0.35rem;
-          border-radius: 0.4rem;
-          background: color-mix(in srgb, var(--docsera-editor-panel) 88%, black 12%);
+          padding: var(--docsera-document-code-inline-padding, 0.12rem 0.35rem);
+          border-radius: var(--docsera-document-code-inline-radius, 0.4rem);
+          background: var(--docsera-document-code-inline-bg, color-mix(in srgb, var(--docsera-editor-panel) 88%, black 12%));
         }
         .docsera-editor-runtime__surface .ProseMirror hr {
-          margin: 1.5rem 0;
+          margin: var(--docsera-document-rule-margin, 1.5rem 0);
           border: 0;
-          border-top: 1px solid color-mix(in srgb, var(--docsera-editor-panel-border) 88%, transparent);
+          border-top: 1px solid var(--docsera-document-rule-border-color, color-mix(in srgb, var(--docsera-editor-panel-border) 88%, transparent));
         }
         .docsera-editor-runtime__surface .ProseMirror a {
-          color: var(--docsera-primary);
+          color: var(--docsera-document-link-color, var(--docsera-primary));
           text-decoration-line: underline;
           text-decoration-color: currentColor;
-          text-decoration-thickness: 0.08em;
-          text-underline-offset: 0.16em;
+          text-decoration-thickness: var(--docsera-document-link-decoration-thickness, 0.08em);
+          text-underline-offset: var(--docsera-document-link-underline-offset, 0.16em);
         }
         .docsera-editor-runtime__surface .ProseMirror a:visited {
-          color: var(--docsera-primary);
+          color: var(--docsera-document-link-color, var(--docsera-primary));
           text-decoration-color: currentColor;
         }
         .docsera-editor-runtime__surface .ProseMirror a:hover,
         .docsera-editor-runtime__surface .ProseMirror a:focus-visible {
-          text-decoration-thickness: 0.12em;
+          text-decoration-thickness: var(--docsera-document-link-hover-decoration-thickness, 0.12em);
         }
         .docsera-editor-runtime__surface .ProseMirror mark {
           padding: 0.08em 0.2em;
           border-radius: 0.28em;
-          background: color-mix(in srgb, #f6d84e 58%, var(--docsera-editor-panel));
+          background: var(--docsera-document-highlight-bg, color-mix(in srgb, #f6d84e 58%, var(--docsera-editor-panel)));
           color: inherit;
         }
         .docsera-editor-runtime__surface .ProseMirror sup,

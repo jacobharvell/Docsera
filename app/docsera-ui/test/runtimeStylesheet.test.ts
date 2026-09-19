@@ -17,6 +17,11 @@ function compareSpecificity(first: readonly number[], second: readonly number[])
   return 0;
 }
 
+function getRuleBody(css: string, selector: string) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return css.match(new RegExp(`${escapedSelector}\\s*\\{(?<body>[^}]*)\\}`, "s"))?.groups?.body ?? "";
+}
+
 test("injects one runtime style tag and reuses it on repeat calls", () => {
   ensureRuntimeStylesheet("body { color: red; }");
   ensureRuntimeStylesheet("body { color: red; }");
@@ -86,6 +91,35 @@ test("keeps the edit gutter outside the reader-equivalent content lane at deskto
   expect(css).toMatch(
     /\.docsera-main__surface--editor\s*{[^}]*padding-left:\s*calc\(24px \+ var\(--docsera-editor-block-gutter-width\)\);/s
   );
+});
+
+test("keeps live reader core text on edit-mode typography and normal block flow", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+
+  const readerRule = getRuleBody(css, ".docsera-main__reader");
+  const bodyRule = getRuleBody(css, ".docsera-main__body");
+  const listRule = getRuleBody(css, ".docsera-main__list");
+  const blockquoteRule = getRuleBody(css, ".docsera-main__blockquote");
+  const inlineCodeRule = getRuleBody(css, ".docsera-main__inline-code");
+  const codeBlockRule = getRuleBody(css, ".docsera-main__code");
+
+  expect(css).toContain('--docsera-document-heading-font-family: Inter, "Segoe UI", sans-serif;');
+  expect(css).not.toContain("--docsera-document-heading-font-family: Geist");
+  expect(css).toMatch(/\.docsera-main__reader\s*{[^}]*margin-top:\s*calc\(var\(--docsera-document-title-body-gap\) - 28px\);/s);
+  expect(readerRule).toContain("color: var(--docsera-document-text-color);");
+  expect(css).not.toMatch(/\.docsera-main__reader\s*{[^}]*display:\s*grid;/s);
+  expect(css).not.toMatch(/\.docsera-main__reader\s*{[^}]*gap:\s*var\(--docsera-document-block-spacing\);/s);
+  expect(css).toMatch(/\.docsera-main__body\s*{\s*margin:\s*0 0 var\(--docsera-document-block-spacing\);\s*}/s);
+  expect(css).not.toMatch(/\.docsera-main__body,\s*\.docsera-main__section-copy\s*{[^}]*color:/s);
+  expect(bodyRule).not.toContain("color:");
+  expect(listRule).not.toContain("color:");
+  expect(inlineCodeRule).not.toContain("color:");
+  expect(blockquoteRule).toContain("color: var(--docsera-document-blockquote-color);");
+  expect(codeBlockRule).toContain("color: var(--docsera-document-text-color);");
+  expect(css).toMatch(/\.docsera-main__reader > :first-child\s*{\s*margin-top:\s*0;\s*}/s);
+  expect(css).toMatch(/\.docsera-main__reader > :last-child\s*{\s*margin-bottom:\s*0;\s*}/s);
+  expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*gap:\s*28px;/s);
+  expect(css).toContain("--docsera-document-title-body-gap: 40px;");
 });
 
 test("keeps the same main-surface anchor contract when the ToC auto-hides at the responsive breakpoint", () => {
