@@ -2551,6 +2551,10 @@ function replaceEmptyParagraphAtPositionWithCommandOutput(
   const nextNodes = content.map((node) => editor.schema.nodeFromJSON(node));
 
   let transaction = editor.state.tr.replaceWith(nodePos, nodePos + targetNode.nodeSize, Fragment.fromArray(nextNodes));
+  const accordionDisclosure = getInitialAccordionDisclosure(content);
+  if (accordionDisclosure) {
+    transaction = transaction.setMeta(DOCSERA_ACCORDION_DISCLOSURE_PLUGIN_KEY, accordionDisclosure);
+  }
   if (selectionOffset !== "continuation") {
     transaction = transaction.setMeta(TIPTAP_SKIP_TRAILING_NODE_META, true);
   }
@@ -2588,6 +2592,18 @@ function replaceEmptyParagraphAtPositionWithCommandOutput(
 
   editor.view.dispatch(transaction);
   return true;
+}
+
+function getInitialAccordionDisclosure(content: JSONContent[]): { accordionId: string; itemId: string } | null {
+  const accordion = content.find((node) => node.type === "accordion");
+  if (!accordion || !Array.isArray(accordion.content)) {
+    return null;
+  }
+
+  const accordionId = typeof accordion.attrs?.accordionId === "string" ? accordion.attrs.accordionId.trim() : "";
+  const firstItem = accordion.content.find((node) => node.type === "accordionItem");
+  const itemId = typeof firstItem?.attrs?.accordionItemId === "string" ? firstItem.attrs.accordionItemId.trim() : "";
+  return accordionId && itemId ? { accordionId, itemId } : null;
 }
 
 function replaceEmptySlashOwnerParagraphWithBlockquote(
@@ -6791,10 +6807,13 @@ export function PageEditorHostRuntime({
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion {
           margin: 1rem 0;
-          border: 1px solid color-mix(in srgb, var(--docsera-editor-panel-border) 86%, transparent);
+          border: 1px solid color-mix(in srgb, var(--docsera-border) 82%, var(--docsera-text-soft));
           border-radius: 18px;
           overflow: visible;
-          background: color-mix(in srgb, var(--docsera-editor-panel) 96%, transparent);
+          background: color-mix(in srgb, var(--docsera-surface) 94%, var(--docsera-surface-muted) 6%);
+        }
+        .docsera-editor-runtime__surface .ProseMirror > .docsera-editor-accordion:first-child {
+          margin-top: 0;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion.docsera-editor-runtime__block--selected {
           background: var(--docsera-editor-block-selection);
@@ -6805,10 +6824,14 @@ export function PageEditorHostRuntime({
           --docsera-editor-accordion-title-row-height: 3.4rem;
           --docsera-editor-accordion-title-row-center: calc(var(--docsera-editor-accordion-title-row-height) / 2);
           --docsera-editor-accordion-control-size: 1.7rem;
+          --docsera-editor-accordion-chevron-size: 18px;
+          --docsera-editor-accordion-toggle-left: calc(
+            1.1rem - ((var(--docsera-editor-accordion-control-size) - var(--docsera-editor-accordion-chevron-size)) / 2)
+          );
           --docsera-editor-accordion-menu-gap: 0.35rem;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__item + .docsera-editor-accordion__item {
-          border-top: 1px solid color-mix(in srgb, var(--docsera-editor-panel-border) 82%, transparent);
+          border-top: 1px solid color-mix(in srgb, var(--docsera-border) 82%, var(--docsera-text-soft));
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__controls {
           position: absolute;
@@ -6864,22 +6887,22 @@ export function PageEditorHostRuntime({
           flex: 0 0 auto;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--toggle {
-          left: 1.1rem;
+          left: var(--docsera-editor-accordion-toggle-left);
           top: var(--docsera-editor-accordion-title-row-center);
           transform: translateY(-50%) rotate(0deg);
-          color: color-mix(in srgb, var(--docsera-editor-text) 72%, var(--docsera-editor-muted));
+          color: var(--docsera-text-soft);
           opacity: 1;
           visibility: visible;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--toggle:hover {
           background: transparent;
-          color: color-mix(in srgb, var(--docsera-editor-text) 72%, var(--docsera-editor-muted));
+          color: var(--docsera-text-soft);
           box-shadow: none;
           outline: none;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--toggle:focus-visible {
           background: transparent;
-          color: color-mix(in srgb, var(--docsera-editor-text) 72%, var(--docsera-editor-muted));
+          color: var(--docsera-text-soft);
           outline: none;
           box-shadow: 0 0 0 2px color-mix(in srgb, var(--docsera-primary) 18%, white 20%);
         }
@@ -6931,11 +6954,12 @@ export function PageEditorHostRuntime({
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__title {
           margin: 0;
-          padding: 1rem 2.25rem 1rem 2.75rem;
+          padding: 1rem 1.1rem 1rem calc(1.1rem + var(--docsera-editor-accordion-chevron-size) + 16px);
+          font-family: Geist, Inter, "Segoe UI", sans-serif;
           font-size: 1rem;
           font-weight: 700;
           line-height: 1.4;
-          color: var(--docsera-editor-text);
+          color: var(--docsera-text);
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__title[data-placeholder]::before {
           content: attr(data-placeholder);
@@ -6946,11 +6970,20 @@ export function PageEditorHostRuntime({
           pointer-events: none;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__content {
+          display: grid;
+          gap: 12px;
           margin-top: 0;
           padding: 0 1.1rem 1rem;
+          color: var(--docsera-text-muted);
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__content[hidden] {
           display: none;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__content > :first-child {
+          margin-top: 0;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__content > :last-child {
+          margin-bottom: 0;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-columns {
           margin: 1rem 0;

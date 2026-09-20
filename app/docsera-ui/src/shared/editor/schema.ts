@@ -235,11 +235,25 @@ function createAccordionDisclosureDecorationPlugin() {
           }
 
           const isOpen = getAccordionOpenItemId(state, accordionId) === itemId;
+          const titleNode = node.childCount > 0 ? node.child(0) : null;
+          const bodyNode = node.childCount > 1 ? node.child(1) : null;
+          const panelId = `docsera-editor-accordion-${accordionId}-${itemId}-panel`;
           decorations.push(
             Decoration.node(pos, pos + node.nodeSize, {
               "data-docsera-accordion-open": isOpen ? "true" : "false"
             })
           );
+
+          if (titleNode && bodyNode?.type.name === "accordionContent") {
+            const bodyStartPos = pos + 1 + titleNode.nodeSize;
+            decorations.push(
+              Decoration.node(bodyStartPos, bodyStartPos + bodyNode.nodeSize, {
+                id: panelId,
+                "aria-hidden": isOpen ? "false" : "true",
+                ...(isOpen ? {} : { hidden: "" })
+              })
+            );
+          }
         });
 
         return decorations.length ? DecorationSet.create(state.doc, decorations) : DecorationSet.empty;
@@ -286,24 +300,7 @@ function createAccordionDisclosurePlugin() {
           };
         }
 
-        if (!transaction.selectionSet) {
-          return currentState;
-        }
-
-        const selectionContext = getAccordionSelectionContextFromSelection(transaction.selection, transaction.doc);
-        if (!selectionContext) {
-          return currentState;
-        }
-
-        const currentOpenItemId = currentState[selectionContext.accordionId] ?? null;
-        if (currentOpenItemId === selectionContext.itemId) {
-          return currentState;
-        }
-
-        return {
-          ...currentState,
-          [selectionContext.accordionId]: selectionContext.itemId
-        };
+        return currentState;
       }
     }
   });
@@ -526,10 +523,6 @@ function createDocseraAccordionExtensions() {
           itemRoot.append(controlsLayer, contentDOM, menu);
           contentDOM.setAttribute("data-docsera-accordion-item-content", "true");
 
-          function getBodyElement() {
-            return contentDOM.querySelector<HTMLElement>("[data-docsera-accordion-content='true']");
-          }
-
           function resolveItemContext() {
             const position = typeof getPos === "function" ? getPos() : null;
             if (typeof position !== "number") {
@@ -634,12 +627,6 @@ function createDocseraAccordionExtensions() {
             menu.setAttribute("aria-label", `Accordion item actions${titleLabel}`);
             menu.hidden = !menuOpen;
             menuDeleteButton.disabled = itemCount <= 1;
-            const bodyElement = getBodyElement();
-            if (bodyElement) {
-              bodyElement.id = panelId;
-              bodyElement.hidden = !isOpen;
-              bodyElement.setAttribute("aria-hidden", isOpen ? "false" : "true");
-            }
           }
 
           function attachMenuDismissListeners() {
@@ -779,7 +766,12 @@ function createDocseraAccordionExtensions() {
 
             const newItem = createAccordionItemNode(editor.schema);
             const insertPos = context.position + context.itemNode.nodeSize;
-            let transaction = editor.state.tr.insert(insertPos, newItem);
+            let transaction = editor.state.tr
+              .insert(insertPos, newItem)
+              .setMeta(DOCSERA_ACCORDION_DISCLOSURE_PLUGIN_KEY, {
+                accordionId: context.accordionId,
+                itemId: newItem.attrs.accordionItemId
+              });
             try {
               transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(insertPos + 2), 1));
             } catch {
@@ -825,13 +817,16 @@ function createDocseraAccordionExtensions() {
             },
             ignoreMutation(mutation) {
               const target = mutation.target as globalThis.Node;
-              const bodyElement = getBodyElement();
+              const isAccordionContentAttributeMutation =
+                mutation.type === "attributes" &&
+                target instanceof HTMLElement &&
+                target.matches("[data-docsera-accordion-content='true']");
               if (
               target === itemRoot ||
               target === controlsLayer ||
               target === contentDOM ||
               target === menu ||
-              target === bodyElement ||
+              isAccordionContentAttributeMutation ||
               (controlsLayer instanceof globalThis.Node && controlsLayer.contains(target)) ||
               (menu instanceof globalThis.Node && menu.contains(target))
               ) {
@@ -915,6 +910,27 @@ function createDocseraAccordionExtensions() {
       name: "accordionContent",
       content: `(${DOCSERA_ACCORDION_BODY_NESTED_BLOCK_CONTENT})+`,
       selectable: false,
+      addNodeView() {
+        return () => {
+          const content = document.createElement("div");
+          content.className = "docsera-editor-accordion__content";
+          content.setAttribute("data-docsera-accordion-content", "true");
+
+          return {
+            dom: content,
+            contentDOM: content,
+            ignoreMutation(mutation) {
+              return (
+                mutation.type === "attributes" &&
+                mutation.target === content &&
+                (mutation.attributeName === "id" ||
+                  mutation.attributeName === "hidden" ||
+                  mutation.attributeName === "aria-hidden")
+              );
+            }
+          };
+        };
+      },
       parseHTML() {
         return [{ tag: "div[data-docsera-accordion-content='true']", priority: 1000 }];
       },

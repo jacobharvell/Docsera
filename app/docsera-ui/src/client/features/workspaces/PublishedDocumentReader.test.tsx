@@ -158,7 +158,7 @@ describe("PublishedDocumentReader", () => {
     const source = nodeProcess.getBuiltinModule("fs").readFileSync(
       `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
       "utf8"
-    );
+    ).replace(/\r\n/g, "\n");
     const getRuleBody = (selector: string) => {
       const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       return source.match(new RegExp(`${escapedSelector}\\s*\\{(?<body>[^}]*)\\}`, "s"))?.groups?.body ?? "";
@@ -190,8 +190,8 @@ describe("PublishedDocumentReader", () => {
     expect(source).not.toMatch(/\.docsera-main__reader\s*{[^}]*display:\s*grid;/s);
     expect(source).not.toMatch(/\.docsera-main__reader\s*{[^}]*gap:\s*var\(--docsera-document-block-spacing\);/s);
     expect(source).toContain("margin-top: calc(var(--docsera-document-title-body-gap) - 28px);");
-    expect(source).toContain(".docsera-main__reader > :first-child {\n  margin-top: 0;\n}");
-    expect(source).toContain(".docsera-main__reader > :last-child {\n  margin-bottom: 0;\n}");
+    expect(source).toMatch(/\.docsera-main__reader > :first-child\s*{\s*margin-top:\s*0;\s*}/);
+    expect(source).toMatch(/\.docsera-main__reader > :last-child\s*{\s*margin-bottom:\s*0;\s*}/);
     expect(readerRule).toContain("color: var(--docsera-document-text-color);");
     expect(source).not.toMatch(/\.docsera-main__body,\s*\.docsera-main__section-copy\s*{[^}]*color:/s);
     expect(bodyRule).not.toContain("color:");

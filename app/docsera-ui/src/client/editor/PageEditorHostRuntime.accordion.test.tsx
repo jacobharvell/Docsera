@@ -327,6 +327,16 @@ function getAccordionItemElement(editor: Editor, itemId: string): HTMLElement | 
   return item instanceof HTMLElement ? item : null;
 }
 
+function getAccordionBodyElement(editor: Editor, itemId: string): HTMLElement | null {
+  const item = getAccordionItemElement(editor, itemId);
+  if (!(item instanceof HTMLElement)) {
+    return null;
+  }
+
+  const body = item.querySelector("[data-docsera-accordion-content='true']");
+  return body instanceof HTMLElement ? body : null;
+}
+
 function getAccordionItemMenuElement(editor: Editor, itemId: string): HTMLDivElement | null {
   const item = getAccordionItemElement(editor, itemId);
   if (!(item instanceof HTMLElement)) {
@@ -470,6 +480,47 @@ async function openAccordionBlockMenu(editor: Editor, blockRect = new DOMRect(13
 }
 
 describe("PageEditorHostRuntime accordion corrections", () => {
+  it("normalizes only the first top-level accordion top margin in Edit", async () => {
+    const firstAccordion = createAccordionDocument();
+    const { editorReady: firstEditorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(firstAccordion)
+    });
+
+    await waitFor(() => {
+      expect(firstEditorReady[0]).toBeDefined();
+    });
+
+    const firstRenderedAccordion = firstEditorReady[0].view.dom.querySelector(".docsera-editor-accordion");
+    if (!(firstRenderedAccordion instanceof HTMLElement)) {
+      throw new Error("Expected the first rendered accordion.");
+    }
+    expect(getComputedStyle(firstRenderedAccordion).marginTop).toBe("0px");
+
+    const nonFirstAccordion: DocseraTiptapDocument = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Intro paragraph" }]
+        },
+        ...(createAccordionDocument().content ?? [])
+      ]
+    };
+    const { editorReady: nonFirstEditorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(nonFirstAccordion)
+    });
+
+    await waitFor(() => {
+      expect(nonFirstEditorReady[0]).toBeDefined();
+    });
+
+    const nonFirstRenderedAccordion = nonFirstEditorReady[0].view.dom.querySelector(".docsera-editor-accordion");
+    if (!(nonFirstRenderedAccordion instanceof HTMLElement)) {
+      throw new Error("Expected the non-first rendered accordion.");
+    }
+    expect(getComputedStyle(nonFirstRenderedAccordion).marginTop).toBe("1rem");
+  });
+
   it("replaces an empty accordion body paragraph with a nested blockquote through Slash, preserves accordion ownership, and still suppresses title Slash", async () => {
     const initial = createAccordionDocument();
     const { editorReady, onSaveDraft } = renderRuntime({
@@ -658,6 +709,7 @@ describe("PageEditorHostRuntime accordion corrections", () => {
 
     const initialJson = editor.getJSON();
     const initialUndoDepth = undoDepth(editor.state);
+    expect(getAccordionOpenItemId(editor.state, "accordion-actions")).toBeNull();
 
     fireEvent.keyDown(editor.view.dom, { key: "Enter" });
 
@@ -667,6 +719,8 @@ describe("PageEditorHostRuntime accordion corrections", () => {
         "data-docsera-accordion-open",
         "true"
       );
+      expect(getAccordionBodyElement(editor, "accordion-item-overview")).not.toHaveAttribute("hidden");
+      expect(getAccordionBodyElement(editor, "accordion-item-overview")).toHaveAttribute("aria-hidden", "false");
     });
 
     expect(editor.getJSON()).toEqual(initialJson);
@@ -674,6 +728,44 @@ describe("PageEditorHostRuntime accordion corrections", () => {
 
     await runAutosave();
     expect(onSaveDraft).not.toHaveBeenCalled();
+  });
+
+  it("opens the initial item after inserting a new accordion through an explicit authoring command", async () => {
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument({
+        type: "doc",
+        content: [{ type: "paragraph" }]
+      })
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.focus("start", { scrollIntoView: false });
+    });
+
+    fireEvent.keyDown(editor.view.dom, { key: "/" });
+    const slashMenu = await screen.findByRole("listbox", { name: "Slash command menu" });
+    fireEvent.click(within(slashMenu).getByRole("option", { name: "Accordion" }));
+
+    await waitFor(() => {
+      expect(editor.getJSON().content?.[0]?.type).toBe("accordion");
+    });
+
+    const accordion = editor.getJSON().content?.[0];
+    const accordionId = typeof accordion?.attrs?.accordionId === "string" ? accordion.attrs.accordionId : "";
+    const firstItem = (accordion?.content?.[0] ?? {}) as JSONContent;
+    const itemId = typeof firstItem?.attrs?.accordionItemId === "string" ? firstItem.attrs.accordionItemId : "";
+    expect(accordionId).toMatch(/^accordion-/);
+    expect(itemId).toMatch(/^accordion-item-/);
+    expect(getAccordionOpenItemId(editor.state, accordionId)).toBe(itemId);
+    expect(getAccordionItemElement(editor, itemId)).toHaveAttribute("data-docsera-accordion-open", "true");
+    expect(getAccordionBodyElement(editor, itemId)).not.toHaveAttribute("hidden");
+    expect(getAccordionBodyElement(editor, itemId)).toHaveAttribute("aria-hidden", "false");
+    expect(editor.state.selection.$from.parent.type.name).toBe("accordionTitle");
   });
 
   it("shows accordion item controls inline with the item and adds only from the last item", async () => {
@@ -756,12 +848,17 @@ describe("PageEditorHostRuntime accordion corrections", () => {
     }
 
     const [sourceItem, preservedItem, addedItem] = (accordion.content ?? []) as JSONContent[];
+    const addedItemId = (addedItem.attrs as { accordionItemId?: string }).accordionItemId ?? "";
     expect((sourceItem.attrs as { accordionItemId?: string }).accordionItemId).toBe("accordion-item-overview");
     expect((preservedItem.attrs as { accordionItemId?: string }).accordionItemId).toBe("accordion-item-plan");
-    expect((addedItem.attrs as { accordionItemId?: string }).accordionItemId).toMatch(/^accordion-item-/);
-    expect((addedItem.attrs as { accordionItemId?: string }).accordionItemId).not.toBe(
-      (sourceItem.attrs as { accordionItemId?: string }).accordionItemId
-    );
+    expect(addedItemId).toMatch(/^accordion-item-/);
+    expect(addedItemId).not.toBe((sourceItem.attrs as { accordionItemId?: string }).accordionItemId);
+    expect(getAccordionOpenItemId(editor.state, "accordion-actions")).toBe(addedItemId);
+    expect(getAccordionItemElement(editor, "accordion-item-overview")).toHaveAttribute("data-docsera-accordion-open", "false");
+    expect(getAccordionItemElement(editor, "accordion-item-plan")).toHaveAttribute("data-docsera-accordion-open", "false");
+    expect(getAccordionItemElement(editor, addedItemId)).toHaveAttribute("data-docsera-accordion-open", "true");
+    expect(getAccordionBodyElement(editor, addedItemId)).not.toHaveAttribute("hidden");
+    expect(getAccordionBodyElement(editor, addedItemId)).toHaveAttribute("aria-hidden", "false");
     expect(addedItem).toMatchObject({
       type: "accordionItem",
       content: [
@@ -970,7 +1067,7 @@ describe("PageEditorHostRuntime accordion corrections", () => {
     });
   });
 
-  it("keeps accordion disclosure transient, single-open, and zero-open without JSON, autosave, or undo mutation", async () => {
+  it("keeps accordion disclosure action-driven, transient, single-open, and zero-open without JSON, autosave, or undo mutation", async () => {
     const initial = createAccordionDocument();
     const { editorReady, onSaveDraft } = renderRuntime({
       initialEnvelope: createEnvelopeFromDocument(initial)
@@ -988,17 +1085,34 @@ describe("PageEditorHostRuntime accordion corrections", () => {
     if (!(firstItem instanceof HTMLElement) || !(secondItem instanceof HTMLElement)) {
       throw new Error("Expected both accordion items.");
     }
+    const firstBody = getAccordionBodyElement(editor, "accordion-item-overview");
+    const secondBody = getAccordionBodyElement(editor, "accordion-item-plan");
+    if (!(firstBody instanceof HTMLElement) || !(secondBody instanceof HTMLElement)) {
+      throw new Error("Expected both accordion bodies.");
+    }
 
     const firstToggle = within(firstItem).getByRole("button", { name: "Expand accordion item: Overview" });
     const secondToggle = within(secondItem).getByRole("button", { name: "Expand accordion item: Plan" });
 
+    expect(getAccordionOpenItemId(editor.state, "accordion-actions")).toBeNull();
     expect(firstItem).toHaveAttribute("data-docsera-accordion-open", "false");
     expect(secondItem).toHaveAttribute("data-docsera-accordion-open", "false");
+    expect(firstBody).toHaveAttribute("hidden");
+    expect(firstBody).toHaveAttribute("aria-hidden", "true");
+    expect(firstBody).not.toBeVisible();
+    expect(secondBody).toHaveAttribute("hidden");
+    expect(secondBody).toHaveAttribute("aria-hidden", "true");
+    expect(secondBody).not.toBeVisible();
 
     fireEvent.click(firstToggle);
     await waitFor(() => {
       expect(firstItem).toHaveAttribute("data-docsera-accordion-open", "true");
       expect(secondItem).toHaveAttribute("data-docsera-accordion-open", "false");
+      expect(firstBody).not.toHaveAttribute("hidden");
+      expect(firstBody).toHaveAttribute("aria-hidden", "false");
+      expect(firstBody).toBeVisible();
+      expect(secondBody).toHaveAttribute("hidden");
+      expect(secondBody).toHaveAttribute("aria-hidden", "true");
     });
     expect(editor.getJSON()).toEqual(initialJson);
     expect(undoDepth(editor.state)).toBe(initialUndoDepth);
@@ -1007,6 +1121,11 @@ describe("PageEditorHostRuntime accordion corrections", () => {
     await waitFor(() => {
       expect(firstItem).toHaveAttribute("data-docsera-accordion-open", "false");
       expect(secondItem).toHaveAttribute("data-docsera-accordion-open", "true");
+      expect(firstBody).toHaveAttribute("hidden");
+      expect(firstBody).toHaveAttribute("aria-hidden", "true");
+      expect(secondBody).not.toHaveAttribute("hidden");
+      expect(secondBody).toHaveAttribute("aria-hidden", "false");
+      expect(secondBody).toBeVisible();
     });
     expect(editor.getJSON()).toEqual(initialJson);
     expect(undoDepth(editor.state)).toBe(initialUndoDepth);
@@ -1015,7 +1134,22 @@ describe("PageEditorHostRuntime accordion corrections", () => {
     await waitFor(() => {
       expect(firstItem).toHaveAttribute("data-docsera-accordion-open", "false");
       expect(secondItem).toHaveAttribute("data-docsera-accordion-open", "false");
+      expect(firstBody).toHaveAttribute("hidden");
+      expect(firstBody).toHaveAttribute("aria-hidden", "true");
+      expect(secondBody).toHaveAttribute("hidden");
+      expect(secondBody).toHaveAttribute("aria-hidden", "true");
     });
+    expect(editor.getJSON()).toEqual(initialJson);
+    expect(undoDepth(editor.state)).toBe(initialUndoDepth);
+
+    const plan = getAccordionItemSelectionPositions(editor, "accordion-item-plan");
+    await act(async () => {
+      editor.commands.setTextSelection(plan.bodySelectionPosition);
+    });
+
+    expect(getAccordionOpenItemId(editor.state, "accordion-actions")).toBeNull();
+    expect(firstItem).toHaveAttribute("data-docsera-accordion-open", "false");
+    expect(secondItem).toHaveAttribute("data-docsera-accordion-open", "false");
     expect(editor.getJSON()).toEqual(initialJson);
     expect(undoDepth(editor.state)).toBe(initialUndoDepth);
 
@@ -1023,7 +1157,7 @@ describe("PageEditorHostRuntime accordion corrections", () => {
     expect(onSaveDraft).not.toHaveBeenCalled();
   });
 
-  it("opens accordion items when the selection enters their title or body without mutating the document", async () => {
+  it("does not change accordion disclosure when selection enters a title or body", async () => {
     const initial = createAccordionDocument();
     const { editorReady, onSaveDraft } = renderRuntime({
       initialEnvelope: createEnvelopeFromDocument(initial)
@@ -1044,32 +1178,43 @@ describe("PageEditorHostRuntime accordion corrections", () => {
     const overview = getAccordionItemSelectionPositions(editor, "accordion-item-overview");
     const plan = getAccordionItemSelectionPositions(editor, "accordion-item-plan");
 
-    await act(async () => {
-      editor.commands.setTextSelection(plan.titleSelectionPosition);
-    });
-
-    expect(getAccordionOpenItemId(editor.state, "accordion-actions")).toBe("accordion-item-plan");
-    expect(planItem).toHaveAttribute("data-docsera-accordion-open", "true");
-    expect(overviewItem).toHaveAttribute("data-docsera-accordion-open", "false");
-    expect(editor.getJSON()).toEqual(initialJson);
-    expect(undoDepth(editor.state)).toBe(initialUndoDepth);
+    expect(getAccordionOpenItemId(editor.state, "accordion-actions")).toBeNull();
 
     await act(async () => {
       editor.commands.setTextSelection(plan.bodySelectionPosition);
     });
 
-    expect(getAccordionOpenItemId(editor.state, "accordion-actions")).toBe("accordion-item-plan");
-    expect(planItem).toHaveAttribute("data-docsera-accordion-open", "true");
+    expect(getAccordionOpenItemId(editor.state, "accordion-actions")).toBeNull();
+    expect(planItem).toHaveAttribute("data-docsera-accordion-open", "false");
     expect(overviewItem).toHaveAttribute("data-docsera-accordion-open", "false");
     expect(editor.getJSON()).toEqual(initialJson);
     expect(undoDepth(editor.state)).toBe(initialUndoDepth);
 
     await act(async () => {
+      editor.commands.setTextSelection(plan.titleSelectionPosition);
+    });
+
+    expect(getAccordionOpenItemId(editor.state, "accordion-actions")).toBeNull();
+    expect(planItem).toHaveAttribute("data-docsera-accordion-open", "false");
+    expect(overviewItem).toHaveAttribute("data-docsera-accordion-open", "false");
+    expect(editor.getJSON()).toEqual(initialJson);
+    expect(undoDepth(editor.state)).toBe(initialUndoDepth);
+
+    fireEvent.click(within(planItem).getByRole("button", { name: "Expand accordion item: Plan" }));
+    await waitFor(() => {
+      expect(planItem).toHaveAttribute("data-docsera-accordion-open", "true");
+    });
+    fireEvent.click(within(planItem).getByRole("button", { name: "Collapse accordion item: Plan" }));
+    await waitFor(() => {
+      expect(planItem).toHaveAttribute("data-docsera-accordion-open", "false");
+    });
+
+    await act(async () => {
       editor.commands.setTextSelection(overview.bodySelectionPosition);
     });
 
-    expect(getAccordionOpenItemId(editor.state, "accordion-actions")).toBe("accordion-item-overview");
-    expect(overviewItem).toHaveAttribute("data-docsera-accordion-open", "true");
+    expect(getAccordionOpenItemId(editor.state, "accordion-actions")).toBeNull();
+    expect(overviewItem).toHaveAttribute("data-docsera-accordion-open", "false");
     expect(planItem).toHaveAttribute("data-docsera-accordion-open", "false");
     expect(editor.getJSON()).toEqual(initialJson);
     expect(undoDepth(editor.state)).toBe(initialUndoDepth);

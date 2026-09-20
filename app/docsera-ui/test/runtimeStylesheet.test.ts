@@ -350,10 +350,30 @@ test("keeps reader table styling aligned to the E5 Legacy geometry without advan
 
 test("keeps editor accordion affordances anchored to the title row and hides closed menus explicitly", () => {
   const css = readFileSync("src/client/editor/PageEditorHostRuntime.tsx", "utf8");
+  const runtimeCss = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+  const editAccordionSelector = ".docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion";
+  const editFirstAccordionSelector = ".docsera-editor-runtime__surface .ProseMirror > .docsera-editor-accordion:first-child";
+  const liveAccordionSelector = ".docsera-main__accordion";
+  const liveFirstBlockSelector = ".docsera-main__reader > :first-child";
 
-  expect(css).toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion\s*{[^}]*margin:\s*1rem 0;[^}]*border-radius:\s*18px;/s);
   expect(css).toMatch(
-    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__item\s*{[^}]*display:\s*grid;[^}]*--docsera-editor-accordion-title-row-height:\s*3\.4rem;[^}]*--docsera-editor-accordion-title-row-center:\s*calc\(var\(--docsera-editor-accordion-title-row-height\) \/ 2\);[^}]*--docsera-editor-accordion-control-size:\s*1\.7rem;[^}]*--docsera-editor-accordion-menu-gap:\s*0\.35rem;/s
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion\s*{[^}]*margin:\s*1rem 0;[^}]*border:\s*1px solid color-mix\(in srgb, var\(--docsera-border\) 82%, var\(--docsera-text-soft\)\);[^}]*border-radius:\s*18px;[^}]*background:\s*color-mix\(in srgb, var\(--docsera-surface\) 94%, var\(--docsera-surface-muted\) 6%\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror > \.docsera-editor-accordion:first-child\s*{\s*margin-top:\s*0;\s*}/s
+  );
+  expect(css.indexOf(editFirstAccordionSelector)).toBeGreaterThan(css.indexOf(editAccordionSelector));
+  expect(compareSpecificity(selectorSpecificity(editFirstAccordionSelector), selectorSpecificity(editAccordionSelector))).toBeGreaterThan(0);
+  expect(getRuleBody(css, editAccordionSelector)).toContain("margin: 1rem 0;");
+  expect(getRuleBody(css, editFirstAccordionSelector)).toContain("margin-top: 0;");
+  expect(runtimeCss).toMatch(/\.docsera-main__reader > :first-child\s*{\s*margin-top:\s*0;\s*}/s);
+  expect(runtimeCss).toMatch(/\.docsera-main__accordion\s*{[^}]*margin:\s*1rem 0;/s);
+  expect(compareSpecificity(selectorSpecificity(liveFirstBlockSelector), selectorSpecificity(liveAccordionSelector))).toBeGreaterThan(0);
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__item\s*{[^}]*display:\s*grid;[^}]*--docsera-editor-accordion-title-row-height:\s*3\.4rem;[^}]*--docsera-editor-accordion-title-row-center:\s*calc\(var\(--docsera-editor-accordion-title-row-height\) \/ 2\);[^}]*--docsera-editor-accordion-control-size:\s*1\.7rem;[^}]*--docsera-editor-accordion-chevron-size:\s*18px;[^}]*--docsera-editor-accordion-toggle-left:\s*calc\(\s*1\.1rem\s*-\s*\(\(var\(--docsera-editor-accordion-control-size\) - var\(--docsera-editor-accordion-chevron-size\)\) \/ 2\)\s*\);[^}]*--docsera-editor-accordion-menu-gap:\s*0\.35rem;/s
+  );
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__item \+ \.docsera-editor-accordion__item\s*{[^}]*border-top:\s*1px solid color-mix\(in srgb, var\(--docsera-border\) 82%, var\(--docsera-text-soft\)\);/s
   );
   expect(css).toMatch(
     /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control\s*{[^}]*border:\s*0;[^}]*background:\s*transparent;[^}]*font:\s*inherit;/s
@@ -368,12 +388,12 @@ test("keeps editor accordion affordances anchored to the title row and hides clo
     /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--ellipsis:hover,[\s\S]*\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--add:focus-visible\s*{[^}]*background:\s*var\(--docsera-surface-muted\);[^}]*outline:\s*none;/s
   );
   expect(css).toMatch(
-    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--toggle:hover\s*{[^}]*background:\s*transparent;[^}]*color:\s*color-mix\(in srgb, var\(--docsera-editor-text\) 72%, var\(--docsera-editor-muted\)\);[^}]*box-shadow:\s*none;[^}]*outline:\s*none;/s
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--toggle:hover\s*{[^}]*background:\s*transparent;[^}]*color:\s*var\(--docsera-text-soft\);[^}]*box-shadow:\s*none;[^}]*outline:\s*none;/s
   );
   expect(css).toMatch(
-    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--toggle:focus-visible\s*{[^}]*background:\s*transparent;[^}]*color:\s*color-mix\(in srgb, var\(--docsera-editor-text\) 72%, var\(--docsera-editor-muted\)\);[^}]*outline:\s*none;[^}]*box-shadow:\s*0 0 0 2px color-mix\(in srgb, var\(--docsera-primary\) 18%, white 20%\);/s
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--toggle:focus-visible\s*{[^}]*background:\s*transparent;[^}]*color:\s*var\(--docsera-text-soft\);[^}]*outline:\s*none;[^}]*box-shadow:\s*0 0 0 2px color-mix\(in srgb, var\(--docsera-primary\) 18%, white 20%\);/s
   );
-  expect(css).toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--toggle\s*{[^}]*top:\s*var\(--docsera-editor-accordion-title-row-center\);[^}]*color:\s*color-mix\(in srgb, var\(--docsera-editor-text\) 72%, var\(--docsera-editor-muted\)\);[^}]*visibility:\s*visible;/s);
+  expect(css).toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--toggle\s*{[^}]*left:\s*var\(--docsera-editor-accordion-toggle-left\);[^}]*top:\s*var\(--docsera-editor-accordion-title-row-center\);[^}]*color:\s*var\(--docsera-text-soft\);[^}]*visibility:\s*visible;/s);
   expect(css).toMatch(
     /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__menu\s*{[^}]*top:\s*calc\(\s*var\(--docsera-editor-accordion-title-row-center\)\s*\+\s*\(var\(--docsera-editor-accordion-control-size\) \/ 2\)\s*\+\s*var\(--docsera-editor-accordion-menu-gap\)\s*\);/s
   );
@@ -382,7 +402,18 @@ test("keeps editor accordion affordances anchored to the title row and hides clo
   expect(css).toContain(".docsera-block-menu__item--destructive:disabled.docsera-block-menu__item--active {");
   expect(css).toMatch(/\.docsera-block-menu__item:disabled,\s*\.docsera-block-menu__item:disabled:hover,\s*\.docsera-block-menu__item:disabled:focus-visible\s*{[^}]*cursor:\s*not-allowed;[^}]*color:\s*var\(--docsera-text-soft\);[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
   expect(css).toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__menu\[hidden\]\s*{\s*display:\s*none;/s);
-  expect(css).toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__title\s*{[^}]*font-size:\s*1rem;[^}]*line-height:\s*1\.4;/s);
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__title\s*{[^}]*padding:\s*1rem 1\.1rem 1rem calc\(1\.1rem \+ var\(--docsera-editor-accordion-chevron-size\) \+ 16px\);[^}]*font-family:\s*Geist, Inter, "Segoe UI", sans-serif;[^}]*font-size:\s*1rem;[^}]*font-weight:\s*700;[^}]*line-height:\s*1\.4;[^}]*color:\s*var\(--docsera-text\);/s
+  );
+  expect(css).not.toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__title\s*{[^}]*padding:[^;}]*var\(--docsera-editor-accordion-control-size\)/s
+  );
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__content\s*{[^}]*display:\s*grid;[^}]*gap:\s*12px;[^}]*margin-top:\s*0;[^}]*padding:\s*0 1\.1rem 1rem;[^}]*color:\s*var\(--docsera-text-muted\);/s
+  );
+  expect(css).toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__content\[hidden\]\s*{\s*display:\s*none;/s);
+  expect(css).toContain(".docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__content > :first-child {");
+  expect(css).toContain(".docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__content > :last-child {");
   expect(css).not.toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control:hover/);
   expect(css).not.toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control:focus-visible/);
 });
