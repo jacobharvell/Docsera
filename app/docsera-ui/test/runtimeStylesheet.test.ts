@@ -225,12 +225,34 @@ test("keeps Page Settings flex spacing and header divider alignment", () => {
     /\.docsera-page-settings\s*{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*gap:\s*18px;[^}]*width:\s*min\(432px, calc\(100vw - var\(--docsera-workspace-nav-width\)\)\);[^}]*overflow-x:\s*clip;[^}]*overflow-y:\s*auto;/s
   );
   expect(css).toMatch(
-    /\.docsera-page-settings__header\s*{[^}]*flex:\s*0 0 auto;[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*min-height:\s*var\(--docsera-header-height\);/s
+    /\.docsera-page-settings__header\s*{[^}]*flex:\s*0 0 auto;[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*height:\s*var\(--docsera-header-height\);[^}]*min-height:\s*var\(--docsera-header-height\);/s
   );
   expect(css).toMatch(
-    /\.docsera-page-settings__header-divider\s*{[^}]*height:\s*1px;[^}]*margin:\s*-18px -20px 0;[^}]*background:\s*var\(--docsera-border\);/s
+    /\.docsera-page-settings__header-divider\s*{[^}]*height:\s*1px;[^}]*margin:\s*-19px -20px 0;[^}]*background:\s*var\(--docsera-border\);/s
   );
+  expect(css).not.toMatch(/\.docsera-page-settings__header-divider\s*{[^}]*margin:\s*-18px -20px -1px;/s);
   expect(css).toMatch(/\.docsera-page-settings__rows\s*{[^}]*display:\s*grid;[^}]*gap:\s*14px;[^}]*min-width:\s*0;/s);
+});
+
+test("keeps settings and access panel header dividers aligned to the workspace header baseline", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+
+  expect(css).toMatch(/\.docsera-header\s*{[^}]*min-height:\s*var\(--docsera-header-height\);[^}]*border-bottom:\s*1px solid var\(--docsera-border\);/s);
+  expect(css).toMatch(
+    /\.docsera-page-settings__header\s*{[^}]*height:\s*var\(--docsera-header-height\);[^}]*min-height:\s*var\(--docsera-header-height\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-page-settings__header-divider\s*{[^}]*height:\s*1px;[^}]*margin:\s*-19px -20px 0;[^}]*background:\s*var\(--docsera-border\);/s
+  );
+  expect(css).not.toMatch(/\.docsera-page-settings__header-divider\s*{[^}]*margin:\s*-18px -20px -1px;/s);
+  expect(css).not.toMatch(/\.docsera-page-settings__header-divider\s*{[^}]*margin:\s*-18px -20px 0;/s);
+  expect(css).toMatch(
+    /\.docsera-workspace-settings-overlay__header\s*{[^}]*box-sizing:\s*border-box;[^}]*height:\s*var\(--docsera-header-height\);[^}]*padding:\s*0 20px;[^}]*min-height:\s*var\(--docsera-header-height\);[^}]*border-bottom:\s*1px solid var\(--docsera-border\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-manage-access__header\s*{[^}]*align-items:\s*center;[^}]*border-bottom:\s*1px solid var\(--docsera-border-soft\);[^}]*box-sizing:\s*border-box;[^}]*height:\s*var\(--docsera-header-height\);[^}]*min-height:\s*var\(--docsera-header-height\);[^}]*padding:\s*0 24px;/s
+  );
+  expect(css).not.toMatch(/\.docsera-manage-access__header\s*{[^}]*padding:\s*22px 24px 18px;/s);
 });
 
 test("keeps vertical scrolling owned by the app body below the full-width header", () => {
@@ -272,7 +294,7 @@ test("keeps workspace mode controls in the right-side header cluster with matche
   expect(css).toMatch(/\.docsera-header__action-slot--mode\s*{[^}]*z-index:\s*1;[^}]*min-width:\s*0;/s);
   expect(css).not.toMatch(/\.docsera-header__action-slot--mode\s*{[^}]*position:\s*absolute;/s);
   expect(css).not.toMatch(/\.docsera-header__action-slot--mode\s*{[^}]*transform:\s*translate\(-50%, -50%\);/s);
-  expect(css).toMatch(/\.docsera-header__action-divider\s*{[^}]*width:\s*1px;[^}]*height:\s*20px;[^}]*background:\s*var\(--docsera-border\);/s);
+  expect(css).toMatch(/\.docsera-header__action-divider\s*{[^}]*width:\s*1px;[^}]*height:\s*26px;[^}]*background:\s*var\(--docsera-border\);/s);
   expect(css).toMatch(/\.docsera-header__action-divider--mode-surface\s*{[^}]*margin-inline:\s*-2px;/s);
   expect(css).toMatch(/\.docsera-header__actions::before\s*{[^}]*content:\s*"";[^}]*width:\s*1px;[^}]*height:\s*26px;[^}]*background:\s*var\(--docsera-border\);/s);
   expect(css).toMatch(/\.docsera-header--live \.docsera-header__actions::before\s*{[^}]*background:\s*transparent;/s);
@@ -291,6 +313,18 @@ test("keeps workspace mode controls in the right-side header cluster with matche
   expect(css).toContain(".docsera-changes-center--portal {");
   expect(css).toMatch(/\.docsera-changes-center--portal\s*{[^}]*z-index:\s*140;/s);
   expect(css).toContain(".docsera-changes-center__list");
+});
+
+test("keeps the staged My Workspaces list chrome normalized", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+
+  expect(css).toMatch(/\.docsera-workspace-list__header\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 160px;/s);
+  expect(css).toMatch(/\.docsera-workspace-list__role-heading\s*{[^}]*grid-column:\s*2;/s);
+  expect(css).toMatch(
+    /\.docsera-launcher-state__secondary,\s*\.docsera-workspace-row__settings,\s*\.docsera-modal__secondary,\s*\.docsera-modal__close,\s*\.docsera-launcher-pagination__button\s*{[^}]*padding:\s*8px 12px;[^}]*border:\s*1px solid var\(--docsera-border\);[^}]*border-radius:\s*4px;[^}]*background:\s*var\(--docsera-surface\);[^}]*color:\s*var\(--docsera-text\);/s
+  );
+  expect(css).not.toMatch(/\.docsera-workspace-row__settings\s*{[^}]*border:\s*0;/s);
+  expect(css).not.toMatch(/\.docsera-workspace-row__settings\s*{[^}]*color:\s*var\(--docsera-primary\);/s);
 });
 
 test("keeps the publish success toast as a layered header card with viewport-safe width and interactive dismissal", () => {

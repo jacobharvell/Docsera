@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
-import { render, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { WorkspaceList } from "./MyWorkspacesScreenSections";
+import { WorkspaceList, WorkspaceListHeader } from "./MyWorkspacesScreenSections";
 
 function mockObjectUrl() {
   Object.defineProperty(URL, "createObjectURL", {
@@ -51,5 +51,47 @@ describe("WorkspaceList", () => {
       assetPath: "/icons/file?assetKey=asset-key-001",
       signal: expect.any(AbortSignal)
     });
+  });
+
+  it("keeps only the Role heading in the My Workspaces list header", () => {
+    render(<WorkspaceListHeader />);
+
+    expect(screen.queryByText("Workspace")).not.toBeInTheDocument();
+    expect(screen.getByText("Role")).toHaveClass("docsera-workspace-list__role-heading");
+  });
+
+  it("keeps Settings as a navigation link that opens the settings intent", () => {
+    const onOpenWorkspaceSettings = vi.fn();
+
+    render(
+      <WorkspaceList
+        items={[
+          {
+            canManageSettings: true,
+            canManageWorkspaceMembers: true,
+            icon: { type: "builtin", key: "book", label: "Book" },
+            name: "Admin Docs",
+            layout: {
+              tocVisible: true
+            },
+            roleLabel: "Admin",
+            shortDescription: null,
+            slug: "admin-docs",
+            status: "active",
+            sysId: "workspace-002"
+          }
+        ]}
+        onOpenWorkspace={vi.fn()}
+        onOpenWorkspaceSettings={onOpenWorkspaceSettings}
+      />
+    );
+
+    const settingsLink = screen.getByRole("link", { name: "Settings" });
+    expect(settingsLink).toHaveClass("docsera-workspace-row__settings");
+    expect(settingsLink).toHaveAttribute("href", "/#/admin-docs?settings=1");
+
+    fireEvent.click(settingsLink);
+
+    expect(onOpenWorkspaceSettings).toHaveBeenCalledWith("admin-docs");
   });
 });

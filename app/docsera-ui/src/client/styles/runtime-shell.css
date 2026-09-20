@@ -611,6 +611,10 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__search-icon {
   text-transform: uppercase;
 }
 
+.docsera-workspace-list__role-heading {
+  grid-column: 2;
+}
+
 .docsera-workspace-list__item + .docsera-workspace-list__item {
   border-top: 1px solid var(--docsera-border-soft);
 }
@@ -751,18 +755,12 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__search-icon {
 }
 
 .docsera-workspace-row__settings {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--docsera-primary);
-  font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1.4;
   white-space: nowrap;
 }
 
 .docsera-workspace-row__settings:hover {
-  text-decoration: underline;
+  background: var(--docsera-surface-muted);
+  text-decoration: none;
 }
 
 .docsera-launcher-toolbar__clear {
@@ -892,6 +890,7 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  height: var(--docsera-header-height);
   min-height: var(--docsera-header-height);
 }
 
@@ -925,7 +924,7 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
 
 .docsera-page-settings__header-divider {
   height: 1px;
-  margin: -18px -20px 0;
+  margin: -19px -20px 0;
   background: var(--docsera-border);
 }
 
@@ -1118,7 +1117,9 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 16px 20px;
+  box-sizing: border-box;
+  height: var(--docsera-header-height);
+  padding: 0 20px;
   min-height: var(--docsera-header-height);
   border-bottom: 1px solid var(--docsera-border);
 }
@@ -1274,12 +1275,15 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
 }
 
 .docsera-manage-access__header {
-  align-items: flex-start;
+  align-items: center;
   border-bottom: 1px solid var(--docsera-border-soft);
+  box-sizing: border-box;
   display: flex;
   gap: 16px;
+  height: var(--docsera-header-height);
   justify-content: space-between;
-  padding: 22px 24px 18px;
+  min-height: var(--docsera-header-height);
+  padding: 0 24px;
 }
 
 .docsera-manage-access__title {
@@ -2323,7 +2327,7 @@ html[data-docsera-theme="dark"] .docsera-header__bar {
 .docsera-header__action-divider {
   flex: 0 0 auto;
   width: 1px;
-  height: 20px;
+  height: 26px;
   background: var(--docsera-border);
 }
 
@@ -4897,6 +4901,10 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 
   .docsera-workspace-list__header {
     gap: 8px;
+  }
+
+  .docsera-workspace-list__role-heading {
+    grid-column: 1;
   }
 
   .docsera-header {
