@@ -22,6 +22,58 @@ function getRuleBody(css: string, selector: string) {
   return css.match(new RegExp(`${escapedSelector}\\s*\\{(?<body>[^}]*)\\}`, "s"))?.groups?.body ?? "";
 }
 
+function getCssSlice(css: string, startMarker: string, endMarker?: string) {
+  const start = css.indexOf(startMarker);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = endMarker ? css.indexOf(endMarker, start + startMarker.length) : css.length;
+  expect(end).toBeGreaterThan(start);
+  return css.slice(start, end);
+}
+
+function readPixelCustomProperty(css: string, propertyName: string) {
+  const escapedPropertyName = propertyName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const value = css.match(new RegExp(`${escapedPropertyName}:\\s*(\\d+)px;`))?.[1];
+  return value ? Number.parseInt(value, 10) : Number.NaN;
+}
+
+function clamp(value: number, minimum: number, maximum: number) {
+  return Math.min(Math.max(value, minimum), maximum);
+}
+
+function resolveContentLaneGeometry(input: {
+  viewportWidth: number;
+  navWidth: number;
+  tocWidth: number;
+  maxSurfaceWidth: number;
+  gutterWidth: number;
+  pagePadding: number;
+  responsiveSurface: boolean;
+}) {
+  const liveOuterWidth = Math.min(input.viewportWidth, input.maxSurfaceWidth);
+  const liveAnchor = input.responsiveSurface
+    ? 0
+    : clamp(
+        (input.viewportWidth - input.navWidth - input.tocWidth - input.maxSurfaceWidth) / 2,
+        input.pagePadding,
+        input.viewportWidth - input.navWidth - input.pagePadding
+      );
+  const liveContentLeft = liveAnchor + input.pagePadding;
+  const liveContentWidth = liveOuterWidth - input.pagePadding * 2;
+  const editOuterWidth = Math.min(input.viewportWidth + input.gutterWidth, input.maxSurfaceWidth + input.gutterWidth);
+  const editAnchor = liveAnchor - input.gutterWidth;
+  const editContentLeft = editAnchor + input.pagePadding + input.gutterWidth;
+  const editContentWidth = editOuterWidth - (input.pagePadding + input.gutterWidth) - input.pagePadding;
+
+  return {
+    liveContentLeft,
+    editContentLeft,
+    liveContentWidth,
+    editContentWidth,
+    editGutterWidth: input.gutterWidth,
+    pagePadding: input.pagePadding
+  };
+}
+
 test("injects one runtime style tag and reuses it on repeat calls", () => {
   ensureRuntimeStylesheet("body { color: red; }");
   ensureRuntimeStylesheet("body { color: red; }");
@@ -69,28 +121,62 @@ test("keeps launcher background ownership explicit without changing workspace ba
   expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*--docsera-main-surface-anchor-offset:\s*clamp\([^}]*var\(--docsera-main-surface-max-width\)[^}]*\);/s);
   expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*margin-inline-start:\s*clamp\([^}]*var\(--docsera-toc-panel-width\)/s);
   expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*display:\s*grid;[^}]*align-content:\s*start;[^}]*gap:\s*28px;/s);
-  expect(css).toMatch(/\.docsera-main__surface--editor\s*{[^}]*gap:\s*0;[^}]*width:\s*min\(100%, calc\(var\(--docsera-main-surface-max-width\) \+ var\(--docsera-editor-block-gutter-width\)\)\);[^}]*margin-inline-start:\s*max\(0px, calc\(var\(--docsera-main-surface-anchor-offset\) - var\(--docsera-editor-block-gutter-width\)\)\);[^}]*padding-left:\s*calc\(24px \+ var\(--docsera-editor-block-gutter-width\)\);/s);
+  expect(css).toMatch(/\.docsera-main__surface--editor\s*{[^}]*gap:\s*0;[^}]*width:\s*min\(calc\(100% \+ var\(--docsera-editor-block-gutter-width\)\), calc\(var\(--docsera-main-surface-max-width\) \+ var\(--docsera-editor-block-gutter-width\)\)\);[^}]*margin-inline-start:\s*calc\(var\(--docsera-main-surface-anchor-offset\) - var\(--docsera-editor-block-gutter-width\)\);[^}]*padding-left:\s*calc\(24px \+ var\(--docsera-editor-block-gutter-width\)\);/s);
   expect(css).toMatch(/\.docsera-main__editor-host\s*{[^}]*margin-top:\s*40px;/s);
 });
 
-test("keeps the edit gutter outside the reader-equivalent content lane at desktop width", () => {
+test("keeps the edit gutter outside the reader-equivalent content lane at constrained and responsive widths", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
 
-  const mainSurfaceMaxWidth = css.match(/--docsera-main-surface-max-width:\s*(\d+)px;/)?.[1];
-  const gutterWidth = css.match(/--docsera-editor-block-gutter-width:\s*(\d+)px;/)?.[1];
+  const mainSurfaceMaxWidth = readPixelCustomProperty(css, "--docsera-main-surface-max-width");
+  const gutterWidth = readPixelCustomProperty(css, "--docsera-editor-block-gutter-width");
+  const navWidth = readPixelCustomProperty(css, "--docsera-workspace-nav-width");
+  const tocWidth = readPixelCustomProperty(css, "--docsera-toc-panel-width");
 
-  expect(mainSurfaceMaxWidth).toBe("768");
-  expect(gutterWidth).toBe("69");
+  expect(mainSurfaceMaxWidth).toBe(768);
+  expect(gutterWidth).toBe(69);
   expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*padding:\s*32px 24px 72px;/s);
   expect(css).toMatch(
-    /\.docsera-main__surface--editor\s*{[^}]*width:\s*min\(100%, calc\(var\(--docsera-main-surface-max-width\) \+ var\(--docsera-editor-block-gutter-width\)\)\);/s
+    /\.docsera-main__surface--editor\s*{[^}]*width:\s*min\(calc\(100% \+ var\(--docsera-editor-block-gutter-width\)\), calc\(var\(--docsera-main-surface-max-width\) \+ var\(--docsera-editor-block-gutter-width\)\)\);/s
   );
   expect(css).toMatch(
-    /\.docsera-main__surface--editor\s*{[^}]*margin-inline-start:\s*max\(0px, calc\(var\(--docsera-main-surface-anchor-offset\) - var\(--docsera-editor-block-gutter-width\)\)\);/s
+    /\.docsera-main__surface--editor\s*{[^}]*margin-inline-start:\s*calc\(var\(--docsera-main-surface-anchor-offset\) - var\(--docsera-editor-block-gutter-width\)\);/s
   );
   expect(css).toMatch(
     /\.docsera-main__surface--editor\s*{[^}]*padding-left:\s*calc\(24px \+ var\(--docsera-editor-block-gutter-width\)\);/s
   );
+  const responsive920 = getCssSlice(css, "@media (max-width: 920px)", "@media (max-width: 680px)");
+  const responsive680 = getCssSlice(css, "@media (max-width: 680px)", "@media (prefers-reduced-motion: reduce)");
+  expect(responsive920).toMatch(/\.docsera-main__surface\s*{[^}]*margin-inline-start:\s*0;/s);
+  expect(responsive920).toMatch(
+    /\.docsera-main__surface--editor\s*{[^}]*margin-inline-start:\s*calc\(0px - var\(--docsera-editor-block-gutter-width\)\);/s
+  );
+  expect(responsive680).toMatch(/\.docsera-main__surface\s*{[^}]*padding:\s*24px 16px 48px;/s);
+  expect(responsive680).toMatch(/\.docsera-main__surface--editor\s*{[^}]*padding-left:\s*calc\(16px \+ var\(--docsera-editor-block-gutter-width\)\);/s);
+
+  const cases = [
+    { name: "normal desktop where anchor >= gutter", viewportWidth: 1440, pagePadding: 24, responsiveSurface: false },
+    { name: "constrained desktop where anchor < gutter", viewportWidth: 1060, pagePadding: 24, responsiveSurface: false },
+    { name: "responsive <= 920px", viewportWidth: 900, pagePadding: 24, responsiveSurface: true },
+    { name: "responsive <= 680px", viewportWidth: 640, pagePadding: 16, responsiveSurface: true }
+  ];
+
+  for (const currentCase of cases) {
+    const geometry = resolveContentLaneGeometry({
+      viewportWidth: currentCase.viewportWidth,
+      navWidth,
+      tocWidth,
+      maxSurfaceWidth: mainSurfaceMaxWidth,
+      gutterWidth,
+      pagePadding: currentCase.pagePadding,
+      responsiveSurface: currentCase.responsiveSurface
+    });
+
+    expect(geometry.editContentLeft, currentCase.name).toBe(geometry.liveContentLeft);
+    expect(geometry.editContentWidth, currentCase.name).toBe(geometry.liveContentWidth);
+    expect(geometry.editGutterWidth, currentCase.name).toBe(69);
+    expect(geometry.pagePadding, currentCase.name).toBe(currentCase.pagePadding);
+  }
 });
 
 test("keeps live reader core text on edit-mode typography and normal block flow", () => {
