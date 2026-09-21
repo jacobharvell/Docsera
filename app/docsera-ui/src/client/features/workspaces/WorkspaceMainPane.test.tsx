@@ -2,6 +2,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkspaceMainPane } from "./WorkspaceMainPane";
 import type { WorkspacePageView } from "./workspaceViewModels";
@@ -113,7 +114,102 @@ function mockElementGeometry(element: Element, rects: DOMRect[]): void {
   });
 }
 
+function createEmptyWorkspaceProps(
+  overrides: Partial<ComponentProps<typeof WorkspaceMainPane>> = {}
+): ComponentProps<typeof WorkspaceMainPane> {
+  return {
+    bodyState: "ready",
+    page: null,
+    workspaceMode: "edit",
+    canCreatePage: true,
+    canEditPageBody: false,
+    canManagePageSettings: false,
+    editAccessLost: false,
+    pageTitleActive: false,
+    pageTitleSaveError: "",
+    pageTitleValidationError: "",
+    pageTitleValue: "",
+    stateCopy: "",
+    stateTitle: "",
+    stateType: "ready",
+    showPendingState: false,
+    onReturnToMyWorkspaces: vi.fn(),
+    onReturnToLive: vi.fn(),
+    onRetryEditor: vi.fn(),
+    onPageTitleCancel: vi.fn(),
+    onPageTitleChange: vi.fn(),
+    onPageTitleCommit: vi.fn(),
+    onPageTitleStart: vi.fn(),
+    onEditorReadyStateChange: vi.fn(),
+    onOutlineChange: vi.fn(),
+    onSavePageDraft: vi.fn(async () => ({
+      state: "succeeded" as const,
+      page: createPageView().page
+    })),
+    onStatusChange: vi.fn(),
+    onShowCreatePage: vi.fn(),
+    onAccessLost: vi.fn(),
+    sessionKey: "session-001",
+    theme: "light",
+    editorFailure: null,
+    onEditorFailureChange: vi.fn(),
+    ...overrides
+  };
+}
+
 describe("WorkspaceMainPane", () => {
+  it("renders the edit no-page empty state without the workspace eyebrow and keeps New page wired to creation", () => {
+    const onShowCreatePage = vi.fn();
+
+    render(<WorkspaceMainPane {...createEmptyWorkspaceProps({ onShowCreatePage })} />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "No pages yet" })).toBeInTheDocument();
+    expect(screen.queryByText("Workspace")).not.toBeInTheDocument();
+
+    const newPageButton = screen.getByRole("button", { name: "New page" });
+    expect(newPageButton).toHaveClass("docsera-modal__primary");
+    expect(newPageButton).toHaveClass("docsera-main__empty-primary-action");
+    expect(newPageButton).not.toHaveClass("docsera-main__empty-action");
+
+    fireEvent.click(newPageButton);
+
+    expect(onShowCreatePage).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the live no-page empty state without the workspace eyebrow or New page action", () => {
+    render(<WorkspaceMainPane {...createEmptyWorkspaceProps({ workspaceMode: "live", canCreatePage: true })} />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "No published pages" })).toBeInTheDocument();
+    expect(screen.queryByText("Workspace")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New page" })).not.toBeInTheDocument();
+  });
+
+  it("does not add the New page action when the edit empty state cannot create pages", () => {
+    render(<WorkspaceMainPane {...createEmptyWorkspaceProps({ canCreatePage: false })} />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "No pages yet" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New page" })).not.toBeInTheDocument();
+  });
+
+  it("keeps workspace recovery presentation on the legacy recovery action treatment", () => {
+    render(
+      <WorkspaceMainPane
+        {...createEmptyWorkspaceProps({
+          stateType: "error",
+          stateTitle: "Workspace unavailable",
+          stateCopy: "Try again when the workspace is reachable.",
+          onRetryWorkspace: vi.fn()
+        })}
+      />
+    );
+
+    expect(screen.getByText("Workspace")).toHaveClass("docsera-main__eyebrow");
+    const retryButton = screen.getByRole("button", { name: "Try again" });
+    expect(retryButton).toHaveClass("docsera-main__empty-action");
+    expect(retryButton).not.toHaveClass("docsera-modal__primary");
+    expect(retryButton).not.toHaveClass("docsera-main__empty-primary-action");
+  });
+
   it("renders canonical hardBreak as a visible line break in the live reader", () => {
     const page = createPageView();
     const view = render(

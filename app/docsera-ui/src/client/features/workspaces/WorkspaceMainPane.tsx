@@ -339,7 +339,6 @@ export function WorkspaceMainPane({
       <main className="docsera-main" aria-labelledby="docsera-empty-workspace-title">
         <article className="docsera-main__surface docsera-main__surface--empty">
           <div className="docsera-main__intro">
-            <p className="docsera-main__eyebrow">Workspace</p>
             <h1 id="docsera-empty-workspace-title" className="docsera-main__title">
               {isEditMode ? "No pages yet" : "No published pages"}
             </h1>
@@ -351,7 +350,7 @@ export function WorkspaceMainPane({
           </div>
 
           {isEditMode && canCreatePage ? (
-            <button type="button" className="docsera-main__empty-action" onClick={onShowCreatePage}>
+            <button type="button" className="docsera-modal__primary docsera-main__empty-primary-action" onClick={onShowCreatePage}>
               New page
             </button>
           ) : null}

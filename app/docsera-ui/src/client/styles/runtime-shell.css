@@ -4160,6 +4160,10 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   box-shadow: 0 16px 30px rgba(1, 94, 194, 0.24);
 }
 
+.docsera-main__empty-primary-action {
+  min-width: 134px;
+}
+
 .docsera-main__secondary-action {
   display: inline-flex;
   align-items: center;

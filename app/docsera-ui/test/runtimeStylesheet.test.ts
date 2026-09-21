@@ -127,6 +127,19 @@ test("keeps launcher background ownership explicit without changing workspace ba
   expect(css).toMatch(/\.docsera-main__editor-host\s*{[^}]*margin-top:\s*40px;/s);
 });
 
+test("scopes empty-workspace primary styling without changing standard primary or recovery action styles", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+  const emptyPrimaryBlock = getRuleBody(css, ".docsera-main__empty-primary-action");
+  const recoveryActionBlock = getRuleBody(css, ".docsera-main__empty-action");
+  const modalPrimaryBlock = getRuleBody(css, ".docsera-modal__primary");
+
+  expect(emptyPrimaryBlock).toContain("min-width: 134px;");
+  expect(modalPrimaryBlock).toContain("background: var(--docsera-primary);");
+  expect(modalPrimaryBlock).toContain("border-radius: 4px;");
+  expect(recoveryActionBlock).toContain("border-radius: 999px;");
+  expect(recoveryActionBlock).toContain("background: linear-gradient(135deg, var(--docsera-primary), #004fa8);");
+});
+
 test("keeps the edit gutter outside the reader-equivalent content lane at constrained and responsive widths", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
 
