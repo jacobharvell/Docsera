@@ -277,7 +277,7 @@ describe("workspace integration flows", () => {
     fireEvent.click(screen.getByRole("button", { name: "Security" }));
     expect(screen.getByRole("button", { name: "Security, selected" })).toHaveAttribute("aria-pressed", "true");
 
-    fireEvent.click(screen.getByRole("button", { name: "Create Workspace" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(screen.getByText("Workspace name is required.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Security, selected" })).toHaveAttribute("aria-pressed", "true");
     expect(createWorkspaceRequest).not.toHaveBeenCalled();
@@ -288,7 +288,7 @@ describe("workspace integration flows", () => {
     fireEvent.change(screen.getByLabelText("Short description"), {
       target: { value: "Controls and audits" }
     });
-    fireEvent.click(screen.getByRole("button", { name: "Create Workspace" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
     await waitFor(() => {
       expect(createWorkspaceRequest).toHaveBeenCalledWith({

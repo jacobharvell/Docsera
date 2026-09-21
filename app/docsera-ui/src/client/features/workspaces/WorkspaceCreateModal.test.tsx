@@ -100,7 +100,7 @@ describe("WorkspaceCreateModal", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "custom.png" }));
     fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "Custom Icon Docs" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create Workspace" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
     expect(submit).toHaveBeenCalledWith({
       name: "Custom Icon Docs",
@@ -132,7 +132,7 @@ describe("WorkspaceCreateModal", () => {
     expect(screen.getByLabelText("Short description")).toHaveValue("People docs");
     expect(screen.getByRole("button", { name: "Security, selected" })).toHaveAttribute("aria-pressed", "true");
 
-    fireEvent.click(screen.getByRole("button", { name: "Create Workspace" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
     expect(submit).toHaveBeenCalledWith({
       name: "HR Docs",
       shortDescription: "People docs",
@@ -145,7 +145,7 @@ describe("WorkspaceCreateModal", () => {
     render(<WorkspaceCreateModal errorMessage="" onClose={vi.fn()} onSubmit={submit} open phase="idle" />);
 
     fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "No Member Docs" } });
-    fireEvent.click(screen.getByRole("button", { name: "Create Workspace" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
     expect(submit).toHaveBeenCalledWith({
       icon: { type: "builtin", key: "docsera-workspace", label: "Docsera workspace icon" },
@@ -153,6 +153,66 @@ describe("WorkspaceCreateModal", () => {
       shortDescription: ""
     });
     expect(screen.queryByText("Initial Workspace Admin")).not.toBeInTheDocument();
+  });
+
+  it("keeps the create action label, geometry, and text position stable across idle, submitting, and polling states", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+    const primaryBlock = source.match(/\.docsera-create-workspace-modal__primary \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const primarySpinnerBlock = source.match(/\.docsera-create-workspace-modal__primary-spinner \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const primaryLabelBlock = source.match(/\.docsera-create-workspace-modal__primary-label \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    expect(primaryBlock).toContain("position: relative;");
+    expect(primaryBlock).toContain("width: 112px;");
+    expect(primaryBlock).toContain("min-width: 112px;");
+    expect(primarySpinnerBlock).toContain("position: absolute;");
+    expect(primarySpinnerBlock).toContain("left: 12px;");
+    expect(primarySpinnerBlock).toContain("transform: translateY(-50%);");
+    expect(primaryLabelBlock).toContain("width: 100%;");
+    expect(primaryLabelBlock).toContain("text-align: center;");
+    const spinnerRightEdge = 12 + 16;
+    const createLabelLeftEdge = 36;
+    expect(spinnerRightEdge).toBeLessThan(createLabelLeftEdge);
+
+    const { rerender } = render(<WorkspaceCreateModal errorMessage="" onClose={vi.fn()} onSubmit={vi.fn()} open phase="idle" />);
+    const idleButton = screen.getByRole("button", { name: "Create" });
+    expect(idleButton).toHaveClass("docsera-create-workspace-modal__primary");
+    expect(idleButton).toBeEnabled();
+    expect(idleButton).toHaveTextContent("Create");
+    expect(idleButton).not.toHaveTextContent("Create Workspace");
+    expect(idleButton).not.toHaveTextContent("Creating...");
+    expect(idleButton).not.toHaveTextContent("Provisioning...");
+    expect(idleButton).not.toHaveAttribute("aria-busy", "true");
+    expect(idleButton.querySelector(".docsera-changes-center__spinner")).not.toBeInTheDocument();
+    expect(idleButton.querySelector(".docsera-create-workspace-modal__primary-spinner")).not.toBeInTheDocument();
+    expect(idleButton.querySelector(".docsera-create-workspace-modal__primary-label")).toHaveTextContent("Create");
+
+    rerender(<WorkspaceCreateModal errorMessage="" onClose={vi.fn()} onSubmit={vi.fn()} open phase="submitting" />);
+    const submittingButton = screen.getByRole("button", { name: "Create" });
+    expect(submittingButton).toBeDisabled();
+    expect(submittingButton).toHaveAttribute("aria-busy", "true");
+    expect(submittingButton).toHaveTextContent("Create");
+    expect(submittingButton).not.toHaveTextContent("Create Workspace");
+    expect(submittingButton).not.toHaveTextContent("Creating...");
+    expect(submittingButton.querySelector(".docsera-create-workspace-modal__primary-label")).toHaveTextContent("Create");
+    expect(submittingButton.querySelector(".docsera-create-workspace-modal__primary-spinner")).toBeInTheDocument();
+    expect(submittingButton.querySelector(".docsera-changes-center__spinner")).toBeInTheDocument();
+
+    rerender(<WorkspaceCreateModal errorMessage="" onClose={vi.fn()} onSubmit={vi.fn()} open phase="polling" />);
+    const pollingButton = screen.getByRole("button", { name: "Create" });
+    expect(pollingButton).toBeDisabled();
+    expect(pollingButton).toHaveAttribute("aria-busy", "true");
+    expect(pollingButton).toHaveTextContent("Create");
+    expect(pollingButton).not.toHaveTextContent("Create Workspace");
+    expect(pollingButton).not.toHaveTextContent("Provisioning...");
+    expect(pollingButton.querySelector(".docsera-create-workspace-modal__primary-label")).toHaveTextContent("Create");
+    expect(pollingButton.querySelector(".docsera-create-workspace-modal__primary-spinner")).toBeInTheDocument();
+    expect(pollingButton.querySelector(".docsera-changes-center__spinner")).toBeInTheDocument();
   });
 
   it("replaces a successful custom image and cleans up the old object preview URL", async () => {
@@ -185,12 +245,12 @@ describe("WorkspaceCreateModal", () => {
     fireEvent.change(screen.getByLabelText("Upload custom workspace icon"), { target: { files: [new File(["image"], "custom.png", { type: "image/png" })] } });
 
     expect(await screen.findByText("Uploading workspace icon...")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create Workspace" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Security" })).toBeDisabled();
     expect(submit).not.toHaveBeenCalled();
 
     resolveUpload?.({ state: "succeeded", icon: { type: "uploaded", key: "asset-key", label: "custom.png", assetPath: "/icons/file?assetKey=asset-key" } });
-    await waitFor(() => expect(screen.getByRole("button", { name: "Create Workspace" })).not.toBeDisabled());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Create" })).not.toBeDisabled());
   });
 
   it("blocks every modal dismissal path while a custom icon upload is active", async () => {

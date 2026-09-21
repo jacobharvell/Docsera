@@ -1964,6 +1964,30 @@ html[data-docsera-theme="dark"] .docsera-modal__primary--destructive:hover {
   font-weight: 600;
 }
 
+.docsera-create-workspace-modal__primary {
+  position: relative;
+  width: 112px;
+  min-width: 112px;
+}
+
+.docsera-create-workspace-modal__primary-spinner {
+  position: absolute;
+  top: 50%;
+  left: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+}
+
+.docsera-create-workspace-modal__primary-label {
+  display: block;
+  width: 100%;
+  text-align: center;
+}
+
 .docsera-modal__primary:disabled,
 .docsera-modal__secondary:disabled,
 .docsera-modal__close:disabled {

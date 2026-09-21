@@ -325,8 +325,18 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, onUpload
               <button type="button" className="docsera-modal__secondary" onClick={onClose} disabled={!canClose}>
                 Cancel
               </button>
-              <button type="submit" className="docsera-modal__primary" disabled={pending || uploadingIcon}>
-                {phase === "polling" ? "Provisioning..." : phase === "submitting" ? "Creating..." : "Create Workspace"}
+              <button
+                type="submit"
+                className="docsera-modal__primary docsera-create-workspace-modal__primary"
+                aria-busy={pending}
+                disabled={pending || uploadingIcon}
+              >
+                {pending ? (
+                  <span className="docsera-create-workspace-modal__primary-spinner" aria-hidden="true">
+                    <span className="docsera-changes-center__spinner" />
+                  </span>
+                ) : null}
+                <span className="docsera-create-workspace-modal__primary-label">Create</span>
               </button>
             </div>
           </div>
