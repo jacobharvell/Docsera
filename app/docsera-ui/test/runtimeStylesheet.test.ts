@@ -103,6 +103,8 @@ test("keeps launcher background ownership explicit without changing workspace ba
   expect(css).not.toMatch(/\.docsera-shell\s*\{[^}]*min-height:\s*100vh;/s);
   expect(css).toContain(".docsera-workspace {");
   expect(css).toContain("background: var(--docsera-workspace-bg, var(--docsera-surface));");
+  expect(css).toMatch(/\.docsera-app__body\s*{[^}]*background:\s*var\(--docsera-workspace-bg, var\(--docsera-surface\)\);/s);
+  expect(css).toMatch(/html\[data-docsera-theme="dark"\] \.docsera-app__body\s*{\s*background:\s*var\(--docsera-bg\);\s*}/s);
   expect(css).toContain("--docsera-workspace-heading-scroll-margin: 16px;");
   expect(css).toContain("--docsera-workspace-toc-top-gap: 8px;");
   expect(css).toContain("--docsera-editor-block-gutter-width: 69px;");
@@ -263,7 +265,8 @@ test("keeps vertical scrolling owned by the app body below the full-width header
   expect(css).not.toMatch(/html\s*{[^}]*scrollbar-gutter:\s*stable;/s);
   expect(css).not.toContain("html:has(.docsera-header)");
   expect(css).toMatch(/\.docsera-app\s*{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*height:\s*100dvh;[^}]*overflow:\s*hidden;/s);
-  expect(css).toMatch(/\.docsera-app__body\s*{[^}]*flex:\s*1 1 auto;[^}]*min-height:\s*0;[^}]*overflow-x:\s*clip;[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;[^}]*scroll-padding-top:\s*var\(--docsera-workspace-heading-scroll-margin\);/s);
+  expect(css).toMatch(/\.docsera-app__body\s*{[^}]*flex:\s*1 1 auto;[^}]*min-height:\s*0;[^}]*background:\s*var\(--docsera-workspace-bg, var\(--docsera-surface\)\);[^}]*overflow-x:\s*clip;[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;[^}]*scroll-padding-top:\s*var\(--docsera-workspace-heading-scroll-margin\);/s);
+  expect(css).toMatch(/html\[data-docsera-theme="dark"\] \.docsera-app__body\s*{\s*background:\s*var\(--docsera-bg\);\s*}/s);
   expect(css).toMatch(/\.docsera-header\s*{[^}]*flex:\s*0 0 auto;[^}]*border-bottom:\s*1px solid var\(--docsera-border\);/s);
   expect(css).not.toMatch(/\.docsera-header\s*{[^}]*position:\s*sticky;/s);
   expect(css).not.toMatch(/\.docsera-header\s*{[^}]*margin-inline-end:/s);
@@ -284,7 +287,8 @@ test("keeps the collapsed workspace ToC tab outside the outer aside clip boundar
   expect(css).toMatch(/\.docsera-workspace__aside\s*{[^}]*overflow:\s*visible;/s);
   expect(css).toMatch(/\.docsera-workspace__aside--collapsed\s*{[^}]*width:\s*0;[^}]*border-left-color:\s*transparent;/s);
   expect(css).not.toMatch(/\.docsera-workspace__aside--collapsed\s*{[^}]*overflow:\s*hidden;/s);
-  expect(css).toMatch(/\.docsera-toc-rail__toggle\s*{[^}]*left:\s*-24px;/s);
+  expect(css).toMatch(/\.docsera-toc-rail__toggle\s*{[^}]*left:\s*-24px;[^}]*border:\s*1px solid var\(--docsera-border\);[^}]*border-right:\s*0;/s);
+  expect(css).toMatch(/\.docsera-toc-rail--collapsed \.docsera-toc-rail__toggle\s*{\s*border-right:\s*1px solid var\(--docsera-border\);\s*}/s);
   expect(css).toMatch(/\.docsera-toc-rail__clip\s*{[^}]*overflow:\s*hidden;/s);
 });
 

@@ -177,11 +177,16 @@ html[data-docsera-theme="dark"] .docsera-app--launcher {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  background: var(--docsera-workspace-bg, var(--docsera-surface));
   overflow-x: clip;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
   scroll-padding-top: var(--docsera-workspace-heading-scroll-margin);
+}
+
+html[data-docsera-theme="dark"] .docsera-app__body {
+  background: var(--docsera-bg);
 }
 
 .docsera-app--launcher .docsera-app__body,
@@ -4704,6 +4709,10 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
     color 200ms cubic-bezier(0.4, 0, 0.2, 1),
     border-color 200ms cubic-bezier(0.4, 0, 0.2, 1),
     background-color 200ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.docsera-toc-rail--collapsed .docsera-toc-rail__toggle {
+  border-right: 1px solid var(--docsera-border);
 }
 
 .docsera-toc-rail__body {
