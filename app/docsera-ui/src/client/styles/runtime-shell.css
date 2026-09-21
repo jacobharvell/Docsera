@@ -3286,7 +3286,10 @@ html[data-docsera-theme="dark"] .docsera-shell {
 }
 
 .docsera-workspace__nav-frame {
-  position: relative;
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: calc(100dvh - var(--docsera-header-height));
   min-width: 0;
   border-right: 1px solid var(--docsera-border);
   background: var(--docsera-workspace-nav-bg, var(--docsera-surface-sidebar));
@@ -3296,9 +3299,11 @@ html[data-docsera-theme="dark"] .docsera-shell {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  height: 100%;
+  min-height: 0;
   padding: 12px;
   background: transparent;
-  overflow-y: auto;
+  overflow: hidden;
 }
 
 .docsera-sidebar__search-row {
@@ -3364,7 +3369,28 @@ html[data-docsera-theme="dark"] .docsera-shell {
   display: block;
   flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  margin-right: -10px;
+  padding-right: 2px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--docsera-text-soft) 42%, transparent) transparent;
+}
+
+.docsera-sidebar__tree::-webkit-scrollbar {
+  width: 8px;
+}
+
+.docsera-sidebar__tree::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.docsera-sidebar__tree::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-color: color-mix(in srgb, var(--docsera-text-soft) 42%, transparent);
+  background-clip: content-box;
 }
 
 .docsera-sidebar__empty {
@@ -3413,7 +3439,7 @@ html[data-docsera-theme="dark"] .docsera-shell {
 .docsera-workspace__nav-resizer {
   position: absolute;
   top: 0;
-  right: calc(var(--docsera-workspace-nav-resizer-width) * -0.5);
+  right: -6px;
   bottom: 0;
   display: flex;
   align-items: center;
@@ -3431,6 +3457,8 @@ html[data-docsera-theme="dark"] .docsera-shell {
 }
 
 .docsera-workspace__nav-resizer-pill {
+  position: absolute;
+  left: calc(2px - 1.5px);
   width: 3px;
   height: 48px;
   border-radius: 999px;
@@ -4979,6 +5007,10 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   }
 
   .docsera-workspace__nav-frame {
+    position: relative;
+    top: auto;
+    align-self: stretch;
+    height: auto;
     border-right: 0;
   }
 

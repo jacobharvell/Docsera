@@ -281,6 +281,40 @@ test("keeps vertical scrolling owned by the app body below the full-width header
   expect(css).not.toMatch(/\.docsera-workspace\s*{[^}]*overflow-y:\s*auto;/s);
 });
 
+test("keeps left workspace navigation sticky with internally scrolling tree overflow", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+
+  expect(css).toMatch(
+    /\.docsera-workspace__nav-frame\s*{[^}]*position:\s*sticky;[^}]*top:\s*0;[^}]*align-self:\s*start;[^}]*height:\s*calc\(100dvh - var\(--docsera-header-height\)\);[^}]*border-right:\s*1px solid var\(--docsera-border\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-sidebar\s*{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*gap:\s*14px;[^}]*height:\s*100%;[^}]*min-height:\s*0;[^}]*overflow:\s*hidden;/s
+  );
+  expect(css).not.toMatch(/\.docsera-sidebar\s*{[^}]*overflow-y:\s*auto;/s);
+  expect(css).toMatch(
+    /\.docsera-sidebar__search-row\s*{[^}]*flex:\s*0 0 auto;/s
+  );
+  expect(css).toMatch(
+    /\.docsera-sidebar__tree\s*{[^}]*flex:\s*1 1 auto;[^}]*min-height:\s*0;[^}]*margin-right:\s*-10px;[^}]*padding-right:\s*2px;[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;[^}]*scrollbar-width:\s*thin;[^}]*scrollbar-color:[^;}]+ transparent;/s
+  );
+  expect(css).toMatch(/\.docsera-sidebar__tree::-webkit-scrollbar\s*{\s*width:\s*8px;\s*}/s);
+  expect(css).toMatch(/\.docsera-sidebar__tree::-webkit-scrollbar-thumb\s*{[^}]*border:\s*2px solid transparent;[^}]*border-radius:\s*999px;[^}]*background-clip:\s*content-box;/s);
+  expect(css).toMatch(
+    /\.docsera-workspace__nav-resizer\s*{[^}]*right:\s*-6px;[^}]*width:\s*var\(--docsera-workspace-nav-resizer-width\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-workspace__nav-resizer-pill\s*{[^}]*position:\s*absolute;[^}]*left:\s*calc\(2px - 1\.5px\);[^}]*width:\s*3px;/s
+  );
+});
+
+test("keeps narrow workspace navigation in normal stacked flow", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+
+  expect(css).toMatch(
+    /@media \(max-width: 920px\)[\s\S]*?\.docsera-workspace,\s*\.docsera-workspace--sidebar-collapsed\s*{[\s\S]*?grid-template-columns:\s*1fr;[\s\S]*?\.docsera-workspace__nav-resizer\s*{[\s\S]*?display:\s*none;[\s\S]*?\.docsera-workspace__nav-frame\s*{[\s\S]*?position:\s*relative;[\s\S]*?top:\s*auto;[\s\S]*?align-self:\s*stretch;[\s\S]*?height:\s*auto;[\s\S]*?border-right:\s*0;/s
+  );
+});
+
 test("keeps the collapsed workspace ToC tab outside the outer aside clip boundary", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
 

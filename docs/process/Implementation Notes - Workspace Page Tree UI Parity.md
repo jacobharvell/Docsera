@@ -56,7 +56,16 @@ Implemented behavior:
   - left navigation width
   - workspace header identity segment width
   - Page Settings overlay left inset / available width
-- The resize handle is centered over the visible divider so the hover/active purple indicator stays attached to the divider line.
+- The tree scrollport is pulled right only far enough for the reserved thin scrollbar track to sit 2px left of the nav-panel divider.
+- The resize activation area remains 8px wide but is intentionally right-biased across the divider: 2px inside the nav pane and 6px into the document side.
+- The visible purple resize indicator is anchored separately from the hit target and remains centered on the divider line.
+
+## Navigation Scroll Ownership
+
+- In the normal left-side workspace layout, the navigation frame is sticky within the app body scroll container and sized to the viewport below the shared header.
+- The sidebar shell itself does not own vertical document overflow; search, create controls, status copy, and the tree viewport remain inside the sticky navigation frame.
+- Page-tree overflow is owned by the `docsera-sidebar__tree` viewport with reserved stable scrollbar gutter and a compact scrollbar treatment, so long trees scroll internally without shifting tree/search content or changing the configured navigation width.
+- At the narrow stacked breakpoint, the navigation frame returns to normal document flow and the resize handle remains hidden.
 
 ## Inline Page Creation
 
