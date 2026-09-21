@@ -616,6 +616,10 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__search-icon {
   text-transform: uppercase;
 }
 
+.docsera-workspace-list__workspace-heading {
+  grid-column: 1;
+}
+
 .docsera-workspace-list__role-heading {
   grid-column: 2;
 }
@@ -744,11 +748,10 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__search-icon {
 
 .docsera-workspace-row__role-cell {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: flex-start;
   gap: 32px;
   min-height: 28px;
-  padding-top: 2px;
 }
 
 .docsera-workspace-row__role {
@@ -763,9 +766,20 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__search-icon {
   white-space: nowrap;
 }
 
-.docsera-workspace-row__settings:hover {
+.docsera-launcher-state__secondary:hover:not(:disabled),
+.docsera-workspace-row__settings:hover,
+.docsera-modal__close:hover:not(:disabled),
+.docsera-launcher-pagination__button:hover:not(:disabled) {
   background: var(--docsera-surface-muted);
   text-decoration: none;
+}
+
+.docsera-workspace-row__settings:hover,
+.docsera-workspace-row__settings:focus-visible,
+.docsera-launcher-pagination__button:hover:not(:disabled),
+.docsera-launcher-pagination__button:focus-visible:not(:disabled) {
+  border-color: var(--docsera-primary);
+  color: var(--docsera-primary);
 }
 
 .docsera-launcher-toolbar__clear {
@@ -791,8 +805,11 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__search-icon {
 }
 
 .docsera-launcher-toolbar__clear:focus-visible,
+.docsera-launcher-state__secondary:focus-visible,
+.docsera-workspace-row__settings:focus-visible,
 .docsera-modal__close:focus-visible,
 .docsera-modal__secondary:focus-visible,
+.docsera-launcher-pagination__button:focus-visible,
 .docsera-modal__primary:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--docsera-primary) 32%, transparent);
   outline-offset: 2px;
@@ -827,6 +844,7 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
 
 .docsera-launcher-pagination__button:disabled {
   opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .docsera-modal {

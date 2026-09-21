@@ -53,10 +53,10 @@ describe("WorkspaceList", () => {
     });
   });
 
-  it("keeps only the Role heading in the My Workspaces list header", () => {
+  it("keeps Workspace Name and Role headings aligned in the My Workspaces list header", () => {
     render(<WorkspaceListHeader />);
 
-    expect(screen.queryByText("Workspace")).not.toBeInTheDocument();
+    expect(screen.getByText("Workspace Name")).toHaveClass("docsera-workspace-list__workspace-heading");
     expect(screen.getByText("Role")).toHaveClass("docsera-workspace-list__role-heading");
   });
 

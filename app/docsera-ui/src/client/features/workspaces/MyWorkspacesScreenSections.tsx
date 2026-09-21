@@ -119,6 +119,7 @@ export function LauncherSearchToolbar({
 export function WorkspaceListHeader() {
   return (
     <div className="docsera-workspace-list__header" role="presentation">
+      <div className="docsera-workspace-list__workspace-heading">Workspace Name</div>
       <div className="docsera-workspace-list__role-heading">Role</div>
     </div>
   );

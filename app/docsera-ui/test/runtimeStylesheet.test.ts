@@ -357,12 +357,36 @@ test("keeps the staged My Workspaces list chrome normalized", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
 
   expect(css).toMatch(/\.docsera-workspace-list__header\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 160px;/s);
+  expect(css).toMatch(/\.docsera-workspace-list__workspace-heading\s*{[^}]*grid-column:\s*1;/s);
   expect(css).toMatch(/\.docsera-workspace-list__role-heading\s*{[^}]*grid-column:\s*2;/s);
+  expect(css).toMatch(/\.docsera-workspace-row__role-cell\s*{[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*gap:\s*32px;[^}]*min-height:\s*28px;/s);
+  expect(css).not.toMatch(/\.docsera-workspace-row__role-cell\s*{[^}]*align-items:\s*flex-start;/s);
+  expect(css).not.toMatch(/\.docsera-workspace-row__role-cell\s*{[^}]*padding-top:\s*2px;/s);
   expect(css).toMatch(
     /\.docsera-launcher-state__secondary,\s*\.docsera-workspace-row__settings,\s*\.docsera-modal__secondary,\s*\.docsera-modal__close,\s*\.docsera-launcher-pagination__button\s*{[^}]*padding:\s*8px 12px;[^}]*border:\s*1px solid var\(--docsera-border\);[^}]*border-radius:\s*4px;[^}]*background:\s*var\(--docsera-surface\);[^}]*color:\s*var\(--docsera-text\);/s
   );
+  expect(css).toMatch(
+    /\.docsera-launcher-state__secondary:hover:not\(:disabled\),\s*\.docsera-workspace-row__settings:hover,\s*\.docsera-modal__close:hover:not\(:disabled\),\s*\.docsera-launcher-pagination__button:hover:not\(:disabled\)\s*{[^}]*background:\s*var\(--docsera-surface-muted\);[^}]*text-decoration:\s*none;/s
+  );
+  expect(css).toMatch(
+    /\.docsera-workspace-row__settings:hover,\s*\.docsera-workspace-row__settings:focus-visible,\s*\.docsera-launcher-pagination__button:hover:not\(:disabled\),\s*\.docsera-launcher-pagination__button:focus-visible:not\(:disabled\)\s*{[^}]*border-color:\s*var\(--docsera-primary\);[^}]*color:\s*var\(--docsera-primary\);/s
+  );
+  const primarySecondaryTreatmentSelectors = [
+    ...css.matchAll(
+      /(?<selectors>[^{}]+)\s*{\s*(?<body>[^{}]*border-color:\s*var\(--docsera-primary\);[^{}]*color:\s*var\(--docsera-primary\);[^{}]*)}/g
+    )
+  ].map((match) => match.groups?.selectors ?? "");
+  expect(css).toMatch(
+    /\.docsera-launcher-toolbar__clear:focus-visible,\s*\.docsera-launcher-state__secondary:focus-visible,\s*\.docsera-workspace-row__settings:focus-visible,\s*\.docsera-modal__close:focus-visible,\s*\.docsera-modal__secondary:focus-visible,\s*\.docsera-launcher-pagination__button:focus-visible,\s*\.docsera-modal__primary:focus-visible\s*{[^}]*outline:\s*2px solid color-mix\(in srgb, var\(--docsera-primary\) 32%, transparent\);[^}]*outline-offset:\s*2px;/s
+  );
+  expect(css).toMatch(/\.docsera-launcher-pagination__button:disabled\s*{[^}]*opacity:\s*0\.6;[^}]*cursor:\s*not-allowed;/s);
+  expect(css).not.toMatch(/\.docsera-launcher-pagination__button:hover\s*{/s);
+  expect(css).not.toMatch(/\.docsera-launcher-pagination__button:disabled:hover/s);
+  expect(css).not.toMatch(/\.docsera-launcher-pagination__button:focus-visible\s*{[^}]*color:\s*var\(--docsera-primary\);/s);
   expect(css).not.toMatch(/\.docsera-workspace-row__settings\s*{[^}]*border:\s*0;/s);
   expect(css).not.toMatch(/\.docsera-workspace-row__settings\s*{[^}]*color:\s*var\(--docsera-primary\);/s);
+  expect(primarySecondaryTreatmentSelectors.join("\n")).not.toContain(".docsera-modal__close");
+  expect(primarySecondaryTreatmentSelectors.join("\n")).not.toContain(".docsera-launcher-state__secondary");
 });
 
 test("keeps the publish success toast as a layered header card with viewport-safe width and interactive dismissal", () => {

@@ -21,6 +21,8 @@ This note summarizes repo-side implementation behavior only. Accepted product re
 - Workspace rows show a compact icon, name, short description when available, and the current user's effective capability label.
 - Workspace settings entry points appear only when the current user has Admin capability for that workspace.
 - Role and Settings render together in the same row column with explicit inline spacing; Settings remains an inline text action for Admin rows only.
+- The list header keeps the workspace identity column labeled `Workspace Name` and the combined role/settings column labeled `Role`.
+- Settings and enabled pagination actions use the shared Docsera secondary-control hover/focus treatment; disabled pagination actions stay visually disabled and do not expose the enabled hover treatment.
 
 ## Search and States
 
