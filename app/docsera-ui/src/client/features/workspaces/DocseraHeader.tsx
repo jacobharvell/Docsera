@@ -631,9 +631,11 @@ export function DocseraHeader({
     setDiscardPageTarget(null);
   }, [discardPageTarget, pendingChangesDiscardPageErrorMessage, pendingChangesDiscardPagePending, pendingRows]);
 
+  const headerClassName = `docsera-header${mode === "launcher" ? " docsera-header--launcher" : ""}${mode === "workspace" && showWorkspaceMode === "live" ? " docsera-header--live" : ""}${mode === "workspace" && sidebarCollapsed ? " docsera-header--sidebar-collapsed" : ""}`;
+
   return (
     <header
-      className={`docsera-header${mode === "workspace" && showWorkspaceMode === "live" ? " docsera-header--live" : ""}${mode === "workspace" && sidebarCollapsed ? " docsera-header--sidebar-collapsed" : ""}`}
+      className={headerClassName}
       style={mode === "workspace" && workspaceNavWidth ? ({ "--docsera-workspace-nav-width": `${workspaceNavWidth}px` } as CSSProperties) : undefined}
     >
       <div className="docsera-header__workspace">

@@ -335,7 +335,7 @@ test("keeps workspace mode controls in the right-side header cluster with matche
   expect(css).toMatch(/\.docsera-header__action-divider\s*{[^}]*width:\s*1px;[^}]*height:\s*26px;[^}]*background:\s*var\(--docsera-border\);/s);
   expect(css).toMatch(/\.docsera-header__action-divider--mode-surface\s*{[^}]*margin-inline:\s*-2px;/s);
   expect(css).toMatch(/\.docsera-header__actions::before\s*{[^}]*content:\s*"";[^}]*width:\s*1px;[^}]*height:\s*26px;[^}]*background:\s*var\(--docsera-border\);/s);
-  expect(css).toMatch(/\.docsera-header--live \.docsera-header__actions::before\s*{[^}]*background:\s*transparent;/s);
+  expect(css).toMatch(/\.docsera-header--live \.docsera-header__actions::before,\s*\.docsera-header--launcher \.docsera-header__actions::before\s*{[^}]*background:\s*transparent;/s);
   expect(css).toMatch(/\.docsera-header__mode-toggle\s*{[^}]*height:\s*32px;[^}]*box-sizing:\s*border-box;/s);
   expect(css).toMatch(/\.docsera-header__surface-toggle\s*{[^}]*height:\s*32px;[^}]*box-sizing:\s*border-box;/s);
   expect(css).toMatch(/\.docsera-header__mode-segment,\s*\.docsera-header__surface-segment\s*{[^}]*height:\s*100%;[^}]*box-sizing:\s*border-box;/s);
@@ -355,7 +355,11 @@ test("keeps workspace mode controls in the right-side header cluster with matche
 
 test("keeps the staged My Workspaces list chrome normalized", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+  const launcherHeaderRowRule = css.match(/\.docsera-launcher-panel__header-row\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
 
+  expect(launcherHeaderRowRule).toMatch(/border-bottom:\s*1px solid var\(--docsera-border-soft\);/);
+  expect(css).toMatch(/\.docsera-workspace-list__item \+ \.docsera-workspace-list__item\s*{[^}]*border-top:\s*1px solid var\(--docsera-border-soft\);/s);
+  expect(css).toMatch(/\.docsera-launcher-panel__footer\s*{[^}]*border-top:\s*1px solid var\(--docsera-border-soft\);/s);
   expect(css).toMatch(/\.docsera-workspace-list__header\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 160px;/s);
   expect(css).toMatch(/\.docsera-workspace-list__workspace-heading\s*{[^}]*grid-column:\s*1;/s);
   expect(css).toMatch(/\.docsera-workspace-list__role-heading\s*{[^}]*grid-column:\s*2;/s);

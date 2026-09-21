@@ -2354,7 +2354,8 @@ html[data-docsera-theme="dark"] .docsera-header__bar {
   order: 2;
 }
 
-.docsera-header--live .docsera-header__actions::before {
+.docsera-header--live .docsera-header__actions::before,
+.docsera-header--launcher .docsera-header__actions::before {
   background: transparent;
 }
 

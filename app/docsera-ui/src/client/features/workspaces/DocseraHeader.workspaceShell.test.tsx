@@ -22,10 +22,26 @@ describe("DocseraHeader workspace shell", () => {
   it("shows the leading action-cluster divider in edit and hides only its paint in live", () => {
     const editRender = render(<DocseraHeader {...baseProps} showWorkspaceMode="edit" />);
     expect(editRender.container.querySelector(".docsera-header")).not.toHaveClass("docsera-header--live");
+    expect(editRender.container.querySelector(".docsera-header")).not.toHaveClass("docsera-header--launcher");
     editRender.unmount();
 
     const liveRender = render(<DocseraHeader {...baseProps} showWorkspaceMode="live" />);
     expect(liveRender.container.querySelector(".docsera-header")).toHaveClass("docsera-header--live");
+    expect(liveRender.container.querySelector(".docsera-header")).not.toHaveClass("docsera-header--launcher");
+  });
+
+  it("marks launcher headers so their account divider paint can be suppressed", () => {
+    const { container } = render(
+      <DocseraHeader
+        {...baseProps}
+        identity={{ kind: "docsera", icon: { type: "builtin", key: "docsera-workspace", label: "Docsera" }, name: "Docsera" }}
+        mode="launcher"
+        showEditModeToggle={false}
+      />
+    );
+
+    expect(container.querySelector(".docsera-header")).toHaveClass("docsera-header--launcher");
+    expect(container.querySelector(".docsera-header")).not.toHaveClass("docsera-header--live");
   });
 
   it("keeps the persistent workspace label truncated inside the header identity block", () => {
