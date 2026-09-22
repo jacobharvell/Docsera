@@ -942,7 +942,7 @@ describe("App workspace shell integration", () => {
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
     const settings = await screen.findByRole("complementary", { name: "Workspace Settings" });
-    fireEvent.click(within(settings).getByRole("button", { name: "Manage access" }));
+    fireEvent.click(within(settings).getByRole("button", { name: "Manage workspace access" }));
 
     const pane = await screen.findByRole("complementary", { name: "Manage access" });
     expect(within(pane).getByRole("heading", { name: "Manage access" })).toBeInTheDocument();
@@ -975,7 +975,7 @@ describe("App workspace shell integration", () => {
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
-    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage access" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage workspace access" }));
     let pane = await screen.findByRole("complementary", { name: "Manage access" });
 
     fireEvent.pointerDown(pane);
@@ -1019,7 +1019,7 @@ describe("App workspace shell integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
     const settings = await screen.findByRole("complementary", { name: "Workspace Settings" });
     fireEvent.change(within(settings).getByDisplayValue("Product Docs"), { target: { value: "Access Docs" } });
-    fireEvent.click(within(settings).getByRole("button", { name: "Manage access" }));
+    fireEvent.click(within(settings).getByRole("button", { name: "Manage workspace access" }));
 
     await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("complementary", { name: "Manage access" })).not.toBeInTheDocument();
@@ -1062,7 +1062,7 @@ describe("App workspace shell integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
     const settings = await screen.findByRole("complementary", { name: "Workspace Settings" });
     fireEvent.change(within(settings).getByDisplayValue("Product Docs"), { target: { value: "Access Docs" } });
-    fireEvent.click(within(settings).getByRole("button", { name: "Manage access" }));
+    fireEvent.click(within(settings).getByRole("button", { name: "Manage workspace access" }));
 
     await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("complementary", { name: "Manage access" })).not.toBeInTheDocument();
@@ -1119,7 +1119,7 @@ describe("App workspace shell integration", () => {
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
-    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage access" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage workspace access" }));
     const pane = await screen.findByRole("complementary", { name: "Manage access" });
     fireEvent.click(within(pane).getByRole("button", { name: "Add members" }));
     const dialog = await screen.findByRole("dialog", { name: "Add members" });
@@ -1222,7 +1222,7 @@ describe("App workspace shell integration", () => {
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
-    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage access" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage workspace access" }));
     const pane = await screen.findByRole("complementary", { name: "Manage access" });
     fireEvent.click(within(pane).getByRole("button", { name: "Add members" }));
     let dialog = await screen.findByRole("dialog", { name: "Add members" });
@@ -1275,7 +1275,7 @@ describe("App workspace shell integration", () => {
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
-    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage access" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage workspace access" }));
     fireEvent.click(within(await screen.findByRole("complementary", { name: "Manage access" })).getByRole("button", { name: "Add members" }));
     const dialog = await screen.findByRole("dialog", { name: "Add members" });
     fireEvent.click(await within(dialog).findByRole("option", { name: /New Editor/ }));
@@ -1313,7 +1313,7 @@ describe("App workspace shell integration", () => {
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
-    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage access" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage workspace access" }));
     const pane = await screen.findByRole("complementary", { name: "Manage access" });
     const editorRow = within(pane).getByText("Editor One").closest(".docsera-manage-access__member");
     expect(editorRow).toBeInTheDocument();
@@ -1356,7 +1356,7 @@ describe("App workspace shell integration", () => {
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
-    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage access" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage workspace access" }));
     let pane = await screen.findByRole("complementary", { name: "Manage access" });
     expect(within(pane).getByText("Last active Workspace Admin")).toBeInTheDocument();
     expect(within(pane).getByRole("button", { name: "Remove" })).toBeDisabled();
@@ -1364,7 +1364,7 @@ describe("App workspace shell integration", () => {
 
     fireEvent.click(within(pane).getByRole("button", { name: "Close manage access" }));
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
-    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage access" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage workspace access" }));
     pane = await screen.findByRole("complementary", { name: "Manage access" });
     await waitFor(() => expect(within(pane).getAllByRole("button", { name: "Remove" })[0]).toBeEnabled());
     expect(within(pane).getByLabelText("Access level for Last Admin")).toBeEnabled();

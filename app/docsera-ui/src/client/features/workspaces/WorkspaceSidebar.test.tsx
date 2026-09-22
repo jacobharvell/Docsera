@@ -291,6 +291,7 @@ describe("WorkspaceSidebar page tree drag surface", () => {
     expect(onShowCreatePage).not.toHaveBeenCalled();
 
     fireEvent.change(searchInput(), { target: { value: "Updated filter" } });
+    expect(searchInput()).toHaveAttribute("autocomplete", "off");
     expect(onTreeFilterChange).toHaveBeenCalledWith("Updated filter");
 
     fireEvent.click(treeNewPageButton());

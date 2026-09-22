@@ -1,4 +1,6 @@
 import type { KeyboardEvent } from "react";
+import { DocseraIcon } from "../../shared/icons/DocseraIcon";
+import { docseraIcons } from "../../shared/icons/docseraIcons";
 import type { WorkspacePageView } from "./workspaceViewModels";
 
 type WorkspaceTocProps = {
@@ -97,7 +99,10 @@ export function WorkspaceToc({ collapsed, isLoading = false, showPendingState, p
             aria-hidden={collapsed}
             aria-label="Page outline"
           >
-            <p className="docsera-toc__eyebrow">On this page</p>
+            <p className="docsera-toc__eyebrow">
+              <DocseraIcon className="docsera-toc__eyebrow-icon" icon={docseraIcons.tableOfContents} size={14} />
+              <span>On this page</span>
+            </p>
             {isLoading && showPendingState ? (
               <div className="docsera-toc__loading" aria-hidden="true">
                 <span className="docsera-toc__loading-line" />

@@ -98,6 +98,7 @@ export function WorkspaceSidebar({
             id="docsera-page-filter"
             className="docsera-sidebar__search-input"
             type="search"
+            autoComplete="off"
             placeholder="Search"
             value={treeFilter}
             disabled={showLoadingState}

@@ -340,7 +340,7 @@ export function WorkspaceSettingsOverlay({ errorMessage, loadUploadedIcon, onCan
             <div className="docsera-workspace-icon-picker__upload-row">
               <input ref={fileInputRef} className="docsera-workspace-icon-picker__file-input" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" aria-label="Upload custom workspace icon" onChange={handleIconFileChange} disabled={pending || uploadingIcon} />
               <button type="button" className="docsera-workspace-icon-picker__upload-button" disabled={pending || uploadingIcon} onClick={() => fileInputRef.current?.click()}>
-                {draft.uploadedIcon ? "Replace custom image" : "Upload custom image"}
+                Upload Custom workspace icon
               </button>
               <span className="docsera-workspace-icon-picker__constraints">Square image, minimum 128x128, maximum 1 MB. PNG, JPG, or WebP only.</span>
             </div>
@@ -354,8 +354,8 @@ export function WorkspaceSettingsOverlay({ errorMessage, loadUploadedIcon, onCan
             <span>Show table of contents</span>
           </label>
           {workspace.canManageWorkspaceMembers ? (
-            <button type="button" className="docsera-workspace-icon-picker__upload-button" disabled={pending || uploadingIcon} onClick={requestManageAccess}>
-              Manage access
+            <button type="button" className="docsera-workspace-icon-picker__upload-button docsera-workspace-settings-overlay__access-button" disabled={pending || uploadingIcon} onClick={requestManageAccess}>
+              Manage workspace access
             </button>
           ) : null}
           <p className="docsera-workspace-settings-overlay__helper">Valid changes are saved when this panel is closed or you click outside it.</p>

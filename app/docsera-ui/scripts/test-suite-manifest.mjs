@@ -26,6 +26,7 @@ export const testSuites = [
       "src/client/features/workspaces/DocseraHeader.workspaceShell.test.tsx",
       "src/client/features/workspaces/DocseraHeaderIcons.test.tsx",
       "src/client/features/workspaces/WorkspaceMainPane.test.tsx",
+      "src/client/features/workspaces/WorkspaceSettingsOverlay.test.tsx",
       "src/client/features/workspaces/workspaceViewModels.shell.test.ts",
       "src/client/features/workspaces/workspaceRouting.test.ts"
     ]

@@ -32,6 +32,7 @@ import {
   Trash2,
   Users,
   Sun,
+  TableOfContents,
   TriangleAlert,
   X
 } from "lucide-react";
@@ -71,5 +72,6 @@ export const docseraIcons = {
   trash: Trash2,
   users: Users,
   sun: Sun,
+  tableOfContents: TableOfContents,
   triangleAlert: TriangleAlert
 } as const;

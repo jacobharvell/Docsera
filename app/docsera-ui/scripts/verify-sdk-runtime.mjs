@@ -762,7 +762,7 @@ async function main() {
 
   checks.push({
     ok:
-      liveSnapshot.pageText.includes("Docsera SDK Runtime Baseline") &&
+      liveSnapshot.pageText.includes("<title>Docsera</title>") &&
       liveSnapshot.pageText.includes("window.DOCSERA_RUNTIME_CONFIG") &&
       liveSnapshot.pageText.includes("backendPingPath"),
     label: "UI Page contains expected title/config marker",

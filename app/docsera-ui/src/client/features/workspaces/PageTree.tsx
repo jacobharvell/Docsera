@@ -905,10 +905,13 @@ export function PageTree({
   const contextMenuActions = useMemo(() => {
     const actions: PageTreeContextMenuAction[] = [];
     if (canManagePageSettings) {
-      actions.push("settings", "rename", "delete");
+      actions.push("settings", "rename");
     }
     if (canCreatePage && !isCreatingPage) {
       actions.push("add-child");
+    }
+    if (canManagePageSettings) {
+      actions.push("delete");
     }
     return actions;
   }, [canCreatePage, canManagePageSettings, isCreatingPage]);

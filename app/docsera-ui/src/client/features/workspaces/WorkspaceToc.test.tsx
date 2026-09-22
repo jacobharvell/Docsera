@@ -99,6 +99,14 @@ function mockScrollIntoView(target: Element) {
   return scrollIntoView;
 }
 
+function readRuntimeShellCss(): string {
+  const nodeProcess = new Function("return process")() as {
+    cwd: () => string;
+    getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+  };
+  return nodeProcess.getBuiltinModule("fs").readFileSync(`${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`, "utf8");
+}
+
 afterEach(() => {
   cleanup();
   document.querySelector("[data-docsera-page-editor-host='true']")?.remove();
@@ -106,6 +114,45 @@ afterEach(() => {
 });
 
 describe("WorkspaceToc", () => {
+  it("renders the decorative table-of-contents icon inline with the heading text", () => {
+    const envelope = createHeadingHierarchyDocseraDocumentEnvelope();
+    renderTocOnly(envelope);
+
+    const heading = screen.getByText("On this page");
+    expect(heading).toBeInTheDocument();
+
+    const eyebrow = heading.closest(".docsera-toc__eyebrow");
+    expect(eyebrow).toBeInTheDocument();
+
+    const icon = eyebrow?.querySelector(".docsera-toc__eyebrow-icon");
+    expect(icon).toBeInTheDocument();
+    expect(icon).toHaveAttribute("aria-hidden", "true");
+    expect(icon).not.toHaveAttribute("aria-label");
+    expect(icon).toHaveAttribute("width", "14");
+    expect(icon).toHaveAttribute("height", "14");
+    expect(Array.from(icon?.querySelectorAll("path") ?? []).map((path) => path.getAttribute("d"))).toEqual([
+      "M16 5H3",
+      "M16 12H3",
+      "M16 19H3",
+      "M21 5h.01",
+      "M21 12h.01",
+      "M21 19h.01"
+    ]);
+
+    expect(screen.queryByRole("img", { name: /on this page/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps the ToC eyebrow icon aligned with compact inline spacing", () => {
+    const runtimeShellCss = readRuntimeShellCss();
+
+    expect(runtimeShellCss).toMatch(
+      /\.docsera-toc__eyebrow\s*\{[^}]*display:\s*inline-flex;[^}]*align-items:\s*center;[^}]*gap:\s*6px;[^}]*color:\s*var\(--docsera-text-muted\);/s
+    );
+    expect(runtimeShellCss).toMatch(
+      /\.docsera-toc__eyebrow-icon\s*\{[^}]*flex:\s*0 0 14px;[^}]*width:\s*14px;[^}]*height:\s*14px;/s
+    );
+  });
+
   it("scrolls to the canonical heading anchor without mutating the workspace route", () => {
     const envelope = createDuplicateHeadingDocseraDocumentEnvelope();
     window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/overview?mode=edit");

@@ -373,9 +373,12 @@ describe("PageTree row interaction", () => {
     expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
       "Page settings",
       "Rename",
-      "Delete",
-      "Add child page"
+      "Add child page",
+      "Delete"
     ]);
+    expect(within(menu).getByRole("menuitem", { name: "Delete" })).toHaveClass(
+      "docsera-page-tree__context-menu-item--destructive"
+    );
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Page settings" }));
     expect(onTogglePageSettings).toHaveBeenCalledWith("parent");
     expect(onStartInlineRename).not.toHaveBeenCalled();
@@ -612,6 +615,53 @@ describe("PageTree row interaction", () => {
     expect(onShowChildPageCreate).not.toHaveBeenCalled();
   });
 
+  it("keeps Delete last whenever it is available across capability combinations", async () => {
+    const { rerender } = renderTree([page({ id: "leaf", title: "Leaf" })], {
+      canCreatePage: true,
+      canManagePageSettings: true
+    });
+
+    fireEvent.contextMenu(row("Leaf"), { clientX: 20, clientY: 30 });
+    expect((await screen.findAllByRole("menuitem")).map((item) => item.textContent)).toEqual([
+      "Page settings",
+      "Rename",
+      "Add child page",
+      "Delete"
+    ]);
+
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+
+    rerender(
+      <PageTree
+        canCreatePage
+        canManagePageSettings
+        collapsedPageIds={[]}
+        filterText=""
+        inlineCreateState={null}
+        isCreatingPage
+        onCollapsedPageIdsChange={vi.fn()}
+        onCommitInlineCreate={vi.fn()}
+        onInlineCreateTitleChange={vi.fn()}
+        onRequestDeletePage={vi.fn()}
+        onSelectPage={vi.fn()}
+        onShowCreatePage={vi.fn()}
+        onShowChildPageCreate={vi.fn()}
+        onTogglePageSettings={vi.fn()}
+        pageSettingsOpenPageId=""
+        pages={[page({ id: "pending", title: "Pending" })]}
+        selectedPageId=""
+      />
+    );
+
+    fireEvent.contextMenu(row("Pending"), { clientX: 20, clientY: 30 });
+    expect((await screen.findAllByRole("menuitem")).map((item) => item.textContent)).toEqual([
+      "Page settings",
+      "Rename",
+      "Delete"
+    ]);
+  });
+
   it("filters context menu actions by authoring authorization and suppresses empty viewer menus", async () => {
     const { rerender } = renderTree([page({ id: "leaf", title: "Leaf" })], {
       canCreatePage: true,
@@ -696,12 +746,16 @@ describe("PageTree row interaction", () => {
 
     fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
     expect(screen.getByRole("menuitem", { name: "Rename" })).toHaveFocus();
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "End" });
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
     expect(screen.getByRole("menuitem", { name: "Add child page" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "End" });
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveFocus();
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Home" });
     expect(screen.getByRole("menuitem", { name: "Page settings" })).toHaveFocus();
     fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowUp" });
-    expect(screen.getByRole("menuitem", { name: "Add child page" })).toHaveFocus();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveFocus();
     fireEvent.keyDown(screen.getByRole("menuitem", { name: "Delete" }), { key: "Enter" });
     expect(onRequestDeletePage).toHaveBeenCalledWith("keyboard");
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
@@ -722,6 +776,29 @@ describe("PageTree row interaction", () => {
     expect(await screen.findByRole("menu")).toBeInTheDocument();
     fireEvent.pointerDown(document.body);
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+  });
+
+  it("styles Delete through the Docsera error token without replacing the destructive foreground on hover or focus", async () => {
+    renderTree([page({ id: "leaf", title: "Leaf" })], {
+      canCreatePage: true,
+      canManagePageSettings: true
+    });
+
+    fireEvent.contextMenu(row("Leaf"), { clientX: 20, clientY: 30 });
+    const deleteItem = await screen.findByRole("menuitem", { name: "Delete" });
+    expect(deleteItem).toHaveClass("docsera-page-tree__context-menu-item--destructive");
+    expect(deleteItem.querySelector(".docsera-page-tree__context-menu-icon")).toBeInTheDocument();
+
+    const cwd = new Function("return process.cwd()")() as string;
+    const cssSource = readFileSync(join(cwd, "src/client/styles/runtime-shell.css"), "utf8").replace(/\r\n/g, "\n");
+    expect(cssSource).toContain(".docsera-page-tree__context-menu-item--destructive {\n  color: var(--docsera-error);\n}");
+    expect(cssSource).not.toContain(".docsera-page-tree__context-menu-item--destructive {\n  color: var(--docsera-danger);");
+    expect(cssSource).toContain(
+      ".docsera-page-tree__context-menu-item:hover,\n.docsera-page-tree__context-menu-item:focus-visible {\n  outline: none;\n  background: var(--docsera-surface-muted);\n}"
+    );
+    expect(cssSource).not.toMatch(
+      /\.docsera-page-tree__context-menu-item(?::hover|:focus-visible)[^{]*\{[^}]*color:\s*var\(--docsera-text\)/s
+    );
   });
 });
 

@@ -235,6 +235,7 @@ describe("workspace integration flows", () => {
     expect(screen.getByRole("link", { name: "API Docs" })).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Settings" })).toHaveLength(2);
     expect(screen.getByRole("button", { name: "New Workspace" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Search workspaces...")).toHaveAttribute("autocomplete", "off");
   });
 
   it("hides workspace creation actions when the server list denies creation", async () => {
