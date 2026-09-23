@@ -67,6 +67,67 @@ describe("DocseraHeader publishing changes", () => {
     expect(screen.queryByText("J")).not.toBeInTheDocument();
   });
 
+  it("renders the current-user avatar image inside the existing account control when supplied", () => {
+    render(
+      <DocseraHeader
+        {...baseProps}
+        currentUser={{
+          userAvatarPath: "/avatar.do?sysparm_user=6816f79cc0a8016401c5a33be04be441",
+          userDisplayName: "Priya Writer",
+          userName: "pwriter"
+        }}
+      />
+    );
+
+    const trigger = screen.getByRole("button", { name: "Current user: Priya Writer" });
+    const avatar = trigger.querySelector<HTMLImageElement>(".docsera-header__profile-avatar");
+    expect(avatar).toHaveAttribute("src", "/avatar.do?sysparm_user=6816f79cc0a8016401c5a33be04be441");
+    expect(avatar).toHaveAttribute("alt", "");
+    expect(avatar).toHaveAttribute("aria-hidden", "true");
+    expect(trigger).not.toHaveTextContent("PW");
+    expect(trigger).not.toHaveClass("docsera-header__profile--placeholder");
+    expect(trigger).toHaveClass("docsera-header__profile--avatar");
+  });
+
+  it("keeps native profile images transparent instead of painting the initials background behind them", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+    const avatarProfileBlock = source.match(/\.docsera-header__profile--avatar \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
+    const avatarHoverBlock = source.match(/\.docsera-header__profile--avatar:hover \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
+
+    expect(avatarProfileBlock).toContain("background: transparent;");
+    expect(avatarProfileBlock).toContain("box-shadow: none;");
+    expect(avatarHoverBlock).toContain("background: transparent;");
+  });
+
+  it("falls back to deterministic initials when the supplied current-user avatar fails to load", () => {
+    render(
+      <DocseraHeader
+        {...baseProps}
+        currentUser={{
+          userAvatarPath: "/broken-avatar.do?sysparm_user=6816f79cc0a8016401c5a33be04be441",
+          userDisplayName: "Priya Writer",
+          userName: "pwriter"
+        }}
+      />
+    );
+
+    const trigger = screen.getByRole("button", { name: "Current user: Priya Writer" });
+    const avatar = trigger.querySelector<HTMLImageElement>(".docsera-header__profile-avatar");
+    expect(avatar).not.toBeNull();
+
+    fireEvent.error(avatar as HTMLImageElement);
+
+    expect(trigger.querySelector(".docsera-header__profile-avatar")).toBeNull();
+    expect(trigger).toHaveTextContent("PW");
+  });
+
   it("opens an accessible account menu with session identity and native Sign out", () => {
     const assign = vi.fn();
     Object.defineProperty(window, "location", {
@@ -325,7 +386,7 @@ describe("DocseraHeader publishing changes", () => {
     expect(actionSlotModeBlock).not.toContain("position: absolute;");
     expect(actionSlotModeBlock).not.toContain("transform: translate(-50%, -50%);");
     expect(actionDividerBlock).toContain("width: 1px;");
-    expect(actionDividerBlock).toContain("height: 20px;");
+    expect(actionDividerBlock).toContain("height: 26px;");
     expect(actionDividerVariantBlock).toContain("margin-inline: -2px;");
     expect(actionDividerHiddenBlock).toContain("visibility: hidden;");
     expect(modeToggleBlock).toContain("height: 32px;");

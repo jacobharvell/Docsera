@@ -39,6 +39,35 @@ function createBinaryResponse(status: number, blob: Blob) {
 }
 
 describe("service now client workspace media", () => {
+  it("distinguishes committed workspace deletion cleanup failures from preflight failures", async () => {
+    const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(path)).toBe("/api/x_82900_docsera/docsera_runtime/workspaces/delete");
+      expect(init?.method).toBe("POST");
+      return createJsonResponse(500, {
+        error: {
+          code: "delete_failed",
+          deletionCommitted: true,
+          message: "Workspace deletion started, but cleanup could not be completed. Please retry deletion cleanup."
+        }
+      });
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await createServiceNowClient(createRuntime()).deleteWorkspace!({
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    });
+
+    expect(result).toEqual({
+      code: "transient",
+      deletionCommitted: true,
+      errorMessage: "Workspace deletion started, but cleanup could not be completed. Please retry deletion cleanup.",
+      retryable: true,
+      state: "failed"
+    });
+  });
+
   it("lists workspace media and normalizes the returned descriptors", async () => {
     const fetchMock = vi.fn(async (path: RequestInfo | URL) => {
       expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/workspaces/media?workspaceSysId=workspace-001");

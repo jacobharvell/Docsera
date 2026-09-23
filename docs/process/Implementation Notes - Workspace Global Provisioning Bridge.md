@@ -138,7 +138,7 @@ Request states:
 
 ### Workspace table
 
-`x_82900_docsera_workspace` is created only after provisioning succeeds and keeps the mandatory `admin_group` and `editor_group` references.
+`x_82900_docsera_workspace` is created only after provisioning succeeds and receives both generated `admin_group` and `editor_group` references from the provisioning bridge. The table columns remain nullable so an inactive workspace tombstone can be persisted after its generated access groups are deleted.
 
 ## Verification
 

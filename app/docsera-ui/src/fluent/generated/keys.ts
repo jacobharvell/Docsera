@@ -271,6 +271,10 @@ declare global {
                         table: 'sys_ws_operation'
                         id: 'a054642614c6403a92e30682e1de4aec'
                     }
+                    'docsera-runtime-workspace-delete-post': {
+                        table: 'sys_ws_operation'
+                        id: '9b0b4ee86ce5427fa96b353dba7b22b9'
+                    }
                     'docsera-runtime-workspace-discard-all-post': {
                         table: 'sys_ws_operation'
                         id: 'a6291b1703364ae0aec20c17ef95aa92'
@@ -432,6 +436,10 @@ declare global {
                     'src_server_api_docsera-runtime-request_ts': {
                         table: 'sys_module'
                         id: '1f906ab5540a48a98443ebaae3b3102a'
+                    }
+                    'src_server_api_docsera-runtime-workspace-delete_ts': {
+                        table: 'sys_module'
+                        id: 'f6f3e0993cc14bb48309273a75db471a'
                     }
                     'src_server_api_docsera-runtime-workspace-discard-all_ts': {
                         table: 'sys_module'
@@ -613,6 +621,10 @@ declare global {
                     src_server_workspaces_serviceNowWorkspaceChangeSetPersistence_ts: {
                         table: 'sys_module'
                         id: '33fd02cf34a346bf96af94a3f07e1253'
+                    }
+                    src_server_workspaces_serviceNowWorkspaceDeletion_ts: {
+                        table: 'sys_module'
+                        id: 'a4cfa31243b6446ebb05194525fc44a9'
                     }
                     src_server_workspaces_serviceNowWorkspaceIcons_ts: {
                         table: 'sys_module'
@@ -2236,6 +2248,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_removal_member'
                             element: 'first_pending_sequence'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '696fd98178d74642a2dc4fc4ace7ab0a'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'mutation_kind'
+                            value: 'delete_workspace_groups'
                         }
                     },
                     {
@@ -4019,6 +4040,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_provision_request'
                             element: 'state'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'd42f1663e99b4282b2716e48ca5db12c'
+                        key: {
+                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            element: 'mutation_kind'
+                            value: 'validate_workspace_group_deletion'
                         }
                     },
                     {

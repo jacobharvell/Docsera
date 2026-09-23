@@ -32,4 +32,12 @@ describe("docsera runtime ping", () => {
       }
     });
   });
+
+  it("does not call scoped-unsafe GlideUser avatar APIs", () => {
+    const setBody = vi.fn();
+
+    process({}, { setBody });
+
+    expect(setBody).toHaveBeenCalledOnce();
+  });
 });

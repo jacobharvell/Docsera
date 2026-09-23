@@ -65,6 +65,8 @@ import type {
   WorkspaceCreatePending,
   WorkspaceCreateResult,
   WorkspaceCreateSucceeded,
+  WorkspaceDeleteInput,
+  WorkspaceDeleteResult,
   WorkspaceSettingsSaveInput,
   WorkspaceSettingsSaveResult,
   WorkspaceMemberAccessLevel,
@@ -109,6 +111,7 @@ const DEFAULT_WORKSPACE_MEDIA_FILE_PATH = "/api/x_82900_docsera/docsera_runtime/
 const DEFAULT_WORKSPACE_ICON_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/icons";
 const DEFAULT_WORKSPACE_SETTINGS_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/settings";
 const DEFAULT_WORKSPACE_MEMBERS_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/members";
+const DEFAULT_CURRENT_USER_PATH = "/api/now/ui/user/current_user";
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
 const SAFE_PAGE_DELETE_ERROR_MESSAGE = "Something went wrong while deleting the page. The page was not deleted. Please try again.";
 const SAFE_PAGE_MOVE_ERROR_MESSAGE = "Something went wrong while moving the page. The page was not moved. Please try again.";
@@ -121,6 +124,8 @@ const SAFE_WORKSPACE_ICON_UPLOAD_ERROR_MESSAGE = "Something went wrong while upl
 const SAFE_WORKSPACE_MEMBERS_ERROR_MESSAGE = "Unable to load workspace members. Please try again.";
 const SAFE_WORKSPACE_MEMBER_MUTATION_ERROR_MESSAGE = "Unable to update workspace access. Please try again.";
 const SAFE_WORKSPACE_MEMBER_SEARCH_ERROR_MESSAGE = "Unable to search users. Please try again.";
+const SAFE_WORKSPACE_DELETE_ERROR_MESSAGE = "Something went wrong while deleting the workspace. Nothing was deleted. Please try again.";
+const COMMITTED_WORKSPACE_DELETE_ERROR_MESSAGE = "Workspace deletion started, but cleanup could not be completed. Please retry deletion cleanup.";
 
 function readWindowUserToken(candidate: Window | null | undefined): string | undefined {
   const tokenWindow = candidate as TokenBearingWindow | null | undefined;
@@ -268,6 +273,11 @@ function resolveWorkspaceSettingsPath(workspaceCollectionPath: string): string {
   return normalizedPath.endsWith("/workspaces") ? `${normalizedPath}/settings` : DEFAULT_WORKSPACE_SETTINGS_PATH;
 }
 
+function resolveWorkspaceDeletePath(workspaceCollectionPath: string): string {
+  const normalizedPath = cleanText(workspaceCollectionPath).replace(/\/+$/g, "");
+  return normalizedPath.endsWith("/workspaces") ? `${normalizedPath}/delete` : `${DEFAULT_WORKSPACE_COLLECTION_PATH}/delete`;
+}
+
 function resolveWorkspaceMembersPath(workspaceCollectionPath: string): string {
   const normalizedPath = cleanText(workspaceCollectionPath).replace(/\/+$/g, "");
   return normalizedPath.endsWith("/workspaces") ? `${normalizedPath}/members` : DEFAULT_WORKSPACE_MEMBERS_PATH;
@@ -377,12 +387,50 @@ function normalizePingPayload(payload: PingEnvelope): PingResult {
 
   return {
     authenticated: Boolean(result.authenticated),
-    scope: result.scope ?? "unknown",
-    status: result.status ?? "unknown",
-    timestamp: result.timestamp ?? "unknown",
-    userDisplayName: cleanText(result.userDisplayName ?? result.user_display_name) || "unknown",
-    userName: result.userName ?? result.user_name ?? "unknown",
-    userSysId: result.userSysId ?? result.user_sys_id ?? "unknown"
+    scope: cleanText(result.scope),
+    status: cleanText(result.status),
+    timestamp: cleanText(result.timestamp),
+    userAvatarPath: cleanText(result.userAvatarPath ?? result.user_avatar_path),
+    userDisplayName: cleanText(result.userDisplayName ?? result.user_display_name),
+    userName: cleanText(result.userName ?? result.user_name),
+    userSysId: cleanText(result.userSysId ?? result.user_sys_id)
+  };
+}
+
+function normalizeServiceNowAvatarPath(value: unknown): string {
+  const avatarPath = cleanText(value);
+  if (!avatarPath) {
+    return "";
+  }
+
+  if (/^(?:[a-z][a-z0-9+.-]*:|\/)/i.test(avatarPath)) {
+    return avatarPath;
+  }
+
+  return `/${avatarPath}`;
+}
+
+function normalizeCurrentUserPayload(payload: unknown): Partial<PingResult> {
+  const result = unwrapServiceNowEnvelope(payload);
+  if (!isPlainObject(result)) {
+    return {};
+  }
+
+  return {
+    userAvatarPath: normalizeServiceNowAvatarPath(result.user_avatar),
+    userDisplayName: cleanText(result.user_display_name),
+    userName: cleanText(result.user_name),
+    userSysId: cleanText(result.user_sys_id)
+  };
+}
+
+function mergeCurrentUserIdentity(pingResult: PingResult, currentUser: Partial<PingResult>): PingResult {
+  return {
+    ...pingResult,
+    userAvatarPath: cleanText(currentUser.userAvatarPath) || pingResult.userAvatarPath,
+    userDisplayName: cleanText(currentUser.userDisplayName) || pingResult.userDisplayName,
+    userName: cleanText(currentUser.userName) || pingResult.userName,
+    userSysId: cleanText(currentUser.userSysId) || pingResult.userSysId
   };
 }
 
@@ -729,6 +777,30 @@ function normalizeWorkspaceSettingsSaveFailedResult(body: unknown, fallback: str
             ? "invalid"
             : undefined,
     errorMessage: extractErrorMessage(body, fallback)
+  };
+}
+
+function normalizeWorkspaceDeleteSucceededResult(body: unknown): WorkspaceDeleteResult {
+  const result = unwrapServiceNowEnvelope(body);
+  if (!isPlainObject(result) || result.state !== "succeeded" || !result.workspace) {
+    throw new Error("Workspace deletion payload was invalid.");
+  }
+  return {
+    state: "succeeded",
+    workspace: normalizeWorkspaceViewRecord(result.workspace)
+  };
+}
+
+function normalizeWorkspaceDeleteFailedResult(body: unknown, status: number, fallback: string): WorkspaceDeleteResult {
+  const error = unwrapServiceNowEnvelope(body);
+  const errorObject = isPlainObject(error) && isPlainObject(error.error) ? error.error : null;
+  const code = cleanText(errorObject?.code);
+  return {
+    state: "failed",
+    code: code === "forbidden" ? "forbidden" : code === "not_found" ? "not_found" : status >= 500 ? "transient" : undefined,
+    deletionCommitted: errorObject?.deletionCommitted === true,
+    errorMessage: extractErrorMessage(body, errorObject?.deletionCommitted === true ? COMMITTED_WORKSPACE_DELETE_ERROR_MESSAGE : fallback),
+    retryable: status >= 500
   };
 }
 
@@ -1475,6 +1547,30 @@ async function resolveWorkspaceSettingsSaveResult(
     code: "transient",
     errorMessage: "Something went wrong while saving workspace settings. Your changes were not saved. Please try again."
   };
+}
+
+async function resolveWorkspaceDeleteResult(path: string, input: WorkspaceDeleteInput): Promise<WorkspaceDeleteResult> {
+  try {
+    const response = await requestJson<unknown>(path, {
+      method: "POST",
+      body: JSON.stringify({
+        workspaceSlug: cleanText(input.workspaceSlug),
+        workspaceSysId: cleanText(input.workspaceSysId)
+      }),
+      headers: { "Content-Type": "application/json" }
+    });
+    if (response.status === 200) {
+      return normalizeWorkspaceDeleteSucceededResult(response.body);
+    }
+    return normalizeWorkspaceDeleteFailedResult(response.body, response.status, SAFE_WORKSPACE_DELETE_ERROR_MESSAGE);
+  } catch {
+    return {
+      state: "failed",
+      code: "transient",
+      errorMessage: SAFE_WORKSPACE_DELETE_ERROR_MESSAGE,
+      retryable: true
+    };
+  }
 }
 
 async function resolveWorkspaceProvisioningStatus(path: string): Promise<WorkspaceCreateResult> {
@@ -2346,6 +2442,7 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
   const workspaceMediaFilePath = resolveWorkspaceMediaFilePath(collectionPath);
   const workspaceIconCollectionPath = resolveWorkspaceIconCollectionPath(collectionPath);
   const workspaceSettingsPath = resolveWorkspaceSettingsPath(collectionPath);
+  const workspaceDeletePath = resolveWorkspaceDeletePath(collectionPath);
   const workspaceMembersPath = resolveWorkspaceMembersPath(collectionPath);
   const pageDeleteActionPath = resolvePageDeleteActionPath(pageCollectionPath);
   const pageMovePath = resolvePageMovePath(pageCollectionPath);
@@ -2377,11 +2474,24 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
       }
 
       const payload = await requestJson<PingEnvelope>(pingPath);
+      if (payload.status !== 200) {
+        throw new Error(`Ping failed with HTTP ${payload.status}.`);
+      }
       if (!payload.body) {
         throw new Error("Ping payload was invalid.");
       }
 
-      return normalizePingPayload(payload.body);
+      const pingResult = normalizePingPayload(payload.body);
+      try {
+        const currentUserResponse = await requestJson<unknown>(DEFAULT_CURRENT_USER_PATH);
+        if (currentUserResponse.status === 200 && currentUserResponse.body) {
+          return mergeCurrentUserIdentity(pingResult, normalizeCurrentUserPayload(currentUserResponse.body));
+        }
+      } catch {
+        // The native current-user endpoint enriches the avatar only; ping remains the identity fallback.
+      }
+
+      return pingResult;
     },
 
     async listWorkspaces(input = {}): Promise<WorkspaceListResult> {
@@ -2440,6 +2550,10 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
 
     async saveWorkspaceSettings(input: WorkspaceSettingsSaveInput): Promise<WorkspaceSettingsSaveResult> {
       return resolveWorkspaceSettingsSaveResult(workspaceSettingsPath, input);
+    },
+
+    async deleteWorkspace(input: WorkspaceDeleteInput): Promise<WorkspaceDeleteResult> {
+      return resolveWorkspaceDeleteResult(workspaceDeletePath, input);
     },
 
     async listWorkspaceMembers(input: { workspaceSlug: string; workspaceSysId?: string }): Promise<WorkspaceMembersResult> {

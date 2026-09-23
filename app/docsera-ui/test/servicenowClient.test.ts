@@ -72,18 +72,40 @@ function createFetchResponse(status: number, payload: unknown) {
 
 test("ping sends the ServiceNow user token when one is available", async () => {
   (window as Window & { g_ck?: string }).g_ck = "session-token";
-  const fetchMock = vi.fn().mockResolvedValue({
-    status: 200,
-    text: async () => JSON.stringify(createResponseBody(createPingEnvelope().result, 2))
-  });
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce({
+      status: 200,
+      text: async () => JSON.stringify(createResponseBody(createPingEnvelope().result, 2))
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      text: async () =>
+        JSON.stringify(
+          createResponseBody({
+            user_avatar: "a5d3c898c3222010ae17dd981840dd8b.iix?t=small",
+            user_display_name: "System Administrator",
+            user_initials: "SA",
+            user_name: "admin",
+            user_sys_id: "6816f79cc0a8016401c5a33be04be441"
+          })
+        )
+    });
   globalThis.fetch = fetchMock as typeof fetch;
 
   const result = await createServiceNowClient(runtime).ping();
   const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+  const [currentUserPath, currentUserInit] = fetchMock.mock.calls[1] as [string, RequestInit];
 
   expect(path).toBe("/api/x_82900_docsera/docsera_runtime/ping");
   expect(init.credentials).toBe("same-origin");
   expect(init.headers).toEqual({
+    Accept: "application/json",
+    "X-UserToken": "session-token"
+  });
+  expect(currentUserPath).toBe("/api/now/ui/user/current_user");
+  expect(currentUserInit.credentials).toBe("same-origin");
+  expect(currentUserInit.headers).toEqual({
     Accept: "application/json",
     "X-UserToken": "session-token"
   });
@@ -93,10 +115,105 @@ test("ping sends the ServiceNow user token when one is available", async () => {
     status: "ok"
   });
   expect(result).toMatchObject({
+    userAvatarPath: "/a5d3c898c3222010ae17dd981840dd8b.iix?t=small",
     userDisplayName: "System Administrator",
     userName: "admin",
     userSysId: "6816f79cc0a8016401c5a33be04be441"
   });
+});
+
+test("ping merges usable current_user identity over the scoped ping fallback", async () => {
+  const pingEnvelope = createPingEnvelope();
+  pingEnvelope.result.userDisplayName = "Scoped Fallback";
+  pingEnvelope.result.userName = "scoped.fallback";
+  pingEnvelope.result.userSysId = "fallback-sys-id";
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce({
+      status: 200,
+      text: async () => JSON.stringify(createResponseBody(pingEnvelope.result, 2))
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      text: async () =>
+        JSON.stringify(
+          createResponseBody({
+            user_avatar: "/avatar.do?sysparm_user=current-user",
+            user_display_name: "System Administrator",
+            user_name: "admin",
+            user_sys_id: "6816f79cc0a8016401c5a33be04be441"
+          })
+        )
+    });
+  globalThis.fetch = fetchMock as typeof fetch;
+
+  await expect(createServiceNowClient(runtime).ping()).resolves.toMatchObject({
+    userAvatarPath: "/avatar.do?sysparm_user=current-user",
+    userDisplayName: "System Administrator",
+    userName: "admin",
+    userSysId: "6816f79cc0a8016401c5a33be04be441"
+  });
+});
+
+test("ping preserves scoped identity and initials fallback when current_user fails", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce({
+      status: 200,
+      text: async () => JSON.stringify(createResponseBody(createPingEnvelope().result, 2))
+    })
+    .mockRejectedValueOnce(new Error("current_user unavailable"));
+  globalThis.fetch = fetchMock as typeof fetch;
+
+  await expect(createServiceNowClient(runtime).ping()).resolves.toMatchObject({
+    userAvatarPath: "",
+    userDisplayName: "System Administrator",
+    userName: "admin",
+    userSysId: "6816f79cc0a8016401c5a33be04be441"
+  });
+});
+
+test("ping does not synthesize literal unknown identity fallbacks", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce({
+      status: 200,
+      text: async () =>
+        JSON.stringify(
+          createResponseBody(
+            {
+              authenticated: true,
+              scope: "x_82900_docsera",
+              status: "ok",
+              timestamp: "2026-07-03 11:16:20"
+            },
+            2
+          )
+        )
+    })
+    .mockResolvedValueOnce({
+      status: 200,
+      text: async () => JSON.stringify(createResponseBody({}))
+    });
+  globalThis.fetch = fetchMock as typeof fetch;
+
+  await expect(createServiceNowClient(runtime).ping()).resolves.toMatchObject({
+    userAvatarPath: "",
+    userDisplayName: "",
+    userName: "",
+    userSysId: ""
+  });
+});
+
+test("ping follows the error path for a non-success scoped ping response", async () => {
+  const fetchMock = vi.fn().mockResolvedValueOnce({
+    status: 500,
+    text: async () => JSON.stringify({ error: { message: "Scoped runtime failed." } })
+  });
+  globalThis.fetch = fetchMock as typeof fetch;
+
+  await expect(createServiceNowClient(runtime).ping()).rejects.toThrow("Ping failed with HTTP 500.");
+  expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 
 test("listWorkspaces normalizes a double-wrapped live response", async () => {

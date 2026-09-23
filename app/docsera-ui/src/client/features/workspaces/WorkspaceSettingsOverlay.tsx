@@ -29,10 +29,13 @@ export type WorkspaceSettingsSubmitInput = {
 };
 
 type WorkspaceSettingsOverlayProps = {
+  deleteErrorMessage?: string;
+  deletePending?: boolean;
   errorMessage?: string;
   loadUploadedIcon?: WorkspaceUploadedIconLoader;
   onCleanupStagedIcon?: (input: { assetKey: string; workspaceSysId: string }) => void;
   onCancel: () => void;
+  onConfirmDelete?: () => void;
   onDraftIdentityChange?: (identity: Pick<WorkspaceViewRecord, "icon" | "name"> | null) => void;
   onManageAccess?: (input: { waitForSettingsSave: boolean; workspaceSysId: string }) => void;
   onUploadIcon?: (input: { file: File; workspaceSysId?: string }) => Promise<WorkspaceIconUploadResult>;
@@ -96,12 +99,14 @@ function sameDraft(left: WorkspaceSettingsDraft, right: WorkspaceSettingsDraft):
     left.tocVisible === right.tocVisible;
 }
 
-export function WorkspaceSettingsOverlay({ errorMessage, loadUploadedIcon, onCancel, onCleanupStagedIcon, onDraftIdentityChange, onManageAccess, onSubmit, onUploadIcon, open, pending, recoveryInput, workspace }: WorkspaceSettingsOverlayProps) {
+export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePending = false, errorMessage, loadUploadedIcon, onCancel, onCleanupStagedIcon, onConfirmDelete, onDraftIdentityChange, onManageAccess, onSubmit, onUploadIcon, open, pending, recoveryInput, workspace }: WorkspaceSettingsOverlayProps) {
   const [draft, setDraft] = useState<WorkspaceSettingsDraft | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [attemptedDismiss, setAttemptedDismiss] = useState(false);
   const [uploadingIcon, setUploadingIcon] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const deleteDialogRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
   const transferredPreviewUrlRef = useRef("");
   const uploadSequenceRef = useRef(0);
@@ -127,6 +132,7 @@ export function WorkspaceSettingsOverlay({ errorMessage, loadUploadedIcon, onCan
     setAttemptedDismiss(false);
     setUploadError("");
     setUploadingIcon(false);
+    setDeleteDialogOpen(false);
     uploadSequenceRef.current += 1;
   }, [open, recoveryInput, workspace]);
 
@@ -134,19 +140,31 @@ export function WorkspaceSettingsOverlay({ errorMessage, loadUploadedIcon, onCan
     if (!open) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (deleteDialogOpen) {
+          event.preventDefault();
+          requestCloseDeleteDialog();
+          return;
+        }
         requestFinishEditing();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canonicalDraft, draft, onCancel, open, pending, uploadingIcon]);
+  }, [canonicalDraft, deleteDialogOpen, deletePending, draft, onCancel, open, pending, uploadingIcon]);
 
   useEffect(() => {
     if (!open) return;
     const ownerDocument = panelRef.current?.ownerDocument ?? document;
     const handlePointerDown = (event: PointerEvent) => {
       const panel = panelRef.current;
+      const deleteDialog = deleteDialogRef.current;
       const target = event.target;
+      if (deleteDialogOpen) {
+        const path = event.composedPath();
+        if (deleteDialog && path.includes(deleteDialog)) {
+          return;
+        }
+      }
       if (panel && target instanceof Node && panel.contains(target)) {
         return;
       }
@@ -154,7 +172,7 @@ export function WorkspaceSettingsOverlay({ errorMessage, loadUploadedIcon, onCan
     };
     ownerDocument.addEventListener("pointerdown", handlePointerDown, true);
     return () => ownerDocument.removeEventListener("pointerdown", handlePointerDown, true);
-  }, [canonicalDraft, draft, onCancel, open, pending, uploadingIcon]);
+  }, [canonicalDraft, deleteDialogOpen, draft, onCancel, open, pending, uploadingIcon]);
 
   useEffect(() => {
     if (!open || !workspace || !draft) {
@@ -236,6 +254,16 @@ export function WorkspaceSettingsOverlay({ errorMessage, loadUploadedIcon, onCan
     const result = requestFinishEditing();
     if (!result) return;
     onManageAccess?.({ waitForSettingsSave: result === "submitted", workspaceSysId: cleanText(workspace.sysId) });
+  }
+
+  function requestOpenDeleteDialog() {
+    if (pending || uploadingIcon || deletePending || !workspace?.canManageSettings) return;
+    setDeleteDialogOpen(true);
+  }
+
+  function requestCloseDeleteDialog() {
+    if (deletePending) return;
+    setDeleteDialogOpen(false);
   }
 
   async function handleIconFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -340,7 +368,7 @@ export function WorkspaceSettingsOverlay({ errorMessage, loadUploadedIcon, onCan
             <div className="docsera-workspace-icon-picker__upload-row">
               <input ref={fileInputRef} className="docsera-workspace-icon-picker__file-input" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" aria-label="Upload custom workspace icon" onChange={handleIconFileChange} disabled={pending || uploadingIcon} />
               <button type="button" className="docsera-workspace-icon-picker__upload-button" disabled={pending || uploadingIcon} onClick={() => fileInputRef.current?.click()}>
-                Upload Custom workspace icon
+                Upload custom workspace icon
               </button>
               <span className="docsera-workspace-icon-picker__constraints">Square image, minimum 128x128, maximum 1 MB. PNG, JPG, or WebP only.</span>
             </div>
@@ -359,8 +387,49 @@ export function WorkspaceSettingsOverlay({ errorMessage, loadUploadedIcon, onCan
             </button>
           ) : null}
           <p className="docsera-workspace-settings-overlay__helper">Valid changes are saved when this panel is closed or you click outside it.</p>
+          {workspace.canManageSettings ? (
+            <section className="docsera-workspace-settings-overlay__danger-zone" aria-labelledby="docsera-workspace-settings-danger-title">
+              <h3 id="docsera-workspace-settings-danger-title" className="docsera-workspace-settings-overlay__danger-title">Danger zone</h3>
+              <p className="docsera-workspace-settings-overlay__danger-copy">Delete this workspace and its contents permanently.</p>
+              <button type="button" className="docsera-destructive-action docsera-workspace-settings-overlay__delete-button" disabled={pending || uploadingIcon || deletePending} onClick={requestOpenDeleteDialog}>
+                <DocseraIcon icon={docseraIcons.trash} size={16} />
+                <span>Delete workspace</span>
+              </button>
+            </section>
+          ) : null}
         </div>
       </aside>
+      {deleteDialogOpen ? (
+        <div ref={deleteDialogRef} className="docsera-modal" role="presentation" onClick={requestCloseDeleteDialog}>
+          <div className="docsera-modal__panel docsera-page-settings__delete-panel" role="dialog" aria-modal="true" aria-labelledby="docsera-delete-workspace-title" onClick={(event) => event.stopPropagation()}>
+            <div className="docsera-modal__form">
+              <div className="docsera-modal__header">
+                <h2 id="docsera-delete-workspace-title" className="docsera-modal__title">Delete workspace</h2>
+                <button type="button" className="docsera-modal__close" disabled={deletePending} onClick={requestCloseDeleteDialog} aria-label="Close delete workspace dialog">
+                  <DocseraIcon icon={docseraIcons.close} />
+                </button>
+              </div>
+              {deleteErrorMessage ? <div className="docsera-modal__alert" role="alert">{deleteErrorMessage}</div> : null}
+              <div className="docsera-modal__body">
+                <p className="docsera-modal__copy">This will permanently delete {workspace.name} and its contents. This cannot be undone.</p>
+              </div>
+              <div className="docsera-modal__footer">
+                <div className="docsera-modal__actions">
+                  <button type="button" className="docsera-modal__secondary" disabled={deletePending} onClick={requestCloseDeleteDialog}>Cancel</button>
+                  <button type="button" className="docsera-modal__primary docsera-modal__primary--destructive docsera-delete-confirmation-button" aria-busy={deletePending ? "true" : undefined} disabled={deletePending} onClick={onConfirmDelete}>
+                    {deletePending ? (
+                      <span className="docsera-delete-confirmation-button__spinner-slot" aria-hidden="true">
+                        <span className="docsera-delete-confirmation-button__spinner" />
+                      </span>
+                    ) : null}
+                    <span className="docsera-delete-confirmation-button__label">{deletePending ? "Deleting" : "Delete workspace"}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

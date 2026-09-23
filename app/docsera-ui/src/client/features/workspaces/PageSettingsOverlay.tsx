@@ -158,7 +158,7 @@ export function PageSettingsOverlay({
 
       <section className="docsera-page-settings__delete-section" aria-label="Delete page">
         <div className="docsera-page-settings__section-divider" aria-hidden="true" />
-        <button type="button" className="docsera-page-settings__destructive" onClick={onRequestDelete}>
+        <button type="button" className="docsera-destructive-action docsera-page-settings__destructive" onClick={onRequestDelete}>
           <TrashIcon />
           <span>Delete page</span>
         </button>

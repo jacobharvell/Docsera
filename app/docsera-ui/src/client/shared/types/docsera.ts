@@ -20,6 +20,7 @@ export type PingResult = {
   scope: string;
   status: string;
   timestamp: string;
+  userAvatarPath: string;
   userDisplayName: string;
   userName: string;
   userSysId: string;
@@ -37,8 +38,10 @@ export type RawPingPayload = {
   status?: string;
   timestamp?: string;
   user_display_name?: string;
+  user_avatar_path?: string;
   user_name?: string;
   user_sys_id?: string;
+  userAvatarPath?: string;
   userDisplayName?: string;
   userName?: string;
   userSysId?: string;
@@ -147,6 +150,24 @@ export type WorkspaceSettingsSaveResult =
   | {
       code?: "forbidden" | "invalid" | "not_found" | "transient";
       errorMessage: string;
+      state: "failed";
+    };
+
+export type WorkspaceDeleteInput = {
+  workspaceSlug: string;
+  workspaceSysId: string;
+};
+
+export type WorkspaceDeleteResult =
+  | {
+      state: "succeeded";
+      workspace: WorkspaceViewRecord;
+    }
+  | {
+      code?: "forbidden" | "not_found" | "transient";
+      deletionCommitted?: boolean;
+      errorMessage: string;
+      retryable?: boolean;
       state: "failed";
     };
 
@@ -641,6 +662,7 @@ export type ServiceNowClient = {
   listPages: (input: { mode?: WorkspaceMode; workspaceSlug: string }) => Promise<PageListResult>;
   createWorkspace: (input: WorkspaceCreateInput) => Promise<WorkspaceCreateResult>;
   saveWorkspaceSettings?: (input: WorkspaceSettingsSaveInput) => Promise<WorkspaceSettingsSaveResult>;
+  deleteWorkspace?: (input: WorkspaceDeleteInput) => Promise<WorkspaceDeleteResult>;
   listWorkspaceMembers?: (input: { workspaceSlug: string; workspaceSysId?: string }) => Promise<WorkspaceMembersResult>;
   searchWorkspaceMemberUsers?: (input: { excludedUserSysIds?: string[]; term: string; workspaceSlug: string; workspaceSysId?: string }) => Promise<WorkspaceMemberUserSearchResult>;
   setWorkspaceMemberAccess?: (input: { accessLevel: WorkspaceMemberAccessLevel; userSysId: string; workspaceSlug: string; workspaceSysId?: string }) => Promise<WorkspaceMemberMutationResult>;

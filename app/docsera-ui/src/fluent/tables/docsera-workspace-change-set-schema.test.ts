@@ -6,6 +6,14 @@ function source(name: string) {
   return readFileSync(path.resolve(process.cwd(), name.includes("/") ? `src/fluent/${name}` : `src/fluent/tables/${name}`), "utf8");
 }
 
+function fieldDefinition(sourceText: string, fieldName: string) {
+  const start = sourceText.indexOf(`${fieldName}: ReferenceColumn({`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const end = sourceText.indexOf("\n    }),", start);
+  expect(end).toBeGreaterThan(start);
+  return sourceText.slice(start, end);
+}
+
 describe("workspace change-set metadata contract", () => {
   it("keeps workflow tables scoped, package-private, and outside generic web-service access", () => {
     for (const name of [
@@ -59,6 +67,17 @@ describe("workspace change-set metadata contract", () => {
     expect(claim).toContain("finalized");
   });
 
+  it("allows global group deletion validation commands in the member mutation queue", () => {
+    expect(source("docsera-workspace-member-mutation-command.now.ts")).toContain('validate_workspace_group_deletion: "Validate workspace group deletion"');
+  });
+
+  it("supports inactive workspace tombstones without generated access group references", () => {
+    const workspace = source("docsera-workspace.now.ts");
+
+    expect(fieldDefinition(workspace, "admin_group")).not.toContain("mandatory: true");
+    expect(fieldDefinition(workspace, "editor_group")).not.toContain("mandatory: true");
+  });
+
   it("keeps persisted sibling ordering as a string/rank value and protects server-owned page fields", () => {
     expect(source("docsera-page.now.ts")).toContain("draft_sibling_order: StringColumn");
     expect(source("docsera-workspace-page-snapshot.now.ts")).toContain("sibling_order: StringColumn");
@@ -71,7 +90,7 @@ describe("workspace change-set metadata contract", () => {
 
   it("denies generic CRUD across the workspace lease and workflow tables", () => {
     const acl = source("security/docsera-workspace-foundation-table-access.now.ts");
-    for (const table of [
+    const protectedTables = [
       "x_82900_docsera_workspace_edit_lease",
       "x_82900_docsera_workspace_change_set",
       "x_82900_docsera_workspace_snapshot_set",
@@ -79,12 +98,16 @@ describe("workspace change-set metadata contract", () => {
       "x_82900_docsera_workspace_change_entry",
       "x_82900_docsera_workspace_mutation_claim",
       "x_82900_docsera_workspace_removal_batch",
-      "x_82900_docsera_workspace_removal_member"
-    ]) {
+      "x_82900_docsera_workspace_removal_member",
+      "x_82900_docsera_workspace_icon_asset",
+      "x_82900_docsera_workspace_member_mutation_command"
+    ];
+    for (const table of protectedTables) {
       expect(acl).toContain(table);
     }
-    expect(acl.match(/decisionType: "deny"/g)).toHaveLength(32);
-    expect(acl.match(/adminOverrides: false/g)).toHaveLength(32);
-    expect(acl.match(/script: "return false;"/g)).toHaveLength(32);
+    const expectedAclCount = protectedTables.length * 4;
+    expect(acl.match(/decisionType: "deny"/g)).toHaveLength(expectedAclCount);
+    expect(acl.match(/adminOverrides: false/g)).toHaveLength(expectedAclCount);
+    expect(acl.match(/script: "return false;"/g)).toHaveLength(expectedAclCount);
   });
 });

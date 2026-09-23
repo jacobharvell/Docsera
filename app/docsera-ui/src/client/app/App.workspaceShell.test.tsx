@@ -304,6 +304,60 @@ function renderApp(path: string, clientOverrides: Partial<ServiceNowClient> = {}
   };
 }
 
+function seedRecentWorkspaceSlugs(...slugs: string[]) {
+  window.localStorage.setItem("docsera.recent-workspaces:__local__", JSON.stringify(slugs));
+}
+
+function recentWorkspaceStorageKey(userSysId: string) {
+  return `docsera.recent-workspaces:${userSysId}`;
+}
+
+function renderAuthenticatedApp(path: string, userSysId: string, clientOverrides: Partial<ServiceNowClient> = {}) {
+  const serviceNowClient = createClient({
+    ping: vi.fn(async () => ({
+      authenticated: true,
+      scope: "x_82900_docsera",
+      status: "ok",
+      timestamp: "2026-09-22 10:15:00",
+      userAvatarPath: "",
+      userDisplayName: `User ${userSysId}`,
+      userName: `${userSysId}@example.com`,
+      userSysId
+    })),
+    ...clientOverrides
+  });
+
+  return {
+    serviceNowClient,
+    ...render(
+      <App
+        runtime={{ ...createRuntime(path), config: { backendPingPath: "/api/x_82900_docsera/docsera_runtime/ping" } }}
+        serviceNowClient={serviceNowClient}
+      />
+    )
+  };
+}
+
+function readRecentWorkspaceSlugs(userSysId: string): string[] {
+  return JSON.parse(window.localStorage.getItem(recentWorkspaceStorageKey(userSysId)) ?? "[]") as string[];
+}
+
+function createWorkspaceMap(slugs: string[]) {
+  return Object.fromEntries(
+    slugs.map((slug, index) => [
+      slug,
+      createWorkspace({
+        name: slug
+          .split("-")
+          .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+          .join(" "),
+        slug,
+        sysId: `workspace-${String(index + 1).padStart(3, "0")}`
+      })
+    ])
+  ) as Record<string, WorkspaceViewRecord>;
+}
+
 describe("App workspace shell integration", () => {
   it("renders the header as a sibling outside the body scroll container without inline reserve styles", () => {
     renderApp("/?workspace=product-docs&page=overview");
@@ -326,6 +380,105 @@ describe("App workspace shell integration", () => {
     window.localStorage.clear();
   });
 
+  it("records successful direct workspace access as user-scoped MRU history with dedupe and a ten-entry cap", async () => {
+    const slugs = Array.from({ length: 12 }, (_, index) => `workspace-${index + 1}`);
+    const workspaces = createWorkspaceMap(slugs);
+    const getWorkspace = vi.fn(async (workspaceSlug: string) => ({ workspace: workspaces[workspaceSlug] ?? null }));
+    const userSysId = "user-recency";
+
+    let view = renderAuthenticatedApp("/?workspace=workspace-1&page=overview", userSysId, { getWorkspace });
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => expect(readRecentWorkspaceSlugs(userSysId)).toEqual(["workspace-1"]));
+    view.unmount();
+
+    for (const slug of ["workspace-2", "workspace-3", "workspace-2", ...slugs.slice(3)]) {
+      view = renderAuthenticatedApp(`/?workspace=${slug}&page=overview`, userSysId, { getWorkspace });
+      expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+      view.unmount();
+    }
+
+    expect(readRecentWorkspaceSlugs(userSysId)).toEqual([
+      "workspace-12",
+      "workspace-11",
+      "workspace-10",
+      "workspace-9",
+      "workspace-8",
+      "workspace-7",
+      "workspace-6",
+      "workspace-5",
+      "workspace-4",
+      "workspace-2"
+    ]);
+  });
+
+  it("does not record failed workspace access", async () => {
+    const userSysId = "user-failed";
+    renderAuthenticatedApp("/?workspace=missing-docs&page=overview", userSysId, {
+      getWorkspace: vi.fn(async () => ({ workspace: null }))
+    });
+
+    expect(await screen.findByText("Workspace could not be found.")).toBeInTheDocument();
+    expect(readRecentWorkspaceSlugs(userSysId)).toEqual([]);
+  });
+
+  it("resolves persisted recent workspaces by slug, omits alphabetical backfill, preserves transient failures, and prunes inaccessible entries", async () => {
+    const userSysId = "user-resolve";
+    window.localStorage.setItem(recentWorkspaceStorageKey(userSysId), JSON.stringify(["zulu-docs", "flaky-docs", "missing-docs", "api-docs"]));
+    const workspaces = createWorkspaceMap(["api-docs", "product-docs", "zulu-docs"]);
+    const getWorkspace = vi.fn(async (workspaceSlug: string) => {
+      if (workspaceSlug === "flaky-docs") {
+        throw new Error("temporary lookup failure");
+      }
+
+      return {
+        workspace: workspaceSlug === "missing-docs" ? null : workspaces[workspaceSlug] ?? null
+      };
+    });
+    const listWorkspaces = vi.fn(async (): Promise<WorkspaceListResult> => ({
+      canCreateWorkspaces: true,
+      hasNextPage: true,
+      items: [workspaces["api-docs"], workspaces["product-docs"]],
+      page: 1,
+      pageSize: 2,
+      searchText: "",
+      totalCount: 3
+    }));
+
+    renderAuthenticatedApp("/?view=my-workspaces", userSysId, { getWorkspace, listWorkspaces });
+
+    const switcher = await screen.findByRole("button", { name: "Workspace switcher: Docsera" });
+    fireEvent.click(switcher);
+    const menu = await screen.findByRole("menu", { name: "Recent workspaces" });
+    const menuItems = within(menu).getAllByRole("menuitem").map((item) => item.textContent?.trim());
+
+    expect(menuItems).toEqual(["Zulu Docs", "Api Docs", "My Workspaces"]);
+    expect(menuItems).not.toContain("Flaky Docs");
+    expect(menuItems).not.toContain("Product Docs");
+    await waitFor(() => expect(readRecentWorkspaceSlugs(userSysId)).toEqual(["zulu-docs", "flaky-docs", "api-docs"]));
+  });
+
+  it("persists recent workspaces across remounts and keeps authenticated users separated", async () => {
+    const workspaces = createWorkspaceMap(["api-docs", "product-docs"]);
+    const getWorkspace = vi.fn(async (workspaceSlug: string) => ({ workspace: workspaces[workspaceSlug] ?? null }));
+    const firstUser = "user-one";
+    const secondUser = "user-two";
+
+    const firstVisit = renderAuthenticatedApp("/?workspace=api-docs&page=overview", firstUser, { getWorkspace });
+    expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
+    await waitFor(() => expect(readRecentWorkspaceSlugs(firstUser)).toEqual(["api-docs"]));
+    firstVisit.unmount();
+
+    const secondUserView = renderAuthenticatedApp("/?view=my-workspaces", secondUser, { getWorkspace });
+    expect(await screen.findByRole("heading", { name: "My Workspaces" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Docsera" })).toBeDisabled();
+    expect(readRecentWorkspaceSlugs(secondUser)).toEqual([]);
+    secondUserView.unmount();
+
+    renderAuthenticatedApp("/?view=my-workspaces", firstUser, { getWorkspace });
+    fireEvent.click(await screen.findByRole("button", { name: "Workspace switcher: Docsera" }));
+    expect(await screen.findByRole("menuitem", { name: "Api Docs" })).toBeInTheDocument();
+  });
+
   it("surfaces the successful runtime ping user to the shared launcher header", async () => {
     const client = createClient({
       ping: vi.fn(async () => ({
@@ -333,6 +486,7 @@ describe("App workspace shell integration", () => {
         scope: "x_82900_docsera",
         status: "ok",
         timestamp: "2026-09-07 10:15:00",
+        userAvatarPath: "/avatar.do?sysparm_user=6816f79cc0a8016401c5a33be04be441",
         userDisplayName: "Priya Writer",
         userName: "pwriter",
         userSysId: "6816f79cc0a8016401c5a33be04be441"
@@ -347,7 +501,11 @@ describe("App workspace shell integration", () => {
     );
 
     expect(screen.getByRole("button", { name: "Current user loading" })).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "Current user: Priya Writer" })).toHaveTextContent("PW");
+    const accountTrigger = await screen.findByRole("button", { name: "Current user: Priya Writer" });
+    expect(accountTrigger.querySelector(".docsera-header__profile-avatar")).toHaveAttribute(
+      "src",
+      "/avatar.do?sysparm_user=6816f79cc0a8016401c5a33be04be441"
+    );
   });
 
   it("defaults to live mode, requests published pages, and does not mount the editor", async () => {
@@ -412,6 +570,7 @@ describe("App workspace shell integration", () => {
     await waitFor(() => expect(deletePage).toHaveBeenCalledTimes(1));
     expect(deletePage).toHaveBeenCalledWith(expect.objectContaining({ pageSysId: "page-target" }));
     expect(screen.getByRole("heading", { name: "Selected" })).toBeInTheDocument();
+    expect(screen.queryByText(/page (deleted|staged)|deleted page|publish workspace changes/i)).toBeNull();
     expect(screen.queryByRole("complementary", { name: "Page Settings" })).not.toBeInTheDocument();
   });
 
@@ -466,19 +625,42 @@ describe("App workspace shell integration", () => {
     renderApp("/?view=my-workspaces");
 
     expect(await screen.findByRole("heading", { name: "My Workspaces" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Workspace switcher: Docsera" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Workspace switcher: Docsera" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Docsera" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Docsera" })).toBeDisabled();
   });
 
   it("retains and disables the committed header controls while a workspace switch is unresolved", async () => {
+    seedRecentWorkspaceSlugs("api-docs", "secure-docs");
     const apiWorkspaceDeferred = createDeferred<{ workspace: WorkspaceViewRecord }>();
     const secureWorkspaceDeferred = createDeferred<{ workspace: WorkspaceViewRecord }>();
+    let apiWorkspaceLookupCount = 0;
+    let secureWorkspaceLookupCount = 0;
     const getWorkspace = vi.fn(async (workspaceSlug: string) => {
       if (workspaceSlug === "api-docs") {
+        apiWorkspaceLookupCount += 1;
+        if (apiWorkspaceLookupCount === 1) {
+          return {
+            workspace: createWorkspace({
+              slug: "api-docs",
+              sysId: "workspace-002",
+              name: "API Docs"
+            })
+          };
+        }
         return apiWorkspaceDeferred.promise;
       }
 
       if (workspaceSlug === "secure-docs") {
+        secureWorkspaceLookupCount += 1;
+        if (secureWorkspaceLookupCount === 1) {
+          return {
+            workspace: createWorkspace({
+              name: "Secure Docs",
+              slug: "secure-docs",
+              sysId: "workspace-003"
+            })
+          };
+        }
         return secureWorkspaceDeferred.promise;
       }
 
@@ -710,6 +892,7 @@ describe("App workspace shell integration", () => {
   });
 
   it("resets to live mode when switching workspaces from the header menu", async () => {
+    seedRecentWorkspaceSlugs("api-docs");
     renderApp("/?workspace=product-docs&page=overview");
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
@@ -951,9 +1134,26 @@ describe("App workspace shell integration", () => {
     expect(within(pane).getByText(/Inactive Editor/)).toBeInTheDocument();
     expect(within(pane).getByText(/inactive/)).toBeInTheDocument();
 
-    fireEvent.change(within(pane).getByRole("textbox", { name: "Search members" }), { target: { value: "admin@example.com" } });
+    expect(within(pane).getByPlaceholderText("Filter member list")).toHaveAccessibleName("Filter member list");
+    expect(within(pane).queryByRole("textbox", { name: "Search members" })).not.toBeInTheDocument();
+    fireEvent.change(within(pane).getByRole("textbox", { name: "Filter member list" }), { target: { value: "admin@example.com" } });
     expect(within(pane).getByText("Admin One")).toBeInTheDocument();
     expect(within(pane).queryByText("Inactive Editor")).not.toBeInTheDocument();
+  });
+
+  it("reserves scrollbar gutter in the Manage access scroll body", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+    const bodyBlock = source.match(/\.docsera-manage-access__body \{([\s\S]*?)\n\}/)?.[1] ?? "";
+
+    expect(bodyBlock).toContain("overflow: auto;");
+    expect(bodyBlock).toContain("scrollbar-gutter: stable;");
   });
 
   it("dismisses Manage access on outside pointer-down without closing for inside-panel or nested modal interaction", async () => {
@@ -1034,6 +1234,7 @@ describe("App workspace shell integration", () => {
   });
 
   it("does not open Manage access for another workspace when a deferred settings save resolves after navigation", async () => {
+    seedRecentWorkspaceSlugs("api-docs");
     const deferredSave = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
     const workspaces: Record<string, WorkspaceViewRecord> = {
       "api-docs": createWorkspace({ sysId: "workspace-002", slug: "api-docs", name: "API Docs" }),
@@ -1123,7 +1324,7 @@ describe("App workspace shell integration", () => {
     const pane = await screen.findByRole("complementary", { name: "Manage access" });
     fireEvent.click(within(pane).getByRole("button", { name: "Add members" }));
     const dialog = await screen.findByRole("dialog", { name: "Add members" });
-    expect(within(dialog).getByRole("button", { name: "Add members" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Save" })).toBeDisabled();
     expect(within(dialog).getByRole("heading", { name: "Users" })).toBeInTheDocument();
     expect(dialog.querySelector(".docsera-manage-access__list-align-spacer")).toBeInTheDocument();
     expect(within(dialog).queryByText("Search active users")).not.toBeInTheDocument();
@@ -1178,7 +1379,7 @@ describe("App workspace shell integration", () => {
     fireEvent.change(within(dialog).getByLabelText("Access level for New Admin"), { target: { value: "admin" } });
     expect(within(dialog).getByText("New Admin").closest(".docsera-manage-access__staged-member")).not.toHaveAttribute("aria-selected", "true");
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "Add members" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(setWorkspaceMemberAccess).toHaveBeenCalledWith({
       accessLevel: "editor",
@@ -1239,7 +1440,7 @@ describe("App workspace shell integration", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Remove selected staged members" }));
     expect(within(stagedList!).queryByText("New Editor")).not.toBeInTheDocument();
     expect(within(stagedList!).queryByText("Second Editor")).not.toBeInTheDocument();
-    expect(within(dialog).getByRole("button", { name: "Add members" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Save" })).toBeDisabled();
 
     fireEvent.click(await within(dialog).findByRole("option", { name: /New Editor/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Stage selected users" }));
@@ -1251,7 +1452,50 @@ describe("App workspace shell integration", () => {
     expect(within(dialog).queryByText("New Editor")).not.toBeInTheDocument();
   });
 
+  it("shows the established busy spinner on the Add members primary action while add submission is running", async () => {
+    const deferredAdd = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["setWorkspaceMemberAccess"]>>>>();
+    const getWorkspace = vi.fn(async () => ({ workspace: createWorkspace() }));
+    const listWorkspaceMembers = vi.fn(async () => ({
+      callerCapabilities: { canManageWorkspaceMembers: true },
+      members: [createMember({ accessLevel: "admin", displayName: "Admin One", userSysId: "user-admin" })],
+      state: "succeeded" as const
+    }));
+    const searchWorkspaceMemberUsers = vi.fn(async () => ({
+      callerCapabilities: { canManageWorkspaceMembers: true },
+      state: "succeeded" as const,
+      users: [{ displayName: "New Editor", email: "new@example.com", userName: "new.editor", userSysId: "user-new" }]
+    }));
+    const setWorkspaceMemberAccess = vi.fn<NonNullable<ServiceNowClient["setWorkspaceMemberAccess"]>>(() => deferredAdd.promise);
+
+    renderApp("/?workspace=product-docs&page=overview&mode=edit", { getWorkspace, listWorkspaceMembers, searchWorkspaceMemberUsers, setWorkspaceMemberAccess });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage workspace access" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Manage access" })).getByRole("button", { name: "Add members" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add members" });
+    fireEvent.click(await within(dialog).findByRole("option", { name: /New Editor/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Stage selected users" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    const addButton = within(dialog).getByRole("button", { name: "Save" });
+    expect(addButton).toBeDisabled();
+    expect(addButton).toHaveAttribute("aria-busy", "true");
+    expect(addButton).toHaveTextContent("Save");
+    expect(addButton.querySelector(".docsera-create-workspace-modal__primary-spinner")).toBeInTheDocument();
+    expect(addButton.querySelector(".docsera-changes-center__spinner")).toBeInTheDocument();
+
+    await act(async () => {
+      deferredAdd.resolve({ callerCapabilities: { canManageWorkspaceMembers: true }, members: [], state: "succeeded" });
+      await deferredAdd.promise;
+    });
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add members" })).not.toBeInTheDocument());
+    expect(getWorkspace).toHaveBeenCalledWith("product-docs");
+  });
+
   it("keeps failed staged additions visible with row feedback after successful additions refresh", async () => {
+    const blockedAdd = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["setWorkspaceMemberAccess"]>>>>();
     const getWorkspace = vi.fn(async () => ({ workspace: createWorkspace() }));
     const listWorkspaceMembers = vi.fn(async () => ({
       callerCapabilities: { canManageWorkspaceMembers: true },
@@ -1266,9 +1510,9 @@ describe("App workspace shell integration", () => {
         { displayName: "Blocked Editor", email: "blocked@example.com", userName: "blocked.editor", userSysId: "user-blocked" }
       ]
     }));
-    const setWorkspaceMemberAccess = vi.fn(async (input: { userSysId: string }) => input.userSysId === "user-blocked"
-      ? { errorMessage: "Blocked Editor could not be added.", state: "failed" as const }
-      : { callerCapabilities: { canManageWorkspaceMembers: true }, members: [], state: "succeeded" as const }
+    const setWorkspaceMemberAccess = vi.fn((input: { userSysId: string }) => input.userSysId === "user-blocked"
+      ? blockedAdd.promise
+      : Promise.resolve({ callerCapabilities: { canManageWorkspaceMembers: true }, members: [], state: "succeeded" as const })
     );
 
     renderApp("/?workspace=product-docs&page=overview&mode=edit", { getWorkspace, listWorkspaceMembers, searchWorkspaceMemberUsers, setWorkspaceMemberAccess });
@@ -1282,13 +1526,25 @@ describe("App workspace shell integration", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Stage selected users" }));
     fireEvent.click(within(dialog).getByRole("option", { name: /Blocked Editor/ }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Stage selected users" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "Add members" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    const addButton = within(dialog).getByRole("button", { name: "Save" });
+    await waitFor(() => expect(addButton).toHaveAttribute("aria-busy", "true"));
+    expect(addButton.querySelector(".docsera-changes-center__spinner")).toBeInTheDocument();
+
+    await act(async () => {
+      blockedAdd.resolve({ errorMessage: "Blocked Editor could not be added.", state: "failed" });
+      await blockedAdd.promise;
+    });
 
     const stagedList = dialog.querySelector<HTMLElement>(".docsera-manage-access__staged-list");
     expect(stagedList).toBeInTheDocument();
     await waitFor(() => expect(within(stagedList!).queryByText("New Editor")).not.toBeInTheDocument());
     expect(within(dialog).getByText("Blocked Editor")).toBeInTheDocument();
     expect(within(dialog).getByText("Blocked Editor could not be added.")).toBeInTheDocument();
+    await waitFor(() => expect(addButton).not.toHaveAttribute("aria-busy"));
+    expect(addButton).toBeEnabled();
+    expect(addButton.querySelector(".docsera-changes-center__spinner")).not.toBeInTheDocument();
     expect(screen.getByRole("dialog", { name: "Add members" })).toBeInTheDocument();
     await waitFor(() => expect(getWorkspace).toHaveBeenCalledWith("product-docs"));
   });
@@ -1609,6 +1865,7 @@ describe("App workspace shell integration", () => {
   });
 
   it("releases a transferred Workspace Settings preview when switching workspaces before the pending save completes", async () => {
+    seedRecentWorkspaceSlugs("api-docs");
     const deferredSave = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
     vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:staged-workspace-icon");
     const revokeObjectUrlSpy = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
@@ -1758,6 +2015,7 @@ describe("App workspace shell integration", () => {
   });
 
   it("keeps concurrent dismissed Workspace Settings saves isolated across workspaces", async () => {
+    seedRecentWorkspaceSlugs("api-docs");
     const saveA = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
     const saveB = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
     const workspaces: Record<string, WorkspaceViewRecord> = {
@@ -1820,6 +2078,7 @@ describe("App workspace shell integration", () => {
   });
 
   it("keeps another workspace's active Settings draft open when a dismissed save succeeds", async () => {
+    seedRecentWorkspaceSlugs("api-docs");
     const saveA = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
     const workspaces: Record<string, WorkspaceViewRecord> = {
       "api-docs": createWorkspace({ sysId: "workspace-002", slug: "api-docs", name: "API Docs" }),
@@ -1873,6 +2132,7 @@ describe("App workspace shell integration", () => {
   });
 
   it("keeps a failed dismissed Workspace Settings draft recoverable after another workspace saves", async () => {
+    seedRecentWorkspaceSlugs("api-docs");
     const saveA = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
     const saveB = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["saveWorkspaceSettings"]>>>>();
     const workspaces: Record<string, WorkspaceViewRecord> = {

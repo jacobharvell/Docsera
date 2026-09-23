@@ -481,6 +481,149 @@ describe("PageTree row interaction", () => {
     expect(onCancelInlineRename).toHaveBeenCalledTimes(1);
   });
 
+  it("commits inline page creation from an outside workspace surface", async () => {
+    const onCommitInlineCreate = vi.fn();
+    render(
+      <div>
+        <PageTree
+          canCreatePage
+          canManagePageSettings
+          collapsedPageIds={[]}
+          filterText=""
+          inlineCreateState={{
+            errorMessage: "",
+            focusToken: 1,
+            noticeMessage: "",
+            parentPageSysId: "",
+            pending: false,
+            showInput: true,
+            title: "Outside Saved"
+          }}
+          inlineRenameErrorMessage=""
+          inlineRenamePageId=""
+          inlineRenameValue=""
+          isCreatingPage={false}
+          onCancelInlineRename={vi.fn()}
+          onCollapsedPageIdsChange={vi.fn()}
+          onCommitInlineCreate={onCommitInlineCreate}
+          onCommitInlineRename={vi.fn()}
+          onInlineCreateTitleChange={vi.fn()}
+          onInlineRenameTitleChange={vi.fn()}
+          onRequestDeletePage={vi.fn()}
+          onSelectPage={vi.fn()}
+          onShowCreatePage={vi.fn()}
+          onShowChildPageCreate={vi.fn()}
+          onTogglePageSettings={vi.fn()}
+          pageSettingsOpenPageId=""
+          pages={[page({ id: "parent", title: "Parent" })]}
+          selectedPageId=""
+        />
+        <main data-testid="workspace-surface" />
+      </div>
+    );
+
+    fireEvent.pointerDown(screen.getByTestId("workspace-surface"));
+
+    await waitFor(() => expect(onCommitInlineCreate).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps inline page creation active when interacting inside the title field", () => {
+    const onCommitInlineCreate = vi.fn();
+    renderTree([], {
+      canCreatePage: true,
+      inlineCreateState: {
+        errorMessage: "",
+        focusToken: 1,
+        noticeMessage: "",
+        parentPageSysId: "",
+        pending: false,
+        showInput: true,
+        title: "Draft"
+      },
+      onCommitInlineCreate
+    });
+
+    const input = screen.getByRole("textbox", { name: "New page title" });
+    fireEvent.pointerDown(input);
+
+    expect(onCommitInlineCreate).not.toHaveBeenCalled();
+    expect(input).toBeInTheDocument();
+  });
+
+  it("commits inline page creation once when outside pointer interaction is followed by blur", async () => {
+    const onCommitInlineCreate = vi.fn();
+    render(
+      <div>
+        <PageTree
+          canCreatePage
+          canManagePageSettings
+          collapsedPageIds={[]}
+          filterText=""
+          inlineCreateState={{
+            errorMessage: "",
+            focusToken: 1,
+            noticeMessage: "",
+            parentPageSysId: "",
+            pending: false,
+            showInput: true,
+            title: "Single Commit"
+          }}
+          inlineRenameErrorMessage=""
+          inlineRenamePageId=""
+          inlineRenameValue=""
+          isCreatingPage={false}
+          onCancelInlineRename={vi.fn()}
+          onCollapsedPageIdsChange={vi.fn()}
+          onCommitInlineCreate={onCommitInlineCreate}
+          onCommitInlineRename={vi.fn()}
+          onInlineCreateTitleChange={vi.fn()}
+          onInlineRenameTitleChange={vi.fn()}
+          onRequestDeletePage={vi.fn()}
+          onSelectPage={vi.fn()}
+          onShowCreatePage={vi.fn()}
+          onShowChildPageCreate={vi.fn()}
+          onTogglePageSettings={vi.fn()}
+          pageSettingsOpenPageId=""
+          pages={[page({ id: "parent", title: "Parent" })]}
+          selectedPageId=""
+        />
+        <main data-testid="workspace-surface" />
+      </div>
+    );
+
+    const input = screen.getByRole("textbox", { name: "New page title" });
+    fireEvent.pointerDown(screen.getByTestId("workspace-surface"));
+    fireEvent.blur(input);
+
+    await waitFor(() => expect(onCommitInlineCreate).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps inline page creation retryable after a failed outside pointer commit leaves it active", async () => {
+    const onCommitInlineCreate = vi.fn().mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined);
+    renderTree([], {
+      canCreatePage: true,
+      inlineCreateState: {
+        errorMessage: "Something went wrong while creating the page. The page was not created. Please try again.",
+        focusToken: 1,
+        noticeMessage: "",
+        parentPageSysId: "",
+        pending: false,
+        showInput: true,
+        title: "Retry Page"
+      },
+      onCommitInlineCreate
+    });
+
+    const input = screen.getByRole("textbox", { name: "New page title" });
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(onCommitInlineCreate).toHaveBeenCalledTimes(1));
+    expect(input).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Something went wrong while creating the page.");
+
+    fireEvent.keyDown(input, { key: "Enter" });
+    await waitFor(() => expect(onCommitInlineCreate).toHaveBeenCalledTimes(2));
+  });
+
   it("commits inline Rename on outside pointer interaction without committing inside the field or double-saving on blur", async () => {
     const onCommitInlineRename = vi.fn(async () => true);
     render(

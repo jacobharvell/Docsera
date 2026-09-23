@@ -67,6 +67,7 @@ export function WorkspaceManageAccessOverlay({
   const [addOpen, setAddOpen] = useState(false);
   const [addSearchTerm, setAddSearchTerm] = useState("");
   const [addSearchState, setAddSearchState] = useState<UserSearchState>({ status: "idle", users: [] });
+  const [addingMembers, setAddingMembers] = useState(false);
   const [hasMoreUsers, setHasMoreUsers] = useState(true);
   const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(() => new Set());
   const [selectedStagedUserIds, setSelectedStagedUserIds] = useState<Set<string>>(() => new Set());
@@ -190,6 +191,7 @@ export function WorkspaceManageAccessOverlay({
     setAddOpen(false);
     setAddSearchTerm("");
     setAddSearchState({ status: "idle", users: [] });
+    setAddingMembers(false);
     setHasMoreUsers(true);
     setSelectedUserIds(new Set());
     setSelectedStagedUserIds(new Set());
@@ -202,6 +204,7 @@ export function WorkspaceManageAccessOverlay({
     setAddOpen(true);
     setAddSearchTerm("");
     setAddSearchState({ status: "idle", users: [] });
+    setAddingMembers(false);
     setHasMoreUsers(true);
     setSelectedUserIds(new Set());
     setSelectedStagedUserIds(new Set());
@@ -290,6 +293,7 @@ export function WorkspaceManageAccessOverlay({
   async function commitAddMember() {
     if (!workspace || stagedMembers.length === 0) return;
     setMutationError("");
+    setAddingMembers(true);
     let failed = false;
     let remaining = stagedMembers;
     for (const member of stagedMembers) {
@@ -311,6 +315,7 @@ export function WorkspaceManageAccessOverlay({
     setMutatingUserSysId("");
     await refreshMembers();
     await onMutationCommitted();
+    setAddingMembers(false);
     if (failed) return;
     closeAddMembers();
   }
@@ -354,7 +359,7 @@ export function WorkspaceManageAccessOverlay({
             <>
               {mutationError ? <div className="docsera-workspace-settings-overlay__alert" role="alert">{mutationError}</div> : null}
               <div className="docsera-manage-access__toolbar">
-                <input className="docsera-workspace-settings-overlay__input" value={query} placeholder="Search members" aria-label="Search members" onChange={(event) => setQuery(event.target.value)} />
+                <input className="docsera-workspace-settings-overlay__input" value={query} placeholder="Filter member list" aria-label="Filter member list" onChange={(event) => setQuery(event.target.value)} />
                 <button type="button" className="docsera-modal__primary" onClick={openAddMembers}>Add members</button>
               </div>
               {filteredMembers.length === 0 ? <div className="docsera-manage-access__state">No members match this search.</div> : null}
@@ -453,7 +458,20 @@ export function WorkspaceManageAccessOverlay({
             <div className="docsera-modal__footer">
               <div className="docsera-modal__actions">
                 <button type="button" className="docsera-modal__secondary" onClick={closeAddMembers}>Cancel</button>
-                <button type="button" className="docsera-modal__primary" disabled={stagedMembers.length === 0 || Boolean(mutatingUserSysId)} onClick={() => void commitAddMember()}>Add members</button>
+                <button
+                  type="button"
+                  className="docsera-modal__primary docsera-create-workspace-modal__primary docsera-manage-access__add-primary"
+                  aria-busy={addingMembers ? "true" : undefined}
+                  disabled={stagedMembers.length === 0 || Boolean(mutatingUserSysId)}
+                  onClick={() => void commitAddMember()}
+                >
+                  {addingMembers ? (
+                    <span className="docsera-create-workspace-modal__primary-spinner docsera-manage-access__add-primary-spinner" aria-hidden="true">
+                      <span className="docsera-changes-center__spinner" />
+                    </span>
+                  ) : null}
+                  <span className="docsera-create-workspace-modal__primary-label docsera-manage-access__add-primary-label">Save</span>
+                </button>
               </div>
             </div>
           </div>

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { PageSettingsDeleteDialog } from "./PageSettingsDeleteDialog";
+import { PageSettingsOverlay } from "./PageSettingsOverlay";
 
 function renderDeleteDialog(overrides: Partial<Parameters<typeof PageSettingsDeleteDialog>[0]> = {}) {
   const props = {
@@ -21,6 +22,33 @@ function renderDeleteDialog(overrides: Partial<Parameters<typeof PageSettingsDel
 }
 
 describe("PageSettingsDeleteDialog", () => {
+  it("uses the shared destructive action treatment for the Page Settings delete entry point", () => {
+    render(
+      <PageSettingsOverlay
+        activeField=""
+        canManagePageSettings
+        generalError=""
+        open
+        panelRef={{ current: null }}
+        pageSlug="overview"
+        pageTitle="Overview"
+        slugError=""
+        titleError=""
+        onCancelField={vi.fn()}
+        onChangeField={vi.fn()}
+        onFinishField={vi.fn()}
+        onRequestClose={vi.fn()}
+        onRequestDelete={vi.fn()}
+        onStartField={vi.fn()}
+      />
+    );
+
+    const deleteButton = screen.getByRole("button", { name: "Delete page" });
+
+    expect(deleteButton).toHaveClass("docsera-destructive-action", "docsera-page-settings__destructive");
+    expect(deleteButton.querySelector("svg")).toBeInTheDocument();
+  });
+
   it("renders pending delete progress with spinner, busy state, and disabled controls", () => {
     renderDeleteDialog({ pending: true });
 
@@ -29,7 +57,11 @@ describe("PageSettingsDeleteDialog", () => {
 
     expect(deleteButton).toBeDisabled();
     expect(deleteButton).toHaveAttribute("aria-busy", "true");
-    expect(deleteButton.querySelector(".docsera-changes-center__spinner")).toBeInTheDocument();
+    expect(deleteButton).toHaveClass("docsera-delete-confirmation-button");
+    const spinnerSlot = deleteButton.querySelector(".docsera-delete-confirmation-button__spinner-slot");
+    expect(spinnerSlot).toBeInTheDocument();
+    expect(spinnerSlot?.querySelector(".docsera-delete-confirmation-button__spinner")).toBeInTheDocument();
+    expect(deleteButton.querySelector(".docsera-delete-confirmation-button__label")).toHaveTextContent("Deleting");
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
     expect(within(dialog).getByRole("button", { name: "Close delete dialog" })).toBeDisabled();
   });
@@ -51,7 +83,9 @@ describe("PageSettingsDeleteDialog", () => {
     expect(within(dialog).getByRole("alert")).toHaveTextContent("Unable to delete the page. Please try again.");
     expect(deleteButton).toBeEnabled();
     expect(deleteButton).not.toHaveAttribute("aria-busy");
-    expect(deleteButton.querySelector(".docsera-changes-center__spinner")).not.toBeInTheDocument();
+    expect(deleteButton).toHaveClass("docsera-delete-confirmation-button");
+    expect(deleteButton.querySelector(".docsera-delete-confirmation-button__spinner-slot")).not.toBeInTheDocument();
+    expect(deleteButton.querySelector(".docsera-delete-confirmation-button__spinner")).not.toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeEnabled();
     expect(within(dialog).getByRole("button", { name: "Close delete dialog" })).toBeEnabled();
   });
@@ -65,7 +99,9 @@ describe("PageSettingsDeleteDialog", () => {
 
     expect(deleteButton).toBeEnabled();
     expect(deleteButton).not.toHaveAttribute("aria-busy");
-    expect(deleteButton.querySelector(".docsera-changes-center__spinner")).not.toBeInTheDocument();
+    expect(deleteButton).toHaveClass("docsera-delete-confirmation-button");
+    expect(deleteButton.querySelector(".docsera-delete-confirmation-button__spinner-slot")).not.toBeInTheDocument();
+    expect(deleteButton.querySelector(".docsera-delete-confirmation-button__spinner")).not.toBeInTheDocument();
     expect(props.onConfirm).toHaveBeenCalledTimes(1);
   });
 });

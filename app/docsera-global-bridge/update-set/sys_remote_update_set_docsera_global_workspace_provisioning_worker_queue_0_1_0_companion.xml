@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<unload unload_date="2026-09-19 01:08:57" unload_version="1" syntax="glide">
+<unload unload_date="2026-09-23 16:44:08" unload_version="1" syntax="glide">
   <sys_remote_update_set action="INSERT_OR_UPDATE">
     <sys_id>cbb4d31e2a5358f32458ac92ba22a522</sys_id>
     <application display_value="Global">global</application>
@@ -163,7 +163,11 @@
     var bridge = new DocseraGlobalWorkspaceMembershipBridge();
     var result;
 
-    if (mutationKind === &apos;set&apos;) {
+    if (mutationKind === &apos;validate_workspace_group_deletion&apos;) {
+        result = bridge.validateWorkspaceGroupDeletionTargets(adminGroupSysId, editorGroupSysId);
+    } else if (mutationKind === &apos;delete_workspace_groups&apos;) {
+        result = bridge.deleteWorkspaceGroups(adminGroupSysId, editorGroupSysId);
+    } else if (mutationKind === &apos;set&apos;) {
         result = bridge.setWorkspaceMembership(adminGroupSysId, editorGroupSysId, targetUserSysId, accessLevel);
     } else if (mutationKind === &apos;remove&apos;) {
         result = bridge.removeWorkspaceMembership(adminGroupSysId, editorGroupSysId, targetUserSysId);
@@ -272,6 +276,52 @@ DocseraGlobalWorkspaceMembershipBridge.prototype = {
         }
     },
 
+    deleteWorkspaceGroups: function (adminGroupSysId, editorGroupSysId) {
+        try {
+            var adminGroup = this._cleanSysId(adminGroupSysId);
+            var editorGroup = this._cleanSysId(editorGroupSysId);
+
+            this._validateGroupPairInputs(adminGroup, editorGroup);
+            var targets = this._validateWorkspaceGroupDeletionTargets(adminGroup, editorGroup, true);
+            if (targets.editorGroup) {
+                targets.editorGroup.deleteRecord();
+            }
+            if (targets.adminGroup) {
+                targets.adminGroup.deleteRecord();
+            }
+
+            return {
+                status: &apos;succeeded&apos;,
+            };
+        } catch (error) {
+            this._logError(&apos;deleteWorkspaceGroups&apos;, error);
+            return {
+                status: &apos;failed&apos;,
+                errorMessage: &apos;Workspace access groups could not be deleted.&apos;,
+            };
+        }
+    },
+
+    validateWorkspaceGroupDeletionTargets: function (adminGroupSysId, editorGroupSysId) {
+        try {
+            var adminGroup = this._cleanSysId(adminGroupSysId);
+            var editorGroup = this._cleanSysId(editorGroupSysId);
+
+            this._validateGroupPairInputs(adminGroup, editorGroup);
+            this._validateWorkspaceGroupDeletionTargets(adminGroup, editorGroup, false);
+
+            return {
+                status: &apos;succeeded&apos;,
+            };
+        } catch (error) {
+            this._logError(&apos;validateWorkspaceGroupDeletionTargets&apos;, error);
+            return {
+                status: &apos;failed&apos;,
+                errorMessage: &apos;Workspace access groups could not be validated.&apos;,
+            };
+        }
+    },
+
     _cleanText: function (value) {
         return typeof value === &apos;string&apos; ? value.trim() : &apos;&apos;;
     },
@@ -282,10 +332,16 @@ DocseraGlobalWorkspaceMembershipBridge.prototype = {
     },
 
     _validateInputs: function (adminGroupSysId, editorGroupSysId, userSysId) {
-        if (!adminGroupSysId || !editorGroupSysId || !userSysId) {
+        this._validateGroupPairInputs(adminGroupSysId, editorGroupSysId);
+        if (!userSysId) {
             throw new Error(&apos;Workspace membership mutation inputs were invalid.&apos;);
         }
+    },
 
+    _validateGroupPairInputs: function (adminGroupSysId, editorGroupSysId) {
+        if (!adminGroupSysId || !editorGroupSysId) {
+            throw new Error(&apos;Workspace membership mutation inputs were invalid.&apos;);
+        }
         if (adminGroupSysId === editorGroupSysId) {
             throw new Error(&apos;Workspace Admin and Editor groups must be distinct.&apos;);
         }
@@ -330,6 +386,32 @@ DocseraGlobalWorkspaceMembershipBridge.prototype = {
         while (memberships.next()) {
             memberships.deleteRecord();
         }
+    },
+
+    _validateWorkspaceGroupDeletionTargets: function (adminGroupSysId, editorGroupSysId, allowMissingTargets) {
+        this._validateWorkspaceGroupPair(adminGroupSysId, editorGroupSysId);
+        var adminGroup = this._loadGeneratedWorkspaceGroup(adminGroupSysId, &apos;Admins&apos;, allowMissingTargets);
+        var editorGroup = this._loadGeneratedWorkspaceGroup(editorGroupSysId, &apos;Editors&apos;, allowMissingTargets);
+        return {
+            adminGroup: adminGroup,
+            editorGroup: editorGroup,
+        };
+    },
+
+    _loadGeneratedWorkspaceGroup: function (groupSysId, suffix, allowMissingTarget) {
+        var group = new GlideRecord(&apos;sys_user_group&apos;);
+        if (!group.get(groupSysId)) {
+            if (allowMissingTarget) {
+                return null;
+            }
+            throw new Error(&apos;Workspace group deletion target could not be found.&apos;);
+        }
+        var actualName = this._cleanText(group.getValue(&apos;name&apos;));
+        var pattern = new RegExp(&apos;^Docsera_[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*_&apos; + suffix + &apos;$&apos;);
+        if (!pattern.test(actualName)) {
+            throw new Error(&apos;Workspace group deletion target was not a Docsera-owned workspace group.&apos;);
+        }
+        return group;
     },
 
     _logError: function (event, error) {
@@ -415,9 +497,9 @@ DocseraGlobalWorkspaceMembershipBridge.prototype = {
   &quot;bomFormat&quot;: &quot;CycloneDX&quot;,
   &quot;specVersion&quot;: &quot;1.6&quot;,
   &quot;version&quot;: 1,
-  &quot;serialNumber&quot;: &quot;urn:uuid:142e6372-fd18-4f76-bb58-c012b11b7d20&quot;,
+  &quot;serialNumber&quot;: &quot;urn:uuid:75b71813-f35a-4837-a1fb-12f3667a35db&quot;,
   &quot;metadata&quot;: {
-    &quot;timestamp&quot;: &quot;2026-09-19T01:08:54.437Z&quot;,
+    &quot;timestamp&quot;: &quot;2026-09-23T16:42:48.949Z&quot;,
     &quot;tools&quot;: {
       &quot;components&quot;: [
         {
@@ -1317,7 +1399,11 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     var bridge = new DocseraGlobalWorkspaceMembershipBridge();
     var result;
 
-    if (mutationKind === &apos;set&apos;) {
+    if (mutationKind === &apos;validate_workspace_group_deletion&apos;) {
+        result = bridge.validateWorkspaceGroupDeletionTargets(adminGroupSysId, editorGroupSysId);
+    } else if (mutationKind === &apos;delete_workspace_groups&apos;) {
+        result = bridge.deleteWorkspaceGroups(adminGroupSysId, editorGroupSysId);
+    } else if (mutationKind === &apos;set&apos;) {
         result = bridge.setWorkspaceMembership(adminGroupSysId, editorGroupSysId, targetUserSysId, accessLevel);
     } else if (mutationKind === &apos;remove&apos;) {
         result = bridge.removeWorkspaceMembership(adminGroupSysId, editorGroupSysId, targetUserSysId);
@@ -1503,6 +1589,52 @@ DocseraGlobalWorkspaceMembershipBridge.prototype = {
         }
     },
 
+    deleteWorkspaceGroups: function (adminGroupSysId, editorGroupSysId) {
+        try {
+            var adminGroup = this._cleanSysId(adminGroupSysId);
+            var editorGroup = this._cleanSysId(editorGroupSysId);
+
+            this._validateGroupPairInputs(adminGroup, editorGroup);
+            var targets = this._validateWorkspaceGroupDeletionTargets(adminGroup, editorGroup, true);
+            if (targets.editorGroup) {
+                targets.editorGroup.deleteRecord();
+            }
+            if (targets.adminGroup) {
+                targets.adminGroup.deleteRecord();
+            }
+
+            return {
+                status: &apos;succeeded&apos;,
+            };
+        } catch (error) {
+            this._logError(&apos;deleteWorkspaceGroups&apos;, error);
+            return {
+                status: &apos;failed&apos;,
+                errorMessage: &apos;Workspace access groups could not be deleted.&apos;,
+            };
+        }
+    },
+
+    validateWorkspaceGroupDeletionTargets: function (adminGroupSysId, editorGroupSysId) {
+        try {
+            var adminGroup = this._cleanSysId(adminGroupSysId);
+            var editorGroup = this._cleanSysId(editorGroupSysId);
+
+            this._validateGroupPairInputs(adminGroup, editorGroup);
+            this._validateWorkspaceGroupDeletionTargets(adminGroup, editorGroup, false);
+
+            return {
+                status: &apos;succeeded&apos;,
+            };
+        } catch (error) {
+            this._logError(&apos;validateWorkspaceGroupDeletionTargets&apos;, error);
+            return {
+                status: &apos;failed&apos;,
+                errorMessage: &apos;Workspace access groups could not be validated.&apos;,
+            };
+        }
+    },
+
     _cleanText: function (value) {
         return typeof value === &apos;string&apos; ? value.trim() : &apos;&apos;;
     },
@@ -1513,10 +1645,16 @@ DocseraGlobalWorkspaceMembershipBridge.prototype = {
     },
 
     _validateInputs: function (adminGroupSysId, editorGroupSysId, userSysId) {
-        if (!adminGroupSysId || !editorGroupSysId || !userSysId) {
+        this._validateGroupPairInputs(adminGroupSysId, editorGroupSysId);
+        if (!userSysId) {
             throw new Error(&apos;Workspace membership mutation inputs were invalid.&apos;);
         }
+    },
 
+    _validateGroupPairInputs: function (adminGroupSysId, editorGroupSysId) {
+        if (!adminGroupSysId || !editorGroupSysId) {
+            throw new Error(&apos;Workspace membership mutation inputs were invalid.&apos;);
+        }
         if (adminGroupSysId === editorGroupSysId) {
             throw new Error(&apos;Workspace Admin and Editor groups must be distinct.&apos;);
         }
@@ -1561,6 +1699,32 @@ DocseraGlobalWorkspaceMembershipBridge.prototype = {
         while (memberships.next()) {
             memberships.deleteRecord();
         }
+    },
+
+    _validateWorkspaceGroupDeletionTargets: function (adminGroupSysId, editorGroupSysId, allowMissingTargets) {
+        this._validateWorkspaceGroupPair(adminGroupSysId, editorGroupSysId);
+        var adminGroup = this._loadGeneratedWorkspaceGroup(adminGroupSysId, &apos;Admins&apos;, allowMissingTargets);
+        var editorGroup = this._loadGeneratedWorkspaceGroup(editorGroupSysId, &apos;Editors&apos;, allowMissingTargets);
+        return {
+            adminGroup: adminGroup,
+            editorGroup: editorGroup,
+        };
+    },
+
+    _loadGeneratedWorkspaceGroup: function (groupSysId, suffix, allowMissingTarget) {
+        var group = new GlideRecord(&apos;sys_user_group&apos;);
+        if (!group.get(groupSysId)) {
+            if (allowMissingTarget) {
+                return null;
+            }
+            throw new Error(&apos;Workspace group deletion target could not be found.&apos;);
+        }
+        var actualName = this._cleanText(group.getValue(&apos;name&apos;));
+        var pattern = new RegExp(&apos;^Docsera_[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*_&apos; + suffix + &apos;$&apos;);
+        if (!pattern.test(actualName)) {
+            throw new Error(&apos;Workspace group deletion target was not a Docsera-owned workspace group.&apos;);
+        }
+        return group;
     },
 
     _logError: function (event, error) {

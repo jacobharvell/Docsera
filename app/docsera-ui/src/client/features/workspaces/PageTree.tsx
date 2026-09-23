@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
 import { createPortal } from "react-dom";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
@@ -39,7 +39,7 @@ type PageTreeProps = {
   inlineRenameValue?: string;
   isCreatingPage: boolean;
   onCancelInlineRename?: () => void;
-  onCommitInlineCreate: () => void;
+  onCommitInlineCreate: () => Promise<void> | void;
   onCommitInlineRename?: () => Promise<boolean> | boolean;
   onInlineCreateTitleChange: (value: string) => void;
   onInlineRenameTitleChange?: (value: string) => void;
@@ -64,7 +64,7 @@ type PageTreeNodeProps = Omit<PageTreeProps, "collapsedPageIds" | "dragSurfaceRe
   draggedPageId: string;
   dropPreview: PageTreeDropPreviewState | null;
   inlineCreateState: InlinePageCreateState | null;
-  onCommitInlineCreate: () => void;
+  onCommitInlineCreate: () => Promise<void> | void;
   onDragEnd: () => void;
   onDragStart: (pageId: string) => void;
   onInlineCreateTitleChange: (value: string) => void;
@@ -350,10 +350,12 @@ function InlineCreateRow({
   pending: boolean;
   showInput: boolean;
   title: string;
-  onCommit: () => void;
+  onCommit: () => Promise<void> | void;
   onTitleChange: (value: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const fieldRef = useRef<HTMLLabelElement>(null);
+  const commitInFlightRef = useRef(false);
   useEffect(() => {
     if (pending || !showInput) {
       return;
@@ -368,25 +370,56 @@ function InlineCreateRow({
     input.select();
   }, [focusToken, pending]);
 
+  const commit = useCallback(() => {
+    if (commitInFlightRef.current) {
+      return;
+    }
+    commitInFlightRef.current = true;
+    void Promise.resolve(onCommit()).finally(() => {
+      commitInFlightRef.current = false;
+    });
+  }, [onCommit]);
+
+  useEffect(() => {
+    const input = inputRef.current;
+    const ownerDocument = input?.ownerDocument;
+    if (!input || !ownerDocument || pending || !showInput) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      if (!(event.target instanceof Node)) {
+        return;
+      }
+      if (fieldRef.current?.contains(event.target)) {
+        return;
+      }
+      commit();
+    }
+
+    ownerDocument.addEventListener("pointerdown", handlePointerDown, true);
+    return () => ownerDocument.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [commit, pending, showInput]);
+
   return (
     <li className="docsera-page-tree__item docsera-page-tree__item--inline-create">
       {showInput ? (
         <div className="docsera-page-tree__row docsera-page-tree__row--selected docsera-page-tree__row--inline-create">
           <div className="docsera-page-tree__row-main">
             <span className="docsera-page-tree__chevron-spacer" aria-hidden="true" />
-            <label className="docsera-page-tree__inline-field">
+            <label ref={fieldRef} className="docsera-page-tree__inline-field">
               <span className="docsera-page-tree__inline-field-label">New page title</span>
               <input
                 ref={inputRef}
                 aria-label="New page title"
                 className="docsera-page-tree__inline-input"
                 disabled={pending}
-                onBlur={onCommit}
+                onBlur={commit}
                 onChange={(event) => onTitleChange(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key === "Enter") {
                     event.preventDefault();
-                    onCommit();
+                    commit();
                   }
                 }}
                 type="text"

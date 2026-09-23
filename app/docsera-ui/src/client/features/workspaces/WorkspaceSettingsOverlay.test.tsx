@@ -50,7 +50,7 @@ describe("WorkspaceSettingsOverlay", () => {
     );
 
     const panel = screen.getByRole("complementary", { name: "Workspace Settings" });
-    expect(within(panel).getByRole("button", { name: "Upload Custom workspace icon" })).toBeInTheDocument();
+    expect(within(panel).getByRole("button", { name: "Upload custom workspace icon" })).toBeInTheDocument();
     expect(within(panel).getByRole("button", { name: "Manage workspace access" })).toBeInTheDocument();
 
     rerender(
@@ -63,8 +63,160 @@ describe("WorkspaceSettingsOverlay", () => {
       />
     );
 
-    expect(screen.getByRole("button", { name: "Upload Custom workspace icon" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upload custom workspace icon" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Manage workspace access" })).not.toBeInTheDocument();
+  });
+
+  it("gates Danger zone deletion to settings managers", () => {
+    const { rerender } = render(
+      <WorkspaceSettingsOverlay
+        onCancel={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+        pending={false}
+        workspace={createWorkspace()}
+      />
+    );
+
+    expect(screen.getByRole("heading", { name: "Danger zone" })).toBeInTheDocument();
+    const deleteButton = screen.getByRole("button", { name: "Delete workspace" });
+    expect(deleteButton).toBeInTheDocument();
+    expect(deleteButton).toHaveClass("docsera-destructive-action", "docsera-workspace-settings-overlay__delete-button");
+    expect(deleteButton.querySelector("svg")).toBeInTheDocument();
+
+    rerender(
+      <WorkspaceSettingsOverlay
+        onCancel={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+        pending={false}
+        workspace={createWorkspace({ canManageSettings: false })}
+      />
+    );
+
+    expect(screen.queryByRole("heading", { name: "Danger zone" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete workspace" })).not.toBeInTheDocument();
+  });
+
+  it("opens and cancels delete confirmation without saving unrelated settings drafts", () => {
+    const onCancel = vi.fn();
+    const onConfirmDelete = vi.fn();
+    const onSubmit = vi.fn();
+    render(
+      <WorkspaceSettingsOverlay
+        onCancel={onCancel}
+        onConfirmDelete={onConfirmDelete}
+        onSubmit={onSubmit}
+        open
+        pending={false}
+        workspace={createWorkspace()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "Unsaved Name" } });
+    fireEvent.click(screen.getByRole("button", { name: "Delete workspace" }));
+
+    expect(screen.getByRole("dialog", { name: "Delete workspace" })).toBeInTheDocument();
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    const cancelButton = within(screen.getByRole("dialog", { name: "Delete workspace" })).getByRole("button", { name: "Cancel" });
+    fireEvent.pointerDown(cancelButton);
+    fireEvent.click(cancelButton);
+
+    expect(screen.queryByRole("dialog", { name: "Delete workspace" })).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("Unsaved Name")).toBeInTheDocument();
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onConfirmDelete).not.toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("keeps delete confirmation pointer and keyboard actions out of Workspace Settings finish editing", () => {
+    const onCancel = vi.fn();
+    const onConfirmDelete = vi.fn();
+    const onSubmit = vi.fn();
+    const { rerender } = render(
+      <WorkspaceSettingsOverlay
+        onCancel={onCancel}
+        onConfirmDelete={onConfirmDelete}
+        onSubmit={onSubmit}
+        open
+        pending={false}
+        workspace={createWorkspace()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "Unsaved Name" } });
+    fireEvent.click(screen.getByRole("button", { name: "Delete workspace" }));
+
+    const firstDialog = screen.getByRole("dialog", { name: "Delete workspace" });
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Delete workspace" })).not.toBeInTheDocument();
+    expect(firstDialog).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("Unsaved Name")).toBeInTheDocument();
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onConfirmDelete).not.toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete workspace" }));
+    const confirmButton = within(screen.getByRole("dialog", { name: "Delete workspace" })).getByRole("button", { name: "Delete workspace" });
+    fireEvent.pointerDown(confirmButton);
+    fireEvent.click(confirmButton);
+
+    expect(onConfirmDelete).toHaveBeenCalledTimes(1);
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    rerender(
+      <WorkspaceSettingsOverlay
+        deletePending
+        onCancel={onCancel}
+        onConfirmDelete={onConfirmDelete}
+        onSubmit={onSubmit}
+        open
+        pending={false}
+        workspace={createWorkspace()}
+      />
+    );
+  });
+
+  it("renders pending delete confirmation with the shared stable button structure", () => {
+    const workspace = createWorkspace();
+    const { rerender } = render(
+      <WorkspaceSettingsOverlay
+        onCancel={vi.fn()}
+        onConfirmDelete={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+        pending={false}
+        workspace={workspace}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete workspace" }));
+    rerender(
+      <WorkspaceSettingsOverlay
+        deletePending
+        onCancel={vi.fn()}
+        onConfirmDelete={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+        pending={false}
+        workspace={workspace}
+      />
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Delete workspace" });
+    const deleteButton = within(dialog).getByRole("button", { name: "Deleting" });
+
+    expect(deleteButton).toBeDisabled();
+    expect(deleteButton).toHaveAttribute("aria-busy", "true");
+    expect(deleteButton).toHaveClass("docsera-delete-confirmation-button");
+    const spinnerSlot = deleteButton.querySelector(".docsera-delete-confirmation-button__spinner-slot");
+    expect(spinnerSlot).toBeInTheDocument();
+    expect(spinnerSlot?.querySelector(".docsera-delete-confirmation-button__spinner")).toBeInTheDocument();
+    expect(deleteButton.querySelector(".docsera-delete-confirmation-button__label")).toHaveTextContent("Deleting");
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Close delete workspace dialog" })).toBeDisabled();
   });
 
   it("keeps uploaded and built-in icon selection and upload activation intact with the stable upload label", async () => {
@@ -106,7 +258,7 @@ describe("WorkspaceSettingsOverlay", () => {
 
     expect(await screen.findByText("Custom image uploaded.")).toBeInTheDocument();
     expect(uploadIcon).toHaveBeenCalledWith({ file: expect.any(File), workspaceSysId: "workspace-001" });
-    expect(screen.getByRole("button", { name: "Upload Custom workspace icon" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Upload custom workspace icon" })).toBeInTheDocument();
 
     const uploadedOption = screen.getByRole("button", { name: /current uploaded icon, selected/ });
     expect(uploadedOption).toHaveAttribute("aria-pressed", "true");
@@ -134,6 +286,14 @@ describe("WorkspaceSettingsOverlay", () => {
     const sharedBadgeBlock = source.match(/\.docsera-workspace-icon-picker__option \.docsera-workspace-icon-badge \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const sharedUploadHoverBlock = source.match(/\.docsera-workspace-icon-picker__upload-button:not\(:disabled\):hover \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const sharedUploadFocusBlock = source.match(/\.docsera-workspace-icon-picker__upload-button:focus-visible \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const destructiveActionBlock = source.match(/\.docsera-destructive-action \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const destructiveActionHoverBlock = source.match(/\.docsera-destructive-action:hover:not\(:disabled\) \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const darkDestructiveActionBlock = source.match(/html\[data-docsera-theme="dark"\] \.docsera-destructive-action \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const deleteConfirmationBlock = source.match(/\.docsera-delete-confirmation-button \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const deleteSpinnerSlotBlock = source.match(/\.docsera-delete-confirmation-button__spinner-slot \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const deleteSpinnerBlock = source.match(/\.docsera-delete-confirmation-button__spinner \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const deleteLabelBlock = source.match(/\.docsera-delete-confirmation-button__label \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const deleteBusyBlock = source.match(/\.docsera-delete-confirmation-button:disabled\[aria-busy="true"\] \{([\s\S]*?)\n\}/)?.[1] ?? "";
 
     expect(settingsGridBlock).toContain("grid-template-columns: repeat(auto-fill, 36px);");
     expect(settingsGridBlock).toContain("justify-content: start;");
@@ -159,5 +319,27 @@ describe("WorkspaceSettingsOverlay", () => {
     expect(sharedOptionSelectedBlock).toContain("var(--docsera-secondary)");
     expect(sharedUploadHoverBlock).toContain("var(--docsera-secondary)");
     expect(sharedUploadFocusBlock).toContain("var(--docsera-secondary)");
+    expect(destructiveActionBlock).toContain("display: inline-flex;");
+    expect(destructiveActionBlock).toContain("min-height: 40px;");
+    expect(destructiveActionBlock).toContain("border: 1px solid rgba(186, 26, 26, 0.18);");
+    expect(destructiveActionBlock).toContain("border-radius: 4px;");
+    expect(destructiveActionBlock).toContain("color: var(--docsera-error);");
+    expect(destructiveActionHoverBlock).toContain("background: rgba(186, 26, 26, 0.14);");
+    expect(darkDestructiveActionBlock).toContain("background: rgba(255, 138, 128, 0.08);");
+    expect(darkDestructiveActionBlock).toContain("border-color: rgba(255, 138, 128, 0.2);");
+    expect(deleteConfirmationBlock).toContain("width: 164px;");
+    expect(deleteConfirmationBlock).toContain("min-width: 164px;");
+    expect(deleteSpinnerSlotBlock).toContain("position: absolute;");
+    expect(deleteSpinnerSlotBlock).toContain("top: 50%;");
+    expect(deleteSpinnerSlotBlock).toContain("left: 12px;");
+    expect(deleteSpinnerSlotBlock).toContain("transform: translateY(-50%);");
+    expect(deleteSpinnerBlock).not.toContain("position: absolute;");
+    expect(deleteSpinnerBlock).not.toContain("translateY");
+    expect(deleteSpinnerBlock).toContain("border: 2px solid color-mix(in srgb, currentColor 38%, transparent);");
+    expect(deleteSpinnerBlock).toContain("border-top-color: currentColor;");
+    expect(deleteSpinnerBlock).toContain("animation: docsera-spin 0.8s linear infinite;");
+    expect(deleteLabelBlock).toContain("width: 100%;");
+    expect(deleteLabelBlock).toContain("text-align: center;");
+    expect(deleteBusyBlock).toContain("opacity: 1;");
   });
 });

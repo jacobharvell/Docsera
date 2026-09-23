@@ -166,6 +166,7 @@ export const testSuites = [
       "src/server/pages/serviceNowPageQueries.test.ts",
       "src/server/pages/serviceNowPageRecords.test.ts",
       "src/server/workspaces/serviceNowWorkspaceChangeSetPersistence.test.ts",
+      "src/server/workspaces/serviceNowWorkspaceDeletion.test.ts",
       "src/server/workspaces/serviceNowWorkspaceMedia.test.ts",
       "src/server/workspaces/workspaceChangeSetDomain.test.ts",
       "test/servicenowClient.test.ts"

@@ -47,7 +47,7 @@ export type HeaderIdentity =
 type DocseraHeaderProps = {
   breadcrumbs?: WorkspacePageView[];
   currentWorkspaceSlug?: string;
-  currentUser?: Pick<PingResult, "userDisplayName" | "userName"> | null;
+  currentUser?: (Pick<PingResult, "userDisplayName" | "userName"> & Partial<Pick<PingResult, "userAvatarPath">>) | null;
   identity: HeaderIdentity;
   mode: "launcher" | "workspace";
   onOpenMyWorkspaces: () => void;
@@ -311,6 +311,7 @@ export function DocseraHeader({
   const [changesOpen, setChangesOpen] = useState(false);
   const [discardAllModalOpen, setDiscardAllModalOpen] = useState(false);
   const [discardPageTarget, setDiscardPageTarget] = useState<{ pageSysId: string; title: string } | null>(null);
+  const [failedProfileAvatarPath, setFailedProfileAvatarPath] = useState("");
   const [changesCenterStyle, setChangesCenterStyle] = useState<CSSProperties | undefined>(undefined);
   const workspaceMenuRef = useRef<HTMLDivElement>(null);
   const accountMenuRef = useRef<HTMLDivElement>(null);
@@ -392,6 +393,8 @@ export function DocseraHeader({
   const currentUserDisplayName = currentUser ? cleanText(currentUser.userDisplayName) : "";
   const currentUserName = currentUser ? cleanText(currentUser.userName) : "";
   const currentUserInitials = currentUser ? getCurrentUserInitials(currentUser) : "";
+  const currentUserAvatarPath = currentUser ? cleanText(currentUser.userAvatarPath) : "";
+  const showCurrentUserAvatar = Boolean(currentUserAvatarPath) && currentUserAvatarPath !== failedProfileAvatarPath;
   const currentUserAvailable = Boolean(currentUserDisplayName || currentUserName);
 
   useLayoutEffect(() => {
@@ -1037,7 +1040,7 @@ export function DocseraHeader({
             <button
               ref={accountTriggerRef}
               type="button"
-              className={`docsera-header__profile${currentUserAvailable ? "" : " docsera-header__profile--placeholder"}`}
+              className={`docsera-header__profile${currentUserAvailable ? "" : " docsera-header__profile--placeholder"}${showCurrentUserAvatar ? " docsera-header__profile--avatar" : ""}`}
               aria-expanded={accountMenuOpen}
               aria-haspopup="menu"
               aria-label={currentUserAvailable ? `Current user: ${currentUserDisplayName || currentUserName}` : "Current user loading"}
@@ -1046,7 +1049,21 @@ export function DocseraHeader({
                 setAccountMenuOpen((current) => !current);
               }}
             >
-              {currentUserInitials ? <span aria-hidden="true">{currentUserInitials}</span> : <span className="docsera-header__profile-placeholder-dot" aria-hidden="true" />}
+              {showCurrentUserAvatar ? (
+                <img
+                  className="docsera-header__profile-avatar"
+                  src={currentUserAvatarPath}
+                  alt=""
+                  aria-hidden="true"
+                  onError={() => {
+                    setFailedProfileAvatarPath(currentUserAvatarPath);
+                  }}
+                />
+              ) : currentUserInitials ? (
+                <span aria-hidden="true">{currentUserInitials}</span>
+              ) : (
+                <span className="docsera-header__profile-placeholder-dot" aria-hidden="true" />
+              )}
             </button>
             {accountMenuOpen ? (
               <div className="docsera-account-menu" role="menu" aria-label="Account menu">

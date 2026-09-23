@@ -71,6 +71,14 @@ function runWorker({
       calls.push({ adminGroupSysId, editorGroupSysId, kind: "remove", userSysId });
       return bridgeResult;
     };
+    this.deleteWorkspaceGroups = (adminGroupSysId: string, editorGroupSysId: string) => {
+      calls.push({ adminGroupSysId, editorGroupSysId, kind: "delete_workspace_groups" });
+      return bridgeResult;
+    };
+    this.validateWorkspaceGroupDeletionTargets = (adminGroupSysId: string, editorGroupSysId: string) => {
+      calls.push({ adminGroupSysId, editorGroupSysId, kind: "validate_workspace_group_deletion" });
+      return bridgeResult;
+    };
   }
 
   vm.runInNewContext(readFileSync(workerSourcePath, "utf8"), {
@@ -104,6 +112,26 @@ describe("global workspace membership mutation command worker", () => {
       state: "failed"
     });
     expect(result.updates).toHaveLength(1);
+  });
+
+  it("routes workspace group deletion commands through the Global membership bridge", () => {
+    expect(runWorker({ command: { mutation_kind: "delete_workspace_groups", state: "requested", target_user: "requester", workspace: "workspace-1" } }).calls).toEqual([
+      {
+        adminGroupSysId: "admin-group",
+        editorGroupSysId: "editor-group",
+        kind: "delete_workspace_groups"
+      }
+    ]);
+  });
+
+  it("routes workspace group deletion validation commands through the Global membership bridge", () => {
+    expect(runWorker({ command: { mutation_kind: "validate_workspace_group_deletion", state: "requested", target_user: "requester", workspace: "workspace-1" } }).calls).toEqual([
+      {
+        adminGroupSysId: "admin-group",
+        editorGroupSysId: "editor-group",
+        kind: "validate_workspace_group_deletion"
+      }
+    ]);
   });
 
   it("keeps scoped membership service free of direct Global Script Include construction", () => {

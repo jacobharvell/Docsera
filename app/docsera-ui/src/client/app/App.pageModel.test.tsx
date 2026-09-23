@@ -246,7 +246,7 @@ function treeNewPageButton(): HTMLButtonElement {
 }
 
 function mainEmptyNewPageButton(): HTMLButtonElement {
-  const button = document.querySelector(".docsera-main__empty-action");
+  const button = document.querySelector(".docsera-main__empty-primary-action");
   if (!(button instanceof HTMLButtonElement)) {
     throw new Error("Missing empty-state New page button.");
   }
@@ -312,6 +312,7 @@ describe("App page model integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Fresh Page" })).toBeInTheDocument();
+    expect(screen.queryByText(/page (created|staged)|created page|publish workspace changes/i)).toBeNull();
     expect(createPage).toHaveBeenCalledWith({
       title: "Fresh Page",
       workspaceAuthority: {
@@ -380,6 +381,7 @@ describe("App page model integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Fresh Page" })).toBeInTheDocument();
+    expect(screen.queryByText(/page (created|staged)|created page|publish workspace changes/i)).toBeNull();
     expect(createPage).toHaveBeenCalledWith({
       title: "Fresh Page",
       workspaceAuthority: {
@@ -390,6 +392,30 @@ describe("App page model integration", () => {
       workspaceSlug: "product-docs"
     });
     expect(createPage.mock.calls[0]?.[0]).not.toHaveProperty("parentPageSysId");
+  });
+
+  it("keeps create failure feedback without leaving routine success feedback", async () => {
+    const createPage = vi.fn(async (): Promise<PageCreateResult> => ({
+      code: "failed",
+      errorMessage: "Something went wrong while creating the page. The page was not created. Please try again.",
+      state: "failed"
+    }));
+
+    renderApp("/?workspace=product-docs&page=overview&mode=edit", { createPage });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(treeNewPageButton()).not.toBeDisabled();
+    });
+
+    fireEvent.click(treeNewPageButton());
+    const newPageTitle = screen.getByRole("textbox", { name: "New page title" });
+    fireEvent.change(newPageTitle, { target: { value: "Failed Page" } });
+    fireEvent.keyDown(newPageTitle, { key: "Enter", code: "Enter" });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Something went wrong while creating the page.");
+    expect(screen.getByRole("textbox", { name: "New page title" })).toHaveValue("Failed Page");
+    expect(screen.queryByText(/page (created|staged)|created page|publish workspace changes/i)).toBeNull();
   });
 
   it("routes the header SVG click target through the canonical inline-create flow", async () => {

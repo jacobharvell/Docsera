@@ -65,12 +65,10 @@ export const x_82900_docsera_workspace = Table({
     }),
     admin_group: ReferenceColumn({
       label: "Admin group",
-      mandatory: true,
       referenceTable: "sys_user_group"
     }),
     editor_group: ReferenceColumn({
       label: "Editor group",
-      mandatory: true,
       referenceTable: "sys_user_group"
     }),
     creator: ReferenceColumn({

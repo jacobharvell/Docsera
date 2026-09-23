@@ -23,6 +23,8 @@ export const x_82900_docsera_workspace_member_mutation_command = Table({
       label: "Mutation kind",
       mandatory: true,
       choices: {
+        delete_workspace_groups: "Delete workspace groups",
+        validate_workspace_group_deletion: "Validate workspace group deletion",
         set: "Set access",
         remove: "Remove access"
       }

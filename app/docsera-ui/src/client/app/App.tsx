@@ -58,6 +58,7 @@ import type {
   WorkspaceMode,
   WorkspaceCreatePending,
   WorkspaceCreateResult,
+  WorkspaceDeleteResult,
   WorkspaceDiscardPageResult,
   WorkspaceListResult,
   WorkspaceIcon,
@@ -185,15 +186,27 @@ type WorkspacePublishToastState = {
   workspaceSysId: string;
 };
 
+const WORKSPACE_COMMAND_AUTHORING_LOCK_MESSAGE = "Workspace authoring is locked while another command is in progress.";
+
 type WorkspaceSwitcherState =
   | { status: "idle" }
   | { status: "loading" }
   | { items: WorkspaceViewRecord[]; status: "success" }
   | { status: "error" };
 
+type RecentWorkspacesState =
+  | { status: "idle"; userSysId: string }
+  | { slugs: string[]; status: "loading"; userSysId: string }
+  | { items: WorkspaceViewRecord[]; slugs: string[]; status: "success"; userSysId: string };
+
 type WorkspaceSettingsPanelState =
   | { status: "closed" }
   | { errorMessage?: string; recoveryInput?: WorkspaceSettingsSubmitInput; status: "open" | "saving"; workspaceSlug: string; workspaceSysId: string };
+
+type WorkspaceDeletionState =
+  | { status: "idle" }
+  | { status: "deleting"; workspaceSlug: string; workspaceSysId: string }
+  | { errorMessage: string; status: "error"; workspaceSlug: string; workspaceSysId: string };
 
 type PendingWorkspaceSettingsSave = {
   id: number;
@@ -283,6 +296,8 @@ const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the
 const STALE_REFRESH_BLOCKED_MESSAGE = "Reloading the latest draft projection. Saving is temporarily unavailable.";
 const DOCSERA_THEME_STORAGE_KEY = "docsera.theme";
 const DOCSERA_RECENT_WORKSPACES_STORAGE_KEY = "docsera.recent-workspaces";
+const DOCSERA_RECENT_WORKSPACES_MAX_ITEMS = 10;
+const DOCSERA_LOCAL_RECENT_WORKSPACES_USER_SCOPE = "__local__";
 const DOCSERA_WORKSPACE_LEASE_STORAGE_PREFIX = "docsera.workspace-edit-lease.";
 const DOCSERA_WORKSPACE_LEASE_RELOAD_MARKER_PREFIX = "docsera.workspace-edit-lease-reload.";
 const DOCSERA_WORKSPACE_LEASE_TAB_SESSION_PREFIX = "docsera.workspace-edit-lease-tab:";
@@ -700,7 +715,7 @@ function resolveCurrentPageAuthoringReadiness(input: {
   const sourceBlockedByRuntime = input.workspaceCommandBlocksCurrentWorkspaceWrites || !visualEditorReady;
   const blockedMessage =
     input.workspaceCommandBlocksCurrentWorkspaceWrites
-      ? "Workspace authoring is locked while another command is in progress."
+      ? WORKSPACE_COMMAND_AUTHORING_LOCK_MESSAGE
       : !input.canEditPageBody || input.editAccessLost
         ? "Authoring access is no longer available."
         : !input.editorCanonicalHandoffReady || !input.isEditorReady
@@ -806,74 +821,95 @@ function readStoredTheme(): "dark" | "light" {
   return storedTheme === "dark" ? "dark" : "light";
 }
 
-function readStoredRecentWorkspaceSlugs(): string[] {
+function recentWorkspaceStorageKey(userSysId: string): string {
+  return `${DOCSERA_RECENT_WORKSPACES_STORAGE_KEY}:${cleanText(userSysId)}`;
+}
+
+function normalizeRecentWorkspaceSlugs(workspaceSlugs: string[]): string[] {
+  const slugs: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of workspaceSlugs) {
+    const slug = cleanText(candidate);
+    if (!slug || seen.has(slug)) {
+      continue;
+    }
+    seen.add(slug);
+    slugs.push(slug);
+    if (slugs.length >= DOCSERA_RECENT_WORKSPACES_MAX_ITEMS) {
+      break;
+    }
+  }
+  return slugs;
+}
+
+function readStoredRecentWorkspaceSlugs(userSysId: string): string[] {
   if (typeof window === "undefined") {
     return [];
   }
 
+  const key = recentWorkspaceStorageKey(userSysId);
+  if (!key.endsWith(cleanText(userSysId)) || !cleanText(userSysId)) {
+    return [];
+  }
+
   try {
-    const raw = window.localStorage.getItem(DOCSERA_RECENT_WORKSPACES_STORAGE_KEY);
+    const raw = window.localStorage.getItem(key);
     const parsed = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(parsed)) {
       return [];
     }
 
-    return parsed.map((value) => cleanText(value)).filter(Boolean);
+    return normalizeRecentWorkspaceSlugs(parsed.map((value) => cleanText(value)).filter(Boolean));
   } catch {
     return [];
   }
 }
 
-function writeStoredRecentWorkspaceSlugs(workspaceSlugs: string[]): void {
+function writeStoredRecentWorkspaceSlugs(userSysId: string, workspaceSlugs: string[]): string[] {
+  const normalizedUserSysId = cleanText(userSysId);
+  const normalizedSlugs = normalizeRecentWorkspaceSlugs(workspaceSlugs);
   if (typeof window === "undefined") {
-    return;
+    return normalizedSlugs;
   }
 
-  window.localStorage.setItem(
-    DOCSERA_RECENT_WORKSPACES_STORAGE_KEY,
-    JSON.stringify(workspaceSlugs.map((value) => cleanText(value)).filter(Boolean).slice(0, 10))
-  );
+  if (!normalizedUserSysId) {
+    return normalizedSlugs;
+  }
+
+  window.localStorage.setItem(recentWorkspaceStorageKey(normalizedUserSysId), JSON.stringify(normalizedSlugs));
+  return normalizedSlugs;
 }
 
-function rememberRecentWorkspaceSlug(workspaceSlug: string): void {
+function rememberRecentWorkspaceSlug(userSysId: string, workspaceSlug: string): string[] {
   const slug = cleanText(workspaceSlug);
-  if (!slug) {
-    return;
+  if (!cleanText(userSysId) || !slug) {
+    return readStoredRecentWorkspaceSlugs(userSysId);
   }
 
-  const nextSlugs = [slug, ...readStoredRecentWorkspaceSlugs().filter((value) => value !== slug)];
-  writeStoredRecentWorkspaceSlugs(nextSlugs);
+  const nextSlugs = [slug, ...readStoredRecentWorkspaceSlugs(userSysId).filter((value) => value !== slug)];
+  return writeStoredRecentWorkspaceSlugs(userSysId, nextSlugs);
 }
 
-function sortRecentWorkspaceItems(items: WorkspaceViewRecord[], currentWorkspaceSlug = ""): WorkspaceViewRecord[] {
-  const orderedSlugs = [cleanText(currentWorkspaceSlug), ...readStoredRecentWorkspaceSlugs()].filter(Boolean);
-  const rankBySlug = new Map<string, number>();
+function forgetRecentWorkspaceSlug(userSysId: string, workspaceSlug: string): string[] {
+  const slug = cleanText(workspaceSlug);
+  if (!cleanText(userSysId) || !slug) {
+    return readStoredRecentWorkspaceSlugs(userSysId);
+  }
 
-  orderedSlugs.forEach((slug, index) => {
-    if (!rankBySlug.has(slug)) {
-      rankBySlug.set(slug, index);
-    }
-  });
-
-  return [...items].sort((left, right) => {
-    const leftRank = rankBySlug.get(cleanText(left.slug));
-    const rightRank = rankBySlug.get(cleanText(right.slug));
-
-    if (leftRank !== undefined || rightRank !== undefined) {
-      if (leftRank === undefined) {
-        return 1;
-      }
-
-      if (rightRank === undefined) {
-        return -1;
-      }
-
-      return leftRank - rightRank;
-    }
-
-    return cleanText(left.name).localeCompare(cleanText(right.name), undefined, { sensitivity: "base" });
-  });
+  return writeStoredRecentWorkspaceSlugs(userSysId, readStoredRecentWorkspaceSlugs(userSysId).filter((value) => value !== slug));
 }
+
+function applyRecentWorkspaceItemsBySlug(slugs: string[], items: WorkspaceViewRecord[]): WorkspaceViewRecord[] {
+  const itemsBySlug = new Map(items.map((item) => [cleanText(item.slug), item]));
+  return normalizeRecentWorkspaceSlugs(slugs)
+    .map((slug) => itemsBySlug.get(slug))
+    .filter((item): item is WorkspaceViewRecord => Boolean(item));
+}
+
+type RecentWorkspaceResolution =
+  | { slug: string; status: "resolved"; workspace: WorkspaceViewRecord }
+  | { slug: string; status: "missing" }
+  | { slug: string; status: "unresolved" };
 
 function buildModeStateKey(workspaceSlug: string, mode: WorkspaceMode): string {
   return `${cleanText(workspaceSlug)}::${mode}`;
@@ -1127,6 +1163,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [launcherRefreshToken, setLauncherRefreshToken] = useState(0);
   const [launcherState, setLauncherState] = useState<WorkspaceListState>({ status: "idle" });
   const [workspaceSwitcherState, setWorkspaceSwitcherState] = useState<WorkspaceSwitcherState>({ status: "idle" });
+  const [recentWorkspacesState, setRecentWorkspacesState] = useState<RecentWorkspacesState>({ status: "idle", userSysId: "" });
   const [workspaceState, setWorkspaceState] = useState<WorkspaceState>({ status: "idle" });
   const [pendingWorkspaceIdentity, setPendingWorkspaceIdentity] = useState<PendingWorkspaceIdentity | null>(null);
   const [workspacePagesState, setWorkspacePagesState] = useState<WorkspacePagesState>({ status: "idle" });
@@ -1146,6 +1183,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     pageSysId: ""
   });
   const [workspaceSettingsPanelState, setWorkspaceSettingsPanelState] = useState<WorkspaceSettingsPanelState>({ status: "closed" });
+  const [workspaceDeletionState, setWorkspaceDeletionState] = useState<WorkspaceDeletionState>({ status: "idle" });
   const [manageAccessOpen, setManageAccessOpen] = useState(false);
   const [workspaceSettingsPreviewIdentity, setWorkspaceSettingsPreviewIdentity] = useState<WorkspaceSettingsPreviewIdentity | null>(null);
   const workspaceSettingsRecoveryRef = useRef<Record<string, { errorMessage: string; input: WorkspaceSettingsSubmitInput }>>({});
@@ -2008,12 +2046,15 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const currentWorkspacePageSlug = route.mode === "workspace" ? route.pageSlug : "";
   const currentWorkspaceLegacyPageId = route.mode === "workspace" ? route.legacyPageId : "";
   const loadedWorkspaceSlug = workspaceState.status === "success" ? workspaceState.data.slug : "";
+  const currentUserSysId =
+    pingState.status === "success"
+      ? cleanText(pingState.payload.userSysId)
+      : pingState.status === "idle"
+        ? DOCSERA_LOCAL_RECENT_WORKSPACES_USER_SCOPE
+        : "";
   const recentWorkspaceItems = useMemo(
-    () =>
-      workspaceSwitcherState.status === "success"
-        ? sortRecentWorkspaceItems(workspaceSwitcherState.items, currentWorkspaceSlug)
-        : [],
-    [currentWorkspaceSlug, workspaceSwitcherState]
+    () => (recentWorkspacesState.status === "success" ? recentWorkspacesState.items : []),
+    [recentWorkspacesState]
   );
   const workspaceStateData = workspaceState.status === "success" ? workspaceState.data : null;
   activeWorkspaceSysIdRef.current = route.mode === "workspace" ? cleanText(workspaceStateData?.sysId) : "";
@@ -2046,6 +2087,33 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       workspaceSysId: workspaceState.status === "success" ? cleanText(workspaceState.data.sysId) : ""
     });
   }, [currentWorkspaceSlug, workspaceState]);
+
+  useEffect(() => {
+    if (
+      route.mode !== "workspace" ||
+      !currentUserSysId ||
+      workspaceState.status !== "success" ||
+      cleanText(workspaceState.data.slug) !== currentWorkspaceSlug
+    ) {
+      return;
+    }
+
+    const nextSlugs = rememberRecentWorkspaceSlug(currentUserSysId, workspaceState.data.slug);
+    setRecentWorkspacesState((current) => {
+      if (current.userSysId && current.userSysId !== currentUserSysId) {
+        return current;
+      }
+
+      const currentItems = current.status === "success" ? current.items : [];
+      const items = applyRecentWorkspaceItemsBySlug(nextSlugs, [workspaceState.data, ...currentItems]);
+      return {
+        items,
+        slugs: nextSlugs,
+        status: "success",
+        userSysId: currentUserSysId
+      };
+    });
+  }, [currentUserSysId, currentWorkspaceSlug, route.mode, workspaceState]);
 
   useEffect(() => {
     recordDocseraDiagnosticEvent("workspace.modeState", {
@@ -3009,6 +3077,68 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }, [launcherRefreshToken, serviceNowClient]);
 
   useEffect(() => {
+    if (!currentUserSysId) {
+      setRecentWorkspacesState({ status: "idle", userSysId: "" });
+      return;
+    }
+
+    const storedSlugs = readStoredRecentWorkspaceSlugs(currentUserSysId);
+    if (storedSlugs.length === 0) {
+      setRecentWorkspacesState({ items: [], slugs: [], status: "success", userSysId: currentUserSysId });
+      return;
+    }
+
+    let canceled = false;
+    setRecentWorkspacesState({ slugs: storedSlugs, status: "loading", userSysId: currentUserSysId });
+
+    Promise.all(
+      storedSlugs.map(async (slug): Promise<RecentWorkspaceResolution> => {
+        try {
+          const result = await serviceNowClient.getWorkspace(slug);
+          return result.workspace
+            ? { slug, status: "resolved", workspace: result.workspace }
+            : { slug, status: "missing" };
+        } catch {
+          return { slug, status: "unresolved" };
+        }
+      })
+    ).then((resolutions) => {
+      if (canceled) {
+        return;
+      }
+
+      const items = resolutions
+        .filter((resolution): resolution is Extract<RecentWorkspaceResolution, { status: "resolved" }> => resolution.status === "resolved")
+        .map((resolution) => resolution.workspace);
+      const resolvedItemsBySlug = new Map(items.map((workspace) => [cleanText(workspace.slug), workspace]));
+      const confirmedMissingSlugs = new Set(
+        resolutions
+          .filter((resolution) => resolution.status === "missing")
+          .map((resolution) => cleanText(resolution.slug))
+      );
+      const originalStoredSlugSet = new Set(storedSlugs);
+      const latestStoredSlugs = readStoredRecentWorkspaceSlugs(currentUserSysId);
+      const validSlugs = latestStoredSlugs.filter(
+        (slug) => !originalStoredSlugSet.has(slug) || resolvedItemsBySlug.has(slug) || !confirmedMissingSlugs.has(slug)
+      );
+      writeStoredRecentWorkspaceSlugs(currentUserSysId, validSlugs);
+      setRecentWorkspacesState((current) => {
+        const currentItems = current.status === "success" ? current.items : [];
+        return {
+          items: applyRecentWorkspaceItemsBySlug(validSlugs, [...items, ...currentItems]),
+          slugs: validSlugs,
+          status: "success",
+          userSysId: currentUserSysId
+        };
+      });
+    });
+
+    return () => {
+      canceled = true;
+    };
+  }, [currentUserSysId, serviceNowClient]);
+
+  useEffect(() => {
     const handlePopState = () => {
       const targetHref = `${window.location.pathname}${window.location.search}${window.location.hash}`;
       if (shouldGuardTransition(targetHref)) {
@@ -3038,12 +3168,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       );
     }
   }, [route, workspaceState]);
-
-  useEffect(() => {
-    if (route.mode === "workspace") {
-      rememberRecentWorkspaceSlug(route.workspaceSlug);
-    }
-  }, [route]);
 
   useEffect(() => {
     if (route.mode !== "launcher") {
@@ -4026,7 +4150,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       reason: currentWorkspaceSlug && currentWorkspaceSlug !== workspaceSlug ? "workspace_switch" : "user_navigation",
       replace: false,
       beforeCommit: () => {
-        rememberRecentWorkspaceSlug(workspaceSlug);
         if (!settingsIntent) {
           setWorkspaceSettingsPanelState({ status: "closed" });
         }
@@ -5042,6 +5165,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
     const recovered = workspaceSettingsRecoveryRef.current[workspaceSysId];
+    setWorkspaceDeletionState({ status: "idle" });
     setWorkspaceSettingsPanelState({
       errorMessage: recovered?.errorMessage,
       recoveryInput: recovered?.input,
@@ -5133,6 +5257,16 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       if (current.status !== "success") {
         return current;
       }
+      return {
+        ...current,
+        items: current.items.map((item) => cleanText(item.sysId) === cleanText(workspace.sysId) || cleanText(item.slug) === cleanText(workspace.slug) ? workspace : item)
+      };
+    });
+    setRecentWorkspacesState((current) => {
+      if (current.status !== "success") {
+        return current;
+      }
+
       return {
         ...current,
         items: current.items.map((item) => cleanText(item.sysId) === cleanText(workspace.sysId) || cleanText(item.slug) === cleanText(workspace.slug) ? workspace : item)
@@ -5304,6 +5438,141 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     const nextRecovery = { ...workspaceSettingsRecoveryRef.current };
     delete nextRecovery[workspaceSysId];
     workspaceSettingsRecoveryRef.current = nextRecovery;
+  }
+
+  async function confirmDeleteCurrentWorkspace() {
+    if (
+      route.mode !== "workspace" ||
+      workspaceState.status !== "success" ||
+      !workspaceState.data.canManageSettings ||
+      !serviceNowClient.deleteWorkspace ||
+      workspaceDeletionState.status === "deleting"
+    ) {
+      return;
+    }
+
+    const workspaceSlug = workspaceState.data.slug;
+    const workspaceSysId = cleanText(workspaceState.data.sysId);
+    setWorkspaceDeletionState({ status: "deleting", workspaceSlug, workspaceSysId });
+
+    let result: WorkspaceDeleteResult;
+    try {
+      result = await serviceNowClient.deleteWorkspace({ workspaceSlug, workspaceSysId });
+    } catch {
+      result = {
+        code: "transient",
+        errorMessage: "Something went wrong while deleting the workspace. Nothing was deleted. Please try again.",
+        retryable: true,
+        state: "failed"
+      };
+    }
+
+    if (result.state === "failed") {
+      if (result.deletionCommitted) {
+        const userSysId = pingState.status === "success" ? pingState.payload.userSysId : recentWorkspacesState.userSysId;
+        const nextRecentSlugs = forgetRecentWorkspaceSlug(userSysId, workspaceSlug);
+        setRecentWorkspacesState((current) => {
+          if (current.status === "success") {
+            return {
+              ...current,
+              slugs: nextRecentSlugs,
+              items: current.items.filter((item) => cleanText(item.slug) !== cleanText(workspaceSlug))
+            };
+          }
+          if (current.status === "loading") {
+            return {
+              ...current,
+              slugs: nextRecentSlugs
+            };
+          }
+          return current;
+        });
+        clearStoredWorkspaceLease(workspaceSysId, "workspace_delete_committed");
+        setManageAccessOpen(false);
+        setWorkspaceSettingsPanelState({ status: "closed" });
+        setWorkspaceDeletionState({ status: "idle" });
+        setWorkspaceSettingsPreviewIdentity(null);
+        setWorkspaceState({ status: "idle" });
+        setWorkspacePagesState({ status: "idle" });
+        setPendingChangesState({ status: "idle" });
+        setWorkspaceSwitcherState((current) =>
+          current.status === "success"
+            ? { ...current, items: current.items.filter((item) => cleanText(item.slug) !== cleanText(workspaceSlug)) }
+            : current
+        );
+        setLauncherState((current) => {
+          if (current.status !== "success" && current.status !== "refreshing") return current;
+          return {
+            ...current,
+            data: {
+              ...current.data,
+              items: current.data.items.filter((item) => cleanText(item.slug) !== cleanText(workspaceSlug)),
+              totalCount: Math.max(0, current.data.totalCount - 1)
+            }
+          };
+        });
+        setLauncherRefreshToken((value) => value + 1);
+        commitRoute(buildLauncherHref(), true, "workspace_delete_committed");
+        return;
+      }
+      setWorkspaceDeletionState({
+        errorMessage: result.errorMessage,
+        status: "error",
+        workspaceSlug,
+        workspaceSysId
+      });
+      setWorkspaceSettingsPanelState((current) =>
+        current.status === "closed"
+          ? { status: "open", workspaceSlug, workspaceSysId }
+          : current
+      );
+      return;
+    }
+
+    const userSysId = pingState.status === "success" ? pingState.payload.userSysId : recentWorkspacesState.userSysId;
+    const nextRecentSlugs = forgetRecentWorkspaceSlug(userSysId, workspaceSlug);
+    setRecentWorkspacesState((current) => {
+      if (current.status === "success") {
+        return {
+          ...current,
+          slugs: nextRecentSlugs,
+          items: current.items.filter((item) => cleanText(item.slug) !== cleanText(workspaceSlug))
+        };
+      }
+      if (current.status === "loading") {
+        return {
+          ...current,
+          slugs: nextRecentSlugs
+        };
+      }
+      return current;
+    });
+    clearStoredWorkspaceLease(workspaceSysId, "workspace_deleted");
+    setManageAccessOpen(false);
+    setWorkspaceSettingsPanelState({ status: "closed" });
+    setWorkspaceDeletionState({ status: "idle" });
+    setWorkspaceSettingsPreviewIdentity(null);
+    setWorkspaceState({ status: "idle" });
+    setWorkspacePagesState({ status: "idle" });
+    setPendingChangesState({ status: "idle" });
+    setWorkspaceSwitcherState((current) =>
+      current.status === "success"
+        ? { ...current, items: current.items.filter((item) => cleanText(item.slug) !== cleanText(workspaceSlug)) }
+        : current
+    );
+    setLauncherState((current) => {
+      if (current.status !== "success" && current.status !== "refreshing") return current;
+      return {
+        ...current,
+        data: {
+          ...current.data,
+          items: current.data.items.filter((item) => cleanText(item.slug) !== cleanText(workspaceSlug)),
+          totalCount: Math.max(0, current.data.totalCount - 1)
+        }
+      };
+    });
+    setLauncherRefreshToken((value) => value + 1);
+    commitRoute(buildLauncherHref(), true, "workspace_deleted");
   }
 
   function updateInlinePageCreateTitle(value: string) {
@@ -6586,6 +6855,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const appHeaderAuthoringSurfaceLocked = !currentPageAuthoringReadiness.canSwitchSurface;
   const appHeaderMarkdownSourceEditable = currentPageAuthoringReadiness.canEditMarkdownSource;
   const pendingChangesSaveBlockedMessage = currentPageAuthoringReadiness.blockedMessage;
+  const suppressActiveWorkspaceCommandReadinessMessage =
+    (workspacePublishInProgress || workspaceDiscardAllInProgress || workspaceDiscardPageInProgress) &&
+    pendingChangesSaveBlockedMessage === WORKSPACE_COMMAND_AUTHORING_LOCK_MESSAGE;
+  const pendingChangesReadinessMessage = suppressActiveWorkspaceCommandReadinessMessage ? "" : pendingChangesSaveBlockedMessage;
   const pendingChangesUndoBlockedPageSysId = pendingChangesSaveBlockedMessage ? selectedWorkspacePageId : "";
   const workspacePublishErrorMessage =
     workspacePublishState.status === "error" &&
@@ -7258,7 +7531,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         pendingChangesPublishErrorMessage={workspacePublishErrorMessage}
         pendingChangesPublishRetryable={workspacePublishRetryable}
         pendingChangesPublishing={workspacePublishInProgress}
-        pendingChangesReadinessMessage={pendingChangesSaveBlockedMessage}
+        pendingChangesReadinessMessage={pendingChangesReadinessMessage}
         pendingChangesRefreshing={pendingChangesState.status === "refreshing"}
         onDiscardAllPendingChanges={discardAllWorkspacePendingChanges}
         onDiscardPendingPage={discardPendingWorkspacePage}
@@ -7399,6 +7672,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               workspaceSettingsOverlay={
                 <>
                   <WorkspaceSettingsOverlay
+                    deleteErrorMessage={workspaceDeletionState.status === "error" ? workspaceDeletionState.errorMessage : ""}
+                    deletePending={workspaceDeletionState.status === "deleting"}
                     errorMessage={workspaceSettingsPanelState.status === "open" ? workspaceSettingsPanelState.errorMessage : undefined}
                     loadUploadedIcon={serviceNowClient.loadWorkspaceIcon}
                     open={workspaceSettingsPanelState.status !== "closed"}
@@ -7408,7 +7683,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
                     onCancel={() => {
                       setWorkspaceSettingsPanelState({ status: "closed" });
                       setWorkspaceSettingsPreviewIdentity(null);
+                      setWorkspaceDeletionState({ status: "idle" });
                     }}
+                    onConfirmDelete={confirmDeleteCurrentWorkspace}
                     onDraftIdentityChange={handleWorkspaceSettingsDraftIdentityChange}
                     onManageAccess={openManageAccessFromSettings}
                     onCleanupStagedIcon={(input) => {

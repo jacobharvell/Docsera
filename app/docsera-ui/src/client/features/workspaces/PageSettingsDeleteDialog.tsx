@@ -78,13 +78,17 @@ export function PageSettingsDeleteDialog({
               </button>
               <button
                 type="button"
-                className="docsera-modal__primary docsera-modal__primary--destructive"
+                className="docsera-modal__primary docsera-modal__primary--destructive docsera-delete-confirmation-button"
                 aria-busy={pending ? "true" : undefined}
                 disabled={pending}
                 onClick={onConfirm}
               >
-                {pending ? <span className="docsera-changes-center__spinner" aria-hidden="true" /> : null}
-                <span>{pending ? "Deleting" : "Delete page"}</span>
+                {pending ? (
+                  <span className="docsera-delete-confirmation-button__spinner-slot" aria-hidden="true">
+                    <span className="docsera-delete-confirmation-button__spinner" />
+                  </span>
+                ) : null}
+                <span className="docsera-delete-confirmation-button__label">{pending ? "Deleting" : "Delete page"}</span>
               </button>
             </div>
           </div>

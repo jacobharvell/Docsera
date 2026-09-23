@@ -28,6 +28,7 @@ import {
 } from "../../server/api/docsera-runtime-workspace-members.ts";
 import { process as workspaceDiscardAll } from "../../server/api/docsera-runtime-workspace-discard-all";
 import { process as workspaceDiscardPage } from "../../server/api/docsera-runtime-workspace-discard-page";
+import { process as deleteWorkspace } from "../../server/api/docsera-runtime-workspace-delete.ts";
 import { process as workspacePendingChanges } from "../../server/api/docsera-runtime-workspace-pending-changes";
 import { process as workspacePublish } from "../../server/api/docsera-runtime-workspace-publish";
 import { process as saveWorkspaceSettings } from "../../server/api/docsera-runtime-workspace-settings-save.ts";
@@ -92,6 +93,16 @@ RestApi({
       produces: "application/json",
       shortDescription: "Persist authorized workspace identity and layout defaults without requiring the Edit lease.",
       script: saveWorkspaceSettings
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-delete-post"],
+      name: "workspace_delete",
+      path: "/workspaces/delete",
+      method: "POST",
+      consumes: "application/json",
+      produces: "application/json",
+      shortDescription: "Permanently delete a workspace's owned resources and retain an inactive slug tombstone.",
+      script: deleteWorkspace
     },
     {
       $id: Now.ID["docsera-runtime-workspace-members-get"],

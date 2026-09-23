@@ -18,10 +18,11 @@ const bridgeSourcePath = resolve(
 
 type Row = Record<string, string>;
 
-function createBridge({ workspaces = [], memberships = [] }: { workspaces?: Row[]; memberships?: Row[] }) {
+function createBridge({ groups = [], workspaces = [], memberships = [] }: { groups?: Row[]; workspaces?: Row[]; memberships?: Row[] }) {
   const inserts: Row[] = [];
   const deletes: Row[] = [];
   const tables: Record<string, Row[]> = {
+    sys_user_group: groups,
     sys_user_grmember: memberships,
     x_82900_docsera_workspace: workspaces
   };
@@ -32,6 +33,12 @@ function createBridge({ workspaces = [], memberships = [] }: { workspaces?: Row[
     this.current = null;
     this.pending = {};
     this.addQuery = (field: string, value: string) => this.queries.push({ field, value });
+    this.get = (sysId: string) => {
+      const row = (tables[tableName] ?? []).find((candidate) => candidate.sys_id === sysId);
+      this.current = row ?? null;
+      return Boolean(row);
+    };
+    this.getValue = (field: string) => this.current?.[field] ?? "";
     this.setLimit = (limit: number) => {
       this.limit = limit;
     };
@@ -111,5 +118,141 @@ describe("global workspace membership bridge", () => {
     ).toMatchObject({ status: "succeeded" });
 
     expect(inserts).toEqual([{ group: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", user: "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" }]);
+  });
+
+  it("deletes only a stored Docsera-owned workspace group pair", () => {
+    const { bridge, deletes } = createBridge({
+      groups: [
+        { name: "Docsera_Product_Docs_Admins", sys_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        { name: "Docsera_Product_Docs_Editors", sys_id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+      ],
+      workspaces: [{ admin_group: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", editor_group: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }]
+    });
+
+    expect(
+      bridge.deleteWorkspaceGroups(
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      )
+    ).toMatchObject({ status: "succeeded" });
+
+    expect(deletes).toEqual([
+      { name: "Docsera_Product_Docs_Editors", sys_id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+      { name: "Docsera_Product_Docs_Admins", sys_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+    ]);
+  });
+
+  it("validates both generated deletion targets without deleting either group", () => {
+    const { bridge, deletes } = createBridge({
+      groups: [
+        { name: "Docsera_Product_Docs_Admins", sys_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        { name: "Docsera_Product_Docs_Editors", sys_id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+      ],
+      workspaces: [{ admin_group: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", editor_group: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }]
+    });
+
+    expect(
+      bridge.validateWorkspaceGroupDeletionTargets(
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      )
+    ).toMatchObject({ status: "succeeded" });
+
+    expect(deletes).toEqual([]);
+  });
+
+  it("fails before deleting either generated group when the editor target has been renamed outside the Docsera contract", () => {
+    const { bridge, deletes } = createBridge({
+      groups: [
+        { name: "Docsera_Product_Docs_Admins", sys_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        { name: "Renamed Editors", sys_id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+      ],
+      workspaces: [{ admin_group: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", editor_group: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }]
+    });
+
+    expect(
+      bridge.deleteWorkspaceGroups(
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      )
+    ).toMatchObject({ status: "failed" });
+
+    expect(deletes).toEqual([]);
+  });
+
+  it("fails before deleting either generated group when the admin target has been renamed outside the Docsera contract", () => {
+    const { bridge, deletes } = createBridge({
+      groups: [
+        { name: "Renamed Admins", sys_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        { name: "Docsera_Product_Docs_Editors", sys_id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+      ],
+      workspaces: [{ admin_group: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", editor_group: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }]
+    });
+
+    expect(
+      bridge.deleteWorkspaceGroups(
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      )
+    ).toMatchObject({ status: "failed" });
+
+    expect(deletes).toEqual([]);
+  });
+
+  it("deletes the remaining generated group when the other stored target is already absent during committed cleanup", () => {
+    const { bridge, deletes } = createBridge({
+      groups: [
+        { name: "Docsera_Product_Docs_Admins", sys_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+      ],
+      workspaces: [{ admin_group: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", editor_group: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }]
+    });
+
+    expect(
+      bridge.deleteWorkspaceGroups(
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      )
+    ).toMatchObject({ status: "succeeded" });
+
+    expect(deletes).toEqual([
+      { name: "Docsera_Product_Docs_Admins", sys_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+    ]);
+  });
+
+  it("fails committed cleanup before deleting a valid remaining group when the other remaining target was renamed", () => {
+    const { bridge, deletes } = createBridge({
+      groups: [
+        { name: "Docsera_Product_Docs_Admins", sys_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        { name: "Renamed Editors", sys_id: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
+      ],
+      workspaces: [{ admin_group: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", editor_group: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }]
+    });
+
+    expect(
+      bridge.deleteWorkspaceGroups(
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      )
+    ).toMatchObject({ status: "failed" });
+
+    expect(deletes).toEqual([]);
+  });
+
+  it("keeps validation strict when either generated deletion target is absent", () => {
+    const { bridge, deletes } = createBridge({
+      groups: [
+        { name: "Docsera_Product_Docs_Admins", sys_id: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+      ],
+      workspaces: [{ admin_group: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", editor_group: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }]
+    });
+
+    expect(
+      bridge.validateWorkspaceGroupDeletionTargets(
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      )
+    ).toMatchObject({ status: "failed" });
+
+    expect(deletes).toEqual([]);
   });
 });

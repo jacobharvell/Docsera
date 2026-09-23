@@ -33,7 +33,11 @@
     var bridge = new DocseraGlobalWorkspaceMembershipBridge();
     var result;
 
-    if (mutationKind === 'set') {
+    if (mutationKind === 'validate_workspace_group_deletion') {
+        result = bridge.validateWorkspaceGroupDeletionTargets(adminGroupSysId, editorGroupSysId);
+    } else if (mutationKind === 'delete_workspace_groups') {
+        result = bridge.deleteWorkspaceGroups(adminGroupSysId, editorGroupSysId);
+    } else if (mutationKind === 'set') {
         result = bridge.setWorkspaceMembership(adminGroupSysId, editorGroupSysId, targetUserSysId, accessLevel);
     } else if (mutationKind === 'remove') {
         result = bridge.removeWorkspaceMembership(adminGroupSysId, editorGroupSysId, targetUserSysId);

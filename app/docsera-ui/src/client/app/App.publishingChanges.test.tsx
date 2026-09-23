@@ -389,8 +389,12 @@ describe("App publishing changes integration", () => {
       await flushMicrotasks();
     });
     expect(publishWorkspace).toHaveBeenCalledTimes(1);
-    expect(screen.getByRole("button", { name: "New page" })).toBeDisabled();
+    const newPageButton = screen.getByRole("button", { name: "New page" });
+    expect(newPageButton).toBeDisabled();
+    fireEvent.click(newPageButton);
+    expect(screen.queryByRole("textbox", { name: "New page title" })).toBeNull();
     expect(screen.queryByText("Publishing is in progress. Authoring actions are temporarily unavailable.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Workspace authoring is locked while another command is in progress.")).not.toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Publish" })).toHaveAttribute("aria-busy", "true");
     expect(within(dialog).getByRole("button", { name: "Publish" }).querySelector(".docsera-changes-center__spinner")).toBeInTheDocument();
 
