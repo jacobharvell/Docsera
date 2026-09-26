@@ -1,5 +1,6 @@
 import { WorkspaceIconBadge, type WorkspaceUploadedIconLoader } from "./WorkspacePrimitives";
 import { WorkspaceListIcon } from "./DocseraHeaderIcons";
+import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
 import type { WorkspaceViewRecord } from "../../shared/types/docsera";
 
 export type RecentWorkspaceItem = Pick<WorkspaceViewRecord, "icon" | "name" | "slug"> & {
@@ -30,20 +31,25 @@ export function RecentWorkspacesMenu({
             const isCurrent = workspace.slug === currentWorkspaceSlug || workspace.isCurrent;
 
             return (
-              <button
+              <DocseraCompactTooltip
                 key={workspace.slug}
-                type="button"
-                className={`docsera-header__menu-item${isCurrent ? " docsera-header__menu-item--current" : ""}`}
-                onClick={() => onOpenWorkspace(workspace.slug, workspace)}
-                role="menuitem"
+                label={workspace.name}
+                resolveAnchorRect={(trigger) =>
+                  trigger.querySelector<HTMLElement>(".docsera-header__menu-item-identity")?.getBoundingClientRect() ?? trigger.getBoundingClientRect()
+                }
               >
-                <span className="docsera-header__menu-item-identity">
-                  <WorkspaceIconBadge workspace={workspace} className="docsera-header__menu-item-icon" loadUploadedIcon={loadUploadedIcon} />
-                  <span className="docsera-header__menu-item-label" title={workspace.name}>
-                    {workspace.name}
+                <button
+                  type="button"
+                  className={`docsera-header__menu-item${isCurrent ? " docsera-header__menu-item--current" : ""}`}
+                  onClick={() => onOpenWorkspace(workspace.slug, workspace)}
+                  role="menuitem"
+                >
+                  <span className="docsera-header__menu-item-identity">
+                    <WorkspaceIconBadge workspace={workspace} className="docsera-header__menu-item-icon" loadUploadedIcon={loadUploadedIcon} />
+                    <span className="docsera-header__menu-item-label">{workspace.name}</span>
                   </span>
-                </span>
-              </button>
+                </button>
+              </DocseraCompactTooltip>
             );
           })}
         </div>

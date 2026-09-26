@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
+import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
 import type { WorkspaceIcon, WorkspaceIconUploadResult } from "../../shared/types/docsera";
 import {
   BUILT_IN_WORKSPACE_ICONS,
@@ -208,9 +209,11 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, onUpload
             <h2 id="docsera-create-workspace-title" className="docsera-modal__title">
               New Workspace
             </h2>
-            <button type="button" className="docsera-modal__close" onClick={onClose} aria-label="Close modal" disabled={!canClose}>
-              <DocseraIcon className="docsera-modal__close-icon" icon={docseraIcons.close} />
-            </button>
+            <DocseraCompactTooltip label="Close modal">
+              <button type="button" className="docsera-modal__close" onClick={onClose} aria-label="Close modal" disabled={!canClose}>
+                <DocseraIcon className="docsera-modal__close-icon" icon={docseraIcons.close} />
+              </button>
+            </DocseraCompactTooltip>
           </div>
 
           {errorMessage ? (

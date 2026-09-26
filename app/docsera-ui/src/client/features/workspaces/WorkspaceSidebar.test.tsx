@@ -234,6 +234,25 @@ function treeNewPageButton() {
 }
 
 describe("WorkspaceSidebar page tree drag surface", () => {
+  it("uses shared tooltips for compact navigation controls", async () => {
+    renderSidebar({
+      canCreatePage: true,
+      pages: [page({ id: "getting-started", title: "Getting Started" })],
+      showCreatePageControl: true
+    });
+
+    const newPageButton = document.querySelector<HTMLButtonElement>(".docsera-sidebar__icon-button[aria-label='New page']");
+    expect(newPageButton).toBeInstanceOf(HTMLButtonElement);
+    if (!(newPageButton instanceof HTMLButtonElement)) {
+      throw new Error("Expected the compact New page button.");
+    }
+    expect(newPageButton).not.toHaveAttribute("title");
+
+    fireEvent.focus(newPageButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("New page");
+    expect(newPageButton).toHaveAccessibleName("New page");
+  });
+
   it("treats the complete sidebar panel as the drag surface and routes search-row drops to the root top destination", async () => {
     const onTreeFilterChange = vi.fn();
     const onShowCreatePage = vi.fn();

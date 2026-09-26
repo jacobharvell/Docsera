@@ -17,6 +17,7 @@ import {
   resolvePageTreeDropPresentationAnchor,
   type PageTreeDropPresentationAnchor
 } from "./pageTreeDropPresentation";
+import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
 
 export type InlinePageCreateState = {
   errorMessage: string;
@@ -717,75 +718,80 @@ function PageTreeNode({
             </span>
           </div>
         ) : (
-          <button
-            type="button"
-            className="docsera-page-tree__button"
-            onClick={handleRowClick}
-            onKeyDown={(event) => {
-              if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) {
-                return;
-              }
+          <DocseraCompactTooltip label={page.title}>
+            <button
+              type="button"
+              className="docsera-page-tree__button"
+              onClick={handleRowClick}
+              onKeyDown={(event) => {
+                if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) {
+                  return;
+                }
 
-              const rect = event.currentTarget.getBoundingClientRect();
-              openContextMenu({
-                clientX: rect.left + Math.min(32, Math.max(0, rect.width / 2)),
-                clientY: rect.top + Math.min(24, Math.max(0, rect.height)),
-                currentTarget: event.currentTarget,
-                preventDefault: () => event.preventDefault(),
-                stopPropagation: () => event.stopPropagation()
-              });
-            }}
-            aria-current={isSelected ? "page" : undefined}
-            aria-expanded={hasChildren ? isExpanded : undefined}
-            title={page.title}
-          >
-            <span className="docsera-page-tree__row-main">
-              {hasChildren ? (
-                <span className="docsera-page-tree__chevron" aria-hidden="true">
-                  <ChevronIcon expanded={isExpanded} />
-                </span>
-              ) : (
-                <span className="docsera-page-tree__chevron-spacer" aria-hidden="true" />
-              )}
-              <span className="docsera-page-tree__title">{page.title}</span>
-            </span>
-          </button>
+                const rect = event.currentTarget.getBoundingClientRect();
+                openContextMenu({
+                  clientX: rect.left + Math.min(32, Math.max(0, rect.width / 2)),
+                  clientY: rect.top + Math.min(24, Math.max(0, rect.height)),
+                  currentTarget: event.currentTarget,
+                  preventDefault: () => event.preventDefault(),
+                  stopPropagation: () => event.stopPropagation()
+                });
+              }}
+              aria-current={isSelected ? "page" : undefined}
+              aria-expanded={hasChildren ? isExpanded : undefined}
+            >
+              <span className="docsera-page-tree__row-main">
+                {hasChildren ? (
+                  <span className="docsera-page-tree__chevron" aria-hidden="true">
+                    <ChevronIcon expanded={isExpanded} />
+                  </span>
+                ) : (
+                  <span className="docsera-page-tree__chevron-spacer" aria-hidden="true" />
+                )}
+                <span className="docsera-page-tree__title">{page.title}</span>
+              </span>
+            </button>
+          </DocseraCompactTooltip>
         )}
 
         {actionCount > 0 ? (
           <div className="docsera-page-tree__actions">
             {showChildCreateButton ? (
-              <button
-                type="button"
-                className="docsera-page-tree__action-button"
-                aria-label={`Add child page to ${page.title}`}
-                onClick={() => onShowChildPageCreate(pageIdentity, page.title)}
-                disabled={isCreatingPage}
-              >
-                <PlusIcon />
-              </button>
+              <DocseraCompactTooltip label={`Add child page to ${page.title}`}>
+                <button
+                  type="button"
+                  className="docsera-page-tree__action-button"
+                  aria-label={`Add child page to ${page.title}`}
+                  onClick={() => onShowChildPageCreate(pageIdentity, page.title)}
+                  disabled={isCreatingPage}
+                >
+                  <PlusIcon />
+                </button>
+              </DocseraCompactTooltip>
             ) : null}
             {showActionsButton ? (
-              <button
-                type="button"
-                className="docsera-page-tree__action-button docsera-page-tree__action-button--actions"
-                aria-label={`Page actions for ${page.title}`}
-                aria-haspopup="menu"
-                onClick={(event) => {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  onShowPageContextMenu({
-                    origin: event.currentTarget,
-                    placement: "control",
-                    page,
-                    x: rect.left,
-                    y: rect.bottom + 4
-                  });
-                }}
-              >
-                <EllipsisIcon />
-              </button>
+              <DocseraCompactTooltip label={`Page actions for ${page.title}`}>
+                <button
+                  type="button"
+                  className="docsera-page-tree__action-button docsera-page-tree__action-button--actions"
+                  aria-label={`Page actions for ${page.title}`}
+                  aria-haspopup="menu"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    onShowPageContextMenu({
+                      origin: event.currentTarget,
+                      placement: "control",
+                      page,
+                      x: rect.left,
+                      y: rect.bottom + 4
+                    });
+                  }}
+                >
+                  <EllipsisIcon />
+                </button>
+              </DocseraCompactTooltip>
             ) : null}
           </div>
         ) : null}

@@ -2,6 +2,7 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { EditorMediaAdapter, EditorMediaReference } from "./contracts";
 import { useWorkspaceMediaObjectUrl } from "../shared/media/useWorkspaceMediaObjectUrl";
+import { DocseraCompactTooltip } from "../shared/tooltip/DocseraTooltip";
 import { ChevronLeft, Upload, X } from "lucide-react";
 
 type ImagePickerDialogProps = {
@@ -444,9 +445,11 @@ export function ImagePickerDialog({
           <h2 id={pickerId} className="docsera-image-picker__title">
             Select image
           </h2>
-          <button type="button" className="docsera-modal__close docsera-image-picker__close" aria-label="Close image picker" onClick={closeDialog}>
-            <X size={16} strokeWidth={2.25} aria-hidden="true" focusable="false" />
-          </button>
+          <DocseraCompactTooltip label="Close image picker" ownerDocument={overlayRoot.ownerDocument}>
+            <button type="button" className="docsera-modal__close docsera-image-picker__close" aria-label="Close image picker" onClick={closeDialog}>
+              <X size={16} strokeWidth={2.25} aria-hidden="true" focusable="false" />
+            </button>
+          </DocseraCompactTooltip>
         </div>
 
         <input

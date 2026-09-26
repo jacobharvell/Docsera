@@ -346,6 +346,40 @@ describe("DocseraHeader publishing changes", () => {
     expect(container.querySelectorAll(".docsera-header__surface-toggle .docsera-header__segmented-indicator")).toHaveLength(1);
   });
 
+  it("uses shared tooltips for Live and Edit controls", async () => {
+    const onWorkspaceModeChange = vi.fn();
+
+    render(
+      <DocseraHeader
+        {...baseProps}
+        onWorkspaceModeChange={onWorkspaceModeChange}
+        showWorkspaceMode="edit"
+      />
+    );
+
+    const workspaceToggle = screen.getByRole("group", { name: "Workspace mode" });
+    const liveButton = within(workspaceToggle).getByRole("button", { name: "Live" });
+    const editButton = within(workspaceToggle).getByRole("button", { name: "Edit" });
+
+    expect(liveButton).toBeVisible();
+    expect(editButton).toBeVisible();
+    expect(liveButton).toHaveAttribute("aria-pressed", "false");
+    expect(editButton).toHaveAttribute("aria-pressed", "true");
+    expect(liveButton).not.toHaveAttribute("title");
+    expect(editButton).not.toHaveAttribute("title");
+    expect(workspaceToggle.querySelector("[title]")).not.toBeInTheDocument();
+
+    fireEvent.focus(liveButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Live");
+
+    fireEvent.blur(liveButton);
+    fireEvent.focus(editButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Edit");
+
+    fireEvent.click(liveButton);
+    expect(onWorkspaceModeChange).toHaveBeenCalledWith("live");
+  });
+
   it("keeps the workspace mode and surface toggles aligned, separated, and free of source-editor perimeter chrome", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;

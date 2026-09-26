@@ -16,6 +16,10 @@ describe("paste sanitizer", () => {
     expect(sanitized).not.toContain("https://example.com/image.png");
   });
 
+  it("preserves hard breaks inside substantive pasted paragraphs", () => {
+    expect(sanitizeDocseraPastedHTML("<p>Alpha<br>Beta</p>")).toBe("<p>Alpha<br>Beta</p>");
+  });
+
   it("normalizes pasted line endings without altering text content", () => {
     expect(sanitizeDocseraPastedText("Line one\r\nLine two\rLine three")).toBe("Line one\nLine two\nLine three");
   });

@@ -11,6 +11,7 @@ import { PageTree, type InlinePageCreateState } from "../features/workspaces/Pag
 import { buildWorkspacePageTree } from "../features/workspaces/workspaceViewModels";
 import { requestPageOwnershipHandoff } from "../pageOwnershipHandoff";
 import type { WorkspacePageRecord } from "../shared/types/docsera";
+import { DocseraCompactTooltip } from "./DocseraTooltip";
 import { createEnvelopeFromDocument, renderRuntime } from "./PageEditorHostRuntime.testUtils";
 
 const LIGHT_ACTIVE_PILL_SURFACE = "#4648d4";
@@ -1342,6 +1343,49 @@ describe("PageEditorHostRuntime table drag selection", () => {
     } finally {
       geometry.restore();
     }
+  });
+
+  it("uses shared tooltips for compact table controls", async () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess
+      .getBuiltinModule("fs")
+      .readFileSync(`${nodeProcess.cwd()}/src/client/editor/TableControlsOverlay.tsx`, "utf8");
+
+    expect(source).toContain(
+      '<DocseraCompactTooltip key={`table-row-handle-${rowIndex}`} label={`Table row ${rowIndex + 1} options`} ownerDocument={overlayRoot.ownerDocument}>'
+    );
+    expect(source).toContain(
+      '<DocseraCompactTooltip key={`table-column-handle-${columnIndex}`} label={`Table column ${columnIndex + 1} options`} ownerDocument={overlayRoot.ownerDocument}>'
+    );
+    expect(source).not.toContain('<button\n                    key={`table-row-handle-${rowIndex}`');
+    expect(source).not.toContain('<button\n                    key={`table-column-handle-${columnIndex}`');
+
+    render(
+      <>
+        <DocseraCompactTooltip label="Table row 1 options">
+          <button type="button" aria-label="Table row 1 options" />
+        </DocseraCompactTooltip>
+        <DocseraCompactTooltip label="Table column 1 options">
+          <button type="button" aria-label="Table column 1 options" />
+        </DocseraCompactTooltip>
+      </>
+    );
+
+    const rowHandle = screen.getByRole("button", { name: "Table row 1 options" });
+    const columnHandle = screen.getByRole("button", { name: "Table column 1 options" });
+    expect(rowHandle).not.toHaveAttribute("title");
+    fireEvent.focus(rowHandle);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Table row 1 options");
+    expect(rowHandle).toHaveAccessibleName("Table row 1 options");
+
+    fireEvent.blur(rowHandle);
+    expect(columnHandle).not.toHaveAttribute("title");
+    fireEvent.focus(columnHandle);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Table column 1 options");
+    expect(columnHandle).toHaveAccessibleName("Table column 1 options");
   });
 
   it.each([

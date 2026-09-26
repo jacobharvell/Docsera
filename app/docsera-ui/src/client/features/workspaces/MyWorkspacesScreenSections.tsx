@@ -1,6 +1,7 @@
 import { useRef, type ReactNode } from "react";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
+import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
 import type { WorkspaceViewRecord } from "../../shared/types/docsera";
 import type { RecentWorkspaceItem } from "./RecentWorkspacesMenu";
 import { WorkspaceIconBadge, type WorkspaceUploadedIconLoader } from "./WorkspacePrimitives";
@@ -99,18 +100,20 @@ export function LauncherSearchToolbar({
           onChange={(event) => onSearchTextChange(event.target.value)}
         />
         {searchText ? (
-          <button
-            type="button"
-            className="docsera-launcher-toolbar__clear"
-            aria-label="Clear search"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={() => {
-              onSearchTextChange("");
-              inputRef.current?.focus();
-            }}
-          >
-            <ClearIcon />
-          </button>
+          <DocseraCompactTooltip label="Clear search">
+            <button
+              type="button"
+              className="docsera-launcher-toolbar__clear"
+              aria-label="Clear search"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                onSearchTextChange("");
+                inputRef.current?.focus();
+              }}
+            >
+              <ClearIcon />
+            </button>
+          </DocseraCompactTooltip>
         ) : null}
       </label>
     </div>
@@ -143,17 +146,18 @@ export function WorkspaceRow({
         <div className="docsera-workspace-row__identity">
           <WorkspaceIconBadge workspace={workspace} className="docsera-workspace-row__icon" loadUploadedIcon={loadUploadedIcon} />
           <div className="docsera-workspace-row__copy">
-            <a
-              className="docsera-workspace-row__name"
-              href={buildWorkspaceHref(workspace.slug)}
-              onClick={(event) => {
-                event.preventDefault();
-                onOpenWorkspace(workspace.slug, workspace);
-              }}
-              title={`Open ${workspace.name}`}
-            >
-              {workspace.name}
-            </a>
+            <DocseraCompactTooltip label={`Open ${workspace.name}`}>
+              <a
+                className="docsera-workspace-row__name"
+                href={buildWorkspaceHref(workspace.slug)}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onOpenWorkspace(workspace.slug, workspace);
+                }}
+              >
+                {workspace.name}
+              </a>
+            </DocseraCompactTooltip>
             {workspace.shortDescription ? (
               <p className="docsera-workspace-row__description">{workspace.shortDescription}</p>
             ) : null}
@@ -163,17 +167,18 @@ export function WorkspaceRow({
         <div className="docsera-workspace-row__role-cell" aria-label={`Role: ${workspace.roleLabel ?? "View only"}`}>
           <span className="docsera-workspace-row__role">{workspace.roleLabel ?? "View only"}</span>
           {workspace.canManageSettings ? (
-            <a
-              className="docsera-workspace-row__settings"
-              href={buildWorkspaceHref(workspace.slug, { settingsIntent: true })}
-              onClick={(event) => {
-                event.preventDefault();
-                onOpenWorkspaceSettings(workspace.slug);
-              }}
-              title={`Open settings for ${workspace.name}`}
-            >
-              Settings
-            </a>
+            <DocseraCompactTooltip label={`Open settings for ${workspace.name}`}>
+              <a
+                className="docsera-workspace-row__settings"
+                href={buildWorkspaceHref(workspace.slug, { settingsIntent: true })}
+                onClick={(event) => {
+                  event.preventDefault();
+                  onOpenWorkspaceSettings(workspace.slug);
+                }}
+              >
+                Settings
+              </a>
+            </DocseraCompactTooltip>
           ) : null}
         </div>
       </article>

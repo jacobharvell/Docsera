@@ -453,6 +453,18 @@ async function pasteIntoEditor(editor: Editor, html: string, text = html) {
   });
 }
 
+async function pastePlainTextOnlyIntoEditor(editor: Editor, text: string) {
+  await act(async () => {
+    editor.commands.focus("end", { scrollIntoView: false });
+    fireEvent.paste(editor.view.dom, {
+      clipboardData: {
+        getData: (type: string) => (type === "text/plain" ? text : ""),
+        types: ["text/plain"]
+      }
+    } as never);
+  });
+}
+
 afterEach(() => {
   for (const editor of mountedEditors) {
     if (!(editor as Editor & { isDestroyed?: boolean }).isDestroyed) {
@@ -485,6 +497,7 @@ export {
   openSlashQuery,
   openSlashQueryAtSelection,
   pasteIntoEditor,
+  pastePlainTextOnlyIntoEditor,
   renderRuntime,
   runAutosave,
   selectText,

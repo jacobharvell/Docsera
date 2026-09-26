@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { WorkspaceList, WorkspaceListHeader } from "./MyWorkspacesScreenSections";
+import { LauncherSearchToolbar, WorkspaceList, WorkspaceListHeader } from "./MyWorkspacesScreenSections";
 
 function mockObjectUrl() {
   Object.defineProperty(URL, "createObjectURL", {
@@ -60,6 +60,17 @@ describe("WorkspaceList", () => {
     expect(screen.getByText("Role")).toHaveClass("docsera-workspace-list__role-heading");
   });
 
+  it("uses shared tooltips for compact My Workspaces controls", async () => {
+    render(<LauncherSearchToolbar searchText="api" onSearchTextChange={vi.fn()} />);
+
+    const clearSearchButton = screen.getByRole("button", { name: "Clear search" });
+    expect(clearSearchButton).not.toHaveAttribute("title");
+
+    fireEvent.focus(clearSearchButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Clear search");
+    expect(clearSearchButton).toHaveAccessibleName("Clear search");
+  });
+
   it("keeps Settings as a navigation link that opens the settings intent", () => {
     const onOpenWorkspaceSettings = vi.fn();
 
@@ -92,6 +103,56 @@ describe("WorkspaceList", () => {
 
     fireEvent.click(settingsLink);
 
+    expect(onOpenWorkspaceSettings).toHaveBeenCalledWith("admin-docs");
+  });
+
+  it("uses shared tooltips for workspace row links", async () => {
+    const onOpenWorkspace = vi.fn();
+    const onOpenWorkspaceSettings = vi.fn();
+
+    render(
+      <WorkspaceList
+        items={[
+          {
+            canManageSettings: true,
+            canManageWorkspaceMembers: true,
+            icon: { type: "builtin", key: "book", label: "Book" },
+            name: "Admin Docs",
+            layout: {
+              tocVisible: true
+            },
+            roleLabel: "Admin",
+            shortDescription: "Operational documentation",
+            slug: "admin-docs",
+            status: "active",
+            sysId: "workspace-002"
+          }
+        ]}
+        onOpenWorkspace={onOpenWorkspace}
+        onOpenWorkspaceSettings={onOpenWorkspaceSettings}
+      />
+    );
+
+    const workspaceLink = screen.getByRole("link", { name: "Admin Docs" });
+    const settingsLink = screen.getByRole("link", { name: "Settings" });
+
+    expect(workspaceLink).toBeVisible();
+    expect(settingsLink).toBeVisible();
+    expect(workspaceLink).not.toHaveAttribute("title");
+    expect(settingsLink).not.toHaveAttribute("title");
+    expect(document.querySelector("[title]")).not.toBeInTheDocument();
+
+    fireEvent.focus(workspaceLink);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Open Admin Docs");
+
+    fireEvent.blur(workspaceLink);
+    fireEvent.focus(settingsLink);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Open settings for Admin Docs");
+
+    fireEvent.click(workspaceLink);
+    expect(onOpenWorkspace).toHaveBeenCalledWith("admin-docs", expect.objectContaining({ name: "Admin Docs" }));
+
+    fireEvent.click(settingsLink);
     expect(onOpenWorkspaceSettings).toHaveBeenCalledWith("admin-docs");
   });
 });

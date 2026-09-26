@@ -31,7 +31,6 @@ function sanitizeElementTree(root: ParentNode): void {
 
     sanitizeElementAttributes(element);
   }
-
 }
 
 export function sanitizeDocseraPastedHTML(html: string): string {

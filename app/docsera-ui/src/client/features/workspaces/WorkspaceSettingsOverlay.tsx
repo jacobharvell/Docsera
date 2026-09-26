@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
+import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
 import type { WorkspaceIcon, WorkspaceIconUploadResult, WorkspaceViewRecord } from "../../shared/types/docsera";
 import { BUILT_IN_WORKSPACE_ICONS, DEFAULT_BUILT_IN_WORKSPACE_ICON, findBuiltInWorkspaceIcon, type BuiltInWorkspaceIcon } from "../../../shared/workspaces/domain";
 import { WorkspaceIconBadge, type WorkspaceUploadedIconLoader } from "./WorkspacePrimitives";
@@ -321,9 +322,11 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
       <aside ref={panelRef} className="docsera-workspace-settings-overlay__panel" role="complementary" aria-label="Workspace Settings">
         <div className="docsera-workspace-settings-overlay__header">
           <h2 className="docsera-workspace-settings-overlay__title">Workspace Settings</h2>
-          <button type="button" className="docsera-modal__close docsera-workspace-settings-overlay__close" aria-label="Close workspace settings" onClick={requestFinishEditing} disabled={pending || uploadingIcon}>
-            <DocseraIcon icon={docseraIcons.close} />
-          </button>
+          <DocseraCompactTooltip label="Close workspace settings">
+            <button type="button" className="docsera-modal__close docsera-workspace-settings-overlay__close" aria-label="Close workspace settings" onClick={requestFinishEditing} disabled={pending || uploadingIcon}>
+              <DocseraIcon icon={docseraIcons.close} />
+            </button>
+          </DocseraCompactTooltip>
         </div>
         {errorMessage ? <div className="docsera-workspace-settings-overlay__alert" role="alert">{errorMessage}</div> : null}
         <div className="docsera-workspace-settings-overlay__body">
@@ -405,9 +408,11 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
             <div className="docsera-modal__form">
               <div className="docsera-modal__header">
                 <h2 id="docsera-delete-workspace-title" className="docsera-modal__title">Delete workspace</h2>
-                <button type="button" className="docsera-modal__close" disabled={deletePending} onClick={requestCloseDeleteDialog} aria-label="Close delete workspace dialog">
-                  <DocseraIcon icon={docseraIcons.close} />
-                </button>
+                <DocseraCompactTooltip label="Close delete workspace dialog">
+                  <button type="button" className="docsera-modal__close" disabled={deletePending} onClick={requestCloseDeleteDialog} aria-label="Close delete workspace dialog">
+                    <DocseraIcon icon={docseraIcons.close} />
+                  </button>
+                </DocseraCompactTooltip>
               </div>
               {deleteErrorMessage ? <div className="docsera-modal__alert" role="alert">{deleteErrorMessage}</div> : null}
               <div className="docsera-modal__body">

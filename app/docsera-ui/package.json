@@ -28,6 +28,7 @@
     "verify:e3-t12-workspace-publish": "node ./scripts/verify-e3-t12-workspace-publish.mjs",
     "verify:e3-t13-workspace-discard-all": "node ./scripts/verify-e3-t13-workspace-discard-all.mjs",
     "verify:e3-t14-workspace-individual-undo": "node ./scripts/verify-e3-t14-workspace-individual-undo.mjs",
+    "verify:task87-native-paste": "node ./scripts/diagnose-native-paste.mjs",
     "verify:workspace-edit-lease": "node ./scripts/verify-workspace-edit-lease.mjs",
     "verify:workspace-edit-lease-browser": "node ./scripts/workspace-edit-lease-browser-smoke.mjs",
     "verify:workspace-foundation": "node ./scripts/verify-workspace-foundation.mjs",

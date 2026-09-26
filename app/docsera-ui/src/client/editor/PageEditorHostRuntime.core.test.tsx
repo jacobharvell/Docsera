@@ -26,6 +26,7 @@ import {
   createEnvelopeFromDocument,
   createSuccessPage,
   pasteIntoEditor,
+  pastePlainTextOnlyIntoEditor,
   renderRuntime,
   runAutosave
 } from "./PageEditorHostRuntime.testUtils";
@@ -223,6 +224,45 @@ describe("PageEditorHostRuntime", () => {
     expect(selectorStyleSource).toContain("width: calc(100% + var(--docsera-block-selector-scrollbar-gap));");
     expect(selectorStyleSource).toContain("margin-right: calc(-1 * var(--docsera-block-selector-scrollbar-gap));");
     expect(selectorStyleSource).toContain("padding: 8px calc(10px + var(--docsera-block-selector-scrollbar-gap)) 8px 10px;");
+  });
+
+  it("uses the navigation row hover contract for compact editor block menus while preserving subdued descriptions and destructive Delete styling", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const runtimeSource = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/PageEditorHostRuntime.tsx`,
+      "utf8"
+    ).replace(/\r\n/g, "\n");
+    const selectorStyleSource = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/BlockSelectorStyles.ts`,
+      "utf8"
+    ).replace(/\r\n/g, "\n");
+
+    const rowHoverBackground = "--docsera-editor-menu-row-hover-bg: color-mix(in srgb, var(--docsera-primary-soft) 58%, #ffffff 42%);";
+    const darkRowHoverBackground = "--docsera-editor-menu-row-hover-bg: rgba(70, 72, 212, 0.16);";
+    const rowHoverForeground = "--docsera-editor-menu-row-hover-fg: var(--docsera-primary);";
+
+    expect(selectorStyleSource).toContain(rowHoverBackground);
+    expect(selectorStyleSource).toContain(rowHoverForeground);
+    expect(selectorStyleSource).toContain(darkRowHoverBackground);
+    expect(selectorStyleSource).toContain("background: var(--docsera-editor-menu-row-hover-bg);");
+    expect(selectorStyleSource).toContain("color: var(--docsera-editor-menu-row-hover-fg);");
+    expect(selectorStyleSource).toContain(".docsera-block-selector__title {\n    color: var(--docsera-text);");
+    expect(selectorStyleSource).toContain(
+      ".docsera-block-selector__item:hover .docsera-block-selector__title,\n  .docsera-block-selector__item:focus-visible .docsera-block-selector__title,\n  .docsera-block-selector__item--active .docsera-block-selector__title {\n    color: inherit;"
+    );
+    expect(selectorStyleSource).toContain(".docsera-block-selector__description {\n    color: var(--docsera-text-soft);");
+    expect(selectorStyleSource).not.toContain("background: var(--docsera-surface-muted);");
+
+    expect(runtimeSource).toContain(rowHoverBackground);
+    expect(runtimeSource).toContain(rowHoverForeground);
+    expect(runtimeSource).toContain(darkRowHoverBackground);
+    expect(runtimeSource).toContain("background: var(--docsera-editor-menu-row-hover-bg);");
+    expect(runtimeSource).toContain("color: var(--docsera-editor-menu-row-hover-fg);");
+    expect(runtimeSource).toContain(".docsera-block-menu__item--destructive {\n          color: #d92d20;");
+    expect(runtimeSource).toContain(".docsera-block-menu__item--destructive.docsera-block-menu__item--active {\n          background: color-mix(in srgb, #d92d20 10%, var(--docsera-surface));\n          color: #d92d20;");
   });
 
   it("owns editor image presentation inside the shadow runtime and keeps the picker contract compact", () => {
@@ -1554,6 +1594,106 @@ describe("PageEditorHostRuntime", () => {
         {
           type: "paragraph",
           content: [{ type: "text", text: "Second line" }]
+        }
+      ]
+    });
+  });
+
+  it.each([
+    ["CRLF blank-line separators", "Alpha\r\n\r\nBeta"],
+    ["LF blank-line separators", "Alpha\n\nBeta"],
+    ["three CRLF-separated paragraphs", "Alpha\r\n\r\nBeta\r\n\r\nGamma"]
+  ])("normalizes plain-text-only paste with %s", async (_label, pastedText) => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await pastePlainTextOnlyIntoEditor(editor, pastedText);
+
+    const paragraphTexts =
+      editor.getJSON().content?.map((node) =>
+        node.content
+          ?.map((child) => ("text" in child && typeof child.text === "string" ? child.text : ""))
+          .join("") ?? ""
+      ) ?? [];
+    expect(paragraphTexts).toEqual(pastedText.replace(/\r\n/g, "\n").split(/\n\n/));
+  });
+
+  it("preserves accepted single-newline plain-text-only paste behavior", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await pastePlainTextOnlyIntoEditor(editor, "First line\nSecond line");
+
+    expect(editor.getJSON()).toMatchObject({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "First line" }]
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Second line" }]
+        }
+      ]
+    });
+  });
+
+  it("preserves URL autolinking for plain-text-only paste", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await pastePlainTextOnlyIntoEditor(editor, "https://example.com/docs");
+
+    expect(editor.getJSON()).toMatchObject({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "https://example.com/docs",
+              marks: [{ type: "link", attrs: { href: "https://example.com/docs" } }]
+            }
+          ]
+        }
+      ]
+    });
+  });
+
+  it("preserves hard breaks inside substantive pasted paragraphs", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await pasteIntoEditor(editor, "<p>Alpha<br>Beta</p>");
+
+    expect(editor.getJSON()).toMatchObject({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "Alpha" },
+            { type: "hardBreak" },
+            { type: "text", text: "Beta" }
+          ]
         }
       ]
     });

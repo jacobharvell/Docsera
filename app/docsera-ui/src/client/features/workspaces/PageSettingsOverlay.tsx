@@ -1,6 +1,7 @@
 import type { KeyboardEvent, RefObject } from "react";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
+import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
 
 type PageSettingsField = "title" | "slug";
 
@@ -128,14 +129,16 @@ export function PageSettingsOverlay({
         <h2 id="docsera-page-settings-title" className="docsera-page-settings__title">
           Page Settings
         </h2>
-        <button
-          type="button"
-          className="docsera-modal__close docsera-page-settings__icon-button"
-          aria-label="Close page settings"
-          onClick={onRequestClose}
-        >
-          <CloseIcon />
-        </button>
+        <DocseraCompactTooltip label="Close page settings">
+          <button
+            type="button"
+            className="docsera-modal__close docsera-page-settings__icon-button"
+            aria-label="Close page settings"
+            onClick={onRequestClose}
+          >
+            <CloseIcon />
+          </button>
+        </DocseraCompactTooltip>
       </div>
       <div className="docsera-page-settings__header-divider" aria-hidden="true" />
 

@@ -36,6 +36,12 @@ function readPixelCustomProperty(css: string, propertyName: string) {
   return value ? Number.parseInt(value, 10) : Number.NaN;
 }
 
+function readZIndex(source: string, selector: string) {
+  const body = getRuleBody(source, selector);
+  const value = /z-index:\s*(\d+);/.exec(body)?.[1];
+  return value ? Number.parseInt(value, 10) : Number.NaN;
+}
+
 function clamp(value: number, minimum: number, maximum: number) {
   return Math.min(Math.max(value, minimum), maximum);
 }
@@ -49,24 +55,39 @@ function resolveContentLaneGeometry(input: {
   pagePadding: number;
   responsiveSurface: boolean;
 }) {
-  const liveOuterWidth = Math.min(input.viewportWidth, input.maxSurfaceWidth);
-  const liveAnchor = input.responsiveSurface
-    ? 0
-    : clamp(
-        (input.viewportWidth - input.navWidth - input.tocWidth - input.maxSurfaceWidth) / 2,
-        input.pagePadding,
-        input.viewportWidth - input.navWidth - input.pagePadding
-      );
+  const anchorMinimum = Math.max(input.pagePadding, input.gutterWidth - input.pagePadding);
+  const centeredAnchor = (input.viewportWidth - input.navWidth - input.tocWidth - input.maxSurfaceWidth) / 2;
+  const liveAnchor = clamp(
+    input.responsiveSurface ? anchorMinimum : centeredAnchor,
+    anchorMinimum,
+    input.viewportWidth - input.navWidth - input.pagePadding
+  );
+  const liveOuterWidth = Math.min(
+    input.responsiveSurface ? input.viewportWidth - liveAnchor : input.viewportWidth,
+    input.maxSurfaceWidth
+  );
   const liveContentLeft = liveAnchor + input.pagePadding;
   const liveContentWidth = liveOuterWidth - input.pagePadding * 2;
-  const editOuterWidth = Math.min(input.viewportWidth + input.gutterWidth, input.maxSurfaceWidth + input.gutterWidth);
+  const liveRight = liveAnchor + liveOuterWidth;
+  const editOuterWidth = liveOuterWidth + input.gutterWidth;
   const editAnchor = liveAnchor - input.gutterWidth;
+  const editRight = editAnchor + editOuterWidth;
+  const editGutterLeft = editAnchor + input.pagePadding;
   const editContentLeft = editAnchor + input.pagePadding + input.gutterWidth;
   const editContentWidth = editOuterWidth - (input.pagePadding + input.gutterWidth) - input.pagePadding;
 
   return {
+    anchorMinimum,
+    centeredAnchor,
+    liveAnchor,
+    editAnchor,
+    liveOuterWidth,
+    editOuterWidth,
+    liveRight,
+    editRight,
     liveContentLeft,
     editContentLeft,
+    editGutterLeft,
     liveContentWidth,
     editContentWidth,
     editGutterWidth: input.gutterWidth,
@@ -123,7 +144,7 @@ test("keeps launcher background ownership explicit without changing workspace ba
   expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*--docsera-main-surface-anchor-offset:\s*clamp\([^}]*var\(--docsera-main-surface-max-width\)[^}]*\);/s);
   expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*margin-inline-start:\s*clamp\([^}]*var\(--docsera-toc-panel-width\)/s);
   expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*display:\s*grid;[^}]*align-content:\s*start;[^}]*gap:\s*28px;/s);
-  expect(css).toMatch(/\.docsera-main__surface--editor\s*{[^}]*gap:\s*0;[^}]*width:\s*min\(calc\(100% \+ var\(--docsera-editor-block-gutter-width\)\), calc\(var\(--docsera-main-surface-max-width\) \+ var\(--docsera-editor-block-gutter-width\)\)\);[^}]*margin-inline-start:\s*calc\(var\(--docsera-main-surface-anchor-offset\) - var\(--docsera-editor-block-gutter-width\)\);[^}]*padding-left:\s*calc\(24px \+ var\(--docsera-editor-block-gutter-width\)\);/s);
+  expect(css).toMatch(/\.docsera-main__surface--editor\s*{[^}]*gap:\s*0;[^}]*width:\s*calc\(var\(--docsera-main-surface-inline-size\) \+ var\(--docsera-editor-block-gutter-width\)\);[^}]*margin-inline-start:\s*calc\(var\(--docsera-main-surface-anchor-offset\) - var\(--docsera-editor-block-gutter-width\)\);[^}]*padding-left:\s*calc\(24px \+ var\(--docsera-editor-block-gutter-width\)\);/s);
   expect(css).toMatch(/\.docsera-main__editor-host\s*{[^}]*margin-top:\s*40px;/s);
 });
 
@@ -150,9 +171,16 @@ test("keeps the edit gutter outside the reader-equivalent content lane at constr
 
   expect(mainSurfaceMaxWidth).toBe(768);
   expect(gutterWidth).toBe(69);
+  expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*--docsera-main-surface-inline-size:\s*min\(100%, var\(--docsera-main-surface-max-width\)\);[^}]*width:\s*var\(--docsera-main-surface-inline-size\);/s);
   expect(css).toMatch(/\.docsera-main__surface\s*{[^}]*padding:\s*32px 24px 72px;/s);
   expect(css).toMatch(
-    /\.docsera-main__surface--editor\s*{[^}]*width:\s*min\(calc\(100% \+ var\(--docsera-editor-block-gutter-width\)\), calc\(var\(--docsera-main-surface-max-width\) \+ var\(--docsera-editor-block-gutter-width\)\)\);/s
+    /\.docsera-main__surface\s*{[^}]*--docsera-main-surface-inline-padding:\s*24px;[^}]*--docsera-main-surface-anchor-min:\s*max\(\s*var\(--docsera-main-surface-inline-padding\),\s*calc\(var\(--docsera-editor-block-gutter-width\) - var\(--docsera-main-surface-inline-padding\)\)\s*\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-main__surface\s*{[^}]*--docsera-main-surface-anchor-offset:\s*clamp\(\s*var\(--docsera-main-surface-anchor-min\),/s
+  );
+  expect(css).toMatch(
+    /\.docsera-main__surface--editor\s*{[^}]*width:\s*calc\(var\(--docsera-main-surface-inline-size\) \+ var\(--docsera-editor-block-gutter-width\)\);/s
   );
   expect(css).toMatch(
     /\.docsera-main__surface--editor\s*{[^}]*margin-inline-start:\s*calc\(var\(--docsera-main-surface-anchor-offset\) - var\(--docsera-editor-block-gutter-width\)\);/s
@@ -162,24 +190,60 @@ test("keeps the edit gutter outside the reader-equivalent content lane at constr
   );
   const responsive920 = getCssSlice(css, "@media (max-width: 920px)", "@media (max-width: 680px)");
   const responsive680 = getCssSlice(css, "@media (max-width: 680px)", "@media (prefers-reduced-motion: reduce)");
-  expect(responsive920).toMatch(/\.docsera-main__surface\s*{[^}]*margin-inline-start:\s*0;/s);
+  expect(responsive920).toMatch(/\.docsera-main__surface\s*{[^}]*margin-inline-start:\s*var\(--docsera-main-surface-anchor-min\);/s);
   expect(responsive920).toMatch(
-    /\.docsera-main__surface--editor\s*{[^}]*margin-inline-start:\s*calc\(0px - var\(--docsera-editor-block-gutter-width\)\);/s
+    /\.docsera-main__surface\s*{[^}]*--docsera-main-surface-inline-size:\s*min\(\s*calc\(100% - var\(--docsera-main-surface-anchor-min\)\),\s*var\(--docsera-main-surface-max-width\)\s*\);/s
+  );
+  expect(responsive920).toMatch(
+    /\.docsera-main__surface--editor\s*{[^}]*margin-inline-start:\s*calc\(var\(--docsera-main-surface-anchor-min\) - var\(--docsera-editor-block-gutter-width\)\);/s
   );
   expect(responsive680).toMatch(/\.docsera-main__surface\s*{[^}]*padding:\s*24px 16px 48px;/s);
+  expect(responsive680).toMatch(/\.docsera-main__surface\s*{[^}]*--docsera-main-surface-inline-padding:\s*16px;/s);
   expect(responsive680).toMatch(/\.docsera-main__surface--editor\s*{[^}]*padding-left:\s*calc\(16px \+ var\(--docsera-editor-block-gutter-width\)\);/s);
 
   const cases = [
-    { name: "normal desktop where anchor >= gutter", viewportWidth: 1440, pagePadding: 24, responsiveSurface: false },
-    { name: "constrained desktop where anchor < gutter", viewportWidth: 1060, pagePadding: 24, responsiveSurface: false },
-    { name: "responsive <= 920px", viewportWidth: 900, pagePadding: 24, responsiveSurface: true },
-    { name: "responsive <= 680px", viewportWidth: 640, pagePadding: 16, responsiveSurface: true }
+    {
+      name: "normal desktop keeps the roomy centered anchor",
+      viewportWidth: 1440,
+      navWidth,
+      pagePadding: 24,
+      responsiveSurface: false,
+      expectedAnchorMinimum: 45,
+      expectedLiveAnchor: 76
+    },
+    {
+      name: "minimum 180px nav desktop where normal anchor would cross the main boundary",
+      viewportWidth: 1060,
+      navWidth: 180,
+      pagePadding: 24,
+      responsiveSurface: false,
+      expectedAnchorMinimum: 45,
+      expectedLiveAnchor: 45
+    },
+    {
+      name: "responsive <= 920px",
+      viewportWidth: 900,
+      navWidth,
+      pagePadding: 24,
+      responsiveSurface: true,
+      expectedAnchorMinimum: 45,
+      expectedLiveAnchor: 45
+    },
+    {
+      name: "responsive <= 680px",
+      viewportWidth: 640,
+      navWidth,
+      pagePadding: 16,
+      responsiveSurface: true,
+      expectedAnchorMinimum: 53,
+      expectedLiveAnchor: 53
+    }
   ];
 
   for (const currentCase of cases) {
     const geometry = resolveContentLaneGeometry({
       viewportWidth: currentCase.viewportWidth,
-      navWidth,
+      navWidth: currentCase.navWidth,
       tocWidth,
       maxSurfaceWidth: mainSurfaceMaxWidth,
       gutterWidth,
@@ -189,8 +253,15 @@ test("keeps the edit gutter outside the reader-equivalent content lane at constr
 
     expect(geometry.editContentLeft, currentCase.name).toBe(geometry.liveContentLeft);
     expect(geometry.editContentWidth, currentCase.name).toBe(geometry.liveContentWidth);
+    expect(geometry.liveRight, currentCase.name).toBeLessThanOrEqual(currentCase.viewportWidth);
+    expect(geometry.editRight, currentCase.name).toBeLessThanOrEqual(currentCase.viewportWidth);
+    expect(geometry.editOuterWidth, currentCase.name).toBe(geometry.liveOuterWidth + gutterWidth);
     expect(geometry.editGutterWidth, currentCase.name).toBe(69);
+    expect(geometry.editGutterLeft, currentCase.name).toBeGreaterThanOrEqual(0);
+    expect(geometry.editContentLeft - geometry.editGutterLeft, currentCase.name).toBe(gutterWidth);
     expect(geometry.pagePadding, currentCase.name).toBe(currentCase.pagePadding);
+    expect(geometry.anchorMinimum, currentCase.name).toBe(currentCase.expectedAnchorMinimum);
+    expect(geometry.liveAnchor, currentCase.name).toBe(currentCase.expectedLiveAnchor);
   }
 });
 
@@ -422,6 +493,9 @@ test("keeps modal surfaces above the Changes Center portal and the Changes Cente
   const shellCss = readFileSync("src/client/styles/runtime-shell.css", "utf8");
   const tableOverlaySource = readFileSync("src/client/editor/TableControlsOverlay.tsx", "utf8");
   const fullscreenViewerStyles = readFileSync("src/client/shared/media/ImageFullscreenViewerStyles.ts", "utf8");
+  const tooltipSource = readFileSync("src/client/shared/tooltip/DocseraTooltip.tsx", "utf8");
+  const tooltipLayer = Number(/--docsera-tooltip-z-index:\s*(\d+);/.exec(shellCss)?.[1]);
+  const fullscreenViewerLayer = Number(/\.docsera-image-viewer\s*{[^}]*z-index:\s*(\d+);/s.exec(fullscreenViewerStyles)?.[1]);
 
   expect(shellCss).toMatch(/\.docsera-modal\s*{[^}]*z-index:\s*150;/s);
   expect(shellCss).toMatch(/\.docsera-changes-center--portal\s*{[^}]*z-index:\s*140;/s);
@@ -432,6 +506,32 @@ test("keeps modal surfaces above the Changes Center portal and the Changes Cente
   expect(tableOverlaySource).toContain("const TABLE_CONTROL_MENU_Z_INDEX = 130;");
   expect(fullscreenViewerStyles).toContain(".docsera-image-viewer {");
   expect(fullscreenViewerStyles).toMatch(/\.docsera-image-viewer\s*{[^}]*z-index:\s*160;/s);
+  expect(tooltipLayer).toBeGreaterThan(160);
+  expect(tooltipLayer).toBeGreaterThan(fullscreenViewerLayer);
+  expect(shellCss).toMatch(/\.docsera-tooltip\s*{[^}]*z-index:\s*var\(--docsera-tooltip-z-index,\s*200\);/s);
+  expect(tooltipSource).toContain("z-index: var(--docsera-tooltip-z-index, 200);");
+});
+
+test("keeps the editor block-control floating layer below the workspace header", () => {
+  const shellCss = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+  const editorRuntimeSource = readFileSync("src/client/editor/PageEditorHostRuntime.tsx", "utf8");
+  const tableOverlaySource = readFileSync("src/client/editor/TableControlsOverlay.tsx", "utf8");
+  const imagePickerStyles = readFileSync("src/client/editor/ImagePickerStyles.ts", "utf8");
+  const fullscreenViewerStyles = readFileSync("src/client/shared/media/ImageFullscreenViewerStyles.ts", "utf8");
+
+  const headerLayer = readZIndex(shellCss, ".docsera-header");
+  const editorFloatingLayer = readZIndex(editorRuntimeSource, ".docsera-editor-floating-layer");
+
+  expect(headerLayer).toBe(30);
+  expect(editorFloatingLayer).toBeLessThan(headerLayer);
+  expect(editorRuntimeSource).toMatch(/\.docsera-editor-floating-layer\s*{[^}]*position:\s*fixed;[^}]*inset:\s*0;[^}]*pointer-events:\s*none;[^}]*z-index:\s*29;/s);
+  expect(tableOverlaySource).toContain("const TABLE_CONTROL_OVERLAY_Z_INDEX = 126;");
+  expect(tableOverlaySource).toContain("const TABLE_CONTROL_MENU_Z_INDEX = 130;");
+  expect(shellCss).toMatch(/\.docsera-changes-center--portal\s*{[^}]*z-index:\s*140;/s);
+  expect(shellCss).toMatch(/\.docsera-modal\s*{[^}]*z-index:\s*150;/s);
+  expect(imagePickerStyles).toMatch(/z-index:\s*150;/);
+  expect(fullscreenViewerStyles).toMatch(/\.docsera-image-viewer\s*{[^}]*z-index:\s*160;/s);
+  expect(shellCss).toMatch(/--docsera-tooltip-z-index:\s*200;/);
 });
 
 test("keeps shared destructive modal warnings and buttons on the semantic destructive theme treatment", () => {

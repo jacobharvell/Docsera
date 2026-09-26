@@ -67,6 +67,47 @@ describe("WorkspaceSettingsOverlay", () => {
     expect(screen.queryByRole("button", { name: "Manage workspace access" })).not.toBeInTheDocument();
   });
 
+  it("uses shared tooltips for compact Workspace Settings controls", async () => {
+    render(
+      <WorkspaceSettingsOverlay
+        onCancel={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+        pending={false}
+        workspace={createWorkspace()}
+      />
+    );
+
+    const panel = screen.getByRole("complementary", { name: "Workspace Settings" });
+    const closeButton = within(panel).getByRole("button", { name: "Close workspace settings" });
+    expect(closeButton).not.toHaveAttribute("title");
+
+    fireEvent.focus(closeButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Close workspace settings");
+    expect(closeButton).toHaveAccessibleName("Close workspace settings");
+  });
+
+  it("uses shared tooltips for compact Workspace delete-dialog controls", async () => {
+    render(
+      <WorkspaceSettingsOverlay
+        onCancel={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+        pending={false}
+        workspace={createWorkspace()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete workspace" }));
+    const dialog = screen.getByRole("dialog", { name: "Delete workspace" });
+    const closeButton = within(dialog).getByRole("button", { name: "Close delete workspace dialog" });
+    expect(closeButton).not.toHaveAttribute("title");
+
+    fireEvent.focus(closeButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Close delete workspace dialog");
+    expect(closeButton).toHaveAccessibleName("Close delete workspace dialog");
+  });
+
   it("gates Danger zone deletion to settings managers", () => {
     const { rerender } = render(
       <WorkspaceSettingsOverlay

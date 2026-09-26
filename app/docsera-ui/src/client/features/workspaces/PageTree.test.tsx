@@ -208,6 +208,29 @@ describe("PageTree presentation", () => {
 });
 
 describe("PageTree row interaction", () => {
+  it("uses shared tooltip for page names", async () => {
+    const onSelectPage = vi.fn();
+
+    renderTree([page({ id: "overview", title: "Overview" })], {
+      onSelectPage
+    });
+
+    const pageButton = screen.getByRole("button", { name: "Overview" });
+    const pageTitle = within(pageButton).getByText("Overview");
+
+    expect(pageButton).toBeVisible();
+    expect(pageButton).toHaveAccessibleName("Overview");
+    expect(pageButton).not.toHaveAttribute("title");
+    expect(document.querySelector("[title]")).not.toBeInTheDocument();
+
+    fireEvent.focus(pageButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Overview");
+
+    fireEvent.click(pageButton);
+    expect(onSelectPage).toHaveBeenCalledWith("overview");
+    expect(pageTitle).toBeVisible();
+  });
+
   it("selects and expands a collapsed parent row when the row is activated", () => {
     const parent = page({
       id: "parent",

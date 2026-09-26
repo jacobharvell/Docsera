@@ -43,6 +43,12 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { CompactTextToolbar } from "./CompactTextToolbar";
 import { resolveToolbarMenuSurfaceStyle } from "./CompactTextToolbar";
 import { COMPACT_MENU_STYLES } from "./CompactMenuStyles";
+import {
+  DOCSERA_TOOLTIP_DELAY_MS,
+  DOCSERA_TOOLTIP_STYLES,
+  DocseraCompactTooltip,
+  DocseraTooltip
+} from "./DocseraTooltip";
 import { EDITOR_IMAGE_STYLES } from "./EditorImageStyles";
 import { ImagePickerDialog } from "./ImagePickerDialog";
 import { ImageOptionsPanel } from "./ImageOptionsPanel";
@@ -291,6 +297,11 @@ type BlockTurnIntoMenuState = {
   blockIndex: number;
   placement: CommandSelectorPlacement;
   source: "handle" | "keyboard";
+};
+
+type GutterTooltipState = {
+  anchorRect: DOMRect;
+  id: "handle" | "quickAdd";
 };
 
 type BlockSelectionState = {
@@ -1316,6 +1327,22 @@ function buildSurfaceStyle(
   };
 }
 
+function buildQuickAddSelectorSurfaceStyle(
+  ownerDocument: Document,
+  rect: DOMRect,
+  width: number,
+  height: number,
+  placement: CommandSelectorPlacement
+): CSSProperties {
+  const clampedHeight = resolveConstrainedSurfaceHeight(ownerDocument, rect, height, placement);
+
+  return {
+    position: "fixed",
+    ...clampSurfacePosition(ownerDocument, rect, width, clampedHeight, placement === "above"),
+    maxHeight: `${clampedHeight}px`
+  };
+}
+
 function buildRightAnchoredSurfaceStyle(
   ownerDocument: Document,
   rect: DOMRect,
@@ -1353,6 +1380,20 @@ function buildQuickAddAnchorRect(targetRect: DOMRect): DOMRect {
     Math.max(VIEWPORT_GUTTER, targetRect.top + BLOCK_TARGET_TOP_OFFSET),
     QUICK_ADD_BUTTON_SIZE,
     Math.max(1, targetRect.bottom - (targetRect.top + BLOCK_TARGET_TOP_OFFSET))
+  );
+}
+
+function buildQuickAddSelectorAnchorRect(targetRect: DOMRect): DOMRect {
+  const top = Math.max(VIEWPORT_GUTTER, targetRect.top + BLOCK_TARGET_TOP_OFFSET);
+  return new DOMRect(targetRect.left, top, Math.max(1, targetRect.width), Math.max(1, targetRect.bottom - top));
+}
+
+function buildSlashSelectorAnchorRect(ownerBlockRect: DOMRect, caretRect: DOMRect): DOMRect {
+  return new DOMRect(
+    ownerBlockRect.left,
+    caretRect.top,
+    Math.max(1, ownerBlockRect.width),
+    Math.max(1, caretRect.height)
   );
 }
 
@@ -2883,9 +2924,11 @@ function regenerateAccordionPastedNodeIdentities(node: PMNode): PMNode {
 }
 
 function regenerateAccordionPastedFragmentIdentities(fragment: Fragment): Fragment {
-  return Fragment.fromArray(
-    Array.from({ length: fragment.childCount }, (_unused, index) => regenerateAccordionPastedNodeIdentities(fragment.child(index)))
-  );
+  const nextChildren: PMNode[] = [];
+  fragment.forEach((child) => {
+    nextChildren.push(regenerateAccordionPastedNodeIdentities(child));
+  });
+  return Fragment.fromArray(nextChildren);
 }
 
 export function regenerateAccordionPastedSliceIdentities(slice: Slice): Slice {
@@ -3071,6 +3114,28 @@ function trySetEditorTabIndex(editor: Editor, isEditable: boolean): boolean {
   }
 }
 
+function exposeEditableDiagnostics(editor: Editor, input: { canEdit: boolean; interactionActive: boolean }): void {
+  if (!(globalThis as { __DOCSERA_EDITOR_DIAGNOSTICS__?: boolean }).__DOCSERA_EDITOR_DIAGNOSTICS__) {
+    return;
+  }
+
+  try {
+    Object.defineProperty(editor.view.dom, "__docseraEditableState", {
+      configurable: true,
+      value: () => ({
+        canEdit: input.canEdit,
+        domContentEditable: editor.view.dom.contentEditable,
+        editorIsEditable: editor.isEditable,
+        interactionActive: input.interactionActive,
+        optionsEditable: editor.options.editable,
+        viewEditable: editor.view.editable
+      })
+    });
+  } catch {
+    // Diagnostics are best-effort and must not affect authoring.
+  }
+}
+
 export function PageEditorHostRuntime({
   canEdit,
   interactionActive = true,
@@ -3101,6 +3166,7 @@ export function PageEditorHostRuntime({
   const [imageDisplayState, setImageDisplayState] = useState(() => getDocseraImageDisplayState());
   const [blockActionMenu, setBlockActionMenu] = useState<BlockActionMenuState | null>(null);
   const [blockTurnIntoMenu, setBlockTurnIntoMenu] = useState<BlockTurnIntoMenuState | null>(null);
+  const [gutterTooltip, setGutterTooltip] = useState<GutterTooltipState | null>(null);
   const [selectorScrollMetrics, setSelectorScrollMetrics] = useState({ hasOverflow: false, scrollbarWidth: 0 });
   const [overlayMeasurementVersion, setOverlayMeasurementVersion] = useState(0);
   const selectorListboxId = useId();
@@ -3154,6 +3220,8 @@ export function PageEditorHostRuntime({
   const blockTurnIntoMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const blockTurnIntoTriggerRef = useRef<HTMLButtonElement | null>(null);
   const blockActionMenuSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const gutterTooltipRef = useRef<HTMLDivElement | null>(null);
+  const gutterTooltipTimerRef = useRef<number | null>(null);
   const imageAlignmentMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const imageAlignmentPickerMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const structuredTableClipboardRef = useRef<StructuredTableClipboardPayload | null>(null);
@@ -3644,11 +3712,22 @@ export function PageEditorHostRuntime({
   const clearTransientBlockSelectionUnmountRef = useRef<((reason?: string) => void) | null>(null);
   const isEditable = canEdit;
   const isInteractionActive = interactionActive && isEditable;
+  editableRef.current = isEditable;
   const overlayOwnerDocument = overlayRoot.ownerDocument;
   const overlayOwnerWindow = overlayOwnerDocument.defaultView;
+  const clearGutterTooltip = useCallback(() => {
+    if (gutterTooltipTimerRef.current !== null) {
+      overlayOwnerWindow?.clearTimeout(gutterTooltipTimerRef.current);
+      gutterTooltipTimerRef.current = null;
+    }
+    setGutterTooltip(null);
+  }, [overlayOwnerWindow]);
   useEffect(() => {
     setDocseraImageDisplayTheme(theme);
   }, [theme]);
+  useEffect(() => () => {
+    clearGutterTooltip();
+  }, [clearGutterTooltip]);
   useEffect(
     () => () => {
       resetDocseraImageDisplayState();
@@ -3931,6 +4010,7 @@ export function PageEditorHostRuntime({
         return;
       }
 
+      clearGutterTooltip();
       closeCommandSelector({ syncHoverFromPointer: false });
       setBlockTurnIntoMenu(null);
       setBlockActionMenu({
@@ -3941,7 +4021,7 @@ export function PageEditorHostRuntime({
         source
       });
     },
-    [closeCommandSelector, overlayOwnerDocument]
+    [clearGutterTooltip, closeCommandSelector, overlayOwnerDocument]
   );
 
   const getEditorAutoScrollViewport = useCallback(() => {
@@ -3997,6 +4077,38 @@ export function PageEditorHostRuntime({
     selectBlockFromHandle: setTransientBlockSelection,
     selectTopLevelBlockRange: setTransientBlockSelectionRange
   });
+
+  const showGutterTooltip = useCallback(
+    (tooltip: GutterTooltipState, immediate = false) => {
+      if (commandSelector || blockActionMenu || blockTurnIntoMenu || blockDragState) {
+        return;
+      }
+
+      if (gutterTooltipTimerRef.current !== null) {
+        overlayOwnerWindow?.clearTimeout(gutterTooltipTimerRef.current);
+        gutterTooltipTimerRef.current = null;
+      }
+      setGutterTooltip(null);
+
+      if (immediate) {
+        setGutterTooltip(tooltip);
+        return;
+      }
+
+      gutterTooltipTimerRef.current =
+        overlayOwnerWindow?.setTimeout(() => {
+          gutterTooltipTimerRef.current = null;
+          setGutterTooltip(tooltip);
+        }, DOCSERA_TOOLTIP_DELAY_MS) ?? null;
+    },
+    [blockActionMenu, blockDragState, blockTurnIntoMenu, commandSelector, overlayOwnerWindow]
+  );
+
+  useEffect(() => {
+    if (commandSelector || blockActionMenu || blockTurnIntoMenu || blockDragState) {
+      clearGutterTooltip();
+    }
+  }, [blockActionMenu, blockDragState, blockTurnIntoMenu, clearGutterTooltip, commandSelector]);
 
   const openBlockTurnIntoMenu = useCallback(
     (blockIndex: number, source: BlockTurnIntoMenuState["source"], anchorRect?: DOMRect) => {
@@ -4947,7 +5059,9 @@ export function PageEditorHostRuntime({
 
   function openSlashSelector(runtimeEditor: Editor, triggerSelection: SlashTriggerSelection) {
     clearTransientBlockSelection();
-    const anchorRect = getCaretBounds(runtimeEditor) ?? new DOMRect(12, 12, 1, 1);
+    const caretRect = getCaretBounds(runtimeEditor) ?? new DOMRect(12, 12, 1, 1);
+    const ownerBlockRect = getTopLevelBlockRect(runtimeEditor, triggerSelection.blockIndex);
+    const anchorRect = ownerBlockRect ? buildSlashSelectorAnchorRect(ownerBlockRect, caretRect) : caretRect;
     const targetNode = runtimeEditor.state.doc.nodeAt(triggerSelection.ownerPos);
     const targetTo = triggerSelection.ownerPos + (targetNode?.nodeSize ?? 0);
 
@@ -5003,7 +5117,7 @@ export function PageEditorHostRuntime({
     }
 
     const insertedBlockRect = getTopLevelBlockRect(runtimeEditor, insertedBlockIndex) ?? targetRect;
-    const fallbackAnchorRect = buildQuickAddAnchorRect(insertedBlockRect);
+    const fallbackAnchorRect = buildQuickAddSelectorAnchorRect(insertedBlockRect);
     setCommandSelector({
       activeIndex: 0,
       fallbackAnchorRect,
@@ -5374,7 +5488,6 @@ export function PageEditorHostRuntime({
   }
 
   useEffect(() => {
-    editableRef.current = isEditable;
     if (isInteractionActive) {
       return;
     }
@@ -5573,10 +5686,15 @@ export function PageEditorHostRuntime({
     }
 
     if (commandSelector.source === "slash") {
-      let nextAnchorRect: DOMRect;
+      let nextAnchorRect: DOMRect | null;
       try {
-        nextAnchorRect = getCaretBounds(runtimeEditor) ?? commandSelector.anchorRect;
+        const ownerBlockRect = getTopLevelBlockRect(runtimeEditor, commandSelector.ownerBlockIndex);
+        const caretRect = getCaretBounds(runtimeEditor);
+        nextAnchorRect = ownerBlockRect && caretRect ? buildSlashSelectorAnchorRect(ownerBlockRect, caretRect) : null;
       } catch {
+        return;
+      }
+      if (!nextAnchorRect) {
         return;
       }
       const nextPlacement = resolveCommandSelectorPlacement(overlayOwnerDocument, nextAnchorRect, BLOCK_SELECTOR_HEIGHT);
@@ -5607,7 +5725,7 @@ export function PageEditorHostRuntime({
       return;
     }
 
-    const nextFallbackAnchorRect = buildQuickAddAnchorRect(insertedBlockRect);
+    const nextFallbackAnchorRect = buildQuickAddSelectorAnchorRect(insertedBlockRect);
     const nextPlacement = resolveCommandSelectorPlacement(overlayOwnerDocument, nextFallbackAnchorRect, BLOCK_SELECTOR_HEIGHT);
     if (areDomRectsEqual(commandSelector.fallbackAnchorRect, nextFallbackAnchorRect) && commandSelector.placement === nextPlacement) {
       return;
@@ -5730,6 +5848,9 @@ export function PageEditorHostRuntime({
     immediatelyRender: false,
     onCreate: ({ editor: runtimeEditor }) => {
       editorRef.current = runtimeEditor;
+      runtimeEditor.setEditable(editableRef.current, false);
+      void trySetEditorTabIndex(runtimeEditor, isInteractionActive && editableRef.current);
+      exposeEditableDiagnostics(runtimeEditor, { canEdit: editableRef.current, interactionActive });
       const envelope = createEnvelope(runtimeEditor.getJSON() as DocseraTiptapDocument);
       const mountedDocumentKey = serializeDocument(envelope.document);
       currentDocumentKeyRef.current = mountedDocumentKey;
@@ -5953,7 +6074,8 @@ export function PageEditorHostRuntime({
       void trySetEditorTabIndex(mountedEditor, desiredTabIndex);
     };
 
-    mountedEditor.setEditable(isEditable);
+    mountedEditor.setEditable(isEditable, false);
+    exposeEditableDiagnostics(mountedEditor, { canEdit: isEditable, interactionActive });
     applyTabIndex();
     queueMicrotask(applyTabIndex);
   }, [isEditable, isInteractionActive, mountedEditor]);
@@ -5997,6 +6119,41 @@ export function PageEditorHostRuntime({
       overlayOwnerWindow?.removeEventListener("resize", handleViewportChange);
     };
   }, [commandSelector, editor, hoverTarget, imageOptionsSession, overlayOwnerDocument, overlayOwnerWindow, scheduleOverlayMeasurement]);
+
+  useEffect(() => {
+    if (!editor || !commandSelector) {
+      return;
+    }
+
+    const ResizeObserverConstructor = overlayOwnerWindow?.ResizeObserver ?? window.ResizeObserver;
+    if (!ResizeObserverConstructor) {
+      return;
+    }
+
+    const observedElements = new Set<Element>();
+    const observer = new ResizeObserverConstructor(() => {
+      scheduleOverlayMeasurement();
+    });
+    const observeElement = (element: Element | null | undefined) => {
+      if (!element || observedElements.has(element)) {
+        return;
+      }
+      observedElements.add(element);
+      observer.observe(element);
+    };
+
+    observeElement(surfaceRef.current);
+    observeElement(editor.view.dom);
+    if (commandSelector.source === "slash") {
+      observeElement(getTopLevelBlockElement(editor, commandSelector.ownerBlockIndex));
+    } else {
+      observeElement(getTopLevelBlockElement(editor, commandSelector.insertedBlockIndex));
+    }
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [commandSelector, editor, overlayOwnerWindow, scheduleOverlayMeasurement]);
 
   useEffect(() => {
     if (!editor || !isInteractionActive) {
@@ -6568,20 +6725,28 @@ export function PageEditorHostRuntime({
   const quickAddAnchorRect =
     commandSelector && commandSelector.source === "quickAdd" && mountedEditor
       ? getTopLevelBlockRect(mountedEditor, commandSelector.insertedBlockIndex)
-        ? buildQuickAddAnchorRect(getTopLevelBlockRect(mountedEditor, commandSelector.insertedBlockIndex)!)
+        ? buildQuickAddSelectorAnchorRect(getTopLevelBlockRect(mountedEditor, commandSelector.insertedBlockIndex)!)
         : commandSelector.fallbackAnchorRect
+      : null;
+  const slashAnchorRect =
+    commandSelector && commandSelector.source === "slash" && mountedEditor
+      ? (() => {
+          const ownerBlockRect = getTopLevelBlockRect(mountedEditor, commandSelector.ownerBlockIndex);
+          const caretRect = getCaretBounds(mountedEditor);
+          return ownerBlockRect && caretRect ? buildSlashSelectorAnchorRect(ownerBlockRect, caretRect) : commandSelector.anchorRect;
+        })()
       : null;
   const selectorStyle =
     commandSelector && mountedEditor
       ? commandSelector.source === "slash"
         ? buildSurfaceStyle(
             overlayOwnerDocument,
-            getCaretBounds(mountedEditor) ?? commandSelector.anchorRect,
+            slashAnchorRect ?? commandSelector.anchorRect,
             BLOCK_SELECTOR_WIDTH,
             BLOCK_SELECTOR_HEIGHT,
             commandSelector.placement
           )
-        : buildRightAnchoredSurfaceStyle(
+        : buildQuickAddSelectorSurfaceStyle(
             overlayOwnerDocument,
             quickAddAnchorRect ?? commandSelector.fallbackAnchorRect,
             BLOCK_SELECTOR_WIDTH,
@@ -7157,7 +7322,7 @@ export function PageEditorHostRuntime({
           position: fixed;
           inset: 0;
           pointer-events: none;
-          z-index: 30;
+          z-index: 29;
         }
         .docsera-editor-floating-layer--block-dragging,
         .docsera-editor-floating-layer--block-dragging * {
@@ -7168,6 +7333,7 @@ export function PageEditorHostRuntime({
         ${IMAGE_PICKER_STYLES}
         ${IMAGE_OPTIONS_STYLES}
         ${EDITOR_IMAGE_STYLES}
+        ${DOCSERA_TOOLTIP_STYLES}
 
         .docsera-editor-floating {
           pointer-events: auto;
@@ -7365,11 +7531,17 @@ export function PageEditorHostRuntime({
         }
         .docsera-block-action-menu,
         .docsera-block-turn-into-menu {
+          --docsera-editor-menu-row-hover-bg: color-mix(in srgb, var(--docsera-primary-soft) 58%, #ffffff 42%);
+          --docsera-editor-menu-row-hover-fg: var(--docsera-primary);
           border: 1px solid color-mix(in srgb, var(--docsera-border) 92%, white 8%);
           border-radius: 12px;
           background: color-mix(in srgb, var(--docsera-surface) 96%, white 4%);
           box-shadow: 0 18px 40px rgba(15, 23, 42, 0.16), 0 3px 12px rgba(15, 23, 42, 0.08);
           overflow: hidden;
+        }
+        :host-context(html[data-docsera-theme="dark"]) .docsera-block-action-menu,
+        :host-context(html[data-docsera-theme="dark"]) .docsera-block-turn-into-menu {
+          --docsera-editor-menu-row-hover-bg: rgba(70, 72, 212, 0.16);
         }
         .docsera-block-action-menu__list,
         .docsera-block-turn-into-menu__list {
@@ -7395,8 +7567,8 @@ export function PageEditorHostRuntime({
         .docsera-block-menu__item:hover,
         .docsera-block-menu__item:focus-visible,
         .docsera-block-menu__item--active {
-          background: color-mix(in srgb, var(--docsera-primary) 10%, var(--docsera-surface));
-          color: var(--docsera-primary);
+          background: var(--docsera-editor-menu-row-hover-bg);
+          color: var(--docsera-editor-menu-row-hover-fg);
           outline: none;
         }
         .docsera-block-menu__item--selected {
@@ -7556,10 +7728,29 @@ export function PageEditorHostRuntime({
                 aria-expanded={false}
                 aria-label={`Add block after ${activeBlockControlTarget.accessibleLabel}`}
                 data-docsera-block-gutter="true"
+                onMouseEnter={(event) => {
+                  showGutterTooltip({
+                    anchorRect: event.currentTarget.getBoundingClientRect(),
+                    id: "quickAdd"
+                  });
+                }}
+                onMouseLeave={clearGutterTooltip}
+                onFocus={(event) => {
+                  showGutterTooltip(
+                    {
+                      anchorRect: event.currentTarget.getBoundingClientRect(),
+                      id: "quickAdd"
+                    },
+                    true
+                  );
+                }}
+                onBlur={clearGutterTooltip}
                 onMouseDown={(event) => {
+                  clearGutterTooltip();
                   event.preventDefault();
                 }}
                 onClick={() => {
+                  clearGutterTooltip();
                   openQuickAddSelector(activeBlockControlTarget);
                 }}
               >
@@ -7579,10 +7770,19 @@ export function PageEditorHostRuntime({
                 draggable={false}
                 aria-label={`Select block: ${activeBlockControlTarget.accessibleLabel}`}
                 data-docsera-block-gutter="true"
+                onMouseEnter={(event) => {
+                  showGutterTooltip({
+                    anchorRect: event.currentTarget.getBoundingClientRect(),
+                    id: "handle"
+                  });
+                }}
+                onMouseLeave={clearGutterTooltip}
                 onMouseDown={(event) => {
+                  clearGutterTooltip();
                   event.preventDefault();
                 }}
                 onPointerDown={(event) => {
+                  clearGutterTooltip();
                   handleBlockHandlePointerDown({
                     blockIndex: activeBlockControlTarget.blockIndex,
                     event,
@@ -7590,12 +7790,37 @@ export function PageEditorHostRuntime({
                   });
                 }}
                 onClick={(event) => {
+                  clearGutterTooltip();
                   event.preventDefault();
                   event.stopPropagation();
                 }}
               >
                 <GripVertical size={QUICK_ADD_ICON_SIZE} strokeWidth={2.2} aria-hidden="true" focusable="false" />
               </button>
+            ) : null}
+
+            {gutterTooltip ? (
+              <DocseraTooltip
+                anchorRect={gutterTooltip.anchorRect}
+                className={`docsera-editor-floating__gutter-tooltip docsera-editor-floating__gutter-tooltip--${gutterTooltip.id}`}
+                ownerDocument={overlayOwnerDocument}
+                tooltipRef={gutterTooltipRef}
+              >
+                {gutterTooltip.id === "handle" ? (
+                  <>
+                    <span className="docsera-tooltip__line">
+                      <span className="docsera-tooltip__label">Drag </span>
+                      <span className="docsera-tooltip__label docsera-tooltip__muted">to move</span>
+                    </span>
+                    <span className="docsera-tooltip__line">
+                      <span className="docsera-tooltip__label">Click </span>
+                      <span className="docsera-tooltip__label docsera-tooltip__muted">for actions</span>
+                    </span>
+                  </>
+                ) : (
+                  <span className="docsera-tooltip__label">Insert block</span>
+                )}
+              </DocseraTooltip>
             ) : null}
 
             {editor && imageOptionsBlockIndex !== null && imagePreviewControlGroupStyle ? (
@@ -7605,54 +7830,56 @@ export function PageEditorHostRuntime({
                 data-docsera-image-preview-controls="true"
                 data-docsera-image-preview-controls-block-index={imageOptionsBlockIndex}
               >
-                <button
-                  type="button"
-                  className={`docsera-image-controls-button${activeImagePreviewTheme === "light" ? " docsera-image-controls-button--selected" : ""}`}
-                  aria-pressed={activeImagePreviewTheme === "light"}
-                  aria-label="Light preview"
-                  title="Light preview"
-                  data-docsera-image-preview-control="true"
-                  data-docsera-image-preview-control-kind="light"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                  }}
-                  onClick={() => {
-                    if (imageOptionsBlockIndex === null) {
-                      return;
-                    }
+                <DocseraCompactTooltip label="Light preview" ownerDocument={overlayOwnerDocument}>
+                  <button
+                    type="button"
+                    className={`docsera-image-controls-button${activeImagePreviewTheme === "light" ? " docsera-image-controls-button--selected" : ""}`}
+                    aria-pressed={activeImagePreviewTheme === "light"}
+                    aria-label="Light preview"
+                    data-docsera-image-preview-control="true"
+                    data-docsera-image-preview-control-kind="light"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                    }}
+                    onClick={() => {
+                      if (imageOptionsBlockIndex === null) {
+                        return;
+                      }
 
-                    setDocseraImagePreviewState({
-                      blockIndex: imageOptionsBlockIndex,
-                      theme: "light"
-                    });
-                  }}
-                >
-                  <SunMedium size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
-                </button>
-                <button
-                  type="button"
-                  className={`docsera-image-controls-button${activeImagePreviewTheme === "dark" ? " docsera-image-controls-button--selected" : ""}`}
-                  aria-pressed={activeImagePreviewTheme === "dark"}
-                  aria-label="Dark preview"
-                  title="Dark preview"
-                  data-docsera-image-preview-control="true"
-                  data-docsera-image-preview-control-kind="dark"
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                  }}
-                  onClick={() => {
-                    if (imageOptionsBlockIndex === null) {
-                      return;
-                    }
+                      setDocseraImagePreviewState({
+                        blockIndex: imageOptionsBlockIndex,
+                        theme: "light"
+                      });
+                    }}
+                  >
+                    <SunMedium size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                  </button>
+                </DocseraCompactTooltip>
+                <DocseraCompactTooltip label="Dark preview" ownerDocument={overlayOwnerDocument}>
+                  <button
+                    type="button"
+                    className={`docsera-image-controls-button${activeImagePreviewTheme === "dark" ? " docsera-image-controls-button--selected" : ""}`}
+                    aria-pressed={activeImagePreviewTheme === "dark"}
+                    aria-label="Dark preview"
+                    data-docsera-image-preview-control="true"
+                    data-docsera-image-preview-control-kind="dark"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                    }}
+                    onClick={() => {
+                      if (imageOptionsBlockIndex === null) {
+                        return;
+                      }
 
-                    setDocseraImagePreviewState({
-                      blockIndex: imageOptionsBlockIndex,
-                      theme: "dark"
-                    });
-                  }}
-                >
-                  <Moon size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
-                </button>
+                      setDocseraImagePreviewState({
+                        blockIndex: imageOptionsBlockIndex,
+                        theme: "dark"
+                      });
+                    }}
+                  >
+                    <Moon size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                  </button>
+                </DocseraCompactTooltip>
               </div>
             ) : null}
 
@@ -7666,12 +7893,12 @@ export function PageEditorHostRuntime({
               >
                 {imageControlPresentation === "standard" ? (
                   <>
-                    <button
-                      type="button"
-                      className="docsera-image-controls-button"
-                      aria-haspopup="dialog"
-                      aria-label="Zoom"
-                      title="Zoom"
+                    <DocseraCompactTooltip label="Zoom" ownerDocument={overlayOwnerDocument}>
+                      <button
+                        type="button"
+                        className="docsera-image-controls-button"
+                        aria-haspopup="dialog"
+                        aria-label="Zoom"
                       data-docsera-image-control="true"
                       data-docsera-image-controls-block-index={imageOptionsBlockIndex}
                       data-docsera-image-control-kind="zoom"
@@ -7681,15 +7908,16 @@ export function PageEditorHostRuntime({
                       onClick={(event) => {
                         openImageFullscreenFromBlock(imageOptionsBlockIndex, event.currentTarget);
                       }}
-                    >
-                      <ZoomIn size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
-                    </button>
-                    <button
-                      type="button"
-                      className={`docsera-image-controls-button${activeImageAttrs?.frame !== false ? " docsera-image-controls-button--selected" : ""}`}
-                      aria-pressed={activeImageAttrs?.frame !== false}
-                      aria-label={`Frame image ${activeImageAttrs?.frame !== false ? "on" : "off"}`}
-                      title="Frame"
+                      >
+                        <ZoomIn size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                      </button>
+                    </DocseraCompactTooltip>
+                    <DocseraCompactTooltip label="Frame" ownerDocument={overlayOwnerDocument}>
+                      <button
+                        type="button"
+                        className={`docsera-image-controls-button${activeImageAttrs?.frame !== false ? " docsera-image-controls-button--selected" : ""}`}
+                        aria-pressed={activeImageAttrs?.frame !== false}
+                        aria-label={`Frame image ${activeImageAttrs?.frame !== false ? "on" : "off"}`}
                       data-docsera-image-control="true"
                       data-docsera-image-controls-block-index={imageOptionsBlockIndex}
                       data-docsera-image-control-kind="frame"
@@ -7699,17 +7927,18 @@ export function PageEditorHostRuntime({
                       onClick={() => {
                         toggleImageFrame(imageOptionsBlockIndex);
                       }}
-                    >
-                      <FrameIcon size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
-                    </button>
-                    <button
-                      type="button"
-                      className="docsera-image-controls-button"
-                      aria-haspopup="menu"
-                      aria-controls={imageAlignmentPickerMenuId}
-                      aria-expanded={imageAlignmentPickerMenu?.blockIndex === imageOptionsBlockIndex}
-                      aria-label={`Alignment: ${activeImageAttrs?.align === "center" ? "Center" : activeImageAttrs?.align === "right" ? "Right" : "Left"}`}
-                      title={`Alignment: ${activeImageAttrs?.align === "center" ? "Center" : activeImageAttrs?.align === "right" ? "Right" : "Left"}`}
+                      >
+                        <FrameIcon size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                      </button>
+                    </DocseraCompactTooltip>
+                    <DocseraCompactTooltip label={`Alignment: ${activeImageAttrs?.align === "center" ? "Center" : activeImageAttrs?.align === "right" ? "Right" : "Left"}`} ownerDocument={overlayOwnerDocument}>
+                      <button
+                        type="button"
+                        className="docsera-image-controls-button"
+                        aria-haspopup="menu"
+                        aria-controls={imageAlignmentPickerMenuId}
+                        aria-expanded={imageAlignmentPickerMenu?.blockIndex === imageOptionsBlockIndex}
+                        aria-label={`Alignment: ${activeImageAttrs?.align === "center" ? "Center" : activeImageAttrs?.align === "right" ? "Right" : "Left"}`}
                       data-docsera-image-control="true"
                       data-docsera-image-controls-block-index={imageOptionsBlockIndex}
                       data-docsera-image-control-kind="alignment"
@@ -7724,17 +7953,18 @@ export function PageEditorHostRuntime({
 
                         openImageAlignmentPickerMenu(imageOptionsBlockIndex, event.currentTarget.getBoundingClientRect());
                       }}
-                    >
-                      <AlignCenter size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
-                    </button>
-                    <button
-                      type="button"
-                      className="docsera-image-controls-button docsera-image-options-trigger"
-                      aria-haspopup="dialog"
-                      aria-controls={imageOptionsPanelId}
-                      aria-expanded={imageOptionsSession !== null}
-                      aria-label="Image options"
-                      title="Image options"
+                      >
+                        <AlignCenter size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                      </button>
+                    </DocseraCompactTooltip>
+                    <DocseraCompactTooltip label="Image options" ownerDocument={overlayOwnerDocument}>
+                      <button
+                        type="button"
+                        className="docsera-image-controls-button docsera-image-options-trigger"
+                        aria-haspopup="dialog"
+                        aria-controls={imageOptionsPanelId}
+                        aria-expanded={imageOptionsSession !== null}
+                        aria-label="Image options"
                       data-docsera-image-options="true"
                       data-docsera-image-controls-block-index={imageOptionsBlockIndex}
                       data-docsera-image-options-block-index={imageOptionsBlockIndex}
@@ -7750,20 +7980,21 @@ export function PageEditorHostRuntime({
 
                         openImageOptions(imageOptionsBlockIndex, controlGroup.getBoundingClientRect());
                       }}
-                    >
-                      <EllipsisVertical size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
-                    </button>
+                      >
+                        <EllipsisVertical size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                      </button>
+                    </DocseraCompactTooltip>
                   </>
                 ) : (
                   <>
-                    <button
-                      type="button"
-                      className="docsera-image-controls-button"
-                      aria-haspopup="menu"
-                      aria-controls={imageAlignmentMenuId}
-                      aria-expanded={imageAlignmentMenu?.blockIndex === imageOptionsBlockIndex}
-                      aria-label="More image actions"
-                      title="More image actions"
+                    <DocseraCompactTooltip label="More image actions" ownerDocument={overlayOwnerDocument}>
+                      <button
+                        type="button"
+                        className="docsera-image-controls-button"
+                        aria-haspopup="menu"
+                        aria-controls={imageAlignmentMenuId}
+                        aria-expanded={imageAlignmentMenu?.blockIndex === imageOptionsBlockIndex}
+                        aria-label="More image actions"
                       data-docsera-image-control="true"
                       data-docsera-image-controls-block-index={imageOptionsBlockIndex}
                       data-docsera-image-control-kind="actions"
@@ -7778,9 +8009,10 @@ export function PageEditorHostRuntime({
 
                         openImageAlignmentMenu(imageOptionsBlockIndex);
                       }}
-                    >
-                      <EllipsisVertical size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
-                    </button>
+                      >
+                        <EllipsisVertical size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+                      </button>
+                    </DocseraCompactTooltip>
                   </>
                 )}
               </div>
@@ -8207,7 +8439,6 @@ export function PageEditorHostRuntime({
           overlayRoot
         )}
       </div>
-
     </section>
   );
 }

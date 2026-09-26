@@ -6,6 +6,7 @@ import type { InlinePageCreateState } from "./PageTree";
 import { WorkspaceMainPane } from "./WorkspaceMainPane";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { WorkspaceToc } from "./WorkspaceToc";
+import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
 import type { WorkspacePageOutlineItem, WorkspacePageView } from "./workspaceViewModels";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
 import type { WorkspaceAuthoringSurface } from "./workspaceAuthoringSurface";
@@ -373,15 +374,17 @@ export function WorkspaceShell({
               treeFilter={treeFilter}
               onTreeFilterChange={onTreeFilterChange}
             />
-            <button
-              type="button"
-              className="docsera-workspace__nav-resizer"
-              aria-label="Resize navigation panel"
-              data-docsera-nav-resizer="true"
-              onMouseDown={startSidebarResize}
-            >
-              <span className="docsera-workspace__nav-resizer-pill" aria-hidden="true" />
-            </button>
+            <DocseraCompactTooltip label="Resize navigation panel">
+              <button
+                type="button"
+                className="docsera-workspace__nav-resizer"
+                aria-label="Resize navigation panel"
+                data-docsera-nav-resizer="true"
+                onMouseDown={startSidebarResize}
+              >
+                <span className="docsera-workspace__nav-resizer-pill" aria-hidden="true" />
+              </button>
+            </DocseraCompactTooltip>
           </div>
         ) : null}
 

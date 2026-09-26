@@ -14,6 +14,7 @@ import type { CSSProperties } from "react";
 import { type PointerEvent as ReactPointerEvent, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { closeHistory } from "prosemirror-history";
 import { COMPACT_MENU_STYLES } from "./CompactMenuStyles";
+import { DocseraCompactTooltip } from "./DocseraTooltip";
 
 type TableControlsOverlayProps = {
   editor: TiptapEditor | null;
@@ -1233,59 +1234,60 @@ export default function TableControlsOverlay({
                 ROW_PILL_HITBOX_WIDTH_PX / 2;
               const handleTop = rowCenterY - ROW_PILL_HITBOX_HEIGHT_PX / 2;
               return (
-                <button
-                  key={`table-row-handle-${rowIndex}`}
-                  type="button"
-                  data-docsera-table-handle="true"
-                  data-docsera-table-handle-kind="row"
-                  data-docsera-table-handle-index={rowIndex}
-                  data-docsera-table-handle-expanded={isExpanded ? "true" : "false"}
-                  data-docsera-table-handle-accented={isAccented ? "true" : "false"}
-                  data-docsera-table-handle-visual-state={isAccented ? "active" : "muted"}
-                  aria-label={`Table row ${rowIndex + 1} options`}
-                  aria-haspopup="menu"
-                  aria-expanded={isMenuOpen}
-                  className="docsera-table-controls-overlay__pill"
-                  style={{
-                    left: `${handleLeft}px`,
-                    top: `${handleTop}px`,
-                    width: `${ROW_PILL_HITBOX_WIDTH_PX}px`,
-                    height: `${ROW_PILL_HITBOX_HEIGHT_PX}px`,
-                  }}
-                  onMouseEnter={() => setHoveredHandle({ kind: "row", index: rowIndex })}
-                  onMouseLeave={() =>
-                    setHoveredHandle((previous) => (previous?.kind === "row" ? null : previous))
-                  }
-                  onPointerDown={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    openMenu("row", rowIndex);
-                  }}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    openMenu("row", rowIndex);
-                  }}
-                  onClick={() => {
-                    openMenu("row", rowIndex);
-                  }}
-                >
-                  <span
-                    className="docsera-table-controls-overlay__pill-shell"
-                    data-docsera-table-handle-pill="true"
-                    style={buildPillShellStyle({ isActive: isAccented, primaryColor: tableControlPrimaryColor })}
-                  />
-                  <span
-                    className="docsera-table-controls-overlay__pill-icon"
-                    data-docsera-table-handle-ellipsis="true"
+                <DocseraCompactTooltip key={`table-row-handle-${rowIndex}`} label={`Table row ${rowIndex + 1} options`} ownerDocument={overlayRoot.ownerDocument}>
+                  <button
+                    type="button"
+                    data-docsera-table-handle="true"
+                    data-docsera-table-handle-kind="row"
+                    data-docsera-table-handle-index={rowIndex}
+                    data-docsera-table-handle-expanded={isExpanded ? "true" : "false"}
+                    data-docsera-table-handle-accented={isAccented ? "true" : "false"}
+                    data-docsera-table-handle-visual-state={isAccented ? "active" : "muted"}
+                    aria-label={`Table row ${rowIndex + 1} options`}
+                    aria-haspopup="menu"
+                    aria-expanded={isMenuOpen}
+                    className="docsera-table-controls-overlay__pill"
+                    style={{
+                      left: `${handleLeft}px`,
+                      top: `${handleTop}px`,
+                      width: `${ROW_PILL_HITBOX_WIDTH_PX}px`,
+                      height: `${ROW_PILL_HITBOX_HEIGHT_PX}px`,
+                    }}
+                    onMouseEnter={() => setHoveredHandle({ kind: "row", index: rowIndex })}
+                    onMouseLeave={() =>
+                      setHoveredHandle((previous) => (previous?.kind === "row" ? null : previous))
+                    }
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openMenu("row", rowIndex);
+                    }}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openMenu("row", rowIndex);
+                    }}
+                    onClick={() => {
+                      openMenu("row", rowIndex);
+                    }}
                   >
-                    <EllipsisVertical
-                      size={HANDLE_ICON_SIZE_PX}
-                      strokeWidth={HANDLE_ICON_STROKE_WIDTH}
-                      color={isAccented ? activeTableIconColor : "var(--docsera-editor-muted)"}
+                    <span
+                      className="docsera-table-controls-overlay__pill-shell"
+                      data-docsera-table-handle-pill="true"
+                      style={buildPillShellStyle({ isActive: isAccented, primaryColor: tableControlPrimaryColor })}
                     />
-                  </span>
-                </button>
+                    <span
+                      className="docsera-table-controls-overlay__pill-icon"
+                      data-docsera-table-handle-ellipsis="true"
+                    >
+                      <EllipsisVertical
+                        size={HANDLE_ICON_SIZE_PX}
+                        strokeWidth={HANDLE_ICON_STROKE_WIDTH}
+                        color={isAccented ? activeTableIconColor : "var(--docsera-editor-muted)"}
+                      />
+                    </span>
+                  </button>
+                </DocseraCompactTooltip>
               );
             })}
 
@@ -1314,59 +1316,60 @@ export default function TableControlsOverlay({
                 (renderLayout.columnTopBorderAnchorYs[columnIndex] ?? renderLayout.tableRect.top) -
                 COLUMN_PILL_HITBOX_HEIGHT_PX / 2;
               return (
-                <button
-                  key={`table-column-handle-${columnIndex}`}
-                  type="button"
-                  data-docsera-table-handle="true"
-                  data-docsera-table-handle-kind="column"
-                  data-docsera-table-handle-index={columnIndex}
-                  data-docsera-table-handle-expanded={isExpanded ? "true" : "false"}
-                  data-docsera-table-handle-accented={isAccented ? "true" : "false"}
-                  data-docsera-table-handle-visual-state={isAccented ? "active" : "muted"}
-                  aria-label={`Table column ${columnIndex + 1} options`}
-                  aria-haspopup="menu"
-                  aria-expanded={isMenuOpen}
-                  className="docsera-table-controls-overlay__pill"
-                  style={{
-                    left: `${handleLeft}px`,
-                    top: `${handleTop}px`,
-                    width: `${COLUMN_PILL_HITBOX_WIDTH_PX}px`,
-                    height: `${COLUMN_PILL_HITBOX_HEIGHT_PX}px`,
-                  }}
-                  onMouseEnter={() => setHoveredHandle({ kind: "column", index: columnIndex })}
-                  onMouseLeave={() =>
-                    setHoveredHandle((previous) => (previous?.kind === "column" ? null : previous))
-                  }
-                  onPointerDown={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    openMenu("column", columnIndex);
-                  }}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    openMenu("column", columnIndex);
-                  }}
-                  onClick={() => {
-                    openMenu("column", columnIndex);
-                  }}
-                >
-                  <span
-                    className="docsera-table-controls-overlay__pill-shell"
-                    data-docsera-table-handle-pill="true"
-                    style={buildPillShellStyle({ isActive: isAccented, primaryColor: tableControlPrimaryColor })}
-                  />
-                  <span
-                    className="docsera-table-controls-overlay__pill-icon"
-                    data-docsera-table-handle-ellipsis="true"
+                <DocseraCompactTooltip key={`table-column-handle-${columnIndex}`} label={`Table column ${columnIndex + 1} options`} ownerDocument={overlayRoot.ownerDocument}>
+                  <button
+                    type="button"
+                    data-docsera-table-handle="true"
+                    data-docsera-table-handle-kind="column"
+                    data-docsera-table-handle-index={columnIndex}
+                    data-docsera-table-handle-expanded={isExpanded ? "true" : "false"}
+                    data-docsera-table-handle-accented={isAccented ? "true" : "false"}
+                    data-docsera-table-handle-visual-state={isAccented ? "active" : "muted"}
+                    aria-label={`Table column ${columnIndex + 1} options`}
+                    aria-haspopup="menu"
+                    aria-expanded={isMenuOpen}
+                    className="docsera-table-controls-overlay__pill"
+                    style={{
+                      left: `${handleLeft}px`,
+                      top: `${handleTop}px`,
+                      width: `${COLUMN_PILL_HITBOX_WIDTH_PX}px`,
+                      height: `${COLUMN_PILL_HITBOX_HEIGHT_PX}px`,
+                    }}
+                    onMouseEnter={() => setHoveredHandle({ kind: "column", index: columnIndex })}
+                    onMouseLeave={() =>
+                      setHoveredHandle((previous) => (previous?.kind === "column" ? null : previous))
+                    }
+                    onPointerDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openMenu("column", columnIndex);
+                    }}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      openMenu("column", columnIndex);
+                    }}
+                    onClick={() => {
+                      openMenu("column", columnIndex);
+                    }}
                   >
-                    <MoreHorizontal
-                      size={HANDLE_ICON_SIZE_PX}
-                      strokeWidth={HANDLE_ICON_STROKE_WIDTH}
-                      color={isAccented ? activeTableIconColor : "var(--docsera-editor-muted)"}
+                    <span
+                      className="docsera-table-controls-overlay__pill-shell"
+                      data-docsera-table-handle-pill="true"
+                      style={buildPillShellStyle({ isActive: isAccented, primaryColor: tableControlPrimaryColor })}
                     />
-                  </span>
-                </button>
+                    <span
+                      className="docsera-table-controls-overlay__pill-icon"
+                      data-docsera-table-handle-ellipsis="true"
+                    >
+                      <MoreHorizontal
+                        size={HANDLE_ICON_SIZE_PX}
+                        strokeWidth={HANDLE_ICON_STROKE_WIDTH}
+                        color={isAccented ? activeTableIconColor : "var(--docsera-editor-muted)"}
+                      />
+                    </span>
+                  </button>
+                </DocseraCompactTooltip>
               );
             })}
 
@@ -1385,11 +1388,12 @@ export default function TableControlsOverlay({
                       position: "fixed",
                     }}
                   >
-                    <button
-                      type="button"
-                      data-docsera-table-add-row="true"
-                      data-docsera-table-add-rail-kind="row"
-                      aria-label="Add rows"
+                    <DocseraCompactTooltip label="Add rows" ownerDocument={overlayRoot.ownerDocument}>
+                      <button
+                        type="button"
+                        data-docsera-table-add-row="true"
+                        data-docsera-table-add-rail-kind="row"
+                        aria-label="Add rows"
                       className="docsera-table-controls-overlay__rail-button"
                       style={{
                         alignItems: "center",
@@ -1426,20 +1430,21 @@ export default function TableControlsOverlay({
                       onDragStart={(event) => {
                         event.preventDefault();
                       }}
-                    >
-                      <span
-                        className="docsera-table-controls-overlay__rail-icon"
-                        data-docsera-table-rail-icon="true"
-                        style={{
-                          color:
-                            hoveredRailKind === "row"
-                              ? tableControlPrimaryColor
-                              : "var(--docsera-editor-muted)",
-                        }}
                       >
-                        <Plus size={13} strokeWidth={2.2} />
-                      </span>
-                    </button>
+                        <span
+                          className="docsera-table-controls-overlay__rail-icon"
+                          data-docsera-table-rail-icon="true"
+                          style={{
+                            color:
+                              hoveredRailKind === "row"
+                                ? tableControlPrimaryColor
+                                : "var(--docsera-editor-muted)",
+                          }}
+                        >
+                          <Plus size={13} strokeWidth={2.2} />
+                        </span>
+                      </button>
+                    </DocseraCompactTooltip>
                   </div>
                 </div>
                 <div data-docsera-table-column-rail="true">
@@ -1455,11 +1460,12 @@ export default function TableControlsOverlay({
                       zIndex: TABLE_CONTROL_OVERLAY_Z_INDEX + 1,
                     }}
                   >
-                    <button
-                      type="button"
-                      data-docsera-table-add-column="true"
-                      data-docsera-table-add-rail-kind="column"
-                      aria-label="Add columns"
+                    <DocseraCompactTooltip label="Add columns" ownerDocument={overlayRoot.ownerDocument}>
+                      <button
+                        type="button"
+                        data-docsera-table-add-column="true"
+                        data-docsera-table-add-rail-kind="column"
+                        aria-label="Add columns"
                       className="docsera-table-controls-overlay__rail-button"
                       style={{
                         alignItems: "center",
@@ -1496,20 +1502,21 @@ export default function TableControlsOverlay({
                       onDragStart={(event) => {
                         event.preventDefault();
                       }}
-                    >
-                      <span
-                        className="docsera-table-controls-overlay__rail-icon"
-                        data-docsera-table-rail-icon="true"
-                        style={{
-                          color:
-                            hoveredRailKind === "column"
-                              ? tableControlPrimaryColor
-                              : "var(--docsera-editor-muted)",
-                        }}
                       >
-                        <Plus size={13} strokeWidth={2.2} />
-                      </span>
-                    </button>
+                        <span
+                          className="docsera-table-controls-overlay__rail-icon"
+                          data-docsera-table-rail-icon="true"
+                          style={{
+                            color:
+                              hoveredRailKind === "column"
+                                ? tableControlPrimaryColor
+                                : "var(--docsera-editor-muted)",
+                          }}
+                        >
+                          <Plus size={13} strokeWidth={2.2} />
+                        </span>
+                      </button>
+                    </DocseraCompactTooltip>
                   </div>
                 </div>
               </>

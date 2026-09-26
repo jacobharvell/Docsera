@@ -1141,6 +1141,49 @@ describe("App workspace shell integration", () => {
     expect(within(pane).queryByText("Inactive Editor")).not.toBeInTheDocument();
   });
 
+  it("uses shared tooltips for compact Manage Access controls", async () => {
+    const listWorkspaceMembers = vi.fn(async () => ({
+      callerCapabilities: { canManageWorkspaceMembers: true },
+      members: [createMember({ accessLevel: "admin", displayName: "Admin One", userSysId: "user-admin" })],
+      state: "succeeded" as const
+    }));
+    const searchWorkspaceMemberUsers = vi.fn(async () => ({
+      callerCapabilities: { canManageWorkspaceMembers: true },
+      state: "succeeded" as const,
+      users: [{ displayName: "New Editor", email: "new@example.com", userName: "new.editor", userSysId: "user-new" }]
+    }));
+
+    renderApp("/?workspace=product-docs&page=overview&mode=edit", { listWorkspaceMembers, searchWorkspaceMemberUsers });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
+    fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage workspace access" }));
+
+    const pane = await screen.findByRole("complementary", { name: "Manage access" });
+    const manageAccessClose = within(pane).getByRole("button", { name: "Close manage access" });
+    expect(manageAccessClose).not.toHaveAttribute("title");
+    fireEvent.focus(manageAccessClose);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Close manage access");
+    expect(manageAccessClose).toHaveAccessibleName("Close manage access");
+
+    fireEvent.blur(manageAccessClose);
+    fireEvent.click(within(pane).getByRole("button", { name: "Add members" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add members" });
+    const addMembersClose = within(dialog).getByRole("button", { name: "Close add members" });
+    const stageButton = within(dialog).getByRole("button", { name: "Stage selected users" });
+    const unstageButton = within(dialog).getByRole("button", { name: "Remove selected staged members" });
+
+    expect(addMembersClose).not.toHaveAttribute("title");
+    expect(stageButton).toBeDisabled();
+    expect(stageButton).not.toHaveAttribute("title");
+    expect(unstageButton).toBeDisabled();
+    expect(unstageButton).not.toHaveAttribute("title");
+
+    fireEvent.focus(addMembersClose);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Close add members");
+    expect(addMembersClose).toHaveAccessibleName("Close add members");
+  });
+
   it("reserves scrollbar gutter in the Manage access scroll body", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;

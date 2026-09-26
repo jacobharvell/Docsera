@@ -4,6 +4,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { IMAGE_FULLSCREEN_VIEWER_STYLES } from "./ImageFullscreenViewerStyles";
 import type { DocseraImageDisplayTheme } from "../editor/imageDisplayState";
+import { DocseraCompactTooltip } from "../tooltip/DocseraTooltip";
 
 export type ImageFullscreenViewerSession = Readonly<{
   alt: string;
@@ -337,21 +338,23 @@ export function ImageFullscreenViewer({ isOpen, overlayRoot, onDismissed, onRequ
         >
           <img className="docsera-image-viewer__image" src={displaySession.imageSrc} alt={displaySession.alt} />
         </div>
-        <button
-          ref={closeButtonRef}
-          type="button"
-          className="docsera-image-viewer__close"
-          aria-label="Close image viewer"
-          onMouseDown={(event) => {
-            event.preventDefault();
-          }}
-          onClick={(event) => {
-            event.stopPropagation();
-            handleRequestClose();
-          }}
-        >
-          <X size={16} strokeWidth={2.2} aria-hidden="true" focusable="false" />
-        </button>
+        <DocseraCompactTooltip label="Close image viewer" ownerDocument={overlayRoot.ownerDocument}>
+          <button
+            ref={closeButtonRef}
+            type="button"
+            className="docsera-image-viewer__close"
+            aria-label="Close image viewer"
+            onMouseDown={(event) => {
+              event.preventDefault();
+            }}
+            onClick={(event) => {
+              event.stopPropagation();
+              handleRequestClose();
+            }}
+          >
+            <X size={16} strokeWidth={2.2} aria-hidden="true" focusable="false" />
+          </button>
+        </DocseraCompactTooltip>
       </div>
     </>,
     overlayRoot

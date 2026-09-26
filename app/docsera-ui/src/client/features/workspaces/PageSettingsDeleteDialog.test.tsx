@@ -49,6 +49,46 @@ describe("PageSettingsDeleteDialog", () => {
     expect(deleteButton.querySelector("svg")).toBeInTheDocument();
   });
 
+  it("uses shared tooltips for compact Page Settings controls", async () => {
+    render(
+      <PageSettingsOverlay
+        activeField=""
+        canManagePageSettings
+        generalError=""
+        open
+        panelRef={{ current: null }}
+        pageSlug="overview"
+        pageTitle="Overview"
+        slugError=""
+        titleError=""
+        onCancelField={vi.fn()}
+        onChangeField={vi.fn()}
+        onFinishField={vi.fn()}
+        onRequestClose={vi.fn()}
+        onRequestDelete={vi.fn()}
+        onStartField={vi.fn()}
+      />
+    );
+
+    const closeButton = screen.getByRole("button", { name: "Close page settings" });
+    expect(closeButton).not.toHaveAttribute("title");
+
+    fireEvent.focus(closeButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Close page settings");
+    expect(closeButton).toHaveAccessibleName("Close page settings");
+  });
+
+  it("uses shared tooltips for compact Delete Page dialog controls", async () => {
+    renderDeleteDialog();
+
+    const closeButton = screen.getByRole("button", { name: "Close delete dialog" });
+    expect(closeButton).not.toHaveAttribute("title");
+
+    fireEvent.focus(closeButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Close delete dialog");
+    expect(closeButton).toHaveAccessibleName("Close delete dialog");
+  });
+
   it("renders pending delete progress with spinner, busy state, and disabled controls", () => {
     renderDeleteDialog({ pending: true });
 

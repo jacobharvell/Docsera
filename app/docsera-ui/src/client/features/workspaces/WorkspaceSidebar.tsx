@@ -4,6 +4,7 @@ import { docseraIcons } from "../../shared/icons/docseraIcons";
 import { PageTree, type InlinePageCreateState } from "./PageTree";
 import type { WorkspaceMode } from "../../shared/types/docsera";
 import type { WorkspacePageView } from "./workspaceViewModels";
+import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
 
 type WorkspaceSidebarProps = {
   mode: WorkspaceMode;
@@ -106,17 +107,19 @@ export function WorkspaceSidebar({
           />
         </label>
         {showCreatePageControl ? (
-          <button
-            type="button"
-            className="docsera-sidebar__icon-button"
-            aria-label="New page"
-            aria-describedby={createPageReasonId}
-            onClick={onShowCreatePage}
-            disabled={isCreatingPage || showLoadingState || !canCreatePage}
-            title={createPageDisabledReason || undefined}
-          >
-            <PlusIcon />
-          </button>
+          <DocseraCompactTooltip label="New page">
+            <button
+              type="button"
+              className="docsera-sidebar__icon-button"
+              aria-label="New page"
+              aria-describedby={createPageReasonId}
+              onClick={onShowCreatePage}
+              disabled={isCreatingPage || showLoadingState || !canCreatePage}
+              title={createPageDisabledReason || undefined}
+            >
+              <PlusIcon />
+            </button>
+          </DocseraCompactTooltip>
         ) : null}
       </div>
       {createPageDisabledReason ? (

@@ -17,6 +17,7 @@ import { RecentWorkspacesMenu, type RecentWorkspaceItem } from "./RecentWorkspac
 import { WorkspaceIconBadge, type WorkspaceUploadedIconLoader } from "./WorkspacePrimitives";
 import type { WorkspacePageView } from "./workspaceViewModels";
 import type { WorkspaceAuthoringSurface } from "./workspaceAuthoringSurface";
+import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -695,14 +696,16 @@ export function DocseraHeader({
       <div className="docsera-header__bar">
         <div className="docsera-header__leading">
           {mode === "workspace" && onToggleSidebar ? (
-            <button
-              type="button"
-              className="docsera-header__ghost-button docsera-header__ghost-button--sidebar-toggle"
-              onClick={onToggleSidebar}
-              aria-label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
-            >
-              <SidebarToggleIcon collapsed={sidebarCollapsed} />
-            </button>
+            <DocseraCompactTooltip label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}>
+              <button
+                type="button"
+                className="docsera-header__ghost-button docsera-header__ghost-button--sidebar-toggle"
+                onClick={onToggleSidebar}
+                aria-label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+              >
+                <SidebarToggleIcon collapsed={sidebarCollapsed} />
+              </button>
+            </DocseraCompactTooltip>
           ) : null}
 
           {mode === "workspace" && currentPage ? (
@@ -733,26 +736,28 @@ export function DocseraHeader({
                 aria-label="Workspace mode"
               >
                 <span className="docsera-header__segmented-indicator" aria-hidden="true" />
-                <button
-                  type="button"
-                  className={`docsera-header__mode-segment${showWorkspaceMode === "live" ? " docsera-header__mode-segment--active" : ""}`}
-                  aria-pressed={showWorkspaceMode === "live"}
-                  title="Live"
-                  disabled={workspaceControlsLocked}
-                  onClick={() => workspaceModeChange?.("live")}
-                >
-                  Live
-                </button>
-                <button
-                  type="button"
-                  className={`docsera-header__mode-segment${showWorkspaceMode === "edit" ? " docsera-header__mode-segment--active" : ""}`}
-                  aria-pressed={showWorkspaceMode === "edit"}
-                  title="Edit"
-                  disabled={workspaceControlsLocked}
-                  onClick={() => workspaceModeChange?.("edit")}
-                >
-                  Edit
-                </button>
+                <DocseraCompactTooltip label="Live">
+                  <button
+                    type="button"
+                    className={`docsera-header__mode-segment${showWorkspaceMode === "live" ? " docsera-header__mode-segment--active" : ""}`}
+                    aria-pressed={showWorkspaceMode === "live"}
+                    disabled={workspaceControlsLocked}
+                    onClick={() => workspaceModeChange?.("live")}
+                  >
+                    Live
+                  </button>
+                </DocseraCompactTooltip>
+                <DocseraCompactTooltip label="Edit">
+                  <button
+                    type="button"
+                    className={`docsera-header__mode-segment${showWorkspaceMode === "edit" ? " docsera-header__mode-segment--active" : ""}`}
+                    aria-pressed={showWorkspaceMode === "edit"}
+                    disabled={workspaceControlsLocked}
+                    onClick={() => workspaceModeChange?.("edit")}
+                  >
+                    Edit
+                  </button>
+                </DocseraCompactTooltip>
               </div>
             ) : (
               <span className="docsera-header__action-slot-placeholder" aria-hidden="true" />
@@ -773,28 +778,30 @@ export function DocseraHeader({
                 aria-hidden={showAuthoringSurfaceToggleControl ? undefined : "true"}
               >
                 <span className="docsera-header__segmented-indicator" aria-hidden="true" />
-                <button
-                  type="button"
-                  className={`docsera-header__surface-segment${authoringSurface === "visual" ? " docsera-header__surface-segment--active" : ""}`}
-                  aria-pressed={authoringSurface === "visual"}
-                  aria-label="Visual"
-                  title="Visual"
-                  disabled={authoringSurfaceLocked || !showAuthoringSurfaceToggleControl}
-                  onClick={() => authoringSurfaceChange?.("visual")}
-                >
-                  <Eye aria-hidden="true" focusable="false" size={16} strokeWidth={2} />
-                </button>
-                <button
-                  type="button"
-                  className={`docsera-header__surface-segment${authoringSurface === "markdown" ? " docsera-header__surface-segment--active" : ""}`}
-                  aria-pressed={authoringSurface === "markdown"}
-                  aria-label="Markdown"
-                  title="Markdown"
-                  disabled={authoringSurfaceLocked || !showAuthoringSurfaceToggleControl}
-                  onClick={() => authoringSurfaceChange?.("markdown")}
-                >
-                  <Code2 aria-hidden="true" focusable="false" size={16} strokeWidth={2} />
-                </button>
+                <DocseraCompactTooltip label="Visual">
+                  <button
+                    type="button"
+                    className={`docsera-header__surface-segment${authoringSurface === "visual" ? " docsera-header__surface-segment--active" : ""}`}
+                    aria-pressed={authoringSurface === "visual"}
+                    aria-label="Visual"
+                    disabled={authoringSurfaceLocked || !showAuthoringSurfaceToggleControl}
+                    onClick={() => authoringSurfaceChange?.("visual")}
+                  >
+                    <Eye aria-hidden="true" focusable="false" size={16} strokeWidth={2} />
+                  </button>
+                </DocseraCompactTooltip>
+                <DocseraCompactTooltip label="Markdown">
+                  <button
+                    type="button"
+                    className={`docsera-header__surface-segment${authoringSurface === "markdown" ? " docsera-header__surface-segment--active" : ""}`}
+                    aria-pressed={authoringSurface === "markdown"}
+                    aria-label="Markdown"
+                    disabled={authoringSurfaceLocked || !showAuthoringSurfaceToggleControl}
+                    onClick={() => authoringSurfaceChange?.("markdown")}
+                  >
+                    <Code2 aria-hidden="true" focusable="false" size={16} strokeWidth={2} />
+                  </button>
+                </DocseraCompactTooltip>
               </div>
             ) : (
               <span className="docsera-header__action-slot-placeholder" aria-hidden="true" />
@@ -821,16 +828,18 @@ export function DocseraHeader({
                 <div className="docsera-header__publish-toast" role="status" aria-atomic="true" aria-live="polite">
                   <PublishSuccessIcon />
                   <span className="docsera-header__publish-toast-message">{pendingChangesPublishToastMessage}</span>
-                  <button
-                    type="button"
-                    className="docsera-header__publish-toast-dismiss"
-                    aria-label="Dismiss publish success"
-                    onClick={onDismissPendingChangesPublishToast}
-                  >
-                    <svg viewBox="0 0 16 16" width="12" height="12" focusable="false" aria-hidden="true">
-                      <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
-                    </svg>
-                  </button>
+                  <DocseraCompactTooltip label="Dismiss publish success">
+                    <button
+                      type="button"
+                      className="docsera-header__publish-toast-dismiss"
+                      aria-label="Dismiss publish success"
+                      onClick={onDismissPendingChangesPublishToast}
+                    >
+                      <svg viewBox="0 0 16 16" width="12" height="12" focusable="false" aria-hidden="true">
+                        <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
+                      </svg>
+                    </button>
+                  </DocseraCompactTooltip>
                 </div>
               ) : null}
               <button
@@ -952,26 +961,28 @@ export function DocseraHeader({
                                   )}
                                   <div className="docsera-changes-center__row-action">
                                     <span className="docsera-changes-center__row-category" aria-hidden={canUndoRow ? "true" : undefined}>{row.category}</span>
-                                    <button
-                                      type="button"
-                                      className="docsera-changes-center__row-undo"
-                                      aria-label={`Undo changes to ${row.title}`}
-                                      disabled={!canUndoRow}
-                                      onClick={(event) => {
-                                        event.preventDefault();
-                                        event.stopPropagation();
-                                        if (!canUndoRow) {
-                                          return;
-                                        }
-                                        discardModalOriginRef.current = event.currentTarget;
-                                        setDiscardAllModalOpen(false);
-                                        setDiscardPageTarget({ pageSysId: row.pageSysId, title: row.title });
-                                      }}
-                                    >
-                                      <span className="docsera-changes-center__row-undo-icon" aria-hidden="true">
-                                        <UndoIcon />
-                                      </span>
-                                    </button>
+                                    <DocseraCompactTooltip label={`Undo changes to ${row.title}`}>
+                                      <button
+                                        type="button"
+                                        className="docsera-changes-center__row-undo"
+                                        aria-label={`Undo changes to ${row.title}`}
+                                        disabled={!canUndoRow}
+                                        onClick={(event) => {
+                                          event.preventDefault();
+                                          event.stopPropagation();
+                                          if (!canUndoRow) {
+                                            return;
+                                          }
+                                          discardModalOriginRef.current = event.currentTarget;
+                                          setDiscardAllModalOpen(false);
+                                          setDiscardPageTarget({ pageSysId: row.pageSysId, title: row.title });
+                                        }}
+                                      >
+                                        <span className="docsera-changes-center__row-undo-icon" aria-hidden="true">
+                                          <UndoIcon />
+                                        </span>
+                                      </button>
+                                    </DocseraCompactTooltip>
                                   </div>
                                 </div>
                               );
@@ -1015,27 +1026,31 @@ export function DocseraHeader({
           ) : null}
           <div className="docsera-header__action-slot docsera-header__action-slot--settings">
             {showWorkspaceSettings && onOpenWorkspaceSettings ? (
-              <button
-                type="button"
-                className="docsera-header__ghost-button"
-                aria-label="Workspace settings"
-                disabled={workspaceControlsLocked}
-                onClick={onOpenWorkspaceSettings}
-              >
-                <GearIcon />
-              </button>
+              <DocseraCompactTooltip label="Workspace settings">
+                <button
+                  type="button"
+                  className="docsera-header__ghost-button"
+                  aria-label="Workspace settings"
+                  disabled={workspaceControlsLocked}
+                  onClick={onOpenWorkspaceSettings}
+                >
+                  <GearIcon />
+                </button>
+              </DocseraCompactTooltip>
             ) : (
               <span className="docsera-header__action-slot-placeholder" aria-hidden="true" />
             )}
           </div>
-          <button
-            type="button"
-            className="docsera-header__ghost-button docsera-header__ghost-button--theme"
-            aria-label="Toggle theme"
-            onClick={onToggleTheme}
-          >
-            {theme === "dark" ? <SunIcon /> : <MoonIcon />}
-          </button>
+          <DocseraCompactTooltip label="Toggle theme">
+            <button
+              type="button"
+              className="docsera-header__ghost-button docsera-header__ghost-button--theme"
+              aria-label="Toggle theme"
+              onClick={onToggleTheme}
+            >
+              {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+            </button>
+          </DocseraCompactTooltip>
           <div className="docsera-header__account" ref={accountMenuRef}>
             <button
               ref={accountTriggerRef}

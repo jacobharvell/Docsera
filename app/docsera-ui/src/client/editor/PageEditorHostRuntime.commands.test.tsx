@@ -2551,6 +2551,78 @@ describe("PageEditorHostRuntime", () => {
     geometrySpy.mockRestore();
   });
 
+  it("shows shared tooltips for Quick Add and the block handle", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to be available.");
+    }
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+    const quickAdd = await screen.findByRole("button", { name: "Add block after Text" });
+    const blockHandle = screen.getByRole("button", { name: "Select block: Text" });
+
+    vi.useFakeTimers();
+
+    fireEvent.mouseEnter(quickAdd);
+    await act(async () => {
+      vi.advanceTimersByTime(179);
+    });
+    expect(getToolbarTooltip()).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    const quickAddTooltip = screen.getByRole("tooltip");
+    expect(quickAddTooltip).toHaveTextContent("Insert block");
+    expect(window.getComputedStyle(quickAddTooltip).boxSizing).toBe("border-box");
+    expect(quickAddTooltip.querySelectorAll(".docsera-tooltip__label")).toHaveLength(1);
+    expect(quickAddTooltip.querySelector(".docsera-tooltip__shortcut")).toBeNull();
+
+    fireEvent.mouseLeave(quickAdd);
+    expect(getToolbarTooltip()).toBeNull();
+
+    fireEvent.focus(quickAdd);
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Insert block");
+    fireEvent.blur(quickAdd);
+    expect(getToolbarTooltip()).toBeNull();
+
+    fireEvent.mouseEnter(blockHandle);
+    await act(async () => {
+      vi.advanceTimersByTime(180);
+    });
+    const handleTooltip = screen.getByRole("tooltip");
+    expect(handleTooltip).toHaveTextContent("Drag to move");
+    expect(handleTooltip).toHaveTextContent("Click for actions");
+    const handleTooltipRows = Array.from(handleTooltip.querySelectorAll(".docsera-tooltip__line"));
+    expect(handleTooltipRows).toHaveLength(2);
+    expect(handleTooltipRows.some((row) => row.classList.contains("docsera-tooltip__line--inline"))).toBe(false);
+    expect(handleTooltipRows[0]).toHaveTextContent("Drag to move");
+    expect(handleTooltipRows[1]).toHaveTextContent("Click for actions");
+    expect(handleTooltip.querySelectorAll(".docsera-tooltip__muted")).toHaveLength(2);
+    expect(handleTooltip.querySelector(".docsera-tooltip__muted")).toHaveTextContent("to move");
+
+    fireEvent.pointerDown(blockHandle, { clientX: 88, clientY: 64, pointerId: 91 });
+    expect(getToolbarTooltip()).toBeNull();
+
+    fireEvent.mouseEnter(blockHandle);
+    await act(async () => {
+      vi.advanceTimersByTime(180);
+    });
+    expect(screen.getByRole("tooltip")).toHaveTextContent("Drag to move");
+    fireEvent.click(blockHandle);
+    expect(getToolbarTooltip()).toBeNull();
+
+    geometrySpy.mockRestore();
+  });
+
   it("keeps hover ownership when the owner-document pointer event is retargeted to the shadow host but the composed path contains a top-level block", async () => {
     const { editorReady } = renderRuntime();
 
@@ -2995,6 +3067,147 @@ describe("PageEditorHostRuntime", () => {
     expect(Number.parseFloat(quickAddMenu.style.maxHeight)).toBeGreaterThanOrEqual(288);
 
     restoreInsertedRect();
+    geometrySpy.mockRestore();
+  });
+
+  it("aligns the Quick Add selector with the inserted block lane and tracks remeasured block geometry", async () => {
+    const harness = createOverlayOwnerDocumentHarness(1280, 720);
+    const overlayRoot = document.createElement("div");
+    Object.defineProperty(overlayRoot, "ownerDocument", {
+      configurable: true,
+      value: harness.ownerDocument
+    });
+
+    const { editorReady } = renderRuntime({}, { overlayRoot });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(140, 52, 620, 28)]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) {
+      throw new Error("Expected the editor surface to be available.");
+    }
+
+    await dispatchOwnerPointerMove(harness.ownerDocument, surface, { clientX: 128, clientY: 64 });
+    fireEvent.click(await screen.findByRole("button", { name: "Add block after Text" }));
+    const quickAddMenu = await screen.findByRole("listbox", { name: "Insert block after Text" });
+    const insertedBlock = editor.view.dom.children[1];
+    if (!(insertedBlock instanceof HTMLElement)) {
+      throw new Error("Expected the inserted Quick Add paragraph to be available.");
+    }
+
+    const initialInsertedBlockRect = new DOMRect(140, 84, 620, 28);
+    const restoreInitialInsertedRect = mockElementRect(insertedBlock, initialInsertedBlockRect);
+
+    act(() => {
+      harness.triggerResize();
+    });
+
+    await waitFor(() => {
+      expect(Number.parseFloat(quickAddMenu.style.left)).toBe(initialInsertedBlockRect.left);
+    });
+
+    restoreInitialInsertedRect();
+    const remeasuredInsertedBlockRect = new DOMRect(196, 84, 620, 28);
+    const restoreRemeasuredInsertedRect = mockElementRect(insertedBlock, remeasuredInsertedBlockRect);
+    act(() => {
+      harness.triggerResize();
+    });
+
+    await waitFor(() => {
+      expect(Number.parseFloat(quickAddMenu.style.left)).toBe(remeasuredInsertedBlockRect.left);
+    });
+
+    restoreRemeasuredInsertedRect();
+    geometrySpy.mockRestore();
+  });
+
+  it("aligns the slash selector with the owning block lane while keeping vertical placement caret-derived", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    const coordsSpy = vi
+      .spyOn(editor.view, "coordsAtPos")
+      .mockReturnValue({ left: 244, right: 245, top: 80, bottom: 98 });
+
+    await openSlashQuery(editor);
+    const slashMenu = await screen.findByRole("listbox", { name: "Slash command menu" });
+
+    expect(Number.parseFloat(slashMenu.style.left)).toBe(132);
+    expect(Number.parseFloat(slashMenu.style.top)).toBe(98 + 10);
+
+    coordsSpy.mockRestore();
+    geometrySpy.mockRestore();
+  });
+
+  it("remeasures the slash selector when the editor lane moves", async () => {
+    const harness = createOverlayOwnerDocumentHarness(1280, 720);
+    const resizeObserverCallbacks: ResizeObserverCallback[] = [];
+    class MockResizeObserver {
+      callback: ResizeObserverCallback;
+
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+        resizeObserverCallbacks.push(callback);
+      }
+
+      observe = vi.fn();
+      unobserve = vi.fn();
+      disconnect = vi.fn();
+    }
+    Object.assign(harness.ownerWindow, {
+      ResizeObserver: MockResizeObserver
+    });
+    const overlayRoot = document.createElement("div");
+    Object.defineProperty(overlayRoot, "ownerDocument", {
+      configurable: true,
+      value: harness.ownerDocument
+    });
+
+    const { editorReady } = renderRuntime({}, { overlayRoot });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    const coordsSpy = vi
+      .spyOn(editor.view, "coordsAtPos")
+      .mockReturnValue({ left: 244, right: 245, top: 80, bottom: 98 });
+
+    await openSlashQuery(editor);
+    const slashMenu = await screen.findByRole("listbox", { name: "Slash command menu" });
+
+    await waitFor(() => {
+      expect(resizeObserverCallbacks.length).toBeGreaterThan(0);
+    });
+    expect(Number.parseFloat(slashMenu.style.left)).toBe(132);
+
+    const ownerBlock = editor.view.dom.children[0];
+    if (!(ownerBlock instanceof HTMLElement)) {
+      throw new Error("Expected the slash owner block to be available.");
+    }
+    const restoreMovedBlockRect = mockElementRect(ownerBlock, new DOMRect(196, 52, 620, 28));
+    act(() => {
+      resizeObserverCallbacks.forEach((callback) => callback([], {} as ResizeObserver));
+    });
+
+    await waitFor(() => {
+      expect(Number.parseFloat(slashMenu.style.left)).toBe(196);
+    });
+    expect(Number.parseFloat(slashMenu.style.top)).toBe(98 + 10);
+
+    restoreMovedBlockRect();
+    coordsSpy.mockRestore();
     geometrySpy.mockRestore();
   });
 
@@ -10578,6 +10791,17 @@ describe("PageEditorHostRuntime", () => {
     });
     expect(screen.getByRole("tooltip")).toHaveTextContent("Bold");
     expect(screen.getByRole("tooltip")).toHaveTextContent(formatToolbarShortcutLabel("Mod+B", window));
+    const boldTooltip = screen.getByRole("tooltip");
+    expect(window.getComputedStyle(boldTooltip).boxSizing).toBe("border-box");
+    const boldTooltipRow = boldTooltip.querySelector(".docsera-tooltip__line--inline");
+    expect(boldTooltipRow).not.toBeNull();
+    expect(boldTooltipRow?.children).toHaveLength(2);
+    expect(boldTooltipRow?.children[0]).toHaveClass("docsera-tooltip__label");
+    expect(boldTooltipRow?.children[0]).toHaveTextContent("Bold");
+    expect(boldTooltipRow?.children[1]).toHaveClass("docsera-tooltip__shortcut");
+    expect(boldTooltipRow?.children[1]).toHaveTextContent(formatToolbarShortcutLabel("Mod+B", window));
+    const boldShortcutChip = boldTooltip.querySelector(".docsera-tooltip__shortcut");
+    expect(boldShortcutChip).toHaveTextContent(formatToolbarShortcutLabel("Mod+B", window));
 
     fireEvent.mouseLeave(boldButton);
     expect(getToolbarTooltip()).toBeNull();
@@ -10601,6 +10825,8 @@ describe("PageEditorHostRuntime", () => {
     fireEvent.focus(blockTrigger);
     const blockTooltip = screen.getByRole("tooltip");
     expect(blockTooltip).toHaveTextContent("Change to");
+    expect(blockTooltip.querySelector(".docsera-tooltip__shortcut")).toBeNull();
+    expect(blockTooltip.querySelector(".docsera-tooltip__line--inline")).toBeNull();
     expect(blockTooltip).not.toHaveTextContent("Ctrl");
     expect(blockTooltip).not.toHaveTextContent("Command");
     fireEvent.blur(blockTrigger);
@@ -10632,6 +10858,8 @@ describe("PageEditorHostRuntime", () => {
     fireEvent.focus(moreButton);
     const moreTooltip = screen.getByRole("tooltip");
     expect(moreTooltip).toHaveTextContent("More");
+    expect(moreTooltip.querySelector(".docsera-tooltip__shortcut")).toBeNull();
+    expect(moreTooltip.querySelector(".docsera-tooltip__line--inline")).toBeNull();
     expect(moreTooltip).not.toHaveTextContent("Ctrl");
     expect(moreTooltip).not.toHaveTextContent("Command");
     fireEvent.blur(moreButton);
@@ -12073,6 +12301,26 @@ describe("PageEditorHostRuntime", () => {
     expect(screen.queryByRole("dialog", { name: /link/i })).toBeNull();
     expect(screen.queryByRole("toolbar", { name: "Text formatting" })).toBeNull();
     expect(screen.queryByRole("listbox", { name: "Slash command menu" })).toBeNull();
+  });
+  it("uses shared tooltips for compact link actions", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await setParagraphText(editor, "Docsera");
+    await selectText(editor, 1, 8);
+    await openLinkSurface(editor);
+
+    const dialog = screen.getByRole("dialog", { name: "Create link" });
+    const openButton = within(dialog).getByRole("button", { name: "Open link" });
+
+    expect(openButton).not.toHaveAttribute("title");
+    fireEvent.focus(openButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Open link");
+    expect(openButton).toHaveAccessibleName("Open link");
   });
 });
 

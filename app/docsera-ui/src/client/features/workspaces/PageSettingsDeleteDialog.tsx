@@ -1,6 +1,7 @@
 import type { KeyboardEvent } from "react";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
+import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
 
 type PageSettingsDeleteDialogProps = {
   errorMessage: string;
@@ -52,9 +53,11 @@ export function PageSettingsDeleteDialog({
             <h2 id="docsera-delete-page-title" className="docsera-modal__title">
               Confirm deletion
             </h2>
-            <button type="button" className="docsera-modal__close" disabled={pending} onClick={onRequestClose} aria-label="Close delete dialog">
-              <CloseIcon />
-            </button>
+            <DocseraCompactTooltip label="Close delete dialog">
+              <button type="button" className="docsera-modal__close" disabled={pending} onClick={onRequestClose} aria-label="Close delete dialog">
+                <CloseIcon />
+              </button>
+            </DocseraCompactTooltip>
           </div>
 
           {errorMessage ? (

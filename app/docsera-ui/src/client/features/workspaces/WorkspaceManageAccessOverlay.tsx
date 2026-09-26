@@ -8,6 +8,7 @@ import type {
 } from "../../shared/types/docsera";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
+import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
 
 type ManageAccessState =
   | { status: "idle" | "loading" }
@@ -343,9 +344,11 @@ export function WorkspaceManageAccessOverlay({
           <div>
             <h2 className="docsera-manage-access__title">Manage access</h2>
           </div>
-          <button type="button" className="docsera-modal__close docsera-manage-access__close" aria-label="Close manage access" onClick={onClose}>
-            <DocseraIcon icon={docseraIcons.close} />
-          </button>
+          <DocseraCompactTooltip label="Close manage access">
+            <button type="button" className="docsera-modal__close docsera-manage-access__close" aria-label="Close manage access" onClick={onClose}>
+              <DocseraIcon icon={docseraIcons.close} />
+            </button>
+          </DocseraCompactTooltip>
         </div>
         <div className="docsera-manage-access__body">
           {state.status === "loading" || state.status === "idle" ? <div className="docsera-manage-access__state" role="status">Loading members...</div> : null}
@@ -394,9 +397,11 @@ export function WorkspaceManageAccessOverlay({
           <div className="docsera-modal__panel docsera-manage-access__add-panel" role="dialog" aria-modal="true" aria-labelledby="docsera-add-member-title">
             <div className="docsera-modal__header">
               <h3 id="docsera-add-member-title" className="docsera-modal__title">Add members</h3>
-              <button type="button" className="docsera-modal__close" aria-label="Close add members" onClick={closeAddMembers}>
-                <DocseraIcon icon={docseraIcons.close} />
-              </button>
+              <DocseraCompactTooltip label="Close add members">
+                <button type="button" className="docsera-modal__close" aria-label="Close add members" onClick={closeAddMembers}>
+                  <DocseraIcon icon={docseraIcons.close} />
+                </button>
+              </DocseraCompactTooltip>
             </div>
             <div className="docsera-modal__body docsera-manage-access__add-body">
               <div className="docsera-manage-access__add-columns">
@@ -422,12 +427,16 @@ export function WorkspaceManageAccessOverlay({
                   </div>
                 </section>
                 <div className="docsera-manage-access__add-transfer">
-                  <button type="button" className="docsera-modal__secondary docsera-manage-access__move-button" aria-label="Stage selected users" disabled={selectedUserIds.size === 0 || Boolean(mutatingUserSysId)} onClick={stageSelectedUsers}>
-                    <DocseraIcon icon={docseraIcons.chevronRight} />
-                  </button>
-                  <button type="button" className="docsera-modal__secondary docsera-manage-access__move-button" aria-label="Remove selected staged members" disabled={selectedStagedUserIds.size === 0 || Boolean(mutatingUserSysId)} onClick={unstageSelectedUsers}>
-                    <DocseraIcon icon={docseraIcons.chevronLeft} />
-                  </button>
+                  <DocseraCompactTooltip label="Stage selected users">
+                    <button type="button" className="docsera-modal__secondary docsera-manage-access__move-button" aria-label="Stage selected users" disabled={selectedUserIds.size === 0 || Boolean(mutatingUserSysId)} onClick={stageSelectedUsers}>
+                      <DocseraIcon icon={docseraIcons.chevronRight} />
+                    </button>
+                  </DocseraCompactTooltip>
+                  <DocseraCompactTooltip label="Remove selected staged members">
+                    <button type="button" className="docsera-modal__secondary docsera-manage-access__move-button" aria-label="Remove selected staged members" disabled={selectedStagedUserIds.size === 0 || Boolean(mutatingUserSysId)} onClick={unstageSelectedUsers}>
+                      <DocseraIcon icon={docseraIcons.chevronLeft} />
+                    </button>
+                  </DocseraCompactTooltip>
                 </div>
                 <section className="docsera-manage-access__add-column" aria-labelledby="docsera-members-to-add-title">
                   <div className="docsera-manage-access__add-column-header">

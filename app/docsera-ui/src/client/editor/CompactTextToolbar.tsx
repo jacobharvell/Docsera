@@ -11,6 +11,13 @@ import { DocseraIcon } from "../shared/icons/DocseraIcon";
 import { docseraIcons } from "../shared/icons/docseraIcons";
 import { isDocseraAllowedLinkHref } from "../../shared/editor/schema";
 import { COMPACT_MENU_STYLES } from "./CompactMenuStyles";
+import {
+  DOCSERA_TOOLTIP_DELAY_MS,
+  DOCSERA_TOOLTIP_STYLES,
+  DocseraCompactTooltip,
+  DocseraTooltip,
+  sameFloatingStyle
+} from "./DocseraTooltip";
 
 type ToolbarMenuId = "blockType" | "more";
 type ToolbarBlockTypeId = "text" | "heading1" | "heading2" | "heading3" | "bulletedList" | "numberedList";
@@ -60,7 +67,6 @@ export type CompactTextToolbarProps = {
 };
 
 const TOOLBAR_POINTER_IDLE_MS = 90;
-const TOOLBAR_TOOLTIP_DELAY_MS = 180;
 const EDITOR_DRAG_INTENT_THRESHOLD_PX = 4;
 const VIEWPORT_GUTTER = 12;
 const POPOVER_GAP = 10;
@@ -140,17 +146,6 @@ function normalizeLinkHref(rawHref: string): string {
   }
 
   return trimmed;
-}
-
-function sameStyle(left: CSSProperties | undefined, right: CSSProperties): boolean {
-  return (
-    left?.left === right.left &&
-    left?.top === right.top &&
-    left?.width === right.width &&
-    left?.maxWidth === right.maxWidth &&
-    left?.maxHeight === right.maxHeight &&
-    left?.visibility === right.visibility
-  );
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -841,38 +836,19 @@ function ToolbarTooltip({
   shortcut?: string | null;
   tooltipRef: RefObject<HTMLDivElement>;
 }) {
-  const [tooltipStyle, setTooltipStyle] = useState<CSSProperties | null>(null);
   const formattedShortcut = shortcut ? formatToolbarShortcutLabel(shortcut, ownerWindow) : null;
 
-  useLayoutEffect(() => {
-    const tooltipElement = tooltipRef.current;
-    if (!tooltipElement) {
-      setTooltipStyle(null);
-      return;
-    }
-
-    const size = tooltipElement.getBoundingClientRect();
-    const width = Math.max(1, size.width);
-    const height = Math.max(1, size.height);
-    const nextStyle = resolveCenteredSurfaceStyle(ownerDocument, anchorRect, { width, height }, true);
-    const style: CSSProperties = {
-      ...nextStyle,
-      visibility: "visible"
-    };
-
-    setTooltipStyle((current) => (sameStyle(current ?? undefined, style) ? current : style));
-  }, [anchorRect, ownerDocument, tooltipRef]);
-
   return (
-    <div
-      ref={tooltipRef}
-      className="docsera-text-toolbar__tooltip"
-      role="tooltip"
-      style={tooltipStyle ?? { visibility: "hidden" }}
-    >
-      <span className="docsera-text-toolbar__tooltip-label">{label}</span>
-      {formattedShortcut ? <span className="docsera-text-toolbar__tooltip-shortcut">{formattedShortcut}</span> : null}
-    </div>
+    <DocseraTooltip anchorRect={anchorRect} className="docsera-text-toolbar__tooltip" ownerDocument={ownerDocument} tooltipRef={tooltipRef}>
+      {formattedShortcut ? (
+        <span className="docsera-tooltip__line docsera-tooltip__line--inline">
+          <span className="docsera-tooltip__label">{label}</span>
+          <span className="docsera-tooltip__shortcut">{formattedShortcut}</span>
+        </span>
+      ) : (
+        <span className="docsera-tooltip__label">{label}</span>
+      )}
+    </DocseraTooltip>
   );
 }
 
@@ -927,7 +903,7 @@ function LinkSurface({
       width: surfaceWidth
     });
 
-    setSurfaceStyle((current) => (sameStyle(current ?? undefined, nextStyle) ? current : nextStyle));
+    setSurfaceStyle((current) => (sameFloatingStyle(current ?? undefined, nextStyle) ? current : nextStyle));
   }, [layoutTick, linkSurface.anchorRect, linkSurface.mode, ownerDocument, surfaceRef, surfaceWidth]);
 
   return (
@@ -954,40 +930,43 @@ function LinkSurface({
           />
         </div>
         <div className="docsera-text-toolbar__link-actions">
-          <button
-            type="button"
-            className="docsera-text-toolbar__button"
-            aria-label="Open link"
-            title="Open link"
-            onMouseDown={(event) => event.preventDefault()}
-            onClick={onFollow}
-            disabled={!canFollow}
-              >
-            <ExternalLink size={14} strokeWidth={2} />
-          </button>
+          <DocseraCompactTooltip label="Open link" ownerDocument={ownerDocument}>
+            <button
+              type="button"
+              className="docsera-text-toolbar__button"
+              aria-label="Open link"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={onFollow}
+              disabled={!canFollow}
+            >
+              <ExternalLink size={14} strokeWidth={2} />
+            </button>
+          </DocseraCompactTooltip>
           {showExistingLinkActions ? (
             <>
-              <button
-                type="button"
-                className="docsera-text-toolbar__button"
-                aria-label="Copy URL"
-                title="Copy URL"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={onCopy}
-                disabled={!hasDraftHref}
-              >
-                <Copy size={14} strokeWidth={2} />
-              </button>
-              <button
-                type="button"
-                className="docsera-text-toolbar__button"
-                aria-label="Remove link"
-                title="Remove link"
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={onRemove}
-              >
-                <Trash2 size={14} strokeWidth={2} />
-              </button>
+              <DocseraCompactTooltip label="Copy URL" ownerDocument={ownerDocument}>
+                <button
+                  type="button"
+                  className="docsera-text-toolbar__button"
+                  aria-label="Copy URL"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={onCopy}
+                  disabled={!hasDraftHref}
+                >
+                  <Copy size={14} strokeWidth={2} />
+                </button>
+              </DocseraCompactTooltip>
+              <DocseraCompactTooltip label="Remove link" ownerDocument={ownerDocument}>
+                <button
+                  type="button"
+                  className="docsera-text-toolbar__button"
+                  aria-label="Remove link"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={onRemove}
+                >
+                  <Trash2 size={14} strokeWidth={2} />
+                </button>
+              </DocseraCompactTooltip>
             </>
           ) : null}
         </div>
@@ -1412,7 +1391,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
         label,
         shortcut
       });
-    }, TOOLBAR_TOOLTIP_DELAY_MS) ?? null;
+    }, DOCSERA_TOOLTIP_DELAY_MS) ?? null;
   }
 
   function onTooltipHide() {
@@ -1516,7 +1495,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
       height: Math.max(1, size.height),
       width: Math.max(1, size.width)
     });
-    setToolbarStyle((current) => (sameStyle(current ?? undefined, nextStyle) ? current : nextStyle));
+    setToolbarStyle((current) => (sameFloatingStyle(current ?? undefined, nextStyle) ? current : nextStyle));
   }, [currentSelectionKey, layoutTick, ownerDocument, toolbarBlockType, toolbarSelection, toolbarVisible, pointerSelectionHidden, openMenu, linkSurface]);
 
   useLayoutEffect(() => {
@@ -1532,7 +1511,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
       height: Math.max(1, menuRect.height),
       width: Math.max(TOOLBAR_MENU_TARGET_WIDTH, Math.min(TOOLBAR_MENU_MAX_WIDTH, menuRect.width || 1))
     }, "start");
-    setBlockMenuStyle((current) => (sameStyle(current ?? undefined, nextStyle) ? current : nextStyle));
+    setBlockMenuStyle((current) => (sameFloatingStyle(current ?? undefined, nextStyle) ? current : nextStyle));
   }, [blockMenuRef, blockTriggerRef, currentSelectionKey, isBlockTypeMenuOpen, layoutTick, ownerDocument, toolbarBlockType]);
 
   useLayoutEffect(() => {
@@ -1548,7 +1527,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
       height: Math.max(1, menuRect.height),
       width: Math.max(TOOLBAR_MENU_TARGET_WIDTH, Math.min(TOOLBAR_MENU_MAX_WIDTH, menuRect.width || 1))
     }, "end");
-    setMoreMenuStyle((current) => (sameStyle(current ?? undefined, nextStyle) ? current : nextStyle));
+    setMoreMenuStyle((current) => (sameFloatingStyle(current ?? undefined, nextStyle) ? current : nextStyle));
   }, [currentSelectionKey, isMoreMenuOpen, layoutTick, moreMenuRef, moreTriggerRef, ownerDocument]);
 
   useEffect(() => {
@@ -2141,8 +2120,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
 
         .docsera-text-toolbar,
         .docsera-text-toolbar__menu,
-        .docsera-text-toolbar__link-surface,
-        .docsera-text-toolbar__tooltip {
+        .docsera-text-toolbar__link-surface {
           pointer-events: auto;
         }
 
@@ -2302,14 +2280,6 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
           color: var(--docsera-text-soft);
         }
 
-        .docsera-text-toolbar__tooltip-shortcut {
-          color: var(--docsera-text-soft);
-          font-size: 0.75rem;
-          font-weight: 700;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-        }
-
         .docsera-text-toolbar__link-input {
           width: 100%;
           min-width: 0;
@@ -2336,24 +2306,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
           cursor: not-allowed;
         }
 
-        .docsera-text-toolbar__tooltip {
-          display: inline-flex;
-          flex-direction: column;
-          gap: 2px;
-          padding: 6px 8px;
-          border: 1px solid var(--docsera-border);
-          border-radius: 8px;
-          background: var(--docsera-surface);
-          color: var(--docsera-text);
-          box-shadow: var(--docsera-shadow);
-          max-width: min(260px, calc(100vw - ${VIEWPORT_GUTTER * 2}px));
-        }
-
-        .docsera-text-toolbar__tooltip-label {
-          font-size: 0.75rem;
-          font-weight: 700;
-          line-height: 1.2;
-        }
+        ${DOCSERA_TOOLTIP_STYLES}
 
         .docsera-text-toolbar__sr-only {
           position: absolute;

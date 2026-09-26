@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RecentWorkspacesMenu, type RecentWorkspaceItem } from "./RecentWorkspacesMenu";
 
@@ -37,7 +37,7 @@ describe("RecentWorkspacesMenu", () => {
     const shortItem = screen.getByRole("menuitem", { name: shortWorkspace.name });
     const longIdentity = longItem.querySelector<HTMLElement>(".docsera-header__menu-item-identity");
     const longIcon = longItem.querySelector<HTMLElement>(".docsera-header__menu-item-icon");
-    const longLabel = screen.getByTitle(longWorkspace.name);
+    const longLabel = within(longItem).getByText(longWorkspace.name);
     const footer = screen.getByRole("menuitem", { name: "My Workspaces" });
 
     expect(menu).toBeInTheDocument();
@@ -52,7 +52,6 @@ describe("RecentWorkspacesMenu", () => {
     expect(longIdentity).toContainElement(longLabel);
     expect(longLabel).toHaveClass("docsera-header__menu-item-label");
     expect(longLabel).toHaveTextContent(longWorkspace.name);
-    expect(longLabel.parentElement).toHaveClass("docsera-header__menu-item-identity");
     expect(longItem).toContainElement(longIdentity);
     expect(footer).toHaveClass("docsera-header__menu-footer");
     expect(footer).toHaveTextContent("My Workspaces");
@@ -63,6 +62,45 @@ describe("RecentWorkspacesMenu", () => {
 
     fireEvent.click(footer);
     expect(onOpenMyWorkspaces).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses shared tooltips for recent workspace items", async () => {
+    const onOpenWorkspace = vi.fn();
+    const workspace: RecentWorkspaceItem = {
+      icon: { type: "builtin", key: "docs", label: "Docs" },
+      name: "Platform Docs",
+      slug: "platform-docs"
+    };
+
+    render(
+      <RecentWorkspacesMenu items={[workspace]} onOpenMyWorkspaces={vi.fn()} onOpenWorkspace={onOpenWorkspace} />
+    );
+
+    const menuItem = screen.getByRole("menuitem", { name: workspace.name });
+    const identity = menuItem.querySelector<HTMLElement>(".docsera-header__menu-item-identity");
+    const label = within(menuItem).getByText(workspace.name);
+    const menuItemRect = new DOMRect(20, 80, 320, 36);
+    const identityRect = new DOMRect(48, 84, 120, 28);
+
+    if (!identity) {
+      throw new Error("Expected recent workspace identity block to render.");
+    }
+
+    vi.spyOn(menuItem, "getBoundingClientRect").mockReturnValue(menuItemRect);
+    vi.spyOn(identity, "getBoundingClientRect").mockReturnValue(identityRect);
+
+    expect(menuItem).toHaveAccessibleName(workspace.name);
+    expect(label).toBeVisible();
+    expect(menuItem).not.toHaveAttribute("title");
+    expect(document.querySelector("[title]")).not.toBeInTheDocument();
+
+    fireEvent.focus(menuItem);
+    const tooltip = await screen.findByRole("tooltip");
+    expect(tooltip).toHaveTextContent(workspace.name);
+    await waitFor(() => expect(tooltip).toHaveStyle({ left: "107.5px", top: "73px" }));
+
+    fireEvent.click(menuItem);
+    expect(onOpenWorkspace).toHaveBeenCalledWith(workspace.slug, workspace);
   });
 
   it("uses the shared authenticated uploaded-icon loader for recent workspace rows", async () => {

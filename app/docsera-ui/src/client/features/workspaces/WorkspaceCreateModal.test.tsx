@@ -43,6 +43,17 @@ describe("WorkspaceCreateModal", () => {
     expect(picker.querySelectorAll(".docsera-workspace-icon-badge")).toHaveLength(BUILT_IN_WORKSPACE_ICONS.length);
   });
 
+  it("uses shared tooltips for compact New Workspace controls", async () => {
+    render(<WorkspaceCreateModal errorMessage="" onClose={vi.fn()} onSubmit={vi.fn()} open phase="idle" />);
+
+    const closeButton = screen.getByRole("button", { name: "Close modal" });
+    expect(closeButton).not.toHaveAttribute("title");
+
+    fireEvent.focus(closeButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Close modal");
+    expect(closeButton).toHaveAccessibleName("Close modal");
+  });
+
   it("shows upload constraints and accepts only supported custom icon image types", () => {
     render(<WorkspaceCreateModal errorMessage="" onClose={vi.fn()} onSubmit={vi.fn()} open phase="idle" />);
 

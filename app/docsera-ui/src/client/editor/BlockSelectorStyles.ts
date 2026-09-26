@@ -1,6 +1,8 @@
 export const BLOCK_SELECTOR_STYLES = `
   .docsera-block-selector {
     --docsera-block-selector-scrollbar-gap: 0px;
+    --docsera-editor-menu-row-hover-bg: color-mix(in srgb, var(--docsera-primary-soft) 58%, #ffffff 42%);
+    --docsera-editor-menu-row-hover-fg: var(--docsera-primary);
     display: grid;
     grid-template-rows: minmax(0, 1fr);
     width: min(320px, calc(100vw - 24px));
@@ -59,8 +61,8 @@ export const BLOCK_SELECTOR_STYLES = `
   .docsera-block-selector__item:hover,
   .docsera-block-selector__item:focus-visible,
   .docsera-block-selector__item--active {
-    background: var(--docsera-surface-muted);
-    color: var(--docsera-primary);
+    background: var(--docsera-editor-menu-row-hover-bg);
+    color: var(--docsera-editor-menu-row-hover-fg);
     outline: none;
   }
 
@@ -96,6 +98,16 @@ export const BLOCK_SELECTOR_STYLES = `
     font-size: 12px;
     font-weight: 600;
     line-height: 1.2;
+  }
+
+  .docsera-block-selector__item:hover .docsera-block-selector__title,
+  .docsera-block-selector__item:focus-visible .docsera-block-selector__title,
+  .docsera-block-selector__item--active .docsera-block-selector__title {
+    color: inherit;
+  }
+
+  :host-context(html[data-docsera-theme="dark"]) .docsera-block-selector {
+    --docsera-editor-menu-row-hover-bg: rgba(70, 72, 212, 0.16);
   }
 
   .docsera-block-selector__description {

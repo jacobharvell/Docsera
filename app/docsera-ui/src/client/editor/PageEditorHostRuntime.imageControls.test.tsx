@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Editor, JSONContent } from "@tiptap/core";
 import { undoDepth } from "@tiptap/pm/history";
 import type { DocseraTiptapDocument } from "../../shared/editor/document";
@@ -22,6 +22,8 @@ import {
   mockTopLevelBlockGeometry,
   openImageOptions
 } from "./PageEditorHostRuntime.image.testUtils";
+import { ImagePickerDialog } from "./ImagePickerDialog";
+import { ImageFullscreenViewer } from "../shared/media/ImageFullscreenViewer";
 describe("PageEditorHostRuntime", () => {
   it("renders the image hover controls in the accepted order and opens the image viewer from Zoom", async () => {
     const mediaAdapter: EditorMediaAdapter = {
@@ -137,6 +139,137 @@ describe("PageEditorHostRuntime", () => {
 
     rectSpy.mockRestore();
     geometrySpy.mockRestore();
+  });
+
+  it("uses shared tooltips for compact image controls", async () => {
+    const mediaAdapter: EditorMediaAdapter = {
+      list: vi.fn(async () => []),
+      load: vi.fn(async ({ mediaId }) => (mediaId === "workspace-media-base" ? createMediaBlob(mediaId) : null)),
+      upload: vi.fn(async ({ file }) => ({
+        contentType: file.type,
+        fileName: file.name,
+        mediaId: "workspace-media-upload",
+        sizeBytes: file.size
+      }))
+    };
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-base",
+            darkMediaId: null,
+            alt: "Architecture diagram",
+            caption: "",
+            frame: false,
+            align: "left",
+            widthPct: 100
+          }
+        }
+      ]
+    };
+
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
+      mediaAdapter
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this.dataset.docseraImageControls === "true" && this.dataset.docseraImageControlsBlockIndex === "0") {
+        return new DOMRect(640, 58, 120, 32);
+      }
+
+      if (this.dataset.docseraImageControl === "true") {
+        return new DOMRect(650, 62, 24, 24);
+      }
+
+      return new DOMRect(0, 0, 1, 1);
+    });
+
+    try {
+      await openImageOptions(editor, { clientX: 720, clientY: 60 });
+      const controlGroup = document.querySelector(
+        `[data-docsera-image-controls="true"][data-docsera-image-controls-block-index="0"]`
+      );
+      expect(controlGroup).toBeInstanceOf(HTMLElement);
+      if (!(controlGroup instanceof HTMLElement)) {
+        throw new Error("Expected the image control group to render.");
+      }
+
+      const zoomButton = within(controlGroup).getByRole("button", { name: "Zoom" });
+      expect(getButtonNames(controlGroup)).toEqual(["Zoom", "Frame image off", "Alignment: Left", "Image options"]);
+      expect(zoomButton).not.toHaveAttribute("title");
+      fireEvent.focus(zoomButton);
+      expect(await screen.findByRole("tooltip")).toHaveTextContent("Zoom");
+      expect(zoomButton).toHaveAccessibleName("Zoom");
+      fireEvent.blur(zoomButton);
+    } finally {
+      rectSpy.mockRestore();
+      geometrySpy.mockRestore();
+    }
+
+    const pickerRoot = document.createElement("div");
+    document.body.append(pickerRoot);
+    const picker = render(
+      <ImagePickerDialog
+        isOpen
+        mediaAdapter={mediaAdapter}
+        onClose={vi.fn()}
+        overlayRoot={pickerRoot}
+        sessionId="session-001"
+      />
+    );
+
+    const pickerDialog = await screen.findByRole("dialog", { name: "Select image" });
+    const pickerClose = within(pickerDialog).getByRole("button", { name: "Close image picker" });
+    expect(pickerClose).not.toHaveAttribute("title");
+    fireEvent.focus(pickerClose);
+    expect(await screen.findByText("Close image picker")).toBeInTheDocument();
+    expect(pickerClose).toHaveAccessibleName("Close image picker");
+    picker.unmount();
+    pickerRoot.remove();
+
+    const viewerRoot = document.createElement("div");
+    document.body.append(viewerRoot);
+    const viewer = render(
+      <ImageFullscreenViewer
+        isOpen
+        onDismissed={vi.fn()}
+        onRequestClose={vi.fn()}
+        overlayRoot={viewerRoot}
+        session={{
+          alt: "Architecture diagram",
+          imageSrc: "blob:image-viewer",
+          naturalHeight: 480,
+          naturalWidth: 640,
+          restoreFocusElement: null,
+          sourceBorderRadius: "0px",
+          sourceRect: new DOMRect(100, 100, 320, 240)
+        }}
+        theme="light"
+      />
+    );
+
+    const viewerClose = screen
+      .getAllByRole("button", { name: "Close image viewer" })
+      .find((button) => button.classList.contains("docsera-image-viewer__close"));
+    expect(viewerClose).toBeInstanceOf(HTMLButtonElement);
+    if (!(viewerClose instanceof HTMLButtonElement)) {
+      throw new Error("Expected the fullscreen viewer close button.");
+    }
+    expect(viewerClose).not.toHaveAttribute("title");
+    fireEvent.focus(viewerClose);
+    expect(await screen.findByText("Close image viewer")).toBeInTheDocument();
+    expect(viewerClose).toHaveAccessibleName("Close image viewer");
+    viewer.unmount();
+    viewerRoot.remove();
   });
 
 

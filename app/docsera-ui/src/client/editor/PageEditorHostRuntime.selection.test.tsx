@@ -901,6 +901,55 @@ describe("PageEditorHostRuntime gutter range selection", () => {
     }
   });
 
+  it("keeps the measured gutter lane inside the constrained main-pane boundary while preserving gutter ownership", async () => {
+    const initialEnvelope = createSelectionEnvelope();
+    const { editorReady } = renderRuntime({ initialEnvelope });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0]!;
+    const geometry = mockTopLevelBlockGeometry(editor, [
+      new DOMRect(117, 100, 520, 36),
+      new DOMRect(117, 148, 520, 36),
+      new DOMRect(117, 196, 520, 36),
+      new DOMRect(117, 244, 520, 36),
+      new DOMRect(117, 292, 520, 36),
+      new DOMRect(117, 340, 520, 36),
+      new DOMRect(117, 388, 520, 36)
+    ]);
+
+    geometry.setLayoutRects({
+      blockRects: [
+        new DOMRect(117, 100, 520, 36),
+        new DOMRect(117, 148, 520, 36),
+        new DOMRect(117, 196, 520, 36),
+        new DOMRect(117, 244, 520, 36),
+        new DOMRect(117, 292, 520, 36),
+        new DOMRect(117, 340, 520, 36),
+        new DOMRect(117, 388, 520, 36)
+      ],
+      hostRect: new DOMRect(24, 96, 760, 540),
+      mainPaneRect: new DOMRect(0, 36, 880, 620),
+      panelRect: new DOMRect(24, 36, 760, 620),
+      proseMirrorRect: new DOMRect(117, 100, 520, 420),
+      surfaceRect: new DOMRect(24, 96, 760, 540)
+    });
+
+    try {
+      await dispatchBlankGutterDrag(editor, { clientX: -1, clientY: 164 }, [{ clientX: -5, clientY: 228 }], {
+        composedPath: [geometry.elements.workspace, document.body],
+        target: geometry.elements.workspace
+      });
+      expect(getSelectedBlockElements(editor)).toHaveLength(0);
+
+      await dispatchBlankGutterDrag(editor, { clientX: 48, clientY: 164 }, [{ clientX: 52, clientY: 228 }], {
+        composedPath: [geometry.elements.mainPane, geometry.elements.workspace, document.body],
+        target: geometry.elements.mainPane
+      });
+      expect(getSelectedBlockTags(editor)).toEqual(["H2", "UL"]);
+    } finally {
+      geometry.mockRestore();
+    }
+  });
+
   it("recomputes main-pane ownership geometry when the shell width and article offset change", async () => {
     const initialEnvelope = createSelectionEnvelope();
     const { editorReady } = renderRuntime({ initialEnvelope });

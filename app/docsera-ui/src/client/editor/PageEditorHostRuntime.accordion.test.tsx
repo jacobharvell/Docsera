@@ -1432,6 +1432,158 @@ describe("PageEditorHostRuntime accordion corrections", () => {
     });
   });
 
+  it("preserves non-accordion multi-paragraph pasted slices through accordion identity transformation", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const sourceDocument: DocseraTiptapDocument = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Alpha" }]
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Beta" }]
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Gamma" }]
+        },
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Delta" }]
+        }
+      ]
+    };
+    const sourceSlice = createAccordionClipboardSlice(editor, sourceDocument);
+
+    const transformedSlice = regenerateAccordionPastedSliceIdentities(sourceSlice);
+
+    expect(transformedSlice).not.toBe(sourceSlice);
+    expect(transformedSlice.content.toJSON()).toEqual(sourceSlice.content.toJSON());
+    expect(transformedSlice.content.toJSON()).toEqual(sourceDocument.content);
+  });
+
+  it("preserves nested ordinary pasted content and marks through accordion identity transformation", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const sourceDocument: DocseraTiptapDocument = {
+      type: "doc",
+      content: [
+        {
+          type: "blockquote",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: "Nested " },
+                { type: "text", marks: [{ type: "bold" }], text: "bold" },
+                { type: "text", text: " text" }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+    const sourceSlice = createAccordionClipboardSlice(editor, sourceDocument);
+
+    const transformedSlice = regenerateAccordionPastedSliceIdentities(sourceSlice);
+
+    expect(transformedSlice).not.toBe(sourceSlice);
+    expect(transformedSlice.content.toJSON()).toEqual(sourceSlice.content.toJSON());
+    expect(transformedSlice.content.toJSON()).toEqual(sourceDocument.content);
+  });
+
+  it("regenerates accordion and accordion item identities through direct Slice transformation", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const sourceDocument: DocseraTiptapDocument = {
+      type: "doc",
+      content: [
+        {
+          type: "accordion",
+          attrs: {
+            accordionId: "accordion-slice-source"
+          },
+          content: [
+            {
+              type: "accordionItem",
+              attrs: {
+                accordionItemId: "accordion-item-slice-source"
+              },
+              content: [
+                {
+                  type: "accordionTitle",
+                  content: [{ type: "text", text: "Slice title" }]
+                },
+                {
+                  type: "accordionContent",
+                  content: [
+                    {
+                      type: "paragraph",
+                      content: [{ type: "text", text: "Slice body" }]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+    const sourceSlice = createAccordionClipboardSlice(editor, sourceDocument);
+
+    const transformedSlice = regenerateAccordionPastedSliceIdentities(sourceSlice);
+    const pastedAccordion = transformedSlice.content.firstChild?.toJSON() as JSONContent | undefined;
+    const pastedItem = ((pastedAccordion?.content ?? []) as JSONContent[])[0];
+
+    expect((pastedAccordion?.attrs as { accordionId?: string } | undefined)?.accordionId).toMatch(/^accordion-/);
+    expect((pastedAccordion?.attrs as { accordionId?: string } | undefined)?.accordionId).not.toBe("accordion-slice-source");
+    expect((pastedItem?.attrs as { accordionItemId?: string } | undefined)?.accordionItemId).toMatch(/^accordion-item-/);
+    expect((pastedItem?.attrs as { accordionItemId?: string } | undefined)?.accordionItemId).not.toBe(
+      "accordion-item-slice-source"
+    );
+    expect(pastedAccordion).toMatchObject({
+      type: "accordion",
+      content: [
+        {
+          type: "accordionItem",
+          content: [
+            {
+              type: "accordionTitle",
+              content: [{ type: "text", text: "Slice title" }]
+            },
+            {
+              type: "accordionContent",
+              content: [
+                {
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Slice body" }]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    });
+  });
+
   it("preserves accordion identities for active in-editor move drags", async () => {
     const { editorReady } = renderRuntime();
 

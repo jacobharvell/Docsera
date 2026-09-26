@@ -19,6 +19,33 @@ const baseProps = {
 };
 
 describe("DocseraHeader workspace shell", () => {
+  it("uses shared tooltips for compact workspace header controls", async () => {
+    render(
+      <DocseraHeader
+        {...baseProps}
+        authoringSurface="visual"
+        onAuthoringSurfaceChange={vi.fn()}
+        onOpenWorkspaceSettings={vi.fn()}
+        onToggleSidebar={vi.fn()}
+        showWorkspaceSettings
+      />
+    );
+
+    const collapseButton = screen.getByRole("button", { name: "Collapse navigation" });
+    const visualButton = screen.getByRole("button", { name: "Visual" });
+    const settingsButton = screen.getByRole("button", { name: "Workspace settings" });
+    const themeButton = screen.getByRole("button", { name: "Toggle theme" });
+
+    expect(collapseButton).not.toHaveAttribute("title");
+    expect(visualButton).not.toHaveAttribute("title");
+    expect(settingsButton).not.toHaveAttribute("title");
+    expect(themeButton).not.toHaveAttribute("title");
+
+    fireEvent.focus(settingsButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Workspace settings");
+    expect(settingsButton).toHaveAccessibleName("Workspace settings");
+  });
+
   it("shows the leading action-cluster divider in edit and hides only its paint in live", () => {
     const editRender = render(<DocseraHeader {...baseProps} showWorkspaceMode="edit" />);
     expect(editRender.container.querySelector(".docsera-header")).not.toHaveClass("docsera-header--live");

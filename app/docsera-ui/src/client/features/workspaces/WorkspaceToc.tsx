@@ -2,6 +2,7 @@ import type { KeyboardEvent } from "react";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
 import type { WorkspacePageView } from "./workspaceViewModels";
+import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
 
 type WorkspaceTocProps = {
   collapsed: boolean;
@@ -80,16 +81,18 @@ export function WorkspaceToc({ collapsed, isLoading = false, showPendingState, p
 
   return (
     <div className={`docsera-toc-rail${collapsed ? " docsera-toc-rail--collapsed" : ""}`}>
-      <button
-        type="button"
-        className="docsera-toc-rail__toggle"
-        aria-controls={panelId}
-        aria-expanded={!collapsed}
-        aria-label={collapsed ? "Expand table of contents" : "Collapse table of contents"}
-        onClick={onToggleCollapsed}
-      >
-        <WorkspaceTocChevron collapsed={collapsed} />
-      </button>
+      <DocseraCompactTooltip label={collapsed ? "Expand table of contents" : "Collapse table of contents"}>
+        <button
+          type="button"
+          className="docsera-toc-rail__toggle"
+          aria-controls={panelId}
+          aria-expanded={!collapsed}
+          aria-label={collapsed ? "Expand table of contents" : "Collapse table of contents"}
+          onClick={onToggleCollapsed}
+        >
+          <WorkspaceTocChevron collapsed={collapsed} />
+        </button>
+      </DocseraCompactTooltip>
 
       <div className="docsera-toc-rail__clip">
         <div className="docsera-toc-rail__body">
