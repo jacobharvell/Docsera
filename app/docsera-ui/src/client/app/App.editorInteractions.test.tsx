@@ -22,6 +22,7 @@ let lastMarkdownSourcePanelProps: {
   onBodyChange?: (envelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope>) => unknown;
   onInvalidChange?: (state: { errorMessage: string; isInvalid: boolean; isUnavailable: boolean; pageSysId: string }) => void;
   onTitleChange?: (title: string) => void;
+  discardNonce?: number;
   editable?: boolean;
   handoffRetryNonce?: number;
   visible?: boolean;
@@ -169,6 +170,7 @@ vi.mock("../features/workspaces/WorkspaceMarkdownSourcePanel", () => ({
     editable?: boolean;
     handoffRetryNonce?: number;
     pageSysId?: string;
+    discardNonce?: number;
     visible?: boolean;
   }) {
     const wrappedOnBodyChange = (envelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope>) => {
@@ -554,7 +556,7 @@ describe("App editor interactions integration", () => {
     fireEvent.click(within(screen.getByRole("group", { name: "Workspace mode" })).getByRole("button", { name: "Edit" }));
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Open settings for Overview Draft" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Page actions for Overview Draft" })).toBeInTheDocument();
     expect(document.querySelector("[data-docsera-page-editor-host='true']")).not.toBeNull();
   });
 
@@ -920,7 +922,8 @@ describe("App editor interactions integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Markdown" }));
     await waitFor(() => expect(lastMarkdownSourcePanelProps).toMatchObject({ visible: true }));
 
-    fireEvent.click(screen.getByRole("button", { name: /Open settings for Overview/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Page actions for Overview/ }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Page settings" }));
     const pageSettings = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettings).getByRole("button", { name: "overview" }));
 
@@ -1044,7 +1047,7 @@ describe("App editor interactions integration", () => {
       });
     });
 
-    expect(screen.getByRole("button", { name: "Markdown" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Markdown" })).toBeEnabled();
     fireEvent.click(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Reference" }));
 
     const discardDialog = await screen.findByRole("dialog", { name: "Unsaved changes" });
@@ -1055,6 +1058,52 @@ describe("App editor interactions integration", () => {
     await waitFor(() => expect(screen.getByRole("main", { name: "Reference" })).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Markdown" })).toHaveAttribute("aria-pressed", "true");
     await waitFor(() => expect(lastMarkdownSourcePanelProps).toMatchObject({ visible: true }));
+  });
+
+  it("confirms before discarding invalid markdown when switching back to Visual", async () => {
+    renderApp("/?workspace=product-docs&mode=edit&page=overview");
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitForEditWorkspaceMode();
+    await waitForEditorHostMounted();
+    await settleEditorHostReady();
+    fireEvent.click(screen.getByRole("button", { name: "Markdown" }));
+    await waitFor(() => expect(lastMarkdownSourcePanelProps).toMatchObject({ visible: true }));
+
+    act(() => {
+      lastMarkdownSourcePanelProps?.onInvalidChange?.({
+        errorMessage: "Markdown source contains invalid content.",
+        isInvalid: true,
+        isUnavailable: false,
+        pageSysId: "page-001"
+      });
+    });
+
+    await waitFor(() => expect(lastDocseraHeaderProps?.authoringSurfaceLocked).toBe(false));
+    const sourceDiscardNonce = lastMarkdownSourcePanelProps?.discardNonce ?? 0;
+
+    fireEvent.click(screen.getByRole("button", { name: "Visual" }));
+
+    const discardDialog = await screen.findByRole("dialog", { name: "Invalid Markdown" });
+    expect(discardDialog).toHaveTextContent(
+      "Returning to Visual will discard the invalid Markdown draft and restore the last valid document."
+    );
+
+    fireEvent.click(within(discardDialog).getByRole("button", { name: "Stay in Markdown" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Invalid Markdown" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Markdown" })).toHaveAttribute("aria-pressed", "true");
+    expect(lastMarkdownSourcePanelProps).toMatchObject({ visible: true });
+    expect(lastMarkdownSourcePanelProps?.discardNonce ?? 0).toBe(sourceDiscardNonce);
+
+    fireEvent.click(screen.getByRole("button", { name: "Visual" }));
+    const secondDiscardDialog = await screen.findByRole("dialog", { name: "Invalid Markdown" });
+    fireEvent.click(within(secondDiscardDialog).getByRole("button", { name: "Discard and switch" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Invalid Markdown" })).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Visual" })).toHaveAttribute("aria-pressed", "true"));
+    await waitFor(() => expect(lastMarkdownSourcePanelProps?.discardNonce ?? 0).toBe(sourceDiscardNonce + 1));
+    await waitFor(() => expect(lastMarkdownSourcePanelProps).toMatchObject({ visible: false }));
   });
 
 });

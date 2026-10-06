@@ -2,6 +2,11 @@ import {
   canonicalizeDocseraImageAttrs,
   validateDocseraImageAttrs
 } from "./serverImageContract.ts";
+import {
+  isDocseraNonDefaultTextAlignment,
+  isDocseraPaletteKey,
+  isDocseraTextAlignment
+} from "../editor/colorContract.ts";
 const DOCSERA_INVALID_DOCUMENT_MESSAGE = "The stored page content does not contain a valid TipTap document.";
 const DOCSERA_ALLOWED_LINK_ATTRS = ["href", "target", "rel", "class", "title"] as const;
 const DOCSERA_ALLOWED_ORDERED_LIST_TYPES = [null, "1", "a", "A", "i", "I"] as const;
@@ -175,6 +180,14 @@ function isDocseraTableCellAlignment(value: unknown): value is "left" | "center"
   return typeof value === "string" && DOCSERA_TABLE_CELL_ALIGNMENTS.has(value);
 }
 
+function validateTextAlignAttrs(attrs: Record<string, unknown>, allowedKeys: readonly string[]): boolean {
+  if (!hasOnlyAllowedKeys(attrs, allowedKeys)) {
+    return false;
+  }
+
+  return attrs.textAlign === undefined || isDocseraTextAlignment(attrs.textAlign);
+}
+
 function hasSchemaVersion(value: Record<string, unknown>): boolean {
   return Object.prototype.hasOwnProperty.call(value, "schemaVersion");
 }
@@ -192,6 +205,8 @@ function isAllowedMarkType(type: string): boolean {
     type === "code" ||
     type === "underline" ||
     type === "highlight" ||
+    type === "textColor" ||
+    type === "highlightColor" ||
     type === "superscript" ||
     type === "subscript"
   );
@@ -265,6 +280,12 @@ function validateMark(mark: unknown, { allowLinkMark = true }: { allowLinkMark?:
     return validateLinkAttrs(mark.attrs);
   }
 
+  if (mark.type === "textColor" || mark.type === "highlightColor") {
+    return isRecord(mark.attrs) && hasOnlyAllowedKeys(mark.attrs, ["color"]) && isDocseraPaletteKey(mark.attrs.color)
+      ? { ok: true }
+      : createValidationFailure();
+  }
+
   if (mark.attrs !== undefined) {
     if (!isRecord(mark.attrs) || Object.keys(mark.attrs).length > 0) {
       return createValidationFailure();
@@ -280,6 +301,8 @@ function validateTextNodeMarks(
 ): DocseraStructuredDocumentValidationResult {
   let hasSuperscript = false;
   let hasSubscript = false;
+  let hasHighlight = false;
+  let hasHighlightColor = false;
 
   for (const mark of marks) {
     const markValidation = validateMark(mark, { allowLinkMark });
@@ -298,9 +321,17 @@ function validateTextNodeMarks(
     if (mark.type === "subscript") {
       hasSubscript = true;
     }
+
+    if (mark.type === "highlight") {
+      hasHighlight = true;
+    }
+
+    if (mark.type === "highlightColor") {
+      hasHighlightColor = true;
+    }
   }
 
-  return hasSuperscript && hasSubscript ? createValidationFailure() : { ok: true };
+  return (hasSuperscript && hasSubscript) || (hasHighlight && hasHighlightColor) ? createValidationFailure() : { ok: true };
 }
 
 function validateNodeAttrs(
@@ -326,7 +357,6 @@ function validateNodeAttrs(
 
   switch (type) {
     case "doc":
-    case "paragraph":
     case "bulletList":
     case "listItem":
     case "taskList":
@@ -341,6 +371,8 @@ function validateNodeAttrs(
     case "accordionTitle":
     case "accordionContent":
       return Object.keys(attrs).length === 0 ? { ok: true } : createValidationFailure();
+    case "paragraph":
+      return validateTextAlignAttrs(attrs, ["textAlign"]) ? { ok: true } : createValidationFailure();
     case "accordion": {
       if (!hasOnlyAllowedKeys(attrs, DOCSERA_ACCORDION_ATTRS)) {
         return createValidationFailure();
@@ -399,7 +431,7 @@ function validateNodeAttrs(
         : createValidationFailure();
     }
     case "heading":
-      return hasOnlyAllowedKeys(attrs, ["level"]) && DOCSERA_BODY_HEADING_LEVELS.includes(attrs.level as 1 | 2 | 3)
+      return validateTextAlignAttrs(attrs, ["level", "textAlign"]) && DOCSERA_BODY_HEADING_LEVELS.includes(attrs.level as 1 | 2 | 3)
         ? { ok: true }
         : createValidationFailure();
     case "image":
@@ -668,6 +700,12 @@ function canonicalizeMark(mark: Record<string, unknown>): Record<string, unknown
     canonicalMark.attrs = cloneJson(mark.attrs);
   }
 
+  if ((mark.type === "textColor" || mark.type === "highlightColor") && isRecord(mark.attrs)) {
+    canonicalMark.attrs = {
+      color: mark.attrs.color
+    };
+  }
+
   return canonicalMark;
 }
 
@@ -703,6 +741,22 @@ function canonicalizeNode(node: Record<string, unknown>): Record<string, unknown
     };
   } else if (node.type === "columns" || node.type === "column") {
     // Canonical Columns nodes are structural only.
+  } else if (node.type === "paragraph") {
+    const attrs = isRecord(node.attrs) ? node.attrs : {};
+    if (isDocseraNonDefaultTextAlignment(attrs.textAlign)) {
+      canonicalNode.attrs = {
+        textAlign: attrs.textAlign
+      };
+    }
+  } else if (node.type === "heading") {
+    const attrs = isRecord(node.attrs) ? node.attrs : {};
+    const canonicalAttrs: Record<string, unknown> = {
+      level: attrs.level
+    };
+    if (isDocseraNonDefaultTextAlignment(attrs.textAlign)) {
+      canonicalAttrs.textAlign = attrs.textAlign;
+    }
+    canonicalNode.attrs = canonicalAttrs;
   } else if (node.type === "orderedList") {
     const attrs = isRecord(node.attrs) ? node.attrs : {};
     canonicalNode.attrs = {

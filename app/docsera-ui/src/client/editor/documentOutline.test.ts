@@ -46,6 +46,42 @@ describe("extractDocumentOutline", () => {
     ]);
   });
 
+  it("ignores heading alignment when extracting outline titles and anchors", () => {
+    expect(
+      extractDocumentOutline({
+        schemaVersion: 1,
+        document: {
+          type: "doc",
+          content: [
+            {
+              type: "heading",
+              attrs: { level: 1, textAlign: "center" },
+              content: [{ type: "text", text: "Overview" }]
+            },
+            {
+              type: "heading",
+              attrs: { level: 2, textAlign: "right" },
+              content: [{ type: "text", text: "Overview" }]
+            }
+          ]
+        }
+      })
+    ).toEqual([
+      {
+        anchorId: "overview",
+        id: "overview",
+        level: 1,
+        title: "Overview"
+      },
+      {
+        anchorId: "overview-2",
+        id: "overview-2",
+        level: 2,
+        title: "Overview"
+      }
+    ]);
+  });
+
   it("skips empty headings without consuming canonical duplicate anchor order", () => {
     expect(
       extractDocumentOutline({

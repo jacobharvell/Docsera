@@ -15,6 +15,7 @@ import { getCommandQueryPresentationState, PageEditorHostRuntime } from "./PageE
 import type { EditorMediaAdapter, EditorMediaReference } from "./contracts";
 import {
   applyToolbarBlockTypeCommand,
+  COLOR_MENU_WIDTH,
   formatToolbarShortcutLabel,
   isEventWithinEditor,
   resolveEditorLinkElementFromEvent,
@@ -351,6 +352,10 @@ function resolveTopLevelBlockIndexFromPosition(editor: Editor, position: number)
 
 function getIconPathData(container: HTMLElement): string {
   return container.querySelector("svg path")?.getAttribute("d") ?? "";
+}
+
+function getCompactToolbarMenuIcon(item: HTMLElement): SVGElement | null {
+  return item.querySelector<SVGElement>(".docsera-text-toolbar__menu-icon svg");
 }
 
 function getToolbarTooltip() {
@@ -10010,6 +10015,7 @@ describe("PageEditorHostRuntime", () => {
       "Strikethrough",
       "Inline code",
       "Link",
+      "Color",
       "More"
     ]);
 
@@ -10020,6 +10026,7 @@ describe("PageEditorHostRuntime", () => {
     const strikeButton = within(toolbar).getByRole("button", { name: "Strikethrough" });
     const codeButton = within(toolbar).getByRole("button", { name: "Inline code" });
     const linkButton = within(toolbar).getByRole("button", { name: "Link" });
+    const colorButton = within(toolbar).getByRole("button", { name: "Color" });
     const moreButton = within(toolbar).getByRole("button", { name: "More" });
 
     expect(blockTrigger).toHaveAttribute("aria-expanded", "false");
@@ -10036,6 +10043,9 @@ describe("PageEditorHostRuntime", () => {
     expect(codeButton).toHaveAttribute("data-shortcut", "Mod+E");
     expect(linkButton).toHaveAttribute("aria-pressed", "false");
     expect(linkButton).toHaveAttribute("data-shortcut", "Mod+K");
+    expect(colorButton).toHaveAttribute("aria-expanded", "false");
+    expect(colorButton).toHaveAttribute("aria-haspopup", "menu");
+    expect(colorButton).toHaveAttribute("aria-label", "Color");
     expect(moreButton).toHaveAttribute("aria-expanded", "false");
     expect(moreButton).toHaveAttribute("aria-haspopup", "menu");
 
@@ -11197,6 +11207,10 @@ describe("PageEditorHostRuntime", () => {
         return new DOMRect(300, 50, 32, 28);
       }
 
+      if (ariaLabel === "Color") {
+        return new DOMRect(250, 50, 32, 28);
+      }
+
       if (this.getAttribute("role") === "menu") {
         return new DOMRect(0, 0, 170, 120);
       }
@@ -11245,8 +11259,16 @@ describe("PageEditorHostRuntime", () => {
       { width: 170, height: 120 },
       "end"
     );
+    const expectedColorMenuStyle = resolveToolbarMenuSurfaceStyle(
+      harness.ownerDocument,
+      new DOMRect(0, 0, 240, 40),
+      new DOMRect(250, 50, 32, 28),
+      { width: COLOR_MENU_WIDTH, height: 120 },
+      "end"
+    );
 
     const blockTrigger = within(toolbar).getByRole("button", { name: "Text" });
+    const colorTrigger = within(toolbar).getByRole("button", { name: "Color" });
     const moreTrigger = within(toolbar).getByRole("button", { name: "More" });
     expect(getComputedStyle(blockTrigger).paddingLeft).toBe("9px");
     expect(getComputedStyle(blockTrigger).paddingRight).toBe("9px");
@@ -11277,6 +11299,22 @@ describe("PageEditorHostRuntime", () => {
     expect(screen.queryByRole("menu", { name: "More" })).toBeNull();
 
     await act(async () => {
+      fireEvent.click(colorTrigger);
+    });
+
+    const colorMenu = await screen.findByRole("menu", { name: "Color" });
+    await waitFor(() => {
+      expect(colorMenu).toHaveStyle(expectedColorMenuStyle as Record<string, unknown>);
+    });
+    expect(colorMenu).toHaveStyle({
+      boxSizing: "border-box",
+      width: "178px"
+    });
+    expect(colorMenu.style.width).toBe("");
+    expect(colorMenu.style.top).toBe("44px");
+    expect(screen.queryByRole("menu", { name: "Change to" })).toBeNull();
+
+    await act(async () => {
       fireEvent.click(moreTrigger);
     });
 
@@ -11293,7 +11331,7 @@ describe("PageEditorHostRuntime", () => {
     });
     expect(moreMenu.style.width).toBe("");
     expect(moreMenu.style.top).toBe("44px");
-    expect(getComputedStyle(within(moreMenu).getByRole("menuitemcheckbox", { name: "Blockquote" })).cursor).toBe("pointer");
+    expect(getComputedStyle(within(moreMenu).getByRole("menuitemcheckbox", { name: "Superscript" })).cursor).toBe("pointer");
     expect(toolbar).toHaveStyle(toolbarCoordinates);
     expect(toolbar.style.width).toBe("");
     expect(screen.queryByRole("menu", { name: "Change to" })).toBeNull();
@@ -11381,10 +11419,22 @@ describe("PageEditorHostRuntime", () => {
     const blockMenu = await screen.findByRole("menu", { name: "Change to" });
     expect(blockTrigger).toHaveAttribute("aria-expanded", "true");
     expect(getIconPathData(blockTrigger)).not.toBe(closedChevronPath);
-    expect(getMenuItemNames(blockMenu)).toEqual(["Text", "Heading 1", "Heading 2", "Heading 3", "Unordered List", "Numbered List"]);
+    expect(getMenuItemNames(blockMenu)).toEqual(["Text", "Heading 1", "Heading 2", "Heading 3", "Blockquote", "Unordered List", "Numbered List"]);
+    [
+      ["Text", "lucide-pilcrow"],
+      ["Heading 1", "lucide-heading-1"],
+      ["Heading 2", "lucide-heading-2"],
+      ["Heading 3", "lucide-heading-3"],
+      ["Blockquote", "lucide-quote"],
+      ["Unordered List", "lucide-list"],
+      ["Numbered List", "lucide-list-ordered"]
+    ].forEach(([label, iconClass]) => {
+      const item = within(blockMenu).getByRole("menuitemradio", { name: label });
+      expect(getCompactToolbarMenuIcon(item)).toHaveClass(iconClass);
+    });
     const activeItem = within(blockMenu).getByRole("menuitemradio", { name: "Heading 1" });
     expect(activeItem).toHaveAttribute("aria-checked", "true");
-    expect(activeItem.querySelector("svg")).not.toBeNull();
+    expect(activeItem.querySelector(".docsera-text-toolbar__menu-check svg")).not.toBeNull();
   });
 
   it.each([
@@ -11478,6 +11528,93 @@ describe("PageEditorHostRuntime", () => {
         ]
       },
       triggerLabel: "Text",
+      targetLabel: "Blockquote",
+      expectedNode: {
+        type: "blockquote",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Alpha" }]
+          }
+        ]
+      }
+    },
+    {
+      initial: {
+        type: "doc",
+        content: [
+          {
+            type: "blockquote",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "Alpha" }]
+              }
+            ]
+          }
+        ]
+      },
+      triggerLabel: "Blockquote",
+      targetLabel: "Text",
+      expectedNode: { type: "paragraph", content: [{ type: "text", text: "Alpha" }] }
+    },
+    {
+      initial: {
+        type: "doc",
+        content: [
+          {
+            type: "blockquote",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "Alpha" }]
+              }
+            ]
+          }
+        ]
+      },
+      triggerLabel: "Blockquote",
+      targetLabel: "Heading 2",
+      expectedNode: { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Alpha" }] }
+    },
+    {
+      initial: {
+        type: "doc",
+        content: [
+          {
+            type: "blockquote",
+            content: [
+              {
+                type: "paragraph",
+                content: [{ type: "text", text: "Alpha" }]
+              }
+            ]
+          }
+        ]
+      },
+      triggerLabel: "Blockquote",
+      targetLabel: "Unordered List",
+      expectedNode: {
+        type: "bulletList",
+        content: [
+          {
+            type: "listItem",
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Alpha" }] }]
+          }
+        ]
+      }
+    },
+    {
+      initial: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Alpha" }]
+          }
+        ]
+      },
+      triggerLabel: "Text",
       targetLabel: "Numbered List",
       expectedNode: {
         type: "orderedList",
@@ -11509,9 +11646,12 @@ describe("PageEditorHostRuntime", () => {
 
     expect(screen.queryByRole("menu", { name: "Change to" })).toBeNull();
     expect(editor.getJSON().content?.[0]).toMatchObject(expectedNode);
+    expect(JSON.stringify(editor.getJSON().content?.[0])).not.toContain(
+      targetLabel === "Blockquote" ? "\"type\":\"bulletList\"" : "\"type\":\"blockquote\""
+    );
   });
 
-  it("shows the More menu in the accepted order and selected treatment", async () => {
+  it("renders Color between Link and More and moves Highlight ownership out of More", async () => {
     const { editorReady } = renderRuntime();
 
     await waitFor(() => {
@@ -11538,13 +11678,344 @@ describe("PageEditorHostRuntime", () => {
     await selectText(editor, 1, 6);
 
     const toolbar = await screen.findByRole("toolbar", { name: "Text formatting" });
+    expect(getButtonNames(toolbar)).toEqual([
+      "Blockquote",
+      "Bold",
+      "Italic",
+      "Underline",
+      "Strikethrough",
+      "Inline code",
+      "Link",
+      "Color",
+      "More"
+    ]);
+
+    fireEvent.click(within(toolbar).getByRole("button", { name: "Color" }));
+    const colorMenu = await screen.findByRole("menu", { name: "Color" });
+    expect(within(colorMenu).getByRole("group", { name: "Text color" })).toBeInTheDocument();
+    expect(within(colorMenu).getByRole("group", { name: "Highlight color" })).toBeInTheDocument();
+    expect(within(colorMenu).getByRole("menuitemradio", { name: "Default text color" })).toHaveAttribute("aria-checked", "true");
+    expect(within(colorMenu).getByRole("menuitemradio", { name: "No highlight" })).toHaveAttribute("aria-checked", "true");
+
     fireEvent.click(within(toolbar).getByRole("button", { name: "More" }));
+    expect(screen.queryByRole("menu", { name: "Color" })).toBeNull();
 
     const moreMenu = await screen.findByRole("menu", { name: "More" });
-    expect(getMenuItemNames(moreMenu, "menuitemcheckbox")).toEqual(["Blockquote", "Superscript", "Subscript", "Highlight"]);
-    const blockquoteItem = within(moreMenu).getByRole("menuitemcheckbox", { name: "Blockquote" });
+    expect(getMenuItemNames(moreMenu, "menuitemcheckbox")).toEqual(["Superscript", "Subscript"]);
+    expect(within(moreMenu).queryByRole("menuitemcheckbox", { name: "Highlight" })).toBeNull();
+    expect(within(moreMenu).queryByRole("menuitemcheckbox", { name: "Blockquote" })).toBeNull();
+
+    fireEvent.click(within(toolbar).getByRole("button", { name: "Blockquote" }));
+    const blockMenu = await screen.findByRole("menu", { name: "Change to" });
+    const blockquoteItem = within(blockMenu).getByRole("menuitemradio", { name: "Blockquote" });
     expect(blockquoteItem).toHaveAttribute("aria-checked", "true");
     expect(blockquoteItem.querySelector("svg")).not.toBeNull();
+  });
+
+  it("renders the Color picker as compact swatches with dropdown affordance and accessible tooltips", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await setParagraphText(editor, "Color me");
+    await selectText(editor, 1, 6);
+
+    const toolbar = await screen.findByRole("toolbar", { name: "Text formatting" });
+    const colorButton = within(toolbar).getByRole("button", { name: "Color" });
+    expect(colorButton).toHaveAttribute("aria-haspopup", "menu");
+    expect(colorButton).toHaveAttribute("aria-expanded", "false");
+    expect(colorButton).toHaveTextContent("A");
+    expect(colorButton).not.toHaveTextContent("Color");
+    expect(colorButton.querySelector("svg")).not.toBeNull();
+
+    fireEvent.click(colorButton);
+
+    const colorMenu = await screen.findByRole("menu", { name: "Color" });
+    expect(colorButton).toHaveAttribute("aria-expanded", "true");
+    expect(colorButton).toHaveAttribute("aria-controls", colorMenu.id);
+    const textColorHeading = within(colorMenu).getByText("Text Color");
+    const highlightColorHeading = within(colorMenu).getByText("Highlight Color");
+    expect(textColorHeading).toBeInTheDocument();
+    expect(highlightColorHeading).toBeInTheDocument();
+    expect(textColorHeading.nextElementSibling).toHaveClass("docsera-text-toolbar__color-grid");
+    expect(highlightColorHeading.nextElementSibling).toHaveClass("docsera-text-toolbar__color-grid");
+    expect(Array.from(document.querySelectorAll("style")).some((style) =>
+      style.textContent?.includes(
+        ".docsera-text-toolbar__color-menu .docsera-text-toolbar__surface-heading {\n          margin-bottom: 8px;"
+      )
+    )).toBe(true);
+    expect(Array.from(document.querySelectorAll("style")).some((style) =>
+      style.textContent?.includes(
+        ".docsera-text-toolbar__color-swatch--text::before"
+      )
+    )).toBe(false);
+    expect(Array.from(document.querySelectorAll("style")).some((style) =>
+      style.textContent?.includes(".docsera-text-toolbar__color-swatch--text") &&
+        style.textContent.includes("transform: translateY(-1px);")
+    )).toBe(false);
+
+    const colorChoices = within(colorMenu).getAllByRole("menuitemradio");
+    expect(colorChoices).toHaveLength(19);
+    const textColorChoices = colorChoices.filter((choice) => choice.getAttribute("aria-label")?.includes("text color"));
+    const highlightColorChoices = colorChoices.filter((choice) =>
+      choice.getAttribute("aria-label")?.includes("highlight")
+    );
+    expect(textColorChoices).toHaveLength(9);
+    expect(highlightColorChoices).toHaveLength(10);
+    for (const choice of textColorChoices) {
+      expect(choice.textContent?.trim()).toBe("A");
+    }
+    for (const choice of highlightColorChoices) {
+      expect(choice.textContent?.trim()).toBe("");
+    }
+
+    const defaultText = within(colorMenu).getByRole("menuitemradio", { name: "Default text color" });
+    const blueText = within(colorMenu).getByRole("menuitemradio", { name: "Blue text color" });
+    const noHighlight = within(colorMenu).getByRole("menuitemradio", { name: "No highlight" });
+    const defaultHighlight = within(colorMenu).getByRole("menuitemradio", { name: "Default highlight" });
+    const blueHighlight = within(colorMenu).getByRole("menuitemradio", { name: "Blue highlight" });
+    expect(defaultText).toHaveAttribute("aria-checked", "true");
+    expect(noHighlight).toHaveAttribute("aria-checked", "true");
+
+    expect(defaultText).toHaveAttribute("aria-label", "Default text color");
+    expect(blueText).toHaveAttribute("aria-label", "Blue text color");
+    expect(noHighlight).toHaveAttribute("aria-label", "No highlight");
+    expect(defaultHighlight).toHaveAttribute("aria-label", "Default highlight");
+    expect(blueHighlight).toHaveAttribute("aria-label", "Blue highlight");
+
+    fireEvent.focus(blueHighlight);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Blue");
+    expect(screen.getByRole("tooltip")).not.toHaveTextContent("Blue highlight");
+    fireEvent.blur(blueHighlight);
+
+    fireEvent.focus(defaultText);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Default");
+    expect(screen.getByRole("tooltip")).not.toHaveTextContent("Default text color");
+    fireEvent.blur(defaultText);
+
+    fireEvent.focus(noHighlight);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("None");
+    expect(screen.getByRole("tooltip")).not.toHaveTextContent("No highlight");
+    fireEvent.blur(noHighlight);
+
+    fireEvent.focus(defaultHighlight);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Default");
+    expect(screen.getByRole("tooltip")).not.toHaveTextContent("Default highlight");
+  });
+
+  it("clears a text selection when clicking blank editor space between blocks", async () => {
+    const geometrySpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const className = typeof this.className === "string" ? this.className : "";
+      if (className.includes("docsera-text-toolbar")) {
+        return new DOMRect(80, 32, 240, 40);
+      }
+
+      if (this.classList.contains("ProseMirror")) {
+        return new DOMRect(0, 0, 640, 420);
+      }
+
+      return new DOMRect(0, 0, 1, 1);
+    });
+
+    const { editorReady, onSaveDraft } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "First block" }] },
+          { type: "paragraph", content: [{ type: "text", text: "Second block" }] }
+        ]
+      });
+    });
+    await runAutosave();
+    onSaveDraft.mockClear();
+    await selectText(editor, 1, 6);
+
+    expect(editor.state.selection.empty).toBe(false);
+    expect(await screen.findByRole("toolbar", { name: "Text formatting" })).toBeInTheDocument();
+
+    const beforeUndoDepth = undoDepth(editor.state);
+    const posAtCoordsSpy = vi.spyOn(editor.view, "posAtCoords").mockReturnValue({ pos: 13, inside: -1 });
+
+    vi.useFakeTimers();
+    fireEvent.mouseDown(editor.view.dom, { button: 0, clientX: 96, clientY: 72 });
+    expect(screen.queryByRole("toolbar", { name: "Text formatting" })).toBeNull();
+    fireEvent.mouseUp(editor.view.dom, { button: 0, clientX: 96, clientY: 72 });
+    await act(async () => {
+      vi.advanceTimersByTime(0);
+    });
+    vi.useRealTimers();
+
+    expect(posAtCoordsSpy).toHaveBeenCalledWith({ left: 96, top: 72 });
+    expect(editor.state.selection.empty).toBe(true);
+    expect(editor.state.selection.from).toBeGreaterThan(6);
+    expect(screen.queryByRole("toolbar", { name: "Text formatting" })).toBeNull();
+    expect(undoDepth(editor.state)).toBe(beforeUndoDepth);
+    await runAutosave();
+    expect(onSaveDraft).toHaveBeenCalledTimes(0);
+
+    posAtCoordsSpy.mockRestore();
+    geometrySpy.mockRestore();
+  });
+
+  it("applies and clears canonical text colors while preserving unrelated marks", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await act(async () => {
+      editor.commands.setContent({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: "Color me",
+                marks: [
+                  { type: "bold" },
+                  { type: "italic" },
+                  { type: "link", attrs: { href: "https://example.com", target: "_blank", rel: "noopener noreferrer nofollow", class: null, title: null } },
+                  { type: "highlight" }
+                ]
+              }
+            ]
+          }
+        ]
+      } as never);
+    });
+    await selectText(editor, 1, 9);
+
+    const toolbar = await screen.findByRole("toolbar", { name: "Text formatting" });
+    fireEvent.click(within(toolbar).getByRole("button", { name: "Color" }));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Color" })).getByRole("menuitemradio", { name: "Blue text color" }));
+
+    expect(editor.getJSON().content?.[0]).toMatchObject({
+      type: "paragraph",
+      content: [
+        {
+          type: "text",
+          text: "Color me",
+          marks: expect.arrayContaining([
+            { type: "bold" },
+            { type: "italic" },
+            { type: "link", attrs: expect.objectContaining({ href: "https://example.com" }) },
+            { type: "highlight" },
+            { type: "textColor", attrs: { color: "blue" } }
+          ])
+        }
+      ]
+    });
+
+    const blueState = editor.getJSON();
+    await selectText(editor, 1, 9);
+    fireEvent.click(within(await screen.findByRole("toolbar", { name: "Text formatting" })).getByRole("button", { name: "Color" }));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Color" })).getByRole("menuitemradio", { name: "Red text color" }));
+    expect(editor.getJSON().content?.[0]?.content?.[0]?.marks).toEqual(
+      expect.arrayContaining([{ type: "textColor", attrs: { color: "red" } }])
+    );
+
+    await act(async () => {
+      editor.commands.undo();
+    });
+    expect(editor.getJSON()).toEqual(blueState);
+
+    await selectText(editor, 1, 9);
+    fireEvent.click(within(await screen.findByRole("toolbar", { name: "Text formatting" })).getByRole("button", { name: "Color" }));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Color" })).getByRole("menuitemradio", { name: "Default text color" }));
+
+    const marks = editor.getJSON().content?.[0]?.content?.[0]?.marks ?? [];
+    expect(marks).toEqual(
+      expect.arrayContaining([
+        { type: "bold" },
+        { type: "italic" },
+        { type: "highlight" }
+      ])
+    );
+    expect(JSON.stringify(marks)).not.toContain("textColor");
+  });
+
+  it("switches among no highlight default Highlight and palette Highlight without overlapping marks", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await setParagraphText(editor, "Highlight me");
+    await selectText(editor, 1, 13);
+
+    const toolbar = await screen.findByRole("toolbar", { name: "Text formatting" });
+    fireEvent.click(within(toolbar).getByRole("button", { name: "Color" }));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Color" })).getByRole("menuitemradio", { name: "Default highlight" }));
+    expect(editor.getJSON().content?.[0]).toMatchObject({
+      type: "paragraph",
+      content: [{ type: "text", text: "Highlight me", marks: [{ type: "highlight" }] }]
+    });
+
+    const defaultHighlightState = editor.getJSON();
+    await selectText(editor, 1, 13);
+    fireEvent.click(within(await screen.findByRole("toolbar", { name: "Text formatting" })).getByRole("button", { name: "Color" }));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Color" })).getByRole("menuitemradio", { name: "Yellow highlight" }));
+    expect(editor.getJSON().content?.[0]).toMatchObject({
+      type: "paragraph",
+      content: [{ type: "text", text: "Highlight me", marks: [{ type: "highlightColor", attrs: { color: "yellow" } }] }]
+    });
+    expect(JSON.stringify(editor.getJSON())).not.toContain('"type":"highlight"');
+
+    await act(async () => {
+      editor.commands.undo();
+    });
+    expect(editor.getJSON()).toEqual(defaultHighlightState);
+
+    await selectText(editor, 1, 13);
+    fireEvent.click(within(await screen.findByRole("toolbar", { name: "Text formatting" })).getByRole("button", { name: "Color" }));
+    fireEvent.click(within(await screen.findByRole("menu", { name: "Color" })).getByRole("menuitemradio", { name: "No highlight" }));
+    expect(JSON.stringify(editor.getJSON())).not.toContain("highlight");
+  });
+
+  it("preserves the text selection while the Color surface owns palette interaction", async () => {
+    const { editorReady } = renderRuntime();
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    await setParagraphText(editor, "Alpha Beta");
+    await selectText(editor, 1, 6);
+
+    const toolbar = await screen.findByRole("toolbar", { name: "Text formatting" });
+    fireEvent.click(within(toolbar).getByRole("button", { name: "Color" }));
+    expect(await screen.findByRole("menu", { name: "Color" })).toBeInTheDocument();
+    expect(editor.state.selection.from).toBe(1);
+    expect(editor.state.selection.to).toBe(6);
+
+    fireEvent.click(within(screen.getByRole("menu", { name: "Color" })).getByRole("menuitemradio", { name: "Green text color" }));
+    expect(editor.state.selection.from).toBe(1);
+    expect(editor.state.selection.to).toBe(6);
+    expect(await screen.findByRole("toolbar", { name: "Text formatting" })).toBeInTheDocument();
+    expect(editor.getJSON().content?.[0]).toMatchObject({
+      type: "paragraph",
+      content: [
+        { type: "text", text: "Alpha", marks: [{ type: "textColor", attrs: { color: "green" } }] },
+        { type: "text", text: " Beta" }
+      ]
+    });
   });
 
   it("keeps only one toolbar-owned nested surface open at a time", async () => {
@@ -11562,74 +12033,18 @@ describe("PageEditorHostRuntime", () => {
     fireEvent.click(within(toolbar).getByRole("button", { name: "Text" }));
     expect(await screen.findByRole("menu", { name: "Change to" })).toBeInTheDocument();
 
-    fireEvent.click(within(toolbar).getByRole("button", { name: "More" }));
+    fireEvent.click(within(toolbar).getByRole("button", { name: "Color" }));
     expect(screen.queryByRole("menu", { name: "Change to" })).toBeNull();
+    expect(await screen.findByRole("menu", { name: "Color" })).toBeInTheDocument();
+
+    fireEvent.click(within(toolbar).getByRole("button", { name: "More" }));
+    expect(screen.queryByRole("menu", { name: "Color" })).toBeNull();
     expect(await screen.findByRole("menu", { name: "More" })).toBeInTheDocument();
 
     fireEvent.click(within(toolbar).getByRole("button", { name: "Link" }));
     expect(screen.queryByRole("menu", { name: "More" })).toBeNull();
     expect(screen.queryByRole("menu", { name: "Change to" })).toBeNull();
     expect(await screen.findByRole("dialog", { name: "Create link" })).toBeInTheDocument();
-  });
-
-  it.each([
-    {
-      label: "Blockquote",
-      initial: {
-        type: "doc",
-        content: [
-          {
-            type: "paragraph",
-            content: [{ type: "text", text: "Quote me" }]
-          }
-        ]
-      },
-      expectedNode: {
-        type: "blockquote",
-        content: [
-          {
-            type: "paragraph",
-            content: [{ type: "text", text: "Quote me" }]
-          }
-        ]
-      }
-    },
-    {
-      label: "Highlight",
-      initial: {
-        type: "doc",
-        content: [
-          {
-            type: "paragraph",
-            content: [{ type: "text", text: "Highlight me" }]
-          }
-        ]
-      },
-      expectedNode: {
-        type: "paragraph",
-        content: [{ type: "text", text: "Highlight me", marks: [{ type: "highlight" }] }]
-      }
-    }
-  ])("applies %s through the More menu", async ({ label, initial, expectedNode }) => {
-    const { editorReady } = renderRuntime();
-
-    await waitFor(() => {
-      expect(editorReady[0]).toBeDefined();
-    });
-
-    const editor = editorReady[0];
-    await act(async () => {
-      editor.commands.setContent(initial as never);
-    });
-    await selectText(editor, 1, label === "Blockquote" ? 9 : 13);
-
-    const toolbar = await screen.findByRole("toolbar", { name: "Text formatting" });
-    fireEvent.click(within(toolbar).getByRole("button", { name: "More" }));
-    const moreMenu = await screen.findByRole("menu", { name: "More" });
-    fireEvent.click(within(moreMenu).getByRole("menuitemcheckbox", { name: label }));
-
-    expect(screen.queryByRole("menu", { name: "More" })).toBeNull();
-    expect(editor.getJSON().content?.[0]).toMatchObject(expectedNode);
   });
 
   it("replaces superscript with subscript without removing unrelated marks through the More menu", async () => {

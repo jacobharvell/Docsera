@@ -343,6 +343,7 @@ test("keeps settings and access panel header dividers aligned to the workspace h
 
 test("keeps vertical scrolling owned by the app body below the full-width header", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+  const mainRule = getRuleBody(css, ".docsera-main");
 
   expect(css).toMatch(/html,\s*body\s*{[^}]*height:\s*100%;[^}]*overflow:\s*hidden;/s);
   expect(css).toMatch(/body\s*{[^}]*background:\s*var\(--docsera-bg\);/s);
@@ -363,6 +364,9 @@ test("keeps vertical scrolling owned by the app body below the full-width header
   expect(css).not.toMatch(/html\s*{[^}]*overflow-y:\s*scroll;/s);
   expect(css).not.toMatch(/body\s*{[^}]*overflow-y:\s*scroll;/s);
   expect(css).not.toMatch(/\.docsera-workspace\s*{[^}]*overflow-y:\s*auto;/s);
+  expect(mainRule).not.toMatch(/\boverflow-y\s*:/);
+  expect(mainRule).not.toMatch(/\boverflow\s*:/);
+  expect(css).not.toMatch(/\.docsera-main\s*{[^}]*overflow-y:\s*(?:auto|scroll|hidden|clip);/s);
 });
 
 test("keeps left workspace navigation sticky with internally scrolling tree overflow", () => {

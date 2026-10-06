@@ -188,6 +188,64 @@ function createOrdinaryGfmTableEnvelope() {
   };
 }
 
+function createGfmCompatibleTableWithParagraphAlignmentEnvelope() {
+  return {
+    schemaVersion: 1 as const,
+    document: {
+      type: "doc" as const,
+      content: [
+        {
+          type: "table" as const,
+          content: [
+            {
+              type: "tableRow" as const,
+              content: [
+                {
+                  type: "tableHeader" as const,
+                  attrs: { colspan: 1, rowspan: 1, colwidth: null },
+                  content: [{ type: "paragraph" as const, content: [{ type: "text" as const, text: "Feature" }] }]
+                },
+                {
+                  type: "tableHeader" as const,
+                  attrs: { colspan: 1, rowspan: 1, colwidth: null, align: "right" as const },
+                  content: [
+                    {
+                      type: "paragraph" as const,
+                      attrs: { textAlign: "center" as const },
+                      content: [{ type: "text" as const, text: "Status" }]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              type: "tableRow" as const,
+              content: [
+                {
+                  type: "tableCell" as const,
+                  attrs: { colspan: 1, rowspan: 1, colwidth: null },
+                  content: [
+                    {
+                      type: "paragraph" as const,
+                      attrs: { textAlign: "right" as const },
+                      content: [{ type: "text" as const, text: "Alpha" }]
+                    }
+                  ]
+                },
+                {
+                  type: "tableCell" as const,
+                  attrs: { colspan: 1, rowspan: 1, colwidth: null, align: "right" as const },
+                  content: [{ type: "paragraph" as const, content: [{ type: "text" as const, text: "Ready" }] }]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  };
+}
+
 function createMarkdownDocumentSource(title: string, body: string): string {
   return `---\ntitle: ${JSON.stringify(title)}\n---\n${body}`;
 }
@@ -528,6 +586,146 @@ function createDirectiveFenceStressEnvelope() {
 }
 
 describe("Docsera Markdown conversion contract", () => {
+  it("round-trips Docsera text and highlight palette colors losslessly through Markdown Source", () => {
+    const envelope = {
+      schemaVersion: 1 as const,
+      document: {
+        type: "doc" as const,
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: "Color",
+                marks: [
+                  { type: "bold" },
+                  { type: "textColor", attrs: { color: "blue" } },
+                  { type: "highlightColor", attrs: { color: "yellow" } }
+                ]
+              },
+              {
+                type: "text",
+                text: " and default",
+                marks: [{ type: "highlight" }]
+              }
+            ]
+          }
+        ]
+      }
+    };
+
+    const serialized = serializeDocseraMarkdownDocument("Markdown Contract", envelope);
+    expect(serialized.ok).toBe(true);
+    if (!serialized.ok) {
+      return;
+    }
+    expect(serialized.markdown).toContain('<span data-docsera-text-color="blue">');
+    expect(serialized.markdown).toContain('<mark data-docsera-highlight-color="yellow">');
+    expect(serialized.markdown).toContain("<mark> and default</mark>");
+
+    const parsed = parseDocseraMarkdownDocument(serialized.markdown);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) {
+      return;
+    }
+    expect(parsed.envelope).toEqual(envelope);
+
+    for (const markdown of [
+      '---\ntitle: "Bad"\n---\n<span style="color:red">Nope</span>\n',
+      '---\ntitle: "Bad"\n---\n<span data-docsera-text-color="teal">Nope</span>\n',
+      '---\ntitle: "Bad"\n---\n<span data-docsera-text-color="blue" class="x">Nope</span>\n',
+      '---\ntitle: "Bad"\n---\n<mark data-docsera-highlight-color="#ff0">Nope</mark>\n',
+      '---\ntitle: "Bad"\n---\n<mark data-docsera-text-color="blue">Nope</mark>\n'
+    ]) {
+      expect(parseDocseraMarkdownDocument(markdown).ok).toBe(false);
+    }
+  });
+
+  it("round-trips non-default paragraph and heading alignment through docsera-text-align directives", () => {
+    const envelope = {
+      schemaVersion: 1 as const,
+      document: {
+        type: "doc" as const,
+        content: [
+          {
+            type: "paragraph",
+            attrs: { textAlign: "center" },
+            content: [{ type: "text", text: "Centered paragraph" }]
+          },
+          {
+            type: "heading",
+            attrs: { level: 2, textAlign: "right" },
+            content: [{ type: "text", text: "Right heading" }]
+          },
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Ordinary left paragraph" }]
+          },
+          {
+            type: "heading",
+            attrs: { level: 3 },
+            content: [{ type: "text", text: "Ordinary left heading" }]
+          }
+        ]
+      }
+    };
+
+    const serialized = serializeDocseraMarkdownDocument(title, envelope);
+    expect(serialized.ok).toBe(true);
+    if (!serialized.ok) {
+      return;
+    }
+
+    expect(serialized.markdown).toContain(':::docsera-text-align{align="center"}');
+    expect(serialized.markdown).toContain(':::docsera-text-align{align="right"}');
+    expect(serialized.markdown).not.toContain('align="left"');
+    expect(serialized.markdown).toContain("Centered paragraph");
+    expect(serialized.markdown).toContain("## Right heading");
+
+    expect(parseDocseraMarkdownDocument(serialized.markdown)).toEqual({
+      ok: true,
+      title,
+      markdown: serialized.markdown,
+      envelope: serialized.envelope
+    });
+  });
+
+  it("normalizes an explicit-left docsera-text-align directive back to ordinary Markdown", () => {
+    const parsed = parseDocseraMarkdownDocument(
+      createMarkdownDocumentSource(
+        "Left wrapper",
+        ":::docsera-text-align{align=\"left\"}\nLeft paragraph\n:::\n"
+      )
+    );
+
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) {
+      return;
+    }
+
+    expect(parsed.envelope.document).toEqual({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Left paragraph" }] }]
+    });
+    expect(parsed.markdown).not.toContain("docsera-text-align");
+  });
+
+  it("rejects malformed or unsupported docsera-text-align directives", () => {
+    for (const body of [
+      ":::docsera-text-align{align=\"justify\"}\nNope\n:::\n",
+      ":::docsera-text-align{align=\"center\" extra=\"1\"}\nNope\n:::\n",
+      ":::docsera-text-align{align=\"center\"}\n* List\n:::\n",
+      ":::docsera-text-align{align=\"center\"}\nFirst\n\nSecond\n:::\n",
+      ":::docsera-text-align{align=\"right\"}\n:::\n"
+    ]) {
+      expect(parseDocseraMarkdownDocument(createMarkdownDocumentSource("Bad alignment", body))).toMatchObject({
+        ok: false,
+        reason: "invalid-directive"
+      });
+    }
+  });
+
   const title = "Markdown Contract";
 
   it.each([
@@ -846,6 +1044,32 @@ describe("Docsera Markdown conversion contract", () => {
       title,
       markdown: ordinaryTable.markdown,
       envelope: ordinaryTable.envelope
+    });
+  });
+
+  it("uses rich Docsera tables when GFM-compatible cell paragraphs carry non-default text alignment", () => {
+    const envelope = createGfmCompatibleTableWithParagraphAlignmentEnvelope();
+    const serialized = serializeDocseraMarkdownDocument(title, envelope);
+
+    expect(serialized.ok).toBe(true);
+    if (!serialized.ok) {
+      return;
+    }
+
+    expect(serialized.markdown).toContain("docsera-table");
+    expect(serialized.markdown).toContain("docsera-table-header");
+    expect(serialized.markdown).toContain("docsera-table-cell");
+    expect(serialized.markdown).toContain('docsera-table-header{colspan=1 rowspan=1 colwidth=null align="right"}');
+    expect(serialized.markdown).toContain('docsera-table-cell{colspan=1 rowspan=1 colwidth=null align="right"}');
+    expect(serialized.markdown).toContain(':::docsera-text-align{align="center"}');
+    expect(serialized.markdown).toContain(':::docsera-text-align{align="right"}');
+    expect(serialized.markdown).not.toContain("| Feature | Status |");
+
+    expect(parseDocseraMarkdownDocument(serialized.markdown)).toEqual({
+      ok: true,
+      title,
+      markdown: serialized.markdown,
+      envelope
     });
   });
 

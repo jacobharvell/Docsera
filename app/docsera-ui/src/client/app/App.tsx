@@ -729,11 +729,25 @@ function resolveCurrentPageAuthoringReadiness(input: {
                 : hasPageSettingsWork
                   ? "Page Settings has unsaved or blocked changes. Publish and discard actions stay disabled until settings are saved."
                   : "";
+  const surfaceBlockedMessage =
+    input.workspaceCommandBlocksCurrentWorkspaceWrites
+      ? WORKSPACE_COMMAND_AUTHORING_LOCK_MESSAGE
+      : !input.canEditPageBody || input.editAccessLost
+        ? "Authoring access is no longer available."
+        : !input.editorCanonicalHandoffReady || !input.isEditorReady
+          ? "The visual editor is still getting ready."
+          : selectedPageStatusApplies && input.markdownSourceStatus.isUnavailable
+            ? input.markdownSourceStatus.errorMessage || "Markdown source is waiting for the visual editor to become available."
+            : input.editorStatus !== "Saved"
+              ? `Current page is ${input.editorStatus.toLowerCase()}. Publish and discard actions stay disabled until local changes are saved.`
+              : hasPageSettingsWork
+                ? "Page Settings has unsaved or blocked changes. Publish and discard actions stay disabled until settings are saved."
+                : "";
 
   return {
     blockedMessage,
     canEditMarkdownSource: visualEditorReady && !input.markdownSourceStatus.isUnavailable,
-    canSwitchSurface: !blockedMessage && !sourceBlockedByRuntime,
+    canSwitchSurface: !surfaceBlockedMessage && !sourceBlockedByRuntime,
     requiresNavigationGuard
   };
 }
@@ -1214,6 +1228,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const editorReleaseRef = useRef<((options?: { keepalive?: boolean }) => Promise<void>) | null>(null);
   const routeTransitionGenerationRef = useRef(0);
   const [pendingRouteTransition, setPendingRouteTransition] = useState<RequestedRouteTransition | null>(null);
+  const [invalidMarkdownSurfaceSwitchOpen, setInvalidMarkdownSurfaceSwitchOpen] = useState(false);
   const [inlinePageCreateState, setInlinePageCreateState] = useState<InlinePageCreateState | null>(null);
   const [modeUiState, setModeUiState] = useState<Record<string, WorkspaceModeUiState>>({});
   const [pageOutlineOverrides, setPageOutlineOverrides] = useState<Record<string, WorkspacePageOutlineItem[]>>({});
@@ -6207,6 +6222,15 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     discardInvalidMarkdownSourceDraft({ resetSurface: true });
   }
 
+  function handleStayInInvalidMarkdownSource() {
+    setInvalidMarkdownSurfaceSwitchOpen(false);
+  }
+
+  function handleDiscardInvalidMarkdownAndSwitchToVisual() {
+    setInvalidMarkdownSurfaceSwitchOpen(false);
+    discardInvalidMarkdownSourceDraft({ resetSurface: true });
+  }
+
   function changeAuthoringSurface(nextSurface: WorkspaceAuthoringSurface) {
     if (route.mode !== "workspace" || activeWorkspaceMode !== "edit") {
       return;
@@ -6227,14 +6251,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
 
     if (nextSurface === "visual" && activeMarkdownSourceIsInvalid) {
-      setShellNotice({
-        eyebrow: "Markdown",
-        kind: "alert",
-        message: "Discard the invalid Markdown draft before switching back to Visual.",
-        pageSysId: selectedWorkspacePageId,
-        workspaceMode: "edit",
-        workspaceSlug: currentWorkspaceSlug
-      });
+      setInvalidMarkdownSurfaceSwitchOpen(true);
       return;
     }
 
@@ -7768,6 +7785,15 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               open={pendingRouteTransition !== null}
               onDiscard={handleDiscardDirtyTransition}
               onStay={handleStayOnDirtyTransition}
+            />
+            <DirtyTransitionDialog
+              destructiveActionLabel="Discard and switch"
+              message="Returning to Visual will discard the invalid Markdown draft and restore the last valid document."
+              open={invalidMarkdownSurfaceSwitchOpen}
+              secondaryActionLabel="Stay in Markdown"
+              title="Invalid Markdown"
+              onDiscard={handleDiscardInvalidMarkdownAndSwitchToVisual}
+              onStay={handleStayInInvalidMarkdownSource}
             />
           </>
         ) : (

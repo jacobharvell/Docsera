@@ -522,6 +522,10 @@ declare global {
                         table: 'sys_module'
                         id: 'd9bb2f597b564a9ab74fab37b5e777e4'
                     }
+                    src_server_editor_colorContract_ts: {
+                        table: 'sys_module'
+                        id: '08cde97bfcba4c6db3230a1a2f4fa6fc'
+                    }
                     'src_server_page-locks_pageEditLockService_ts': {
                         table: 'sys_module'
                         id: '307faf9115f34bb1b6509e5d447d7094'

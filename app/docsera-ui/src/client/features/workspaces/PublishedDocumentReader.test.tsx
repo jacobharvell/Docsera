@@ -150,6 +150,80 @@ function createAccordionHeadingIsolationEnvelope(): DocseraDocumentEnvelope {
 }
 
 describe("PublishedDocumentReader", () => {
+  it("renders semantic Docsera text and highlight palette colors in the lightweight reader", () => {
+    render(
+      <PublishedDocumentReader
+        envelope={{
+          schemaVersion: 1,
+          document: {
+            type: "doc",
+            content: [
+              {
+                type: "paragraph",
+                content: [
+                  {
+                    type: "text",
+                    text: "Blue",
+                    marks: [{ type: "textColor", attrs: { color: "blue" } }]
+                  },
+                  {
+                    type: "text",
+                    text: " highlight",
+                    marks: [{ type: "highlightColor", attrs: { color: "yellow" } }]
+                  },
+                  {
+                    type: "text",
+                    text: " default",
+                    marks: [{ type: "highlight" }]
+                  }
+                ]
+              }
+            ]
+          }
+        }}
+      />
+    );
+
+    const reader = screen.getByLabelText("Published page content");
+    expect(reader.querySelector('[data-docsera-text-color="blue"]')).toHaveTextContent("Blue");
+    expect(reader.querySelector('[data-docsera-highlight-color="yellow"]')).toHaveTextContent("highlight");
+    expect(reader.querySelector(".docsera-main__highlight")).toHaveTextContent("default");
+  });
+
+  it("renders paragraph and heading text alignment without changing heading anchors", () => {
+    renderReader({
+      schemaVersion: 1,
+      document: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            attrs: { textAlign: "center" },
+            content: [{ type: "text", text: "Centered paragraph" }]
+          },
+          {
+            type: "heading",
+            attrs: { level: 2, textAlign: "right" },
+            content: [{ type: "text", text: "Overview" }]
+          },
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Ordinary left" }]
+          }
+        ]
+      }
+    });
+
+    const centeredParagraph = screen.getByText("Centered paragraph");
+    const rightHeading = screen.getByRole("heading", { name: "Overview" });
+    const ordinaryParagraph = screen.getByText("Ordinary left");
+
+    expect(centeredParagraph).toHaveStyle({ textAlign: "center" });
+    expect(rightHeading).toHaveStyle({ textAlign: "right" });
+    expect(rightHeading).toHaveAttribute("id", "overview");
+    expect(ordinaryParagraph).not.toHaveAttribute("style");
+  });
+
   it("uses the shared document-presentation tokens for live core text styling", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;

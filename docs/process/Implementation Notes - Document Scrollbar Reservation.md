@@ -6,6 +6,8 @@ Docsera keeps vertical content scrolling below the workspace header. The browser
 
 Because the scrollbar gutter belongs to `.docsera-app__body`, the header remains outside the scrollport and spans the full physical viewport width. The workspace body, sidebar, main pane, and Table of Contents keep the same horizontal geometry whether a page is short or long, and Live/Edit transitions do not move shell content merely because vertical overflow changes.
 
+The workspace main pane must not introduce a nested document scroll container. In particular, `.docsera-main` must not declare vertical overflow ownership because sticky workspace chrome mounted inside it, such as editor history controls, should resolve against the established `.docsera-app__body` scrollport.
+
 The app does not measure scrollbar width in React, does not maintain a CSS reserve variable, and does not compensate the header with negative margins or extra inline padding. Native scrollbar appearance is preserved.
 
 Heading and Table of Contents navigation use the app body scrollport. The accepted heading top gap is represented by `.docsera-app__body` scroll padding and matching heading scroll margins, without adding the workspace header height as an offset.

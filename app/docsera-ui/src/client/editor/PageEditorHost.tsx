@@ -51,6 +51,7 @@ type PageEditorHostProps = {
   }) => Promise<PageBodySaveResult>;
   onStatusChange: (state: PageEditorStatusState) => void;
   mediaAdapter?: EditorMediaAdapter;
+  historyControlsMount?: HTMLElement | null;
   pageSysId: string;
   sessionKey: string;
   theme: "dark" | "light";
@@ -108,6 +109,7 @@ export function PageEditorHost(props: PageEditorHostProps) {
       },
       onSaveDraft: currentProps.onSaveDraft,
       mediaAdapter: currentProps.mediaAdapter,
+      historyControlsMount: currentProps.historyControlsMount ?? null,
       onStatusChange: currentProps.onStatusChange,
       overlayRoot: entry.overlayRoot,
       pageSysId: currentProps.pageSysId,
@@ -192,6 +194,7 @@ export function PageEditorHost(props: PageEditorHostProps) {
     props.onError,
     props.onOutlineChange,
     props.onSaveDraft,
+    props.historyControlsMount,
     props.mediaAdapter,
     props.onStatusChange,
     props.pageSysId,

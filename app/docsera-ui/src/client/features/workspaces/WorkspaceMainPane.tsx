@@ -306,6 +306,7 @@ export function WorkspaceMainPane({
   editorFailure,
   onEditorFailureChange
 }: WorkspaceMainPaneProps) {
+  const [editorHistoryControlsMount, setEditorHistoryControlsMount] = useState<HTMLDivElement | null>(null);
 
   if (stateType !== "ready") {
     return (
@@ -384,6 +385,13 @@ export function WorkspaceMainPane({
 
   return (
     <main className="docsera-main" {...mainLabelProps}>
+      {workspaceMode === "edit" && authoringSurface === "visual" ? (
+        <div
+          ref={setEditorHistoryControlsMount}
+          className="docsera-main__editor-history-controls-mount"
+          data-docsera-editor-history-controls-mount="true"
+        />
+      ) : null}
       <article className={`docsera-main__surface${workspaceMode === "edit" ? " docsera-main__surface--editor" : ""}`}>
         {authoringSurface === "visual" ? (
           <div className="docsera-main__intro">
@@ -482,6 +490,7 @@ export function WorkspaceMainPane({
                   onReadyStateChange={onEditorReadyStateChange}
                   onSaveDraft={onSavePageDraft}
                   onStatusChange={onStatusChange}
+                  historyControlsMount={editorHistoryControlsMount}
                   mediaAdapter={mediaAdapter}
                   pageSysId={page.sysId}
                   sessionKey={sessionKey}

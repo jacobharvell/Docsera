@@ -412,7 +412,7 @@ describe("PageEditorHostRuntime", () => {
     );
 
     expect(runtimeShellSource).toMatch(
-      /\.docsera-main__surface \{\s*width: min\(100%, var\(--docsera-main-surface-max-width\)\);\s*min-width: 0;/s
+      /\.docsera-main__surface \{\s*--docsera-main-surface-inline-size: min\(100%, var\(--docsera-main-surface-max-width\)\);\s*width: var\(--docsera-main-surface-inline-size\);\s*min-width: 0;/s
     );
     expect(runtimeShellSource).toMatch(/\.docsera-main__editor-host \{\s*margin-top: 40px;\s*min-width: 0;/s);
     expect(source).toMatch(/\.docsera-editor-runtime__surface \{\s*position: relative;\s*width: 100%;\s*min-width: 0;/s);

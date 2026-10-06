@@ -63,6 +63,22 @@
   --docsera-document-link-hover-decoration-thickness: 0.12em;
   --docsera-document-link-underline-offset: 0.16em;
   --docsera-document-highlight-bg: color-mix(in srgb, #f6d84e 58%, rgba(255, 255, 255, 0.98));
+  --docsera-palette-gray-text: #475569;
+  --docsera-palette-red-text: #b42318;
+  --docsera-palette-orange-text: #b54708;
+  --docsera-palette-yellow-text: #8a6100;
+  --docsera-palette-green-text: #067647;
+  --docsera-palette-blue-text: #175cd3;
+  --docsera-palette-purple-text: #6941c6;
+  --docsera-palette-pink-text: #c11574;
+  --docsera-palette-gray-highlight: color-mix(in srgb, #cbd5e1 48%, transparent);
+  --docsera-palette-red-highlight: color-mix(in srgb, #fda29b 48%, transparent);
+  --docsera-palette-orange-highlight: color-mix(in srgb, #fdba74 48%, transparent);
+  --docsera-palette-yellow-highlight: color-mix(in srgb, #fde68a 58%, transparent);
+  --docsera-palette-green-highlight: color-mix(in srgb, #86efac 48%, transparent);
+  --docsera-palette-blue-highlight: color-mix(in srgb, #93c5fd 48%, transparent);
+  --docsera-palette-purple-highlight: color-mix(in srgb, #c4b5fd 48%, transparent);
+  --docsera-palette-pink-highlight: color-mix(in srgb, #f9a8d4 48%, transparent);
   font-family: Inter, "Segoe UI", sans-serif;
   background: var(--docsera-bg);
   color: var(--docsera-text);
@@ -93,6 +109,22 @@
   --docsera-document-code-inline-bg: color-mix(in srgb, rgba(15, 18, 24, 0.98) 88%, black 12%);
   --docsera-document-rule-border-color: color-mix(in srgb, rgba(122, 139, 167, 0.22) 88%, transparent);
   --docsera-document-highlight-bg: color-mix(in srgb, #f6d84e 58%, rgba(15, 18, 24, 0.98));
+  --docsera-palette-gray-text: #cbd5e1;
+  --docsera-palette-red-text: #fda29b;
+  --docsera-palette-orange-text: #fdba74;
+  --docsera-palette-yellow-text: #fde68a;
+  --docsera-palette-green-text: #86efac;
+  --docsera-palette-blue-text: #93c5fd;
+  --docsera-palette-purple-text: #c4b5fd;
+  --docsera-palette-pink-text: #f9a8d4;
+  --docsera-palette-gray-highlight: color-mix(in srgb, #94a3b8 34%, transparent);
+  --docsera-palette-red-highlight: color-mix(in srgb, #b42318 46%, transparent);
+  --docsera-palette-orange-highlight: color-mix(in srgb, #b54708 46%, transparent);
+  --docsera-palette-yellow-highlight: color-mix(in srgb, #8a6100 52%, transparent);
+  --docsera-palette-green-highlight: color-mix(in srgb, #067647 46%, transparent);
+  --docsera-palette-blue-highlight: color-mix(in srgb, #175cd3 46%, transparent);
+  --docsera-palette-purple-highlight: color-mix(in srgb, #6941c6 46%, transparent);
+  --docsera-palette-pink-highlight: color-mix(in srgb, #c11574 46%, transparent);
 }
 
 .docsera-tooltip {
@@ -2744,6 +2776,24 @@ html[data-docsera-theme="dark"] .docsera-header__ghost-button--theme:hover {
   transition: box-shadow 0.16s ease;
 }
 
+.docsera-main__source-editor .cm-editor .cm-content {
+  caret-color: var(--docsera-document-text-color, var(--docsera-text));
+}
+
+.docsera-main__source-editor .cm-editor .cm-content ::selection {
+  background: color-mix(in srgb, var(--docsera-primary) 22%, transparent);
+}
+
+.docsera-main__source-editor .cm-editor .cm-cursor,
+.docsera-main__source-editor .cm-editor .cm-dropCursor {
+  border-left-color: var(--docsera-document-text-color, var(--docsera-text));
+}
+
+.docsera-main__source-editor .cm-editor .cm-selectionBackground,
+.docsera-main__source-editor .cm-editor.cm-focused .cm-selectionBackground {
+  background: color-mix(in srgb, var(--docsera-primary) 22%, transparent);
+}
+
 .docsera-main__source-editor .cm-editor.cm-focused {
   outline: none;
   box-shadow: none;
@@ -4101,10 +4151,28 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 }
 
 .docsera-main {
+  position: relative;
   display: flex;
   justify-content: flex-start;
-  overflow-y: auto;
   background: var(--docsera-workspace-bg, var(--docsera-surface));
+}
+
+.docsera-main__editor-history-controls-mount {
+  position: sticky;
+  top: 8px;
+  left: calc(100% - 8px);
+  flex: 0 0 0;
+  width: 0;
+  height: 0;
+  z-index: 3;
+  display: inline-flex;
+  justify-content: flex-end;
+  align-items: center;
+  pointer-events: none;
+}
+
+.docsera-main__editor-history-controls-mount > .docsera-editor-history-controls {
+  transform: translate(-8px, 8px);
 }
 
 .docsera-main__surface {
@@ -4593,6 +4661,76 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   color: inherit;
 }
 
+.docsera-main__highlight-color {
+  padding: 0.08em 0.2em;
+  border-radius: 0.28em;
+  color: inherit;
+}
+
+.docsera-main__text-color[data-docsera-text-color="gray"] {
+  color: var(--docsera-palette-gray-text);
+}
+
+.docsera-main__text-color[data-docsera-text-color="red"] {
+  color: var(--docsera-palette-red-text);
+}
+
+.docsera-main__text-color[data-docsera-text-color="orange"] {
+  color: var(--docsera-palette-orange-text);
+}
+
+.docsera-main__text-color[data-docsera-text-color="yellow"] {
+  color: var(--docsera-palette-yellow-text);
+}
+
+.docsera-main__text-color[data-docsera-text-color="green"] {
+  color: var(--docsera-palette-green-text);
+}
+
+.docsera-main__text-color[data-docsera-text-color="blue"] {
+  color: var(--docsera-palette-blue-text);
+}
+
+.docsera-main__text-color[data-docsera-text-color="purple"] {
+  color: var(--docsera-palette-purple-text);
+}
+
+.docsera-main__text-color[data-docsera-text-color="pink"] {
+  color: var(--docsera-palette-pink-text);
+}
+
+.docsera-main__highlight-color[data-docsera-highlight-color="gray"] {
+  background: var(--docsera-palette-gray-highlight);
+}
+
+.docsera-main__highlight-color[data-docsera-highlight-color="red"] {
+  background: var(--docsera-palette-red-highlight);
+}
+
+.docsera-main__highlight-color[data-docsera-highlight-color="orange"] {
+  background: var(--docsera-palette-orange-highlight);
+}
+
+.docsera-main__highlight-color[data-docsera-highlight-color="yellow"] {
+  background: var(--docsera-palette-yellow-highlight);
+}
+
+.docsera-main__highlight-color[data-docsera-highlight-color="green"] {
+  background: var(--docsera-palette-green-highlight);
+}
+
+.docsera-main__highlight-color[data-docsera-highlight-color="blue"] {
+  background: var(--docsera-palette-blue-highlight);
+}
+
+.docsera-main__highlight-color[data-docsera-highlight-color="purple"] {
+  background: var(--docsera-palette-purple-highlight);
+}
+
+.docsera-main__highlight-color[data-docsera-highlight-color="pink"] {
+  background: var(--docsera-palette-pink-highlight);
+}
+
 .docsera-main__sections {
   display: grid;
   gap: 0;
@@ -4980,7 +5118,7 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 
 .docsera-toc-rail__toggle {
   position: absolute;
-  top: 16px;
+  top: 36px;
   left: -24px;
   display: inline-flex;
   align-items: center;

@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { act } from "@testing-library/react";
+import { act, fireEvent } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
   createMarkdownSourceSession,
@@ -44,6 +44,60 @@ describe("MarkdownSourceSession", () => {
     });
     expect(result.session.view.state.doc.toString()).toContain('title: "Overview"');
     expect(result.session.getSnapshot()).toEqual(latestSnapshot(snapshots));
+    result.session.destroy();
+  });
+
+  it("mounts an editable CodeMirror content surface for normal source authoring", () => {
+    const mount = document.createElement("div");
+    document.body.append(mount);
+    const result = createMarkdownSourceSession({
+      mount,
+      title: "Overview",
+      envelope: createCanonicalDocseraDocumentEnvelope(),
+      editable: true
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    const content = mount.querySelector(".cm-content");
+    expect(content).toBeInstanceOf(HTMLElement);
+    expect(content).toHaveAttribute("contenteditable", "true");
+
+    result.session.setEditable(false);
+    expect(content).toHaveAttribute("contenteditable", "false");
+
+    result.session.setEditable(true);
+    expect(content).toHaveAttribute("contenteditable", "true");
+
+    result.session.destroy();
+  });
+
+  it("lets mouse interaction focus the editable CodeMirror content surface", () => {
+    const mount = document.createElement("div");
+    document.body.append(mount);
+    const result = createMarkdownSourceSession({
+      mount,
+      title: "Overview",
+      envelope: createCanonicalDocseraDocumentEnvelope(),
+      editable: true
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    const content = mount.querySelector(".cm-content");
+    expect(content).toBeInstanceOf(HTMLElement);
+    fireEvent.pointerDown(content as HTMLElement, { bubbles: true, button: 0, clientX: 10, clientY: 10, pointerId: 1 });
+    fireEvent.mouseDown(content as HTMLElement, { bubbles: true, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.mouseUp(content as HTMLElement, { bubbles: true, button: 0, clientX: 10, clientY: 10 });
+    fireEvent.click(content as HTMLElement, { bubbles: true, button: 0, clientX: 10, clientY: 10 });
+
+    expect(content).toHaveFocus();
     result.session.destroy();
   });
 
@@ -315,7 +369,7 @@ describe("MarkdownSourceSession", () => {
       failure: {
         ok: false,
         reason: "unsupported-html",
-        message: "Markdown contains unsupported inline HTML."
+        message: "Inline HTML color tags must provide exactly data-docsera-text-color."
       }
     });
     result.session.destroy();

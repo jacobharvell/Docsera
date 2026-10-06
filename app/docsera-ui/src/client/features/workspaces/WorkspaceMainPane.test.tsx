@@ -443,6 +443,30 @@ describe("WorkspaceMainPane", () => {
     expect(document.querySelector(".docsera-main__editor-host[hidden]")).toBeInTheDocument();
   });
 
+  it("keeps the markdown source caret and CodeMirror cursor layer on Docsera theme text color", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+
+    expect(source).toMatch(
+      /\.docsera-main__source-editor \.cm-editor \.cm-content \{\s*caret-color: var\(--docsera-document-text-color, var\(--docsera-text\)\);\s*\}/
+    );
+    expect(source).toMatch(
+      /\.docsera-main__source-editor \.cm-editor \.cm-content ::selection \{\s*background: color-mix\(in srgb, var\(--docsera-primary\) 22%, transparent\);\s*\}/
+    );
+    expect(source).toMatch(
+      /\.docsera-main__source-editor \.cm-editor \.cm-cursor,\s*\.docsera-main__source-editor \.cm-editor \.cm-dropCursor \{\s*border-left-color: var\(--docsera-document-text-color, var\(--docsera-text\)\);\s*\}/
+    );
+    expect(source).toMatch(
+      /\.docsera-main__source-editor \.cm-editor \.cm-selectionBackground,\s*\.docsera-main__source-editor \.cm-editor\.cm-focused \.cm-selectionBackground \{\s*background: color-mix\(in srgb, var\(--docsera-primary\) 22%, transparent\);\s*\}/
+    );
+  });
+
   it("renders a nested page title without an ancestor label above the title", () => {
     const rootPage = createPageView();
     rootPage.id = "page-root";

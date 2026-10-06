@@ -153,6 +153,17 @@ describe("WorkspaceToc", () => {
     );
   });
 
+  it("keeps one permanent ToC toggle position without mode-dependent modifiers", () => {
+    const envelope = createHeadingHierarchyDocseraDocumentEnvelope();
+    renderTocOnly(envelope);
+
+    expect(document.querySelector(".docsera-toc-rail")).not.toHaveClass("docsera-toc-rail--lower-toggle");
+    const runtimeShellCss = readRuntimeShellCss();
+    expect(runtimeShellCss).toMatch(/\.docsera-toc-rail__toggle\s*\{[^}]*top:\s*36px;/s);
+    expect(runtimeShellCss).not.toMatch(/docsera-toc-rail--lower-toggle/);
+    expect(runtimeShellCss).not.toMatch(/\.docsera-toc-rail__body\s*\{[^}]*top:\s*40px;/s);
+  });
+
   it("scrolls to the canonical heading anchor without mutating the workspace route", () => {
     const envelope = createDuplicateHeadingDocseraDocumentEnvelope();
     window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/overview?mode=edit");

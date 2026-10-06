@@ -212,6 +212,65 @@ describe("Docsera document envelope", () => {
     });
   });
 
+  it("preserves paragraph and heading center/right alignment through parse and serialize", () => {
+    const envelope = {
+      schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+      document: {
+        type: "doc" as const,
+        content: [
+          {
+            type: "paragraph",
+            attrs: { textAlign: "center" },
+            content: [{ type: "text", text: "Centered" }]
+          },
+          {
+            type: "heading",
+            attrs: { level: 2, textAlign: "right" },
+            content: [{ type: "text", text: "Right" }]
+          }
+        ]
+      }
+    };
+
+    const parsed = parseDocseraDocument(serializeDocseraDocument(envelope));
+
+    expect(parsed).toEqual({
+      ok: true,
+      envelope,
+      migratedLegacyDocument: false
+    });
+  });
+
+  it("keeps existing and explicit-left documents valid without persisting default alignment state", () => {
+    const parsed = parseDocseraDocument({
+      schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+      document: {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "No alignment" }] },
+          { type: "paragraph", attrs: { textAlign: "left" }, content: [{ type: "text", text: "Explicit left" }] },
+          { type: "heading", attrs: { level: 1, textAlign: "left" }, content: [{ type: "text", text: "Left heading" }] }
+        ]
+      }
+    });
+
+    expect(parsed).toEqual({
+      ok: true,
+      envelope: {
+        schemaVersion: DOCSERA_DOCUMENT_SCHEMA_VERSION,
+        document: {
+          type: "doc",
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "No alignment" }] },
+            { type: "paragraph", content: [{ type: "text", text: "Explicit left" }] },
+            { type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "Left heading" }] }
+          ]
+        }
+      },
+      migratedLegacyDocument: false
+    });
+  });
+
   it("canonicalizes empty headings by omitting empty content arrays", () => {
     const envelope = createEmptyHeadingDocseraDocumentEnvelope();
     const parsed = parseDocseraDocument(serializeDocseraDocument(envelope));

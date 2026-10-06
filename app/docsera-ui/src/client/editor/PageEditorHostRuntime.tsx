@@ -43,6 +43,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { CompactTextToolbar } from "./CompactTextToolbar";
 import { resolveToolbarMenuSurfaceStyle } from "./CompactTextToolbar";
 import { COMPACT_MENU_STYLES } from "./CompactMenuStyles";
+import { EditorHistoryControls } from "./EditorHistoryControls";
 import {
   DOCSERA_TOOLTIP_DELAY_MS,
   DOCSERA_TOOLTIP_STYLES,
@@ -144,6 +145,7 @@ type PageEditorHostRuntimeProps = {
     status: "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
   }) => void;
   mediaAdapter?: EditorMediaAdapter;
+  historyControlsMount?: HTMLElement | null;
   overlayRoot: HTMLElement;
   pageSysId: string;
   sessionKey?: string;
@@ -3148,6 +3150,7 @@ export function PageEditorHostRuntime({
   onEditorReady,
   onStatusChange,
   mediaAdapter,
+  historyControlsMount,
   overlayRoot,
   pageSysId,
   sessionKey = "",
@@ -5905,6 +5908,7 @@ export function PageEditorHostRuntime({
     }
   }, [editorExtensions]);
   const mountedEditor = editor && editorRef.current === editor && !editor.isDestroyed ? editor : null;
+  const historyControlsEditor = editor && !editor.isDestroyed ? editor : null;
 
   useEffect(() => {
     if (!editor || !isInteractionActive) {
@@ -6779,6 +6783,22 @@ export function PageEditorHostRuntime({
           --docsera-table-control-primary: #4648D4;
           --docsera-table-control-active-icon: var(--docsera-editor-panel);
           --docsera-editor-block-selection: color-mix(in srgb, var(--docsera-editor-primary) 7%, transparent);
+          --docsera-palette-gray-text: #475569;
+          --docsera-palette-red-text: #b42318;
+          --docsera-palette-orange-text: #b54708;
+          --docsera-palette-yellow-text: #8a6100;
+          --docsera-palette-green-text: #067647;
+          --docsera-palette-blue-text: #175cd3;
+          --docsera-palette-purple-text: #6941c6;
+          --docsera-palette-pink-text: #c11574;
+          --docsera-palette-gray-highlight: color-mix(in srgb, #cbd5e1 48%, transparent);
+          --docsera-palette-red-highlight: color-mix(in srgb, #fda29b 48%, transparent);
+          --docsera-palette-orange-highlight: color-mix(in srgb, #fdba74 48%, transparent);
+          --docsera-palette-yellow-highlight: color-mix(in srgb, #fde68a 58%, transparent);
+          --docsera-palette-green-highlight: color-mix(in srgb, #86efac 48%, transparent);
+          --docsera-palette-blue-highlight: color-mix(in srgb, #93c5fd 48%, transparent);
+          --docsera-palette-purple-highlight: color-mix(in srgb, #c4b5fd 48%, transparent);
+          --docsera-palette-pink-highlight: color-mix(in srgb, #f9a8d4 48%, transparent);
         }
         .docsera-editor-runtime--dark {
           --docsera-editor-muted: #a7b3c5;
@@ -6789,6 +6809,22 @@ export function PageEditorHostRuntime({
           --docsera-table-control-primary: #7C83FA;
           --docsera-table-control-active-icon: #ffffff;
           --docsera-editor-block-selection: color-mix(in srgb, var(--docsera-editor-primary) 12%, transparent);
+          --docsera-palette-gray-text: #cbd5e1;
+          --docsera-palette-red-text: #fda29b;
+          --docsera-palette-orange-text: #fdba74;
+          --docsera-palette-yellow-text: #fde68a;
+          --docsera-palette-green-text: #86efac;
+          --docsera-palette-blue-text: #93c5fd;
+          --docsera-palette-purple-text: #c4b5fd;
+          --docsera-palette-pink-text: #f9a8d4;
+          --docsera-palette-gray-highlight: color-mix(in srgb, #94a3b8 34%, transparent);
+          --docsera-palette-red-highlight: color-mix(in srgb, #b42318 46%, transparent);
+          --docsera-palette-orange-highlight: color-mix(in srgb, #b54708 46%, transparent);
+          --docsera-palette-yellow-highlight: color-mix(in srgb, #8a6100 52%, transparent);
+          --docsera-palette-green-highlight: color-mix(in srgb, #067647 46%, transparent);
+          --docsera-palette-blue-highlight: color-mix(in srgb, #175cd3 46%, transparent);
+          --docsera-palette-purple-highlight: color-mix(in srgb, #6941c6 46%, transparent);
+          --docsera-palette-pink-highlight: color-mix(in srgb, #c11574 46%, transparent);
         }
         .docsera-editor-runtime__surface {
           position: relative;
@@ -7210,6 +7246,57 @@ export function PageEditorHostRuntime({
           border-radius: 0.28em;
           background: var(--docsera-document-highlight-bg, color-mix(in srgb, #f6d84e 58%, var(--docsera-editor-panel)));
           color: inherit;
+        }
+        .docsera-editor-runtime__surface .ProseMirror mark[data-docsera-highlight-color] {
+          background: transparent;
+        }
+        .docsera-editor-runtime__surface .ProseMirror [data-docsera-text-color="gray"] {
+          color: var(--docsera-palette-gray-text);
+        }
+        .docsera-editor-runtime__surface .ProseMirror [data-docsera-text-color="red"] {
+          color: var(--docsera-palette-red-text);
+        }
+        .docsera-editor-runtime__surface .ProseMirror [data-docsera-text-color="orange"] {
+          color: var(--docsera-palette-orange-text);
+        }
+        .docsera-editor-runtime__surface .ProseMirror [data-docsera-text-color="yellow"] {
+          color: var(--docsera-palette-yellow-text);
+        }
+        .docsera-editor-runtime__surface .ProseMirror [data-docsera-text-color="green"] {
+          color: var(--docsera-palette-green-text);
+        }
+        .docsera-editor-runtime__surface .ProseMirror [data-docsera-text-color="blue"] {
+          color: var(--docsera-palette-blue-text);
+        }
+        .docsera-editor-runtime__surface .ProseMirror [data-docsera-text-color="purple"] {
+          color: var(--docsera-palette-purple-text);
+        }
+        .docsera-editor-runtime__surface .ProseMirror [data-docsera-text-color="pink"] {
+          color: var(--docsera-palette-pink-text);
+        }
+        .docsera-editor-runtime__surface .ProseMirror [data-docsera-highlight-color="gray"] {
+          background: var(--docsera-palette-gray-highlight);
+        }
+        .docsera-editor-runtime__surface .ProseMirror [data-docsera-highlight-color="red"] {
+          background: var(--docsera-palette-red-highlight);
+        }
+        .docsera-editor-runtime__surface .ProseMirror [data-docsera-highlight-color="orange"] {
+          background: var(--docsera-palette-orange-highlight);
+        }
+        .docsera-editor-runtime__surface .ProseMirror [data-docsera-highlight-color="yellow"] {
+          background: var(--docsera-palette-yellow-highlight);
+        }
+        .docsera-editor-runtime__surface .ProseMirror [data-docsera-highlight-color="green"] {
+          background: var(--docsera-palette-green-highlight);
+        }
+        .docsera-editor-runtime__surface .ProseMirror [data-docsera-highlight-color="blue"] {
+          background: var(--docsera-palette-blue-highlight);
+        }
+        .docsera-editor-runtime__surface .ProseMirror [data-docsera-highlight-color="purple"] {
+          background: var(--docsera-palette-purple-highlight);
+        }
+        .docsera-editor-runtime__surface .ProseMirror [data-docsera-highlight-color="pink"] {
+          background: var(--docsera-palette-pink-highlight);
         }
         .docsera-editor-runtime__surface .ProseMirror sup,
         .docsera-editor-runtime__surface .ProseMirror sub {
@@ -7680,6 +7767,24 @@ export function PageEditorHostRuntime({
         }}
       >
         <EditorContent editor={editor} />
+        {isInteractionActive && historyControlsEditor
+          ? historyControlsMount
+            ? createPortal(
+                <EditorHistoryControls
+                  canEdit={isEditable}
+                  editor={historyControlsEditor}
+                  ownerDocument={historyControlsMount.ownerDocument}
+                />,
+                historyControlsMount
+              )
+            : (
+                <EditorHistoryControls
+                  canEdit={isEditable}
+                  editor={historyControlsEditor}
+                  ownerDocument={overlayOwnerDocument}
+                />
+              )
+          : null}
         {createPortal(
           <div
             className={`docsera-editor-floating-layer ${overlayThemeClass}${blockDragState ? " docsera-editor-floating-layer--block-dragging" : ""}`}

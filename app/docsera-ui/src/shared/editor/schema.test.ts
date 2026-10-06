@@ -15,7 +15,12 @@ import {
   createSupportedE2DocseraDocumentEnvelope,
   createTaskCheckedStateDocseraDocumentEnvelope
 } from "./documentFixtures";
-import { getDocseraEditorSchema, isDocseraAllowedLinkHref, validateDocseraStructuredDocument } from "./schema";
+import {
+  canonicalizeDocseraStructuredDocument,
+  getDocseraEditorSchema,
+  isDocseraAllowedLinkHref,
+  validateDocseraStructuredDocument
+} from "./schema";
 
 function addActiveEditorTableDefaults<T extends Record<string, unknown>>(value: T): T {
   const cloned = JSON.parse(JSON.stringify(value)) as T;
@@ -848,7 +853,9 @@ describe("Docsera active accordion schema", () => {
     expect(schema.nodes.accordion?.spec.group).toBe("block");
     expect(schema.nodes.accordionItem?.spec.content).toBe("accordionTitle accordionContent");
     expect(schema.nodes.accordionTitle?.spec.content).toBe("text*");
-    expect(schema.nodes.accordionTitle?.spec.marks).toBe("bold italic strike code underline highlight superscript subscript");
+    expect(schema.nodes.accordionTitle?.spec.marks).toBe(
+      "bold italic strike code underline highlight textColor highlightColor superscript subscript"
+    );
     expect(schema.nodes.accordionContent?.spec.content).toBe(
       "((paragraph | heading | image | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock | table) | columns)+"
     );
@@ -864,7 +871,7 @@ describe("Docsera active accordion schema", () => {
     const schema = getDocseraEditorSchema();
     const node = schema.nodeFromJSON(document);
 
-    expect(node.toJSON()).toEqual(document);
+    expect(canonicalizeDocseraStructuredDocument(node.toJSON())).toEqual(canonicalizeDocseraStructuredDocument(document));
     expect(schema.nodes.doc.validContent(node.content)).toBe(true);
   });
 
@@ -1020,6 +1027,291 @@ describe("Docsera active accordion schema", () => {
             ]
           }
         ]
+      });
+    } finally {
+      editor.destroy();
+    }
+  });
+
+  it("registers semantic Docsera text and colored-highlight marks without changing default Highlight", () => {
+    const schema = getDocseraEditorSchema();
+
+    expect(schema.marks.highlight).toBeDefined();
+    expect(schema.marks.textColor).toBeDefined();
+    expect(schema.marks.highlightColor).toBeDefined();
+    expect(schema.marks.highlight?.spec.attrs).toBeUndefined();
+    expect(schema.marks.textColor?.spec.attrs).toHaveProperty("color");
+    expect(schema.marks.highlightColor?.spec.attrs).toHaveProperty("color");
+
+    const document = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "Styled",
+              marks: [
+                { type: "bold" },
+                { type: "textColor", attrs: { color: "blue" } },
+                { type: "highlightColor", attrs: { color: "yellow" } }
+              ]
+            },
+            {
+              type: "text",
+              text: " default highlight",
+              marks: [{ type: "highlight" }]
+            }
+          ]
+        },
+        {
+          type: "accordion",
+          attrs: { accordionId: "accordion-colors" },
+          content: [
+            {
+              type: "accordionItem",
+              attrs: { accordionItemId: "accordion-item-colors" },
+              content: [
+                {
+                  type: "accordionTitle",
+                  content: [
+                    {
+                      type: "text",
+                      text: "Title",
+                      marks: [{ type: "textColor", attrs: { color: "purple" } }]
+                    }
+                  ]
+                },
+                {
+                  type: "accordionContent",
+                  content: [{ type: "paragraph" }]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+
+    expect(validateDocseraStructuredDocument(document)).toEqual({ ok: true });
+    expect(canonicalizeDocseraStructuredDocument(schema.nodeFromJSON(document).toJSON())).toEqual(document);
+  });
+});
+
+describe("Docsera semantic color contract", () => {
+  it("round-trips constrained Docsera text and highlight colors without widening the canonical contract", () => {
+    const document = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "Color",
+              marks: [
+                { type: "textColor", attrs: { color: "blue" } },
+                { type: "highlightColor", attrs: { color: "yellow" } },
+                { type: "underline" }
+              ]
+            },
+            {
+              type: "text",
+              text: " default",
+              marks: [{ type: "highlight" }]
+            }
+          ]
+        }
+      ]
+    };
+
+    expect(validateDocseraStructuredDocument(document)).toEqual({ ok: true });
+    expect(canonicalizeDocseraStructuredDocument(document)).toEqual(document);
+
+    for (const mark of [
+      { type: "textColor" },
+      { type: "textColor", attrs: {} },
+      { type: "textColor", attrs: { color: "teal" } },
+      { type: "textColor", attrs: { color: "#175cd3" } },
+      { type: "textColor", attrs: { color: "rgb(23, 92, 211)" } },
+      { type: "textColor", attrs: { color: "blue", style: "color:red" } },
+      { type: "highlightColor", attrs: { color: "var(--docsera-primary)" } },
+      { type: "highlight", attrs: { color: "yellow" } }
+    ]) {
+      expect(
+        validateDocseraStructuredDocument({
+          type: "doc",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Invalid", marks: [mark] }] }]
+        }).ok
+      ).toBe(false);
+    }
+
+    expect(
+      validateDocseraStructuredDocument({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [
+              {
+                type: "text",
+                text: "Overlap",
+                marks: [{ type: "highlight" }, { type: "highlightColor", attrs: { color: "pink" } }]
+              }
+            ]
+          }
+        ]
+      }).ok
+    ).toBe(false);
+  });
+});
+
+describe("Docsera paragraph and heading alignment contract", () => {
+  it("registers TextAlign only on paragraph and heading nodes", () => {
+    const schema = getDocseraEditorSchema();
+
+    expect(schema.nodes.paragraph?.spec.attrs).toHaveProperty("textAlign");
+    expect(schema.nodes.heading?.spec.attrs).toHaveProperty("textAlign");
+    expect(schema.nodes.tableCell?.spec.attrs).toHaveProperty("align");
+    expect(schema.nodes.tableCell?.spec.attrs).not.toHaveProperty("textAlign");
+    expect(schema.nodes.blockquote?.spec.attrs ?? {}).not.toHaveProperty("textAlign");
+    expect(schema.nodes.codeBlock?.spec.attrs ?? {}).not.toHaveProperty("textAlign");
+  });
+
+  it("round-trips center and right alignment while normalizing default left away", () => {
+    const schema = getDocseraEditorSchema();
+    const alignedDocument = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: { textAlign: "center" },
+          content: [{ type: "text", text: "Centered paragraph" }]
+        },
+        {
+          type: "heading",
+          attrs: { level: 2, textAlign: "right" },
+          content: [{ type: "text", text: "Right heading" }]
+        }
+      ]
+    };
+    const leftDocument = {
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          attrs: { textAlign: "left" },
+          content: [{ type: "text", text: "Left paragraph" }]
+        },
+        {
+          type: "heading",
+          attrs: { level: 3, textAlign: "left" },
+          content: [{ type: "text", text: "Left heading" }]
+        }
+      ]
+    };
+
+    expect(validateDocseraStructuredDocument(alignedDocument)).toEqual({ ok: true });
+    expect(canonicalizeDocseraStructuredDocument(alignedDocument)).toEqual(alignedDocument);
+    expect(schema.nodeFromJSON(alignedDocument).toJSON()).toEqual(alignedDocument);
+
+    expect(validateDocseraStructuredDocument(leftDocument)).toEqual({ ok: true });
+    expect(canonicalizeDocseraStructuredDocument(leftDocument)).toEqual({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Left paragraph" }]
+        },
+        {
+          type: "heading",
+          attrs: { level: 3 },
+          content: [{ type: "text", text: "Left heading" }]
+        }
+      ]
+    });
+  });
+
+  it("rejects unsupported paragraph and heading alignment values and attrs on unsupported nodes", () => {
+    for (const attrs of [
+      { textAlign: "justify" },
+      { textAlign: "start" },
+      { textAlign: "center", class: "extra" }
+    ]) {
+      expect(validateDocseraStructuredDocument({
+        type: "doc",
+        content: [{ type: "paragraph", attrs, content: [{ type: "text", text: "Invalid" }] }]
+      }).ok).toBe(false);
+    }
+
+    expect(validateDocseraStructuredDocument({
+      type: "doc",
+      content: [{ type: "heading", attrs: { level: 2, textAlign: "justify" }, content: [{ type: "text", text: "Invalid" }] }]
+    }).ok).toBe(false);
+
+    expect(validateDocseraStructuredDocument({
+      type: "doc",
+      content: [{ type: "blockquote", attrs: { textAlign: "center" }, content: [{ type: "paragraph" }] }]
+    }).ok).toBe(false);
+
+    expect(validateDocseraStructuredDocument({
+      type: "doc",
+      content: [{ type: "tableCell", attrs: { colspan: 1, rowspan: 1, colwidth: null, textAlign: "right" }, content: [{ type: "paragraph" }] }]
+    }).ok).toBe(false);
+  });
+
+  it("uses direct TipTap text-alignment commands on supported paragraph and heading nodes only", async () => {
+    const { Editor } = await import("@tiptap/core");
+    const { createDocseraEditorExtensions } = await import("./schema");
+    const editor = new Editor({
+      element: document.createElement("div"),
+      extensions: createDocseraEditorExtensions(),
+      content: {
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Paragraph" }] },
+          { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Heading" }] },
+          { type: "codeBlock", attrs: { language: null }, content: [{ type: "text", text: "Code" }] }
+        ]
+      }
+    });
+
+    try {
+      editor.commands.setTextSelection(2);
+      expect(editor.commands.setTextAlign("center")).toBe(true);
+
+      let headingPosition = 0;
+      let codePosition = 0;
+      editor.state.doc.descendants((node, pos) => {
+        if (node.type.name === "heading") {
+          headingPosition = pos + 1;
+        }
+        if (node.type.name === "codeBlock") {
+          codePosition = pos + 1;
+        }
+      });
+
+      editor.commands.setTextSelection(headingPosition);
+      expect(editor.commands.setTextAlign("right")).toBe(true);
+      editor.commands.setTextSelection(codePosition);
+      expect(editor.commands.setTextAlign("center")).toBe(false);
+      expect(editor.commands.setTextAlign("justify")).toBe(false);
+
+      expect(editor.getJSON()).toEqual({
+        type: "doc",
+        content: [
+          { type: "paragraph", attrs: { textAlign: "center" }, content: [{ type: "text", text: "Paragraph" }] },
+          { type: "heading", attrs: { level: 2, textAlign: "right" }, content: [{ type: "text", text: "Heading" }] },
+          { type: "codeBlock", attrs: { language: null }, content: [{ type: "text", text: "Code" }] }
+        ]
+      });
+
+      editor.commands.setTextSelection(2);
+      expect(editor.commands.setTextAlign("left")).toBe(true);
+      expect(canonicalizeDocseraStructuredDocument(editor.getJSON()).content?.[0]).toEqual({
+        type: "paragraph",
+        content: [{ type: "text", text: "Paragraph" }]
       });
     } finally {
       editor.destroy();

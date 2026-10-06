@@ -19,6 +19,11 @@ import {
   validateDocseraImageAttrs,
   type DocseraImageAlignment
 } from "../../server/pages/serverImageContract";
+import {
+  isDocseraNonDefaultTextAlignment,
+  isDocseraPaletteKey,
+  isDocseraTextAlignment
+} from "../../server/editor/colorContract";
 
 type RecordValue = Record<string, unknown>;
 
@@ -70,12 +75,13 @@ export type ParseDocseraMarkdownResult =
 const DOCSERA_DEFAULT_LINK_TARGET = "_blank";
 const DOCSERA_DEFAULT_LINK_REL = "noopener noreferrer nofollow";
 const DOCSERA_ALLOWED_ORDERED_LIST_TYPES = new Set(["1", "a", "A", "i", "I"]);
-const DOCSERA_ALLOWED_HTML_TAGS = new Set(["u", "mark", "sup", "sub", "a"]);
+const DOCSERA_ALLOWED_HTML_TAGS = new Set(["u", "mark", "sup", "sub", "a", "span"]);
 const DOCSERA_ALLOWED_TABLE_CELL_ALIGNMENTS = new Set(["left", "center", "right"]);
 const DOCSERA_DIRECTIVE_NAMES = new Set([
   "docsera-empty-document",
   "docsera-empty-paragraph",
   "docsera-image",
+  "docsera-text-align",
   "docsera-ordered-list",
   "docsera-accordion",
   "docsera-accordion-item",
@@ -397,6 +403,22 @@ function serializeInlineText(text: string, marks: MarkdownInlineMark[] = []): st
       case "highlight":
         rendered = `<mark>${rendered}</mark>`;
         break;
+      case "textColor": {
+        const color = isRecord(mark.attrs) ? mark.attrs.color : null;
+        if (!isDocseraPaletteKey(color)) {
+          throw new TypeError("Unsupported Docsera text color.");
+        }
+        rendered = `<span data-docsera-text-color=${serializeHtmlAttrValue(color)}>${rendered}</span>`;
+        break;
+      }
+      case "highlightColor": {
+        const color = isRecord(mark.attrs) ? mark.attrs.color : null;
+        if (!isDocseraPaletteKey(color)) {
+          throw new TypeError("Unsupported Docsera highlight color.");
+        }
+        rendered = `<mark data-docsera-highlight-color=${serializeHtmlAttrValue(color)}>${rendered}</mark>`;
+        break;
+      }
       case "superscript":
         rendered = `<sup>${rendered}</sup>`;
         break;
@@ -539,6 +561,11 @@ function isLosslessMarkdownTable(documentNode: RecordValue): boolean {
         return false;
       }
 
+      const paragraphAttrs = isRecord(paragraph.attrs) ? paragraph.attrs : {};
+      if (isDocseraNonDefaultTextAlignment(paragraphAttrs.textAlign)) {
+        return false;
+      }
+
       for (const child of paragraph.content) {
         if (!isRecord(child) || child.type !== "text" || typeof child.text !== "string") {
           return false;
@@ -644,17 +671,32 @@ function serializeBlockNode(node: unknown, orderedDepth = 0): string {
   }
 
   switch (node.type) {
-    case "paragraph":
-      if (!Array.isArray(node.content) || node.content.length === 0) {
-        return createLeafDirective("docsera-empty-paragraph", {});
-      }
-      return (() => {
+    case "paragraph": {
+      const attrs = isRecord(node.attrs) ? node.attrs : {};
+      const paragraphMarkdown = !Array.isArray(node.content) || node.content.length === 0
+        ? createLeafDirective("docsera-empty-paragraph", {})
+        : (() => {
         const rendered = serializeInlineContent(node.content);
         const htmlSafeRendered = rendered.startsWith("<") ? ` ${rendered}` : rendered;
         return /^:{2,}docsera-/.test(htmlSafeRendered) ? `\\${htmlSafeRendered}` : htmlSafeRendered;
       })();
-    case "heading":
-      return `${"#".repeat(Number(isRecord(node.attrs) ? node.attrs.level : 1))} ${serializeInlineContent(node.content as unknown[] | undefined)}`;
+      return isDocseraNonDefaultTextAlignment(attrs.textAlign)
+        ? createContainerDirective(
+            `docsera-text-align${serializeDirectiveAttributes({ align: attrs.textAlign })}`,
+            paragraphMarkdown
+          )
+        : paragraphMarkdown;
+    }
+    case "heading": {
+      const attrs = isRecord(node.attrs) ? node.attrs : {};
+      const headingMarkdown = `${"#".repeat(Number(attrs.level ?? 1))} ${serializeInlineContent(node.content as unknown[] | undefined)}`;
+      return isDocseraNonDefaultTextAlignment(attrs.textAlign)
+        ? createContainerDirective(
+            `docsera-text-align${serializeDirectiveAttributes({ align: attrs.textAlign })}`,
+            headingMarkdown
+          )
+        : headingMarkdown;
+    }
     case "bulletList":
       return (Array.isArray(node.content) ? node.content : [])
         .map((item) => `* ${serializeListItemContent((item as RecordValue).content as unknown[] | undefined, orderedDepth)}`)
@@ -909,6 +951,21 @@ function parseLinkAttrs(attrs: Record<string, string | null>): LinkAttrs | Docse
   };
 }
 
+function parseDocseraColorAttrs(
+  attrs: Record<string, string | null>,
+  attributeName: "data-docsera-text-color" | "data-docsera-highlight-color"
+): { color: string } | DocseraMarkdownConversionFailure {
+  const keys = Object.keys(attrs);
+  if (keys.length !== 1 || keys[0] !== attributeName) {
+    return createFailure("unsupported-html", `Inline HTML color tags must provide exactly ${attributeName}.`);
+  }
+
+  const color = attrs[attributeName];
+  return isDocseraPaletteKey(color)
+    ? { color }
+    : createFailure("invalid-markdown", "Docsera color values must use an accepted palette key.");
+}
+
 function parsePhrasing(nodes: unknown[] | undefined): CanonicalNode[] | DocseraMarkdownConversionFailure {
   const result: CanonicalNode[] = [];
   const activeMarks: MarkdownInlineMark[] = [];
@@ -985,15 +1042,21 @@ function parsePhrasing(nodes: unknown[] | undefined): CanonicalNode[] | DocseraM
           const expectedType =
             parsedTag.name === "a"
               ? "link"
+              : parsedTag.name === "span"
+                ? "textColor"
               : parsedTag.name === "u"
                 ? "underline"
                 : parsedTag.name === "mark"
-                  ? "highlight"
+                  ? "highlightOrHighlightColor"
                   : parsedTag.name === "sup"
                     ? "superscript"
                     : "subscript";
           const current = activeMarks.pop();
-          if (!current || current.type !== expectedType) {
+          const currentMatches =
+            expectedType === "highlightOrHighlightColor"
+              ? current?.type === "highlight" || current?.type === "highlightColor"
+              : current?.type === expectedType;
+          if (!currentMatches) {
             throw createFailure("unsupported-html", "Inline HTML nesting is malformed.");
           }
           return;
@@ -1005,6 +1068,24 @@ function parsePhrasing(nodes: unknown[] | undefined): CanonicalNode[] | DocseraM
             throw linkAttrs;
           }
           activeMarks.push({ type: "link", attrs: linkAttrs });
+          return;
+        }
+
+        if (parsedTag.name === "span") {
+          const attrs = parseDocseraColorAttrs(parsedTag.attrs, "data-docsera-text-color");
+          if (isFailure(attrs)) {
+            throw attrs;
+          }
+          activeMarks.push({ type: "textColor", attrs });
+          return;
+        }
+
+        if (parsedTag.name === "mark" && Object.keys(parsedTag.attrs).length > 0) {
+          const attrs = parseDocseraColorAttrs(parsedTag.attrs, "data-docsera-highlight-color");
+          if (isFailure(attrs)) {
+            throw attrs;
+          }
+          activeMarks.push({ type: "highlightColor", attrs });
           return;
         }
 
@@ -1404,6 +1485,31 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
       case "containerDirective": {
         if (typeof node.name !== "string" || !DOCSERA_DIRECTIVE_NAMES.has(node.name)) {
           return createFailure("unknown-directive", "Markdown contains an unknown Docsera directive.");
+        }
+
+        if (node.name === "docsera-text-align") {
+          const attrs = parseDirectiveAttributes(node, ["align"]);
+          if (isFailure(attrs)) {
+            return attrs;
+          }
+          if (!isDocseraTextAlignment(attrs.align)) {
+            return createFailure("invalid-directive", "docsera-text-align align must be left, center, or right.");
+          }
+          const content = parseDirectiveBody(node, false, sourceText);
+          if (isFailure(content)) {
+            return content;
+          }
+          if (content.length !== 1 || (content[0].type !== "paragraph" && content[0].type !== "heading")) {
+            return createFailure("invalid-directive", "docsera-text-align must wrap exactly one paragraph or heading.");
+          }
+          const alignedNode = cloneJson(content[0]);
+          const alignedAttrs = isRecord(alignedNode.attrs) ? alignedNode.attrs : {};
+          alignedNode.attrs = {
+            ...alignedAttrs,
+            textAlign: attrs.align
+          };
+          result.push(alignedNode);
+          break;
         }
 
         if (node.name === "docsera-ordered-list") {

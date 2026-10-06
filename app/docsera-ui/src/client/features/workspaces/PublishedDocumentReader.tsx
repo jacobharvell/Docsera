@@ -13,6 +13,7 @@ import {
   isDocseraAllowedLinkHref,
   validateDocseraStructuredDocument
 } from "../../../server/pages/serverEditorDocument";
+import { isDocseraNonDefaultTextAlignment, isDocseraPaletteKey } from "../../../server/editor/colorContract";
 import type { WorkspaceMediaLoader } from "../../shared/types/docsera";
 
 type PublishedDocumentReaderProps = {
@@ -142,6 +143,11 @@ function getImageFigureClassName(attrs: DocseraImageAttrs): string {
     attrs.frame ? "docsera-main__media--framed" : "docsera-main__media--plain",
     `docsera-main__media--align-${attrs.align}`
   ].join(" ");
+}
+
+function getTextAlignmentStyle(node: Record<string, unknown>): CSSProperties | undefined {
+  const attrs = getNodeAttrs(node);
+  return isDocseraNonDefaultTextAlignment(attrs.textAlign) ? { textAlign: attrs.textAlign } : undefined;
 }
 
 function renderImageUnavailable(path: string, attrs: DocseraImageAttrs): ReactNode {
@@ -333,6 +339,38 @@ function renderMark(child: ReactNode, mark: unknown, path: string): ReactNode {
           {child}
         </mark>
       );
+    case "textColor": {
+      const attrs = getNodeAttrs(mark);
+      if (!isDocseraPaletteKey(attrs.color)) {
+        throw new Error("The published page content contains an unsupported text color.");
+      }
+
+      return (
+        <span
+          key={`${path}-text-color`}
+          className="docsera-main__text-color"
+          data-docsera-text-color={attrs.color}
+        >
+          {child}
+        </span>
+      );
+    }
+    case "highlightColor": {
+      const attrs = getNodeAttrs(mark);
+      if (!isDocseraPaletteKey(attrs.color)) {
+        throw new Error("The published page content contains an unsupported highlight color.");
+      }
+
+      return (
+        <mark
+          key={`${path}-highlight-color`}
+          className="docsera-main__highlight-color"
+          data-docsera-highlight-color={attrs.color}
+        >
+          {child}
+        </mark>
+      );
+    }
     case "code":
       return (
         <code key={`${path}-code`} className="docsera-main__inline-code">
@@ -412,7 +450,7 @@ function renderBlockChildren(content: unknown[], path: string, context: ReaderCo
 
 function renderParagraph(node: Record<string, unknown>, path: string): ReactNode {
   return (
-    <p key={path} className="docsera-main__body">
+    <p key={path} className="docsera-main__body" style={getTextAlignmentStyle(node)}>
       {renderInlineContent(getNodeContent(node, true), `${path}-inline`)}
     </p>
   );
@@ -427,7 +465,7 @@ function renderHeading(node: Record<string, unknown>, path: string, context: Rea
   const title = extractCanonicalHeadingText(node);
   if (!title) {
     const EmptyHeadingTag = getReaderHeadingTag(level);
-    return <EmptyHeadingTag key={path} className={getReaderHeadingClassName(level)} />;
+    return <EmptyHeadingTag key={path} className={getReaderHeadingClassName(level)} style={getTextAlignmentStyle(node)} />;
   }
 
   const id = context.resolveHeadingAnchor(title);
@@ -435,7 +473,7 @@ function renderHeading(node: Record<string, unknown>, path: string, context: Rea
   const className = getReaderHeadingClassName(level);
 
   return (
-    <HeadingTag key={path} id={id} className={className}>
+    <HeadingTag key={path} id={id} className={className} style={getTextAlignmentStyle(node)}>
       {renderInlineContent(getNodeContent(node, true), `${path}-inline`)}
     </HeadingTag>
   );

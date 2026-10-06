@@ -6,9 +6,10 @@ import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "re
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject } from "react";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
 import { findWrapping, liftTarget } from "@tiptap/pm/transform";
-import { Bold, Code2, Copy, ExternalLink, Heading1, Heading2, Heading3, Italic, Link2, List, ListOrdered, Strikethrough, Trash2, Underline } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, Bold, Code2, Copy, ExternalLink, Heading1, Heading2, Heading3, Italic, Link2, List, ListOrdered, Pilcrow, Quote, Strikethrough, Subscript, Superscript, Trash2, Underline } from "lucide-react";
 import { DocseraIcon } from "../shared/icons/DocseraIcon";
 import { docseraIcons } from "../shared/icons/docseraIcons";
+import { DOCSERA_PALETTE_KEYS, isDocseraPaletteKey, type DocseraPaletteKey } from "../../server/editor/colorContract";
 import { isDocseraAllowedLinkHref } from "../../shared/editor/schema";
 import { COMPACT_MENU_STYLES } from "./CompactMenuStyles";
 import {
@@ -19,9 +20,12 @@ import {
   sameFloatingStyle
 } from "./DocseraTooltip";
 
-type ToolbarMenuId = "blockType" | "more";
-type ToolbarBlockTypeId = "text" | "heading1" | "heading2" | "heading3" | "bulletedList" | "numberedList";
-type ToolbarMoreItemId = "blockquote" | "superscript" | "subscript" | "highlight";
+type ToolbarMenuId = "blockType" | "color" | "more";
+type ToolbarBlockTypeId = "text" | "heading1" | "heading2" | "heading3" | "blockquote" | "bulletedList" | "numberedList";
+type ToolbarMoreItemId = "superscript" | "subscript";
+type ToolbarAlignmentChoice = "left" | "center" | "right";
+type TextColorChoice = "default" | DocseraPaletteKey;
+type HighlightColorChoice = "none" | "default" | DocseraPaletteKey;
 
 type ToolbarSelectionSnapshot = {
   from: number;
@@ -73,6 +77,7 @@ const POPOVER_GAP = 10;
 const TOOLBAR_MENU_GAP = 4;
 const TOOLBAR_MENU_TARGET_WIDTH = 170;
 const TOOLBAR_MENU_MAX_WIDTH = 256;
+export const COLOR_MENU_WIDTH = 178;
 const LINK_MENU_CREATE_WIDTH = 324;
 const LINK_MENU_EDIT_WIDTH = 388;
 
@@ -81,15 +86,15 @@ const BLOCK_TYPE_MENU_ITEMS: Array<{ id: ToolbarBlockTypeId; label: string }> = 
   { id: "heading1", label: "Heading 1" },
   { id: "heading2", label: "Heading 2" },
   { id: "heading3", label: "Heading 3" },
+  { id: "blockquote", label: "Blockquote" },
   { id: "bulletedList", label: "Unordered List" },
   { id: "numberedList", label: "Numbered List" }
 ];
 
-const MORE_MENU_ITEMS: Array<{ id: ToolbarMoreItemId; label: string }> = [
-  { id: "blockquote", label: "Blockquote" },
-  { id: "superscript", label: "Superscript" },
-  { id: "subscript", label: "Subscript" },
-  { id: "highlight", label: "Highlight" }
+const ALIGNMENT_MENU_ITEMS: Array<{ id: ToolbarAlignmentChoice; label: string }> = [
+  { id: "left", label: "Left" },
+  { id: "center", label: "Center" },
+  { id: "right", label: "Right" }
 ];
 
 const TOOLBAR_SHORTCUTS: Record<string, string> = {
@@ -351,6 +356,45 @@ export function resolveToolbarMenuSurfaceStyle(
   };
 }
 
+export function resolveSecondaryToolbarSurfaceStyle(
+  ownerDocument: Document,
+  toolbarRect: DOMRect,
+  surfaceRect: Pick<DOMRect, "height" | "width">
+): CSSProperties {
+  const ownerWindow = ownerDocument.defaultView;
+  const viewportWidth = ownerWindow?.innerWidth ?? ownerDocument.documentElement.clientWidth;
+  const viewportHeight = ownerWindow?.innerHeight ?? ownerDocument.documentElement.clientHeight;
+  const maxSurfaceWidth = Math.max(1, viewportWidth - VIEWPORT_GUTTER * 2);
+  const maxSurfaceHeight = Math.max(1, viewportHeight - VIEWPORT_GUTTER * 2);
+  const clampedWidth = Math.max(1, Math.min(surfaceRect.width, maxSurfaceWidth));
+  const clampedHeight = Math.max(1, Math.min(surfaceRect.height, maxSurfaceHeight));
+  const anchoredLeft = toolbarRect.right - clampedWidth;
+  const left = clamp(
+    anchoredLeft,
+    VIEWPORT_GUTTER,
+    Math.max(VIEWPORT_GUTTER, viewportWidth - clampedWidth - VIEWPORT_GUTTER)
+  );
+  const aboveTop = toolbarRect.top - clampedHeight - TOOLBAR_MENU_GAP;
+  const belowTop = toolbarRect.bottom + TOOLBAR_MENU_GAP;
+  const top =
+    aboveTop >= VIEWPORT_GUTTER
+      ? aboveTop
+      : clamp(
+          belowTop,
+          VIEWPORT_GUTTER,
+          Math.max(VIEWPORT_GUTTER, viewportHeight - clampedHeight - VIEWPORT_GUTTER)
+        );
+
+  return {
+    position: "fixed",
+    left: `${left}px`,
+    top: `${top}px`,
+    maxWidth: `${maxSurfaceWidth}px`,
+    maxHeight: `${maxSurfaceHeight}px`,
+    ...(surfaceRect.width > maxSurfaceWidth ? { width: `${maxSurfaceWidth}px` } : {})
+  };
+}
+
 export function getToolbarBlockTypeLabel(blockType: ToolbarBlockTypeId): string {
   switch (blockType) {
     case "heading1":
@@ -359,6 +403,8 @@ export function getToolbarBlockTypeLabel(blockType: ToolbarBlockTypeId): string 
       return "Heading 2";
     case "heading3":
       return "Heading 3";
+    case "blockquote":
+      return "Blockquote";
     case "bulletedList":
       return "Unordered List";
     case "numberedList":
@@ -377,6 +423,10 @@ export function getToolbarBlockType(editor: Editor): ToolbarBlockTypeId {
 
   for (let depth = selection.$from.depth; depth >= 0; depth -= 1) {
     const node = selection.$from.node(depth);
+    if (node.type.name === "blockquote") {
+      return "blockquote";
+    }
+
     if (node.type.name === "heading") {
       switch (node.attrs.level) {
         case 1:
@@ -425,8 +475,11 @@ export function applyToolbarBlockTypeCommand(editor: Editor, target: ToolbarBloc
       const headingType = schema.nodes.heading;
       const bulletListType = schema.nodes.bulletList;
       const orderedListType = schema.nodes.orderedList;
+      const blockquoteType = schema.nodes.blockquote;
       const currentIsList = current === "bulletedList" || current === "numberedList";
       const targetIsList = target === "bulletedList" || target === "numberedList";
+      const currentIsBlockquote = current === "blockquote";
+      const targetIsBlockquote = target === "blockquote";
       const targetListType = target === "bulletedList" ? bulletListType : orderedListType;
       const targetAttrs = target === "heading1" ? { level: 1 } : target === "heading2" ? { level: 2 } : target === "heading3" ? { level: 3 } : {};
 
@@ -457,6 +510,32 @@ export function applyToolbarBlockTypeCommand(editor: Editor, target: ToolbarBloc
           })()
         : null;
 
+      function liftCurrentBlockquote() {
+        const blockquoteRange = tr.selection.$from.blockRange(tr.selection.$to, (node) => node.type === blockquoteType);
+        const targetLift = blockquoteRange ? liftTarget(blockquoteRange) : null;
+        if (!blockquoteRange || targetLift == null) {
+          return false;
+        }
+
+        tr.lift(blockquoteRange, targetLift);
+        return true;
+      }
+
+      function wrapSelectionInBlockquote() {
+        const wrappedRange = tr.selection.$from.blockRange(tr.selection.$to);
+        if (!wrappedRange) {
+          return false;
+        }
+
+        const wrappers = findWrapping(wrappedRange, blockquoteType);
+        if (!wrappers) {
+          return false;
+        }
+
+        tr.wrap(wrappedRange, wrappers);
+        return true;
+      }
+
       if (currentIsList && listNode) {
         if (targetIsList) {
           tr.setNodeMarkup(listNode.pos, targetListType);
@@ -470,7 +549,40 @@ export function applyToolbarBlockTypeCommand(editor: Editor, target: ToolbarBloc
         }
 
         tr.lift(range, targetLift);
-        if (target === "text") {
+        if (targetIsBlockquote) {
+          setTextblockTypeFromSelection(paragraphType);
+          if (!wrapSelectionInBlockquote()) {
+            return false;
+          }
+        } else if (target === "text") {
+          setTextblockTypeFromSelection(paragraphType);
+        } else {
+          setTextblockTypeFromSelection(headingType, targetAttrs);
+        }
+
+        applied = true;
+        return true;
+      }
+
+      if (currentIsBlockquote) {
+        if (!liftCurrentBlockquote()) {
+          return false;
+        }
+
+        if (targetIsList) {
+          setTextblockTypeFromSelection(paragraphType);
+          const wrappedRange = tr.selection.$from.blockRange(tr.selection.$to);
+          if (!wrappedRange) {
+            return false;
+          }
+
+          const wrappers = findWrapping(wrappedRange, targetListType);
+          if (!wrappers) {
+            return false;
+          }
+
+          tr.wrap(wrappedRange, wrappers);
+        } else if (target === "text") {
           setTextblockTypeFromSelection(paragraphType);
         } else {
           setTextblockTypeFromSelection(headingType, targetAttrs);
@@ -493,6 +605,16 @@ export function applyToolbarBlockTypeCommand(editor: Editor, target: ToolbarBloc
         }
 
         tr.wrap(wrappedRange, wrappers);
+        applied = true;
+        return true;
+      }
+
+      if (targetIsBlockquote) {
+        setTextblockTypeFromSelection(paragraphType);
+        if (!wrapSelectionInBlockquote()) {
+          return false;
+        }
+
         applied = true;
         return true;
       }
@@ -529,10 +651,6 @@ export function getToolbarMarkState(editor: Editor) {
 
 function toggleUnderlineMark(editor: Editor) {
   return editor.chain().focus(undefined, { scrollIntoView: false }).toggleUnderline().run();
-}
-
-function toggleHighlightMark(editor: Editor) {
-  return editor.chain().focus(undefined, { scrollIntoView: false }).toggleHighlight().run();
 }
 
 function toggleSuperscriptMark(editor: Editor) {
@@ -695,29 +813,215 @@ function buildSelectionSnapshot(editor: Editor): ToolbarSelectionSnapshot | null
   return getToolbarSelectionSnapshot(editor);
 }
 
+function getUniformSelectionMarkAttrs(editor: Editor, markName: "highlight" | "highlightColor" | "textColor"): Record<string, unknown> | null | "mixed" {
+  const { selection, doc, schema } = editor.state;
+  const markType = schema.marks[markName];
+  if (!markType || !isTextSelection(selection) || selection.empty) {
+    return null;
+  }
+
+  let sawText = false;
+  let uniformAttrs: Record<string, unknown> | null | undefined;
+
+  doc.nodesBetween(selection.from, selection.to, (node) => {
+    if (!node.isText) {
+      return;
+    }
+
+    sawText = true;
+    const mark = node.marks.find((candidate) => candidate.type === markType) ?? null;
+    const attrs = mark?.attrs ?? null;
+    if (uniformAttrs === undefined) {
+      uniformAttrs = attrs;
+      return;
+    }
+
+    if (JSON.stringify(uniformAttrs) !== JSON.stringify(attrs)) {
+      uniformAttrs = "mixed" as never;
+    }
+  });
+
+  if (!sawText || uniformAttrs === undefined) {
+    return null;
+  }
+
+  return uniformAttrs as Record<string, unknown> | null | "mixed";
+}
+
+function getUniformTextColorChoice(editor: Editor): TextColorChoice | null | "mixed" {
+  const attrs = getUniformSelectionMarkAttrs(editor, "textColor");
+  if (attrs === "mixed") {
+    return "mixed";
+  }
+
+  if (!attrs) {
+    return "default";
+  }
+
+  return isDocseraPaletteKey(attrs.color) ? attrs.color : "mixed";
+}
+
+function getUniformHighlightColorChoice(editor: Editor): HighlightColorChoice | null | "mixed" {
+  const highlightAttrs = getUniformSelectionMarkAttrs(editor, "highlight");
+  const highlightColorAttrs = getUniformSelectionMarkAttrs(editor, "highlightColor");
+  if (highlightAttrs === "mixed" || highlightColorAttrs === "mixed") {
+    return "mixed";
+  }
+
+  if (highlightAttrs && highlightColorAttrs) {
+    return "mixed";
+  }
+
+  if (highlightColorAttrs) {
+    return isDocseraPaletteKey(highlightColorAttrs.color) ? highlightColorAttrs.color : "mixed";
+  }
+
+  return highlightAttrs ? "default" : "none";
+}
+
+function applyTextColorChoice(editor: Editor, choice: TextColorChoice): boolean {
+  if (getUniformTextColorChoice(editor) === choice) {
+    return true;
+  }
+
+  const { selection, schema } = editor.state;
+  const markType = schema.marks.textColor;
+  if (!markType || !isTextSelection(selection) || selection.empty) {
+    return false;
+  }
+
+  const tr = editor.state.tr.removeMark(selection.from, selection.to, markType);
+  if (choice !== "default") {
+    tr.addMark(selection.from, selection.to, markType.create({ color: choice }));
+  }
+
+  editor.view.dispatch(tr.scrollIntoView());
+  return true;
+}
+
+function applyHighlightColorChoice(editor: Editor, choice: HighlightColorChoice): boolean {
+  if (getUniformHighlightColorChoice(editor) === choice) {
+    return true;
+  }
+
+  const { selection, schema } = editor.state;
+  const highlightType = schema.marks.highlight;
+  const highlightColorType = schema.marks.highlightColor;
+  if (!highlightType || !highlightColorType || !isTextSelection(selection) || selection.empty) {
+    return false;
+  }
+
+  const tr = editor.state.tr
+    .removeMark(selection.from, selection.to, highlightType)
+    .removeMark(selection.from, selection.to, highlightColorType);
+
+  if (choice === "default") {
+    tr.addMark(selection.from, selection.to, highlightType.create());
+  } else if (choice !== "none") {
+    tr.addMark(selection.from, selection.to, highlightColorType.create({ color: choice }));
+  }
+
+  editor.view.dispatch(tr.scrollIntoView());
+  return true;
+}
+
+function getNodeTextAlignChoice(value: unknown): ToolbarAlignmentChoice {
+  return value === "center" || value === "right" ? value : "left";
+}
+
+function getUniformSelectionAlignmentChoice(editor: Editor): ToolbarAlignmentChoice | null | "mixed" {
+  const { selection, doc } = editor.state;
+  if (!isTextSelection(selection) || selection.empty) {
+    return null;
+  }
+
+  let sawSupportedBlock = false;
+  let uniformChoice: ToolbarAlignmentChoice | "mixed" | null = null;
+
+  doc.nodesBetween(selection.from, selection.to, (node) => {
+    if (node.type.name !== "paragraph" && node.type.name !== "heading") {
+      return true;
+    }
+
+    const choice = getNodeTextAlignChoice(node.attrs.textAlign);
+    sawSupportedBlock = true;
+    if (uniformChoice === null) {
+      uniformChoice = choice;
+      return false;
+    }
+
+    if (uniformChoice !== choice) {
+      uniformChoice = "mixed";
+      return false;
+    }
+
+    return false;
+  });
+
+  if (!sawSupportedBlock) {
+    return null;
+  }
+
+  return uniformChoice;
+}
+
+function applyAlignmentChoice(editor: Editor, choice: ToolbarAlignmentChoice): boolean {
+  const { selection, doc } = editor.state;
+  if (!isTextSelection(selection) || selection.empty) {
+    return false;
+  }
+
+  let sawSupportedBlock = false;
+  let changed = false;
+  const tr = editor.state.tr;
+
+  doc.nodesBetween(selection.from, selection.to, (node, pos) => {
+    if (node.type.name !== "paragraph" && node.type.name !== "heading") {
+      return true;
+    }
+
+    sawSupportedBlock = true;
+    const currentChoice = getNodeTextAlignChoice(node.attrs.textAlign);
+    if (currentChoice === choice && (choice !== "left" || node.attrs.textAlign === undefined)) {
+      return false;
+    }
+
+    const nextAttrs = { ...node.attrs };
+    if (choice === "left") {
+      delete nextAttrs.textAlign;
+    } else {
+      nextAttrs.textAlign = choice;
+    }
+    tr.setNodeMarkup(pos, undefined, nextAttrs);
+    changed = true;
+    return false;
+  });
+
+  if (!sawSupportedBlock) {
+    return false;
+  }
+
+  if (changed) {
+    editor.view.dispatch(tr.scrollIntoView());
+  }
+  return true;
+}
+
 function getMoreItemActiveState(editor: Editor, id: ToolbarMoreItemId): boolean {
   switch (id) {
-    case "blockquote":
-      return editor.isActive("blockquote");
     case "superscript":
       return editor.isActive("superscript");
     case "subscript":
       return editor.isActive("subscript");
-    case "highlight":
-      return editor.isActive("highlight");
   }
 }
 
 function applyMoreItemCommand(editor: Editor, id: ToolbarMoreItemId): boolean {
   switch (id) {
-    case "blockquote":
-      return editor.chain().focus(undefined, { scrollIntoView: false }).toggleBlockquote().run();
     case "superscript":
       return toggleSuperscriptMark(editor);
     case "subscript":
       return toggleSubscriptMark(editor);
-    case "highlight":
-      return toggleHighlightMark(editor);
   }
 }
 
@@ -739,7 +1043,7 @@ function CompactToolbarIconButton({
   children: ReactNode;
   label: string;
   onTooltipHide: () => void;
-  onTooltipShow: (anchorRect: DOMRect, label: string, shortcut?: string | null, immediate?: boolean) => void;
+  onTooltipShow: (anchorRect: DOMRect, label: string, shortcut?: string | null, immediate?: boolean, allowDuringSurface?: boolean) => void;
   onClick: () => void;
   shortcut?: string | null;
   title: string;
@@ -766,7 +1070,9 @@ function CompactToolbarIconButton({
         onClick();
       }}
       onFocus={() => showTooltip(true)}
-      onMouseDown={(event) => event.preventDefault()}
+      onMouseDown={(event) => {
+        event.preventDefault();
+      }}
       onMouseEnter={() => showTooltip(false)}
       onMouseLeave={onTooltipHide}
       data-shortcut={shortcut ?? ""}
@@ -779,12 +1085,14 @@ function CompactToolbarIconButton({
 
 function CompactToolbarMenuItem({
   active,
+  icon,
   id,
   label,
   onSelect,
   role
 }: {
   active: boolean;
+  icon?: ReactNode;
   id?: string;
   label: string;
   onSelect: () => void;
@@ -813,9 +1121,119 @@ function CompactToolbarMenuItem({
         onSelect();
       }}
     >
-      <span>{label}</span>
+      <span className="docsera-text-toolbar__menu-label">
+        {icon ? <span className="docsera-text-toolbar__menu-icon" aria-hidden="true">{icon}</span> : null}
+        <span>{label}</span>
+      </span>
       <span className="docsera-text-toolbar__menu-check" aria-hidden="true">
         {active ? <DocseraIcon icon={docseraIcons.check} size={14} /> : <span className="docsera-text-toolbar__menu-check-placeholder" />}
+      </span>
+    </button>
+  );
+}
+
+function CompactToolbarBlockIcon({ id }: { id: ToolbarBlockTypeId }) {
+  switch (id) {
+    case "text":
+      return <Pilcrow size={16} strokeWidth={2} aria-hidden="true" focusable="false" />;
+    case "heading1":
+      return <Heading1 size={16} strokeWidth={2} aria-hidden="true" focusable="false" />;
+    case "heading2":
+      return <Heading2 size={16} strokeWidth={2} aria-hidden="true" focusable="false" />;
+    case "heading3":
+      return <Heading3 size={16} strokeWidth={2} aria-hidden="true" focusable="false" />;
+    case "blockquote":
+      return <Quote size={16} strokeWidth={2} aria-hidden="true" focusable="false" />;
+    case "bulletedList":
+      return <List size={16} strokeWidth={2} aria-hidden="true" focusable="false" />;
+    case "numberedList":
+      return <ListOrdered size={16} strokeWidth={2} aria-hidden="true" focusable="false" />;
+  }
+}
+
+function CompactToolbarAlignmentIcon({ id }: { id: ToolbarAlignmentChoice }) {
+  switch (id) {
+    case "center":
+      return <AlignCenter size={16} strokeWidth={2} aria-hidden="true" focusable="false" />;
+    case "right":
+      return <AlignRight size={16} strokeWidth={2} aria-hidden="true" focusable="false" />;
+    case "left":
+    default:
+      return <AlignLeft size={16} strokeWidth={2} aria-hidden="true" focusable="false" />;
+  }
+}
+
+function CompactToolbarColorItem({
+  active,
+  label,
+  tooltipLabel,
+  onTooltipHide,
+  onTooltipShow,
+  onSelect,
+  swatchKind,
+  value
+}: {
+  active: boolean;
+  label: string;
+  tooltipLabel: string;
+  onTooltipHide: () => void;
+  onTooltipShow: (anchorRect: DOMRect, label: string, shortcut?: string | null, immediate?: boolean, allowDuringSurface?: boolean) => void;
+  onSelect: () => void;
+  swatchKind: "highlight" | "none" | "text";
+  value?: DocseraPaletteKey;
+}) {
+  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const pointerActivationRef = useRef(false);
+  const swatchStyle =
+    value && swatchKind === "text"
+      ? ({ "--docsera-toolbar-swatch-color": `var(--docsera-palette-${value}-text)` } as CSSProperties)
+      : value && swatchKind === "highlight"
+        ? ({ "--docsera-toolbar-swatch-color": `var(--docsera-palette-${value}-highlight)` } as CSSProperties)
+        : undefined;
+
+  return (
+    <button
+      type="button"
+      role="menuitemradio"
+      className={`docsera-text-toolbar__color-item${active ? " docsera-text-toolbar__color-item--active" : ""}`}
+      aria-checked={active}
+      aria-label={label}
+      ref={buttonRef}
+      onBlur={onTooltipHide}
+      onClick={(event) => {
+        if (pointerActivationRef.current) {
+          pointerActivationRef.current = false;
+          event.preventDefault();
+          return;
+        }
+        onTooltipHide();
+        onSelect();
+      }}
+      onFocus={() => {
+        const rect = getElementRect(buttonRef.current);
+        if (rect) {
+          onTooltipShow(rect, tooltipLabel, undefined, true, true);
+        }
+      }}
+      onMouseDown={(event) => {
+        event.preventDefault();
+        pointerActivationRef.current = true;
+        onSelect();
+      }}
+      onMouseEnter={() => {
+        const rect = getElementRect(buttonRef.current);
+        if (rect) {
+          onTooltipShow(rect, tooltipLabel, undefined, false, true);
+        }
+      }}
+      onMouseLeave={onTooltipHide}
+    >
+      <span
+        className={`docsera-text-toolbar__color-swatch docsera-text-toolbar__color-swatch--${swatchKind}`}
+        style={swatchStyle}
+        aria-hidden="true"
+      >
+        {swatchKind === "text" ? "A" : null}
       </span>
     </button>
   );
@@ -1014,18 +1432,22 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
   const [layoutTick, setLayoutTick] = useState(0);
   const [toolbarStyle, setToolbarStyle] = useState<CSSProperties | null>(null);
   const [blockMenuStyle, setBlockMenuStyle] = useState<CSSProperties | null>(null);
+  const [colorMenuStyle, setColorMenuStyle] = useState<CSSProperties | null>(null);
   const [moreMenuStyle, setMoreMenuStyle] = useState<CSSProperties | null>(null);
 
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const blockTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const colorTriggerRef = useRef<HTMLButtonElement | null>(null);
   const moreTriggerRef = useRef<HTMLButtonElement | null>(null);
   const blockMenuRef = useRef<HTMLDivElement | null>(null);
+  const colorMenuRef = useRef<HTMLDivElement | null>(null);
   const moreMenuRef = useRef<HTMLDivElement | null>(null);
   const linkSurfaceRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const interactionSelectionRef = useRef<ToolbarSelectionSnapshot | null>(null);
   const pointerSessionRef = useRef<{
     active: boolean;
+    blankSpaceClickPos: number | null;
     dragIntent: boolean;
     hasSettledSelection: boolean;
     origin: { x: number; y: number } | null;
@@ -1033,6 +1455,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
     revealTimer: number | null;
   }>({
     active: false,
+    blankSpaceClickPos: null,
     dragIntent: false,
     hasSettledSelection: false,
     origin: null,
@@ -1041,6 +1464,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
   });
   const tooltipTimerRef = useRef<number | null>(null);
   const blockTypeMenuId = useId();
+  const colorMenuId = useId();
   const moreMenuId = useId();
 
   const liveSelection = useMemo(() => {
@@ -1064,6 +1488,9 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
   const toolbarSelection = (openMenu || isToolbarLinkSurfaceOpen ? interactionSelection : displaySelection) ?? liveSelection ?? null;
   const toolbarBlockType = editor ? getToolbarBlockType(editor) : "text";
   const toolbarMarks = editor ? getToolbarMarkState(editor) : null;
+  const toolbarTextColorChoice = editor ? getUniformTextColorChoice(editor) : null;
+  const toolbarHighlightColorChoice = editor ? getUniformHighlightColorChoice(editor) : null;
+  const toolbarAlignmentChoice = editor ? getUniformSelectionAlignmentChoice(editor) : null;
   const toolbarVisible =
     Boolean(editor) &&
     linkSurface?.source !== "link-click" &&
@@ -1076,6 +1503,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
       )
     );
   const isBlockTypeMenuOpen = openMenu === "blockType" && toolbarVisible;
+  const isColorMenuOpen = openMenu === "color" && toolbarVisible;
   const isMoreMenuOpen = openMenu === "more" && toolbarVisible;
 
   function clearIdleTimer() {
@@ -1368,8 +1796,8 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
     }
   }
 
-  function onTooltipShow(anchorRect: DOMRect, label: string, shortcut?: string | null, immediate = false) {
-    if (openMenu || linkSurface) {
+  function onTooltipShow(anchorRect: DOMRect, label: string, shortcut?: string | null, immediate = false, allowDuringSurface = false) {
+    if (!allowDuringSurface && (openMenu || linkSurface)) {
       return;
     }
 
@@ -1515,20 +1943,42 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
   }, [blockMenuRef, blockTriggerRef, currentSelectionKey, isBlockTypeMenuOpen, layoutTick, ownerDocument, toolbarBlockType]);
 
   useLayoutEffect(() => {
-    if (!isMoreMenuOpen || !toolbarRef.current || !moreTriggerRef.current || !moreMenuRef.current) {
+    if (!isMoreMenuOpen || !toolbarRef.current || !moreMenuRef.current) {
       setMoreMenuStyle(null);
       return;
     }
 
     const toolbarRect = toolbarRef.current.getBoundingClientRect();
-    const triggerRect = moreTriggerRef.current.getBoundingClientRect();
-    const menuRect = moreMenuRef.current.getBoundingClientRect();
+    const toolbarRectForPlacement = new DOMRect(
+      toolbarRect.left,
+      toolbarRect.top,
+      toolbarRect.width,
+      toolbarRect.height
+    );
+    const secondaryToolbarRect = moreMenuRef.current.getBoundingClientRect();
+    const nextStyle = resolveSecondaryToolbarSurfaceStyle(ownerDocument, toolbarRectForPlacement, {
+      height: Math.max(1, secondaryToolbarRect.height),
+      width: Math.max(1, secondaryToolbarRect.width || 1)
+    });
+    setMoreMenuStyle((current) => (sameFloatingStyle(current ?? undefined, nextStyle) ? current : nextStyle));
+  }, [currentSelectionKey, isMoreMenuOpen, layoutTick, moreMenuRef, ownerDocument, toolbarAlignmentChoice, toolbarMarks]);
+
+  useLayoutEffect(() => {
+    if (!isColorMenuOpen || !toolbarRef.current || !colorTriggerRef.current || !colorMenuRef.current) {
+      setColorMenuStyle(null);
+      return;
+    }
+
+    const toolbarRect = toolbarRef.current.getBoundingClientRect();
+    const triggerRect = colorTriggerRef.current.getBoundingClientRect();
+    const menuRect = colorMenuRef.current.getBoundingClientRect();
     const nextStyle = resolveToolbarMenuSurfaceStyle(ownerDocument, toolbarRect, triggerRect, {
       height: Math.max(1, menuRect.height),
-      width: Math.max(TOOLBAR_MENU_TARGET_WIDTH, Math.min(TOOLBAR_MENU_MAX_WIDTH, menuRect.width || 1))
+      width: Math.max(COLOR_MENU_WIDTH, menuRect.width || 1)
     }, "end");
-    setMoreMenuStyle((current) => (sameFloatingStyle(current ?? undefined, nextStyle) ? current : nextStyle));
-  }, [currentSelectionKey, isMoreMenuOpen, layoutTick, moreMenuRef, moreTriggerRef, ownerDocument]);
+    setColorMenuStyle((current) => (sameFloatingStyle(current ?? undefined, nextStyle) ? current : nextStyle));
+  }, [colorMenuRef, colorTriggerRef, currentSelectionKey, isColorMenuOpen, layoutTick, ownerDocument, toolbarHighlightColorChoice, toolbarTextColorChoice]);
+
 
   useEffect(() => {
     if (!editor || (!toolbarVisible && !openMenu && !linkSurface && !tooltip)) {
@@ -1552,6 +2002,27 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
       return;
     }
 
+    const resolveBlankEditorSpaceCaretPos = (event: MouseEvent | PointerEvent) => {
+      const target = resolveEventTargetNode(event, ownerWindow);
+      if (!editor || !target || !editor.view.dom.contains(target)) {
+        return null;
+      }
+
+      const editorDom = editor.view.dom;
+      if (target !== editorDom) {
+        return null;
+      }
+
+      const pathNodes = getEventPathNodes(event, ownerWindow);
+      const clickedInsideRenderedContent = pathNodes.some((node) => node instanceof HTMLElement && node !== editorDom && editorDom.contains(node));
+      if (clickedInsideRenderedContent) {
+        return null;
+      }
+
+      const posAtCoords = editor.view.posAtCoords({ left: event.clientX, top: event.clientY });
+      return typeof posAtCoords?.pos === "number" ? posAtCoords.pos : null;
+    };
+
     const startPointerSelectionSession = (event: MouseEvent | PointerEvent) => {
       if (event.button !== 0) {
         return;
@@ -1562,6 +2033,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
       }
 
       pointerSessionRef.current.active = true;
+      pointerSessionRef.current.blankSpaceClickPos = resolveBlankEditorSpaceCaretPos(event);
       pointerSessionRef.current.dragIntent = false;
       pointerSessionRef.current.hasSettledSelection = false;
       pointerSessionRef.current.origin = { x: event.clientX, y: event.clientY };
@@ -1594,6 +2066,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
           return;
         }
         pointerSessionRef.current.dragIntent = true;
+        pointerSessionRef.current.blankSpaceClickPos = null;
       }
 
       if (!pointerSessionRef.current.hasSettledSelection) {
@@ -1617,11 +2090,25 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
         return;
       }
 
+      const blankSpaceClickPos = pointerSessionRef.current.dragIntent ? null : pointerSessionRef.current.blankSpaceClickPos;
       pointerSessionRef.current.active = false;
+      pointerSessionRef.current.blankSpaceClickPos = null;
       pointerSessionRef.current.dragIntent = false;
       pointerSessionRef.current.hasSettledSelection = false;
       pointerSessionRef.current.origin = null;
       clearIdleTimer();
+      if (blankSpaceClickPos !== null && isTextSelection(editor.state.selection) && !editor.state.selection.empty) {
+        const caretPos = Math.max(0, Math.min(blankSpaceClickPos, editor.state.doc.content.size));
+        const tr = editor.state.tr.setSelection(TextSelection.near(editor.state.doc.resolve(caretPos)));
+        tr.setMeta("addToHistory", false);
+        editor.view.dispatch(tr);
+        closeMenusAndTooltip();
+        clearInteractionSelection();
+        setPointerSelectionHidden(false);
+        setDisplaySelection(null);
+        setToolbarDismissedSelectionKey("");
+        return;
+      }
       scheduleToolbarRevealAfterSelectionCommit();
     };
 
@@ -1674,6 +2161,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
       if (
         isPointerEventInsideOwnedElement(event, toolbarRef.current) ||
         isPointerEventInsideOwnedElement(event, blockMenuRef.current) ||
+        isPointerEventInsideOwnedElement(event, colorMenuRef.current) ||
         isPointerEventInsideOwnedElement(event, moreMenuRef.current) ||
         isPointerEventInsideOwnedElement(event, linkSurfaceRef.current) ||
         isPointerEventInsideOwnedElement(event, tooltipRef.current)
@@ -1988,12 +2476,40 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
             >
               <Link2 size={14} strokeWidth={2} />
             </CompactToolbarIconButton>
+            <button
+              ref={colorTriggerRef}
+              type="button"
+              className={`docsera-text-toolbar__trigger docsera-text-toolbar__trigger--color${isColorMenuOpen ? " docsera-text-toolbar__trigger--active" : ""}`}
+              aria-haspopup="menu"
+              aria-controls={colorMenuId}
+              aria-expanded={isColorMenuOpen}
+              aria-label="Color"
+              onClick={() => toggleMenu("color")}
+              onMouseDown={(event) => event.preventDefault()}
+              onFocus={() => {
+                const triggerRect = getElementRect(colorTriggerRef.current);
+                if (triggerRect) {
+                  onTooltipShow(triggerRect, "Color", undefined, true);
+                }
+              }}
+              onBlur={onTooltipHide}
+              onMouseEnter={() => {
+                const triggerRect = getElementRect(colorTriggerRef.current);
+                if (triggerRect) {
+                  onTooltipShow(triggerRect, "Color");
+                }
+              }}
+              onMouseLeave={onTooltipHide}
+              title=""
+            >
+              <span className="docsera-text-toolbar__color-trigger-glyph" aria-hidden="true">A</span>
+              <DocseraIcon icon={isColorMenuOpen ? docseraIcons.chevronUp : docseraIcons.chevronDown} size={13} />
+            </button>
             <CompactToolbarSeparator />
             <button
               ref={moreTriggerRef}
               type="button"
               className={`docsera-text-toolbar__trigger docsera-text-toolbar__trigger--more${isMoreMenuOpen ? " docsera-text-toolbar__trigger--active" : ""}`}
-              aria-haspopup="menu"
               aria-controls={moreMenuId}
               aria-expanded={isMoreMenuOpen}
               aria-label="More"
@@ -2029,6 +2545,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
               <CompactToolbarMenuItem
                 key={item.id}
                 active={toolbarBlockType === item.id}
+                icon={<CompactToolbarBlockIcon id={item.id} />}
                 label={item.label}
                 role="menuitemradio"
                 onSelect={() => {
@@ -2054,26 +2571,141 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
         </div>
       ) : null}
 
-      {isMoreMenuOpen && toolbarSelection ? (
-        <div ref={moreMenuRef} className="docsera-text-toolbar__menu" role="menu" aria-label="More" id={moreMenuId} style={moreMenuStyle ?? { visibility: "hidden" }} data-surface="text-toolbar-menu">
-          <p className="docsera-text-toolbar__surface-heading">More</p>
-          <div className="docsera-text-toolbar__menu-list" role="presentation">
-            {MORE_MENU_ITEMS.map((item) => (
-              <CompactToolbarMenuItem
-                key={item.id}
-                active={getMoreItemActiveState(editor, item.id)}
-                label={item.label}
-                role="menuitemcheckbox"
+      {isColorMenuOpen && toolbarSelection ? (
+        <div ref={colorMenuRef} className="docsera-text-toolbar__menu docsera-text-toolbar__color-menu" role="menu" aria-label="Color" id={colorMenuId} style={colorMenuStyle ?? { visibility: "hidden" }} data-surface="text-toolbar-menu">
+          <div className="docsera-text-toolbar__color-group" role="group" aria-label="Text color">
+            <p className="docsera-text-toolbar__surface-heading">Text Color</p>
+            <div className="docsera-text-toolbar__color-grid" role="presentation">
+              <CompactToolbarColorItem
+                active={toolbarTextColorChoice === "default"}
+                label="Default text color"
+                tooltipLabel="Default"
+                onTooltipHide={onTooltipHide}
+                onTooltipShow={onTooltipShow}
+                swatchKind="text"
                 onSelect={() => {
-                  if (!editor) {
-                    return;
-                  }
-
-                  runMenuCommandWithInteractionSelection(() =>
-                    applyMoreItemCommand(editor, item.id)
-                  );
+                  runMenuCommandWithInteractionSelection(() => applyTextColorChoice(editor, "default"), { allowNoDocumentChange: true });
                 }}
               />
+              {DOCSERA_PALETTE_KEYS.map((color) => (
+                <CompactToolbarColorItem
+                  key={`text-${color}`}
+                  active={toolbarTextColorChoice === color}
+                  label={`${color[0].toUpperCase()}${color.slice(1)} text color`}
+                  tooltipLabel={`${color[0].toUpperCase()}${color.slice(1)}`}
+                  onTooltipHide={onTooltipHide}
+                  onTooltipShow={onTooltipShow}
+                  swatchKind="text"
+                  value={color}
+                  onSelect={() => {
+                    runMenuCommandWithInteractionSelection(() => applyTextColorChoice(editor, color), { allowNoDocumentChange: true });
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="docsera-text-toolbar__color-group" role="group" aria-label="Highlight color">
+            <p className="docsera-text-toolbar__surface-heading">Highlight Color</p>
+            <div className="docsera-text-toolbar__color-grid" role="presentation">
+              <CompactToolbarColorItem
+                active={toolbarHighlightColorChoice === "none"}
+                label="No highlight"
+                tooltipLabel="None"
+                onTooltipHide={onTooltipHide}
+                onTooltipShow={onTooltipShow}
+                swatchKind="none"
+                onSelect={() => {
+                  runMenuCommandWithInteractionSelection(() => applyHighlightColorChoice(editor, "none"), { allowNoDocumentChange: true });
+                }}
+              />
+              <CompactToolbarColorItem
+                active={toolbarHighlightColorChoice === "default"}
+                label="Default highlight"
+                tooltipLabel="Default"
+                onTooltipHide={onTooltipHide}
+                onTooltipShow={onTooltipShow}
+                swatchKind="highlight"
+                onSelect={() => {
+                  runMenuCommandWithInteractionSelection(() => applyHighlightColorChoice(editor, "default"), { allowNoDocumentChange: true });
+                }}
+              />
+              {DOCSERA_PALETTE_KEYS.map((color) => (
+                <CompactToolbarColorItem
+                  key={`highlight-${color}`}
+                  active={toolbarHighlightColorChoice === color}
+                  label={`${color[0].toUpperCase()}${color.slice(1)} highlight`}
+                  tooltipLabel={`${color[0].toUpperCase()}${color.slice(1)}`}
+                  onTooltipHide={onTooltipHide}
+                  onTooltipShow={onTooltipShow}
+                  swatchKind="highlight"
+                  value={color}
+                  onSelect={() => {
+                    runMenuCommandWithInteractionSelection(() => applyHighlightColorChoice(editor, color), { allowNoDocumentChange: true });
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isMoreMenuOpen && toolbarSelection ? (
+        <div
+          ref={moreMenuRef}
+          className="docsera-text-toolbar docsera-text-toolbar--secondary"
+          role="toolbar"
+          aria-label="More formatting"
+          id={moreMenuId}
+          style={moreMenuStyle ?? { visibility: "hidden" }}
+          data-surface="text-toolbar-secondary"
+        >
+          <div className="docsera-text-toolbar__group" role="presentation">
+            <CompactToolbarIconButton
+              active={getMoreItemActiveState(editor, "superscript")}
+              label="Superscript"
+              onClick={() => {
+                runMenuCommandWithInteractionSelection(() =>
+                  applyMoreItemCommand(editor, "superscript")
+                );
+              }}
+              onTooltipHide={onTooltipHide}
+              onTooltipShow={onTooltipShow}
+              title="Superscript"
+            >
+              <Superscript size={14} strokeWidth={2} aria-hidden="true" focusable="false" />
+            </CompactToolbarIconButton>
+            <CompactToolbarIconButton
+              active={getMoreItemActiveState(editor, "subscript")}
+              label="Subscript"
+              onClick={() => {
+                runMenuCommandWithInteractionSelection(() =>
+                  applyMoreItemCommand(editor, "subscript")
+                );
+              }}
+              onTooltipHide={onTooltipHide}
+              onTooltipShow={onTooltipShow}
+              title="Subscript"
+            >
+              <Subscript size={14} strokeWidth={2} aria-hidden="true" focusable="false" />
+            </CompactToolbarIconButton>
+            <CompactToolbarSeparator />
+            {ALIGNMENT_MENU_ITEMS.map((item) => (
+              <CompactToolbarIconButton
+                key={item.id}
+                active={toolbarAlignmentChoice === item.id}
+                label={item.label}
+                onClick={() => {
+                  runMenuCommandWithInteractionSelection(() =>
+                    applyAlignmentChoice(editor, item.id),
+                    { allowNoDocumentChange: true }
+                  );
+                }}
+                onTooltipHide={onTooltipHide}
+                onTooltipShow={onTooltipShow}
+                title={item.label}
+              >
+                <CompactToolbarAlignmentIcon id={item.id} />
+              </CompactToolbarIconButton>
             ))}
           </div>
         </div>
@@ -2189,6 +2821,20 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
           padding-right: 9px;
         }
 
+        .docsera-text-toolbar__color-trigger-glyph {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 18px;
+          height: 18px;
+          border: 1px solid var(--docsera-border);
+          border-radius: 999px;
+          color: var(--docsera-text);
+          font-size: 0.72rem;
+          font-weight: 700;
+          line-height: 1;
+        }
+
         .docsera-text-toolbar__trigger:hover,
         .docsera-text-toolbar__trigger:focus-visible,
         .docsera-text-toolbar__button:hover,
@@ -2217,6 +2863,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
 
         .docsera-text-toolbar__button svg,
         .docsera-text-toolbar__trigger svg,
+        .docsera-text-toolbar__menu-icon svg,
         .docsera-text-toolbar__menu-check svg {
           width: 14px;
           height: 14px;
@@ -2228,6 +2875,25 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
         .docsera-text-toolbar__menu {
           min-width: ${TOOLBAR_MENU_TARGET_WIDTH}px;
           max-width: min(${TOOLBAR_MENU_MAX_WIDTH}px, calc(100vw - ${VIEWPORT_GUTTER * 2}px));
+          transform-origin: top center;
+        }
+
+        @keyframes docsera-text-toolbar-menu-enter {
+          from {
+            opacity: 0;
+            transform: translateY(-4px);
+          }
+
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .docsera-text-toolbar__color-menu {
+            animation: none;
+          }
         }
 
         .docsera-text-toolbar__menu-check {
@@ -2238,6 +2904,115 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
           width: 14px;
           height: 14px;
           color: var(--docsera-primary);
+        }
+
+        .docsera-text-toolbar__menu-label {
+          display: inline-flex;
+          align-items: center;
+          gap: 8px;
+          min-width: 0;
+        }
+
+        .docsera-text-toolbar__menu-icon {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex: 0 0 auto;
+          width: 16px;
+          height: 16px;
+          color: currentColor;
+        }
+
+        .docsera-text-toolbar__color-menu {
+          box-sizing: border-box;
+          width: ${COLOR_MENU_WIDTH}px;
+          min-width: ${COLOR_MENU_WIDTH}px;
+          padding: 10px 12px;
+          animation: docsera-text-toolbar-menu-enter 0.13s ease-out;
+        }
+
+        .docsera-text-toolbar__color-group + .docsera-text-toolbar__color-group {
+          margin-top: 10px;
+          padding-top: 8px;
+          border-top: 1px solid var(--docsera-border);
+        }
+
+        .docsera-text-toolbar__color-menu .docsera-text-toolbar__surface-heading {
+          margin-bottom: 8px;
+        }
+
+        .docsera-text-toolbar__color-grid {
+          display: grid;
+          grid-template-columns: repeat(5, 24px);
+          gap: 9px 8px;
+        }
+
+        .docsera-text-toolbar__color-item {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 24px;
+          height: 24px;
+          padding: 0;
+          border: 1px solid transparent;
+          border-radius: 999px;
+          background: transparent;
+          color: var(--docsera-text-muted);
+          line-height: 1;
+          cursor: pointer;
+          transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+        }
+
+        .docsera-text-toolbar__color-item:hover,
+        .docsera-text-toolbar__color-item:focus-visible {
+          border-color: var(--docsera-border);
+          background: var(--docsera-surface-muted);
+          color: var(--docsera-primary);
+          outline: none;
+        }
+
+        .docsera-text-toolbar__color-item:focus-visible {
+          box-shadow: 0 0 0 2px color-mix(in srgb, var(--docsera-primary) 22%, transparent);
+        }
+
+        .docsera-text-toolbar__color-item--active {
+          border-color: color-mix(in srgb, var(--docsera-primary) 22%, var(--docsera-border));
+          background: var(--docsera-primary-soft);
+          color: var(--docsera-primary);
+        }
+
+        .docsera-text-toolbar__color-item--active .docsera-text-toolbar__color-swatch {
+          border-color: var(--docsera-primary);
+          box-shadow: 0 0 0 2px color-mix(in srgb, var(--docsera-primary) 18%, transparent);
+        }
+
+        .docsera-text-toolbar__color-swatch {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 18px;
+          height: 18px;
+          border: 1px solid var(--docsera-border);
+          border-radius: 999px;
+          background: var(--docsera-surface);
+          color: var(--docsera-text);
+          font-size: 0.68rem;
+          font-weight: 700;
+        }
+
+        .docsera-text-toolbar__color-swatch--text {
+          color: var(--docsera-toolbar-swatch-color, var(--docsera-text));
+        }
+
+        .docsera-text-toolbar__color-swatch--highlight {
+          background: var(--docsera-toolbar-swatch-color, var(--docsera-document-highlight-bg));
+        }
+
+        .docsera-text-toolbar__color-swatch--none {
+          position: relative;
+          background:
+            linear-gradient(135deg, transparent calc(50% - 1px), var(--docsera-danger) 50%, transparent calc(50% + 1px)),
+            var(--docsera-surface);
         }
 
         .docsera-text-toolbar__menu-check-placeholder {

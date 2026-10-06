@@ -73,6 +73,20 @@ function isRelativeImport(specifier: string): boolean {
   return specifier.startsWith("./") || specifier.startsWith("../");
 }
 
+function isTypeOnlyImport(sourceText: string, match: RegExpMatchArray): boolean {
+  const statementStart = sourceText.lastIndexOf("import", match.index ?? 0);
+  if (statementStart < 0) {
+    return false;
+  }
+
+  return sourceText.slice(statementStart, match.index).trimStart().startsWith("import type ");
+}
+
+function resolveRelativeImport(file: string, specifier: string): string {
+  const resolved = resolve(dirname(file), specifier);
+  return explicitSourceExtensionPattern.test(resolved) ? resolved : `${resolved}.ts`;
+}
+
 function isAllowedSharedImport(file: string, specifier: string): boolean {
   return false;
 }
@@ -138,6 +152,33 @@ describe("server module boundaries", () => {
               specifier
             });
           }
+        }
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+
+  it("keeps ServiceNow server-module relative imports inside src/server", () => {
+    const serverRoot = join(packageRoot, "src", "server");
+    const offenders: Array<{ file: string; resolvedPath: string; specifier: string }> = [];
+
+    for (const file of collectFiles(serverRoot)) {
+      const sourceText = readFileSync(file, "utf8");
+      for (const match of sourceText.matchAll(forbiddenSharedImportPattern)) {
+        const specifier = (match[1] ?? match[2] ?? "").trim();
+        if (!specifier || !isRelativeImport(specifier) || isTypeOnlyImport(sourceText, match)) {
+          continue;
+        }
+
+        const resolvedImport = resolveRelativeImport(file, specifier);
+        const relativeResolvedImport = relative(serverRoot, resolvedImport);
+        if (relativeResolvedImport.startsWith("..") || resolve(serverRoot, relativeResolvedImport) !== resolvedImport) {
+          offenders.push({
+            file: relative(packageRoot, file),
+            resolvedPath: relative(packageRoot, resolvedImport),
+            specifier
+          });
         }
       }
     }

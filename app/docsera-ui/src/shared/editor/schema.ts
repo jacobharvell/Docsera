@@ -1,4 +1,4 @@
-import { Extension, Node, getSchema, mergeAttributes, type Editor, type Extensions } from "@tiptap/core";
+import { Extension, Mark, Node, getSchema, mergeAttributes, type Editor, type Extensions } from "@tiptap/core";
 import { Blockquote as BaseBlockquote } from "@tiptap/extension-blockquote";
 import { Document } from "@tiptap/extension-document";
 import { Highlight } from "@tiptap/extension-highlight";
@@ -9,11 +9,13 @@ import { EditorState, Plugin, PluginKey, Selection } from "@tiptap/pm/state";
 import { CellSelection, findTable, selectedRect, TableMap } from "@tiptap/pm/tables";
 import { Subscript } from "@tiptap/extension-subscript";
 import { Superscript } from "@tiptap/extension-superscript";
+import { TextAlign } from "@tiptap/extension-text-align";
 import { Underline } from "@tiptap/extension-underline";
 import StarterKit from "@tiptap/starter-kit";
 import type { Node as PMNode, Schema } from "@tiptap/pm/model";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { DOCSERA_IMAGE_DEFAULTS, DOCSERA_IMAGE_ALIGNMENTS, canonicalizeDocseraImageAttrs, type DocseraImageAttrs, type WorkspaceMediaLoader } from "./imageContract";
+import { DOCSERA_TEXT_ALIGNMENTS, isDocseraPaletteKey } from "../../server/editor/colorContract";
 import { createAccordionIdentity } from "../../client/editor/editorBlockCommands";
 import {
   resolveDocseraImageDisplayTheme,
@@ -66,6 +68,73 @@ const DOCSERA_ACCORDION_ITEM_MENU_OPEN_ATTR = "data-docsera-accordion-item-menu-
 const DOCSERA_ACCORDION_CHEVRON_ICON_SIZE = 18;
 const DOCSERA_ACCORDION_CONTROL_ICON_SIZE = 14;
 const DOCSERA_ACCORDION_ADD_INTERACTION_LANE_WIDTH = "2.25rem";
+
+function createDocseraColorMark(name: "textColor" | "highlightColor", htmlAttribute: string, tagName: "span" | "mark") {
+  return Mark.create({
+    name,
+    addAttributes() {
+      return {
+        color: {
+          default: null,
+          parseHTML: (element) => {
+            const color = element.getAttribute(htmlAttribute);
+            return isDocseraPaletteKey(color) ? color : null;
+          },
+          renderHTML: (attributes) =>
+            isDocseraPaletteKey(attributes.color)
+              ? {
+                  [htmlAttribute]: attributes.color,
+                  class: `docsera-${name}`
+                }
+              : {}
+        }
+      };
+    },
+    excludes: name === "highlightColor" ? "highlight" : "",
+    parseHTML() {
+      return [{ tag: `${tagName}[${htmlAttribute}]`, priority: 1000 }];
+    },
+    renderHTML({ HTMLAttributes }) {
+      return [tagName, mergeAttributes(HTMLAttributes), 0];
+    }
+  });
+}
+
+function normalizeTextAlignInEditorJson<T>(value: T): T {
+  const cloned = JSON.parse(JSON.stringify(value)) as T;
+
+  const visit = (node: unknown): void => {
+    if (!node || typeof node !== "object") {
+      return;
+    }
+
+    const record = node as Record<string, unknown>;
+    if ((record.type === "paragraph" || record.type === "heading") && record.attrs && typeof record.attrs === "object") {
+      const attrs = record.attrs as Record<string, unknown>;
+      if (attrs.textAlign === undefined || attrs.textAlign === "left") {
+        delete attrs.textAlign;
+      }
+      if (Object.keys(attrs).length === 0) {
+        delete record.attrs;
+      }
+    }
+
+    if (Array.isArray(record.content)) {
+      record.content.forEach(visit);
+    }
+  };
+
+  visit(cloned);
+  return cloned;
+}
+
+const DocseraTextAlignJsonNormalization = Extension.create({
+  name: "docseraTextAlignJsonNormalization",
+  onCreate() {
+    const originalGetJSON = this.editor.getJSON.bind(this.editor);
+    this.editor.getJSON = () => normalizeTextAlignInEditorJson(originalGetJSON());
+  }
+});
 
 function createAccordionSvgIcon(applyAttributes: (icon: SVGSVGElement) => void): SVGSVGElement {
   const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -890,7 +959,7 @@ function createDocseraAccordionExtensions() {
     Node.create({
       name: "accordionTitle",
       content: "text*",
-      marks: "bold italic strike code underline highlight superscript subscript",
+      marks: "bold italic strike code underline highlight textColor highlightColor superscript subscript",
       selectable: false,
       parseHTML() {
         return [{ tag: "p[data-docsera-accordion-title='true']", priority: 1000 }];
@@ -1611,6 +1680,8 @@ export function createDocseraEditorExtensionsWithOptions(options: CreateDocseraE
     Highlight.configure({
       multicolor: false
     }),
+    createDocseraColorMark("textColor", "data-docsera-text-color", "span"),
+    createDocseraColorMark("highlightColor", "data-docsera-highlight-color", "mark"),
     Superscript,
     Subscript,
     Link.configure({
@@ -1619,6 +1690,12 @@ export function createDocseraEditorExtensionsWithOptions(options: CreateDocseraE
       openOnClick: false,
       isAllowedUri: (url) => isDocseraAllowedLinkHref(url)
     }),
+    TextAlign.configure({
+      types: ["paragraph", "heading"],
+      alignments: [...DOCSERA_TEXT_ALIGNMENTS],
+      defaultAlignment: undefined as unknown as null
+    }),
+    DocseraTextAlignJsonNormalization,
     createDocseraImageExtension(loadMedia),
     ...createDocseraAccordionExtensions(),
     ...createDocseraColumnsExtensions(),
