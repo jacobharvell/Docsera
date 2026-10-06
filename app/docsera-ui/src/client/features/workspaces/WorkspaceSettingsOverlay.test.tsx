@@ -37,8 +37,49 @@ function readRuntimeShellCss() {
     .replace(/\r\n/g, "\n");
 }
 
+function readCssRuleBlock(source: string, selector: string) {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return source.match(new RegExp(`${escapedSelector} \\{([\\s\\S]*?)\\n\\}`))?.[1] ?? "";
+}
+
 describe("WorkspaceSettingsOverlay", () => {
-  it("shows stable settings action labels and keeps Manage workspace access capability gated", () => {
+  it("renders the accepted settings presentation while preserving single-line fields and stable accessible labels", () => {
+    const { container } = render(
+      <WorkspaceSettingsOverlay
+        onCancel={vi.fn()}
+        onSubmit={vi.fn()}
+        open
+        pending={false}
+        workspace={createWorkspace()}
+      />
+    );
+
+    const panel = screen.getByRole("complementary", { name: "Workspace Settings" });
+    expect(within(panel).getByRole("heading", { name: "GENERAL" })).toBeInTheDocument();
+    expect(within(panel).getByRole("group", { name: "ICON" })).toHaveClass("docsera-workspace-settings-overlay__section--icon");
+    expect(within(panel).getByRole("heading", { name: "PREFERENCES" })).toBeInTheDocument();
+
+    const nameInput = within(panel).getByLabelText("Workspace name");
+    expect(nameInput).toHaveAttribute("type", "text");
+    expect(nameInput).toHaveValue("Product Docs");
+    expect(nameInput).toHaveClass("docsera-workspace-settings-overlay__input");
+    expect(nameInput).not.toHaveClass("docsera-workspace-settings-overlay__input--description");
+    expect(within(panel).getByText("Name")).toHaveClass("docsera-workspace-settings-overlay__field-label");
+
+    const descriptionInput = within(panel).getByLabelText("Short description");
+    expect(descriptionInput.tagName).toBe("INPUT");
+    expect(descriptionInput).toHaveAttribute("type", "text");
+    expect(descriptionInput).toHaveAttribute("placeholder", "What is this workspace for?");
+    expect(descriptionInput).toHaveClass("docsera-workspace-settings-overlay__input");
+    expect(descriptionInput).not.toHaveClass("docsera-workspace-settings-overlay__input--description");
+    expect(within(panel).getByText("Description")).toHaveClass("docsera-workspace-settings-overlay__field-label");
+
+    expect(container.querySelector(".docsera-workspace-settings-overlay__body .docsera-workspace-settings-overlay__footer-copy")).not.toBeInTheDocument();
+    expect(container.querySelector(".docsera-workspace-settings-overlay__footer")).toHaveTextContent("Changes save automatically when you close this panel.");
+    expect(container.querySelector(".docsera-workspace-settings-overlay__footer-dot")).toBeInTheDocument();
+  });
+
+  it("shows accepted settings action copy while keeping stable accessible action names capability gated", () => {
     const { rerender } = render(
       <WorkspaceSettingsOverlay
         onCancel={vi.fn()}
@@ -51,7 +92,9 @@ describe("WorkspaceSettingsOverlay", () => {
 
     const panel = screen.getByRole("complementary", { name: "Workspace Settings" });
     expect(within(panel).getByRole("button", { name: "Upload custom workspace icon" })).toBeInTheDocument();
+    expect(within(panel).getByText("Upload custom Icon")).toBeInTheDocument();
     expect(within(panel).getByRole("button", { name: "Manage workspace access" })).toBeInTheDocument();
+    expect(within(panel).getByText("Manage")).toBeInTheDocument();
 
     rerender(
       <WorkspaceSettingsOverlay
@@ -108,7 +151,7 @@ describe("WorkspaceSettingsOverlay", () => {
     expect(closeButton).toHaveAccessibleName("Close delete workspace dialog");
   });
 
-  it("gates Danger zone deletion to settings managers", () => {
+  it("gates the standalone destructive card to settings managers", () => {
     const { rerender } = render(
       <WorkspaceSettingsOverlay
         onCancel={vi.fn()}
@@ -119,7 +162,9 @@ describe("WorkspaceSettingsOverlay", () => {
       />
     );
 
-    expect(screen.getByRole("heading", { name: "Danger zone" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Danger zone" })).not.toBeInTheDocument();
+    expect(screen.getByText("Delete workspace")).toHaveClass("docsera-workspace-settings-overlay__danger-title");
+    expect(screen.getByText("Permanently removes it and all contents.")).toHaveClass("docsera-workspace-settings-overlay__danger-description");
     const deleteButton = screen.getByRole("button", { name: "Delete workspace" });
     expect(deleteButton).toBeInTheDocument();
     expect(deleteButton).toHaveClass("docsera-destructive-action", "docsera-workspace-settings-overlay__delete-button");
@@ -136,7 +181,40 @@ describe("WorkspaceSettingsOverlay", () => {
     );
 
     expect(screen.queryByRole("heading", { name: "Danger zone" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Permanently removes it and all contents.")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete workspace" })).not.toBeInTheDocument();
+  });
+
+  it("presents preferences as separated rows while preserving the ToC checkbox behavior and access transition", () => {
+    const onManageAccess = vi.fn();
+    render(
+      <WorkspaceSettingsOverlay
+        onCancel={vi.fn()}
+        onManageAccess={onManageAccess}
+        onSubmit={vi.fn()}
+        open
+        pending={false}
+        workspace={createWorkspace()}
+      />
+    );
+
+    const panel = screen.getByRole("complementary", { name: "Workspace Settings" });
+    const preferenceGroup = panel.querySelector(".docsera-workspace-settings-overlay__preference-group");
+    expect(preferenceGroup).toBeInTheDocument();
+    expect(preferenceGroup?.querySelectorAll(".docsera-workspace-settings-overlay__preference-row")).toHaveLength(2);
+
+    expect(within(panel).getByText("Table of contents")).toBeInTheDocument();
+    expect(within(panel).getByText("Show page outlines.")).toBeInTheDocument();
+    const tocCheckbox = within(panel).getByRole("checkbox", { name: "Show table of contents" });
+    expect(tocCheckbox).toBeChecked();
+    expect(tocCheckbox.closest(".docsera-workspace-settings-overlay__switch")).toBeInTheDocument();
+    fireEvent.click(tocCheckbox);
+    expect(tocCheckbox).not.toBeChecked();
+
+    expect(within(panel).getByText("Access")).toBeInTheDocument();
+    expect(within(panel).getByText("Manage workspace Admins and Editors.")).toBeInTheDocument();
+    fireEvent.click(within(panel).getByRole("button", { name: "Manage workspace access" }));
+    expect(onManageAccess).toHaveBeenCalledWith({ waitForSettingsSave: true, workspaceSysId: "workspace-001" });
   });
 
   it("opens and cancels delete confirmation without saving unrelated settings drafts", () => {
@@ -293,13 +371,14 @@ describe("WorkspaceSettingsOverlay", () => {
     fireEvent.click(screen.getByRole("button", { name: "Security" }));
     expect(screen.getByRole("button", { name: "Security, selected" })).toHaveAttribute("aria-pressed", "true");
 
-    fireEvent.change(screen.getByLabelText("Upload custom workspace icon"), {
+    fireEvent.change(screen.getByLabelText("Upload custom workspace icon", { selector: "input" }), {
       target: { files: [new File(["image"], "custom.png", { type: "image/png" })] }
     });
 
     expect(await screen.findByText("Custom image uploaded.")).toBeInTheDocument();
     expect(uploadIcon).toHaveBeenCalledWith({ file: expect.any(File), workspaceSysId: "workspace-001" });
     expect(screen.getByRole("button", { name: "Upload custom workspace icon" })).toBeInTheDocument();
+    expect(screen.getByText("Upload custom Icon")).toBeInTheDocument();
 
     const uploadedOption = screen.getByRole("button", { name: /current uploaded icon, selected/ });
     expect(uploadedOption).toHaveAttribute("aria-pressed", "true");
@@ -308,16 +387,19 @@ describe("WorkspaceSettingsOverlay", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Documentation, selected" })).toHaveAttribute("aria-pressed", "true"));
   });
 
-  it("scopes compact icon sizing and left-aligned settings actions to Workspace Settings", () => {
+  it("scopes the larger settings icon grid and left-aligned settings actions to Workspace Settings", () => {
     const source = readRuntimeShellCss();
+    const panelBlock = source.match(/\.docsera-workspace-settings-overlay__panel \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const bodyBlock = source.match(/\.docsera-workspace-settings-overlay__body \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const settingsGridBlock = source.match(/\.docsera-workspace-settings-overlay \.docsera-workspace-icon-picker__grid \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const settingsOptionBlock = source.match(/\.docsera-workspace-settings-overlay \.docsera-workspace-icon-picker__option \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const settingsBadgeBlock = source.match(/\.docsera-workspace-settings-overlay \.docsera-workspace-icon-picker__option \.docsera-workspace-icon-badge \{([\s\S]*?)\n\}/)?.[1] ?? "";
-    const settingsLegendBlock = source.match(/\.docsera-workspace-settings-overlay \.docsera-workspace-icon-picker > \.docsera-workspace-settings-overlay__label \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const settingsLegendBlock = source.match(/\.docsera-workspace-settings-overlay \.docsera-workspace-icon-picker > \.docsera-workspace-settings-overlay__section-title \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const settingsOptionHoverBlock = source.match(/\.docsera-workspace-settings-overlay \.docsera-workspace-icon-picker__option:not\(:disabled\):hover \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const settingsOptionFocusBlock = source.match(/\.docsera-workspace-settings-overlay \.docsera-workspace-icon-picker__option:focus-visible \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const settingsOptionSelectedBlock = source.match(/\.docsera-workspace-settings-overlay \.docsera-workspace-icon-picker__option--selected \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const settingsActionBlock = source.match(/\.docsera-workspace-settings-overlay \.docsera-workspace-icon-picker__upload-button,\n\.docsera-workspace-settings-overlay__access-button \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const settingsConstraintBlock = source.match(/\.docsera-workspace-settings-overlay \.docsera-workspace-icon-picker__constraints \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const settingsActionHoverBlock = source.match(/\.docsera-workspace-settings-overlay \.docsera-workspace-icon-picker__upload-button:not\(:disabled\):hover,\n\.docsera-workspace-settings-overlay__access-button:not\(:disabled\):hover \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const settingsActionFocusBlock = source.match(/\.docsera-workspace-settings-overlay \.docsera-workspace-icon-picker__upload-button:focus-visible,\n\.docsera-workspace-settings-overlay__access-button:focus-visible \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const sharedOptionBlock = source.match(/\.docsera-workspace-icon-picker__option \{([\s\S]*?)\n\}/)?.[1] ?? "";
@@ -336,14 +418,20 @@ describe("WorkspaceSettingsOverlay", () => {
     const deleteLabelBlock = source.match(/\.docsera-delete-confirmation-button__label \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const deleteBusyBlock = source.match(/\.docsera-delete-confirmation-button:disabled\[aria-busy="true"\] \{([\s\S]*?)\n\}/)?.[1] ?? "";
 
-    expect(settingsGridBlock).toContain("grid-template-columns: repeat(auto-fill, 36px);");
-    expect(settingsGridBlock).toContain("justify-content: start;");
-    expect(settingsOptionBlock).toContain("width: 36px;");
-    expect(settingsOptionBlock).toContain("height: 36px;");
-    expect(settingsBadgeBlock).toContain("width: 24px;");
-    expect(settingsBadgeBlock).toContain("height: 24px;");
-    expect(settingsLegendBlock).toContain("margin-bottom: 8px;");
+    expect(panelBlock).toContain("box-sizing: border-box;");
+    expect(bodyBlock).toContain("overflow-x: clip;");
+    expect(bodyBlock).toContain("scrollbar-gutter: stable;");
+    expect(settingsGridBlock).toContain("grid-template-columns: repeat(6, minmax(0, 1fr));");
+    expect(settingsGridBlock).toContain("justify-content: stretch;");
+    expect(settingsOptionBlock).toContain("width: 100%;");
+    expect(settingsOptionBlock).toContain("min-height: 60px;");
+    expect(settingsOptionBlock).toContain("height: 60px;");
+    expect(settingsOptionBlock).toContain("border-radius: 8px;");
+    expect(settingsBadgeBlock).toContain("width: 28px;");
+    expect(settingsBadgeBlock).toContain("height: 28px;");
+    expect(settingsLegendBlock).toContain("margin-bottom: 0;");
     expect(settingsActionBlock).toContain("justify-self: start;");
+    expect(settingsConstraintBlock).toContain("max-width: none;");
     expect(settingsActionHoverBlock).toContain("border-color: var(--docsera-primary);");
     expect(settingsActionHoverBlock).toContain("color: var(--docsera-primary);");
     expect(settingsActionFocusBlock).toContain("outline: 2px solid color-mix(in srgb, var(--docsera-primary) 32%, transparent);");
@@ -382,5 +470,66 @@ describe("WorkspaceSettingsOverlay", () => {
     expect(deleteLabelBlock).toContain("width: 100%;");
     expect(deleteLabelBlock).toContain("text-align: center;");
     expect(deleteBusyBlock).toContain("opacity: 1;");
+  });
+
+  it("uses the Workspace Settings token-derived control surface and preserves related dark overrides", () => {
+    const source = readRuntimeShellCss();
+    const workspaceInputBlock = source.match(/\.docsera-workspace-settings-overlay__input \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const darkPageAndCloseBlock =
+      source.match(
+        /html\[data-docsera-theme="dark"\] \.docsera-page-settings__value,\nhtml\[data-docsera-theme="dark"\] \.docsera-page-settings__input,\nhtml\[data-docsera-theme="dark"\] \.docsera-workspace-settings-overlay__close \{([\s\S]*?)\n\}/
+      )?.[1] ?? "";
+
+    expect(workspaceInputBlock).toContain("min-height: 34px;");
+    expect(workspaceInputBlock).toContain("background: color-mix(in srgb, var(--docsera-primary) 4%, var(--docsera-surface) 96%);");
+    expect(source).not.toContain(".docsera-workspace-settings-overlay__input--description");
+    expect(source).not.toContain("min-height: 68px;");
+    expect(source).not.toMatch(
+      /html\[data-docsera-theme="dark"\][^{]*\.docsera-workspace-settings-overlay__input[^{]*\{\s*background: rgba\(17, 22, 29, 0\.92\);/
+    );
+    expect(darkPageAndCloseBlock).toContain("background: rgba(17, 22, 29, 0.92);");
+  });
+
+  it("keeps the native ToC checkbox as the full switch hit target while preserving visible token-derived states", () => {
+    const source = readRuntimeShellCss();
+    const switchBlock = readCssRuleBlock(source, ".docsera-workspace-settings-overlay__switch");
+    const disabledSwitchBlock = readCssRuleBlock(source, ".docsera-workspace-settings-overlay__switch:has(input:disabled)");
+    const inputBlock = readCssRuleBlock(source, ".docsera-workspace-settings-overlay__switch input");
+    const disabledInputBlock = readCssRuleBlock(source, ".docsera-workspace-settings-overlay__switch input:disabled");
+    const trackBlock = readCssRuleBlock(source, ".docsera-workspace-settings-overlay__switch-track");
+    const thumbBlock = readCssRuleBlock(source, ".docsera-workspace-settings-overlay__switch-thumb");
+    const checkedTrackBlock = readCssRuleBlock(source, ".docsera-workspace-settings-overlay__switch input:checked + .docsera-workspace-settings-overlay__switch-track");
+    const focusBlock = readCssRuleBlock(source, ".docsera-workspace-settings-overlay__switch input:focus-visible + .docsera-workspace-settings-overlay__switch-track");
+    const disabledTrackBlock = readCssRuleBlock(source, ".docsera-workspace-settings-overlay__switch input:disabled + .docsera-workspace-settings-overlay__switch-track");
+
+    expect(switchBlock).toContain("width: 38px;");
+    expect(switchBlock).toContain("height: 22px;");
+    expect(switchBlock).toContain("cursor: pointer;");
+    expect(disabledSwitchBlock).toContain("cursor: not-allowed;");
+
+    expect(inputBlock).toContain("position: absolute;");
+    expect(inputBlock).toContain("inset: 0;");
+    expect(inputBlock).toContain("z-index: 1;");
+    expect(inputBlock).toContain("width: 100%;");
+    expect(inputBlock).toContain("height: 100%;");
+    expect(inputBlock).toContain("opacity: 0;");
+    expect(inputBlock).toContain("cursor: pointer;");
+    expect(disabledInputBlock).toContain("cursor: not-allowed;");
+
+    expect(trackBlock).toContain("width: 38px;");
+    expect(trackBlock).toContain("height: 22px;");
+    expect(trackBlock).toContain("border: 1px solid color-mix(in srgb, var(--docsera-text-soft) 44%, var(--docsera-border) 56%);");
+    expect(trackBlock).toContain("background: color-mix(in srgb, var(--docsera-text-soft) 28%, var(--docsera-surface) 72%);");
+    expect(trackBlock).toContain("pointer-events: none;");
+    expect(trackBlock).not.toContain("color-mix(in srgb, var(--docsera-surface-muted) 82%, var(--docsera-surface) 18%)");
+
+    expect(thumbBlock).toContain("background: var(--docsera-surface);");
+    expect(thumbBlock).toContain("box-shadow: 0 0 0 1px color-mix(in srgb, var(--docsera-text-soft) 28%, transparent), 0 1px 2px rgba(15, 23, 42, 0.22);");
+    expect(thumbBlock).toContain("pointer-events: none;");
+
+    expect(checkedTrackBlock).toContain("border-color: var(--docsera-primary);");
+    expect(checkedTrackBlock).toContain("background: var(--docsera-primary);");
+    expect(focusBlock).toContain("outline: 2px solid color-mix(in srgb, var(--docsera-primary) 32%, transparent);");
+    expect(disabledTrackBlock).toContain("opacity: 0.62;");
   });
 });

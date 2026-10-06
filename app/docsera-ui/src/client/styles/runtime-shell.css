@@ -1215,6 +1215,7 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
 .docsera-workspace-settings-overlay__panel {
   display: flex;
   flex-direction: column;
+  box-sizing: border-box;
   width: min(456px, 100vw);
   min-width: 0;
   height: 100%;
@@ -1272,12 +1273,13 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
   flex: 1 1 auto;
   display: grid;
   align-content: start;
-  gap: 22px;
+  gap: 24px;
   min-width: 0;
   min-height: 0;
   padding: 20px;
   overflow-x: clip;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .docsera-workspace-settings-overlay__alert {
@@ -1291,25 +1293,56 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
   font-weight: 600;
 }
 
+.docsera-workspace-settings-overlay__section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  min-inline-size: 0;
+}
+
+.docsera-workspace-settings-overlay__section-title {
+  color: var(--docsera-text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  margin: 0;
+  text-transform: uppercase;
+}
+
 .docsera-workspace-settings-overlay__field {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;
 }
 
+.docsera-workspace-settings-overlay__field-label {
+  color: var(--docsera-text);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .docsera-workspace-settings-overlay__input {
   width: 100%;
+  min-width: 0;
   min-height: 34px;
   padding: 8px 12px;
   border: 1px solid var(--docsera-border);
   border-radius: 4px;
-  background: var(--docsera-surface);
+  background: color-mix(in srgb, var(--docsera-primary) 4%, var(--docsera-surface) 96%);
   color: var(--docsera-text);
   font-size: 0.875rem;
   font-weight: 500;
+  line-height: 1.25;
+  box-sizing: border-box;
+}
+
+.docsera-workspace-settings-overlay__input::placeholder {
+  color: var(--docsera-text-soft);
 }
 
 .docsera-workspace-settings-overlay__input:focus {
@@ -1327,55 +1360,179 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
   font-weight: 600;
 }
 
-.docsera-workspace-settings-overlay__check {
-  display: inline-flex;
+.docsera-workspace-settings-overlay__preference-group {
+  display: grid;
+  min-width: 0;
+  border: 1px solid var(--docsera-border);
+  border-radius: 8px;
+  overflow: clip;
+}
+
+.docsera-workspace-settings-overlay__preference-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  justify-self: start;
-  gap: 10px;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
   color: var(--docsera-text);
-  font-size: 0.875rem;
-  font-weight: 600;
 }
 
-.docsera-workspace-settings-overlay__check input {
-  width: 16px;
-  height: 16px;
-  accent-color: var(--docsera-primary);
-}
-
-.docsera-workspace-settings-overlay__helper {
-  margin: 2px 0 0;
-  color: var(--docsera-text-soft);
-  font-size: 0.75rem;
-  line-height: 1.5;
-}
-
-.docsera-workspace-settings-overlay__danger-zone {
+.docsera-workspace-settings-overlay__preference-row + .docsera-workspace-settings-overlay__preference-row {
   border-top: 1px solid var(--docsera-border);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-  padding-top: 18px;
 }
 
-.docsera-workspace-settings-overlay__danger-title {
-  color: var(--docsera-danger);
+.docsera-workspace-settings-overlay__preference-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.docsera-workspace-settings-overlay__preference-title {
+  color: var(--docsera-text);
   font-size: 0.875rem;
   font-weight: 700;
   line-height: 1.3;
+}
+
+.docsera-workspace-settings-overlay__preference-description {
+  color: var(--docsera-text-soft);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.docsera-workspace-settings-overlay__switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 22px;
+  cursor: pointer;
+}
+
+.docsera-workspace-settings-overlay__switch:has(input:disabled) {
+  cursor: not-allowed;
+}
+
+.docsera-workspace-settings-overlay__switch input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
   margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.docsera-workspace-settings-overlay__switch input:disabled {
+  cursor: not-allowed;
+}
+
+.docsera-workspace-settings-overlay__switch-track {
+  display: block;
+  width: 38px;
+  height: 22px;
+  border: 1px solid color-mix(in srgb, var(--docsera-text-soft) 44%, var(--docsera-border) 56%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--docsera-text-soft) 28%, var(--docsera-surface) 72%);
+  box-sizing: border-box;
+  pointer-events: none;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.docsera-workspace-settings-overlay__switch-thumb {
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: 1px;
+  border-radius: 999px;
+  background: var(--docsera-surface);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--docsera-text-soft) 28%, transparent), 0 1px 2px rgba(15, 23, 42, 0.22);
+  pointer-events: none;
+  transition: transform 120ms ease;
+}
+
+.docsera-workspace-settings-overlay__switch input:checked + .docsera-workspace-settings-overlay__switch-track {
+  border-color: var(--docsera-primary);
+  background: var(--docsera-primary);
+}
+
+.docsera-workspace-settings-overlay__switch input:checked + .docsera-workspace-settings-overlay__switch-track .docsera-workspace-settings-overlay__switch-thumb {
+  transform: translateX(16px);
+}
+
+.docsera-workspace-settings-overlay__switch input:focus-visible + .docsera-workspace-settings-overlay__switch-track {
+  outline: 2px solid color-mix(in srgb, var(--docsera-primary) 32%, transparent);
+  outline-offset: 2px;
+}
+
+.docsera-workspace-settings-overlay__switch input:disabled + .docsera-workspace-settings-overlay__switch-track {
+  opacity: 0.62;
+}
+
+.docsera-workspace-settings-overlay__danger-zone {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 16px 14px;
+  border: 1px solid color-mix(in srgb, var(--docsera-error) 24%, var(--docsera-border) 76%);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--docsera-error) 8%, var(--docsera-surface) 92%);
+}
+
+.docsera-workspace-settings-overlay__danger-title {
+  display: block;
+  color: var(--docsera-text);
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.3;
 }
 
 .docsera-workspace-settings-overlay__danger-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.docsera-workspace-settings-overlay__danger-description {
   color: var(--docsera-text-soft);
   font-size: 0.75rem;
-  line-height: 1.5;
-  margin: 0;
+  line-height: 1.4;
 }
 
 .docsera-workspace-settings-overlay__delete-button {
-  align-self: flex-start;
+  justify-self: end;
+}
+
+.docsera-workspace-settings-overlay__footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 20px;
+  border-top: 1px solid var(--docsera-border);
+  background: color-mix(in srgb, var(--docsera-surface) 92%, var(--docsera-surface-muted) 8%);
+}
+
+.docsera-workspace-settings-overlay__footer-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--docsera-success);
+}
+
+.docsera-workspace-settings-overlay__footer-copy {
+  min-width: 0;
+  margin: 0;
+  color: var(--docsera-text-soft);
+  font-size: 0.75rem;
+  line-height: 1.4;
 }
 
 .docsera-workspace-settings-overlay__close:disabled {
@@ -1951,33 +2108,33 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
 }
 
 .docsera-workspace-settings-overlay .docsera-workspace-icon-picker {
-  gap: 10px;
+  gap: 12px;
 }
 
-.docsera-workspace-settings-overlay .docsera-workspace-icon-picker > .docsera-workspace-settings-overlay__label {
+.docsera-workspace-settings-overlay .docsera-workspace-icon-picker > .docsera-workspace-settings-overlay__section-title {
   display: block;
-  margin-bottom: 8px;
+  margin-bottom: 0;
 }
 
 .docsera-workspace-settings-overlay .docsera-workspace-icon-picker__grid {
-  grid-template-columns: repeat(auto-fill, 36px);
-  justify-content: start;
-  gap: 6px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  justify-content: stretch;
+  gap: 8px;
 }
 
 .docsera-workspace-settings-overlay .docsera-workspace-icon-picker__option {
-  width: 36px;
-  min-width: 36px;
-  min-height: 36px;
-  height: 36px;
-  padding: 4px;
-  border-radius: 4px;
+  width: 100%;
+  min-width: 0;
+  min-height: 60px;
+  height: 60px;
+  padding: 8px;
+  border-radius: 8px;
 }
 
 .docsera-workspace-settings-overlay .docsera-workspace-icon-picker__option .docsera-workspace-icon-badge {
-  width: 24px;
-  height: 24px;
-  border-radius: 5px;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
 }
 
 .docsera-workspace-settings-overlay .docsera-workspace-icon-picker__option:not(:disabled):hover {
@@ -2043,6 +2200,17 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
   justify-self: start;
 }
 
+.docsera-workspace-settings-overlay .docsera-workspace-icon-picker__upload-row {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 6px;
+}
+
+.docsera-workspace-settings-overlay .docsera-workspace-icon-picker__constraints {
+  max-width: none;
+}
+
 .docsera-workspace-settings-overlay .docsera-workspace-icon-picker__upload-button:not(:disabled):hover,
 .docsera-workspace-settings-overlay__access-button:not(:disabled):hover {
   border-color: var(--docsera-primary);
@@ -2063,6 +2231,24 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
 
 .docsera-workspace-icon-picker__status:empty {
   display: none;
+}
+
+@media (max-width: 380px) {
+  .docsera-workspace-settings-overlay .docsera-workspace-icon-picker__grid {
+    grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
+  }
+
+  .docsera-workspace-settings-overlay .docsera-workspace-icon-picker__upload-row,
+  .docsera-workspace-settings-overlay__preference-row,
+  .docsera-workspace-settings-overlay__danger-zone {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .docsera-workspace-settings-overlay__switch,
+  .docsera-workspace-settings-overlay__access-button,
+  .docsera-workspace-settings-overlay__delete-button {
+    justify-self: start;
+  }
 }
 
 .docsera-modal__info-note {
@@ -2124,7 +2310,6 @@ html[data-docsera-theme="dark"] .docsera-page-settings__value:hover {
 
 html[data-docsera-theme="dark"] .docsera-page-settings__value,
 html[data-docsera-theme="dark"] .docsera-page-settings__input,
-html[data-docsera-theme="dark"] .docsera-workspace-settings-overlay__input,
 html[data-docsera-theme="dark"] .docsera-workspace-settings-overlay__close {
   background: rgba(17, 22, 29, 0.92);
 }

@@ -330,18 +330,21 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
         </div>
         {errorMessage ? <div className="docsera-workspace-settings-overlay__alert" role="alert">{errorMessage}</div> : null}
         <div className="docsera-workspace-settings-overlay__body">
-          <label className="docsera-workspace-settings-overlay__field">
-            <span className="docsera-workspace-settings-overlay__label">Workspace name</span>
-            <input className={`docsera-workspace-settings-overlay__input${errors.name ? " docsera-workspace-settings-overlay__input--invalid" : ""}`} value={draft.name} maxLength={WORKSPACE_SETTINGS_NAME_MAX_LENGTH} disabled={pending} onChange={(event) => setDraft((current) => current ? { ...current, name: event.target.value } : current)} />
-            {showErrors && errors.name ? <span className="docsera-workspace-settings-overlay__field-error">{errors.name}</span> : null}
-          </label>
-          <label className="docsera-workspace-settings-overlay__field">
-            <span className="docsera-workspace-settings-overlay__label">Short description</span>
-            <input className={`docsera-workspace-settings-overlay__input${errors.shortDescription ? " docsera-workspace-settings-overlay__input--invalid" : ""}`} value={draft.shortDescription} maxLength={WORKSPACE_SETTINGS_SHORT_DESCRIPTION_MAX_LENGTH} disabled={pending} onChange={(event) => setDraft((current) => current ? { ...current, shortDescription: event.target.value } : current)} />
-            {showErrors && errors.shortDescription ? <span className="docsera-workspace-settings-overlay__field-error">{errors.shortDescription}</span> : null}
-          </label>
-          <fieldset className="docsera-workspace-settings-overlay__field docsera-workspace-icon-picker">
-            <legend className="docsera-workspace-settings-overlay__label">Workspace icon</legend>
+          <section className="docsera-workspace-settings-overlay__section" aria-labelledby="docsera-workspace-settings-general-title">
+            <h3 id="docsera-workspace-settings-general-title" className="docsera-workspace-settings-overlay__section-title">GENERAL</h3>
+            <label className="docsera-workspace-settings-overlay__field">
+              <span className="docsera-workspace-settings-overlay__field-label">Name</span>
+              <input aria-label="Workspace name" className={`docsera-workspace-settings-overlay__input${errors.name ? " docsera-workspace-settings-overlay__input--invalid" : ""}`} type="text" value={draft.name} maxLength={WORKSPACE_SETTINGS_NAME_MAX_LENGTH} disabled={pending} onChange={(event) => setDraft((current) => current ? { ...current, name: event.target.value } : current)} />
+              {showErrors && errors.name ? <span className="docsera-workspace-settings-overlay__field-error">{errors.name}</span> : null}
+            </label>
+            <label className="docsera-workspace-settings-overlay__field">
+              <span className="docsera-workspace-settings-overlay__field-label">Description</span>
+              <input aria-label="Short description" className={`docsera-workspace-settings-overlay__input${errors.shortDescription ? " docsera-workspace-settings-overlay__input--invalid" : ""}`} type="text" value={draft.shortDescription} maxLength={WORKSPACE_SETTINGS_SHORT_DESCRIPTION_MAX_LENGTH} placeholder="What is this workspace for?" disabled={pending} onChange={(event) => setDraft((current) => current ? { ...current, shortDescription: event.target.value } : current)} />
+              {showErrors && errors.shortDescription ? <span className="docsera-workspace-settings-overlay__field-error">{errors.shortDescription}</span> : null}
+            </label>
+          </section>
+          <fieldset className="docsera-workspace-settings-overlay__section docsera-workspace-settings-overlay__section--icon docsera-workspace-icon-picker">
+            <legend className="docsera-workspace-settings-overlay__section-title">ICON</legend>
             <div className="docsera-workspace-icon-picker__grid">
               {draft.uploadedIcon ? (
                 <button type="button" className={`docsera-workspace-icon-picker__option${draft.iconKind === "uploaded" ? " docsera-workspace-icon-picker__option--selected" : ""}`} aria-pressed={draft.iconKind === "uploaded"} aria-label={`${workspace.icon.label}, current uploaded icon${draft.iconKind === "uploaded" ? ", selected" : ""}`} disabled={pending} onClick={() => setDraft((current) => current ? { ...current, iconKind: "uploaded" } : current)}>
@@ -370,36 +373,60 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
             </div>
             <div className="docsera-workspace-icon-picker__upload-row">
               <input ref={fileInputRef} className="docsera-workspace-icon-picker__file-input" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" aria-label="Upload custom workspace icon" onChange={handleIconFileChange} disabled={pending || uploadingIcon} />
-              <button type="button" className="docsera-workspace-icon-picker__upload-button" disabled={pending || uploadingIcon} onClick={() => fileInputRef.current?.click()}>
-                Upload custom workspace icon
+              <button type="button" className="docsera-workspace-icon-picker__upload-button" aria-label="Upload custom workspace icon" disabled={pending || uploadingIcon} onClick={() => fileInputRef.current?.click()}>
+                Upload custom Icon
               </button>
-              <span className="docsera-workspace-icon-picker__constraints">Square image, minimum 128x128, maximum 1 MB. PNG, JPG, or WebP only.</span>
+              <span className="docsera-workspace-icon-picker__constraints">Square, 128x128 min, 1 MB max. PNG, JPG or WebP.</span>
             </div>
             <div className="docsera-workspace-icon-picker__status" role="status" aria-live="polite">
               {uploadingIcon ? "Uploading workspace icon..." : draft.uploadedIcon ? "Custom image uploaded." : ""}
             </div>
             {uploadError ? <span className="docsera-workspace-settings-overlay__field-error" role="alert">{uploadError}</span> : null}
           </fieldset>
-          <label className="docsera-workspace-settings-overlay__check">
-            <input type="checkbox" checked={draft.tocVisible} disabled={pending} onChange={(event) => setDraft((current) => current ? { ...current, tocVisible: event.target.checked } : current)} />
-            <span>Show table of contents</span>
-          </label>
-          {workspace.canManageWorkspaceMembers ? (
-            <button type="button" className="docsera-workspace-icon-picker__upload-button docsera-workspace-settings-overlay__access-button" disabled={pending || uploadingIcon} onClick={requestManageAccess}>
-              Manage workspace access
-            </button>
-          ) : null}
-          <p className="docsera-workspace-settings-overlay__helper">Valid changes are saved when this panel is closed or you click outside it.</p>
+          <section className="docsera-workspace-settings-overlay__section" aria-labelledby="docsera-workspace-settings-preferences-title">
+            <h3 id="docsera-workspace-settings-preferences-title" className="docsera-workspace-settings-overlay__section-title">PREFERENCES</h3>
+            <div className="docsera-workspace-settings-overlay__preference-group">
+              <label className="docsera-workspace-settings-overlay__preference-row">
+                <span className="docsera-workspace-settings-overlay__preference-copy">
+                  <span className="docsera-workspace-settings-overlay__preference-title">Table of contents</span>
+                  <span className="docsera-workspace-settings-overlay__preference-description">Show page outlines.</span>
+                </span>
+                <span className="docsera-workspace-settings-overlay__switch">
+                  <input type="checkbox" aria-label="Show table of contents" checked={draft.tocVisible} disabled={pending} onChange={(event) => setDraft((current) => current ? { ...current, tocVisible: event.target.checked } : current)} />
+                  <span aria-hidden="true" className="docsera-workspace-settings-overlay__switch-track">
+                    <span className="docsera-workspace-settings-overlay__switch-thumb" />
+                  </span>
+                </span>
+              </label>
+              {workspace.canManageWorkspaceMembers ? (
+                <div className="docsera-workspace-settings-overlay__preference-row">
+                  <span className="docsera-workspace-settings-overlay__preference-copy">
+                    <span className="docsera-workspace-settings-overlay__preference-title">Access</span>
+                    <span className="docsera-workspace-settings-overlay__preference-description">Manage workspace Admins and Editors.</span>
+                  </span>
+                  <button type="button" className="docsera-workspace-icon-picker__upload-button docsera-workspace-settings-overlay__access-button" aria-label="Manage workspace access" disabled={pending || uploadingIcon} onClick={requestManageAccess}>
+                    Manage
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </section>
           {workspace.canManageSettings ? (
             <section className="docsera-workspace-settings-overlay__danger-zone" aria-labelledby="docsera-workspace-settings-danger-title">
-              <h3 id="docsera-workspace-settings-danger-title" className="docsera-workspace-settings-overlay__danger-title">Danger zone</h3>
-              <p className="docsera-workspace-settings-overlay__danger-copy">Delete this workspace and its contents permanently.</p>
-              <button type="button" className="docsera-destructive-action docsera-workspace-settings-overlay__delete-button" disabled={pending || uploadingIcon || deletePending} onClick={requestOpenDeleteDialog}>
+              <span className="docsera-workspace-settings-overlay__danger-copy">
+                <span id="docsera-workspace-settings-danger-title" className="docsera-workspace-settings-overlay__danger-title">Delete workspace</span>
+                <span className="docsera-workspace-settings-overlay__danger-description">Permanently removes it and all contents.</span>
+              </span>
+              <button type="button" className="docsera-destructive-action docsera-workspace-settings-overlay__delete-button" aria-label="Delete workspace" disabled={pending || uploadingIcon || deletePending} onClick={requestOpenDeleteDialog}>
                 <DocseraIcon icon={docseraIcons.trash} size={16} />
-                <span>Delete workspace</span>
+                <span>Delete</span>
               </button>
             </section>
           ) : null}
+        </div>
+        <div className="docsera-workspace-settings-overlay__footer">
+          <span className="docsera-workspace-settings-overlay__footer-dot" aria-hidden="true" />
+          <p className="docsera-workspace-settings-overlay__footer-copy">Changes save automatically when you close this panel.</p>
         </div>
       </aside>
       {deleteDialogOpen ? (
