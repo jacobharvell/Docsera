@@ -13,7 +13,7 @@ import type { WorkspacePageRecord } from "../../shared/types/docsera";
 import { resolveWorkspaceHeadingTarget, WorkspaceToc } from "./WorkspaceToc";
 import { buildWorkspacePageView } from "./workspaceViewModels";
 
-function createPageRecord(envelope: DocseraDocumentEnvelope): WorkspacePageRecord {
+function createPageRecord(envelope: DocseraDocumentEnvelope, overrides: Partial<WorkspacePageRecord> = {}): WorkspacePageRecord {
   return {
     sysId: "page-001",
     workspaceSysId: "workspace-001",
@@ -31,7 +31,8 @@ function createPageRecord(envelope: DocseraDocumentEnvelope): WorkspacePageRecor
     publishedContentJson: envelope,
     publishedBodyText: null,
     publicationState: "published",
-    active: true
+    active: true,
+    ...overrides
   };
 }
 
@@ -59,6 +60,12 @@ function renderToc(envelope: DocseraDocumentEnvelope) {
 function renderTocOnly(envelope: DocseraDocumentEnvelope) {
   const page = buildWorkspacePageView(createPageRecord(envelope), "live");
 
+  return render(
+    <WorkspaceToc collapsed={false} page={page} panelId="docsera-workspace-toc" showPendingState={false} onToggleCollapsed={() => undefined} />
+  );
+}
+
+function renderTocForPage(page: ReturnType<typeof buildWorkspacePageView>) {
   return render(
     <WorkspaceToc collapsed={false} page={page} panelId="docsera-workspace-toc" showPendingState={false} onToggleCollapsed={() => undefined} />
   );
@@ -105,6 +112,11 @@ function readRuntimeShellCss(): string {
     getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
   };
   return nodeProcess.getBuiltinModule("fs").readFileSync(`${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`, "utf8");
+}
+
+function readCssRuleBlock(css: string, selector: string): string {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return css.match(new RegExp(`${escapedSelector}\\s*\\{(?<block>[^}]*)\\}`, "s"))?.groups?.block ?? "";
 }
 
 afterEach(() => {
@@ -164,6 +176,20 @@ describe("WorkspaceToc", () => {
     expect(runtimeShellCss).not.toMatch(/\.docsera-toc-rail__body\s*\{[^}]*top:\s*40px;/s);
   });
 
+  it("reserves matching top and bottom viewport clearance for the sticky ToC rail", () => {
+    const runtimeShellCss = readRuntimeShellCss();
+    const railRule = readCssRuleBlock(runtimeShellCss, ".docsera-toc-rail");
+
+    expect(railRule).toMatch(/position:\s*sticky;/);
+    expect(railRule).toMatch(/top:\s*var\(--docsera-workspace-toc-top-gap\);/);
+    expect(railRule).toMatch(
+      /height:\s*calc\(\s*100dvh\s*-\s*var\(--docsera-header-height\)\s*-\s*var\(--docsera-workspace-toc-top-gap\)\s*-\s*var\(--docsera-workspace-toc-top-gap\)\s*\);/
+    );
+    expect(railRule).toMatch(
+      /max-height:\s*calc\(\s*100dvh\s*-\s*var\(--docsera-header-height\)\s*-\s*var\(--docsera-workspace-toc-top-gap\)\s*-\s*var\(--docsera-workspace-toc-top-gap\)\s*\);/
+    );
+  });
+
   it("scrolls to the canonical heading anchor without mutating the workspace route", () => {
     const envelope = createDuplicateHeadingDocseraDocumentEnvelope();
     window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/overview?mode=edit");
@@ -184,6 +210,8 @@ describe("WorkspaceToc", () => {
     expect(firstScroll).not.toHaveBeenCalled();
     expect(thirdScroll).not.toHaveBeenCalled();
     expect(window.location.hash).toBe("#/product-docs/overview?mode=edit");
+    expect(links[0]).not.toHaveClass("docsera-toc__link--active");
+    expect(links[1]).toHaveClass("docsera-toc__link--active");
   });
 
   it("supports keyboard activation with the same in-page scroll behavior", () => {
@@ -194,11 +222,104 @@ describe("WorkspaceToc", () => {
     const installHeading = screen.getByRole("heading", { name: "Install", level: 3 });
     const scrollIntoView = mockScrollIntoView(installHeading);
     const installLink = screen.getByRole("link", { name: "Install" });
+    const overviewLink = screen.getByRole("link", { name: "Overview" });
 
     fireEvent.keyDown(installLink, { code: "Enter", key: "Enter" });
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
     expect(window.location.hash).toBe("#/product-docs/overview");
+    expect(overviewLink).not.toHaveClass("docsera-toc__link--active");
+    expect(installLink).toHaveClass("docsera-toc__link--active");
+  });
+
+  it("marks the first ToC item active on initial presentation", () => {
+    const envelope = createHeadingHierarchyDocseraDocumentEnvelope();
+    renderTocOnly(envelope);
+
+    const overviewLink = screen.getByRole("link", { name: "Overview" });
+    const installLink = screen.getByRole("link", { name: "Install" });
+
+    expect(overviewLink).toHaveClass("docsera-toc__link--active");
+    expect(installLink).not.toHaveClass("docsera-toc__link--active");
+  });
+
+  it("resets active state to the first item when the page changes", () => {
+    const firstPage = buildWorkspacePageView(createPageRecord(createDuplicateHeadingDocseraDocumentEnvelope(), { sysId: "page-one" }), "live");
+    const secondPage = buildWorkspacePageView(createPageRecord(createHeadingHierarchyDocseraDocumentEnvelope(), { sysId: "page-two" }), "live");
+    const { rerender } = renderTocForPage(firstPage);
+
+    const duplicateOverviewLinks = screen.getAllByRole("link", { name: "Overview" });
+    fireEvent.click(duplicateOverviewLinks[1]);
+    expect(duplicateOverviewLinks[1]).toHaveClass("docsera-toc__link--active");
+
+    rerender(
+      <WorkspaceToc collapsed={false} page={secondPage} panelId="docsera-workspace-toc" showPendingState={false} onToggleCollapsed={() => undefined} />
+    );
+
+    expect(screen.getByRole("link", { name: "Overview" })).toHaveClass("docsera-toc__link--active");
+    expect(screen.getByRole("link", { name: "Install" })).not.toHaveClass("docsera-toc__link--active");
+  });
+
+  it("falls back to the first available item when the active heading leaves the same page outline", () => {
+    const originalPage = buildWorkspacePageView(createPageRecord(createHeadingHierarchyDocseraDocumentEnvelope()), "live");
+    const changedEnvelope = createEnvelope([
+      {
+        type: "heading",
+        attrs: { level: 1 },
+        content: [{ type: "text", text: "Overview" }]
+      },
+      {
+        type: "heading",
+        attrs: { level: 2 },
+        content: [{ type: "text", text: "Usage" }]
+      }
+    ]);
+    const changedPage = buildWorkspacePageView(createPageRecord(changedEnvelope), "live");
+    const { rerender } = renderTocForPage(originalPage);
+
+    const installLink = screen.getByRole("link", { name: "Install" });
+    fireEvent.click(installLink);
+    expect(installLink).toHaveClass("docsera-toc__link--active");
+
+    rerender(
+      <WorkspaceToc collapsed={false} page={changedPage} panelId="docsera-workspace-toc" showPendingState={false} onToggleCollapsed={() => undefined} />
+    );
+
+    expect(screen.getByRole("link", { name: "Overview" })).toHaveClass("docsera-toc__link--active");
+    expect(screen.getByRole("link", { name: "Usage" })).not.toHaveClass("docsera-toc__link--active");
+  });
+
+  it("keeps the ToC rail continuous while preserving row spacing and link dimensions", () => {
+    const runtimeShellCss = readRuntimeShellCss();
+
+    expect(runtimeShellCss).toMatch(/\.docsera-toc__list\s*\{[^}]*position:\s*relative;[^}]*gap:\s*4px;/s);
+    expect(runtimeShellCss).toMatch(
+      /\.docsera-toc__list::before\s*\{[^}]*content:\s*"";[^}]*position:\s*absolute;[^}]*inset:\s*0 auto 0 0;[^}]*width:\s*1px;[^}]*background:\s*var\(--docsera-border\);/s
+    );
+    expect(runtimeShellCss).toMatch(/\.docsera-toc__link\s*\{[^}]*padding:\s*6px 0 6px 13px;[^}]*font-weight:\s*500;[^}]*line-height:\s*1\.4286;/s);
+    expect(runtimeShellCss).toMatch(/\.docsera-toc__link\[data-level="2"\]\s*\{[^}]*padding-left:\s*23px;/s);
+    expect(runtimeShellCss).toMatch(/\.docsera-toc__link\[data-level="3"\]\s*\{[^}]*padding-left:\s*33px;/s);
+  });
+
+  it("keeps hover and active presentation paint-only on top of the neutral baseline", () => {
+    const runtimeShellCss = readRuntimeShellCss();
+    const baseLinkRule = readCssRuleBlock(runtimeShellCss, ".docsera-toc__link");
+    const hoverRule = readCssRuleBlock(runtimeShellCss, ".docsera-toc__link:hover");
+    const activeRule = readCssRuleBlock(runtimeShellCss, ".docsera-toc__link--active");
+
+    expect(baseLinkRule).toMatch(/font-weight:\s*500;/);
+    expect(baseLinkRule).not.toMatch(/border-left/);
+    expect(hoverRule).toMatch(/color:\s*var\(--docsera-primary\);/);
+    expect(hoverRule).not.toMatch(/padding|border|font-weight|line-height/);
+    expect(activeRule).toMatch(/color:\s*var\(--docsera-primary\);/);
+    expect(activeRule).not.toMatch(/padding|border|font-weight|line-height/);
+    expect(runtimeShellCss).not.toMatch(/\.docsera-toc__link--active\[data-level="[23]"\]/);
+    expect(runtimeShellCss).toMatch(
+      /\.docsera-toc__link::before\s*\{[^}]*position:\s*absolute;[^}]*inset:\s*0 auto 0 0;[^}]*width:\s*2px;[^}]*background:\s*var\(--docsera-primary\);[^}]*opacity:\s*0;/s
+    );
+    expect(runtimeShellCss).toMatch(
+      /\.docsera-toc__link:hover::before,\s*\.docsera-toc__link--active::before\s*\{[^}]*opacity:\s*1;/s
+    );
   });
 
   it("resolves headings inside the editor shadow root by outline order without mutating the workspace route", () => {

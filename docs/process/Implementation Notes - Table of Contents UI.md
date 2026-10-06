@@ -16,10 +16,13 @@ This note documents the current Workspace Table of Contents shell behavior in th
 - Editor save state is separate from the ToC and appears subtly beside the stable header's Live/Edit toggle.
 - TOC links now preserve the active workspace/page route and scroll the current document in place instead of letting a bare fragment hash re-enter Docsera route parsing.
 - Pointer and keyboard activation both target the canonical heading id generated for duplicate headings; the browser URL stays on the existing workspace route.
+- The visible active TOC item is transient component state. It starts on the first available heading, follows pointer and keyboard TOC activation, resets to the first heading when the page context changes, and falls back to the first heading if the active heading leaves the same page outline.
+- Manual document scrolling does not change the active TOC item in this runtime slice; scroll-position-driven active tracking remains a future consideration.
 - Heading navigation now uses one clearance rule for canonical body H1, H2, and H3 targets. The live reader and editor runtime both apply the same header-aware scroll margin so headings land fully below the fixed application header.
 - The ToC resolver checks the live document first and then the workspace editor shadow root, so the same in-page navigation path works in Live and Edit without adding route state.
 - The editor shadow-root fallback now filters out empty headings before applying the outline ordinal, so empty headings do not consume a ToC target and duplicate populated headings still resolve in canonical order.
 - The ToC column stretches to the workspace track height, the full-height divider is carried by the stretched aside boundary, and the sticky rail uses the usable viewport height instead of inheriting the long document track.
+- The sticky ToC rail reserves the workspace ToC gap at both the top and bottom of the viewport. This keeps the rail clear of the sticky containing block's bottom edge so fractional end-of-document layout coordinates cannot nudge the whole rail upward during final-heading navigation.
 
 ## Expanded State Convention
 
@@ -27,6 +30,10 @@ This note documents the current Workspace Table of Contents shell behavior in th
 - TOC items use compact prototype-aligned spacing and typography.
 - Active TOC items use the Docsera primary color for both the text treatment and the vertical left indicator.
 - Inactive items keep the neutral border line and switch to the primary color on hover.
+- The neutral vertical rail is drawn continuously at the list level through the existing 4px inter-row spacing, while each row keeps its own active or hover rail segment layered over that baseline.
+- TOC item typography and text position are geometry-stable across inactive, hover, and active states: active state does not change font weight, padding, border width, line height, row height, or heading-level indentation.
+- Active and hover states use the same paint-only 2px Docsera-primary row rail overlay.
+- State-specific row rail presentation is layered over the continuous neutral list-level baseline without changing row dimensions.
 
 ## Collapsed State Convention
 

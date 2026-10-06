@@ -1,4 +1,4 @@
-import type { KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
 import type { WorkspacePageView } from "./workspaceViewModels";
@@ -11,6 +11,11 @@ type WorkspaceTocProps = {
   page: WorkspacePageView | null;
   panelId: string;
   onToggleCollapsed: () => void;
+};
+
+type WorkspaceTocActiveState = {
+  anchorId: string | null;
+  pageSysId: string | null;
 };
 
 function WorkspaceTocChevron({ collapsed }: { collapsed: boolean }) {
@@ -76,8 +81,33 @@ function isWorkspaceTocKeyboardActivation(event: KeyboardEvent<HTMLAnchorElement
   return event.key === "Enter" || event.key === " ";
 }
 
+function resolveInitialActiveAnchorId(page: WorkspacePageView | null): string | null {
+  return page?.tocItems[0]?.anchorId ?? null;
+}
+
 export function WorkspaceToc({ collapsed, isLoading = false, showPendingState, page, panelId, onToggleCollapsed }: WorkspaceTocProps) {
   const hasSections = Boolean(page && page.tocItems.length > 0);
+  const [activeState, setActiveState] = useState<WorkspaceTocActiveState>(() => ({
+    anchorId: resolveInitialActiveAnchorId(page),
+    pageSysId: page?.sysId ?? null
+  }));
+
+  useEffect(() => {
+    const firstAnchorId = resolveInitialActiveAnchorId(page);
+
+    if (!page || !firstAnchorId) {
+      setActiveState({ anchorId: null, pageSysId: null });
+      return;
+    }
+
+    setActiveState((currentState) => {
+      if (currentState.pageSysId === page.sysId && currentState.anchorId && page.tocItems.some((section) => section.anchorId === currentState.anchorId)) {
+        return currentState;
+      }
+
+      return { anchorId: firstAnchorId, pageSysId: page.sysId };
+    });
+  }, [page?.sysId, page?.tocItems]);
 
   return (
     <div className={`docsera-toc-rail${collapsed ? " docsera-toc-rail--collapsed" : ""}`}>
@@ -117,11 +147,12 @@ export function WorkspaceToc({ collapsed, isLoading = false, showPendingState, p
                 {page!.tocItems.map((section, index) => (
                   <li key={section.id} className="docsera-toc__item">
                     <a
-                      className={`docsera-toc__link${index === 0 ? " docsera-toc__link--active" : ""}`}
+                      className={`docsera-toc__link${section.anchorId === activeState.anchorId ? " docsera-toc__link--active" : ""}`}
                       data-level={section.level}
                       href={`#${section.anchorId}`}
                       onClick={(event) => {
                         activateWorkspaceHeading(section.anchorId, index, event);
+                        setActiveState({ anchorId: section.anchorId, pageSysId: page!.sysId });
                       }}
                       onKeyDown={(event) => {
                         if (!isWorkspaceTocKeyboardActivation(event)) {
@@ -129,6 +160,7 @@ export function WorkspaceToc({ collapsed, isLoading = false, showPendingState, p
                         }
 
                         activateWorkspaceHeading(section.anchorId, index, event);
+                        setActiveState({ anchorId: section.anchorId, pageSysId: page!.sysId });
                       }}
                       tabIndex={collapsed ? -1 : undefined}
                     >
