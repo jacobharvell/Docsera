@@ -19,6 +19,34 @@ describe("WorkspaceList", () => {
     vi.restoreAllMocks();
   });
 
+  it.each([null, "Documentation and release guidance."])("keeps the name line separate from descriptions (%s) for every icon type", (shortDescription) => {
+    const icons = [
+      { type: "builtin" as const, key: "docsera-workspace", label: "Docsera" },
+      { type: "builtin" as const, key: "documentation", label: "Documentation" },
+      { type: "uploaded" as const, key: "custom", label: "Custom", assetPath: "blob:custom" }
+    ];
+    const { container } = render(
+      <WorkspaceList
+        items={icons.map((icon, index) => ({
+          sysId: `workspace-${index}`, slug: `docs-${index}`, name: `Docs ${index}`,
+          icon, shortDescription, roleLabel: null, layout: { tocVisible: true }, status: "active" as const,
+          canManageSettings: false, canManageWorkspaceMembers: false
+        }))}
+        onOpenWorkspace={vi.fn()} onOpenWorkspaceSettings={vi.fn()}
+      />
+    );
+    expect(container.querySelectorAll(".docsera-workspace-row__identity")).toHaveLength(3);
+    expect(container.querySelector(".docsera-workspace-row__icon .docsera-workspace-icon-badge__artwork")).toBeInTheDocument();
+    expect(container.querySelector(".docsera-workspace-row__icon .docsera-workspace-icon-badge__glyph")).toBeInTheDocument();
+    expect(container.querySelector(".docsera-workspace-row__icon .docsera-workspace-icon-badge__uploaded-image")).toBeInTheDocument();
+    for (const identity of container.querySelectorAll(".docsera-workspace-row__identity")) {
+      expect(identity.firstElementChild).toHaveClass("docsera-workspace-row__icon");
+      const copy = identity.querySelector(".docsera-workspace-row__copy");
+      expect(copy?.firstElementChild).toHaveClass("docsera-workspace-row__name");
+      expect(copy?.querySelector(".docsera-workspace-row__description")?.textContent ?? null).toBe(shortDescription);
+    }
+  });
+
   it("uses the shared authenticated uploaded-icon loader for My Workspaces rows", async () => {
     mockObjectUrl();
     const loadUploadedIcon = vi.fn(async () => new Blob(["icon"], { type: "image/png" }));

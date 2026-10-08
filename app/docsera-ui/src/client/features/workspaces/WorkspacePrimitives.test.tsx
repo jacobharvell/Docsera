@@ -20,6 +20,34 @@ describe("WorkspaceIconBadge", () => {
     vi.restoreAllMocks();
   });
 
+  it("centers workspace names on the unchanged icon line and explicitly separates picker legends", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`, "utf8"
+    ).replace(/\r\n/g, "\n");
+    const rule = (selector: string) => source.split(`${selector} {`).slice(-1)[0]?.split("\n}")[0] ?? "";
+
+    expect(rule(".docsera-workspace-row__identity")).toContain("align-items: flex-start;");
+    expect(rule(".docsera-workspace-row__name")).toContain("position: relative;");
+    expect(rule(".docsera-workspace-row__name")).toContain("top: 1px;");
+    expect(rule(".docsera-workspace-row__name")).toContain("display: inline-flex;");
+    expect(rule(".docsera-workspace-row__name")).toContain("align-items: center;");
+    expect(rule(".docsera-workspace-row__name")).toContain("min-height: 24px;");
+    for (const selector of [".docsera-workspace-row__icon", ".docsera-header__menu-item-icon"]) {
+      const block = rule(selector);
+      expect(block).toContain("width: 24px;");
+      expect(block).toContain("height: 24px;");
+    }
+    expect(rule(".docsera-header__menu-item-identity")).toContain("align-items: center;");
+    expect(rule(".docsera-header__menu-item-label")).toContain("line-height: 24px;");
+    expect(rule(".docsera-header__menu-item-label")).toContain("text-overflow: ellipsis;");
+    expect(rule(".docsera-workspace-icon-picker > legend + .docsera-workspace-icon-picker__grid"))
+      .toContain("margin-top: 8px;");
+  });
+
   it("keeps built-in icon glyphs transparent and primary-colored in workspace identity surfaces", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;

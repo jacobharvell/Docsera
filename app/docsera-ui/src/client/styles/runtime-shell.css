@@ -814,7 +814,11 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__search-icon {
 }
 
 .docsera-workspace-row__name {
-  display: inline-block;
+  position: relative;
+  top: 1px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
   color: var(--docsera-text);
   font-family: Geist, Inter, "Segoe UI", sans-serif;
   font-size: 1rem;
@@ -2058,6 +2062,11 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
   padding: 0;
 }
 
+/* Legends sit outside the fieldset content grid; give both pickers an explicit gap. */
+.docsera-workspace-icon-picker > legend + .docsera-workspace-icon-picker__grid {
+  margin-top: 8px;
+}
+
 .docsera-workspace-icon-picker__grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
@@ -2703,6 +2712,7 @@ html[data-docsera-theme="dark"] .docsera-header__bar {
 
 .docsera-header__menu-item-label {
   display: block;
+  line-height: 24px;
   flex: 1 1 auto;
   max-width: 100%;
   overflow: hidden;
