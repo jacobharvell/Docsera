@@ -28,6 +28,7 @@ type StagedMember = WorkspaceMemberUserSearchRecord & {
 
 type WorkspaceManageAccessOverlayProps = {
   loadMembers: (workspace: WorkspaceViewRecord) => Promise<ManageAccessState>;
+  onBack: () => void;
   onClose: () => void;
   onMutationCommitted: () => Promise<void> | void;
   open: boolean;
@@ -47,12 +48,20 @@ function memberIdentity(member: Pick<WorkspaceMemberRecord | WorkspaceMemberUser
   return cleanText(member.email) || cleanText(member.userName) || "No identifier";
 }
 
-function accessLabel(accessLevel: WorkspaceMemberAccessLevel): string {
-  return accessLevel === "admin" ? "Workspace Admin" : "Editor";
+function memberInitials(member: Pick<WorkspaceMemberRecord | WorkspaceMemberUserSearchRecord, "displayName" | "email" | "userName">): string {
+  const source = cleanText(member.displayName) || cleanText(member.userName) || cleanText(member.email);
+  if (!source) return "??";
+  const nameParts = source.split(/\s+/).filter(Boolean);
+  if (nameParts.length >= 2) {
+    return `${nameParts[0][0] ?? ""}${nameParts[1][0] ?? ""}`.toUpperCase();
+  }
+  const compact = source.replace(/[^a-z0-9]/gi, "");
+  return (compact.slice(0, 2) || source.slice(0, 2)).toUpperCase();
 }
 
 export function WorkspaceManageAccessOverlay({
   loadMembers,
+  onBack,
   onClose,
   onMutationCommitted,
   open,
@@ -341,7 +350,12 @@ export function WorkspaceManageAccessOverlay({
     <div className="docsera-manage-access" data-docsera-manage-access="true">
       <aside ref={panelRef} className="docsera-manage-access__panel" role="complementary" aria-label="Manage access">
         <div className="docsera-manage-access__header">
-          <div>
+          <div className="docsera-manage-access__header-title">
+            <DocseraCompactTooltip label="Back to workspace settings">
+              <button type="button" className="docsera-manage-access__back" aria-label="Back to workspace settings" onClick={onBack}>
+                <DocseraIcon icon={docseraIcons.chevronLeft} />
+              </button>
+            </DocseraCompactTooltip>
             <h2 className="docsera-manage-access__title">Manage access</h2>
           </div>
           <DocseraCompactTooltip label="Close manage access">
@@ -362,18 +376,32 @@ export function WorkspaceManageAccessOverlay({
             <>
               {mutationError ? <div className="docsera-workspace-settings-overlay__alert" role="alert">{mutationError}</div> : null}
               <div className="docsera-manage-access__toolbar">
-                <input className="docsera-workspace-settings-overlay__input" value={query} placeholder="Filter member list" aria-label="Filter member list" onChange={(event) => setQuery(event.target.value)} />
-                <button type="button" className="docsera-modal__primary" onClick={openAddMembers}>Add members</button>
+                <label className="docsera-manage-access__filter">
+                  <span className="docsera-manage-access__filter-icon" aria-hidden="true">
+                    <DocseraIcon icon={docseraIcons.search} />
+                  </span>
+                  <input className="docsera-manage-access__filter-input" value={query} placeholder="Filter member list" aria-label="Filter member list" onChange={(event) => setQuery(event.target.value)} />
+                </label>
+                <button type="button" className="docsera-modal__primary docsera-manage-access__add-button" onClick={openAddMembers}>
+                  <DocseraIcon icon={docseraIcons.plus} />
+                  <span>Add members</span>
+                </button>
+              </div>
+              <div className="docsera-manage-access__member-headings" aria-hidden="true">
+                <span>{filteredMembers.length} {filteredMembers.length === 1 ? "member" : "members"}</span>
+                <span>ROLE</span>
               </div>
               {filteredMembers.length === 0 ? <div className="docsera-manage-access__state">No members match this search.</div> : null}
               <div className="docsera-manage-access__list">
                 {filteredMembers.map((member) => {
                   const protectedLastAdmin = isProtectedLastAdmin(member);
+                  const memberName = cleanText(member.displayName) || member.userName || "Unknown user";
                   return (
                     <div key={member.userSysId} className={`docsera-manage-access__member${member.active ? "" : " docsera-manage-access__member--inactive"}`}>
+                      <span className="docsera-manage-access__avatar" aria-hidden="true">{memberInitials(member)}</span>
                       <div className="docsera-manage-access__member-main">
-                        <span className="docsera-manage-access__member-name">{cleanText(member.displayName) || member.userName || "Unknown user"}</span>
-                        <span className="docsera-manage-access__member-meta">{memberIdentity(member)}{member.active ? "" : " · inactive"}</span>
+                        <span className="docsera-manage-access__member-name">{memberName}</span>
+                        <span className="docsera-manage-access__member-meta">{memberIdentity(member)}{member.active ? "" : " - inactive"}</span>
                         {protectedLastAdmin ? <span className="docsera-manage-access__restriction">Last active Workspace Admin</span> : null}
                       </div>
                       <div className="docsera-manage-access__member-actions">
@@ -381,12 +409,17 @@ export function WorkspaceManageAccessOverlay({
                           <option value="editor">Editor</option>
                           <option value="admin">Workspace Admin</option>
                         </select>
-                        <button type="button" className="docsera-modal__secondary docsera-manage-access__remove-button" disabled={Boolean(mutatingUserSysId) || protectedLastAdmin} onClick={() => setRemoveTarget(member)}>Remove</button>
+                        <DocseraCompactTooltip label={`Remove access for ${memberName}`}>
+                          <button type="button" className="docsera-manage-access__remove-button" aria-label={`Remove access for ${memberName}`} disabled={Boolean(mutatingUserSysId) || protectedLastAdmin} onClick={() => setRemoveTarget(member)}>
+                            <DocseraIcon icon={docseraIcons.trash} />
+                          </button>
+                        </DocseraCompactTooltip>
                       </div>
                     </div>
                   );
                 })}
               </div>
+              <p className="docsera-manage-access__permissions-copy"><strong>Workspace admins</strong> can change settings and manage access. <strong>Editors</strong> can create and edit documents.</p>
             </>
           ) : null}
         </div>

@@ -7749,7 +7749,16 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
                   />
                   <WorkspaceManageAccessOverlay
                     loadMembers={loadManageAccessMembers}
-                    onClose={() => setManageAccessOpen(false)}
+                    onBack={() => {
+                      setManageAccessOpen(false);
+                      openCurrentWorkspaceSettingsPanel();
+                    }}
+                    onClose={() => {
+                      setManageAccessOpen(false);
+                      setWorkspaceSettingsPanelState({ status: "closed" });
+                      setWorkspaceSettingsPreviewIdentity(null);
+                      setWorkspaceDeletionState({ status: "idle" });
+                    }}
                     onMutationCommitted={refreshCurrentWorkspaceCapabilityState}
                     open={manageAccessOpen && Boolean(workspaceStateData?.canManageWorkspaceMembers)}
                     removeMemberAccess={removeManageAccessMember}

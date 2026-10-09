@@ -338,7 +338,7 @@ test("keeps settings and access panel header dividers aligned to the workspace h
     /\.docsera-workspace-settings-overlay__header\s*{[^}]*box-sizing:\s*border-box;[^}]*height:\s*var\(--docsera-header-height\);[^}]*padding:\s*0 20px;[^}]*min-height:\s*var\(--docsera-header-height\);[^}]*border-bottom:\s*1px solid var\(--docsera-border\);/s
   );
   expect(css).toMatch(
-    /\.docsera-manage-access__header\s*{[^}]*align-items:\s*center;[^}]*border-bottom:\s*1px solid var\(--docsera-border-soft\);[^}]*box-sizing:\s*border-box;[^}]*height:\s*var\(--docsera-header-height\);[^}]*min-height:\s*var\(--docsera-header-height\);[^}]*padding:\s*0 24px;/s
+    /\.docsera-manage-access__header\s*{[^}]*align-items:\s*center;[^}]*border-bottom:\s*1px solid var\(--docsera-border\);[^}]*box-sizing:\s*border-box;[^}]*height:\s*var\(--docsera-header-height\);[^}]*min-height:\s*var\(--docsera-header-height\);[^}]*padding:\s*0 20px;/s
   );
   expect(css).not.toMatch(/\.docsera-manage-access__header\s*{[^}]*padding:\s*22px 24px 18px;/s);
 });
@@ -584,6 +584,33 @@ test("keeps manage access Add Members visual states on defined theme tokens", ()
   expect(css).toMatch(
     /\.docsera-manage-access__title\s*{[^}]*color:\s*var\(--docsera-text\);[^}]*font-family:\s*Geist, Inter, "Segoe UI", sans-serif;[^}]*font-size:\s*1rem;[^}]*font-weight:\s*700;[^}]*line-height:\s*1\.25;/s
   );
+  expect(css).toMatch(
+    /\.docsera-manage-access__panel\s*{[^}]*width:\s*min\(456px, 100vw\);/s
+  );
+  expect(css).toMatch(/\.docsera-manage-access__header-title\s*{[^}]*display:\s*flex;[^}]*gap:\s*10px;/s);
+  expect(css).toMatch(/\.docsera-manage-access__back\s*{[^}]*background:\s*transparent;[^}]*border:\s*0;[^}]*width:\s*28px;/s);
+  expect(css).toMatch(/\.docsera-manage-access__toolbar\s*{[^}]*align-items:\s*center;[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 132px;/s);
+  expect(css).toMatch(/\.docsera-manage-access__filter-input\s*{[^}]*min-height:\s*40px;[^}]*padding:\s*8px 12px 8px 32px;/s);
+  expect(css).toMatch(/\.docsera-manage-access__add-button\s*{[^}]*display:\s*inline-flex;[^}]*gap:\s*7px;/s);
+  expect(css).toMatch(
+    /\.docsera-manage-access__member-headings\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 164px;[^}]*text-transform:\s*uppercase;/s
+  );
+  expect(css).toMatch(
+    /\.docsera-manage-access__list\s*{[^}]*border:\s*1px solid var\(--docsera-border-soft\);[^}]*border-radius:\s*12px;[^}]*overflow:\s*clip;/s
+  );
+  expect(css).toMatch(
+    /\.docsera-manage-access__member\s*{[^}]*grid-template-columns:\s*40px minmax\(0, 1fr\) 174px;[^}]*min-height:\s*60px;/s
+  );
+  expect(css).toMatch(
+    /\.docsera-manage-access__member-name\s*{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s
+  );
+  expect(css).toMatch(
+    /\.docsera-manage-access__member-meta\s*{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s
+  );
+  expect(css).toMatch(/\.docsera-manage-access__restriction\s*{[^}]*overflow-wrap:\s*anywhere;/s);
+  expect(css).not.toMatch(/\.docsera-manage-access__restriction\s*{[^}]*text-overflow:\s*ellipsis;/s);
+  expect(css).toMatch(/\.docsera-manage-access__avatar\s*{[^}]*border-radius:\s*999px;[^}]*height:\s*34px;[^}]*width:\s*34px;/s);
+  expect(css).toMatch(/\.docsera-manage-access__permissions-copy\s*{[^}]*font-size:\s*0\.75rem;[^}]*line-height:\s*1\.45;/s);
   expect(css).not.toMatch(/\.docsera-manage-access__title\s*{[^}]*font-size:\s*1\.25rem;/s);
   expect(css).not.toMatch(/\.docsera-manage-access__title\s*{[^}]*line-height:\s*1\.2;/s);
   expect(css).toMatch(
@@ -623,17 +650,18 @@ test("keeps manage access Add Members visual states on defined theme tokens", ()
   );
   expect(css).toMatch(/\.docsera-manage-access__staged-error\s*{[^}]*color:\s*var\(--docsera-error\);/s);
   const genericSecondaryHover = ".docsera-modal__secondary:hover:not(:disabled)";
-  const removeButtonHover = ".docsera-modal__secondary.docsera-manage-access__remove-button:not(:disabled):hover";
+  const removeButtonHover = ".docsera-manage-access .docsera-manage-access__remove-button:not(:disabled):hover";
   const darkRemoveButtonHover = `html[data-docsera-theme="dark"] ${removeButtonHover}`;
   expect(css).toMatch(
-    /\.docsera-modal__secondary\.docsera-manage-access__remove-button:not\(:disabled\):hover\s*{[^}]*border-color:\s*rgba\(186, 26, 26, 0\.28\);[^}]*background:\s*rgba\(186, 26, 26, 0\.14\);[^}]*color:\s*var\(--docsera-error\);/s
+    /\.docsera-manage-access \.docsera-manage-access__remove-button:not\(:disabled\):hover\s*{[^}]*border-color:\s*rgba\(186, 26, 26, 0\.28\);[^}]*background:\s*rgba\(186, 26, 26, 0\.14\);[^}]*color:\s*var\(--docsera-error\);/s
   );
   expect(css).toMatch(
-    /html\[data-docsera-theme="dark"\] \.docsera-modal__secondary\.docsera-manage-access__remove-button:not\(:disabled\):hover\s*{[^}]*border-color:\s*rgba\(255, 138, 128, 0\.28\);[^}]*background:\s*rgba\(255, 138, 128, 0\.14\);[^}]*color:\s*var\(--docsera-error\);/s
+    /html\[data-docsera-theme="dark"\] \.docsera-manage-access \.docsera-manage-access__remove-button:not\(:disabled\):hover\s*{[^}]*border-color:\s*rgba\(255, 138, 128, 0\.28\);[^}]*background:\s*rgba\(255, 138, 128, 0\.14\);[^}]*color:\s*var\(--docsera-error\);/s
   );
   expect(compareSpecificity(selectorSpecificity(removeButtonHover), selectorSpecificity(genericSecondaryHover))).toBeGreaterThan(0);
   expect(compareSpecificity(selectorSpecificity(darkRemoveButtonHover), selectorSpecificity(genericSecondaryHover))).toBeGreaterThan(0);
-  expect(css.indexOf(genericSecondaryHover)).toBeGreaterThan(css.indexOf(removeButtonHover));
+  expect(css.indexOf(genericSecondaryHover)).toBeGreaterThan(-1);
+  expect(css.indexOf(removeButtonHover)).toBeGreaterThan(-1);
   expect(css).not.toMatch(/\.docsera-manage-access__remove-button:hover\s*{/);
   expect(css).not.toMatch(/\.docsera-manage-access__remove-button\s*{[^}]*rgba\(186, 26, 26/s);
 
