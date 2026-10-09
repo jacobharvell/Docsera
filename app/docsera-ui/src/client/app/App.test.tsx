@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode, useEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { App } from "./App";
+import { App, resolveDiscardRecoveryRetryAuthoringReadiness } from "./App";
 import { createEmptyDocseraDocumentEnvelope } from "../../shared/editor/document";
 import { createHeadingHierarchyDocseraDocumentEnvelope } from "../../shared/editor/documentFixtures";
 import type {
@@ -23,6 +23,14 @@ let deferHostReady = false;
 let hostReadyResolvers: Array<() => void> = [];
 let restoreNavigationEntries = () => {};
 let mockEditorHostMounts: Array<{ pageSysId: string; sessionKey: string }> = [];
+type MockEditorStatusState = {
+  applyCanonicalEnvelope?: (envelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope>) => { kind: "unchanged"; nextEnvelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope> };
+  flush?: () => Promise<boolean>;
+  getCanonicalEnvelope?: () => ReturnType<typeof createEmptyDocseraDocumentEnvelope>;
+  isDirty: boolean;
+  isSaving: boolean;
+  status: string;
+};
 let mockEditorHostHandles = new Map<string, {
   onOutlineChange?: (outline: Array<{ depth: number; id: string; text: string }>) => void;
   onSaveDraft?: (input: {
@@ -31,9 +39,10 @@ let mockEditorHostHandles = new Map<string, {
     pageSysId: string;
     readLatestDraftContentJson?: () => ReturnType<typeof createEmptyDocseraDocumentEnvelope> | null;
   }) => Promise<PageBodySaveResult>;
-  onStatusChange?: (state: { isDirty: boolean; isSaving: boolean }) => void;
+  onStatusChange?: (state: MockEditorStatusState) => void;
   pageSysId: string;
   sessionKey: string;
+  statusState: MockEditorStatusState;
 }>();
 
 type BroadcastMessage = Record<string, unknown>;
@@ -126,21 +135,30 @@ vi.mock("../editor/PageEditorHost", () => ({
     }) => Promise<PageBodySaveResult>;
     pageSysId?: string;
     sessionKey?: string;
-    onStatusChange?: (state: { isDirty: boolean; isSaving: boolean }) => void;
+    onStatusChange?: (state: {
+      applyCanonicalEnvelope?: (envelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope>) => { kind: "unchanged"; nextEnvelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope> };
+      flush?: () => Promise<boolean>;
+      getCanonicalEnvelope?: () => ReturnType<typeof createEmptyDocseraDocumentEnvelope>;
+      isDirty: boolean;
+      isSaving: boolean;
+      status: string;
+    }) => void;
   }) {
     useEffect(() => {
       const normalizedPageSysId = pageSysId ?? "";
       const normalizedSessionKey = sessionKey ?? "";
+      const statusState = mockEditorHostHandles.get(normalizedSessionKey)?.statusState ?? readyMockEditorStatus();
       mockEditorHostMounts.push({ pageSysId: normalizedPageSysId, sessionKey: normalizedSessionKey });
       mockEditorHostHandles.set(normalizedSessionKey, {
         onOutlineChange,
         onSaveDraft,
         onStatusChange,
         pageSysId: normalizedPageSysId,
-        sessionKey: normalizedSessionKey
+        sessionKey: normalizedSessionKey,
+        statusState
       });
       onError?.(null);
-      onStatusChange?.({ isDirty: false, isSaving: false });
+      onStatusChange?.(statusState);
       if (!onReadyStateChange) {
         return () => {
           mockEditorHostHandles.delete(normalizedSessionKey);
@@ -178,6 +196,18 @@ function latestMockEditorHost() {
     throw new Error(`Expected mock editor host handle for session ${latest.sessionKey}.`);
   }
   return handle;
+}
+
+function readyMockEditorStatus(overrides: Partial<MockEditorStatusState> = {}): MockEditorStatusState {
+  return {
+    applyCanonicalEnvelope: (envelope) => ({ kind: "unchanged", nextEnvelope: envelope }),
+    flush: async () => true,
+    getCanonicalEnvelope: () => createEmptyDocseraDocumentEnvelope(),
+    isDirty: false,
+    isSaving: false,
+    status: "Saved",
+    ...overrides
+  };
 }
 
 function createWorkspace(overrides: Partial<WorkspaceViewRecord> = {}): WorkspaceViewRecord {
@@ -2136,6 +2166,48 @@ describe("App workspace state integration", () => {
     await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
     expect(screen.queryByRole("dialog", { name: "Changes Center" })).toBeNull();
   }, 15000);
+
+  it("keeps a dirty editor blocking discard recovery retry", async () => {
+    const readiness = resolveDiscardRecoveryRetryAuthoringReadiness({
+      activeWorkspaceMode: "edit",
+      canEditPageBody: true,
+      editAccessLost: false,
+      editorCanonicalHandoffReady: true,
+      editorStatus: "Unsaved",
+      isEditorReady: true,
+      markdownSourceStatus: {
+        errorMessage: "",
+        isInvalid: false,
+        isUnavailable: false,
+        pageSysId: "page-001"
+      },
+      pageSettingsState: {
+        activeField: "",
+        activeFieldValueSnapshot: "",
+        deleteError: "",
+        deleteOpen: false,
+        deletePending: false,
+        generalError: "",
+        noticeMessage: "",
+        open: false,
+        pageSysId: "",
+        panelOpen: false,
+        slug: "",
+        slugError: "",
+        slugSnapshot: "",
+        title: "",
+        titleError: "",
+        titleSnapshot: ""
+      },
+      selectedPageSysId: "page-001",
+      workspaceCommandBlocksCurrentWorkspaceWrites: true,
+      workspaceDiscardAllInProgress: false,
+      workspaceDiscardPageInProgress: false,
+      workspacePublishInProgress: false
+    });
+
+    expect(readiness.blockedMessage).toBe("Current page is unsaved. Publish and discard actions stay disabled until local changes are saved.");
+  });
 
   it("blocks Page Settings, inline create, and delete persistence until stale refresh succeeds", async () => {
     const refreshDeferred = createDeferred<PageListResult>();

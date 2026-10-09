@@ -752,6 +752,20 @@ function resolveCurrentPageAuthoringReadiness(input: {
   };
 }
 
+export function resolveDiscardRecoveryRetryAuthoringReadiness(input: Parameters<typeof resolveCurrentPageAuthoringReadiness>[0] & {
+  workspaceDiscardAllInProgress: boolean;
+  workspaceDiscardPageInProgress: boolean;
+  workspacePublishInProgress: boolean;
+}): ReturnType<typeof resolveCurrentPageAuthoringReadiness> {
+  const workspaceCommandInProgress =
+    input.workspacePublishInProgress || input.workspaceDiscardAllInProgress || input.workspaceDiscardPageInProgress;
+  return resolveCurrentPageAuthoringReadiness({
+    ...input,
+    canEditPageBody: input.canEditPageBody && !workspaceCommandInProgress,
+    workspaceCommandBlocksCurrentWorkspaceWrites: workspaceCommandInProgress
+  });
+}
+
 function hasNonOverlayPageSettingsState(state: PageSettingsState): boolean {
   return state.open && !state.panelOpen;
 }
@@ -6913,6 +6927,24 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     workspaceDiscardAllState.sourceChangeSetRevision === currentWorkspaceCommandSourceChangeSetRevision &&
     workspaceDiscardAllState.retryable &&
     Boolean(workspaceDiscardAllState.commandId);
+  const workspaceDiscardAllRecoveryRetryReady = workspaceDiscardAllRetryable && workspaceDiscardAllRecoveryRequired;
+  const workspaceDiscardAllRecoveryRetryAuthoringReadiness = workspaceDiscardAllRecoveryRetryReady
+    ? resolveDiscardRecoveryRetryAuthoringReadiness({
+      activeWorkspaceMode,
+      canEditPageBody: hasAuthoringCapability && !editAccessLost,
+      editAccessLost,
+      editorCanonicalHandoffReady: Boolean(renderedEditorSession && isEditorReady && editorCanonicalHandoffReady),
+      editorStatus: editorTransitionState.status,
+      isEditorReady,
+      markdownSourceStatus,
+      pageSettingsState,
+      selectedPageSysId: selectedWorkspacePageId,
+      workspaceCommandBlocksCurrentWorkspaceWrites,
+      workspaceDiscardAllInProgress,
+      workspaceDiscardPageInProgress,
+      workspacePublishInProgress
+    })
+    : currentPageAuthoringReadiness;
   const workspaceDiscardAllAffectedPageCount =
     workspaceDiscardAllState.status === "error" &&
     workspaceDiscardAllState.workspaceSlug === currentWorkspaceSlug &&
@@ -7141,7 +7173,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       workspaceState.data.slug !== currentWorkspaceSlug ||
       activeWorkspaceMode !== "edit" ||
       (workspaceCommandBlocksCurrentWorkspaceWrites && !workspaceDiscardAllRetryable) ||
-      pendingChangesSaveBlockedMessage ||
+      (workspaceDiscardAllRecoveryRetryReady
+        ? workspaceDiscardAllRecoveryRetryAuthoringReadiness.blockedMessage
+        : pendingChangesSaveBlockedMessage) ||
       ((pendingChangesResult?.state !== "succeeded" || pendingChangesResult.affectedPageCount <= 0) && !workspaceDiscardAllRetryable)
     ) {
       return;
