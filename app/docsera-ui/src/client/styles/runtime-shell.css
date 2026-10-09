@@ -3795,12 +3795,17 @@ html[data-docsera-theme="dark"] .docsera-header__publish-toast {
 }
 
 .docsera-header__profile--avatar {
-  background: transparent;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 999px;
+  background: var(--docsera-surface-muted);
   box-shadow: none;
+  overflow: hidden;
 }
 
 .docsera-header__profile--avatar:hover {
-  background: transparent;
+  background: var(--docsera-surface-muted);
 }
 
 .docsera-header__profile:focus-visible {
@@ -3825,7 +3830,9 @@ html[data-docsera-theme="dark"] .docsera-header__publish-toast {
   display: block;
   width: 100%;
   height: 100%;
+  border-radius: inherit;
   object-fit: cover;
+  object-position: center;
 }
 
 .docsera-account-menu {

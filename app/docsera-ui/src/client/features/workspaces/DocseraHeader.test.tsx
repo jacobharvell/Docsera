@@ -89,7 +89,7 @@ describe("DocseraHeader publishing changes", () => {
     expect(trigger).toHaveClass("docsera-header__profile--avatar");
   });
 
-  it("keeps native profile images transparent instead of painting the initials background behind them", () => {
+  it("clips supplied profile images inside a neutral circular account viewport", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;
       getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
@@ -100,10 +100,21 @@ describe("DocseraHeader publishing changes", () => {
     );
     const avatarProfileBlock = source.match(/\.docsera-header__profile--avatar \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
     const avatarHoverBlock = source.match(/\.docsera-header__profile--avatar:hover \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
+    const avatarImageBlock = source.match(/\.docsera-header__profile-avatar \{([\s\S]*?)\r?\n\}/)?.[1] ?? "";
 
-    expect(avatarProfileBlock).toContain("background: transparent;");
+    expect(avatarProfileBlock).toContain("width: 32px;");
+    expect(avatarProfileBlock).toContain("height: 32px;");
+    expect(avatarProfileBlock).toContain("padding: 0;");
+    expect(avatarProfileBlock).toContain("border-radius: 999px;");
+    expect(avatarProfileBlock).toContain("background: var(--docsera-surface-muted);");
     expect(avatarProfileBlock).toContain("box-shadow: none;");
-    expect(avatarHoverBlock).toContain("background: transparent;");
+    expect(avatarProfileBlock).toContain("overflow: hidden;");
+    expect(avatarHoverBlock).toContain("background: var(--docsera-surface-muted);");
+    expect(avatarImageBlock).toContain("width: 100%;");
+    expect(avatarImageBlock).toContain("height: 100%;");
+    expect(avatarImageBlock).toContain("border-radius: inherit;");
+    expect(avatarImageBlock).toContain("object-fit: cover;");
+    expect(avatarImageBlock).toContain("object-position: center;");
   });
 
   it("falls back to deterministic initials when the supplied current-user avatar fails to load", () => {

@@ -443,6 +443,30 @@ test("keeps workspace mode controls in the right-side header cluster with matche
   expect(css).toContain(".docsera-changes-center__list");
 });
 
+test("keeps authenticated header avatars clipped to a neutral circular viewport", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+  const profileRule = getRuleBody(css, ".docsera-header__profile--avatar");
+  const profileHoverRule = getRuleBody(css, ".docsera-header__profile--avatar:hover");
+  const avatarImageRule = getRuleBody(css, ".docsera-header__profile-avatar");
+
+  expect(profileRule).toContain("width: 32px;");
+  expect(profileRule).toContain("height: 32px;");
+  expect(profileRule).toContain("padding: 0;");
+  expect(profileRule).toContain("border-radius: 999px;");
+  expect(profileRule).toContain("background: var(--docsera-surface-muted);");
+  expect(profileRule).toContain("box-shadow: none;");
+  expect(profileRule).toContain("overflow: hidden;");
+  expect(profileHoverRule).toContain("background: var(--docsera-surface-muted);");
+  expect(avatarImageRule).toContain("display: block;");
+  expect(avatarImageRule).toContain("width: 100%;");
+  expect(avatarImageRule).toContain("height: 100%;");
+  expect(avatarImageRule).toContain("border-radius: inherit;");
+  expect(avatarImageRule).toContain("object-fit: cover;");
+  expect(avatarImageRule).toContain("object-position: center;");
+  expect(profileRule).not.toContain("background: transparent;");
+  expect(profileHoverRule).not.toContain("background: transparent;");
+});
+
 test("keeps the staged My Workspaces list chrome normalized", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
   const launcherHeaderRowRule = css.match(/\.docsera-launcher-panel__header-row\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
