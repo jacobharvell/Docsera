@@ -629,6 +629,10 @@ function renderApp(search: string, clientOverrides: Partial<ServiceNowClient> = 
   };
 }
 
+function seedRecentWorkspaceSlugs(...slugs: string[]) {
+  window.localStorage.setItem("docsera.recent-workspaces:__local__", JSON.stringify(slugs));
+}
+
 function heldLease(leaseToken: string) {
   return {
     changeSetId: "change-set-001",
@@ -1011,6 +1015,7 @@ describe("App editor-host session boundary", () => {
   });
 
   it("commits workspace switch transitions after a successful flush", async () => {
+    seedRecentWorkspaceSlugs("api-docs");
     renderApp("/?workspace=product-docs&mode=edit&page=child");
 
     expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
@@ -1202,6 +1207,7 @@ describe("App editor-host session boundary", () => {
   });
 
   it("prevents an older transition from committing after a newer one supersedes it", async () => {
+    seedRecentWorkspaceSlugs("api-docs");
     renderApp("/?workspace=product-docs&mode=edit&page=overview");
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
@@ -1754,7 +1760,9 @@ describe("App editor-host session boundary", () => {
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
     await waitForHostControl();
     fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    const pageTree = screen.getByRole("navigation", { name: "Page tree" });
+    fireEvent.click(await within(pageTree).findByRole("button", { name: /^Page actions for Overview Draft/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Page settings" }));
     const panel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(panel).getByRole("button", { name: "Overview Draft" }));
     const titleInput = within(panel).getByDisplayValue("Overview Draft");
@@ -1843,7 +1851,9 @@ describe("App editor-host session boundary", () => {
     });
     await waitFor(() => expect(latestHostControl?.status?.isSaving).toBe(true));
 
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    const pageTree = screen.getByRole("navigation", { name: "Page tree" });
+    fireEvent.click(await within(pageTree).findByRole("button", { name: /^Page actions for Overview Draft/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Page settings" }));
     const panel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(panel).getByRole("button", { name: "Overview Draft" }));
     const titleInput = within(panel).getByDisplayValue("Overview Draft");
@@ -2003,7 +2013,9 @@ describe("App editor-host session boundary", () => {
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
     await waitForHostControl();
     fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    const pageTree = screen.getByRole("navigation", { name: "Page tree" });
+    fireEvent.click(await within(pageTree).findByRole("button", { name: /^Page actions for Overview Draft/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Page settings" }));
     const panel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(panel).getByRole("button", { name: "Overview Draft" }));
     const titleInput = within(panel).getByDisplayValue("Overview Draft");
@@ -2117,7 +2129,9 @@ describe("App editor-host session boundary", () => {
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
     await waitForHostControl();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    const pageTree = screen.getByRole("navigation", { name: "Page tree" });
+    fireEvent.click(await within(pageTree).findByRole("button", { name: /^Page actions for Overview Draft/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Page settings" }));
     const panel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(panel).getByRole("button", { name: "Overview Draft" }));
     const titleInput = within(panel).getByDisplayValue("Overview Draft");

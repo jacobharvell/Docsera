@@ -49,6 +49,27 @@ function readInlineBox(element: HTMLElement) {
   };
 }
 
+function omitUndefinedAttrs(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(omitUndefinedAttrs);
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const entries = Object.entries(value)
+    .map(([key, entryValue]) => [key, omitUndefinedAttrs(entryValue)] as const)
+    .filter(([key, entryValue]) => {
+      if (entryValue === undefined) {
+        return false;
+      }
+      return !(key === "attrs" && typeof entryValue === "object" && entryValue !== null && Object.keys(entryValue).length === 0);
+    });
+
+  return Object.fromEntries(entries);
+}
+
 function mockElementRect(element: Element, rect: DOMRect) {
   const originalDescriptor = Object.getOwnPropertyDescriptor(element, "getBoundingClientRect");
   Object.defineProperty(element, "getBoundingClientRect", {
@@ -1467,7 +1488,7 @@ describe("PageEditorHostRuntime accordion corrections", () => {
 
     expect(transformedSlice).not.toBe(sourceSlice);
     expect(transformedSlice.content.toJSON()).toEqual(sourceSlice.content.toJSON());
-    expect(transformedSlice.content.toJSON()).toEqual(sourceDocument.content);
+    expect(omitUndefinedAttrs(transformedSlice.content.toJSON())).toEqual(sourceDocument.content);
   });
 
   it("preserves nested ordinary pasted content and marks through accordion identity transformation", async () => {
@@ -1502,7 +1523,7 @@ describe("PageEditorHostRuntime accordion corrections", () => {
 
     expect(transformedSlice).not.toBe(sourceSlice);
     expect(transformedSlice.content.toJSON()).toEqual(sourceSlice.content.toJSON());
-    expect(transformedSlice.content.toJSON()).toEqual(sourceDocument.content);
+    expect(omitUndefinedAttrs(transformedSlice.content.toJSON())).toEqual(sourceDocument.content);
   });
 
   it("regenerates accordion and accordion item identities through direct Slice transformation", async () => {

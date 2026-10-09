@@ -1,6 +1,3 @@
-#!/usr/bin/env node
-
-import { Entry } from "@napi-rs/keyring";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import { safeErrorMessage } from "./verification-output-safety.mjs";
@@ -1910,6 +1907,7 @@ async function main() {
   console.log(`Mode: ${dryRun ? "dry-run" : "apply"}`);
   console.log(`Owned workspace slugs: ${ownedWorkspaceSlugs.join(", ")}`);
 
+  const { Entry } = await import("@napi-rs/keyring");
   const keyringEntry = new Entry(defaults.keyringService, defaults.keyringAccount);
   const parsedCredential = parseKeyringRecord(keyringEntry.getPassword(), authAlias);
   if (parsedCredential.error) {

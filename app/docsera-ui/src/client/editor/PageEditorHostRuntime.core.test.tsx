@@ -610,8 +610,10 @@ describe("PageEditorHostRuntime", () => {
     );
 
     await waitFor(() => {
-      expect(imageFigure).not.toHaveAttribute("data-docsera-image-preview-theme", "dark");
-      expect(imageFigure.querySelector("img")).toHaveAttribute("src", "blob:light");
+      const currentFigure = runtime.container.querySelector(".docsera-editor-image") as HTMLElement | null;
+      expect(currentFigure).not.toBeNull();
+      expect(currentFigure).not.toHaveAttribute("data-docsera-image-preview-theme", "dark");
+      expect(currentFigure?.querySelector("img")).toHaveAttribute("src", "blob:light");
     });
 
     await act(async () => {
@@ -1197,13 +1199,32 @@ describe("PageEditorHostRuntime", () => {
         }
       ]
     });
+    const overlayRoot = document.createElement("div");
+    overlayRoot.dataset.docseraEditorRuntimeOverlayRoot = "true";
+    document.body.append(overlayRoot);
     const firstOutlineChange = vi.fn();
     const firstEditorReady = vi.fn();
-    const { container, rerender } = renderRuntime({
-      initialEnvelope,
-      onEditorReady: firstEditorReady,
-      onOutlineChange: firstOutlineChange
-    });
+    const onAccessLost = vi.fn();
+    const onSaveDraft = vi.fn(async (): Promise<PageBodySaveResult> => ({
+      state: "succeeded",
+      page: createSuccessPage(1)
+    }));
+    const onStatusChange = vi.fn();
+    const { container, rerender } = render(
+      <PageEditorHostRuntime
+        canEdit={true}
+        initialEnvelope={initialEnvelope}
+        initialRevision={0}
+        onAccessLost={onAccessLost}
+        onEditorReady={firstEditorReady}
+        onOutlineChange={firstOutlineChange}
+        onSaveDraft={onSaveDraft}
+        onStatusChange={onStatusChange}
+        overlayRoot={overlayRoot}
+        pageSysId="page-001"
+        theme="light"
+      />
+    );
 
     const originalProseMirror = await waitFor(() => {
       const element = container.querySelector(".ProseMirror") as HTMLElement | null;
@@ -1224,7 +1245,7 @@ describe("PageEditorHostRuntime", () => {
           page: createSuccessPage(1)
         }))}
         onStatusChange={vi.fn()}
-        overlayRoot={document.querySelector("[data-docsera-editor-runtime-overlay-root='true']") as HTMLElement}
+        overlayRoot={overlayRoot}
         pageSysId="page-001"
         theme="light"
       />

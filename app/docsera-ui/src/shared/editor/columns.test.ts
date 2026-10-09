@@ -55,6 +55,27 @@ function createAccordionNode(title: string, bodyText: string): Record<string, un
   };
 }
 
+function omitUndefinedAttrs(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(omitUndefinedAttrs);
+  }
+
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  const entries = Object.entries(value)
+    .map(([key, entryValue]) => [key, omitUndefinedAttrs(entryValue)] as const)
+    .filter(([key, entryValue]) => {
+      if (entryValue === undefined) {
+        return false;
+      }
+      return !(key === "attrs" && typeof entryValue === "object" && entryValue !== null && Object.keys(entryValue).length === 0);
+    });
+
+  return Object.fromEntries(entries);
+}
+
 function createAccordionColumnsNode(columnCount: 2 | 3 | 4, titlePrefix: string): Record<string, unknown> {
   return {
     type: "accordion",
@@ -275,7 +296,7 @@ describe("Docsera columns schema", () => {
     const schema = getDocseraEditorSchema();
     const node = schema.nodeFromJSON(envelope.document);
 
-    expect(node.toJSON()).toEqual(envelope.document);
+    expect(omitUndefinedAttrs(node.toJSON())).toEqual(envelope.document);
     expect(schema.nodes.doc?.validContent(node.content)).toBe(true);
   });
 
@@ -301,7 +322,7 @@ describe("Docsera columns schema", () => {
         envelope,
         migratedLegacyDocument: false
       });
-      expect(node.toJSON()).toEqual(envelope.document);
+      expect(omitUndefinedAttrs(node.toJSON())).toEqual(envelope.document);
       expect(schema.nodes.doc?.validContent(node.content)).toBe(true);
       const accordionContentNode = node.firstChild?.firstChild?.lastChild;
       expect(accordionContentNode?.type.name).toBe("accordionContent");
@@ -342,7 +363,7 @@ describe("Docsera columns schema", () => {
       envelope,
       migratedLegacyDocument: false
     });
-    expect(node.toJSON()).toEqual(envelope.document);
+    expect(omitUndefinedAttrs(node.toJSON())).toEqual(envelope.document);
     expect(schema.nodes.doc?.validContent(node.content)).toBe(true);
   });
 

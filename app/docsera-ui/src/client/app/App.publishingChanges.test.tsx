@@ -95,6 +95,11 @@ function currentPageMockEditorHost(pageSysId = "page-001") {
   return handle;
 }
 
+async function openPageSettingsFor(pageTitle: string) {
+  fireEvent.click(await screen.findByRole("button", { name: `Page actions for ${pageTitle}` }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Page settings" }));
+}
+
 vi.mock("../editor/PageEditorHost", () => ({
   PageEditorHost: function MockPageEditorHost({
     canEdit,
@@ -217,7 +222,10 @@ afterEach(() => {
 describe("App publishing changes integration", () => {
   async function enterMarkdownSourceForPublishingTest() {
     expect(await screen.findByRole("heading", { name: /Overview|New Guide/ })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Markdown" }));
+    await waitFor(() => expect(currentPageMockEditorHost().sessionKey).toBeTruthy());
+    const markdownButton = await screen.findByRole("button", { name: "Markdown" });
+    await waitFor(() => expect(markdownButton).toBeEnabled());
+    fireEvent.click(markdownButton);
     await waitFor(() => expect(lastMarkdownSourcePanelProps).toMatchObject({ visible: true }));
   }
 
@@ -294,7 +302,7 @@ describe("App publishing changes integration", () => {
     expect(publish).toHaveClass("docsera-header__publish-button--active");
 
     pendingChangesResponse = pendingRefresh.promise;
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    await openPageSettingsFor("Overview");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
     fireEvent.change(within(pageSettingsPanel).getByDisplayValue("Overview"), { target: { value: "Overview Updated" } });
@@ -312,7 +320,7 @@ describe("App publishing changes integration", () => {
     expect(publish).toHaveClass("docsera-header__publish-button--active");
 
     pendingChangesResponse = Promise.resolve(createPendingChangesResult([]));
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Updated" }));
+    await openPageSettingsFor("Overview Updated");
     const updatedSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(updatedSettingsPanel).getByRole("button", { name: "Overview Updated" }));
     fireEvent.change(within(updatedSettingsPanel).getByDisplayValue("Overview Updated"), { target: { value: "Overview Clean" } });
@@ -681,6 +689,8 @@ describe("App publishing changes integration", () => {
   });
 
   it("clears the publish success toast when the active workspace changes", async () => {
+    window.localStorage.setItem("docsera.recent-workspaces:__local__", JSON.stringify(["product-docs", "api-docs"]));
+
     renderApp(App, "/?workspace=product-docs&mode=edit&page=overview", {
       getWorkspacePendingChanges: vi.fn(async () => createPendingChangesResult([{
         attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
@@ -890,7 +900,7 @@ describe("App publishing changes integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    await openPageSettingsFor("Overview Draft");
     expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
     const initialEditorHost = latestMockEditorHost();
     const supersededSave = initialEditorHost.onSaveDraft;
@@ -1089,7 +1099,7 @@ describe("App publishing changes integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "New Guide Child" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for New Guide Child" }));
+    await openPageSettingsFor("New Guide Child");
     expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));

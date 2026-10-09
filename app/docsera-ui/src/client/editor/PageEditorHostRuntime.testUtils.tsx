@@ -3,6 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { Editor } from "@tiptap/core";
+import { isValidElement, useCallback, useState, type ReactElement } from "react";
 import { afterEach, expect, vi } from "vitest";
 import {
   createEmptyDocseraDocumentEnvelope,
@@ -129,28 +130,47 @@ function renderRuntime(
   const overlayRoot = options.overlayRoot ?? document.createElement("div");
   overlayRoot.dataset.docseraEditorRuntimeOverlayRoot = "true";
   document.body.append(overlayRoot);
+  let didRunPostReadyRerender = false;
+  type RuntimeProps = Parameters<typeof PageEditorHostRuntime>[0];
 
-  const view = render(
-    <PageEditorHostRuntime
-      canEdit={true}
-      initialEnvelope={createEmptyDocseraDocumentEnvelope()}
-      initialRevision={0}
-      onAccessLost={onAccessLost}
-      onOutlineChange={onOutlineChange}
-      onSaveDraft={onSaveDraft}
-      onEditorReady={(editor) => {
-        mountedEditors.add(editor);
-        editorReady[0] = editor;
-        const editorView = editor.view as typeof editor.view & { scrollToSelection: () => void };
-        editorView.scrollToSelection = () => undefined;
-      }}
-      onStatusChange={onStatusChange}
-      overlayRoot={overlayRoot}
-      pageSysId="page-001"
-      theme="light"
-      {...overrides}
-    />
-  );
+  function RuntimeHarness({ runtimeProps }: { runtimeProps: Partial<RuntimeProps> }) {
+    const [, forceReadyRender] = useState(0);
+    const handleEditorReady = useCallback((editor: Editor) => {
+      mountedEditors.add(editor);
+      editorReady[0] = editor;
+      const editorView = editor.view as typeof editor.view & { scrollToSelection: () => void };
+      editorView.scrollToSelection = () => undefined;
+      runtimeProps.onEditorReady?.(editor);
+
+      if (!didRunPostReadyRerender) {
+        didRunPostReadyRerender = true;
+        forceReadyRender((version) => version + 1);
+      }
+    }, [runtimeProps.onEditorReady]);
+
+    return (
+      <PageEditorHostRuntime
+        canEdit={true}
+        initialEnvelope={createEmptyDocseraDocumentEnvelope()}
+        initialRevision={0}
+        onAccessLost={onAccessLost}
+        onOutlineChange={onOutlineChange}
+        onSaveDraft={onSaveDraft}
+        onStatusChange={onStatusChange}
+        overlayRoot={overlayRoot}
+        pageSysId="page-001"
+        theme="light"
+        {...runtimeProps}
+        onEditorReady={handleEditorReady}
+      />
+    );
+  }
+
+  const view = render(<RuntimeHarness runtimeProps={overrides} />);
+  const rerenderRuntime = (nextRuntime: ReactElement<RuntimeProps> | Partial<RuntimeProps>) => {
+    const nextRuntimeProps = isValidElement<RuntimeProps>(nextRuntime) ? nextRuntime.props : nextRuntime;
+    view.rerender(<RuntimeHarness runtimeProps={nextRuntimeProps} />);
+  };
 
   return {
     editorReady,
@@ -159,7 +179,8 @@ function renderRuntime(
     onSaveDraft,
     onStatusChange,
     overlayRoot,
-    ...view
+    ...view,
+    rerender: rerenderRuntime
   };
 }
 

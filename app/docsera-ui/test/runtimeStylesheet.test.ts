@@ -134,7 +134,9 @@ test("keeps launcher background ownership explicit without changing workspace ba
   expect(css).toContain("display: flex;");
   expect(css).toMatch(/\.docsera-workspace__aside\s*{[^}]*border-left:\s*1px solid var\(--docsera-border\);/s);
   expect(css).toContain(".docsera-toc-rail {");
-  expect(css).toMatch(/\.docsera-toc-rail\s*{[^}]*align-self:\s*flex-start;[^}]*height:\s*calc\(100dvh - var\(--docsera-header-height\) - var\(--docsera-workspace-toc-top-gap\)\);/s);
+  expect(css).toMatch(
+    /\.docsera-toc-rail\s*{[^}]*align-self:\s*flex-start;[^}]*height:\s*calc\(\s*100dvh\s*-\s*var\(--docsera-header-height\)\s*-\s*var\(--docsera-workspace-toc-top-gap\)\s*-\s*var\(--docsera-workspace-toc-top-gap\)\s*\);/s
+  );
   expect(css).not.toMatch(/\.docsera-toc-rail\s*{[^}]*height:\s*100%;/s);
   expect(css).toContain("top: var(--docsera-workspace-toc-top-gap);");
   expect(css).toMatch(/\.docsera-toc-rail__body\s*{[^}]*height:\s*100%;[^}]*min-height:\s*0;/s);

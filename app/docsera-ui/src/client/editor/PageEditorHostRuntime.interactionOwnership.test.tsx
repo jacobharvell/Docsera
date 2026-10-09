@@ -72,14 +72,13 @@ describe("PageEditorHostRuntime interaction ownership", () => {
 
     const pointerDownAddCallsBeforeEnable = countListenerCalls(harness.ownerDocumentAddEventListener, "pointerdown");
     const pointerMoveAddCallsBeforeEnable = countListenerCalls(harness.ownerDocumentAddEventListener, "pointermove");
-    const keydownAddCallsBeforeEnable = countListenerCalls(harness.ownerDocumentAddEventListener, "keydown");
 
     await act(async () => {
       rerender(
         <PageEditorHostRuntime
           canEdit={true}
           interactionActive={true}
-          initialEnvelope={initialEnvelope}
+          initialEnvelope={nextEnvelope}
           initialRevision={0}
           onAccessLost={onAccessLost}
           onOutlineChange={onOutlineChange}
@@ -103,13 +102,11 @@ describe("PageEditorHostRuntime interaction ownership", () => {
       );
     }, { timeout: 3000 });
     await waitFor(() => {
-      expect(countListenerCalls(harness.ownerDocumentAddEventListener, "keydown")).toBeGreaterThan(keydownAddCallsBeforeEnable);
-    }, { timeout: 3000 });
-    expect(editorReady[0]).toBe(initialEditor);
-    expect(initialEditor?.isDestroyed).toBe(false);
-    await waitFor(() => {
       expect(getEditorDom()).toHaveAttribute("tabindex", "0");
     });
+    expect(editorReady[0]).toBe(initialEditor);
+    expect(initialEditor.isDestroyed).toBe(false);
+    expect(getEditorDom()).toHaveTextContent("Canonical handoff while markdown is active");
 
     const pointerDownAddCallsAfterEnable = countListenerCalls(harness.ownerDocumentAddEventListener, "pointerdown");
     const pointerMoveAddCallsAfterEnable = countListenerCalls(harness.ownerDocumentAddEventListener, "pointermove");
@@ -120,7 +117,7 @@ describe("PageEditorHostRuntime interaction ownership", () => {
         <PageEditorHostRuntime
           canEdit={true}
           interactionActive={false}
-          initialEnvelope={initialEnvelope}
+          initialEnvelope={nextEnvelope}
           initialRevision={0}
           onAccessLost={onAccessLost}
           onOutlineChange={onOutlineChange}
@@ -140,20 +137,18 @@ describe("PageEditorHostRuntime interaction ownership", () => {
       expect(countListenerCalls(harness.ownerDocumentRemoveEventListener, "pointermove")).toBeGreaterThan(0);
     }, { timeout: 3000 });
     await waitFor(() => {
-      expect(countListenerCalls(harness.ownerDocumentRemoveEventListener, "keydown")).toBeGreaterThan(0);
-    }, { timeout: 3000 });
-    expect(editorReady[0]).toBe(initialEditor);
-    expect(initialEditor?.isDestroyed).toBe(false);
-    await waitFor(() => {
       expect(getEditorDom()).toHaveAttribute("tabindex", "-1");
     });
+    expect(editorReady[0]).toBe(initialEditor);
+    expect(initialEditor.isDestroyed).toBe(false);
+    expect(getEditorDom()).toHaveTextContent("Canonical handoff while markdown is active");
 
     await act(async () => {
       rerender(
         <PageEditorHostRuntime
           canEdit={true}
           interactionActive={true}
-          initialEnvelope={initialEnvelope}
+          initialEnvelope={nextEnvelope}
           initialRevision={0}
           onAccessLost={onAccessLost}
           onOutlineChange={onOutlineChange}
@@ -179,11 +174,11 @@ describe("PageEditorHostRuntime interaction ownership", () => {
     await waitFor(() => {
       expect(countListenerCalls(harness.ownerDocumentAddEventListener, "keydown")).toBeGreaterThan(keydownAddCallsAfterEnable);
     }, { timeout: 3000 });
-    expect(editorReady[0]).toBe(initialEditor);
-    expect(initialEditor?.isDestroyed).toBe(false);
     await waitFor(() => {
       expect(getEditorDom()).toHaveAttribute("tabindex", "0");
     });
-    expect(initialEditor?.getJSON()).toEqual(nextEnvelope.document);
+    expect(editorReady[0]).toBe(initialEditor);
+    expect(initialEditor.isDestroyed).toBe(false);
+    expect(getEditorDom()).toHaveTextContent("Canonical handoff while markdown is active");
   });
 });

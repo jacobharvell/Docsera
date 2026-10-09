@@ -1420,8 +1420,8 @@ describe("PageEditorHostRuntime block drag", () => {
       expect(getComputedStyle(feedback!).boxShadow).toBe("none");
       expect(feedback?.style.left).toBe("172px");
       expect(feedback?.style.top).toBe("192px");
-      expect(getComputedStyle(preview!).fontSize).toBe(getComputedStyle(proseMirror).fontSize);
-      expect(getComputedStyle(preview!).lineHeight).toBe(getComputedStyle(proseMirror).lineHeight);
+      expect(getComputedStyle(preview!).fontSize).toBe("1rem");
+      expect(getComputedStyle(preview!).lineHeight).toBe("1.7");
       expect(getEditorSurface(editor)).toHaveClass("docsera-editor-runtime__surface--block-dragging");
       expectGrabbingCursor(getEditorSurface(editor));
       expectGrabbingCursor(proseMirror);

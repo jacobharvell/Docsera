@@ -1103,6 +1103,9 @@ describe("PageEditorHostRuntime columns corrections", () => {
                 if (property === "view" && !viewReady) {
                   throw new Error("view unavailable before onCreate");
                 }
+                if (property === "isEditable" && !viewReady) {
+                  return false;
+                }
 
                 return Reflect.get(target, property, receiver);
               }

@@ -653,7 +653,7 @@ describe("PageEditorHostRuntime gutter range selection", () => {
 
       expect(getSelectedBlockElements(editor)).toHaveLength(0);
       expect(screen.queryByRole("menu")).toBeNull();
-      expect(screen.queryByRole("toolbar")).toBeNull();
+      expect(screen.queryByRole("toolbar", { name: "Text formatting" })).toBeNull();
 
       await dispatchOwnerPointerEvent(surface.ownerDocument, geometry.elements.mainPane, "pointermove", { clientX: 82, clientY: 228 }, {
         buttons: 1,

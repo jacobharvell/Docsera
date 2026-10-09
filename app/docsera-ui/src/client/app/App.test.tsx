@@ -98,6 +98,11 @@ afterEach(() => {
   mockEditorHostHandles = new Map();
 });
 
+async function openPageSettingsFor(pageTitle: string) {
+  fireEvent.click(await screen.findByRole("button", { name: `Page actions for ${pageTitle}` }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Page settings" }));
+}
+
 function mockNavigationType(type: PerformanceNavigationTiming["type"]) {
   const original = window.performance.getEntriesByType.bind(window.performance);
   vi.spyOn(window.performance, "getEntriesByType").mockImplementation((entryType: string) => {
@@ -290,8 +295,10 @@ function createClient(overrides: Partial<ServiceNowClient> = {}): ServiceNowClie
       hasNextPage: false,
       searchText: ""
     })),
-    getWorkspace: vi.fn(async () => ({
-      workspace
+    getWorkspace: vi.fn(async (workspaceSlug?: string) => ({
+      workspace: workspaceSlug === "api-docs"
+        ? createWorkspace({ slug: "api-docs", sysId: "workspace-002", name: "API Docs" })
+        : workspace
     })),
     listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
       createPageListResult(mode === "edit" ? "edit" : "live", [publishedOverview])
@@ -424,6 +431,7 @@ function createBreadcrumbPages() {
 
 function renderApp(search: string, clientOverrides: Partial<ServiceNowClient> = {}) {
   window.history.replaceState({}, "", search);
+  window.localStorage.setItem("docsera.recent-workspaces:__local__", JSON.stringify(["product-docs", "api-docs"]));
 
   const runtime: DocseraRuntimeContext = {
     mountNode: document.createElement("div"),
@@ -613,7 +621,7 @@ describe("App workspace state integration", () => {
     );
 
     renderApp("/?workspace=product-docs&mode=edit&page=child", { listPages, movePage });
-    expect(await screen.findByRole("button", { name: "Child Draft" })).toBeInTheDocument();
+    expect(await within(screen.getByRole("navigation", { name: "Page tree" })).findByRole("button", { name: "Child Draft" })).toBeInTheDocument();
 
     dragTreePage("Child Draft", "Overview", 89);
 
@@ -625,7 +633,7 @@ describe("App workspace state integration", () => {
       workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 7 }),
       workspaceLeaseToken: "workspace-lease-token"
     }));
-    expect(await screen.findByRole("button", { name: "Child Moved" })).toBeInTheDocument();
+    expect(await within(screen.getByRole("navigation", { name: "Page tree" })).findByRole("button", { name: "Child Moved" })).toBeInTheDocument();
   });
 
   it("lets an earlier Page Settings save complete before a later queued move uses its authority", async () => {
@@ -657,17 +665,17 @@ describe("App workspace state integration", () => {
     );
 
     renderApp("/?workspace=product-docs&mode=edit&page=overview", { listPages, movePage, savePageSettings });
-    expect(await screen.findByRole("button", { name: "Child Draft" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    expect(await within(screen.getByRole("navigation", { name: "Page tree" })).findByRole("button", { name: "Child Draft" })).toBeInTheDocument();
+    await openPageSettingsFor("Overview");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
-    const titleInput = screen.getByDisplayValue("Overview");
+    const titleInput = within(pageSettingsPanel).getByDisplayValue("Overview");
     fireEvent.change(titleInput, { target: { value: "Overview Saved" } });
     fireEvent.blur(titleInput);
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
     await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
 
-    dragTreePage("Child Draft", "Overview", 89);
+    dragTreePage("Child Draft", "Overview Saved", 89);
     expect(movePage).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -685,7 +693,7 @@ describe("App workspace state integration", () => {
       workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 8 })
     }));
     expect((await screen.findAllByText("Overview Saved")).length).toBeGreaterThan(0);
-    expect(await screen.findByRole("button", { name: "Child Moved" })).toBeInTheDocument();
+    expect(await within(screen.getByRole("navigation", { name: "Page tree" })).findByRole("button", { name: "Child Moved" })).toBeInTheDocument();
   });
 
   it("keeps a workspace-level page creation valid when the selected page changes before it completes", async () => {
@@ -704,22 +712,24 @@ describe("App workspace state integration", () => {
     });
     const createDeferredResult = createDeferred<PageCreateResult>();
     const createPage = vi.fn(() => createDeferredResult.promise);
+    let includeCreatedPage = false;
     const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
-      createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? pages : [pages[0]])
+      createPageListResult(mode === "edit" ? "edit" : "live", mode === "edit" ? (includeCreatedPage ? [...pages, createdPage] : pages) : [pages[0]])
     );
 
     renderApp("/?workspace=product-docs&mode=edit&page=overview", { createPage, listPages });
-    expect(await screen.findByRole("button", { name: "Child Draft" })).toBeInTheDocument();
+    expect(await within(screen.getByRole("navigation", { name: "Page tree" })).findByRole("button", { name: "Child Draft" })).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]);
     const titleInput = await screen.findByRole("textbox", { name: "New page title" });
     fireEvent.change(titleInput, { target: { value: "Queued workspace page" } });
     fireEvent.keyDown(titleInput, { key: "Enter" });
     await waitFor(() => expect(createPage).toHaveBeenCalledTimes(1));
 
-    fireEvent.click(screen.getByRole("button", { name: "Child Draft" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Child Draft" }));
     await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "child" }));
 
     await act(async () => {
+      includeCreatedPage = true;
       createDeferredResult.resolve({
         changeSetId: "change-set-001",
         changeSetRevision: 8,
@@ -731,9 +741,11 @@ describe("App workspace state integration", () => {
 
     expect(await screen.findByRole("heading", { name: "Queued workspace page" })).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Queued workspace page" })).toHaveAttribute("aria-current", "page");
+      expect(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Queued workspace page" })).toBeInTheDocument();
+      expect(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Queued workspace page" })).toHaveAttribute("aria-current", "page");
       expect(latestMockEditorHost().pageSysId).toBe("page-new");
     });
+    expect(createPage).toHaveBeenCalledWith(expect.not.objectContaining({ parentPageSysId: expect.anything() }));
     expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "queued-workspace-page" });
   });
 
@@ -808,12 +820,12 @@ describe("App workspace state integration", () => {
     }));
 
     renderApp("/?workspace=product-docs&mode=edit&page=child", { listPages, movePage });
-    expect(await screen.findByRole("button", { name: "Child Draft" })).toBeInTheDocument();
+    expect(await within(screen.getByRole("navigation", { name: "Page tree" })).findByRole("button", { name: "Child Draft" })).toBeInTheDocument();
 
     dragTreePage("Child Draft", "Overview", 89);
 
     await waitFor(() => expect(movePage).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole("button", { name: "Child Draft" })).toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Child Draft" })).toBeInTheDocument();
     refreshDeferred.resolve(createPageListResult("edit", initialPages));
   });
 
@@ -829,7 +841,7 @@ describe("App workspace state integration", () => {
     );
 
     renderApp("/?workspace=product-docs&mode=edit&page=child", { listPages, movePage });
-    expect(await screen.findByRole("button", { name: "Child Draft" })).toBeInTheDocument();
+    expect(await within(screen.getByRole("navigation", { name: "Page tree" })).findByRole("button", { name: "Child Draft" })).toBeInTheDocument();
 
     dragTreePage("Child Draft", "Overview", 89);
 
@@ -1014,7 +1026,7 @@ describe("App workspace state integration", () => {
     expect(readStoredWorkspaceLease("workspace-001").token).toBe("workspace-lease-token");
 
     fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "API Docs" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "API Docs" }));
 
     await waitFor(() => expect(releaseWorkspaceEditLease).toHaveBeenCalledTimes(1));
     expect(releaseWorkspaceEditLease).toHaveBeenLastCalledWith(expect.objectContaining({
@@ -1370,7 +1382,9 @@ describe("App workspace state integration", () => {
       listPages
     });
 
-    expect(await screen.findByRole("heading", { name: "Published Overview" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(screen.getByRole("navigation", { name: "Page breadcrumbs" })).getByText("Published Overview")).toBeInTheDocument();
+    });
     await waitFor(() => {
       expectWorkspaceSearch({ workspace: "product-docs", page: "published-overview", mode: null });
     });
@@ -1504,7 +1518,9 @@ describe("App workspace state integration", () => {
 
     renderApp("/?workspace=product-docs&mode=edit&page=published-overview", { listPages });
 
-    expect(await screen.findByRole("heading", { name: "Published Overview" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(screen.getByRole("navigation", { name: "Page breadcrumbs" })).getByText("Published Overview")).toBeInTheDocument();
+    });
     fireEvent.click(screen.getByRole("button", { name: "Draft Only" }));
 
     expect(await screen.findByRole("heading", { name: "Draft Only" })).toBeInTheDocument();
@@ -1528,7 +1544,9 @@ describe("App workspace state integration", () => {
       window.history.back();
       await Promise.resolve();
     });
-    expect(await screen.findByRole("heading", { name: "Published Overview" })).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(screen.getByRole("navigation", { name: "Page breadcrumbs" })).getByText("Published Overview")).toBeInTheDocument();
+    });
     await waitFor(() => {
       expectWorkspaceSearch({
         workspace: "product-docs",
@@ -1547,16 +1565,18 @@ describe("App workspace state integration", () => {
     await waitFor(() => {
       expectWorkspaceSearch({
         workspace: "product-docs",
-        mode: "edit",
+        mode: null,
         page: "published-overview"
       });
     });
 
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "published-overview" }));
     fireEvent.click(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Reference Draft" }));
 
     expect(await screen.findByRole("heading", { name: "Reference Draft" })).toBeInTheDocument();
     expect(screen.getByRole("main", { name: "Reference Draft" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reference Draft" })).toHaveAttribute("aria-current", "page");
+    expect(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Reference Draft" })).toHaveAttribute("aria-current", "page");
     expect(within(screen.getByRole("complementary", { name: "Page outline" })).getByRole("link", { name: "Overview" })).toBeInTheDocument();
     await waitFor(() => {
       expectWorkspaceSearch({
@@ -1915,10 +1935,10 @@ describe("App workspace state integration", () => {
       });
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Reference Draft" }));
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Reference Draft" }));
 
     expect(await screen.findByRole("heading", { name: "Reference Draft" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reference Draft" })).toHaveAttribute("aria-current", "page");
+    expect(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Reference Draft" })).toHaveAttribute("aria-current", "page");
     await waitFor(() => {
       expectWorkspaceSearch({
         workspace: "product-docs",
@@ -2048,7 +2068,7 @@ describe("App workspace state integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Undo changes" }));
 
     fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "API Docs" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "API Docs" }));
     expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
 
     await act(async () => {
@@ -2282,10 +2302,10 @@ describe("App workspace state integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    await openPageSettingsFor("Overview Draft");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview Draft" }));
-    const titleInput = screen.getByDisplayValue("Overview Draft");
+    const titleInput = within(pageSettingsPanel).getByDisplayValue("Overview Draft");
     fireEvent.change(titleInput, { target: { value: "Overview Pending Refresh" } });
     fireEvent.blur(titleInput);
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
@@ -2295,22 +2315,17 @@ describe("App workspace state integration", () => {
       workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 7 }),
       workspaceLeaseToken: "workspace-lease-token"
     }));
-    expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
-    expect(within(pageSettingsPanel).getByRole("button", { name: "Overview Pending Refresh" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Page Settings" })).toBeNull());
 
-    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
     expect(savePageSettings).toHaveBeenCalledTimes(1);
-    expect(await screen.findByRole("alert")).toHaveTextContent("Reloading the latest draft projection. Saving is temporarily unavailable.");
+    expect(screen.queryByRole("heading", { name: "Page Settings" })).toBeNull();
 
     fireEvent.click(screen.getAllByRole("button", { name: "New page" })[0]);
     expect(createPage).toHaveBeenCalledTimes(0);
     expect(screen.queryByRole("textbox", { name: "New page title" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Delete page" }));
-    const deleteDialog = await screen.findByRole("dialog", { name: "Confirm deletion" });
-    fireEvent.click(within(deleteDialog).getByRole("button", { name: "Delete page" }));
+    expect(screen.queryByRole("button", { name: "Delete page" })).toBeNull();
     expect(deletePage).toHaveBeenCalledTimes(0);
-    expect(await within(deleteDialog).findByRole("alert")).toHaveTextContent("Reloading the latest draft projection. Saving is temporarily unavailable.");
 
     await act(async () => {
       refreshDeferred.resolve(createPageListResult("edit", [
@@ -2335,10 +2350,13 @@ describe("App workspace state integration", () => {
     });
 
     expect(savePageSettings).toHaveBeenCalledTimes(1);
-    expect(await screen.findByRole("heading", { name: "Overview Refreshed" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Overview Pending Refresh" })).toBeInTheDocument();
     expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
 
-    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+    await openPageSettingsFor("Overview Pending Refresh");
+    const refreshedSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    expect(within(refreshedSettingsPanel).getByRole("button", { name: "Overview Pending Refresh" })).toBeInTheDocument();
+    fireEvent.click(within(refreshedSettingsPanel).getByRole("button", { name: "Close page settings" }));
     await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(2));
     expect(savePageSettings).toHaveBeenLastCalledWith(expect.objectContaining({
       workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 8 }),
@@ -2398,10 +2416,10 @@ describe("App workspace state integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    await openPageSettingsFor("Overview Draft");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview Draft" }));
-    const titleInput = screen.getByDisplayValue("Overview Draft");
+    const titleInput = within(pageSettingsPanel).getByDisplayValue("Overview Draft");
     fireEvent.change(titleInput, { target: { value: "Overview Retry Pending" } });
     fireEvent.blur(titleInput);
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
@@ -2409,7 +2427,7 @@ describe("App workspace state integration", () => {
     await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole("heading", { name: "Pages unavailable" })).toBeInTheDocument();
 
-    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Page Settings" })).toBeNull());
     expect(savePageSettings).toHaveBeenCalledTimes(1);
     expect(listPages).toHaveBeenCalledTimes(2);
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
@@ -2427,7 +2445,11 @@ describe("App workspace state integration", () => {
       await Promise.resolve();
     });
 
-    fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
+    expect(await screen.findByRole("heading", { name: "Overview Retry Pending" })).toBeInTheDocument();
+    await openPageSettingsFor("Overview Retry Pending");
+    const retrySettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
+    expect(within(retrySettingsPanel).getByRole("button", { name: "Overview Retry Pending" })).toBeInTheDocument();
+    fireEvent.click(within(retrySettingsPanel).getByRole("button", { name: "Close page settings" }));
     await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(2));
     expect(savePageSettings).toHaveBeenLastCalledWith(expect.objectContaining({
       workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 8 }),
@@ -2480,11 +2502,11 @@ describe("App workspace state integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Overview A" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview A" }));
+    await openPageSettingsFor("Overview A");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview A" }));
-    fireEvent.change(screen.getByDisplayValue("Overview A"), { target: { value: "Overview A Pending" } });
-    fireEvent.blur(screen.getByDisplayValue("Overview A Pending"));
+    fireEvent.change(within(pageSettingsPanel).getByDisplayValue("Overview A"), { target: { value: "Overview A Pending" } });
+    fireEvent.blur(within(pageSettingsPanel).getByDisplayValue("Overview A Pending"));
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
     await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
 
@@ -2501,11 +2523,11 @@ describe("App workspace state integration", () => {
     expect(screen.queryByRole("heading", { name: "Old Recovery Projection" })).toBeNull();
     expect(screen.getByRole("heading", { name: "Overview B" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview B" }));
+    await openPageSettingsFor("Overview B");
     const replacementPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(replacementPanel).getByRole("button", { name: "Overview B" }));
-    fireEvent.change(screen.getByDisplayValue("Overview B"), { target: { value: "Overview B Saved" } });
-    fireEvent.blur(screen.getByDisplayValue("Overview B Saved"));
+    fireEvent.change(within(replacementPanel).getByDisplayValue("Overview B"), { target: { value: "Overview B Saved" } });
+    fireEvent.blur(within(replacementPanel).getByDisplayValue("Overview B Saved"));
     fireEvent.click(within(replacementPanel).getByRole("button", { name: "Close page settings" }));
 
     await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(2));
@@ -2557,11 +2579,11 @@ describe("App workspace state integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Overview A" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview A" }));
+    await openPageSettingsFor("Overview A");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview A" }));
-    fireEvent.change(screen.getByDisplayValue("Overview A"), { target: { value: "Overview A Pending" } });
-    fireEvent.blur(screen.getByDisplayValue("Overview A Pending"));
+    fireEvent.change(within(pageSettingsPanel).getByDisplayValue("Overview A"), { target: { value: "Overview A Pending" } });
+    fireEvent.blur(within(pageSettingsPanel).getByDisplayValue("Overview A Pending"));
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
     await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
 
@@ -2872,10 +2894,10 @@ describe("App workspace state integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    await openPageSettingsFor("Overview Draft");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview Draft" }));
-    const titleInput = screen.getByDisplayValue("Overview Draft");
+    const titleInput = within(pageSettingsPanel).getByDisplayValue("Overview Draft");
     fireEvent.change(titleInput, { target: { value: "Recovered after stale forbidden" } });
     fireEvent.blur(titleInput);
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
@@ -2885,7 +2907,7 @@ describe("App workspace state integration", () => {
     await waitFor(() => expect(acquireWorkspaceEditLease).toHaveBeenCalledTimes(3));
 
     fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "API Docs" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "API Docs" }));
     expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
 
     await act(async () => {
@@ -2917,46 +2939,32 @@ describe("App workspace state integration", () => {
       errorMessage: "Workspace lease lost.",
       state: "failed"
     }));
-    const getWorkspace = vi
-      .fn()
-      .mockResolvedValueOnce({
-        workspace: createWorkspace()
-      })
-      .mockResolvedValueOnce({
-        workspace: createWorkspace({
-          name: "API Docs",
-          slug: "api-docs",
-          sysId: "workspace-002"
-        })
-      })
-      .mockResolvedValueOnce({
-        workspace: createWorkspace({
-          canManageSettings: false,
-          roleLabel: null,
-          slug: "product-docs",
-          sysId: "workspace-001"
-        })
-      })
-      .mockResolvedValueOnce({
-        workspace: createWorkspace({
-          name: "API Docs",
-          slug: "api-docs",
-          sysId: "workspace-002"
-        })
-      })
-      .mockResolvedValueOnce({
-        workspace: createWorkspace()
-      })
-      .mockImplementation(async (workspaceSlug: string) => ({
-        workspace:
-          workspaceSlug === "api-docs"
-            ? createWorkspace({
-                name: "API Docs",
-                slug: "api-docs",
-                sysId: "workspace-002"
-              })
-            : createWorkspace()
-      }));
+    let productWorkspaceLoadCount = 0;
+    const getWorkspace = vi.fn(async (workspaceSlug: string) => {
+      if (workspaceSlug === "api-docs") {
+        return {
+          workspace: createWorkspace({
+            name: "API Docs",
+            slug: "api-docs",
+            sysId: "workspace-002"
+          })
+        };
+      }
+
+      productWorkspaceLoadCount += 1;
+      return {
+        workspace: createWorkspace(
+          productWorkspaceLoadCount > 2
+            ? {
+                canManageSettings: false,
+                roleLabel: null,
+                slug: "product-docs",
+                sysId: "workspace-001"
+              }
+            : undefined
+        )
+      };
+    });
     const acquireWorkspaceEditLease = vi
       .fn()
       .mockResolvedValueOnce(heldLease("workspace-lease-token"))
@@ -3004,10 +3012,10 @@ describe("App workspace state integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    await openPageSettingsFor("Overview Draft");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview Draft" }));
-    const titleInput = screen.getByDisplayValue("Overview Draft");
+    const titleInput = within(pageSettingsPanel).getByDisplayValue("Overview Draft");
     fireEvent.change(titleInput, { target: { value: "Viewer cleared title" } });
     fireEvent.blur(titleInput);
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
@@ -3015,7 +3023,7 @@ describe("App workspace state integration", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
 
     fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "API Docs" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "API Docs" }));
     expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: API Docs/i }));
@@ -3023,18 +3031,16 @@ describe("App workspace state integration", () => {
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "API Docs" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "API Docs" }));
     expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: API Docs/i }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Product Docs" }));
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
-
     expect(screen.queryByText("Your unsaved Page Settings changes were restored. Review them before saving.")).toBeNull();
     expect(screen.queryByRole("heading", { name: "Page Settings" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
   });
 
   it("does not clear another workspace's recovery when a different workspace loads as viewer-only", async () => {
@@ -3102,10 +3108,10 @@ describe("App workspace state integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    await openPageSettingsFor("Overview Draft");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview Draft" }));
-    const titleInput = screen.getByDisplayValue("Overview Draft");
+    const titleInput = within(pageSettingsPanel).getByDisplayValue("Overview Draft");
     fireEvent.change(titleInput, { target: { value: "Still restorable title" } });
     fireEvent.blur(titleInput);
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
@@ -3113,7 +3119,7 @@ describe("App workspace state integration", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
 
     fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "API Docs" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "API Docs" }));
     expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
 
@@ -3169,7 +3175,7 @@ describe("App workspace state integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    await openPageSettingsFor("Overview Draft");
     expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Delete page" }));
 
@@ -3199,10 +3205,10 @@ describe("App workspace state integration", () => {
     renderApp("/?workspace=product-docs&mode=edit&page=overview", { savePageSettings });
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview" }));
+    await openPageSettingsFor("Overview");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview" }));
-    const titleInput = screen.getByDisplayValue("Overview");
+    const titleInput = within(pageSettingsPanel).getByDisplayValue("Overview");
     fireEvent.change(titleInput, { target: { value: "Overview Forbidden" } });
     fireEvent.blur(titleInput);
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
@@ -3265,7 +3271,7 @@ describe("App workspace state integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    await openPageSettingsFor("Overview Draft");
     expect(await screen.findByRole("heading", { name: "Page Settings" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Delete page" }));
 
@@ -3354,17 +3360,15 @@ describe("App workspace state integration", () => {
     });
 
     expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Open settings for Overview Draft" }));
+    await openPageSettingsFor("Overview Draft");
     const pageSettingsPanel = await screen.findByRole("complementary", { name: "Page Settings" });
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Overview Draft" }));
-    const titleInput = screen.getByDisplayValue("Overview Draft");
+    const titleInput = within(pageSettingsPanel).getByDisplayValue("Overview Draft");
     fireEvent.change(titleInput, { target: { value: "Stale forbidden title" } });
     fireEvent.blur(titleInput);
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
 
     await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "API Docs" }));
 
     await act(async () => {
       apiWorkspaceDeferred.resolve({
@@ -3376,6 +3380,9 @@ describe("App workspace state integration", () => {
       });
       await Promise.resolve();
     });
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "API Docs" }));
 
     expect(await screen.findByRole("heading", { name: "API Overview" })).toBeInTheDocument();
 

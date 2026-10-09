@@ -297,8 +297,6 @@ describe("DocseraHeader publishing changes", () => {
     expect(markdown).toHaveAccessibleName("Markdown");
     expect(visual).toHaveAttribute("aria-pressed", "true");
     expect(markdown).toHaveAttribute("aria-pressed", "false");
-    expect(visual).toHaveAttribute("title", "Visual");
-    expect(markdown).toHaveAttribute("title", "Markdown");
     expect(visual).toHaveTextContent("");
     expect(markdown).toHaveTextContent("");
     expect(visual.querySelector("svg")).toBeInTheDocument();

@@ -934,7 +934,7 @@ describe("App workspace shell integration", () => {
     const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
     expect(within(panel).getByDisplayValue("Product Docs")).toBeInTheDocument();
     expect(within(panel).getByDisplayValue("Release notes and launch guidance.")).toBeInTheDocument();
-    expect(within(panel).getByLabelText("Upload custom workspace icon")).toBeInTheDocument();
+    expect(within(panel).getByLabelText("Upload custom workspace icon", { selector: "input" })).toBeInTheDocument();
 
     fireEvent.change(within(panel).getByDisplayValue("Product Docs"), { target: { value: "Platform Docs" } });
     fireEvent.click(within(panel).getByRole("button", { name: "Business" }));
@@ -1044,7 +1044,7 @@ describe("App workspace shell integration", () => {
     expect(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }).querySelector("svg")).toBeInTheDocument();
 
     const file = new File(["icon"], "icon.png", { type: "image/png" });
-    fireEvent.change(within(panel).getByLabelText("Upload custom workspace icon"), { target: { files: [file] } });
+    fireEvent.change(within(panel).getByLabelText("Upload custom workspace icon", { selector: "input" }), { target: { files: [file] } });
 
     await waitFor(() => expect(uploadWorkspaceIcon).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(document.querySelectorAll("img[src='blob:staged-workspace-icon']").length).toBeGreaterThanOrEqual(2));
@@ -1850,7 +1850,7 @@ describe("App workspace shell integration", () => {
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
     const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
-    fireEvent.change(within(panel).getByLabelText("Upload custom workspace icon"), {
+    fireEvent.change(within(panel).getByLabelText("Upload custom workspace icon", { selector: "input" }), {
       target: { files: [new File(["image"], "staged.png", { type: "image/png" })] }
     });
 
@@ -1931,7 +1931,7 @@ describe("App workspace shell integration", () => {
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
     const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
-    fireEvent.change(within(panel).getByLabelText("Upload custom workspace icon"), {
+    fireEvent.change(within(panel).getByLabelText("Upload custom workspace icon", { selector: "input" }), {
       target: { files: [new File(["image"], "staged.png", { type: "image/png" })] }
     });
     await waitFor(() => expect(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }).querySelector("img[src='blob:staged-workspace-icon']")).toBeInTheDocument());
@@ -1989,7 +1989,7 @@ describe("App workspace shell integration", () => {
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
     const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
-    fireEvent.change(within(panel).getByLabelText("Upload custom workspace icon"), {
+    fireEvent.change(within(panel).getByLabelText("Upload custom workspace icon", { selector: "input" }), {
       target: { files: [new File(["image"], "staged.png", { type: "image/png" })] }
     });
     await waitFor(() => expect(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }).querySelector("img[src='blob:staged-workspace-icon']")).toBeInTheDocument());
@@ -2248,7 +2248,7 @@ describe("App workspace shell integration", () => {
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
     const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
-    const fileInput = within(panel).getByLabelText("Upload custom workspace icon");
+    const fileInput = within(panel).getByLabelText("Upload custom workspace icon", { selector: "input" });
     fireEvent.change(fileInput, { target: { files: [new File(["one"], "first.png", { type: "image/png" })] } });
     await waitFor(() => expect(uploadWorkspaceIcon).toHaveBeenCalledTimes(1));
     await within(panel).findByText("Custom image uploaded.");

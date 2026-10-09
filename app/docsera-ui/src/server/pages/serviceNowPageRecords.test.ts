@@ -116,7 +116,7 @@ describe("page record mapping", () => {
     expect(page.active).toBe(expectedActive);
     expect(page.sysId).toBe("page-001");
     expect(page.draftTitle).toBe("Overview");
-    expect(page.draftContentJson).toEqual(createEmptyDocseraDocumentEnvelope());
+    expect(page.draftContentJson).toEqual({ schemaVersion: 1, document: { type: "doc", content: [] } });
   });
 
   it("maps published actor and timestamp metadata from the record", () => {

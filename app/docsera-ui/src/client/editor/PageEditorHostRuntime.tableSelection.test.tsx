@@ -1237,8 +1237,10 @@ describe("PageEditorHostRuntime table drag selection", () => {
   });
 
   it("updates the live structural pills only when the selected rectangle reaches the top row or leftmost column", async () => {
+    const onRuntimeError = vi.fn();
     const { editorReady, overlayRoot } = renderRuntime({
-      initialEnvelope: createEnvelopeFromDocument(createTableDocument(4, 4))
+      initialEnvelope: createEnvelopeFromDocument(createTableDocument(4, 4)),
+      onRuntimeError
     });
 
     await waitFor(() => {
@@ -1246,6 +1248,12 @@ describe("PageEditorHostRuntime table drag selection", () => {
     });
 
     const editor = editorReady[0];
+    await waitFor(() => {
+      expect(editorReady[0]).toBe(editor);
+      expect(overlayRoot.querySelector("[data-docsera-table-overlay-root='true']")).toBeInstanceOf(HTMLElement);
+      expect(onRuntimeError).not.toHaveBeenCalled();
+    });
+
     const proseMirror = editor.view.dom;
     const geometry = installTableGeometry({
       editor: proseMirror,
@@ -2286,6 +2294,13 @@ describe("PageEditorHostRuntime table drag selection", () => {
 
       expectTableHandleVisualState(overlayRoot, { index: 1, kind: "row", state: "active" });
 
+      fireEvent.pointerDown(overlayRoot.ownerDocument.body);
+      await waitFor(() => {
+        expect(
+          overlayRoot.ownerDocument.querySelector('[data-docsera-table-menu-kind="row"][data-docsera-table-menu-index="1"]')
+        ).toBeNull();
+      });
+
       await dragTableSelection(getTableCell(proseMirror, 2, 2), getTableCell(proseMirror, 1, 3), 22);
 
       await waitFor(() => {
@@ -2367,8 +2382,10 @@ describe("PageEditorHostRuntime table drag selection", () => {
     [treeNewPageButton, 41] as const,
     [headerNewPageButton, 42] as const
   ])("ends settled CellSelection ownership when New page opens inline create", async (getButton, pointerId) => {
-    const { editorReady } = renderRuntime({
-      initialEnvelope: createEnvelopeFromDocument(createTableDocument(4, 4))
+    const onRuntimeError = vi.fn();
+    const { editorReady, overlayRoot } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createTableDocument(4, 4)),
+      onRuntimeError
     });
 
     await waitFor(() => {
@@ -2376,6 +2393,12 @@ describe("PageEditorHostRuntime table drag selection", () => {
     });
 
     const editor = editorReady[0];
+    await waitFor(() => {
+      expect(editorReady[0]).toBe(editor);
+      expect(overlayRoot.querySelector("[data-docsera-table-overlay-root='true']")).toBeInstanceOf(HTMLElement);
+      expect(onRuntimeError).not.toHaveBeenCalled();
+    });
+
     const proseMirror = editor.view.dom;
     const geometry = installTableGeometry({
       editor: proseMirror,
