@@ -689,6 +689,8 @@ function resolveCurrentPageAuthoringReadiness(input: {
   isEditorReady: boolean;
   markdownSourceStatus: MarkdownSourceStatus;
   pageSettingsState: PageSettingsState;
+  pageListResolved: boolean;
+  selectedPageExists: boolean;
   selectedPageSysId: string;
   workspaceCommandBlocksCurrentWorkspaceWrites: boolean;
 }): {
@@ -707,24 +709,36 @@ function resolveCurrentPageAuthoringReadiness(input: {
   }
 
   const selectedPageStatusApplies = cleanText(input.markdownSourceStatus.pageSysId) === cleanText(input.selectedPageSysId);
-  const hasPageSettingsWork = input.pageSettingsState.open && (Boolean(input.pageSettingsState.activeField) || hasPageSettingsUnsavedChanges(input.pageSettingsState));
-  const hasBodyWork = input.editorStatus !== "Saved";
-  const hasSourceWork = selectedPageStatusApplies && (input.markdownSourceStatus.isInvalid || input.markdownSourceStatus.isUnavailable);
+  const pageAuthoringSurfaceApplies = input.selectedPageExists;
+  const pageListUnresolved = !input.pageListResolved;
+  const hasPageSettingsWork =
+    pageAuthoringSurfaceApplies &&
+    input.pageSettingsState.open &&
+    (Boolean(input.pageSettingsState.activeField) || hasPageSettingsUnsavedChanges(input.pageSettingsState));
+  const hasBodyWork = pageAuthoringSurfaceApplies && input.editorStatus !== "Saved";
+  const hasSourceWork =
+    pageAuthoringSurfaceApplies &&
+    selectedPageStatusApplies &&
+    (input.markdownSourceStatus.isInvalid || input.markdownSourceStatus.isUnavailable);
   const requiresNavigationGuard = hasBodyWork || hasPageSettingsWork || hasSourceWork;
-  const visualEditorReady = input.canEditPageBody && !input.editAccessLost && input.isEditorReady && input.editorCanonicalHandoffReady;
+  const visualEditorReady =
+    !pageAuthoringSurfaceApplies ||
+    (input.canEditPageBody && !input.editAccessLost && input.isEditorReady && input.editorCanonicalHandoffReady);
   const sourceBlockedByRuntime = input.workspaceCommandBlocksCurrentWorkspaceWrites || !visualEditorReady;
   const blockedMessage =
     input.workspaceCommandBlocksCurrentWorkspaceWrites
       ? WORKSPACE_COMMAND_AUTHORING_LOCK_MESSAGE
+      : pageListUnresolved
+        ? "The workspace page list is still loading."
       : !input.canEditPageBody || input.editAccessLost
         ? "Authoring access is no longer available."
-        : !input.editorCanonicalHandoffReady || !input.isEditorReady
+        : pageAuthoringSurfaceApplies && (!input.editorCanonicalHandoffReady || !input.isEditorReady)
           ? "The visual editor is still getting ready."
-          : selectedPageStatusApplies && input.markdownSourceStatus.isInvalid
+          : pageAuthoringSurfaceApplies && selectedPageStatusApplies && input.markdownSourceStatus.isInvalid
             ? input.markdownSourceStatus.errorMessage || "Markdown source contains invalid content."
-            : selectedPageStatusApplies && input.markdownSourceStatus.isUnavailable
+            : pageAuthoringSurfaceApplies && selectedPageStatusApplies && input.markdownSourceStatus.isUnavailable
               ? input.markdownSourceStatus.errorMessage || "Markdown source is waiting for the visual editor to become available."
-              : input.editorStatus !== "Saved"
+              : hasBodyWork
                 ? `Current page is ${input.editorStatus.toLowerCase()}. Publish and discard actions stay disabled until local changes are saved.`
                 : hasPageSettingsWork
                   ? "Page Settings has unsaved or blocked changes. Publish and discard actions stay disabled until settings are saved."
@@ -732,13 +746,15 @@ function resolveCurrentPageAuthoringReadiness(input: {
   const surfaceBlockedMessage =
     input.workspaceCommandBlocksCurrentWorkspaceWrites
       ? WORKSPACE_COMMAND_AUTHORING_LOCK_MESSAGE
+      : pageListUnresolved
+        ? "The workspace page list is still loading."
       : !input.canEditPageBody || input.editAccessLost
         ? "Authoring access is no longer available."
-        : !input.editorCanonicalHandoffReady || !input.isEditorReady
+        : pageAuthoringSurfaceApplies && (!input.editorCanonicalHandoffReady || !input.isEditorReady)
           ? "The visual editor is still getting ready."
-          : selectedPageStatusApplies && input.markdownSourceStatus.isUnavailable
+          : pageAuthoringSurfaceApplies && selectedPageStatusApplies && input.markdownSourceStatus.isUnavailable
             ? input.markdownSourceStatus.errorMessage || "Markdown source is waiting for the visual editor to become available."
-            : input.editorStatus !== "Saved"
+            : hasBodyWork
               ? `Current page is ${input.editorStatus.toLowerCase()}. Publish and discard actions stay disabled until local changes are saved.`
               : hasPageSettingsWork
                 ? "Page Settings has unsaved or blocked changes. Publish and discard actions stay disabled until settings are saved."
@@ -746,8 +762,8 @@ function resolveCurrentPageAuthoringReadiness(input: {
 
   return {
     blockedMessage,
-    canEditMarkdownSource: visualEditorReady && !input.markdownSourceStatus.isUnavailable,
-    canSwitchSurface: !surfaceBlockedMessage && !sourceBlockedByRuntime,
+    canEditMarkdownSource: pageAuthoringSurfaceApplies && visualEditorReady && !input.markdownSourceStatus.isUnavailable,
+    canSwitchSurface: pageAuthoringSurfaceApplies && !surfaceBlockedMessage && !sourceBlockedByRuntime,
     requiresNavigationGuard
   };
 }
@@ -6880,6 +6896,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     isEditorReady,
     markdownSourceStatus,
     pageSettingsState,
+    pageListResolved: workspacePagesLoaded,
+    selectedPageExists: Boolean(selectedWorkspacePage),
     selectedPageSysId: selectedWorkspacePageId,
     workspaceCommandBlocksCurrentWorkspaceWrites
   });
@@ -6938,6 +6956,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       isEditorReady,
       markdownSourceStatus,
       pageSettingsState,
+      pageListResolved: workspacePagesLoaded,
+      selectedPageExists: Boolean(selectedWorkspacePage),
       selectedPageSysId: selectedWorkspacePageId,
       workspaceCommandBlocksCurrentWorkspaceWrites,
       workspaceDiscardAllInProgress,

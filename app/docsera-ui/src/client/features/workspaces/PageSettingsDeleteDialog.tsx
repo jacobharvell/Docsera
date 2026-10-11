@@ -91,7 +91,7 @@ export function PageSettingsDeleteDialog({
                     <span className="docsera-delete-confirmation-button__spinner" />
                   </span>
                 ) : null}
-                <span className="docsera-delete-confirmation-button__label">{pending ? "Deleting" : "Delete page"}</span>
+                <span className="docsera-delete-confirmation-button__label">Delete page</span>
               </button>
             </div>
           </div>

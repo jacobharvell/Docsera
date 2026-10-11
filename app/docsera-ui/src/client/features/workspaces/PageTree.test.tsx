@@ -29,6 +29,9 @@ const resolveDropGeometry = vi.mocked(resolvePageTreeDropGeometry);
 let activeGeometryCandidate: MockGeometryCandidate | null = null;
 
 beforeEach(() => {
+  vi.restoreAllMocks();
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
+  Object.defineProperty(window, "innerHeight", { configurable: true, value: 768 });
   resolveDropDestination.mockReset();
   resolveDropGeometry.mockReset();
   activeGeometryCandidate = null;
@@ -208,7 +211,7 @@ describe("PageTree presentation", () => {
 });
 
 describe("PageTree row interaction", () => {
-  it("uses shared tooltip for page names", async () => {
+  it("keeps page rows accessible without page-name tooltips", async () => {
     const onSelectPage = vi.fn();
 
     renderTree([page({ id: "overview", title: "Overview" })], {
@@ -224,7 +227,8 @@ describe("PageTree row interaction", () => {
     expect(document.querySelector("[title]")).not.toBeInTheDocument();
 
     fireEvent.focus(pageButton);
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("Overview");
+    fireEvent.mouseOver(pageButton);
+    await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
 
     fireEvent.click(pageButton);
     expect(onSelectPage).toHaveBeenCalledWith("overview");
@@ -750,6 +754,69 @@ describe("PageTree row interaction", () => {
     expect(await screen.findByRole("menu", { name: "Page actions for Parent" })).toBeInTheDocument();
     expect(onSelectPage).not.toHaveBeenCalled();
     expect(onCollapsedPageIdsChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps a right-click context menu below the pointer when the viewport has room", async () => {
+    mockPageTreeMenuRects({ menu: { width: 180, height: 160 } });
+    renderTree([page({ id: "middle", title: "Middle" })], {
+      canCreatePage: true
+    });
+
+    fireEvent.contextMenu(row("Middle"), { clientX: 120, clientY: 220 });
+
+    const menu = await screen.findByRole("menu", { name: "Page actions for Middle" });
+    expect(menu).toHaveStyle({ left: "120px", top: "220px" });
+  });
+
+  it("keeps a right-click context menu within the top viewport margin", async () => {
+    mockPageTreeMenuRects({ menu: { width: 180, height: 160 } });
+    renderTree([page({ id: "top", title: "Top" })], {
+      canCreatePage: true
+    });
+
+    fireEvent.contextMenu(row("Top"), { clientX: 120, clientY: 2 });
+
+    const menu = await screen.findByRole("menu", { name: "Page actions for Top" });
+    await waitFor(() => expect(menu).toHaveStyle({ left: "120px", top: "8px" }));
+  });
+
+  it("opens a right-click context menu upward when the measured menu would exceed the viewport bottom", async () => {
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 });
+    mockPageTreeMenuRects({ menu: { width: 180, height: 160 } });
+    const pages = Array.from({ length: 40 }, (_, index) =>
+      page({ id: `page-${index + 1}`, title: `Page ${index + 1}`, siblingOrder: index + 1 })
+    );
+    renderTree(pages, {
+      canCreatePage: true
+    });
+
+    fireEvent.contextMenu(row("Page 40"), { clientX: 120, clientY: 580 });
+
+    const menu = await screen.findByRole("menu", { name: "Page actions for Page 40" });
+    await waitFor(() => expect(menu).toHaveStyle({ left: "120px", top: "420px" }));
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Page settings",
+      "Rename",
+      "Add child page",
+      "Delete"
+    ]);
+  });
+
+  it("opens the ellipsis context menu upward when the measured menu would exceed the viewport bottom", async () => {
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 600 });
+    mockPageTreeMenuRects({
+      actionsButton: { left: 260, top: 556, width: 28, height: 28 },
+      menu: { width: 180, height: 160 }
+    });
+    renderTree([page({ id: "control", title: "Control" })], {
+      canCreatePage: true
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Page actions for Control" }));
+
+    const menu = await screen.findByRole("menu", { name: "Page actions for Control" });
+    expect(menu).toHaveClass("docsera-page-tree__context-menu--control");
+    await waitFor(() => expect(menu).toHaveStyle({ left: "260px", top: "392px" }));
   });
 
   it("offers Add child page for a leaf page and invokes the existing child creation callback for that target", async () => {
@@ -1816,6 +1883,39 @@ function row(title: string): HTMLElement {
     throw new Error(`Missing row for ${title}.`);
   }
   return element as HTMLElement;
+}
+
+function viewportRect(input: { left: number; top: number; width: number; height: number }): DOMRect {
+  return {
+    bottom: input.top + input.height,
+    height: input.height,
+    left: input.left,
+    right: input.left + input.width,
+    top: input.top,
+    width: input.width,
+    x: input.left,
+    y: input.top,
+    toJSON: () => ({})
+  } as DOMRect;
+}
+
+function mockPageTreeMenuRects(input: {
+  menu: { width: number; height: number };
+  actionsButton?: { left: number; top: number; width: number; height: number };
+}) {
+  return vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function getBoundingClientRect(this: HTMLElement) {
+    if (this.getAttribute("role") === "menu") {
+      return viewportRect({ left: 0, top: 0, width: input.menu.width, height: input.menu.height });
+    }
+    if (
+      input.actionsButton &&
+      this instanceof HTMLButtonElement &&
+      this.classList.contains("docsera-page-tree__action-button--actions")
+    ) {
+      return viewportRect(input.actionsButton);
+    }
+    return viewportRect({ left: 0, top: 0, width: 0, height: 0 });
+  });
 }
 
 function item(title: string): HTMLElement {

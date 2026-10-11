@@ -355,7 +355,7 @@ describe("DocseraHeader publishing changes", () => {
     expect(container.querySelectorAll(".docsera-header__surface-toggle .docsera-header__segmented-indicator")).toHaveLength(1);
   });
 
-  it("uses shared tooltips for Live and Edit controls", async () => {
+  it("keeps Live and Edit controls accessible without redundant tooltips", async () => {
     const onWorkspaceModeChange = vi.fn();
 
     render(
@@ -379,11 +379,13 @@ describe("DocseraHeader publishing changes", () => {
     expect(workspaceToggle.querySelector("[title]")).not.toBeInTheDocument();
 
     fireEvent.focus(liveButton);
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("Live");
+    fireEvent.mouseOver(liveButton);
+    await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
 
     fireEvent.blur(liveButton);
     fireEvent.focus(editButton);
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("Edit");
+    fireEvent.mouseOver(editButton);
+    await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
 
     fireEvent.click(liveButton);
     expect(onWorkspaceModeChange).toHaveBeenCalledWith("live");
@@ -661,6 +663,64 @@ describe("DocseraHeader publishing changes", () => {
     expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
   });
 
+  it("centers processing spinners over retained Changes Center action labels without changing button widths", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+    const footerPrimaryBlocks = Array.from(source.matchAll(/\.docsera-changes-center__footer-primary \{([\s\S]*?)\n\}/g), (match) => match[1]);
+    const footerLabelBlocks = Array.from(source.matchAll(/\.docsera-changes-center__footer-primary-label \{([\s\S]*?)\n\}/g), (match) => match[1]);
+    const footerPrimaryBlock = footerPrimaryBlocks.find((block) => block.includes("width: 100%;")) ?? "";
+    const footerLabelBlock = footerLabelBlocks.find((block) => block.includes("position: relative;")) ?? "";
+    const overlaidSpinnerBlock = source.match(/\.docsera-changes-center__footer-primary-label > \.docsera-changes-center__spinner \{([\s\S]*?)\n\}/)?.[1] ?? "";
+
+    expect(footerPrimaryBlock).toContain("position: relative;");
+    expect(footerPrimaryBlock).toContain("width: 100%;");
+    expect(footerLabelBlock).toContain("position: relative;");
+    expect(footerLabelBlock).toContain("display: inline-flex;");
+    expect(footerLabelBlock).toContain("align-items: center;");
+    expect(footerLabelBlock).toContain("justify-content: center;");
+    expect(footerLabelBlock).toContain("gap: 0;");
+    expect(overlaidSpinnerBlock).toContain("position: absolute;");
+    expect(overlaidSpinnerBlock).toContain("top: 50%;");
+    expect(overlaidSpinnerBlock).toContain("left: 50%;");
+    expect(overlaidSpinnerBlock).toContain("margin-block-start: -8px;");
+    expect(overlaidSpinnerBlock).toContain("margin-inline-start: -8px;");
+    expect(overlaidSpinnerBlock).toContain("pointer-events: none;");
+    expect(source).toContain('.docsera-changes-center__footer-primary[aria-busy="true"] .docsera-changes-center__footer-primary-label > span:not(.docsera-changes-center__spinner),');
+    expect(source).toContain('.docsera-modal__primary[aria-busy="true"] .docsera-changes-center__footer-primary-label > span:not(.docsera-changes-center__spinner)');
+    expect(source).toContain("color: transparent;");
+
+    render(
+      <DocseraHeader
+        {...baseProps}
+        pendingChangesPublishing
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          }
+        ])}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    const publishButton = within(screen.getByRole("dialog", { name: "Changes Center" })).getByRole("button", { name: "Publish" });
+    expect(publishButton).toHaveAccessibleName("Publish");
+    expect(publishButton).toHaveAttribute("aria-busy", "true");
+    expect(publishButton.querySelector(".docsera-changes-center__footer-primary-label > span:not(.docsera-changes-center__spinner)")).toHaveTextContent("Publish");
+    expect(publishButton.querySelector(".docsera-changes-center__spinner")).toBeInTheDocument();
+  });
+
   it("opens the individual undo confirmation modal without triggering row navigation and keeps Removed rows non-navigable", () => {
     const onOpenPendingPage = vi.fn();
     const onDiscardPendingPage = vi.fn();
@@ -869,6 +929,56 @@ describe("DocseraHeader publishing changes", () => {
     expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(screen.getByRole("dialog", { name: "Changes Center" })).toBeInTheDocument();
+  });
+
+  it("keeps discard confirmation labels accessible while showing only the centered spinner during processing", () => {
+    const { rerender } = render(
+      <DocseraHeader
+        {...baseProps}
+        onDiscardAllPendingChanges={vi.fn()}
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          }
+        ])}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Changes Center" })).getByRole("button", { name: "Discard all" }));
+
+    rerender(
+      <DocseraHeader
+        {...baseProps}
+        onDiscardAllPendingChanges={vi.fn()}
+        pendingChangesDiscarding
+        pendingChanges={pending([
+          {
+            attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+            category: "Modified",
+            firstPendingSequence: 1,
+            lastChangedOn: "2026-07-18 00:00:00",
+            navigable: true,
+            pageSysId: "page-001",
+            title: "Overview"
+          }
+        ])}
+      />
+    );
+
+    const discardModal = screen.getByRole("dialog", { name: "Discard all changes" });
+    const discardButton = within(discardModal).getByRole("button", { name: "Discard all" });
+    expect(discardButton).toBeDisabled();
+    expect(discardButton).toHaveAttribute("aria-busy", "true");
+    expect(discardButton).toHaveAccessibleName("Discard all");
+    expect(discardButton.querySelector(".docsera-changes-center__footer-primary-label > span:not(.docsera-changes-center__spinner)")).toHaveTextContent("Discard all");
+    expect(discardButton.querySelector(".docsera-changes-center__spinner")).toBeInTheDocument();
   });
 
   it("allows retryable discard recovery to reopen the modal while workspace controls are locked", () => {

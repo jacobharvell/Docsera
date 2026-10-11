@@ -397,11 +397,35 @@ test("keeps left workspace navigation sticky with internally scrolling tree over
   );
 });
 
+test("animates workspace navigation collapse while keeping resize immediate and collapsed content inert", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+  const shellSource = readFileSync("src/client/features/workspaces/WorkspaceShell.tsx", "utf8");
+
+  expect(css).toMatch(
+    /\.docsera-header\s*{[^}]*transition:\s*grid-template-columns 200ms cubic-bezier\(0\.4, 0, 0\.2, 1\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-workspace\s*{[^}]*grid-template-columns:\s*var\(--docsera-workspace-nav-width\) minmax\(0, 1fr\) auto;[^}]*transition:\s*grid-template-columns 200ms cubic-bezier\(0\.4, 0, 0\.2, 1\);/s
+  );
+  expect(css).toMatch(/\.docsera-workspace--sidebar-collapsed\s*{\s*grid-template-columns:\s*0 minmax\(0, 1fr\) auto;/s);
+  expect(css).toMatch(/\.docsera-workspace__nav-frame\s*{[^}]*overflow:\s*visible;[^}]*transition:[^}]*opacity 200ms cubic-bezier\(0\.4, 0, 0\.2, 1\);/s);
+  expect(css).toMatch(
+    /\.docsera-workspace--sidebar-collapsed \.docsera-workspace__nav-frame\s*{[^}]*border-right-color:\s*transparent;[^}]*opacity:\s*0;[^}]*overflow:\s*hidden;[^}]*pointer-events:\s*none;/s
+  );
+  expect(css).toMatch(/html\.docsera-nav-resizing \.docsera-header\s*{\s*transition:\s*none;/s);
+  expect(css).toMatch(/\.docsera-workspace--sidebar-resizing\s*{\s*transition:\s*none;/s);
+  expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.docsera-header,\s*\.docsera-workspace,\s*\.docsera-workspace__nav-frame,[\s\S]*?transition:\s*none;/s);
+  expect(css).toMatch(/@media \(max-width: 1180px\)[\s\S]*?\.docsera-workspace--sidebar-collapsed\s*{\s*grid-template-columns:\s*0 minmax\(0, 1fr\);/s);
+  expect(shellSource).toContain("navFrame.inert = sidebarCollapsed;");
+  expect(shellSource).toContain('aria-hidden={sidebarCollapsed ? "true" : undefined}');
+  expect(shellSource).not.toContain("{!sidebarCollapsed ? (");
+});
+
 test("keeps narrow workspace navigation in normal stacked flow", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
 
   expect(css).toMatch(
-    /@media \(max-width: 920px\)[\s\S]*?\.docsera-workspace,\s*\.docsera-workspace--sidebar-collapsed\s*{[\s\S]*?grid-template-columns:\s*1fr;[\s\S]*?\.docsera-workspace__nav-resizer\s*{[\s\S]*?display:\s*none;[\s\S]*?\.docsera-workspace__nav-frame\s*{[\s\S]*?position:\s*relative;[\s\S]*?top:\s*auto;[\s\S]*?align-self:\s*stretch;[\s\S]*?height:\s*auto;[\s\S]*?border-right:\s*0;/s
+    /@media \(max-width: 920px\)[\s\S]*?\.docsera-workspace,\s*\.docsera-workspace--sidebar-collapsed\s*{[\s\S]*?grid-template-columns:\s*1fr;[\s\S]*?\.docsera-workspace__nav-resizer\s*{[\s\S]*?display:\s*none;[\s\S]*?\.docsera-workspace__nav-frame\s*{[\s\S]*?position:\s*relative;[\s\S]*?top:\s*auto;[\s\S]*?align-self:\s*stretch;[\s\S]*?height:\s*auto;[\s\S]*?border-right:\s*0;[\s\S]*?\.docsera-workspace--sidebar-collapsed \.docsera-workspace__nav-frame\s*{[\s\S]*?height:\s*0;/s
   );
 });
 
@@ -566,6 +590,7 @@ test("keeps the editor block-control floating layer below the workspace header",
 
 test("keeps shared destructive modal warnings and buttons on the semantic destructive theme treatment", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+  const deleteConfirmationRule = getRuleBody(css, ".docsera-delete-confirmation-button");
 
   expect(css).toMatch(/\.docsera-modal__copy--warning\s*{\s*color:\s*var\(--docsera-error\);\s*}/s);
   expect(css).not.toMatch(/\.docsera-modal__copy--warning\s*{[^}]*#[0-9a-fA-F]{3,8}/s);
@@ -587,6 +612,44 @@ test("keeps shared destructive modal warnings and buttons on the semantic destru
   expect(css).toMatch(
     /html\[data-docsera-theme="dark"\] \.docsera-modal__primary--destructive:hover\s*{[^}]*background:\s*rgba\(255, 138, 128, 0\.14\);/s
   );
+  expect(css).toMatch(
+    /\.docsera-modal__primary--destructive \.docsera-changes-center__spinner\s*{[^}]*border-color:\s*color-mix\(in srgb, currentColor 38%, transparent\);[^}]*border-top-color:\s*currentColor;/s
+  );
+  expect(css).toMatch(
+    /\.docsera-changes-center__spinner\s*{[^}]*border:\s*2px solid rgba\(255, 255, 255, 0\.45\);[^}]*border-top-color:\s*#fff;/s
+  );
+  expect(deleteConfirmationRule).toContain("min-width: auto;");
+});
+
+test("keeps New Workspace modal styling scoped to its compact settings-aligned surface", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+  const labelRule = getRuleBody(css, ".docsera-create-workspace-modal .docsera-modal__label");
+  const inputRule = getRuleBody(css, ".docsera-create-workspace-modal .docsera-modal__input");
+  const gridRule = getRuleBody(css, ".docsera-create-workspace-modal .docsera-workspace-icon-picker__grid");
+  const optionRule = getRuleBody(css, ".docsera-create-workspace-modal .docsera-workspace-icon-picker__option");
+  const selectedRule = getRuleBody(css, ".docsera-create-workspace-modal .docsera-workspace-icon-picker__option--selected");
+  const uploadRowRule = getRuleBody(css, ".docsera-create-workspace-modal .docsera-workspace-icon-picker__upload-row");
+  const footerRule = getRuleBody(css, ".docsera-create-workspace-modal .docsera-modal__footer");
+  const primaryRule = getRuleBody(css, ".docsera-create-workspace-modal__primary");
+  const sharedGridRule = css.match(/\n\.docsera-workspace-icon-picker__grid\s*{(?<body>[^}]*)}/s)?.groups?.body ?? "";
+  const sharedOptionRule = getRuleBody(css, ".docsera-workspace-icon-picker__option");
+
+  expect(labelRule).toContain("color: var(--docsera-text);");
+  expect(labelRule).toContain("font-weight: 700;");
+  expect(labelRule).toContain("letter-spacing: 0;");
+  expect(labelRule).toContain("text-transform: none;");
+  expect(inputRule).toContain("background: color-mix(in srgb, var(--docsera-primary) 4%, var(--docsera-surface) 96%);");
+  expect(gridRule).toContain("grid-template-columns: repeat(6, minmax(0, 1fr));");
+  expect(optionRule).toContain("height: 60px;");
+  expect(selectedRule).toContain("border-color: var(--docsera-primary);");
+  expect(selectedRule).toContain("box-shadow: inset 0 0 0 1px var(--docsera-primary);");
+  expect(uploadRowRule).toContain("display: flex;");
+  expect(uploadRowRule).toContain("flex-wrap: wrap;");
+  expect(footerRule).toContain("padding: 14px 20px;");
+  expect(footerRule).toContain("background: color-mix(in srgb, var(--docsera-primary) 4%, var(--docsera-surface-muted) 96%);");
+  expect(primaryRule).toContain("min-width: auto;");
+  expect(sharedGridRule).toContain("grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));");
+  expect(sharedOptionRule).toContain("min-height: 72px;");
 });
 
 test("keeps manage access Add Members visual states on defined theme tokens", () => {

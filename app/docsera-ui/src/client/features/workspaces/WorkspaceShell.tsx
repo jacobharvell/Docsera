@@ -6,7 +6,6 @@ import type { InlinePageCreateState } from "./PageTree";
 import { WorkspaceMainPane } from "./WorkspaceMainPane";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { WorkspaceToc } from "./WorkspaceToc";
-import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
 import type { WorkspacePageOutlineItem, WorkspacePageView } from "./workspaceViewModels";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
 import type { WorkspaceAuthoringSurface } from "./workspaceAuthoringSurface";
@@ -250,6 +249,8 @@ export function WorkspaceShell({
   const [tocCollapsed, setTocCollapsed] = useState(() => readStoredWorkspaceTocCollapsedPreference(currentWorkspaceSlug) ?? false);
   const tocCollapsedHasUserPreferenceRef = useRef(readStoredWorkspaceTocCollapsedPreference(currentWorkspaceSlug) !== null);
   const resizeStateRef = useRef<{ active: boolean }>({ active: false });
+  const navFrameRef = useRef<HTMLDivElement>(null);
+  const [sidebarResizing, setSidebarResizing] = useState(false);
   const currentNavWidth = sidebarCollapsed ? 0 : workspaceNavWidth;
   const shellStyle = {
     "--docsera-workspace-nav-resizer-width": sidebarCollapsed ? "0px" : "8px",
@@ -309,6 +310,8 @@ export function WorkspaceShell({
       }
 
       resizeStateRef.current.active = false;
+      setSidebarResizing(false);
+      document.documentElement.classList.remove("docsera-nav-resizing");
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     };
@@ -318,11 +321,50 @@ export function WorkspaceShell({
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
+      if (resizeStateRef.current.active) {
+        resizeStateRef.current.active = false;
+        document.documentElement.classList.remove("docsera-nav-resizing");
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
     };
   }, [onWorkspaceNavWidthChange, sidebarCollapsed]);
 
+  useEffect(() => {
+    const navFrame = navFrameRef.current;
+    if (!navFrame) {
+      return;
+    }
+
+    navFrame.inert = sidebarCollapsed;
+    if (sidebarCollapsed) {
+      navFrame.setAttribute("inert", "");
+      return;
+    }
+
+    navFrame.removeAttribute("inert");
+  }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    if (!sidebarCollapsed || !resizeStateRef.current.active) {
+      return;
+    }
+
+    resizeStateRef.current.active = false;
+    setSidebarResizing(false);
+    document.documentElement.classList.remove("docsera-nav-resizing");
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }, [sidebarCollapsed]);
+
   function startSidebarResize() {
+    if (sidebarCollapsed) {
+      return;
+    }
+
     resizeStateRef.current.active = true;
+    setSidebarResizing(true);
+    document.documentElement.classList.add("docsera-nav-resizing");
     document.body.style.cursor = "col-resize";
     document.body.style.userSelect = "none";
   }
@@ -338,55 +380,62 @@ export function WorkspaceShell({
 
   return (
     <div className="docsera-shell" style={shellStyle}>
-      <div className={`docsera-workspace${sidebarCollapsed ? " docsera-workspace--sidebar-collapsed" : ""}`}>
-        {!sidebarCollapsed ? (
-          <div className="docsera-workspace__nav-frame">
-            <WorkspaceSidebar
-              canCreatePage={canCreatePage}
-              createPageDisabledReason={createPageDisabledReason}
-              canManagePageSettings={canManagePageSettings}
-              collapsedPageIds={collapsedPageIds}
-              inlineCreateState={inlineCreateState}
-              inlineRenameErrorMessage={inlineRenameErrorMessage}
-              inlineRenamePageId={inlineRenamePageId}
-              inlineRenameValue={inlineRenameValue}
-              isCreatingPage={isCreatingPage}
-              isLoading={showWorkspaceLoading}
-              showPendingState={showPendingState}
-              mode={mode}
-              onCollapsedPageIdsChange={onCollapsedPageIdsChange}
-              onCancelInlineRename={onCancelInlineRename}
-              onCommitInlineCreate={onCommitInlineCreate}
-              onCommitInlineRename={onCommitInlineRename}
-              onInlineCreateTitleChange={onInlineCreateTitleChange}
-              onInlineRenameTitleChange={onInlineRenameTitleChange}
-              onSelectPage={onSelectPage}
-              onMovePage={onMovePage}
-              onRequestDeletePage={onRequestDeletePage}
-              onStartInlineRename={onStartInlineRename}
-              onShowCreatePage={onShowCreatePage}
-              onShowChildPageCreate={onShowChildPageCreate}
-              onTogglePageSettings={onTogglePageSettings}
-              pageSettingsOpenPageId={pageSettingsOpenPageId}
-              pages={showWorkspaceLoading ? [] : treePages}
-              selectedPageId={selectedPageViewForShell?.id ?? selectedPageId}
-              showCreatePageControl={showCreatePageControls}
-              treeFilter={treeFilter}
-              onTreeFilterChange={onTreeFilterChange}
-            />
-            <DocseraCompactTooltip label="Resize navigation panel">
-              <button
-                type="button"
-                className="docsera-workspace__nav-resizer"
-                aria-label="Resize navigation panel"
-                data-docsera-nav-resizer="true"
-                onMouseDown={startSidebarResize}
-              >
-                <span className="docsera-workspace__nav-resizer-pill" aria-hidden="true" />
-              </button>
-            </DocseraCompactTooltip>
-          </div>
-        ) : null}
+      <div
+        className={`docsera-workspace${sidebarCollapsed ? " docsera-workspace--sidebar-collapsed" : ""}${
+          sidebarResizing ? " docsera-workspace--sidebar-resizing" : ""
+        }`}
+      >
+        <div
+          ref={navFrameRef}
+          className="docsera-workspace__nav-frame"
+          aria-hidden={sidebarCollapsed ? "true" : undefined}
+          data-docsera-nav-collapsed={sidebarCollapsed ? "true" : undefined}
+        >
+          <WorkspaceSidebar
+            canCreatePage={canCreatePage}
+            createPageDisabledReason={createPageDisabledReason}
+            canManagePageSettings={canManagePageSettings}
+            collapsedPageIds={collapsedPageIds}
+            navigationCollapsed={sidebarCollapsed}
+            inlineCreateState={inlineCreateState}
+            inlineRenameErrorMessage={inlineRenameErrorMessage}
+            inlineRenamePageId={inlineRenamePageId}
+            inlineRenameValue={inlineRenameValue}
+            isCreatingPage={isCreatingPage}
+            isLoading={showWorkspaceLoading}
+            showPendingState={showPendingState}
+            mode={mode}
+            onCollapsedPageIdsChange={onCollapsedPageIdsChange}
+            onCancelInlineRename={onCancelInlineRename}
+            onCommitInlineCreate={onCommitInlineCreate}
+            onCommitInlineRename={onCommitInlineRename}
+            onInlineCreateTitleChange={onInlineCreateTitleChange}
+            onInlineRenameTitleChange={onInlineRenameTitleChange}
+            onSelectPage={onSelectPage}
+            onMovePage={onMovePage}
+            onRequestDeletePage={onRequestDeletePage}
+            onStartInlineRename={onStartInlineRename}
+            onShowCreatePage={onShowCreatePage}
+            onShowChildPageCreate={onShowChildPageCreate}
+            onTogglePageSettings={onTogglePageSettings}
+            pageSettingsOpenPageId={pageSettingsOpenPageId}
+            pages={showWorkspaceLoading ? [] : treePages}
+            selectedPageId={selectedPageViewForShell?.id ?? selectedPageId}
+            showCreatePageControl={showCreatePageControls}
+            treeFilter={treeFilter}
+            onTreeFilterChange={onTreeFilterChange}
+          />
+          <button
+            type="button"
+            className="docsera-workspace__nav-resizer"
+            aria-label="Resize navigation panel"
+            data-docsera-nav-resizer="true"
+            disabled={sidebarCollapsed}
+            onMouseDown={startSidebarResize}
+          >
+            <span className="docsera-workspace__nav-resizer-pill" aria-hidden="true" />
+          </button>
+        </div>
 
         <WorkspaceMainPane
           bodyNotice={bodyNotice}

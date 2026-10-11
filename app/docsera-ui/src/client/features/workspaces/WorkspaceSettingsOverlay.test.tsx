@@ -56,7 +56,7 @@ describe("WorkspaceSettingsOverlay", () => {
 
     const panel = screen.getByRole("complementary", { name: "Workspace Settings" });
     expect(within(panel).getByRole("heading", { name: "GENERAL" })).toBeInTheDocument();
-    expect(within(panel).getByRole("group", { name: "ICON" })).toHaveClass("docsera-workspace-settings-overlay__section--icon");
+    expect(within(panel).getByRole("group", { name: "Icon" })).toHaveClass("docsera-workspace-settings-overlay__section--icon");
     expect(within(panel).getByRole("heading", { name: "PREFERENCES" })).toBeInTheDocument();
 
     const nameInput = within(panel).getByLabelText("Workspace name");
@@ -325,7 +325,7 @@ describe("WorkspaceSettingsOverlay", () => {
     );
 
     const dialog = screen.getByRole("dialog", { name: "Delete workspace" });
-    const deleteButton = within(dialog).getByRole("button", { name: "Deleting" });
+    const deleteButton = within(dialog).getByRole("button", { name: "Delete workspace" });
 
     expect(deleteButton).toBeDisabled();
     expect(deleteButton).toHaveAttribute("aria-busy", "true");
@@ -333,7 +333,7 @@ describe("WorkspaceSettingsOverlay", () => {
     const spinnerSlot = deleteButton.querySelector(".docsera-delete-confirmation-button__spinner-slot");
     expect(spinnerSlot).toBeInTheDocument();
     expect(spinnerSlot?.querySelector(".docsera-delete-confirmation-button__spinner")).toBeInTheDocument();
-    expect(deleteButton.querySelector(".docsera-delete-confirmation-button__label")).toHaveTextContent("Deleting");
+    expect(deleteButton.querySelector(".docsera-delete-confirmation-button__label")).toHaveTextContent("Delete workspace");
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
     expect(within(dialog).getByRole("button", { name: "Close delete workspace dialog" })).toBeDisabled();
   });
@@ -416,7 +416,12 @@ describe("WorkspaceSettingsOverlay", () => {
     const deleteSpinnerSlotBlock = source.match(/\.docsera-delete-confirmation-button__spinner-slot \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const deleteSpinnerBlock = source.match(/\.docsera-delete-confirmation-button__spinner \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const deleteLabelBlock = source.match(/\.docsera-delete-confirmation-button__label \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const deleteBusyLabelBlock =
+      source.match(
+        /\.docsera-delete-confirmation-button\[aria-busy="true"\] \.docsera-delete-confirmation-button__label \{([\s\S]*?)\n\}/
+      )?.[1] ?? "";
     const deleteBusyBlock = source.match(/\.docsera-delete-confirmation-button:disabled\[aria-busy="true"\] \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const destructiveBusyBlock = source.match(/\.docsera-modal__primary--destructive:disabled\[aria-busy="true"\] \{([\s\S]*?)\n\}/)?.[1] ?? "";
 
     expect(panelBlock).toContain("box-sizing: border-box;");
     expect(bodyBlock).toContain("overflow-x: clip;");
@@ -429,7 +434,11 @@ describe("WorkspaceSettingsOverlay", () => {
     expect(settingsOptionBlock).toContain("border-radius: 8px;");
     expect(settingsBadgeBlock).toContain("width: 28px;");
     expect(settingsBadgeBlock).toContain("height: 28px;");
+    expect(settingsLegendBlock).toContain("color: var(--docsera-text);");
+    expect(settingsLegendBlock).toContain("font-weight: 700;");
+    expect(settingsLegendBlock).toContain("letter-spacing: 0;");
     expect(settingsLegendBlock).toContain("margin-bottom: 0;");
+    expect(settingsLegendBlock).toContain("text-transform: none;");
     expect(settingsActionBlock).toContain("justify-self: start;");
     expect(settingsConstraintBlock).toContain("max-width: none;");
     expect(settingsActionHoverBlock).toContain("border-color: var(--docsera-primary);");
@@ -456,20 +465,27 @@ describe("WorkspaceSettingsOverlay", () => {
     expect(destructiveActionHoverBlock).toContain("background: rgba(186, 26, 26, 0.14);");
     expect(darkDestructiveActionBlock).toContain("background: rgba(255, 138, 128, 0.08);");
     expect(darkDestructiveActionBlock).toContain("border-color: rgba(255, 138, 128, 0.2);");
-    expect(deleteConfirmationBlock).toContain("width: 164px;");
-    expect(deleteConfirmationBlock).toContain("min-width: 164px;");
+    expect(deleteConfirmationBlock).toContain("position: relative;");
+    expect(deleteConfirmationBlock).toContain("display: inline-flex;");
+    expect(deleteConfirmationBlock).toContain("align-items: center;");
+    expect(deleteConfirmationBlock).toContain("justify-content: center;");
+    expect(deleteConfirmationBlock).not.toContain("gap:");
+    expect(deleteConfirmationBlock).not.toMatch(/(^|\n)\s*width:/);
+    expect(deleteConfirmationBlock).toContain("min-width: auto;");
     expect(deleteSpinnerSlotBlock).toContain("position: absolute;");
-    expect(deleteSpinnerSlotBlock).toContain("top: 50%;");
-    expect(deleteSpinnerSlotBlock).toContain("left: 12px;");
-    expect(deleteSpinnerSlotBlock).toContain("transform: translateY(-50%);");
-    expect(deleteSpinnerBlock).not.toContain("position: absolute;");
-    expect(deleteSpinnerBlock).not.toContain("translateY");
+    expect(deleteSpinnerSlotBlock).toContain("inset: 0;");
+    expect(deleteSpinnerSlotBlock).toContain("align-items: center;");
+    expect(deleteSpinnerSlotBlock).toContain("justify-content: center;");
+    expect(deleteSpinnerSlotBlock).toContain("pointer-events: none;");
     expect(deleteSpinnerBlock).toContain("border: 2px solid color-mix(in srgb, currentColor 38%, transparent);");
     expect(deleteSpinnerBlock).toContain("border-top-color: currentColor;");
     expect(deleteSpinnerBlock).toContain("animation: docsera-spin 0.8s linear infinite;");
-    expect(deleteLabelBlock).toContain("width: 100%;");
+    expect(deleteLabelBlock).toContain("display: inline-block;");
+    expect(deleteLabelBlock).not.toContain("width: 100%;");
     expect(deleteLabelBlock).toContain("text-align: center;");
+    expect(deleteBusyLabelBlock).toContain("color: transparent;");
     expect(deleteBusyBlock).toContain("opacity: 1;");
+    expect(destructiveBusyBlock).toContain("opacity: 1;");
   });
 
   it("uses the Workspace Settings token-derived control surface and preserves related dark overrides", () => {

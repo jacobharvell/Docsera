@@ -574,6 +574,31 @@ describe("App workspace shell integration", () => {
     expect(screen.queryByRole("complementary", { name: "Page Settings" })).not.toBeInTheDocument();
   });
 
+  it("closes the portaled page-tree context menu when workspace navigation collapses and restores normally", async () => {
+    renderApp("/?workspace=product-docs&mode=edit&page=overview");
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    const pageTree = screen.getByRole("navigation", { name: "Page tree" });
+    const overviewRow = within(pageTree).getByRole("button", { name: "Overview" }).closest(".docsera-page-tree__row");
+    expect(overviewRow).not.toBeNull();
+    fireEvent.contextMenu(overviewRow!, { clientX: 24, clientY: 32 });
+    expect(await screen.findByRole("menu", { name: "Page actions for Overview" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse navigation" }));
+
+    await waitFor(() => expect(screen.queryByRole("menu", { name: "Page actions for Overview" })).not.toBeInTheDocument());
+    expect(document.querySelector(".docsera-workspace__nav-frame")).toHaveAttribute("data-docsera-nav-collapsed", "true");
+    expect(screen.getByRole("button", { name: "Expand navigation" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Expand navigation" }));
+
+    expect(screen.getByRole("button", { name: "Collapse navigation" })).toBeInTheDocument();
+    expect(document.querySelector(".docsera-workspace__nav-frame")).not.toHaveAttribute("data-docsera-nav-collapsed");
+    fireEvent.contextMenu(within(pageTree).getByRole("button", { name: "Overview" }).closest(".docsera-page-tree__row")!, { clientX: 24, clientY: 32 });
+    expect(await screen.findByRole("menu", { name: "Page actions for Overview" })).toBeInTheDocument();
+  });
+
   it("opens page deletion from the real Page Settings delete button without discarding settings state", async () => {
     renderApp("/?workspace=product-docs&mode=edit&page=overview");
 

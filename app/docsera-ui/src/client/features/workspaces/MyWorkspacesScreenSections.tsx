@@ -146,18 +146,16 @@ export function WorkspaceRow({
         <div className="docsera-workspace-row__identity">
           <WorkspaceIconBadge workspace={workspace} className="docsera-workspace-row__icon" loadUploadedIcon={loadUploadedIcon} />
           <div className="docsera-workspace-row__copy">
-            <DocseraCompactTooltip label={`Open ${workspace.name}`}>
-              <a
-                className="docsera-workspace-row__name"
-                href={buildWorkspaceHref(workspace.slug)}
-                onClick={(event) => {
-                  event.preventDefault();
-                  onOpenWorkspace(workspace.slug, workspace);
-                }}
-              >
-                {workspace.name}
-              </a>
-            </DocseraCompactTooltip>
+            <a
+              className="docsera-workspace-row__name"
+              href={buildWorkspaceHref(workspace.slug)}
+              onClick={(event) => {
+                event.preventDefault();
+                onOpenWorkspace(workspace.slug, workspace);
+              }}
+            >
+              {workspace.name}
+            </a>
             {workspace.shortDescription ? (
               <p className="docsera-workspace-row__description">{workspace.shortDescription}</p>
             ) : null}
@@ -167,18 +165,16 @@ export function WorkspaceRow({
         <div className="docsera-workspace-row__role-cell" aria-label={`Role: ${workspace.roleLabel ?? "View only"}`}>
           <span className="docsera-workspace-row__role">{workspace.roleLabel ?? "View only"}</span>
           {workspace.canManageSettings ? (
-            <DocseraCompactTooltip label={`Open settings for ${workspace.name}`}>
-              <a
-                className="docsera-workspace-row__settings"
-                href={buildWorkspaceHref(workspace.slug, { settingsIntent: true })}
-                onClick={(event) => {
-                  event.preventDefault();
-                  onOpenWorkspaceSettings(workspace.slug);
-                }}
-              >
-                Settings
-              </a>
-            </DocseraCompactTooltip>
+            <a
+              className="docsera-workspace-row__settings"
+              href={buildWorkspaceHref(workspace.slug, { settingsIntent: true })}
+              onClick={(event) => {
+                event.preventDefault();
+                onOpenWorkspaceSettings(workspace.slug);
+              }}
+            >
+              Settings
+            </a>
           ) : null}
         </div>
       </article>

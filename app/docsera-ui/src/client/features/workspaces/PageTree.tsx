@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
 import { createPortal } from "react-dom";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
@@ -55,6 +55,7 @@ type PageTreeProps = {
   pages: WorkspacePageView[];
   selectedPageId: string;
   collapsedPageIds?: string[];
+  navigationCollapsed?: boolean;
   onCollapsedPageIdsChange?: (pageIds: string[]) => void;
   treeViewportRef?: RefObject<HTMLElement>;
 };
@@ -90,11 +91,15 @@ type PageTreeContextMenuState = {
   page: WorkspacePageView;
   x: number;
   y: number;
+  anchorY: number;
   origin: HTMLElement;
   placement: "pointer" | "control";
 };
 
 type PageTreeContextMenuAction = "settings" | "rename" | "delete" | "add-child";
+
+const CONTEXT_MENU_VIEWPORT_MARGIN = 8;
+const CONTEXT_MENU_CONTROL_OFFSET = 4;
 
 function EllipsisIcon() {
   return <DocseraIcon icon={docseraIcons.ellipsis} size={14} />;
@@ -168,6 +173,28 @@ function sameDropPreview(left: PageTreeDropPreviewState | null, right: PageTreeD
     left.placement === right.placement &&
     sameDropPresentationAnchor(left.presentationAnchor, right.presentationAnchor)
   );
+}
+
+function clampContextMenuCoordinate(value: number, size: number, viewportSize: number): number {
+  const maximum = Math.max(CONTEXT_MENU_VIEWPORT_MARGIN, viewportSize - size - CONTEXT_MENU_VIEWPORT_MARGIN);
+  return Math.min(Math.max(value, CONTEXT_MENU_VIEWPORT_MARGIN), maximum);
+}
+
+function resolveContextMenuViewportPosition(contextMenu: PageTreeContextMenuState, menuElement: HTMLElement): Pick<PageTreeContextMenuState, "x" | "y"> {
+  const menuRect = menuElement.getBoundingClientRect();
+  const x = clampContextMenuCoordinate(contextMenu.x, menuRect.width, window.innerWidth);
+  const hasRoomBelow = contextMenu.anchorY + menuRect.height + CONTEXT_MENU_VIEWPORT_MARGIN <= window.innerHeight;
+  const originRect = contextMenu.origin.getBoundingClientRect();
+  const aboveY =
+    contextMenu.placement === "control"
+      ? originRect.top - menuRect.height - CONTEXT_MENU_CONTROL_OFFSET
+      : contextMenu.anchorY - menuRect.height;
+  const preferredY = hasRoomBelow ? contextMenu.anchorY : aboveY;
+
+  return {
+    x,
+    y: clampContextMenuCoordinate(preferredY, menuRect.height, window.innerHeight)
+  };
 }
 
 function isDragEventInsideCurrentTarget(event: { currentTarget: EventTarget | null; relatedTarget: EventTarget | null }): boolean {
@@ -660,7 +687,8 @@ function PageTreeNode({
       placement: "pointer",
       page,
       x: input.clientX,
-      y: input.clientY
+      y: input.clientY,
+      anchorY: input.clientY
     });
   }
 
@@ -718,40 +746,38 @@ function PageTreeNode({
             </span>
           </div>
         ) : (
-          <DocseraCompactTooltip label={page.title}>
-            <button
-              type="button"
-              className="docsera-page-tree__button"
-              onClick={handleRowClick}
-              onKeyDown={(event) => {
-                if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) {
-                  return;
-                }
+          <button
+            type="button"
+            className="docsera-page-tree__button"
+            onClick={handleRowClick}
+            onKeyDown={(event) => {
+              if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) {
+                return;
+              }
 
-                const rect = event.currentTarget.getBoundingClientRect();
-                openContextMenu({
-                  clientX: rect.left + Math.min(32, Math.max(0, rect.width / 2)),
-                  clientY: rect.top + Math.min(24, Math.max(0, rect.height)),
-                  currentTarget: event.currentTarget,
-                  preventDefault: () => event.preventDefault(),
-                  stopPropagation: () => event.stopPropagation()
-                });
-              }}
-              aria-current={isSelected ? "page" : undefined}
-              aria-expanded={hasChildren ? isExpanded : undefined}
-            >
-              <span className="docsera-page-tree__row-main">
-                {hasChildren ? (
-                  <span className="docsera-page-tree__chevron" aria-hidden="true">
-                    <ChevronIcon expanded={isExpanded} />
-                  </span>
-                ) : (
-                  <span className="docsera-page-tree__chevron-spacer" aria-hidden="true" />
-                )}
-                <span className="docsera-page-tree__title">{page.title}</span>
-              </span>
-            </button>
-          </DocseraCompactTooltip>
+              const rect = event.currentTarget.getBoundingClientRect();
+              openContextMenu({
+                clientX: rect.left + Math.min(32, Math.max(0, rect.width / 2)),
+                clientY: rect.top + Math.min(24, Math.max(0, rect.height)),
+                currentTarget: event.currentTarget,
+                preventDefault: () => event.preventDefault(),
+                stopPropagation: () => event.stopPropagation()
+              });
+            }}
+            aria-current={isSelected ? "page" : undefined}
+            aria-expanded={hasChildren ? isExpanded : undefined}
+          >
+            <span className="docsera-page-tree__row-main">
+              {hasChildren ? (
+                <span className="docsera-page-tree__chevron" aria-hidden="true">
+                  <ChevronIcon expanded={isExpanded} />
+                </span>
+              ) : (
+                <span className="docsera-page-tree__chevron-spacer" aria-hidden="true" />
+              )}
+              <span className="docsera-page-tree__title">{page.title}</span>
+            </span>
+          </button>
         )}
 
         {actionCount > 0 ? (
@@ -785,7 +811,8 @@ function PageTreeNode({
                       placement: "control",
                       page,
                       x: rect.left,
-                      y: rect.bottom + 4
+                      y: rect.bottom + CONTEXT_MENU_CONTROL_OFFSET,
+                      anchorY: rect.bottom + CONTEXT_MENU_CONTROL_OFFSET
                     });
                   }}
                 >
@@ -889,6 +916,7 @@ export function PageTree({
   pages,
   selectedPageId,
   collapsedPageIds = [],
+  navigationCollapsed = false,
   onCollapsedPageIdsChange,
   treeViewportRef
 }: PageTreeProps) {
@@ -931,6 +959,12 @@ export function PageTree({
   useEffect(() => {
     setLocalCollapsedPageIds(new Set(collapsedPageIds));
   }, [collapsedPageIds]);
+
+  useEffect(() => {
+    if (navigationCollapsed) {
+      setContextMenu(null);
+    }
+  }, [navigationCollapsed]);
 
   dragContextRef.current = {
     canManagePageSettings,
@@ -979,6 +1013,19 @@ export function PageTree({
 
     window.addEventListener("pointerdown", handlePointerDown, true);
     return () => window.removeEventListener("pointerdown", handlePointerDown, true);
+  }, [contextMenu]);
+
+  useLayoutEffect(() => {
+    if (!contextMenu || !menuRef.current) {
+      return;
+    }
+
+    const nextPosition = resolveContextMenuViewportPosition(contextMenu, menuRef.current);
+    if (nextPosition.x === contextMenu.x && nextPosition.y === contextMenu.y) {
+      return;
+    }
+
+    setContextMenu({ ...contextMenu, ...nextPosition });
   }, [contextMenu]);
 
   function closeContextMenu(options: { restoreFocus?: boolean } = {}) {

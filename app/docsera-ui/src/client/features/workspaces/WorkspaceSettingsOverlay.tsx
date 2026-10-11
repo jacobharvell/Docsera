@@ -344,7 +344,7 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
             </label>
           </section>
           <fieldset className="docsera-workspace-settings-overlay__section docsera-workspace-settings-overlay__section--icon docsera-workspace-icon-picker">
-            <legend className="docsera-workspace-settings-overlay__section-title">ICON</legend>
+            <legend className="docsera-workspace-settings-overlay__section-title">Icon</legend>
             <div className="docsera-workspace-icon-picker__grid">
               {draft.uploadedIcon ? (
                 <button type="button" className={`docsera-workspace-icon-picker__option${draft.iconKind === "uploaded" ? " docsera-workspace-icon-picker__option--selected" : ""}`} aria-pressed={draft.iconKind === "uploaded"} aria-label={`${workspace.icon.label}, current uploaded icon${draft.iconKind === "uploaded" ? ", selected" : ""}`} disabled={pending} onClick={() => setDraft((current) => current ? { ...current, iconKind: "uploaded" } : current)}>
@@ -454,7 +454,7 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
                         <span className="docsera-delete-confirmation-button__spinner" />
                       </span>
                     ) : null}
-                    <span className="docsera-delete-confirmation-button__label">{deletePending ? "Deleting" : "Delete workspace"}</span>
+                    <span className="docsera-delete-confirmation-button__label">Delete workspace</span>
                   </button>
                 </div>
               </div>

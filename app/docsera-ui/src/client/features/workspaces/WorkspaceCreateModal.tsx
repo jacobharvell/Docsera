@@ -76,10 +76,21 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, onUpload
     return null;
   }
 
+  const trimmedName = cleanText(name);
+  const trimmedDescription = cleanText(shortDescription);
+  const nameInvalid = !trimmedName || trimmedName.length > 80;
+  const descriptionInvalid = trimmedDescription.length > 160;
+  const iconInvalid = selectedIconType === "uploaded" && !uploadedIcon;
+  const pending = phase !== "idle";
+  const canClose = phase === "idle" && !uploadingIcon;
+  const selectedIcon = findBuiltInWorkspaceIcon(selectedIconKey) ?? DEFAULT_BUILT_IN_WORKSPACE_ICON;
+  const controlsDisabled = pending || uploadingIcon;
+  const formInvalid = nameInvalid || descriptionInvalid || iconInvalid;
+  const createDisabled = controlsDisabled || formInvalid;
+  const createDisabledReason = pending ? "pending" : uploadingIcon ? "uploading" : formInvalid ? "invalid" : undefined;
+
   function validate(): boolean {
     const nextErrors: FormErrors = {};
-    const trimmedName = cleanText(name);
-    const trimmedDescription = cleanText(shortDescription);
 
     if (!trimmedName) {
       nextErrors.name = "Workspace name is required.";
@@ -110,7 +121,7 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, onUpload
       return;
     }
 
-    if (selectedIconType === "uploaded" && !uploadedIcon) {
+    if (iconInvalid) {
       setErrors((current) => ({ ...current, icon: "Upload a valid workspace icon or choose a built-in icon." }));
       return;
     }
@@ -190,15 +201,10 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, onUpload
     }
   }
 
-  const pending = phase !== "idle";
-  const canClose = phase === "idle" && !uploadingIcon;
-  const selectedIcon = findBuiltInWorkspaceIcon(selectedIconKey) ?? DEFAULT_BUILT_IN_WORKSPACE_ICON;
-  const controlsDisabled = pending || uploadingIcon;
-
   return (
     <div className="docsera-modal" role="presentation" onMouseDown={() => (canClose ? onClose() : undefined)}>
       <div
-        className="docsera-modal__panel"
+        className="docsera-modal__panel docsera-create-workspace-modal"
         role="dialog"
         aria-modal="true"
         aria-labelledby="docsera-create-workspace-title"
@@ -224,7 +230,7 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, onUpload
 
           <div className="docsera-modal__body">
             <label className="docsera-modal__field">
-              <span className="docsera-modal__label" id="docsera-create-workspace-name-label">Workspace name</span>
+              <span className="docsera-modal__label" id="docsera-create-workspace-name-label">Name</span>
               <input
                 className={`docsera-modal__input${errors.name ? " docsera-modal__input--invalid" : ""}`}
                 type="text"
@@ -239,7 +245,10 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, onUpload
             </label>
 
             <label className="docsera-modal__field">
-              <span className="docsera-modal__label" id="docsera-create-workspace-description-label">Short description</span>
+              <span className="docsera-modal__label">
+                <span id="docsera-create-workspace-description-label">Description</span>
+                <span className="docsera-create-workspace-modal__label-note" aria-hidden="true">(Optional)</span>
+              </span>
               <input
                 className={`docsera-modal__input${errors.shortDescription ? " docsera-modal__input--invalid" : ""}`}
                 type="text"
@@ -256,7 +265,7 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, onUpload
             </label>
 
             <fieldset className="docsera-modal__field docsera-workspace-icon-picker">
-              <legend className="docsera-modal__label">Workspace icon</legend>
+              <legend className="docsera-modal__label">Icon</legend>
               <div className="docsera-workspace-icon-picker__grid">
                 {BUILT_IN_WORKSPACE_ICONS.map((icon) => {
                   const selected = selectedIconType === "builtin" && icon.key === selectedIcon.key;
@@ -312,9 +321,9 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, onUpload
                   disabled={controlsDisabled}
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  {uploadedIcon ? "Replace custom image" : "Upload custom image"}
+                  {uploadedIcon ? "Replace custom icon" : "Upload custom icon"}
                 </button>
-                <span className="docsera-workspace-icon-picker__constraints">Square image, minimum 128x128, maximum 1 MB. PNG, JPG, or WebP only.</span>
+                <span className="docsera-workspace-icon-picker__constraints">Square, 128x128 min, 1 MB max. PNG, JPG or WebP.</span>
               </div>
               <div className="docsera-workspace-icon-picker__status" role="status" aria-live="polite">
                 {uploadingIcon ? "Uploading workspace icon..." : uploadedIcon ? "Custom image uploaded." : ""}
@@ -331,8 +340,9 @@ export function WorkspaceCreateModal({ errorMessage, onClose, onSubmit, onUpload
               <button
                 type="submit"
                 className="docsera-modal__primary docsera-create-workspace-modal__primary"
-                aria-busy={pending}
-                disabled={pending || uploadingIcon}
+                aria-busy={pending ? "true" : undefined}
+                data-disabled-reason={createDisabledReason}
+                disabled={createDisabled}
               >
                 {pending ? (
                   <span className="docsera-create-workspace-modal__primary-spinner" aria-hidden="true">

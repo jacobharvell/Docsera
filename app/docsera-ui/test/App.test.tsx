@@ -278,15 +278,22 @@ describe("workspace integration flows", () => {
     fireEvent.click(screen.getByRole("button", { name: "Security" }));
     expect(screen.getByRole("button", { name: "Security, selected" })).toHaveAttribute("aria-pressed", "true");
 
-    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    const createButton = screen.getByRole("button", { name: "Create" });
+    expect(createButton).toBeDisabled();
+    const nameInput = screen.getByLabelText("Name");
+    const form = nameInput.closest("form");
+    if (!form) {
+      throw new Error("Expected New Workspace name input to be inside a form.");
+    }
+    fireEvent.submit(form);
     expect(screen.getByText("Workspace name is required.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Security, selected" })).toHaveAttribute("aria-pressed", "true");
     expect(createWorkspaceRequest).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByLabelText("Workspace name"), {
+    fireEvent.change(nameInput, {
       target: { value: "Security Docs" }
     });
-    fireEvent.change(screen.getByLabelText("Short description"), {
+    fireEvent.change(screen.getByLabelText("Description"), {
       target: { value: "Controls and audits" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));

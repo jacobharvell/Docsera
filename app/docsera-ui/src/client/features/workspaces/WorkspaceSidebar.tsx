@@ -36,6 +36,7 @@ type WorkspaceSidebarProps = {
   onShowCreatePage: () => void;
   onShowChildPageCreate: (parentPageId: string, parentPageTitle: string) => void;
   collapsedPageIds: string[];
+  navigationCollapsed?: boolean;
   onCollapsedPageIdsChange: (pageIds: string[]) => void;
   showCreatePageControl: boolean;
 };
@@ -78,6 +79,7 @@ export function WorkspaceSidebar({
   onShowCreatePage,
   onShowChildPageCreate,
   collapsedPageIds,
+  navigationCollapsed = false,
   onCollapsedPageIdsChange,
   showCreatePageControl
 }: WorkspaceSidebarProps) {
@@ -147,6 +149,7 @@ export function WorkspaceSidebar({
             canManagePageSettings={canManagePageSettings}
             dragSurfaceRef={sidebarRef}
             collapsedPageIds={collapsedPageIds}
+            navigationCollapsed={navigationCollapsed}
             filterText={treeFilter}
             inlineCreateState={inlineCreateState}
             inlineRenameErrorMessage={inlineRenameErrorMessage}

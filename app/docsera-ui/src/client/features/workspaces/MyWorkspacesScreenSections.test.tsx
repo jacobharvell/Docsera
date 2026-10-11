@@ -134,7 +134,7 @@ describe("WorkspaceList", () => {
     expect(onOpenWorkspaceSettings).toHaveBeenCalledWith("admin-docs");
   });
 
-  it("uses shared tooltips for workspace row links", async () => {
+  it("keeps workspace row links accessible without redundant tooltips", async () => {
     const onOpenWorkspace = vi.fn();
     const onOpenWorkspaceSettings = vi.fn();
 
@@ -171,11 +171,13 @@ describe("WorkspaceList", () => {
     expect(document.querySelector("[title]")).not.toBeInTheDocument();
 
     fireEvent.focus(workspaceLink);
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("Open Admin Docs");
+    fireEvent.mouseOver(workspaceLink);
+    await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
 
     fireEvent.blur(workspaceLink);
     fireEvent.focus(settingsLink);
-    expect(await screen.findByRole("tooltip")).toHaveTextContent("Open settings for Admin Docs");
+    fireEvent.mouseOver(settingsLink);
+    await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
 
     fireEvent.click(workspaceLink);
     expect(onOpenWorkspace).toHaveBeenCalledWith("admin-docs", expect.objectContaining({ name: "Admin Docs" }));

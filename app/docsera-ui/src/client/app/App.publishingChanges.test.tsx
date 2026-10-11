@@ -250,6 +250,54 @@ describe("App publishing changes integration", () => {
     });
   }
 
+  async function deleteFinalPageForEmptyWorkspaceCommandTest() {
+    const initialPages = [
+      createPageRecord({
+        draftTitle: "Only Page",
+        draftSlug: "only-page",
+        draftSlugNormalized: "only-page",
+        publicationState: "published_with_unpublished_changes"
+      })
+    ];
+    const removedPendingChanges = createPendingChangesResult([
+      {
+        attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+        category: "Removed",
+        firstPendingSequence: 1,
+        lastChangedOn: "2026-09-14 00:00:00",
+        navigable: false,
+        pageSysId: "page-001",
+        title: "Only Page"
+      }
+    ]);
+    let editListCount = 0;
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) => {
+      if (mode !== "edit") {
+        return createPageListResult("live", initialPages);
+      }
+
+      editListCount += 1;
+      return createPageListResult("edit", editListCount === 1 ? initialPages : []);
+    });
+    const deletePage = vi.fn(async () => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 8,
+      nextPageSysId: "",
+      state: "succeeded" as const
+    }));
+    const getWorkspacePendingChanges = vi
+      .fn()
+      .mockResolvedValueOnce(createPendingChangesResult([]))
+      .mockResolvedValue(removedPendingChanges);
+
+    return {
+      deletePage,
+      getWorkspacePendingChanges,
+      listPages,
+      removedPendingChanges
+    };
+  }
+
   it("keeps Publish visually active while Page Settings save refreshes pending changes", async () => {
     const pendingRow = {
       attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
@@ -555,6 +603,63 @@ describe("App publishing changes integration", () => {
     expect(discardPageWorkspace).not.toHaveBeenCalled();
   }, 15000);
 
+  it("blocks workspace commands while pending changes are loaded but the edit page list is unresolved", async () => {
+    const editPageList = createDeferred<ReturnType<typeof createPageListResult>>();
+    const pendingChanges = createPendingChangesResult([
+      {
+        attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+        category: "Removed",
+        firstPendingSequence: 1,
+        lastChangedOn: "2026-09-14 00:00:00",
+        navigable: false,
+        pageSysId: "page-001",
+        title: "Only Page"
+      }
+    ]);
+    const publishWorkspace = vi.fn(async () => {
+      throw new Error("publishWorkspace should not run before the edit page list resolves.");
+    });
+    const discardAllWorkspace = vi.fn(async () => {
+      throw new Error("discardAllWorkspace should not run before the edit page list resolves.");
+    });
+    const listPages = vi.fn(({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) => {
+      if (mode === "edit") {
+        return editPageList.promise;
+      }
+
+      return Promise.resolve(createPageListResult("live", []));
+    });
+
+    renderApp(App, "/?workspace=product-docs&mode=edit", {
+      discardAllWorkspace,
+      getWorkspacePendingChanges: vi.fn(async () => pendingChanges),
+      listPages,
+      publishWorkspace
+    });
+
+    await waitFor(() => expect(listPages).toHaveBeenCalledWith(expect.objectContaining({ mode: "edit" })));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Open Changes Center" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    const dialog = await screen.findByRole("dialog", { name: "Changes Center" });
+    expect(within(dialog).getByRole("button", { name: "Publish" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Discard all" })).toBeDisabled();
+    expect(within(dialog).getByText("The workspace page list is still loading.")).toBeInTheDocument();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Publish" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Discard all" }));
+    expect(publishWorkspace).not.toHaveBeenCalled();
+    expect(discardAllWorkspace).not.toHaveBeenCalled();
+
+    await act(async () => {
+      editPageList.resolve(createPageListResult("edit", []));
+      await editPageList.promise;
+    });
+
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Publish" })).toBeEnabled());
+    expect(within(dialog).getByRole("button", { name: "Discard all" })).toBeEnabled();
+    expect(within(dialog).queryByText("The workspace page list is still loading.")).toBeNull();
+  }, 15000);
+
   it("keeps settled saved source from blocking publish while persisted draft changes remain pending", async () => {
     const publishWorkspace = vi.fn(async () => ({
       changeSetId: "change-set-002",
@@ -598,6 +703,96 @@ describe("App publishing changes integration", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "Publish" }));
 
     await waitFor(() => expect(publishWorkspace).toHaveBeenCalledTimes(1));
+  }, 15000);
+
+  it("publishes pending workspace deletion after deleting the final page without waiting for an editor", async () => {
+    const setup = await deleteFinalPageForEmptyWorkspaceCommandTest();
+    const publishWorkspace = vi.fn(async () => ({
+      changeSetId: "change-set-002",
+      changeSetRevision: 0,
+      pages: [],
+      pendingChanges: createPendingChangesResult([]),
+      publishedSnapshotSetId: "workspace-001-snapshot",
+      state: "succeeded" as const,
+      workspaceStateRevision: 5
+    }));
+
+    renderApp(App, "/?workspace=product-docs&mode=edit&page=only-page", {
+      deletePage: setup.deletePage,
+      getWorkspacePendingChanges: setup.getWorkspacePendingChanges,
+      listPages: setup.listPages,
+      publishWorkspace
+    });
+
+    expect(await screen.findByRole("heading", { name: "Only Page" })).toBeInTheDocument();
+    await openPageSettingsFor("Only Page");
+    fireEvent.click(screen.getByRole("button", { name: "Delete page" }));
+    const deleteDialog = await screen.findByRole("dialog", { name: "Confirm deletion" });
+    fireEvent.click(within(deleteDialog).getByRole("button", { name: "Delete page" }));
+
+    await waitFor(() => expect(setup.deletePage).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("heading", { name: "No pages yet" })).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Only Page" })).not.toBeInTheDocument());
+    await waitFor(() => expect(setup.getWorkspacePendingChanges.mock.calls.length).toBeGreaterThanOrEqual(2));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    const dialog = await screen.findByRole("dialog", { name: "Changes Center" });
+    expect(within(dialog).getByText("Removed")).toBeInTheDocument();
+    expect(within(dialog).queryByText("The visual editor is still getting ready.")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Publish" }));
+
+    await waitFor(() => expect(publishWorkspace).toHaveBeenCalledTimes(1));
+    expect(publishWorkspace).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 8 }),
+      workspaceLeaseToken: "workspace-lease-token",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+  }, 15000);
+
+  it("discards all pending workspace deletion after deleting the final page without waiting for an editor", async () => {
+    const setup = await deleteFinalPageForEmptyWorkspaceCommandTest();
+    const discardAllWorkspace = vi.fn(async () => ({
+      changeSetId: "change-set-002",
+      changeSetRevision: 0,
+      pages: [],
+      pendingChanges: createPendingChangesResult([]),
+      state: "succeeded" as const,
+      workspaceStateRevision: 5
+    }));
+
+    renderApp(App, "/?workspace=product-docs&mode=edit&page=only-page", {
+      deletePage: setup.deletePage,
+      discardAllWorkspace,
+      getWorkspacePendingChanges: setup.getWorkspacePendingChanges,
+      listPages: setup.listPages
+    });
+
+    expect(await screen.findByRole("heading", { name: "Only Page" })).toBeInTheDocument();
+    await openPageSettingsFor("Only Page");
+    fireEvent.click(screen.getByRole("button", { name: "Delete page" }));
+    const deleteDialog = await screen.findByRole("dialog", { name: "Confirm deletion" });
+    fireEvent.click(within(deleteDialog).getByRole("button", { name: "Delete page" }));
+
+    await waitFor(() => expect(setup.deletePage).toHaveBeenCalledTimes(1));
+    expect(await screen.findByRole("heading", { name: "No pages yet" })).toBeInTheDocument();
+    await waitFor(() => expect(setup.getWorkspacePendingChanges.mock.calls.length).toBeGreaterThanOrEqual(2));
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    const dialog = await screen.findByRole("dialog", { name: "Changes Center" });
+    expect(within(dialog).getByText("Removed")).toBeInTheDocument();
+    expect(within(dialog).queryByText("The visual editor is still getting ready.")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Discard all" }));
+    const discardModal = await screen.findByRole("dialog", { name: "Discard all changes" });
+    fireEvent.click(within(discardModal).getByRole("button", { name: "Discard all" }));
+
+    await waitFor(() => expect(discardAllWorkspace).toHaveBeenCalledTimes(1));
+    expect(discardAllWorkspace).toHaveBeenCalledWith(expect.objectContaining({
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 8 }),
+      workspaceLeaseToken: "workspace-lease-token",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
   }, 15000);
 
   it("keeps publish success toast dismissal and timers scoped to the active toast", async () => {

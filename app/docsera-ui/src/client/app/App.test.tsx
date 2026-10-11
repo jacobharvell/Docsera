@@ -2219,7 +2219,9 @@ describe("App workspace state integration", () => {
         titleError: "",
         titleSnapshot: ""
       },
+      pageListResolved: true,
       selectedPageSysId: "page-001",
+      selectedPageExists: true,
       workspaceCommandBlocksCurrentWorkspaceWrites: true,
       workspaceDiscardAllInProgress: false,
       workspaceDiscardPageInProgress: false,

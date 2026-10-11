@@ -736,28 +736,24 @@ export function DocseraHeader({
                 aria-label="Workspace mode"
               >
                 <span className="docsera-header__segmented-indicator" aria-hidden="true" />
-                <DocseraCompactTooltip label="Live">
-                  <button
-                    type="button"
-                    className={`docsera-header__mode-segment${showWorkspaceMode === "live" ? " docsera-header__mode-segment--active" : ""}`}
-                    aria-pressed={showWorkspaceMode === "live"}
-                    disabled={workspaceControlsLocked}
-                    onClick={() => workspaceModeChange?.("live")}
-                  >
-                    Live
-                  </button>
-                </DocseraCompactTooltip>
-                <DocseraCompactTooltip label="Edit">
-                  <button
-                    type="button"
-                    className={`docsera-header__mode-segment${showWorkspaceMode === "edit" ? " docsera-header__mode-segment--active" : ""}`}
-                    aria-pressed={showWorkspaceMode === "edit"}
-                    disabled={workspaceControlsLocked}
-                    onClick={() => workspaceModeChange?.("edit")}
-                  >
-                    Edit
-                  </button>
-                </DocseraCompactTooltip>
+                <button
+                  type="button"
+                  className={`docsera-header__mode-segment${showWorkspaceMode === "live" ? " docsera-header__mode-segment--active" : ""}`}
+                  aria-pressed={showWorkspaceMode === "live"}
+                  disabled={workspaceControlsLocked}
+                  onClick={() => workspaceModeChange?.("live")}
+                >
+                  Live
+                </button>
+                <button
+                  type="button"
+                  className={`docsera-header__mode-segment${showWorkspaceMode === "edit" ? " docsera-header__mode-segment--active" : ""}`}
+                  aria-pressed={showWorkspaceMode === "edit"}
+                  disabled={workspaceControlsLocked}
+                  onClick={() => workspaceModeChange?.("edit")}
+                >
+                  Edit
+                </button>
               </div>
             ) : (
               <span className="docsera-header__action-slot-placeholder" aria-hidden="true" />
@@ -1005,7 +1001,7 @@ export function DocseraHeader({
                           <button
                             type="button"
                             className="docsera-modal__primary docsera-changes-center__footer-primary"
-                            aria-busy={pendingChangesPublishing || pendingChangesAnyDiscarding}
+                            aria-busy={pendingChangesPublishing || pendingChangesAnyDiscarding ? "true" : undefined}
                             disabled={!canPublishChanges}
                             onClick={onPublishPendingChanges}
                           >
@@ -1145,7 +1141,7 @@ export function DocseraHeader({
                           ref={discardPrimaryButtonRef}
                           type="button"
                           className="docsera-modal__primary docsera-modal__primary--destructive"
-                          aria-busy={pendingChangesAnyDiscarding}
+                          aria-busy={pendingChangesAnyDiscarding ? "true" : undefined}
                           disabled={
                             pendingChangesAnyDiscarding ||
                             (discardPageTarget
