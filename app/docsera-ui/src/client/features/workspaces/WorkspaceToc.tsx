@@ -69,7 +69,13 @@ export function resolveWorkspaceHeadingTarget(anchorId: string, ordinal: number)
 
 function scrollToWorkspaceHeading(anchorId: string, ordinal: number): void {
   const target = resolveWorkspaceHeadingTarget(anchorId, ordinal);
-  target?.scrollIntoView({ block: "start", inline: "nearest" });
+  if (!target) {
+    return;
+  }
+
+  const ownerWindow = target.ownerDocument.defaultView ?? window;
+  const behavior = ownerWindow.matchMedia?.("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+  target.scrollIntoView({ behavior, block: "start", inline: "nearest" });
 }
 
 function activateWorkspaceHeading(anchorId: string, ordinal: number, event: { preventDefault: () => void }): void {

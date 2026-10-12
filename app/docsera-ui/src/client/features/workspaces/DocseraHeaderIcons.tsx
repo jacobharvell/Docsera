@@ -11,22 +11,7 @@ export function DoubleChevronIcon() {
 }
 
 export function SidebarToggleIcon({ collapsed }: { collapsed: boolean }) {
-  return (
-    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false">
-      <path
-        d={
-          collapsed
-            ? "M11.25 4.5l7.5 7.5-7.5 7.5m-6-15l7.5 7.5-7.5 7.5"
-            : "M18.75 19.5l-7.5-7.5 7.5-7.5m-6 15L5.25 12l7.5-7.5"
-        }
-        fill="none"
-        stroke="currentColor"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        strokeWidth="2.4"
-      />
-    </svg>
-  );
+  return <DocseraIcon icon={collapsed ? docseraIcons.panelLeftOpen : docseraIcons.panelLeftClose} size={16} />;
 }
 
 export function MoonIcon() {

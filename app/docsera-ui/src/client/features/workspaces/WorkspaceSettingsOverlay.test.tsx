@@ -1,8 +1,12 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { WorkspaceViewRecord } from "../../shared/types/docsera";
+import { PageSettingsOverlay } from "./PageSettingsOverlay";
+import { WorkspaceManageAccessOverlay } from "./WorkspaceManageAccessOverlay";
 import { WorkspaceSettingsOverlay } from "./WorkspaceSettingsOverlay";
+import { DOCSERA_PANEL_TRANSITION_MS } from "./usePanelTransitionPresence";
 
 function createWorkspace(overrides: Partial<WorkspaceViewRecord> = {}): WorkspaceViewRecord {
   return {
@@ -43,6 +47,394 @@ function readCssRuleBlock(source: string, selector: string) {
 }
 
 describe("WorkspaceSettingsOverlay", () => {
+  it("mounts each opening panel in its initial visual state before activating the entry transition", async () => {
+    vi.useFakeTimers();
+    try {
+      const workspace = createWorkspace();
+      const pagePanelRef = createRef<HTMLElement>();
+      const { container, rerender } = render(
+        <WorkspaceSettingsOverlay
+          onCancel={vi.fn()}
+          onSubmit={vi.fn()}
+          open={false}
+          pending={false}
+          workspace={workspace}
+        />
+      );
+
+      rerender(
+        <WorkspaceSettingsOverlay
+          onCancel={vi.fn()}
+          onSubmit={vi.fn()}
+          open
+          pending={false}
+          workspace={workspace}
+        />
+      );
+
+      expect(container.querySelector(".docsera-workspace-settings-overlay")).toHaveClass("docsera-workspace-settings-overlay--closing");
+      await act(async () => {
+        vi.advanceTimersByTime(16);
+      });
+      expect(container.querySelector(".docsera-workspace-settings-overlay")).toHaveClass("docsera-workspace-settings-overlay--closing");
+      await act(async () => {
+        vi.advanceTimersByTime(16);
+      });
+      expect(container.querySelector(".docsera-workspace-settings-overlay")).toHaveClass("docsera-workspace-settings-overlay--open");
+
+      rerender(
+        <WorkspaceManageAccessOverlay
+          loadMembers={vi.fn(async () => ({ status: "success" as const, callerCapabilities: { canManageWorkspaceMembers: true }, members: [] }))}
+          onBack={vi.fn()}
+          onClose={vi.fn()}
+          onMutationCommitted={vi.fn()}
+          open={false}
+          removeMemberAccess={vi.fn()}
+          searchUsers={vi.fn()}
+          setMemberAccess={vi.fn()}
+          workspace={workspace}
+        />
+      );
+      rerender(
+        <WorkspaceManageAccessOverlay
+          loadMembers={vi.fn(async () => ({ status: "success" as const, callerCapabilities: { canManageWorkspaceMembers: true }, members: [] }))}
+          onBack={vi.fn()}
+          onClose={vi.fn()}
+          onMutationCommitted={vi.fn()}
+          open
+          removeMemberAccess={vi.fn()}
+          searchUsers={vi.fn()}
+          setMemberAccess={vi.fn()}
+          workspace={workspace}
+        />
+      );
+
+      expect(container.querySelector(".docsera-manage-access")).toHaveClass("docsera-manage-access--closing");
+      await act(async () => {
+        vi.advanceTimersByTime(16);
+      });
+      expect(container.querySelector(".docsera-manage-access")).toHaveClass("docsera-manage-access--closing");
+      await act(async () => {
+        vi.advanceTimersByTime(16);
+      });
+      expect(container.querySelector(".docsera-manage-access")).toHaveClass("docsera-manage-access--open");
+
+      rerender(
+        <PageSettingsOverlay
+          activeField=""
+          canManagePageSettings
+          generalError=""
+          open={false}
+          panelRef={pagePanelRef}
+          pageSlug="overview"
+          pageTitle="Overview"
+          slugError=""
+          titleError=""
+          onCancelField={vi.fn()}
+          onChangeField={vi.fn()}
+          onFinishField={vi.fn()}
+          onRequestClose={vi.fn()}
+          onRequestDelete={vi.fn()}
+          onStartField={vi.fn()}
+        />
+      );
+      rerender(
+        <PageSettingsOverlay
+          activeField=""
+          canManagePageSettings
+          generalError=""
+          open
+          panelRef={pagePanelRef}
+          pageSlug="overview"
+          pageTitle="Overview"
+          slugError=""
+          titleError=""
+          onCancelField={vi.fn()}
+          onChangeField={vi.fn()}
+          onFinishField={vi.fn()}
+          onRequestClose={vi.fn()}
+          onRequestDelete={vi.fn()}
+          onStartField={vi.fn()}
+        />
+      );
+
+      expect(container.querySelector(".docsera-page-settings")).toHaveClass("docsera-page-settings--closing");
+      await act(async () => {
+        vi.advanceTimersByTime(16);
+      });
+      expect(container.querySelector(".docsera-page-settings")).toHaveClass("docsera-page-settings--closing");
+      await act(async () => {
+        vi.advanceTimersByTime(16);
+      });
+      expect(container.querySelector(".docsera-page-settings")).toHaveClass("docsera-page-settings--open");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps Workspace Settings visually mounted only for the shared exit transition window", async () => {
+    vi.useFakeTimers();
+    try {
+      const firstWorkspace = createWorkspace();
+      const freshWorkspace = createWorkspace({ name: "API Docs", shortDescription: "Fresh workspace settings." });
+      const { container, rerender } = render(
+        <WorkspaceSettingsOverlay
+          onCancel={vi.fn()}
+          onSubmit={vi.fn()}
+          open
+          pending={false}
+          workspace={firstWorkspace}
+        />
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(32);
+      });
+      expect(container.querySelector(".docsera-workspace-settings-overlay")).toHaveClass("docsera-workspace-settings-overlay--open");
+      expect(screen.getByDisplayValue("Product Docs")).toBeInTheDocument();
+
+      rerender(
+        <WorkspaceSettingsOverlay
+          onCancel={vi.fn()}
+          onSubmit={vi.fn()}
+          open={false}
+          pending={false}
+          workspace={null}
+        />
+      );
+
+      const closingOverlay = container.querySelector(".docsera-workspace-settings-overlay");
+      expect(closingOverlay).toHaveClass("docsera-workspace-settings-overlay--closing");
+      expect(closingOverlay).toHaveAttribute("aria-hidden", "true");
+      expect(closingOverlay).toHaveAttribute("inert");
+      expect(screen.queryByRole("complementary", { name: "Workspace Settings" })).not.toBeInTheDocument();
+      expect(screen.getByDisplayValue("Product Docs")).toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(DOCSERA_PANEL_TRANSITION_MS - 1);
+      });
+      expect(container.querySelector(".docsera-workspace-settings-overlay")).toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(container.querySelector(".docsera-workspace-settings-overlay")).not.toBeInTheDocument();
+
+      rerender(
+        <WorkspaceSettingsOverlay
+          onCancel={vi.fn()}
+          onSubmit={vi.fn()}
+          open
+          pending={false}
+          workspace={freshWorkspace}
+        />
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(32);
+      });
+      expect(screen.getByDisplayValue("API Docs")).toBeInTheDocument();
+      expect(screen.queryByDisplayValue("Product Docs")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps invalid Workspace Settings drafts logically open instead of starting the exit transition", () => {
+    const onCancel = vi.fn();
+    const onSubmit = vi.fn();
+    const { container } = render(
+      <WorkspaceSettingsOverlay
+        onCancel={onCancel}
+        onSubmit={onSubmit}
+        open
+        pending={false}
+        workspace={createWorkspace()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: "Close workspace settings" }));
+
+    expect(screen.getByRole("complementary", { name: "Workspace Settings" })).toBeInTheDocument();
+    expect(container.querySelector(".docsera-workspace-settings-overlay")).toHaveClass("docsera-workspace-settings-overlay--open");
+    expect(screen.getByText("Workspace name is required.")).toBeInTheDocument();
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("keeps Page Settings visually mounted during valid close while invalid drafts stay open", async () => {
+    vi.useFakeTimers();
+    try {
+      const panelRef = createRef<HTMLElement>();
+      const onRequestClose = vi.fn();
+      const { container, rerender } = render(
+        <PageSettingsOverlay
+          activeField=""
+          canManagePageSettings
+          generalError=""
+          open
+          panelRef={panelRef}
+          pageSlug="overview"
+          pageTitle="Overview"
+          slugError=""
+          titleError=""
+          onCancelField={vi.fn()}
+          onChangeField={vi.fn()}
+          onFinishField={vi.fn()}
+          onRequestClose={onRequestClose}
+          onRequestDelete={vi.fn()}
+          onStartField={vi.fn()}
+        />
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(32);
+      });
+      expect(container.querySelector(".docsera-page-settings")).toHaveClass("docsera-page-settings--open");
+
+      rerender(
+        <PageSettingsOverlay
+          activeField=""
+          canManagePageSettings
+          generalError=""
+          open={false}
+          panelRef={panelRef}
+          pageSlug=""
+          pageTitle=""
+          slugError=""
+          titleError=""
+          onCancelField={vi.fn()}
+          onChangeField={vi.fn()}
+          onFinishField={vi.fn()}
+          onRequestClose={onRequestClose}
+          onRequestDelete={vi.fn()}
+          onStartField={vi.fn()}
+        />
+      );
+
+      expect(container.querySelector(".docsera-page-settings")).toHaveClass("docsera-page-settings--closing");
+      expect(screen.queryByRole("complementary", { name: "Page Settings" })).not.toBeInTheDocument();
+      expect(screen.getByText("Overview")).toBeInTheDocument();
+      expect(screen.getByText("overview")).toBeInTheDocument();
+      expect(screen.queryByText("Untitled page")).not.toBeInTheDocument();
+      expect(screen.queryByText("page-slug")).not.toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(DOCSERA_PANEL_TRANSITION_MS);
+      });
+      expect(container.querySelector(".docsera-page-settings")).not.toBeInTheDocument();
+
+      rerender(
+        <PageSettingsOverlay
+          activeField=""
+          canManagePageSettings
+          generalError=""
+          open
+          panelRef={panelRef}
+          pageSlug="getting-started"
+          pageTitle="Getting Started"
+          slugError=""
+          titleError=""
+          onCancelField={vi.fn()}
+          onChangeField={vi.fn()}
+          onFinishField={vi.fn()}
+          onRequestClose={onRequestClose}
+          onRequestDelete={vi.fn()}
+          onStartField={vi.fn()}
+        />
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(32);
+      });
+      expect(screen.getByText("Getting Started")).toBeInTheDocument();
+      expect(screen.getByText("getting-started")).toBeInTheDocument();
+      expect(screen.queryByText("Overview")).not.toBeInTheDocument();
+
+      rerender(
+        <PageSettingsOverlay
+          activeField=""
+          canManagePageSettings
+          generalError=""
+          open
+          panelRef={panelRef}
+          pageSlug="overview"
+          pageTitle="Overview"
+          slugError=""
+          titleError="Title is required."
+          onCancelField={vi.fn()}
+          onChangeField={vi.fn()}
+          onFinishField={vi.fn()}
+          onRequestClose={onRequestClose}
+          onRequestDelete={vi.fn()}
+          onStartField={vi.fn()}
+        />
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(32);
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Close page settings" }));
+      expect(onRequestClose).toHaveBeenCalledTimes(1);
+      expect(container.querySelector(".docsera-page-settings")).toHaveClass("docsera-page-settings--open");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps Manage Access mounted for Back and direct close transitions without exposing closing controls", async () => {
+    vi.useFakeTimers();
+    try {
+      const workspace = createWorkspace();
+      const { container, rerender } = render(
+        <WorkspaceManageAccessOverlay
+          loadMembers={vi.fn(async () => ({ status: "success" as const, callerCapabilities: { canManageWorkspaceMembers: true }, members: [] }))}
+          onBack={vi.fn()}
+          onClose={vi.fn()}
+          onMutationCommitted={vi.fn()}
+          open
+          removeMemberAccess={vi.fn()}
+          searchUsers={vi.fn()}
+          setMemberAccess={vi.fn()}
+          workspace={workspace}
+        />
+      );
+
+      await act(async () => {
+        vi.advanceTimersByTime(32);
+      });
+      expect(container.querySelector(".docsera-manage-access")).toHaveClass("docsera-manage-access--open");
+
+      rerender(
+        <WorkspaceManageAccessOverlay
+          loadMembers={vi.fn()}
+          onBack={vi.fn()}
+          onClose={vi.fn()}
+          onMutationCommitted={vi.fn()}
+          open={false}
+          removeMemberAccess={vi.fn()}
+          searchUsers={vi.fn()}
+          setMemberAccess={vi.fn()}
+          workspace={workspace}
+        />
+      );
+
+      const closingOverlay = container.querySelector(".docsera-manage-access");
+      expect(closingOverlay).toHaveClass("docsera-manage-access--closing");
+      expect(closingOverlay).toHaveAttribute("aria-hidden", "true");
+      expect(closingOverlay).toHaveAttribute("inert");
+      expect(screen.queryByRole("complementary", { name: "Manage access" })).not.toBeInTheDocument();
+
+      await act(async () => {
+        vi.advanceTimersByTime(DOCSERA_PANEL_TRANSITION_MS);
+      });
+      expect(container.querySelector(".docsera-manage-access")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("renders the accepted settings presentation while preserving single-line fields and stable accessible labels", () => {
     const { container } = render(
       <WorkspaceSettingsOverlay
@@ -277,7 +669,7 @@ describe("WorkspaceSettingsOverlay", () => {
     expect(onSubmit).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Delete workspace" }));
-    const confirmButton = within(screen.getByRole("dialog", { name: "Delete workspace" })).getByRole("button", { name: "Delete workspace" });
+    const confirmButton = within(screen.getByRole("dialog", { name: "Delete workspace" })).getByRole("button", { name: "Delete" });
     fireEvent.pointerDown(confirmButton);
     fireEvent.click(confirmButton);
 
@@ -325,7 +717,7 @@ describe("WorkspaceSettingsOverlay", () => {
     );
 
     const dialog = screen.getByRole("dialog", { name: "Delete workspace" });
-    const deleteButton = within(dialog).getByRole("button", { name: "Delete workspace" });
+    const deleteButton = within(dialog).getByRole("button", { name: "Delete" });
 
     expect(deleteButton).toBeDisabled();
     expect(deleteButton).toHaveAttribute("aria-busy", "true");
@@ -333,7 +725,7 @@ describe("WorkspaceSettingsOverlay", () => {
     const spinnerSlot = deleteButton.querySelector(".docsera-delete-confirmation-button__spinner-slot");
     expect(spinnerSlot).toBeInTheDocument();
     expect(spinnerSlot?.querySelector(".docsera-delete-confirmation-button__spinner")).toBeInTheDocument();
-    expect(deleteButton.querySelector(".docsera-delete-confirmation-button__label")).toHaveTextContent("Delete workspace");
+    expect(deleteButton.querySelector(".docsera-delete-confirmation-button__label")).toHaveTextContent("Delete");
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
     expect(within(dialog).getByRole("button", { name: "Close delete workspace dialog" })).toBeDisabled();
   });
@@ -389,7 +781,19 @@ describe("WorkspaceSettingsOverlay", () => {
 
   it("scopes the larger settings icon grid and left-aligned settings actions to Workspace Settings", () => {
     const source = readRuntimeShellCss();
+    const pageSettingsShellBlock = readCssRuleBlock(source, ".docsera-page-settings-shell");
+    const pageSettingsBlock = readCssRuleBlock(source, ".docsera-page-settings");
+    const pageSettingsOpenBlock = readCssRuleBlock(source, ".docsera-page-settings--open");
+    const workspaceOverlayBlock = readCssRuleBlock(source, ".docsera-workspace-settings-overlay");
     const panelBlock = source.match(/\.docsera-workspace-settings-overlay__panel \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const workspaceOverlayOpenBlock = readCssRuleBlock(source, ".docsera-workspace-settings-overlay--open");
+    const workspacePanelOpenBlock = readCssRuleBlock(source, ".docsera-workspace-settings-overlay--open .docsera-workspace-settings-overlay__panel");
+    const manageAccessBlock = readCssRuleBlock(source, ".docsera-manage-access");
+    const manageAccessBackdropBlock = readCssRuleBlock(source, ".docsera-manage-access::after");
+    const manageAccessPanelBlock = readCssRuleBlock(source, ".docsera-manage-access__panel");
+    const manageAccessOpenBackdropBlock = readCssRuleBlock(source, ".docsera-manage-access--open::after");
+    const manageAccessOpenPanelBlock = readCssRuleBlock(source, ".docsera-manage-access--open .docsera-manage-access__panel");
+    const reducedMotionBlock = source.match(/@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n\}\n\n\.docsera-editor-runtime-spike/)?.[1] ?? "";
     const bodyBlock = source.match(/\.docsera-workspace-settings-overlay__body \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const settingsGridBlock = source.match(/\.docsera-workspace-settings-overlay \.docsera-workspace-icon-picker__grid \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const settingsOptionBlock = source.match(/\.docsera-workspace-settings-overlay \.docsera-workspace-icon-picker__option \{([\s\S]*?)\n\}/)?.[1] ?? "";
@@ -423,7 +827,34 @@ describe("WorkspaceSettingsOverlay", () => {
     const deleteBusyBlock = source.match(/\.docsera-delete-confirmation-button:disabled\[aria-busy="true"\] \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const destructiveBusyBlock = source.match(/\.docsera-modal__primary--destructive:disabled\[aria-busy="true"\] \{([\s\S]*?)\n\}/)?.[1] ?? "";
 
+    expect(pageSettingsShellBlock).toContain("inset: 0 auto 0 var(--docsera-workspace-nav-width);");
+    expect(pageSettingsShellBlock).toContain("width: min(432px, calc(100vw - var(--docsera-workspace-nav-width)));");
+    expect(pageSettingsShellBlock).toContain("overflow: clip;");
+    expect(pageSettingsBlock).toContain("position: absolute;");
+    expect(pageSettingsBlock).toContain("inset: 0 auto 0 0;");
+    expect(pageSettingsBlock).toContain("width: 100%;");
+    expect(pageSettingsBlock).toContain("transform: translateX(-100%);");
+    expect(pageSettingsBlock).toContain("opacity 200ms cubic-bezier(0.4, 0, 0.2, 1)");
+    expect(pageSettingsBlock).toContain("transform 200ms cubic-bezier(0.4, 0, 0.2, 1)");
+    expect(pageSettingsOpenBlock).toContain("pointer-events: auto;");
+    expect(pageSettingsOpenBlock).toContain("transform: translateX(0);");
+    expect(workspaceOverlayBlock).toContain("pointer-events: none;");
     expect(panelBlock).toContain("box-sizing: border-box;");
+    expect(panelBlock).toContain("transform: translateX(100%);");
+    expect(panelBlock).toContain("opacity 200ms cubic-bezier(0.4, 0, 0.2, 1)");
+    expect(workspaceOverlayOpenBlock).toContain("pointer-events: auto;");
+    expect(workspacePanelOpenBlock).toContain("transform: translateX(0);");
+    expect(manageAccessBlock).toContain("pointer-events: none;");
+    expect(manageAccessBackdropBlock).toContain("opacity: 0;");
+    expect(manageAccessBackdropBlock).toContain("transition: opacity 200ms cubic-bezier(0.4, 0, 0.2, 1);");
+    expect(manageAccessPanelBlock).toContain("transform: translateX(100%);");
+    expect(manageAccessPanelBlock).toContain("opacity 200ms cubic-bezier(0.4, 0, 0.2, 1)");
+    expect(manageAccessOpenBackdropBlock).toContain("opacity: 1;");
+    expect(manageAccessOpenPanelBlock).toContain("transform: translateX(0);");
+    expect(reducedMotionBlock).toContain(".docsera-page-settings");
+    expect(reducedMotionBlock).toContain(".docsera-workspace-settings-overlay__panel");
+    expect(reducedMotionBlock).toContain(".docsera-manage-access::after");
+    expect(reducedMotionBlock).toContain(".docsera-manage-access__panel");
     expect(bodyBlock).toContain("overflow-x: clip;");
     expect(bodyBlock).toContain("scrollbar-gutter: stable;");
     expect(settingsGridBlock).toContain("grid-template-columns: repeat(6, minmax(0, 1fr));");

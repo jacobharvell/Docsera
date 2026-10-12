@@ -9,6 +9,7 @@ import type {
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
 import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
+import { usePanelTransitionPresence } from "./usePanelTransitionPresence";
 
 type ManageAccessState =
   | { status: "idle" | "loading" }
@@ -70,6 +71,7 @@ export function WorkspaceManageAccessOverlay({
   setMemberAccess,
   workspace
 }: WorkspaceManageAccessOverlayProps) {
+  const { active, present } = usePanelTransitionPresence(open);
   const [state, setState] = useState<ManageAccessState>({ status: "idle" });
   const [query, setQuery] = useState("");
   const [mutationError, setMutationError] = useState("");
@@ -112,12 +114,19 @@ export function WorkspaceManageAccessOverlay({
   }
 
   useEffect(() => {
-    if (!open || !workspace) {
-      setState({ status: "idle" });
-      return;
-    }
+    if (!open || !workspace) return;
     void refreshMembers();
   }, [open, workspace?.sysId, workspace?.slug]);
+
+  useEffect(() => {
+    if (present) return;
+    setState({ status: "idle" });
+    setQuery("");
+    setMutationError("");
+    setMutatingUserSysId("");
+    setRemoveTarget(null);
+    closeAddMembers();
+  }, [present]);
 
   useEffect(() => {
     if (!open) return;
@@ -280,7 +289,7 @@ export function WorkspaceManageAccessOverlay({
     stagedSelectionAnchorRef.current = "";
   }
 
-  if (!open || !workspace) return null;
+  if (!present || !workspace) return null;
 
   function isProtectedLastAdmin(member: WorkspaceMemberRecord): boolean {
     return member.active && member.accessLevel === "admin" && activeAdminCount <= 1;
@@ -346,8 +355,14 @@ export function WorkspaceManageAccessOverlay({
     await onMutationCommitted();
   }
 
+  const closingAttributes = open ? {} : ({ "aria-hidden": true, inert: "" } as Record<string, unknown>);
+
   return (
-    <div className="docsera-manage-access" data-docsera-manage-access="true">
+    <div
+      className={`docsera-manage-access${active ? " docsera-manage-access--open" : " docsera-manage-access--closing"}`}
+      data-docsera-manage-access="true"
+      {...closingAttributes}
+    >
       <aside ref={panelRef} className="docsera-manage-access__panel" role="complementary" aria-label="Manage access">
         <div className="docsera-manage-access__header">
           <div className="docsera-manage-access__header-title">

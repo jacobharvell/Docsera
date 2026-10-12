@@ -6,10 +6,10 @@ Task 108B exposes the Task 108A canonical Callout node in the visual editor auth
 
 - Slash and Quick Add include `Callout`.
 - New Callouts insert as `type: "info"` with `title: null` and one empty editable paragraph body.
-- The editor Callout node view renders the semantic border/background, icon, optional title control, type selector, and editable body.
-- Edit-mode Callout presentation follows the lightweight Live reader visual contract for the semantic content frame: 20px icon lane, 16px/18px container padding, 6px corner radius, semantic border/tint, body text color, title/body alignment, and 8px title-to-body spacing. The title input and compact 14px type selector remain editor-only controls and must not add title indentation or shift untitled body content away from the reader anchor.
+- The editor Callout node view renders a block wrapper, a compact above-frame type selector row, and a semantic Callout frame containing the border/background, icon, optional title control, and editable body.
+- Edit-mode Callout presentation follows the lightweight Live reader visual contract for the semantic content frame: 20px icon lane, 16px/18px border-box container padding, 6px corner radius, semantic border/tint, body text color, title/body alignment, and 8px title-to-body spacing. The compact 14px type selector remains editor-only chrome above the frame and must not add title indentation or shift untitled body content away from the reader anchor.
 - Type changes and title edits update the Callout node attrs through ProseMirror transactions, so they participate in normal undo/redo, dirty state, autosave, source synchronization, publish, and discard.
-- The title control is an author-only single-line plain-text input; Enter does not insert title content, and Slash command activation remains owned by editor textblocks rather than the title input.
+- The title control is an author-only borderless transparent plain-text editing control that can wrap long titles without internal scrolling. Enter does not insert title content, and Slash command activation remains owned by editor textblocks rather than the title control.
 
 ## Nesting and Command Restrictions
 

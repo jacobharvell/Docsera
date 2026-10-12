@@ -25,6 +25,7 @@ It documents verified repository behavior only. Accepted product requirements re
 - The workspace shell remains mounted across page changes, Live/Edit mode changes, and workspace switching.
 - The sidebar search row, sidebar action row, main pane, ToC rail, and divider geometry stay mounted while workspace data is changing.
 - Route transitions do not use a separate loading shell or a duplicated workspace frame.
+- Navigation collapse keeps the stored/manual navigation width as the authoritative content-geometry value and uses a separate animated grid-track custom property for both the header and workspace grid. The header scopes that track value to the current workspace navigation width, while the workspace shell scopes the track and content-geometry values separately. This keeps Live and Edit document surfaces moving with the panel instead of recalculating their internal content lane before the panel transition finishes.
 
 ## Launcher Background Ownership
 

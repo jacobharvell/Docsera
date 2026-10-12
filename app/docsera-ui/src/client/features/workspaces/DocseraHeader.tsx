@@ -640,7 +640,14 @@ export function DocseraHeader({
   return (
     <header
       className={headerClassName}
-      style={mode === "workspace" && workspaceNavWidth ? ({ "--docsera-workspace-nav-width": `${workspaceNavWidth}px` } as CSSProperties) : undefined}
+      style={
+        mode === "workspace" && workspaceNavWidth
+          ? ({
+              "--docsera-workspace-nav-track-width": sidebarCollapsed ? "0px" : `${workspaceNavWidth}px`,
+              "--docsera-workspace-nav-width": `${workspaceNavWidth}px`
+            } as CSSProperties)
+          : undefined
+      }
     >
       <div className="docsera-header__workspace">
         {mode === "workspace" && sidebarCollapsed ? null : (

@@ -5,6 +5,7 @@ import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
 import type { WorkspaceIcon, WorkspaceIconUploadResult, WorkspaceViewRecord } from "../../shared/types/docsera";
 import { BUILT_IN_WORKSPACE_ICONS, DEFAULT_BUILT_IN_WORKSPACE_ICON, findBuiltInWorkspaceIcon, type BuiltInWorkspaceIcon } from "../../../shared/workspaces/domain";
 import { WorkspaceIconBadge, type WorkspaceUploadedIconLoader } from "./WorkspacePrimitives";
+import { usePanelTransitionPresence } from "./usePanelTransitionPresence";
 
 const WORKSPACE_SETTINGS_NAME_MAX_LENGTH = 160;
 const WORKSPACE_SETTINGS_SHORT_DESCRIPTION_MAX_LENGTH = 240;
@@ -101,7 +102,9 @@ function sameDraft(left: WorkspaceSettingsDraft, right: WorkspaceSettingsDraft):
 }
 
 export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePending = false, errorMessage, loadUploadedIcon, onCancel, onCleanupStagedIcon, onConfirmDelete, onDraftIdentityChange, onManageAccess, onSubmit, onUploadIcon, open, pending, recoveryInput, workspace }: WorkspaceSettingsOverlayProps) {
+  const { active, present } = usePanelTransitionPresence(open);
   const [draft, setDraft] = useState<WorkspaceSettingsDraft | null>(null);
+  const [visualWorkspace, setVisualWorkspace] = useState<WorkspaceViewRecord | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [attemptedDismiss, setAttemptedDismiss] = useState(false);
   const [uploadingIcon, setUploadingIcon] = useState(false);
@@ -111,6 +114,7 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
   const panelRef = useRef<HTMLElement | null>(null);
   const transferredPreviewUrlRef = useRef("");
   const uploadSequenceRef = useRef(0);
+  const renderWorkspace = workspace ?? visualWorkspace;
   const canonicalDraft = useMemo(() => workspace ? draftFromWorkspace(workspace) : null, [workspace]);
 
   function isSettingsStagedIcon(icon: WorkspaceSettingsDraft["uploadedIcon"]): boolean {
@@ -123,19 +127,33 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
   }
 
   useEffect(() => {
+    if (!open) return;
     setDraft((current) => {
       if (current?.uploadedPreviewUrl && current.uploadedPreviewUrl !== transferredPreviewUrlRef.current) {
         URL.revokeObjectURL(current.uploadedPreviewUrl);
       }
       transferredPreviewUrlRef.current = "";
-      return open && workspace ? draftFromWorkspace(workspace, recoveryInput) : null;
+      return workspace ? draftFromWorkspace(workspace, recoveryInput) : null;
     });
     setAttemptedDismiss(false);
     setUploadError("");
     setUploadingIcon(false);
     setDeleteDialogOpen(false);
     uploadSequenceRef.current += 1;
+    setVisualWorkspace(workspace);
   }, [open, recoveryInput, workspace]);
+
+  useEffect(() => {
+    if (present) return;
+    setDraft((current) => {
+      if (current?.uploadedPreviewUrl && current.uploadedPreviewUrl !== transferredPreviewUrlRef.current) {
+        URL.revokeObjectURL(current.uploadedPreviewUrl);
+      }
+      transferredPreviewUrlRef.current = "";
+      return null;
+    });
+    setVisualWorkspace(null);
+  }, [present]);
 
   useEffect(() => {
     if (!open) return;
@@ -199,7 +217,7 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
     return () => onDraftIdentityChange?.(null);
   }, [draft, onDraftIdentityChange, open, workspace]);
 
-  if (!open || !workspace || !draft || !canonicalDraft) return null;
+  if (!present || !renderWorkspace || !draft) return null;
 
   const errors = validateDraft(draft);
   const selectedIcon = findBuiltInWorkspaceIcon(draft.selectedBuiltInIconKey) ?? DEFAULT_BUILT_IN_WORKSPACE_ICON;
@@ -317,8 +335,13 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
     }
   }
 
+  const closingAttributes = open ? {} : ({ "aria-hidden": true, inert: "" } as Record<string, unknown>);
+
   return (
-    <div className="docsera-workspace-settings-overlay">
+    <div
+      className={`docsera-workspace-settings-overlay${active ? " docsera-workspace-settings-overlay--open" : " docsera-workspace-settings-overlay--closing"}`}
+      {...closingAttributes}
+    >
       <aside ref={panelRef} className="docsera-workspace-settings-overlay__panel" role="complementary" aria-label="Workspace Settings">
         <div className="docsera-workspace-settings-overlay__header">
           <h2 className="docsera-workspace-settings-overlay__title">Workspace Settings</h2>
@@ -347,8 +370,8 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
             <legend className="docsera-workspace-settings-overlay__section-title">Icon</legend>
             <div className="docsera-workspace-icon-picker__grid">
               {draft.uploadedIcon ? (
-                <button type="button" className={`docsera-workspace-icon-picker__option${draft.iconKind === "uploaded" ? " docsera-workspace-icon-picker__option--selected" : ""}`} aria-pressed={draft.iconKind === "uploaded"} aria-label={`${workspace.icon.label}, current uploaded icon${draft.iconKind === "uploaded" ? ", selected" : ""}`} disabled={pending} onClick={() => setDraft((current) => current ? { ...current, iconKind: "uploaded" } : current)}>
-                  <WorkspaceIconBadge workspace={{ icon: { ...draft.uploadedIcon, assetPath: draft.uploadedPreviewUrl ?? (isSettingsStagedIcon(draft.uploadedIcon) ? `${draft.uploadedIcon.assetPath}${draft.uploadedIcon.assetPath.includes("?") ? "&" : "?"}preview=settings&workspaceSysId=${encodeURIComponent(cleanText(workspace.sysId))}` : draft.uploadedIcon.assetPath) }, name: draft.uploadedIcon.label }} loadUploadedIcon={loadUploadedIcon} />
+                <button type="button" className={`docsera-workspace-icon-picker__option${draft.iconKind === "uploaded" ? " docsera-workspace-icon-picker__option--selected" : ""}`} aria-pressed={draft.iconKind === "uploaded"} aria-label={`${renderWorkspace.icon.label}, current uploaded icon${draft.iconKind === "uploaded" ? ", selected" : ""}`} disabled={pending} onClick={() => setDraft((current) => current ? { ...current, iconKind: "uploaded" } : current)}>
+                  <WorkspaceIconBadge workspace={{ icon: { ...draft.uploadedIcon, assetPath: draft.uploadedPreviewUrl ?? (isSettingsStagedIcon(draft.uploadedIcon) ? `${draft.uploadedIcon.assetPath}${draft.uploadedIcon.assetPath.includes("?") ? "&" : "?"}preview=settings&workspaceSysId=${encodeURIComponent(cleanText(renderWorkspace.sysId))}` : draft.uploadedIcon.assetPath) }, name: draft.uploadedIcon.label }} loadUploadedIcon={loadUploadedIcon} />
                 </button>
               ) : null}
               {draft.persistedUploadedIcon && draft.uploadedIcon?.key !== draft.persistedUploadedIcon.key ? (
@@ -398,7 +421,7 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
                   </span>
                 </span>
               </label>
-              {workspace.canManageWorkspaceMembers ? (
+              {renderWorkspace.canManageWorkspaceMembers ? (
                 <div className="docsera-workspace-settings-overlay__preference-row">
                   <span className="docsera-workspace-settings-overlay__preference-copy">
                     <span className="docsera-workspace-settings-overlay__preference-title">Access</span>
@@ -411,7 +434,7 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
               ) : null}
             </div>
           </section>
-          {workspace.canManageSettings ? (
+          {renderWorkspace.canManageSettings ? (
             <section className="docsera-workspace-settings-overlay__danger-zone" aria-labelledby="docsera-workspace-settings-danger-title">
               <span className="docsera-workspace-settings-overlay__danger-copy">
                 <span id="docsera-workspace-settings-danger-title" className="docsera-workspace-settings-overlay__danger-title">Delete workspace</span>
@@ -443,7 +466,7 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
               </div>
               {deleteErrorMessage ? <div className="docsera-modal__alert" role="alert">{deleteErrorMessage}</div> : null}
               <div className="docsera-modal__body">
-                <p className="docsera-modal__copy">This will permanently delete {workspace.name} and its contents. This cannot be undone.</p>
+                <p className="docsera-modal__copy">This will permanently delete {renderWorkspace.name} and its contents. This cannot be undone.</p>
               </div>
               <div className="docsera-modal__footer">
                 <div className="docsera-modal__actions">
@@ -454,7 +477,7 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
                         <span className="docsera-delete-confirmation-button__spinner" />
                       </span>
                     ) : null}
-                    <span className="docsera-delete-confirmation-button__label">Delete workspace</span>
+                    <span className="docsera-delete-confirmation-button__label">Delete</span>
                   </button>
                 </div>
               </div>

@@ -57,6 +57,52 @@ describe("DocseraHeader workspace shell", () => {
     expect(liveRender.container.querySelector(".docsera-header")).not.toHaveClass("docsera-header--launcher");
   });
 
+  it("keeps the header navigation track aligned to a non-default workspace navigation width", () => {
+    const { container, rerender } = render(
+      <DocseraHeader
+        {...baseProps}
+        onToggleSidebar={vi.fn()}
+        workspaceNavWidth={344}
+      />
+    );
+
+    const header = container.querySelector<HTMLElement>(".docsera-header");
+    expect(header).toHaveStyle({
+      "--docsera-workspace-nav-track-width": "344px",
+      "--docsera-workspace-nav-width": "344px"
+    });
+    expect(header).not.toHaveClass("docsera-header--sidebar-collapsed");
+
+    rerender(
+      <DocseraHeader
+        {...baseProps}
+        onToggleSidebar={vi.fn()}
+        sidebarCollapsed
+        workspaceNavWidth={344}
+      />
+    );
+
+    expect(header).toHaveStyle({
+      "--docsera-workspace-nav-track-width": "0px",
+      "--docsera-workspace-nav-width": "344px"
+    });
+    expect(header).toHaveClass("docsera-header--sidebar-collapsed");
+
+    rerender(
+      <DocseraHeader
+        {...baseProps}
+        onToggleSidebar={vi.fn()}
+        workspaceNavWidth={344}
+      />
+    );
+
+    expect(header).toHaveStyle({
+      "--docsera-workspace-nav-track-width": "344px",
+      "--docsera-workspace-nav-width": "344px"
+    });
+    expect(header).not.toHaveClass("docsera-header--sidebar-collapsed");
+  });
+
   it("marks launcher headers so their account divider paint can be suppressed", () => {
     const { container } = render(
       <DocseraHeader

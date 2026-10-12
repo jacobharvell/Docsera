@@ -1551,6 +1551,91 @@ function createDocseraCalloutExtension() {
     view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { ...currentNode.attrs, ...attrs }));
   }
 
+  function getPlainTextSelectionOffset(container: HTMLElement): number | null {
+    const selection = container.ownerDocument.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      return null;
+    }
+
+    const range = selection.getRangeAt(0);
+    if (!container.contains(range.startContainer)) {
+      return null;
+    }
+
+    const prefix = range.cloneRange();
+    prefix.selectNodeContents(container);
+    prefix.setEnd(range.startContainer, range.startOffset);
+    return prefix.toString().length;
+  }
+
+  function restorePlainTextSelectionOffset(container: HTMLElement, offset: number | null) {
+    if (offset === null) {
+      return;
+    }
+
+    const selection = container.ownerDocument.getSelection();
+    if (!selection) {
+      return;
+    }
+
+    const boundedOffset = Math.max(0, Math.min(offset, container.textContent?.length ?? 0));
+    const walker = container.ownerDocument.createTreeWalker(container, globalThis.NodeFilter.SHOW_TEXT);
+    let remaining = boundedOffset;
+    let target: globalThis.Node = container;
+    let targetOffset = container.childNodes.length;
+
+    for (let current = walker.nextNode(); current; current = walker.nextNode()) {
+      const length = current.textContent?.length ?? 0;
+      if (remaining <= length) {
+        target = current;
+        targetOffset = remaining;
+        break;
+      }
+      remaining -= length;
+    }
+
+    const range = container.ownerDocument.createRange();
+    range.setStart(target, targetOffset);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  function sanitizeCalloutTitleInput(titleInput: HTMLElement): string {
+    const title = (titleInput.textContent ?? "").replace(/[\r\n]+/g, " ");
+    const hasNonTextChildren = Array.from(titleInput.childNodes).some(
+      (child) => child.nodeType !== globalThis.Node.TEXT_NODE
+    );
+    if (hasNonTextChildren || titleInput.textContent !== title) {
+      const offset = getPlainTextSelectionOffset(titleInput);
+      titleInput.textContent = title;
+      restorePlainTextSelectionOffset(titleInput, offset);
+    }
+    return title;
+  }
+
+  function insertPlainTextIntoCalloutTitle(titleInput: HTMLElement, text: string) {
+    if (typeof titleInput.ownerDocument.execCommand === "function") {
+      titleInput.ownerDocument.execCommand("insertText", false, text);
+      return;
+    }
+
+    const selection = titleInput.ownerDocument.getSelection();
+    if (!selection || selection.rangeCount === 0 || !titleInput.contains(selection.getRangeAt(0).startContainer)) {
+      titleInput.append(titleInput.ownerDocument.createTextNode(text));
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    range.deleteContents();
+    const textNode = titleInput.ownerDocument.createTextNode(text);
+    range.insertNode(textNode);
+    range.setStart(textNode, text.length);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
   function renderCalloutIcon(ownerDocument: globalThis.Document, icon: HTMLElement, type: DocseraCalloutType) {
     icon.replaceChildren();
     const svg = ownerDocument.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -1612,26 +1697,33 @@ function createDocseraCalloutExtension() {
     addNodeView() {
       return ({ editor, getPos, node }) => {
         const ownerDocument = document;
-        const root = ownerDocument.createElement("aside");
+        const root = ownerDocument.createElement("div");
+        const frame = ownerDocument.createElement("aside");
         const icon = ownerDocument.createElement("span");
         const content = ownerDocument.createElement("div");
         const controls = ownerDocument.createElement("div");
-        const titleInput = ownerDocument.createElement("input");
+        const titleInput = ownerDocument.createElement("div");
         const select = ownerDocument.createElement("select");
         const body = ownerDocument.createElement("div");
 
         root.className = "docsera-editor-callout";
+        frame.className = "docsera-editor-callout__frame";
+        frame.setAttribute("data-docsera-callout-frame", "true");
+        frame.setAttribute("role", "note");
         root.setAttribute("data-docsera-callout", "true");
-        root.setAttribute("role", "note");
         icon.className = "docsera-editor-callout__icon";
         icon.setAttribute("aria-hidden", "true");
         content.className = "docsera-editor-callout__content";
         controls.className = "docsera-editor-callout__controls";
         titleInput.className = "docsera-editor-callout__title";
-        titleInput.type = "text";
-        titleInput.placeholder = DOCSERA_EMPTY_CALLOUT_TITLE_PLACEHOLDER;
+        titleInput.contentEditable = "plaintext-only";
+        titleInput.setAttribute("contenteditable", "plaintext-only");
+        titleInput.setAttribute("tabindex", "0");
+        titleInput.setAttribute("role", "textbox");
+        titleInput.setAttribute("aria-multiline", "false");
         titleInput.setAttribute("aria-label", "Callout title");
         titleInput.setAttribute("data-docsera-callout-title-input", "true");
+        titleInput.setAttribute("data-placeholder", DOCSERA_EMPTY_CALLOUT_TITLE_PLACEHOLDER);
         select.className = "docsera-editor-callout__type";
         select.setAttribute("aria-label", "Callout type");
         select.setAttribute("data-docsera-callout-type-selector", "true");
@@ -1645,9 +1737,10 @@ function createDocseraCalloutExtension() {
           select.append(option);
         }
 
-        controls.append(titleInput, select);
-        content.append(controls, body);
-        root.append(icon, content);
+        controls.append(select);
+        content.append(titleInput, body);
+        frame.append(icon, content);
+        root.append(controls, frame);
 
         const sync = (nextNode: PMNode) => {
           const type = isCalloutType(nextNode.attrs.type) ? nextNode.attrs.type : "info";
@@ -1655,12 +1748,14 @@ function createDocseraCalloutExtension() {
           const presentation = DOCSERA_CALLOUT_PRESENTATION[type];
           root.setAttribute("data-docsera-callout-type", type);
           root.setAttribute("data-docsera-callout-has-title", title ? "true" : "false");
-          root.setAttribute("aria-label", title ? `${presentation.label} callout: ${title}` : `${presentation.label} callout`);
+          frame.setAttribute("data-docsera-callout-type", type);
+          frame.setAttribute("data-docsera-callout-has-title", title ? "true" : "false");
+          frame.setAttribute("aria-label", title ? `${presentation.label} callout: ${title}` : `${presentation.label} callout`);
           root.style.setProperty("--docsera-callout-accent", presentation.accent);
           root.style.setProperty("--docsera-callout-icon-color", presentation.lightIcon);
           renderCalloutIcon(ownerDocument, icon, type);
-          if (titleInput.value !== title) {
-            titleInput.value = title;
+          if (titleInput.textContent !== title) {
+            titleInput.textContent = title;
           }
           if (select.value !== type) {
             select.value = type;
@@ -1673,8 +1768,14 @@ function createDocseraCalloutExtension() {
             editor.view.focus();
           }
         });
+        titleInput.addEventListener("paste", (event) => {
+          event.preventDefault();
+          const title = event.clipboardData?.getData("text/plain").replace(/[\r\n]+/g, " ") ?? "";
+          insertPlainTextIntoCalloutTitle(titleInput, title);
+          updateCalloutAttrs(editor.view, getPos, { title: sanitizeCalloutTitleInput(titleInput) || null });
+        });
         titleInput.addEventListener("input", () => {
-          const title = titleInput.value.replace(/[\r\n]+/g, " ");
+          const title = sanitizeCalloutTitleInput(titleInput);
           updateCalloutAttrs(editor.view, getPos, { title: title.length ? title : null });
         });
         select.addEventListener("mousedown", (event) => {
@@ -1697,10 +1798,14 @@ function createDocseraCalloutExtension() {
             return true;
           },
           stopEvent(event) {
-            return event.target === titleInput || event.target === select;
+            return (
+              event.target === titleInput ||
+              event.target === select ||
+              titleInput.contains(event.target as globalThis.Node)
+            );
           },
           ignoreMutation(mutation) {
-            return mutation.target === titleInput || mutation.target === select || mutation.target === icon;
+            return titleInput.contains(mutation.target) || mutation.target === select || mutation.target === icon;
           }
         };
       };

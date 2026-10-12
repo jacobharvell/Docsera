@@ -1,7 +1,8 @@
-import type { KeyboardEvent, RefObject } from "react";
+import { useEffect, useState, type KeyboardEvent, type RefObject } from "react";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
 import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
+import { usePanelTransitionPresence } from "./usePanelTransitionPresence";
 
 type PageSettingsField = "title" | "slug";
 
@@ -22,6 +23,15 @@ type PageSettingsOverlayProps = {
   onRequestClose: () => void;
   onRequestDelete: () => void;
   onStartField: (field: PageSettingsField) => void;
+};
+
+type PageSettingsVisualSnapshot = {
+  generalError: string;
+  noticeMessage?: string;
+  pageSlug: string;
+  pageTitle: string;
+  slugError: string;
+  titleError: string;
 };
 
 function CloseIcon() {
@@ -50,9 +60,37 @@ export function PageSettingsOverlay({
   onRequestDelete,
   onStartField
 }: PageSettingsOverlayProps) {
-  if (!open || !canManagePageSettings) {
+  const visuallyOpen = open && canManagePageSettings;
+  const { active, present } = usePanelTransitionPresence(visuallyOpen);
+  const [visualSnapshot, setVisualSnapshot] = useState<PageSettingsVisualSnapshot | null>(null);
+
+  useEffect(() => {
+    if (!visuallyOpen) return;
+    setVisualSnapshot({
+      generalError,
+      noticeMessage,
+      pageSlug,
+      pageTitle,
+      slugError,
+      titleError
+    });
+  }, [generalError, noticeMessage, pageSlug, pageTitle, slugError, titleError, visuallyOpen]);
+
+  useEffect(() => {
+    if (present) return;
+    setVisualSnapshot(null);
+  }, [present]);
+
+  const renderSnapshot = visuallyOpen
+    ? { generalError, noticeMessage, pageSlug, pageTitle, slugError, titleError }
+    : visualSnapshot;
+
+  if (!present || !renderSnapshot) {
     return null;
   }
+
+  const displayedActiveField = visuallyOpen ? activeField : "";
+  const closingAttributes = visuallyOpen ? {} : ({ "aria-hidden": true, inert: "" } as Record<string, unknown>);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key !== "Escape") {
@@ -61,8 +99,8 @@ export function PageSettingsOverlay({
 
     event.stopPropagation();
 
-    if (activeField) {
-      onCancelField(activeField);
+    if (displayedActiveField) {
+      onCancelField(displayedActiveField);
       return;
     }
 
@@ -75,7 +113,7 @@ export function PageSettingsOverlay({
         <span>{label}</span>
       </div>
       <div className="docsera-page-settings__body">
-        {activeField === field ? (
+        {displayedActiveField === field ? (
           <input
             autoFocus
             className={`docsera-page-settings__input${error ? " docsera-page-settings__input--invalid" : ""}`}
@@ -118,12 +156,14 @@ export function PageSettingsOverlay({
   );
 
   return (
+    <div className="docsera-page-settings-shell">
     <aside
       ref={panelRef}
-      className="docsera-page-settings"
+      className={`docsera-page-settings${active ? " docsera-page-settings--open" : " docsera-page-settings--closing"}`}
       role="complementary"
       aria-labelledby="docsera-page-settings-title"
       onKeyDown={handleKeyDown}
+      {...closingAttributes}
     >
       <div className="docsera-page-settings__header">
         <h2 id="docsera-page-settings-title" className="docsera-page-settings__title">
@@ -142,21 +182,21 @@ export function PageSettingsOverlay({
       </div>
       <div className="docsera-page-settings__header-divider" aria-hidden="true" />
 
-      {noticeMessage ? (
+      {renderSnapshot.noticeMessage ? (
         <div className="docsera-page-settings__notice" role="status">
-          {noticeMessage}
+          {renderSnapshot.noticeMessage}
         </div>
       ) : null}
 
-      {generalError ? (
+      {renderSnapshot.generalError ? (
         <div className="docsera-page-settings__error" role="alert">
-          {generalError}
+          {renderSnapshot.generalError}
         </div>
       ) : null}
 
       <div className="docsera-page-settings__rows">
-        {renderField("title", "Title", pageTitle, titleError)}
-        {renderField("slug", "Slug", pageSlug, slugError)}
+        {renderField("title", "Title", renderSnapshot.pageTitle, renderSnapshot.titleError)}
+        {renderField("slug", "Slug", renderSnapshot.pageSlug, renderSnapshot.slugError)}
       </div>
 
       <section className="docsera-page-settings__delete-section" aria-label="Delete page">
@@ -170,5 +210,6 @@ export function PageSettingsOverlay({
         </p>
       </section>
     </aside>
+    </div>
   );
 }

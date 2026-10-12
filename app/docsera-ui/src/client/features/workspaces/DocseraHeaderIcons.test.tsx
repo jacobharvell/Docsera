@@ -17,10 +17,20 @@ describe("DocseraHeaderIcons", () => {
     expect(svgs[0]).toHaveAttribute("aria-hidden", "true");
   });
 
-  it("renders the sidebar toggle icon at 16px", () => {
+  it("renders the expanded sidebar toggle as the 16px Lucide panel-left-close icon", () => {
     const { container } = render(<SidebarToggleIcon collapsed={false} />);
     const svg = container.querySelector("svg");
 
+    expect(svg).toHaveClass("lucide-panel-left-close");
+    expect(svg?.getAttribute("width")).toBe("16");
+    expect(svg?.getAttribute("height")).toBe("16");
+  });
+
+  it("renders the collapsed sidebar toggle as the 16px Lucide panel-left-open icon", () => {
+    const { container } = render(<SidebarToggleIcon collapsed={true} />);
+    const svg = container.querySelector("svg");
+
+    expect(svg).toHaveClass("lucide-panel-left-open");
     expect(svg?.getAttribute("width")).toBe("16");
     expect(svg?.getAttribute("height")).toBe("16");
   });

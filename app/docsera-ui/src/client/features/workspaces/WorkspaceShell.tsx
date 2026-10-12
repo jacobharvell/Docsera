@@ -251,10 +251,11 @@ export function WorkspaceShell({
   const resizeStateRef = useRef<{ active: boolean }>({ active: false });
   const navFrameRef = useRef<HTMLDivElement>(null);
   const [sidebarResizing, setSidebarResizing] = useState(false);
-  const currentNavWidth = sidebarCollapsed ? 0 : workspaceNavWidth;
   const shellStyle = {
+    "--docsera-workspace-content-nav-width": sidebarCollapsed ? "0px" : `${workspaceNavWidth}px`,
     "--docsera-workspace-nav-resizer-width": sidebarCollapsed ? "0px" : "8px",
-    "--docsera-workspace-nav-width": `${currentNavWidth}px`
+    "--docsera-workspace-nav-track-width": sidebarCollapsed ? "0px" : `${workspaceNavWidth}px`,
+    "--docsera-workspace-nav-width": `${workspaceNavWidth}px`
   } as CSSProperties;
 
   useEffect(() => {
@@ -391,40 +392,42 @@ export function WorkspaceShell({
           aria-hidden={sidebarCollapsed ? "true" : undefined}
           data-docsera-nav-collapsed={sidebarCollapsed ? "true" : undefined}
         >
-          <WorkspaceSidebar
-            canCreatePage={canCreatePage}
-            createPageDisabledReason={createPageDisabledReason}
-            canManagePageSettings={canManagePageSettings}
-            collapsedPageIds={collapsedPageIds}
-            navigationCollapsed={sidebarCollapsed}
-            inlineCreateState={inlineCreateState}
-            inlineRenameErrorMessage={inlineRenameErrorMessage}
-            inlineRenamePageId={inlineRenamePageId}
-            inlineRenameValue={inlineRenameValue}
-            isCreatingPage={isCreatingPage}
-            isLoading={showWorkspaceLoading}
-            showPendingState={showPendingState}
-            mode={mode}
-            onCollapsedPageIdsChange={onCollapsedPageIdsChange}
-            onCancelInlineRename={onCancelInlineRename}
-            onCommitInlineCreate={onCommitInlineCreate}
-            onCommitInlineRename={onCommitInlineRename}
-            onInlineCreateTitleChange={onInlineCreateTitleChange}
-            onInlineRenameTitleChange={onInlineRenameTitleChange}
-            onSelectPage={onSelectPage}
-            onMovePage={onMovePage}
-            onRequestDeletePage={onRequestDeletePage}
-            onStartInlineRename={onStartInlineRename}
-            onShowCreatePage={onShowCreatePage}
-            onShowChildPageCreate={onShowChildPageCreate}
-            onTogglePageSettings={onTogglePageSettings}
-            pageSettingsOpenPageId={pageSettingsOpenPageId}
-            pages={showWorkspaceLoading ? [] : treePages}
-            selectedPageId={selectedPageViewForShell?.id ?? selectedPageId}
-            showCreatePageControl={showCreatePageControls}
-            treeFilter={treeFilter}
-            onTreeFilterChange={onTreeFilterChange}
-          />
+          <div className="docsera-workspace__nav-clip">
+            <WorkspaceSidebar
+              canCreatePage={canCreatePage}
+              createPageDisabledReason={createPageDisabledReason}
+              canManagePageSettings={canManagePageSettings}
+              collapsedPageIds={collapsedPageIds}
+              navigationCollapsed={sidebarCollapsed}
+              inlineCreateState={inlineCreateState}
+              inlineRenameErrorMessage={inlineRenameErrorMessage}
+              inlineRenamePageId={inlineRenamePageId}
+              inlineRenameValue={inlineRenameValue}
+              isCreatingPage={isCreatingPage}
+              isLoading={showWorkspaceLoading}
+              showPendingState={showPendingState}
+              mode={mode}
+              onCollapsedPageIdsChange={onCollapsedPageIdsChange}
+              onCancelInlineRename={onCancelInlineRename}
+              onCommitInlineCreate={onCommitInlineCreate}
+              onCommitInlineRename={onCommitInlineRename}
+              onInlineCreateTitleChange={onInlineCreateTitleChange}
+              onInlineRenameTitleChange={onInlineRenameTitleChange}
+              onSelectPage={onSelectPage}
+              onMovePage={onMovePage}
+              onRequestDeletePage={onRequestDeletePage}
+              onStartInlineRename={onStartInlineRename}
+              onShowCreatePage={onShowCreatePage}
+              onShowChildPageCreate={onShowChildPageCreate}
+              onTogglePageSettings={onTogglePageSettings}
+              pageSettingsOpenPageId={pageSettingsOpenPageId}
+              pages={showWorkspaceLoading ? [] : treePages}
+              selectedPageId={selectedPageViewForShell?.id ?? selectedPageId}
+              showCreatePageControl={showCreatePageControls}
+              treeFilter={treeFilter}
+              onTreeFilterChange={onTreeFilterChange}
+            />
+          </div>
           <button
             type="button"
             className="docsera-workspace__nav-resizer"

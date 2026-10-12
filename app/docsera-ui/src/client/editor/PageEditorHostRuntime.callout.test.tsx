@@ -26,6 +26,11 @@ function getEditorRuntimeStyleText(): string {
     .find((styleText) => styleText.includes(".docsera-editor-callout")) ?? "";
 }
 
+function getRuntimeRuleBody(css: string, selector: string): string {
+  const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return css.match(new RegExp(`${escapedSelector}\\s*{(?<body>[^}]*)}`, "s"))?.groups?.body ?? "";
+}
+
 function getSvgGeometry(svg: Element | null | undefined) {
   expect(svg).toBeInTheDocument();
 
@@ -263,7 +268,8 @@ describe("PageEditorHostRuntime callouts", () => {
     const title = await screen.findByRole("textbox", { name: "Callout title" });
     const type = await screen.findByRole("combobox", { name: "Callout type" });
 
-    fireEvent.input(title, { target: { value: "Read this" } });
+    title.textContent = "Read this";
+    fireEvent.input(title);
     fireEvent.keyDown(title, { key: "Enter" });
     fireEvent.change(type, { target: { value: "warning" } });
 
@@ -293,17 +299,70 @@ describe("PageEditorHostRuntime callouts", () => {
     const title = await screen.findByRole("textbox", { name: "Callout title" });
     title.focus();
 
-    fireEvent.input(title, { target: { value: "Read " } });
-    expect(title).toHaveValue("Read ");
+    title.textContent = "Read ";
+    fireEvent.input(title);
+    expect(title.textContent).toBe("Read ");
     await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", "Read ")));
 
-    fireEvent.input(title, { target: { value: "Read this" } });
-    expect(title).toHaveValue("Read this");
+    title.textContent = "Read this";
+    fireEvent.input(title);
+    expect(title.textContent).toBe("Read this");
     await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", "Read this")));
 
-    fireEvent.input(title, { target: { value: "" } });
-    expect(title).toHaveValue("");
+    title.textContent = "";
+    fireEvent.input(title);
+    expect(title.textContent).toBe("");
     await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", null)));
+  });
+
+  it("makes an initially untitled callout title reachable by normal keyboard focus", async () => {
+    renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createCalloutDocument())
+    });
+
+    const title = await screen.findByRole("textbox", { name: "Callout title" });
+    expect(title).toHaveAttribute("tabindex", "0");
+    expect(title).toHaveAttribute("contenteditable", "plaintext-only");
+    expect(title).toHaveAttribute("aria-multiline", "false");
+
+    title.focus();
+    expect(title).toHaveFocus();
+  });
+
+  it("flattens formatted callout title paste to plain text", async () => {
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createCalloutDocument())
+    });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+
+    const title = await screen.findByRole("textbox", { name: "Callout title" });
+    title.focus();
+    fireEvent.paste(title, {
+      clipboardData: createClipboardData("<strong>Formatted</strong> <em>title</em>", "Formatted title")
+    } as never);
+
+    expect(title).toHaveTextContent("Formatted title");
+    expect(title.querySelector("strong, em, span, div, p")).toBeNull();
+    await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", "Formatted title")));
+  });
+
+  it("sanitizes formatted callout title DOM without moving focus", async () => {
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createCalloutDocument())
+    });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+
+    const title = await screen.findByRole("textbox", { name: "Callout title" });
+    title.focus();
+    title.innerHTML = 'Alpha <strong>beta</strong><span style="color:red"> gamma</span>';
+    fireEvent.input(title);
+
+    expect(title).toHaveFocus();
+    expect(title.textContent).toBe("Alpha beta gamma");
+    expect(title.querySelector("strong, span")).toBeNull();
+    await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", "Alpha beta gamma")));
   });
 
   it("keeps keyboard focus on the callout type selector through successive changes", async () => {
@@ -377,10 +436,11 @@ describe("PageEditorHostRuntime callouts", () => {
     const editor = editorReady[0];
 
     const callout = editor.view.dom.querySelector(".docsera-editor-callout");
+    const frame = editor.view.dom.querySelector(".docsera-editor-callout__frame");
     expect(callout).toHaveAttribute("data-docsera-callout-type", "error");
     expect(callout).toHaveAttribute("data-docsera-callout-has-title", "true");
-    expect(callout).toHaveAttribute("role", "note");
-    expect(callout).toHaveAttribute("aria-label", "Error callout: Problem");
+    expect(frame).toHaveAttribute("role", "note");
+    expect(frame).toHaveAttribute("aria-label", "Error callout: Problem");
     expect(callout).toHaveStyle({
       "--docsera-callout-accent": "#EF4444",
       "--docsera-callout-icon-color": "#DC2626"
@@ -390,6 +450,8 @@ describe("PageEditorHostRuntime callouts", () => {
       "--docsera-callout-icon-row-offset: calc((var(--docsera-document-body-font-size) * var(--docsera-document-body-line-height) - 20px) / 2);"
     );
     expect(runtimeStyle).toContain("grid-template-columns: 20px minmax(0, 1fr);");
+    expect(runtimeStyle).toContain("box-sizing: border-box;");
+    expect(runtimeStyle).toMatch(/\.docsera-editor-callout__frame\s*{[^}]*width:\s*100%;/s);
     expect(runtimeStyle).toContain("padding: 16px 18px;");
     expect(runtimeStyle).toContain("border-left: 4px solid var(--docsera-callout-accent);");
     expect(runtimeStyle).toContain("border-radius: 6px;");
@@ -416,6 +478,11 @@ describe("PageEditorHostRuntime callouts", () => {
     const type = callout?.querySelector(".docsera-editor-callout__type");
     expect(title).toBeInTheDocument();
     expect(type).toBeInTheDocument();
+    expect(title).toHaveAttribute("contenteditable", "plaintext-only");
+    expect(title).toHaveAttribute("tabindex", "0");
+    expect(title).toHaveAttribute("aria-multiline", "false");
+    expect(runtimeStyle).toContain("white-space: pre-wrap;");
+    expect(runtimeStyle).toContain("overflow-wrap: anywhere;");
     expect(runtimeStyle).toContain("font-size: var(--docsera-document-body-font-size);");
     expect(runtimeStyle).toContain("line-height: var(--docsera-document-body-line-height);");
     expect(runtimeStyle).toContain("font-size: 14px;");
@@ -466,7 +533,7 @@ describe("PageEditorHostRuntime callouts", () => {
     }
   });
 
-  it("keeps untitled callout body width at live-reader parity while revealing controls without body overlap", async () => {
+  it("keeps untitled callout body width at live-reader parity while exposing above-frame type controls", async () => {
     const { editorReady } = renderRuntime({
       initialEnvelope: createEnvelopeFromDocument(createCalloutDocument("info", null))
     });
@@ -478,23 +545,28 @@ describe("PageEditorHostRuntime callouts", () => {
 
     const runtimeStyle = getEditorRuntimeStyleText();
     const controls = callout?.querySelector(".docsera-editor-callout__controls");
+    const frame = callout?.querySelector(".docsera-editor-callout__frame");
     const title = callout?.querySelector(".docsera-editor-callout__title");
+    const type = callout?.querySelector(".docsera-editor-callout__type");
     const body = callout?.querySelector(".docsera-editor-callout__body");
     expect(controls).toBeInTheDocument();
+    expect(frame).toBeInTheDocument();
     expect(title).toBeInTheDocument();
+    expect(type).toBeInTheDocument();
     expect(body).toBeInTheDocument();
-    expect(runtimeStyle).toContain('[data-docsera-callout-has-title="false"] .docsera-editor-callout__controls');
-    expect(runtimeStyle).toContain("position: absolute;");
-    expect(runtimeStyle).toContain("right: 18px;");
+    const controlsRule = getRuntimeRuleBody(runtimeStyle, ".docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__controls");
+    expect(controls?.nextElementSibling).toBe(frame);
+    expect(controls?.firstElementChild).toBe(type);
+    expect(runtimeStyle).toMatch(/\.docsera-editor-callout__controls\s*{[^}]*display:\s*flex;[^}]*justify-content:\s*flex-end;[^}]*margin-bottom:\s*4px;/s);
+    expect(runtimeStyle).toContain('[data-docsera-callout-has-title="false"] .docsera-editor-callout__title');
+    expect(runtimeStyle).toContain("max-height: 0;");
     expect(runtimeStyle).toContain("margin-bottom: 0;");
     expect(runtimeStyle).toContain("opacity: 0;");
-    expect(runtimeStyle).toContain("pointer-events: none;");
-    expect(runtimeStyle).toContain("width: 1px;");
-    expect(runtimeStyle).toContain("opacity: 0;");
-    expect(runtimeStyle).toContain("position: static;");
-    expect(runtimeStyle).toContain("right: auto;");
+    expect(runtimeStyle).toContain("overflow: hidden;");
+    expect(runtimeStyle).toContain("max-height: none;");
     expect(runtimeStyle).toContain("margin-bottom: 8px;");
-    expect(runtimeStyle).toContain("pointer-events: auto;");
+    expect(controlsRule).not.toContain("position: absolute;");
+    expect(controlsRule).not.toContain("right: 18px;");
     expect(runtimeStyle).not.toContain("padding-right: 8.5rem;");
     expect(runtimeStyle).not.toMatch(
       /docsera-editor-callout\[data-docsera-callout-has-title="false"\]\s+\.docsera-editor-callout__body\s*{[^}]*padding-right:/s

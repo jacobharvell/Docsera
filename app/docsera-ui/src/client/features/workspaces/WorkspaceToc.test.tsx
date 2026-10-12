@@ -106,6 +106,26 @@ function mockScrollIntoView(target: Element) {
   return scrollIntoView;
 }
 
+function mockReducedMotionPreference(matches: boolean) {
+  const matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches,
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn()
+  }));
+
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: matchMedia
+  });
+
+  return matchMedia;
+}
+
 function readRuntimeShellCss(): string {
   const nodeProcess = new Function("return process")() as {
     cwd: () => string;
@@ -122,6 +142,7 @@ function readCssRuleBlock(css: string, selector: string): string {
 afterEach(() => {
   cleanup();
   document.querySelector("[data-docsera-page-editor-host='true']")?.remove();
+  Reflect.deleteProperty(window, "matchMedia");
   window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do");
 });
 
@@ -190,9 +211,10 @@ describe("WorkspaceToc", () => {
     );
   });
 
-  it("scrolls to the canonical heading anchor without mutating the workspace route", () => {
+  it("smoothly scrolls to the canonical live heading anchor without mutating the workspace route", () => {
     const envelope = createDuplicateHeadingDocseraDocumentEnvelope();
     window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/overview?mode=edit");
+    const matchMedia = mockReducedMotionPreference(false);
     renderToc(envelope);
 
     const headings = screen.getAllByRole("heading");
@@ -207,6 +229,8 @@ describe("WorkspaceToc", () => {
     fireEvent.click(links[1]);
 
     expect(secondScroll).toHaveBeenCalledTimes(1);
+    expect(secondScroll).toHaveBeenCalledWith({ behavior: "smooth", block: "start", inline: "nearest" });
+    expect(matchMedia).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)");
     expect(firstScroll).not.toHaveBeenCalled();
     expect(thirdScroll).not.toHaveBeenCalled();
     expect(window.location.hash).toBe("#/product-docs/overview?mode=edit");
@@ -214,9 +238,10 @@ describe("WorkspaceToc", () => {
     expect(links[1]).toHaveClass("docsera-toc__link--active");
   });
 
-  it("supports keyboard activation with the same in-page scroll behavior", () => {
+  it("supports keyboard activation with the same smooth in-page scroll behavior", () => {
     const envelope = createHeadingHierarchyDocseraDocumentEnvelope();
     window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/overview");
+    mockReducedMotionPreference(false);
     renderToc(envelope);
 
     const installHeading = screen.getByRole("heading", { name: "Install", level: 3 });
@@ -227,9 +252,25 @@ describe("WorkspaceToc", () => {
     fireEvent.keyDown(installLink, { code: "Enter", key: "Enter" });
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start", inline: "nearest" });
     expect(window.location.hash).toBe("#/product-docs/overview");
     expect(overviewLink).not.toHaveClass("docsera-toc__link--active");
     expect(installLink).toHaveClass("docsera-toc__link--active");
+  });
+
+  it("uses immediate scrolling when reduced motion is preferred", () => {
+    const envelope = createHeadingHierarchyDocseraDocumentEnvelope();
+    mockReducedMotionPreference(true);
+    renderToc(envelope);
+
+    const installHeading = screen.getByRole("heading", { name: "Install", level: 3 });
+    const scrollIntoView = mockScrollIntoView(installHeading);
+    const installLink = screen.getByRole("link", { name: "Install" });
+
+    fireEvent.click(installLink);
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "auto", block: "start", inline: "nearest" });
   });
 
   it("marks the first ToC item active on initial presentation", () => {
@@ -360,7 +401,7 @@ describe("WorkspaceToc", () => {
     expect(window.location.hash).toBe("#/product-docs/overview?mode=edit");
   });
 
-  it("skips empty editor headings when the first populated heading is targeted by pointer activation", () => {
+  it("smoothly scrolls to the editor shadow-root heading while skipping empty headings during pointer activation", () => {
     const envelope = createEnvelope([
       {
         type: "heading",
@@ -379,6 +420,7 @@ describe("WorkspaceToc", () => {
       }
     ]);
     window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/overview?mode=edit");
+    mockReducedMotionPreference(false);
     renderTocOnly(envelope);
 
     const { headingElements } = mountEditorHeadings([
@@ -389,6 +431,12 @@ describe("WorkspaceToc", () => {
     expect(screen.getByRole("link", { name: "Install" })).toHaveAttribute("href", "#install");
     expect(resolveWorkspaceHeadingTarget("install", 0)).toBe(headingElements[1]);
     expect(resolveWorkspaceHeadingTarget("cli", 1)).toBe(headingElements[2]);
+
+    const scrollIntoView = mockScrollIntoView(headingElements[1]);
+    fireEvent.click(screen.getByRole("link", { name: "Install" }));
+
+    expect(scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start", inline: "nearest" });
     expect(window.location.hash).toBe("#/product-docs/overview?mode=edit");
   });
 
@@ -411,6 +459,7 @@ describe("WorkspaceToc", () => {
       }
     ]);
     window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/overview");
+    mockReducedMotionPreference(false);
     renderTocOnly(envelope);
 
     const { headingElements } = mountEditorHeadings([
@@ -424,6 +473,14 @@ describe("WorkspaceToc", () => {
     expect(links[1]).toHaveAttribute("href", "#overview-2");
     expect(resolveWorkspaceHeadingTarget("overview", 0)).toBe(headingElements[0]);
     expect(resolveWorkspaceHeadingTarget("overview-2", 1)).toBe(headingElements[2]);
+
+    const firstScroll = mockScrollIntoView(headingElements[0]);
+    const secondScroll = mockScrollIntoView(headingElements[2]);
+    fireEvent.keyDown(links[1], { code: "Enter", key: "Enter" });
+
+    expect(secondScroll).toHaveBeenCalledTimes(1);
+    expect(secondScroll).toHaveBeenCalledWith({ behavior: "smooth", block: "start", inline: "nearest" });
+    expect(firstScroll).not.toHaveBeenCalled();
     expect(window.location.hash).toBe("#/product-docs/overview");
   });
 });

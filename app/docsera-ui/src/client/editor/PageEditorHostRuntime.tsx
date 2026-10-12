@@ -7270,11 +7270,15 @@ export function PageEditorHostRuntime({
           --docsera-callout-accent: #3B82F6;
           --docsera-callout-icon-color: #2563EB;
           --docsera-callout-icon-row-offset: calc((var(--docsera-document-body-font-size) * var(--docsera-document-body-line-height) - 20px) / 2);
+          width: 100%;
+          margin: 1rem 0;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__frame {
           display: grid;
           grid-template-columns: 20px minmax(0, 1fr);
           gap: 12px;
+          box-sizing: border-box;
           width: 100%;
-          margin: 1rem 0;
           padding: 16px 18px;
           border-left: 4px solid var(--docsera-callout-accent);
           border-radius: 6px;
@@ -7284,7 +7288,7 @@ export function PageEditorHostRuntime({
         .docsera-editor-runtime__surface .ProseMirror > .docsera-editor-callout:first-child {
           margin-top: 0;
         }
-        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout.docsera-editor-runtime__block--selected {
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout.docsera-editor-runtime__block--selected .docsera-editor-callout__frame {
           background: var(--docsera-editor-block-selection);
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__icon {
@@ -7310,64 +7314,59 @@ export function PageEditorHostRuntime({
           position: relative;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__controls {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr) auto;
-          gap: 8px;
-          align-items: center;
-          margin-bottom: 8px;
+          display: flex;
+          justify-content: flex-end;
+          margin-bottom: 4px;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__title,
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__type {
           min-width: 0;
-          border: 1px solid transparent;
-          border-radius: 6px;
           background: transparent;
           color: var(--docsera-text);
           font-family: inherit;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__title {
           padding: 0;
+          border: 0;
+          border-radius: 0;
           font-size: var(--docsera-document-body-font-size);
           font-weight: 700;
           line-height: var(--docsera-document-body-line-height);
+          white-space: pre-wrap;
+          overflow-wrap: anywhere;
+          outline: none;
+          cursor: text;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__title:empty::before {
+          content: attr(data-placeholder);
+          color: var(--docsera-text-muted);
+          font-weight: 600;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="true"] .docsera-editor-callout__title {
+          margin-bottom: 8px;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__type {
           padding: 0.08rem 1.35rem 0.08rem 0.35rem;
+          border: 1px solid transparent;
+          border-radius: 6px;
           font-size: 14px;
           font-weight: 500;
           line-height: 1.3;
           color: var(--docsera-text-muted);
           cursor: pointer;
         }
-        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"] .docsera-editor-callout__controls {
-          position: absolute;
-          right: 18px;
-          margin-bottom: 0;
-          z-index: 1;
-          opacity: 0;
-          pointer-events: none;
-        }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"] .docsera-editor-callout__title {
-          width: 1px;
-          padding: 0;
+          max-height: 0;
+          margin-bottom: 0;
           opacity: 0;
-        }
-        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"]:hover .docsera-editor-callout__controls,
-        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"] .docsera-editor-callout__controls:focus-within {
-          position: static;
-          left: 0;
-          right: auto;
-          margin-bottom: 8px;
-          opacity: 1;
-          pointer-events: auto;
+          overflow: hidden;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"]:hover .docsera-editor-callout__title,
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"] .docsera-editor-callout__title:focus {
-          width: auto;
+          max-height: none;
+          margin-bottom: 8px;
           opacity: 1;
         }
-        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__title:hover,
-        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__title:focus,
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__type:hover,
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__type:focus {
           border-color: color-mix(in srgb, var(--docsera-callout-accent) 45%, var(--docsera-border));
@@ -7380,7 +7379,7 @@ export function PageEditorHostRuntime({
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__body > :last-child {
           margin-bottom: 0;
         }
-        html[data-docsera-theme="dark"] .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout {
+        html[data-docsera-theme="dark"] .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__frame {
           background: color-mix(in srgb, var(--docsera-callout-accent) 12%, var(--docsera-surface) 88%);
         }
         html[data-docsera-theme="dark"] .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__icon {

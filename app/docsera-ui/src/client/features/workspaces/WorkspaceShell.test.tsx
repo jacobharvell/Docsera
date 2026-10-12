@@ -15,80 +15,103 @@ vi.mock("./WorkspaceToc", () => ({
   WorkspaceToc: () => <aside aria-label="Page outline" />
 }));
 
-function renderShell(overrides: Partial<Parameters<typeof WorkspaceShell>[0]> = {}) {
+function createShellProps(overrides: Partial<Parameters<typeof WorkspaceShell>[0]> = {}): Parameters<typeof WorkspaceShell>[0] {
   const noop = vi.fn();
 
-  return render(
-    <WorkspaceShell
-      bodyState="ready"
-      canCreatePage={true}
-      createPageDisabledReason=""
-      canEditPageBody={true}
-      canManagePageSettings={true}
-      collapsedPageIds={[]}
-      currentWorkspaceSlug="docs"
-      editAccessLost={false}
-      editorFailure={null}
-      inlineCreateState={null}
-      inlineRenameErrorMessage=""
-      inlineRenamePageId=""
-      inlineRenameValue=""
-      isCreatingPage={false}
-      mode="edit"
-      onAccessLost={noop}
-      onCollapsedPageIdsChange={noop}
-      onCancelInlineRename={noop}
-      onCommitInlineCreate={noop}
-      onCommitInlineRename={() => true}
-      onEditorFailureChange={noop}
-      onEditorReadyStateChange={noop}
-      onInlineCreateTitleChange={noop}
-      onInlineRenameTitleChange={noop}
-      onModeChange={noop}
-      onOutlineChange={noop}
-      onPageTitleCancel={noop}
-      onPageTitleChange={noop}
-      onPageTitleCommit={noop}
-      onPageTitleStart={noop}
-      onReturnToMyWorkspaces={noop}
-      onReturnToLive={noop}
-      onRetryEditor={noop}
-      onSavePageDraft={vi.fn().mockResolvedValue({ state: "saved" })}
-      onStatusChange={noop}
-      onSelectPage={noop}
-      onRequestDeletePage={noop}
-      onStartInlineRename={noop}
-      onShowChildPageCreate={noop}
-      onShowCreatePage={noop}
-      onTogglePageSettings={noop}
-      onToggleTheme={noop}
-      outlinePage={null}
-      pageSettingsOpenPageId=""
-      pageTitleActive={false}
-      selectedPage={null}
-      selectedPageId=""
-      sidebarCollapsed={false}
-      showEditModeToggle={true}
-      showCreatePageControls={true}
-      sessionKey="workspace-session"
-      shellStatus="ready"
-      shellTitle="Docs"
-      shellCopy=""
-      showPendingState={false}
-      workspaceNavWidth={280}
-      onSidebarCollapsedChange={noop}
-      onWorkspaceNavWidthChange={noop}
-      theme="light"
-      treeFilter=""
-      treePages={[]}
-      workspaceTocAvailable={false}
-      onTreeFilterChange={noop}
-      {...overrides}
-    />
-  );
+  return {
+    bodyState: "ready",
+    canCreatePage: true,
+    createPageDisabledReason: "",
+    canEditPageBody: true,
+    canManagePageSettings: true,
+    collapsedPageIds: [],
+    currentWorkspaceSlug: "docs",
+    editAccessLost: false,
+    editorFailure: null,
+    inlineCreateState: null,
+    inlineRenameErrorMessage: "",
+    inlineRenamePageId: "",
+    inlineRenameValue: "",
+    isCreatingPage: false,
+    mode: "edit",
+    onAccessLost: noop,
+    onCollapsedPageIdsChange: noop,
+    onCancelInlineRename: noop,
+    onCommitInlineCreate: noop,
+    onCommitInlineRename: () => true,
+    onEditorFailureChange: noop,
+    onEditorReadyStateChange: noop,
+    onInlineCreateTitleChange: noop,
+    onInlineRenameTitleChange: noop,
+    onModeChange: noop,
+    onOutlineChange: noop,
+    onPageTitleCancel: noop,
+    onPageTitleChange: noop,
+    onPageTitleCommit: noop,
+    onPageTitleStart: noop,
+    onReturnToMyWorkspaces: noop,
+    onReturnToLive: noop,
+    onRetryEditor: noop,
+    onSavePageDraft: vi.fn().mockResolvedValue({ state: "saved" }),
+    onStatusChange: noop,
+    onSelectPage: noop,
+    onRequestDeletePage: noop,
+    onStartInlineRename: noop,
+    onShowChildPageCreate: noop,
+    onShowCreatePage: noop,
+    onTogglePageSettings: noop,
+    onToggleTheme: noop,
+    outlinePage: null,
+    pageSettingsOpenPageId: "",
+    pageTitleActive: false,
+    selectedPage: null,
+    selectedPageId: "",
+    sidebarCollapsed: false,
+    showEditModeToggle: true,
+    showCreatePageControls: true,
+    sessionKey: "workspace-session",
+    shellStatus: "ready",
+    shellTitle: "Docs",
+    shellCopy: "",
+    showPendingState: false,
+    workspaceNavWidth: 280,
+    onSidebarCollapsedChange: noop,
+    onWorkspaceNavWidthChange: noop,
+    theme: "light",
+    treeFilter: "",
+    treePages: [],
+    workspaceTocAvailable: false,
+    onTreeFilterChange: noop,
+    ...overrides
+  };
+}
+
+function renderShell(overrides: Partial<Parameters<typeof WorkspaceShell>[0]> = {}) {
+  return render(<WorkspaceShell {...createShellProps(overrides)} />);
 }
 
 describe("WorkspaceShell", () => {
+  it("keeps the stored navigation width stable while the animated track collapses", () => {
+    const { container, rerender } = renderShell({ sidebarCollapsed: false, workspaceNavWidth: 312 });
+    const shell = container.querySelector<HTMLElement>(".docsera-shell");
+
+    expect(shell).toHaveStyle({
+      "--docsera-workspace-content-nav-width": "312px",
+      "--docsera-workspace-nav-width": "312px",
+      "--docsera-workspace-nav-track-width": "312px",
+      "--docsera-workspace-nav-resizer-width": "8px"
+    });
+
+    rerender(<WorkspaceShell {...createShellProps({ sidebarCollapsed: true, workspaceNavWidth: 312 })} />);
+
+    expect(shell).toHaveStyle({
+      "--docsera-workspace-content-nav-width": "0px",
+      "--docsera-workspace-nav-width": "312px",
+      "--docsera-workspace-nav-track-width": "0px",
+      "--docsera-workspace-nav-resizer-width": "0px"
+    });
+  });
+
   it("keeps the navigation resizer accessible without a tooltip", async () => {
     renderShell();
 
