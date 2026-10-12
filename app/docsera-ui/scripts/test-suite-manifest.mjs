@@ -85,6 +85,13 @@ export const testSuites = [
     ]
   },
   {
+    name: "editor-callout",
+    description: "focused callout editor runtime behavior: insertion, title/type editing, nested placement, and command restrictions.",
+    files: [
+      "src/client/editor/PageEditorHostRuntime.callout.test.tsx"
+    ]
+  },
+  {
     name: "editor-columns",
     description: "focused columns contract and lightweight reader behavior: canonical columns structure, nested content, responsive rendering, and recovery.",
     files: [
@@ -133,6 +140,7 @@ export const testSuites = [
     files: [
       "src/client/app/App.readerToc.test.tsx",
       "src/client/editor/documentOutline.test.ts",
+      "src/client/features/workspaces/PublishedDocumentReader.callout.test.tsx",
       "src/client/features/workspaces/PublishedDocumentReader.test.tsx",
       "src/client/features/workspaces/WorkspaceToc.test.tsx",
       "src/client/features/workspaces/workspaceViewModels.reader-toc.test.ts"

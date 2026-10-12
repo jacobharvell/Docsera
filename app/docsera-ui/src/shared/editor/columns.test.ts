@@ -268,7 +268,7 @@ describe("Docsera columns schema", () => {
     expect(schema.nodes.column?.spec.group).toBeUndefined();
     expect(schema.nodes.columns?.spec.content).toBe("column{2,4}");
     expect(schema.nodes.column?.spec.content).toBe(
-      "(paragraph | heading | image | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock | table | accordion)+"
+      "(paragraph | heading | image | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock | table | accordion | callout)+"
     );
   });
 

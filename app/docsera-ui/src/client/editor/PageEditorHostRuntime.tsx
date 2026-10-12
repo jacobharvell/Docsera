@@ -86,6 +86,7 @@ import {
   AlignRight,
   Check,
   Code2,
+  CircleAlert,
   ChevronDown,
   Copy,
   ChevronRight,
@@ -494,6 +495,7 @@ function resolveEditorBlockCommandContext(selection: TextSelection): EditorBlock
   const insertionContainerType = selection.$from.depth > 0 ? selection.$from.node(selection.$from.depth - 1).type.name : "doc";
   let isInsideAccordion = false;
   let isInsideAccordionContent = false;
+  let isInsideCallout = false;
   let isInsideColumn = false;
   let isInsideTableCellOrHeader = false;
   for (let depth = selection.$from.depth; depth > 0; depth -= 1) {
@@ -503,6 +505,9 @@ function resolveEditorBlockCommandContext(selection: TextSelection): EditorBlock
     }
     if (nodeName === "accordionContent") {
       isInsideAccordionContent = true;
+    }
+    if (nodeName === "callout") {
+      isInsideCallout = true;
     }
     if (nodeName === "column") {
       isInsideColumn = true;
@@ -516,10 +521,21 @@ function resolveEditorBlockCommandContext(selection: TextSelection): EditorBlock
     insertionContainerType,
     isInsideAccordion,
     isInsideAccordionContent,
+    isInsideCallout,
     isInsideColumn,
     isInsideTableCellOrHeader,
     isTopLevelBlock
   };
+}
+
+function isPositionInsideNodeType(doc: PMNode, position: number, nodeTypeName: string): boolean {
+  const resolved = doc.resolve(Math.max(0, Math.min(position, doc.content.size)));
+  for (let depth = resolved.depth; depth > 0; depth -= 1) {
+    if (resolved.node(depth).type.name === nodeTypeName) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function getBlockSelectionState(editor: Editor): BlockSelectionState | null {
@@ -1718,6 +1734,10 @@ function getTopLevelBlockLabel(element: HTMLElement): string {
     return "Accordion";
   }
 
+  if (element.classList.contains("docsera-editor-callout")) {
+    return "Callout";
+  }
+
   if (element.classList.contains("tableWrapper")) {
     return "Table";
   }
@@ -2166,6 +2186,8 @@ function BlockCommandIcon({ id }: { id: EditorBlockCommandId }) {
       return <Quote size={16} strokeWidth={2} />;
     case "accordion":
       return <ChevronDown size={16} strokeWidth={2} />;
+    case "callout":
+      return <CircleAlert size={16} strokeWidth={2} />;
     case "columns2":
       return (
         <svg aria-hidden="true" fill="currentColor" focusable="false" height="16" viewBox="0 0 16 16" width="16">
@@ -2242,7 +2264,13 @@ function applySlashCommand(
   command: EditorBlockCommand
 ): boolean {
   editor.commands.focus(undefined, { scrollIntoView: false });
-  if (command.id === "accordion" || command.id === "columns2" || command.id === "columns3" || command.id === "columns4") {
+  if (
+    command.id === "accordion" ||
+    command.id === "callout" ||
+    command.id === "columns2" ||
+    command.id === "columns3" ||
+    command.id === "columns4"
+  ) {
     const content = getEditorBlockCommandQuickAddContent(command);
     return replaceEmptySlashOwnerParagraphWithCommandOutput(
       editor,
@@ -2337,6 +2365,8 @@ function getTopLevelBlockLabelFromNode(
   switch (node.type.name) {
     case "accordion":
       return "Accordion";
+    case "callout":
+      return "Callout";
     case "heading":
       switch (node.attrs.level) {
         case 1:
@@ -2944,6 +2974,49 @@ export function transformAccordionPastedSliceIdentities(
   return view?.dragging?.move === true ? slice : regenerateAccordionPastedSliceIdentities(slice);
 }
 
+const CALLOUT_PASTE_DISALLOWED_NODE_TYPES = new Set(["image", "table", "accordion", "columns", "callout"]);
+
+function removeUnsupportedCalloutPastedNode(node: PMNode): PMNode | null {
+  if (CALLOUT_PASTE_DISALLOWED_NODE_TYPES.has(node.type.name)) {
+    return null;
+  }
+
+  if (!node.content.size) {
+    return node;
+  }
+
+  const nextChildren: PMNode[] = [];
+  node.content.forEach((child) => {
+    const nextChild = removeUnsupportedCalloutPastedNode(child);
+    if (nextChild) {
+      nextChildren.push(nextChild);
+    }
+  });
+
+  const nextContent = Fragment.fromArray(nextChildren);
+  if (!node.type.validContent(nextContent)) {
+    return null;
+  }
+
+  return node.copy(nextContent);
+}
+
+function removeUnsupportedCalloutPastedContent(slice: Slice, view: Editor["view"]): Slice {
+  if (!isPositionInsideNodeType(view.state.doc, view.state.selection.from, "callout")) {
+    return slice;
+  }
+
+  const nextChildren: PMNode[] = [];
+  slice.content.forEach((node) => {
+    const nextNode = removeUnsupportedCalloutPastedNode(node);
+    if (nextNode) {
+      nextChildren.push(nextNode);
+    }
+  });
+
+  return new Slice(Fragment.fromArray(nextChildren), slice.openStart, slice.openEnd);
+}
+
 function runEditorCommandWithHistoryTime(editor: Editor, historyTime: number, run: () => boolean | void): boolean {
   const originalDispatch = editor.view.dispatch.bind(editor.view);
   let didRun = false;
@@ -3269,7 +3342,8 @@ export function PageEditorHostRuntime({
     () => ({
       transformPastedHTML: sanitizeDocseraPastedHTML,
       transformPastedText: sanitizeDocseraPastedText,
-      transformPasted: (slice: Slice, view: Editor["view"]) => transformAccordionPastedSliceIdentities(slice, view),
+      transformPasted: (slice: Slice, view: Editor["view"]) =>
+        removeUnsupportedCalloutPastedContent(transformAccordionPastedSliceIdentities(slice, view), view),
       handleDOMEvents: {
         paste: (view: Editor["view"], event: ClipboardEvent) => {
           if (!editorRef.current || !editableRef.current) {
@@ -5072,7 +5146,12 @@ export function PageEditorHostRuntime({
       activeIndex: 0,
       anchorRect,
       ownerBlockIndex: triggerSelection.blockIndex,
-      surfaceContext: resolveEditorBlockCommandContext(runtimeEditor.state.selection as TextSelection),
+      surfaceContext: {
+        ...resolveEditorBlockCommandContext(runtimeEditor.state.selection as TextSelection),
+        isInsideCallout:
+          isPositionInsideNodeType(runtimeEditor.state.doc, triggerSelection.ownerPos, "callout") ||
+          isPositionInsideNodeType(runtimeEditor.state.doc, runtimeEditor.state.selection.from, "callout")
+      },
       placement: resolveCommandSelectorPlacement(overlayOwnerDocument, anchorRect, BLOCK_SELECTOR_HEIGHT),
       query: "",
       source: "slash",
@@ -5132,6 +5211,7 @@ export function PageEditorHostRuntime({
         insertionContainerType: "doc",
         isInsideAccordion: false,
         isInsideAccordionContent: false,
+        isInsideCallout: false,
         isInsideColumn: false,
         isInsideTableCellOrHeader: false,
         isTopLevelBlock: true
@@ -7185,6 +7265,126 @@ export function PageEditorHostRuntime({
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__content > :last-child {
           margin-bottom: 0;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout {
+          --docsera-callout-accent: #3B82F6;
+          --docsera-callout-icon-color: #2563EB;
+          --docsera-callout-icon-row-offset: calc((var(--docsera-document-body-font-size) * var(--docsera-document-body-line-height) - 20px) / 2);
+          display: grid;
+          grid-template-columns: 20px minmax(0, 1fr);
+          gap: 12px;
+          width: 100%;
+          margin: 1rem 0;
+          padding: 16px 18px;
+          border-left: 4px solid var(--docsera-callout-accent);
+          border-radius: 6px;
+          background: color-mix(in srgb, var(--docsera-callout-accent) 5%, var(--docsera-surface));
+          color: var(--docsera-text);
+        }
+        .docsera-editor-runtime__surface .ProseMirror > .docsera-editor-callout:first-child {
+          margin-top: 0;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout.docsera-editor-runtime__block--selected {
+          background: var(--docsera-editor-block-selection);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__icon {
+          display: inline-flex;
+          align-items: flex-start;
+          justify-content: center;
+          width: 20px;
+          height: 20px;
+          margin-top: var(--docsera-callout-icon-row-offset);
+          color: var(--docsera-callout-icon-color);
+          line-height: 1;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__icon svg {
+          width: 20px;
+          height: 20px;
+          flex: 0 0 20px;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__content,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__body {
+          min-width: 0;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__content {
+          position: relative;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__controls {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 8px;
+          align-items: center;
+          margin-bottom: 8px;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__title,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__type {
+          min-width: 0;
+          border: 1px solid transparent;
+          border-radius: 6px;
+          background: transparent;
+          color: var(--docsera-text);
+          font-family: inherit;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__title {
+          padding: 0;
+          font-size: var(--docsera-document-body-font-size);
+          font-weight: 700;
+          line-height: var(--docsera-document-body-line-height);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__type {
+          padding: 0.08rem 1.35rem 0.08rem 0.35rem;
+          font-size: 14px;
+          font-weight: 500;
+          line-height: 1.3;
+          color: var(--docsera-text-muted);
+          cursor: pointer;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"] .docsera-editor-callout__controls {
+          position: absolute;
+          right: 18px;
+          margin-bottom: 0;
+          z-index: 1;
+          opacity: 0;
+          pointer-events: none;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"] .docsera-editor-callout__title {
+          width: 1px;
+          padding: 0;
+          opacity: 0;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"]:hover .docsera-editor-callout__controls,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"] .docsera-editor-callout__controls:focus-within {
+          position: static;
+          left: 0;
+          right: auto;
+          margin-bottom: 8px;
+          opacity: 1;
+          pointer-events: auto;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"]:hover .docsera-editor-callout__title,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"] .docsera-editor-callout__title:focus {
+          width: auto;
+          opacity: 1;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__title:hover,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__title:focus,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__type:hover,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__type:focus {
+          border-color: color-mix(in srgb, var(--docsera-callout-accent) 45%, var(--docsera-border));
+          background: color-mix(in srgb, var(--docsera-surface) 78%, white 22%);
+          outline: none;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__body > :first-child {
+          margin-top: 0;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__body > :last-child {
+          margin-bottom: 0;
+        }
+        html[data-docsera-theme="dark"] .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout {
+          background: color-mix(in srgb, var(--docsera-callout-accent) 12%, var(--docsera-surface) 88%);
+        }
+        html[data-docsera-theme="dark"] .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__icon {
+          color: var(--docsera-callout-accent);
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-columns {
           margin: 1rem 0;

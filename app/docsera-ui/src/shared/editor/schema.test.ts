@@ -857,7 +857,7 @@ describe("Docsera active accordion schema", () => {
       "bold italic strike code underline highlight textColor highlightColor superscript subscript"
     );
     expect(schema.nodes.accordionContent?.spec.content).toBe(
-      "((paragraph | heading | image | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock | table) | columns)+"
+      "((paragraph | heading | image | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock | table) | columns | callout)+"
     );
   });
 
@@ -1096,6 +1096,112 @@ describe("Docsera active accordion schema", () => {
 
     expect(validateDocseraStructuredDocument(document)).toEqual({ ok: true });
     expect(canonicalizeDocseraStructuredDocument(schema.nodeFromJSON(document).toJSON())).toEqual(document);
+  });
+
+  it("accepts canonical callouts in supported parent contexts and normalizes absent titles to null", () => {
+    const document = {
+      type: "doc",
+      content: [
+        {
+          type: "callout",
+          attrs: { type: "info", title: null },
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Info body" }] }]
+        },
+        {
+          type: "columns",
+          content: [
+            {
+              type: "column",
+              content: [
+                {
+                  type: "callout",
+                  attrs: { type: "warning", title: "Column warning" },
+                  content: [{ type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Nested heading" }] }]
+                }
+              ]
+            },
+            {
+              type: "column",
+              content: [{ type: "paragraph" }]
+            }
+          ]
+        },
+        {
+          type: "accordion",
+          attrs: { accordionId: "accordion-callout" },
+          content: [
+            {
+              type: "accordionItem",
+              attrs: { accordionItemId: "accordion-item-callout" },
+              content: [
+                { type: "accordionTitle", content: [{ type: "text", text: "Callout" }] },
+                {
+                  type: "accordionContent",
+                  content: [
+                    {
+                      type: "callout",
+                      attrs: { type: "success", title: "Accordion success" },
+                      content: [{ type: "blockquote", content: [{ type: "paragraph", content: [{ type: "text", text: "Quote" }] }] }]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    };
+
+    expect(validateDocseraStructuredDocument(document)).toEqual({ ok: true });
+    expect(canonicalizeDocseraStructuredDocument(document)).toEqual(document);
+  });
+
+  it("rejects malformed callout types, titles, descendants, and nesting", () => {
+    const validBody = [{ type: "paragraph", content: [{ type: "text", text: "Body" }] }];
+    for (const callout of [
+      { type: "callout", attrs: { type: "tip", title: null }, content: validBody },
+      { type: "callout", attrs: { type: "info", title: "Line\nbreak" }, content: validBody },
+      { type: "callout", attrs: { type: "info", title: null, icon: "info" }, content: validBody },
+      { type: "callout", attrs: { type: "info", title: null }, content: [] },
+      { type: "callout", attrs: { type: "info", title: null }, content: [{ type: "image", attrs: { mediaId: "workspace-media-001" } }] },
+      {
+        type: "callout",
+        attrs: { type: "info", title: null },
+        content: [{ type: "callout", attrs: { type: "warning", title: null }, content: validBody }]
+      },
+      {
+        type: "callout",
+        attrs: { type: "info", title: null },
+        content: [{ type: "columns", content: [{ type: "column", content: validBody }, { type: "column", content: validBody }] }]
+      },
+      {
+        type: "callout",
+        attrs: { type: "info", title: null },
+        content: [{ type: "table", content: [{ type: "tableRow", content: [{ type: "tableCell", attrs: { colspan: 1, rowspan: 1, colwidth: null }, content: validBody }] }] }]
+      }
+    ]) {
+      expect(validateDocseraStructuredDocument({ type: "doc", content: [callout] }).ok).toBe(false);
+    }
+  });
+
+  it("registers callout as a structural TipTap node only in supported containers", () => {
+    const schema = getDocseraEditorSchema();
+    const callout = schema.nodes.callout.create(
+      { type: "error", title: "Error title" },
+      schema.nodes.paragraph.create(null, schema.text("Error body"))
+    );
+    const paragraph = schema.nodes.paragraph.create();
+
+    expect(schema.nodes.callout?.spec.group).toBe("block");
+    expect(schema.nodes.callout?.spec.content).toBe(
+      "(paragraph | heading | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock)+"
+    );
+    expect(schema.nodes.doc.validContent(Fragment.from(callout))).toBe(true);
+    expect(schema.nodes.column.validContent(Fragment.from(callout))).toBe(true);
+    expect(schema.nodes.accordionContent.validContent(Fragment.from(callout))).toBe(true);
+    expect(schema.nodes.blockquote.validContent(Fragment.from(callout))).toBe(false);
+    expect(schema.nodes.listItem.validContent(Fragment.fromArray([paragraph, callout]))).toBe(false);
+    expect(schema.nodes.tableCell.validContent(Fragment.from(callout))).toBe(false);
   });
 });
 

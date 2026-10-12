@@ -77,6 +77,7 @@ const DOCSERA_DEFAULT_LINK_REL = "noopener noreferrer nofollow";
 const DOCSERA_ALLOWED_ORDERED_LIST_TYPES = new Set(["1", "a", "A", "i", "I"]);
 const DOCSERA_ALLOWED_HTML_TAGS = new Set(["u", "mark", "sup", "sub", "a", "span"]);
 const DOCSERA_ALLOWED_TABLE_CELL_ALIGNMENTS = new Set(["left", "center", "right"]);
+const DOCSERA_ALLOWED_CALLOUT_TYPES = new Set(["info", "warning", "success", "error"]);
 const DOCSERA_DIRECTIVE_NAMES = new Set([
   "docsera-empty-document",
   "docsera-empty-paragraph",
@@ -85,6 +86,7 @@ const DOCSERA_DIRECTIVE_NAMES = new Set([
   "docsera-ordered-list",
   "docsera-accordion",
   "docsera-accordion-item",
+  "docsera-callout",
   "docsera-columns",
   "docsera-column",
   "docsera-table",
@@ -776,6 +778,17 @@ function serializeBlockNode(node: unknown, orderedDepth = 0): string {
         items.join("\n\n")
       );
     }
+    case "callout": {
+      const attrs = isRecord(node.attrs) ? node.attrs : {};
+      const body = serializeBlockNodes(node.content as unknown[] | undefined, orderedDepth + 1).join("\n\n");
+      return createContainerDirective(
+        `docsera-callout${serializeDirectiveAttributes({
+          type: String(attrs.type ?? "info"),
+          title: attrs.title === null || attrs.title === undefined ? undefined : String(attrs.title)
+        })}`,
+        body
+      );
+    }
     case "columns": {
       const columns = (Array.isArray(node.content) ? node.content : []).map((column) =>
         createContainerDirective(
@@ -1143,6 +1156,32 @@ function parseDirectiveAttributes(
   }
 
   return attrs;
+}
+
+function parseCalloutDirectiveAttributes(
+  node: RecordValue
+): { type: string; title: string | null } | DocseraMarkdownConversionFailure {
+  const attrs = isRecord(node.attributes) ? (node.attributes as Record<string, string | null>) : {};
+  const keys = Object.keys(attrs).sort();
+  if (!keys.includes("type") || keys.some((key) => key !== "type" && key !== "title")) {
+    return createFailure("invalid-directive", "docsera-callout requires type and optional title attributes.");
+  }
+
+  const type = attrs.type;
+  if (typeof type !== "string" || !DOCSERA_ALLOWED_CALLOUT_TYPES.has(type)) {
+    return createFailure("invalid-directive", "docsera-callout type is unsupported.");
+  }
+
+  const title = Object.prototype.hasOwnProperty.call(attrs, "title") ? attrs.title : null;
+  if (title !== null && typeof title !== "string") {
+    return createFailure("invalid-directive", "docsera-callout title is invalid.");
+  }
+
+  if (typeof title === "string" && /[\r\n]/.test(title)) {
+    return createFailure("invalid-directive", "docsera-callout title must be single-line text.");
+  }
+
+  return { type, title };
 }
 
 function parseDirectiveLabel(node: RecordValue): CanonicalNode[] | DocseraMarkdownConversionFailure {
@@ -1609,6 +1648,23 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
           }
           result.push({
             type: "column",
+            content
+          });
+          break;
+        }
+
+        if (node.name === "docsera-callout") {
+          const attrs = parseCalloutDirectiveAttributes(node);
+          if (isFailure(attrs)) {
+            return attrs;
+          }
+          const content = parseDirectiveBody(node, false, sourceText);
+          if (isFailure(content)) {
+            return content;
+          }
+          result.push({
+            type: "callout",
+            attrs,
             content
           });
           break;

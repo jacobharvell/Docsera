@@ -15,6 +15,7 @@ import {
 } from "../../../server/pages/serverEditorDocument";
 import { isDocseraNonDefaultTextAlignment, isDocseraPaletteKey } from "../../../server/editor/colorContract";
 import type { WorkspaceMediaLoader } from "../../shared/types/docsera";
+import { DOCSERA_CALLOUT_ICON_NODES } from "../../../shared/editor/calloutIcons";
 
 type PublishedDocumentReaderProps = {
   envelope: DocseraDocumentEnvelope;
@@ -49,6 +50,34 @@ const SAFE_LINK_ATTRIBUTES = {
   rel: "noopener noreferrer nofollow",
   target: "_blank"
 } as const;
+const CALLOUT_PRESENTATION = {
+  info: { label: "Info", accent: "#3B82F6", lightIcon: "#2563EB" },
+  warning: { label: "Warning", accent: "#F59E0B", lightIcon: "#92400E" },
+  success: { label: "Success", accent: "#10B981", lightIcon: "#047857" },
+  error: { label: "Error", accent: "#EF4444", lightIcon: "#DC2626" }
+} as const;
+
+function renderCalloutIcon(type: keyof typeof CALLOUT_PRESENTATION) {
+  return (
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      height={20}
+      width={20}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {DOCSERA_CALLOUT_ICON_NODES[type].map(([Element, attributes]) => {
+        const { key, ...svgAttributes } = attributes;
+        return <Element key={key} {...svgAttributes} />;
+      })}
+    </svg>
+  );
+}
 
 function getPublishedDocumentReaderIdentityKey(envelope: PublishedDocumentReaderProps["envelope"], pageIdentity?: string): string {
   const pageIdentityKey = typeof pageIdentity === "string" ? pageIdentity.trim() : "";
@@ -784,6 +813,41 @@ function renderAccordion(node: Record<string, unknown>, path: string, context: R
   );
 }
 
+function renderCallout(node: Record<string, unknown>, path: string, context: ReaderContext): ReactNode {
+  const attrs = getNodeAttrs(node);
+  const type =
+    attrs.type === "info" || attrs.type === "warning" || attrs.type === "success" || attrs.type === "error"
+      ? attrs.type
+      : "info";
+  const title = attrs.title === null ? null : typeof attrs.title === "string" ? attrs.title : null;
+  const presentation = CALLOUT_PRESENTATION[type];
+  const accessibleName = title ? `${presentation.label} callout: ${title}` : `${presentation.label} callout`;
+
+  return (
+    <aside
+      key={path}
+      className={`docsera-main__callout docsera-main__callout--${type}`}
+      data-docsera-callout-type={type}
+      role="note"
+      aria-label={accessibleName}
+      style={
+        {
+          "--docsera-callout-accent": presentation.accent,
+          "--docsera-callout-icon-color": presentation.lightIcon
+        } as CSSProperties
+      }
+    >
+      <span className="docsera-main__callout-icon" aria-hidden="true">
+        {renderCalloutIcon(type)}
+      </span>
+      <div className="docsera-main__callout-content">
+        {title ? <p className="docsera-main__callout-title">{title}</p> : null}
+        {renderBlockChildren(getNodeContent(node), `${path}-child`, context)}
+      </div>
+    </aside>
+  );
+}
+
 function renderBlockNode(node: unknown, path: string, context: ReaderContext): ReactNode {
   if (!isRecord(node) || typeof node.type !== "string") {
     throw new Error("The published page content contains an unsupported block node: non-object.");
@@ -812,6 +876,8 @@ function renderBlockNode(node: unknown, path: string, context: ReaderContext): R
       return renderColumns(node, path, context);
     case "accordion":
       return renderAccordion(node, path, context);
+    case "callout":
+      return renderCallout(node, path, context);
     case "image":
       return renderImage(node, path, context);
     default:

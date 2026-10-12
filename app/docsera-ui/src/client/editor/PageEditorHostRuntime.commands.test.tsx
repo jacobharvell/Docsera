@@ -2816,6 +2816,7 @@ describe("PageEditorHostRuntime", () => {
       "Bulleted List",
       "Numbered List",
       "Accordion",
+      "Callout",
       "2 columns",
       "3 columns",
       "4 columns",

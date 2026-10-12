@@ -27,6 +27,7 @@ import {
   isDocseraAllowedLinkHref,
   validateDocseraStructuredDocument
 } from "../../server/pages/serverEditorDocument";
+import { DOCSERA_CALLOUT_ICON_NODES } from "./calloutIcons";
 
 export {
   DOCSERA_BODY_HEADING_LEVELS,
@@ -45,6 +46,15 @@ export const DOCSERA_EMPTY_HEADING_PLACEHOLDERS: Record<number, string> = {
 };
 export const DOCSERA_EMPTY_BLOCKQUOTE_PLACEHOLDER = "Enter a quote";
 export const DOCSERA_EMPTY_ACCORDION_TITLE_PLACEHOLDER = "New accordion";
+export const DOCSERA_EMPTY_CALLOUT_TITLE_PLACEHOLDER = "Optional title";
+export const DOCSERA_CALLOUT_TYPES = ["info", "warning", "success", "error"] as const;
+export type DocseraCalloutType = (typeof DOCSERA_CALLOUT_TYPES)[number];
+export const DOCSERA_CALLOUT_PRESENTATION: Record<DocseraCalloutType, { accent: string; label: string; lightIcon: string }> = {
+  info: { label: "Info", accent: "#3B82F6", lightIcon: "#2563EB" },
+  warning: { label: "Warning", accent: "#F59E0B", lightIcon: "#92400E" },
+  success: { label: "Success", accent: "#10B981", lightIcon: "#047857" },
+  error: { label: "Error", accent: "#EF4444", lightIcon: "#DC2626" }
+};
 export type AccordionSelectionContext = {
   accordionId: string;
   itemId: string;
@@ -60,9 +70,11 @@ export const DOCSERA_ACCORDION_DISCLOSURE_PLUGIN_KEY = new PluginKey<AccordionDi
 export const DOCSERA_ACCORDION_DISCLOSURE_DECORATION_PLUGIN_KEY = new PluginKey("docseraAccordionDisclosureDecoration");
 const DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT =
   "(paragraph | heading | image | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock | table)";
-const DOCSERA_ACCORDION_BODY_NESTED_BLOCK_CONTENT = `${DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT} | columns`;
+const DOCSERA_ACCORDION_BODY_NESTED_BLOCK_CONTENT = `${DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT} | columns | callout`;
 const DOCSERA_COLUMN_NESTED_BLOCK_CONTENT =
-  "(paragraph | heading | image | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock | table | accordion)";
+  "(paragraph | heading | image | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock | table | accordion | callout)";
+const DOCSERA_CALLOUT_BODY_CONTENT =
+  "(paragraph | heading | bulletList | orderedList | taskList | blockquote | horizontalRule | codeBlock)";
 const DOCSERA_ACCORDION_ITEM_LAST_ATTR = "data-docsera-accordion-item-last";
 const DOCSERA_ACCORDION_ITEM_MENU_OPEN_ATTR = "data-docsera-accordion-item-menu-open";
 const DOCSERA_ACCORDION_CHEVRON_ICON_SIZE = 18;
@@ -1516,6 +1528,196 @@ function createDocseraColumnsExtensions() {
   ];
 }
 
+function createDocseraCalloutExtension() {
+  function isCalloutType(value: unknown): value is DocseraCalloutType {
+    return typeof value === "string" && (DOCSERA_CALLOUT_TYPES as readonly string[]).includes(value);
+  }
+
+  function updateCalloutAttrs(view: Editor["view"], getPos: (() => number | undefined) | boolean, attrs: Record<string, unknown>) {
+    if (typeof getPos !== "function") {
+      return;
+    }
+
+    const pos = getPos();
+    if (typeof pos !== "number") {
+      return;
+    }
+
+    const currentNode = view.state.doc.nodeAt(pos);
+    if (!currentNode || currentNode.type.name !== "callout") {
+      return;
+    }
+
+    view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { ...currentNode.attrs, ...attrs }));
+  }
+
+  function renderCalloutIcon(ownerDocument: globalThis.Document, icon: HTMLElement, type: DocseraCalloutType) {
+    icon.replaceChildren();
+    const svg = ownerDocument.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    svg.setAttribute("height", "20");
+    svg.setAttribute("width", "20");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2.2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+
+    for (const [elementName, attributes] of DOCSERA_CALLOUT_ICON_NODES[type]) {
+      const element = ownerDocument.createElementNS("http://www.w3.org/2000/svg", elementName);
+      for (const [name, value] of Object.entries(attributes)) {
+        if (name !== "key") {
+          element.setAttribute(name, value);
+        }
+      }
+      svg.append(element);
+    }
+
+    icon.append(svg);
+  }
+
+  return Node.create({
+    name: "callout",
+    group: "block",
+    content: `${DOCSERA_CALLOUT_BODY_CONTENT}+`,
+    defining: true,
+    isolating: true,
+    addAttributes() {
+      return {
+        type: {
+          default: "info",
+          parseHTML: (element) => {
+            const type = element.getAttribute("data-docsera-callout-type");
+            return type === "info" || type === "warning" || type === "success" || type === "error" ? type : "info";
+          },
+          renderHTML: (attributes) =>
+            typeof attributes.type === "string" ? { "data-docsera-callout-type": attributes.type } : {}
+        },
+        title: {
+          default: null,
+          parseHTML: (element) => {
+            const title = element.getAttribute("data-docsera-callout-title");
+            return typeof title === "string" ? title : null;
+          },
+          renderHTML: (attributes) =>
+            typeof attributes.title === "string" ? { "data-docsera-callout-title": attributes.title } : {}
+        }
+      };
+    },
+    parseHTML() {
+      return [{ tag: "aside[data-docsera-callout='true']", priority: 1000 }];
+    },
+    addNodeView() {
+      return ({ editor, getPos, node }) => {
+        const ownerDocument = document;
+        const root = ownerDocument.createElement("aside");
+        const icon = ownerDocument.createElement("span");
+        const content = ownerDocument.createElement("div");
+        const controls = ownerDocument.createElement("div");
+        const titleInput = ownerDocument.createElement("input");
+        const select = ownerDocument.createElement("select");
+        const body = ownerDocument.createElement("div");
+
+        root.className = "docsera-editor-callout";
+        root.setAttribute("data-docsera-callout", "true");
+        root.setAttribute("role", "note");
+        icon.className = "docsera-editor-callout__icon";
+        icon.setAttribute("aria-hidden", "true");
+        content.className = "docsera-editor-callout__content";
+        controls.className = "docsera-editor-callout__controls";
+        titleInput.className = "docsera-editor-callout__title";
+        titleInput.type = "text";
+        titleInput.placeholder = DOCSERA_EMPTY_CALLOUT_TITLE_PLACEHOLDER;
+        titleInput.setAttribute("aria-label", "Callout title");
+        titleInput.setAttribute("data-docsera-callout-title-input", "true");
+        select.className = "docsera-editor-callout__type";
+        select.setAttribute("aria-label", "Callout type");
+        select.setAttribute("data-docsera-callout-type-selector", "true");
+        body.className = "docsera-editor-callout__body";
+        body.setAttribute("data-docsera-callout-body", "true");
+
+        for (const type of DOCSERA_CALLOUT_TYPES) {
+          const option = ownerDocument.createElement("option");
+          option.value = type;
+          option.textContent = DOCSERA_CALLOUT_PRESENTATION[type].label;
+          select.append(option);
+        }
+
+        controls.append(titleInput, select);
+        content.append(controls, body);
+        root.append(icon, content);
+
+        const sync = (nextNode: PMNode) => {
+          const type = isCalloutType(nextNode.attrs.type) ? nextNode.attrs.type : "info";
+          const title = typeof nextNode.attrs.title === "string" ? nextNode.attrs.title : "";
+          const presentation = DOCSERA_CALLOUT_PRESENTATION[type];
+          root.setAttribute("data-docsera-callout-type", type);
+          root.setAttribute("data-docsera-callout-has-title", title ? "true" : "false");
+          root.setAttribute("aria-label", title ? `${presentation.label} callout: ${title}` : `${presentation.label} callout`);
+          root.style.setProperty("--docsera-callout-accent", presentation.accent);
+          root.style.setProperty("--docsera-callout-icon-color", presentation.lightIcon);
+          renderCalloutIcon(ownerDocument, icon, type);
+          if (titleInput.value !== title) {
+            titleInput.value = title;
+          }
+          if (select.value !== type) {
+            select.value = type;
+          }
+        };
+
+        titleInput.addEventListener("keydown", (event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            editor.view.focus();
+          }
+        });
+        titleInput.addEventListener("input", () => {
+          const title = titleInput.value.replace(/[\r\n]+/g, " ");
+          updateCalloutAttrs(editor.view, getPos, { title: title.length ? title : null });
+        });
+        select.addEventListener("mousedown", (event) => {
+          event.stopPropagation();
+        });
+        select.addEventListener("change", () => {
+          updateCalloutAttrs(editor.view, getPos, { type: isCalloutType(select.value) ? select.value : "info" });
+        });
+
+        sync(node);
+
+        return {
+          dom: root,
+          contentDOM: body,
+          update(nextNode) {
+            if (nextNode.type.name !== "callout") {
+              return false;
+            }
+            sync(nextNode);
+            return true;
+          },
+          stopEvent(event) {
+            return event.target === titleInput || event.target === select;
+          },
+          ignoreMutation(mutation) {
+            return mutation.target === titleInput || mutation.target === select || mutation.target === icon;
+          }
+        };
+      };
+    },
+    renderHTML({ HTMLAttributes }) {
+      return [
+        "aside",
+        mergeAttributes(HTMLAttributes, {
+          class: "docsera-editor-callout",
+          "data-docsera-callout": "true"
+        }),
+        0
+      ];
+    }
+  });
+}
+
 type CellOutlineEdges = {
   bottom: boolean;
   left: boolean;
@@ -1699,6 +1901,7 @@ export function createDocseraEditorExtensionsWithOptions(options: CreateDocseraE
     createDocseraImageExtension(loadMedia),
     ...createDocseraAccordionExtensions(),
     ...createDocseraColumnsExtensions(),
+    createDocseraCalloutExtension(),
     TaskList.configure({}),
     Table.configure({
       resizable: false,

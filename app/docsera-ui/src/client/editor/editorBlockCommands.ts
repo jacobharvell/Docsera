@@ -6,6 +6,7 @@ export type EditorBlockCommandId =
   | "heading2"
   | "heading3"
   | "blockquote"
+  | "callout"
   | "bulletedList"
   | "numberedList"
   | "accordion"
@@ -21,6 +22,7 @@ export type EditorBlockCommandContext = {
   insertionContainerType: string;
   isInsideAccordion: boolean;
   isInsideAccordionContent: boolean;
+  isInsideCallout: boolean;
   isInsideColumn: boolean;
   isInsideTableCellOrHeader: boolean;
   isTopLevelBlock: boolean;
@@ -69,6 +71,21 @@ function createBlockquoteNode(): JSONContent {
     type: "blockquote",
     content: [createParagraphNode()]
   };
+}
+
+function createCalloutNode(): JSONContent {
+  return {
+    type: "callout",
+    attrs: {
+      type: "info",
+      title: null
+    },
+    content: [createParagraphNode()]
+  };
+}
+
+function createCalloutQuickAddContent(): JSONContent[] {
+  return [createCalloutNode()];
 }
 
 function createListNode(type: "bulletList" | "orderedList"): JSONContent {
@@ -284,6 +301,26 @@ export const EDITOR_BLOCK_COMMANDS: EditorBlockCommand[] = [
   },
   {
     category: "Basic Blocks",
+    id: "callout",
+    label: "Callout",
+    description: "Highlight a note, warning, success, or error",
+    keywords: ["callout", "note", "info", "warning", "success", "error", "admonition"],
+    isAvailable: (context) =>
+      !context.isInsideTableCellOrHeader &&
+      !context.isInsideCallout &&
+      (context.isTopLevelBlock || context.insertionContainerType === "column" || context.insertionContainerType === "accordionContent"),
+    createQuickAddContent: createCalloutQuickAddContent,
+    quickAdd: {
+      content: [],
+      selectionOffset: 2
+    },
+    slashSelectionOffset: 2,
+    run: (editor) => {
+      editor.chain().focus(undefined, { scrollIntoView: false }).insertContent(createCalloutQuickAddContent()).run();
+    }
+  },
+  {
+    category: "Basic Blocks",
     id: "columns2",
     label: "2 columns",
     description: "Insert a two-column layout",
@@ -402,12 +439,34 @@ export const EDITOR_BLOCK_COMMANDS: EditorBlockCommand[] = [
   }
 ];
 
+function isEditorBlockCommandAvailable(command: EditorBlockCommand, context: EditorBlockCommandContext): boolean {
+  if (!(command.isAvailable?.(context) ?? true)) {
+    return false;
+  }
+
+  if (
+    context.isInsideCallout &&
+    (command.id === "image" ||
+      command.id === "table" ||
+      command.id === "accordion" ||
+      command.id === "callout" ||
+      command.id === "columns2" ||
+      command.id === "columns3" ||
+      command.id === "columns4")
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 export function getEditorBlockCommandMatches(
   query: string,
   context: EditorBlockCommandContext = {
     insertionContainerType: "doc",
     isInsideAccordion: false,
     isInsideAccordionContent: false,
+    isInsideCallout: false,
     isInsideColumn: false,
     isInsideTableCellOrHeader: false,
     isTopLevelBlock: true
@@ -415,11 +474,11 @@ export function getEditorBlockCommandMatches(
 ): EditorBlockCommand[] {
   const normalizedQuery = query.trim().toLowerCase();
   if (!normalizedQuery) {
-    return EDITOR_BLOCK_COMMANDS.filter((command) => command.isAvailable?.(context) ?? true);
+    return EDITOR_BLOCK_COMMANDS.filter((command) => isEditorBlockCommandAvailable(command, context));
   }
 
   return EDITOR_BLOCK_COMMANDS.filter((command) => {
-    if (!(command.isAvailable?.(context) ?? true)) {
+    if (!isEditorBlockCommandAvailable(command, context)) {
       return false;
     }
 
@@ -434,6 +493,7 @@ export function getGroupedEditorBlockCommandMatches(
     insertionContainerType: "doc",
     isInsideAccordion: false,
     isInsideAccordionContent: false,
+    isInsideCallout: false,
     isInsideColumn: false,
     isInsideTableCellOrHeader: false,
     isTopLevelBlock: true

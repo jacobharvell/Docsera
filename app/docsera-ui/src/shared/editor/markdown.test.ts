@@ -519,6 +519,41 @@ function createNullLanguageCodeBlockEnvelope() {
   };
 }
 
+function createCalloutEnvelope(type: "info" | "warning" | "success" | "error", title: string | null) {
+  return {
+    schemaVersion: 1 as const,
+    document: {
+      type: "doc" as const,
+      content: [
+        {
+          type: "callout" as const,
+          attrs: { type, title },
+          content: [
+            {
+              type: "paragraph" as const,
+              content: [{ type: "text" as const, text: `${type} body` }]
+            },
+            {
+              type: "bulletList" as const,
+              content: [
+                {
+                  type: "listItem" as const,
+                  content: [{ type: "paragraph" as const, content: [{ type: "text" as const, text: "Nested item" }] }]
+                }
+              ]
+            },
+            {
+              type: "codeBlock" as const,
+              attrs: { language: "ts" },
+              content: [{ type: "text" as const, text: "const safe = true;" }]
+            }
+          ]
+        }
+      ]
+    }
+  };
+}
+
 function createEscapedAccordionIdsEnvelope() {
   return {
     schemaVersion: 1 as const,
@@ -759,6 +794,10 @@ describe("Docsera Markdown conversion contract", () => {
     createOrderedListTypeOneEnvelope(),
     createOrdinaryGfmTableEnvelope(),
     createNullLanguageCodeBlockEnvelope(),
+    createCalloutEnvelope("info", null),
+    createCalloutEnvelope("warning", "Watch this"),
+    createCalloutEnvelope("success", "Done"),
+    createCalloutEnvelope("error", "Broken"),
     createEscapedAccordionIdsEnvelope(),
     createEscapingHeavyLinkEnvelope(),
     createBoldUnderlineEnvelope(),
@@ -1260,5 +1299,39 @@ describe("Docsera Markdown conversion contract", () => {
       ok: false,
       reason: "invalid-canonical-document"
     });
+  });
+
+  it("serializes callouts with required type and optional title attributes", () => {
+    const withoutTitle = serializeDocseraMarkdownDocument(title, createCalloutEnvelope("info", null));
+    const withTitle = serializeDocseraMarkdownDocument(title, createCalloutEnvelope("warning", "Watch this"));
+
+    expect(withoutTitle.ok).toBe(true);
+    expect(withTitle.ok).toBe(true);
+    if (!withoutTitle.ok || !withTitle.ok) {
+      return;
+    }
+
+    expect(withoutTitle.markdown).toContain(':::docsera-callout{type="info"}');
+    expect(withoutTitle.markdown).not.toContain("title=");
+    expect(withTitle.markdown).toContain(':::docsera-callout{type="warning" title="Watch this"}');
+    expect(parseDocseraMarkdownDocument(withoutTitle.markdown)).toEqual({
+      ok: true,
+      title,
+      markdown: withoutTitle.markdown,
+      envelope: withoutTitle.envelope
+    });
+  });
+
+  it("rejects malformed callout directives and disallowed nested structures", () => {
+    for (const body of [
+      ":::docsera-callout{type=\"tip\"}\nNope\n:::\n",
+      ":::docsera-callout{type=\"info\" extra=\"1\"}\nNope\n:::\n",
+      ":::docsera-callout\nNope\n:::\n",
+      ":::docsera-callout{type=\"info\"}\n::docsera-image{media-id=\"workspace-media-001\" alt=\"\" caption=\"\" frame=true align=\"center\" width-pct=100}\n:::\n",
+      ":::docsera-callout{type=\"info\"}\n::::docsera-callout{type=\"warning\"}\nNested\n::::\n:::\n",
+      ":::docsera-callout{type=\"info\"}\n::::docsera-columns\n:::::docsera-column\nLeft\n:::::\n:::::docsera-column\nRight\n:::::\n::::\n:::\n"
+    ]) {
+      expect(parseDocseraMarkdownDocument(createMarkdownDocumentSource("Bad callout", body)).ok).toBe(false);
+    }
   });
 });

@@ -34,7 +34,8 @@ const DOCSERA_BLOCK_NODE_TYPES = new Set([
   "accordion",
   "accordionItem",
   "accordionTitle",
-  "accordionContent"
+  "accordionContent",
+  "callout"
 ]);
 const DOCSERA_INLINE_NODE_TYPES = new Set(["text", "hardBreak"]);
 const DOCSERA_TITLE_INLINE_NODE_TYPES = new Set(["text"]);
@@ -50,7 +51,19 @@ const DOCSERA_DOC_CHILD_TYPES = new Set([
   "codeBlock",
   "table",
   "accordion",
-  "columns"
+  "columns",
+  "callout"
+]);
+const DOCSERA_CALLOUT_TYPES = ["info", "warning", "success", "error"] as const;
+const DOCSERA_CALLOUT_CHILD_TYPES = new Set([
+  "paragraph",
+  "heading",
+  "bulletList",
+  "orderedList",
+  "taskList",
+  "blockquote",
+  "horizontalRule",
+  "codeBlock"
 ]);
 const DOCSERA_NESTED_BLOCK_CHILD_TYPES = new Set([
   "paragraph",
@@ -64,12 +77,13 @@ const DOCSERA_NESTED_BLOCK_CHILD_TYPES = new Set([
   "codeBlock",
   "table"
 ]);
-const DOCSERA_ACCORDION_BODY_CHILD_TYPES = new Set([...DOCSERA_NESTED_BLOCK_CHILD_TYPES, "columns"]);
-const DOCSERA_COLUMN_CHILD_TYPES = new Set([...DOCSERA_NESTED_BLOCK_CHILD_TYPES, "accordion"]);
+const DOCSERA_ACCORDION_BODY_CHILD_TYPES = new Set([...DOCSERA_NESTED_BLOCK_CHILD_TYPES, "columns", "callout"]);
+const DOCSERA_COLUMN_CHILD_TYPES = new Set([...DOCSERA_NESTED_BLOCK_CHILD_TYPES, "accordion", "callout"]);
 const DOCSERA_TABLE_CELL_TYPES = new Set(["tableCell", "tableHeader"]);
 const DOCSERA_TABLE_CELL_ALIGNMENTS = new Set(["left", "center", "right"]);
 const DOCSERA_ACCORDION_ATTRS = ["accordionId"] as const;
 const DOCSERA_ACCORDION_ITEM_ATTRS = ["accordionItemId"] as const;
+const DOCSERA_CALLOUT_ATTRS = ["type", "title"] as const;
 
 type AccordionValidationContext = {
   accordionIds: Set<string>;
@@ -178,6 +192,14 @@ function isNullableString(value: unknown): value is string | null {
 
 function isDocseraTableCellAlignment(value: unknown): value is "left" | "center" | "right" {
   return typeof value === "string" && DOCSERA_TABLE_CELL_ALIGNMENTS.has(value);
+}
+
+function isDocseraCalloutType(value: unknown): value is (typeof DOCSERA_CALLOUT_TYPES)[number] {
+  return typeof value === "string" && (DOCSERA_CALLOUT_TYPES as readonly string[]).includes(value);
+}
+
+function isValidCalloutTitle(value: unknown): value is string | null {
+  return value === null || (typeof value === "string" && !/[\r\n]/.test(value));
 }
 
 function validateTextAlignAttrs(attrs: Record<string, unknown>, allowedKeys: readonly string[]): boolean {
@@ -344,7 +366,7 @@ function validateNodeAttrs(
       return createValidationFailure();
     }
 
-    if (type === "image" || type === "accordion" || type === "accordionItem") {
+    if (type === "image" || type === "accordion" || type === "accordionItem" || type === "callout") {
       return createValidationFailure();
     }
 
@@ -399,6 +421,12 @@ function validateNodeAttrs(
       context.accordionItemIds.add(accordionItemId);
       return { ok: true };
     }
+    case "callout":
+      return hasOnlyAllowedKeys(attrs, DOCSERA_CALLOUT_ATTRS) &&
+        isDocseraCalloutType(attrs.type) &&
+        isValidCalloutTitle(attrs.title)
+        ? { ok: true }
+        : createValidationFailure();
     case "tableCell":
     case "tableHeader": {
       if (!hasOnlyAllowedKeys(attrs, ["colspan", "rowspan", "colwidth", "align"])) {
@@ -475,7 +503,8 @@ function validateChildNodes(
   context: AccordionValidationContext,
   inAccordionTitle = false,
   hasColumnAncestor = false,
-  hasAccordionAncestor = false
+  hasAccordionAncestor = false,
+  hasCalloutAncestor = false
 ): DocseraStructuredDocumentValidationResult {
   if (!allowEmpty && content.length === 0) {
     return createValidationFailure();
@@ -491,7 +520,7 @@ function validateChildNodes(
       return createValidationFailure();
     }
 
-    const childValidation = validateStructuredNode(child, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor);
+    const childValidation = validateStructuredNode(child, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor, hasCalloutAncestor);
     if (!childValidation.ok) {
       return childValidation;
     }
@@ -505,7 +534,8 @@ function validateStructuredNode(
   context: AccordionValidationContext,
   inAccordionTitle = false,
   hasColumnAncestor = false,
-  hasAccordionAncestor = false
+  hasAccordionAncestor = false,
+  hasCalloutAncestor = false
 ): DocseraStructuredDocumentValidationResult {
   if (!isRecord(node) || typeof node.type !== "string" || !isAllowedDocumentNodeType(node.type)) {
     return createValidationFailure();
@@ -516,6 +546,10 @@ function validateStructuredNode(
   }
 
   if (node.type === "accordion" && hasAccordionAncestor) {
+    return createValidationFailure();
+  }
+
+  if (node.type === "callout" && hasCalloutAncestor) {
     return createValidationFailure();
   }
 
@@ -576,59 +610,59 @@ function validateStructuredNode(
       return validateChildNodes(content ?? [], {
         allowEmpty: true,
         allowedChildTypes: DOCSERA_DOC_CHILD_TYPES
-      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor);
+      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor, hasCalloutAncestor);
     case "paragraph":
     case "heading":
       return validateChildNodes(content ?? [], {
         allowEmpty: true,
         allowedChildTypes: DOCSERA_INLINE_NODE_TYPES
-      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor);
+      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor, hasCalloutAncestor);
     case "image":
       return content === undefined ? { ok: true } : createValidationFailure();
     case "blockquote":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
-        allowedChildTypes: DOCSERA_NESTED_BLOCK_CHILD_TYPES
-      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor);
+        allowedChildTypes: hasCalloutAncestor ? DOCSERA_CALLOUT_CHILD_TYPES : DOCSERA_NESTED_BLOCK_CHILD_TYPES
+      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor, hasCalloutAncestor);
     case "bulletList":
     case "orderedList":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
         allowedChildTypes: new Set(["listItem"])
-      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor);
+      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor, hasCalloutAncestor);
     case "taskList":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
         allowedChildTypes: new Set(["taskItem"])
-      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor);
+      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor, hasCalloutAncestor);
     case "listItem":
     case "taskItem":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
-        allowedChildTypes: DOCSERA_NESTED_BLOCK_CHILD_TYPES,
+        allowedChildTypes: hasCalloutAncestor ? DOCSERA_CALLOUT_CHILD_TYPES : DOCSERA_NESTED_BLOCK_CHILD_TYPES,
         requireLeadingParagraph: true
-      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor);
+      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor, hasCalloutAncestor);
     case "table":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
         allowedChildTypes: new Set(["tableRow"])
-      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor);
+      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor, hasCalloutAncestor);
     case "tableRow":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
         allowedChildTypes: DOCSERA_TABLE_CELL_TYPES
-      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor);
+      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor, hasCalloutAncestor);
     case "tableCell":
     case "tableHeader":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
         allowedChildTypes: DOCSERA_NESTED_BLOCK_CHILD_TYPES
-      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor);
+      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor, hasCalloutAncestor);
     case "accordion":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
         allowedChildTypes: new Set(["accordionItem"])
-      }, context, inAccordionTitle, hasColumnAncestor, true);
+      }, context, inAccordionTitle, hasColumnAncestor, true, hasCalloutAncestor);
     case "columns":
       if (content === undefined || content.length < 2 || content.length > 4) {
         return createValidationFailure();
@@ -637,22 +671,22 @@ function validateStructuredNode(
       return validateChildNodes(content, {
         allowEmpty: false,
         allowedChildTypes: new Set(["column"])
-      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor);
+      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor, hasCalloutAncestor);
     case "column":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
         allowedChildTypes: DOCSERA_COLUMN_CHILD_TYPES
-      }, context, inAccordionTitle, true, hasAccordionAncestor);
+      }, context, inAccordionTitle, true, hasAccordionAncestor, hasCalloutAncestor);
     case "accordionTitle":
       return validateChildNodes(content ?? [], {
         allowEmpty: true,
         allowedChildTypes: DOCSERA_TITLE_INLINE_NODE_TYPES
-      }, context, true, hasColumnAncestor, hasAccordionAncestor);
+      }, context, true, hasColumnAncestor, hasAccordionAncestor, hasCalloutAncestor);
     case "accordionContent":
       return validateChildNodes(content ?? [], {
         allowEmpty: false,
         allowedChildTypes: DOCSERA_ACCORDION_BODY_CHILD_TYPES
-      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor);
+      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor, hasCalloutAncestor);
     case "accordionItem": {
       if (content === undefined || content.length !== 2) {
         return createValidationFailure();
@@ -667,18 +701,23 @@ function validateStructuredNode(
         return createValidationFailure();
       }
 
-      const titleValidation = validateStructuredNode(titleNode, context, true, hasColumnAncestor, hasAccordionAncestor);
+      const titleValidation = validateStructuredNode(titleNode, context, true, hasColumnAncestor, hasAccordionAncestor, hasCalloutAncestor);
       if (!titleValidation.ok) {
         return titleValidation;
       }
 
-      return validateStructuredNode(bodyNode, context, false, hasColumnAncestor, hasAccordionAncestor);
+      return validateStructuredNode(bodyNode, context, false, hasColumnAncestor, hasAccordionAncestor, hasCalloutAncestor);
     }
+    case "callout":
+      return validateChildNodes(content ?? [], {
+        allowEmpty: false,
+        allowedChildTypes: DOCSERA_CALLOUT_CHILD_TYPES
+      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor, true);
     case "codeBlock":
       return validateChildNodes(content ?? [], {
         allowEmpty: true,
         allowedChildTypes: new Set(["text"])
-      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor);
+      }, context, inAccordionTitle, hasColumnAncestor, hasAccordionAncestor, hasCalloutAncestor);
     case "horizontalRule":
     case "hardBreak":
       return content === undefined || content.length === 0 ? { ok: true } : createValidationFailure();
@@ -741,6 +780,12 @@ function canonicalizeNode(node: Record<string, unknown>): Record<string, unknown
     };
   } else if (node.type === "columns" || node.type === "column") {
     // Canonical Columns nodes are structural only.
+  } else if (node.type === "callout") {
+    const attrs = isRecord(node.attrs) ? node.attrs : {};
+    canonicalNode.attrs = {
+      type: attrs.type,
+      title: attrs.title ?? null
+    };
   } else if (node.type === "paragraph") {
     const attrs = isRecord(node.attrs) ? node.attrs : {};
     if (isDocseraNonDefaultTextAlignment(attrs.textAlign)) {
@@ -948,6 +993,7 @@ export function extractPlainTextFromServerDocument(value: unknown): string {
       case "accordion":
       case "accordionItem":
       case "accordionContent":
+      case "callout":
       case "doc":
         if (Array.isArray(node.content)) {
           node.content.forEach(visitNode);
