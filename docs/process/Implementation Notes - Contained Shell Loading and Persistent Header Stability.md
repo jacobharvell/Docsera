@@ -53,6 +53,17 @@ It documents verified repository behavior only. Accepted product requirements re
 - Live mode still uses the published projection path and keeps the editor host lazy.
 - The shell does not rely on route-dependent keys to remount the header or workspace frame.
 
+## Content Reveal Transitions
+
+- Successful Live/Edit, Visual/Markdown, workspace-entry, and launcher-entry destination changes use a shared 400 ms fade-up reveal state.
+- Workspace entry reveals coordinate main content, navigation rows, and ToC links from 16 px below their final position with the same timing and easing. Breadcrumbs and the persistent application header do not animate.
+- My Workspaces entry reveals apply to the loaded launcher content region as one unit, including the intro, toolbar, list states, and pagination. Delayed launcher loading feedback remains visible while the loaded content waits for its reveal.
+- Empty workspaces count as ready workspace-entry destinations once their page list has successfully resolved. The empty-state surface consumes the entry intent so creating the first page later does not replay the prior workspace-entry animation.
+- The reveal state is driven by explicit destination-aware intents for committed mode/surface changes, workspace navigation entry, launcher navigation entry, and initial route load. Workspace entry intents survive asynchronous workspace/page loading and Edit/editor readiness, and are consumed only by the intended destination surface, including empty workspace surfaces.
+- Ordinary page navigation within one workspace, launcher search/pagination/background refreshes, blocked transitions, failed/rejected/canceled/superseded transitions, and lease/readiness progression without a user or initial-load reveal intent remain animation-free.
+- Pending destination reveals keep the destination surface visually concealed while workspace records, page records, the editor, or a Markdown source session initialize. Markdown source errors and recovery states still report ready immediately so they are presented without delayed hiding.
+- Reduced-motion preferences suppress the reveal animations while preserving the same mounted shell and editor-session behavior.
+
 ## Reduced Motion
 
 - Existing reduced-motion handling still disables non-essential transition and loading animations where those styles are present.

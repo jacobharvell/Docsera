@@ -540,6 +540,182 @@ describe("App workspace shell integration", () => {
     expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
   });
 
+  it("animates direct refresh into Edit once after the lease and editor become ready", async () => {
+    editorHostMockState.readyDelayMs = 25;
+    const lease = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["acquireWorkspaceEditLease"]>>>>();
+    const acquireWorkspaceEditLease = vi.fn(() => lease.promise);
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease });
+
+    expect(await screen.findByRole("button", { name: "Workspace switcher: Product Docs" })).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
+    expect(document.querySelector("[data-docsera-content-reveal-state='pending']")).toBeNull();
+
+    await act(async () => {
+      lease.resolve({
+        changeSetId: "change-set-001",
+        changeSetRevision: 9,
+        heartbeatIntervalMs: 60_000,
+        leaseToken: "workspace-lease-token",
+        staleAfterMs: 300_000,
+        state: "held"
+      });
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeInTheDocument());
+    await waitFor(() => expect(document.querySelector(".docsera-main__editor-host")).not.toHaveAttribute("hidden"));
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "enter");
+    expect(document.querySelectorAll("[data-docsera-content-reveal-state='enter']")).toHaveLength(1);
+  });
+
+  it("preserves a Live to Edit reveal intent until delayed lease acquisition, draft loading, and editor readiness complete", async () => {
+    editorHostMockState.readyDelayMs = 75;
+    const lease = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["acquireWorkspaceEditLease"]>>>>();
+    const editPages = createDeferred<PageListResult>();
+    const acquireWorkspaceEditLease = vi.fn(() => lease.promise);
+    const resumeWorkspaceEditLease = vi.fn(
+      () => lease.promise as ReturnType<NonNullable<ServiceNowClient["resumeWorkspaceEditLease"]>>
+    );
+    const listPages = vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }) => {
+      if (mode === "edit") {
+        return editPages.promise;
+      }
+
+      return createPageListResult("live", workspaceSlug, [createPageRecord()]);
+    });
+
+    renderApp("/?workspace=product-docs&page=overview", { acquireWorkspaceEditLease, listPages, resumeWorkspaceEditLease });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitFor(
+      () => expect(document.querySelector("[data-docsera-content-reveal='live']")).toHaveAttribute("data-docsera-content-reveal-state", "idle"),
+      { timeout: 1000 }
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    await waitFor(() => expect(acquireWorkspaceEditLease.mock.calls.length + resumeWorkspaceEditLease.mock.calls.length).toBe(1));
+    expect(document.querySelector("[data-docsera-content-reveal='live']")).toHaveAttribute("data-docsera-content-reveal-state", "idle");
+    expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
+    expect(document.querySelector("[data-docsera-content-reveal-state='pending']")).toBeNull();
+
+    await act(async () => {
+      lease.resolve({
+        changeSetId: "change-set-001",
+        changeSetRevision: 9,
+        heartbeatIntervalMs: 60_000,
+        leaseToken: "workspace-lease-token",
+        staleAfterMs: 300_000,
+        state: "held"
+      });
+    });
+
+    await waitFor(() => expect(listPages).toHaveBeenCalledWith({ mode: "edit", workspaceSlug: "product-docs" }));
+    expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
+    expect(document.querySelector(".docsera-sidebar__tree")).toHaveAttribute("data-docsera-chrome-reveal-state", "pending");
+
+    await act(async () => {
+      editPages.resolve(createPageListResult("edit", "product-docs", [createPageRecord()]));
+    });
+
+    await waitFor(() => expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeInTheDocument());
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "pending");
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-pending", "true");
+    expect(document.querySelector(".docsera-sidebar__tree")).toHaveAttribute("data-docsera-chrome-reveal-state", "pending");
+    expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
+
+    await waitFor(() =>
+      expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "enter")
+    );
+    expect(document.querySelector(".docsera-sidebar__tree")).toHaveAttribute("data-docsera-chrome-reveal-state", "enter");
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).not.toHaveAttribute("data-docsera-content-reveal-pending");
+    expect(document.querySelectorAll("[data-docsera-content-reveal-state='enter']")).toHaveLength(1);
+
+    await waitFor(
+      () => {
+        expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "idle");
+        expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
+      },
+      { timeout: 1000 }
+    );
+  }, 10_000);
+
+  it("does not reactivate a completed Live to Edit reveal during later delayed Edit page navigation", async () => {
+    editorHostMockState.readyDelayMs = 25;
+    const pages = [
+      createPageRecord(),
+      createPageRecord({
+        sysId: "page-reference",
+        siblingOrder: 2,
+        draftTitle: "Reference",
+        draftSlug: "reference",
+        draftSlugNormalized: "reference",
+        publishedTitle: "Reference",
+        publishedSlug: "reference",
+        publishedSlugNormalized: "reference"
+      })
+    ];
+    const listPages = vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", workspaceSlug, pages)
+    );
+
+    renderApp("/?workspace=product-docs&page=overview", { listPages });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    await waitFor(() =>
+      expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "enter")
+    );
+    await waitFor(
+      () => {
+        expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "idle");
+        expect(document.querySelector(".docsera-sidebar__tree")).toHaveAttribute("data-docsera-chrome-reveal-state", "idle");
+        expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
+      },
+      { timeout: 1000 }
+    );
+
+    editorHostMockState.readyDelayMs = 300;
+    fireEvent.click(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Reference" }));
+
+    expect(await screen.findByRole("heading", { name: "Reference" })).toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Reference" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Collapse table of contents" })).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "idle");
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).not.toHaveAttribute("data-docsera-content-reveal-pending");
+    expect(document.querySelector(".docsera-sidebar__tree")).toHaveAttribute("data-docsera-chrome-reveal-state", "idle");
+    expect(document.querySelector("[data-docsera-content-reveal-state='pending']")).toBeNull();
+  }, 10_000);
+
+  it("invalidates the Live to Edit reveal intent when edit lease acquisition fails", async () => {
+    const lease = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["acquireWorkspaceEditLease"]>>>>();
+    const acquireWorkspaceEditLease = vi.fn(() => lease.promise);
+    const resumeWorkspaceEditLease = vi.fn(
+      () => lease.promise as ReturnType<NonNullable<ServiceNowClient["resumeWorkspaceEditLease"]>>
+    );
+
+    renderApp("/?workspace=product-docs&page=overview", { acquireWorkspaceEditLease, resumeWorkspaceEditLease });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expect(acquireWorkspaceEditLease.mock.calls.length + resumeWorkspaceEditLease.mock.calls.length).toBe(1));
+
+    await act(async () => {
+      lease.resolve({
+        errorMessage: "Workspace editing is locked.",
+        failure: "transient",
+        retryable: true,
+        state: "failed"
+      });
+    });
+
+    expect(await screen.findByText("Workspace editing is locked.")).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
+    expect(document.querySelector("[data-docsera-content-reveal-state='pending']")).toBeNull();
+  });
+
   it("opens page deletion from the page-tree context menu without opening Page Settings or changing selection", async () => {
     const pages = [
       createPageRecord({
@@ -806,6 +982,213 @@ describe("App workspace shell integration", () => {
     expect(await screen.findByRole("heading", { name: "My Workspaces" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Docsera" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Docsera" })).toBeDisabled();
+  });
+
+  it("reveals My Workspaces as one content region after initial launcher loading completes", async () => {
+    const deferredList = createDeferred<WorkspaceListResult>();
+    const listWorkspaces = vi.fn(() => deferredList.promise);
+
+    renderApp("/?view=my-workspaces", { listWorkspaces });
+
+    const launcherContent = document.querySelector(".docsera-launcher__content-reveal");
+    expect(launcherContent).toHaveAttribute("data-docsera-launcher-reveal-state", "pending");
+    expect(launcherContent).toHaveAttribute("data-docsera-launcher-reveal-pending", "true");
+    expect(document.querySelector(".docsera-launcher")).not.toHaveAttribute("data-docsera-launcher-reveal-state");
+    expect(document.querySelector(".docsera-header")).not.toHaveAttribute("data-docsera-launcher-reveal-state");
+
+    await act(async () => {
+      deferredList.resolve({
+        canCreateWorkspaces: true,
+        items: [createWorkspace()],
+        page: 1,
+        pageSize: 10,
+        totalCount: 1,
+        hasNextPage: false,
+        searchText: ""
+      });
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByRole("heading", { name: "My Workspaces" })).toBeInTheDocument();
+    expect(document.querySelector(".docsera-launcher__content-reveal")).toHaveAttribute("data-docsera-launcher-reveal-state", "enter");
+  });
+
+  it("keeps delayed My Workspaces loading feedback visible while the loaded launcher content waits to reveal", async () => {
+    const deferredList = createDeferred<WorkspaceListResult>();
+    const listWorkspaces = vi.fn(() => deferredList.promise);
+
+    renderApp("/?view=my-workspaces", { listWorkspaces });
+
+    const loadingHeading = await screen.findByRole("heading", { name: "Loading workspaces" });
+    expect(loadingHeading).toBeVisible();
+    expect(screen.getByText("Fetching your active workspace list from ServiceNow.")).toBeInTheDocument();
+    const pendingLauncherContent = document.querySelector(".docsera-launcher__content-reveal");
+    expect(pendingLauncherContent).toHaveAttribute("data-docsera-launcher-reveal-state", "pending");
+    expect(pendingLauncherContent).toHaveAttribute("data-docsera-launcher-reveal-pending", "true");
+    expect(loadingHeading.closest(".docsera-launcher__content-reveal")).toBeNull();
+    expect(document.querySelector(".docsera-launcher")).not.toHaveAttribute("data-docsera-launcher-reveal-pending");
+
+    await act(async () => {
+      deferredList.resolve({
+        canCreateWorkspaces: true,
+        items: [createWorkspace()],
+        page: 1,
+        pageSize: 10,
+        totalCount: 1,
+        hasNextPage: false,
+        searchText: ""
+      });
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByRole("heading", { name: "My Workspaces" })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Search workspaces...")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Product Docs" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Loading workspaces" })).not.toBeInTheDocument();
+    expect(document.querySelector(".docsera-launcher__content-reveal")).toHaveAttribute("data-docsera-launcher-reveal-state", "enter");
+    expect(document.querySelectorAll(".docsera-launcher__content-reveal[data-docsera-launcher-reveal-state='enter']")).toHaveLength(1);
+    expect(document.querySelectorAll("[data-docsera-content-reveal-state='enter']")).toHaveLength(0);
+  });
+
+  it("reveals a workspace once after navigating from My Workspaces with delayed destination loading", async () => {
+    const deferredWorkspace = createDeferred<{ workspace: WorkspaceViewRecord }>();
+    const getWorkspace = vi.fn(() => deferredWorkspace.promise);
+
+    renderApp("/?view=my-workspaces", { getWorkspace });
+
+    expect(await screen.findByRole("heading", { name: "My Workspaces" })).toBeInTheDocument();
+    const header = document.querySelector(".docsera-header");
+    await waitFor(
+      () => expect(document.querySelector(".docsera-launcher__content-reveal")).toHaveAttribute("data-docsera-launcher-reveal-state", "idle"),
+      { timeout: 1000 }
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "Product Docs" }));
+    expect(screen.getByLabelText("Workspace navigation")).toHaveAttribute("aria-busy", "true");
+    expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
+
+    await act(async () => {
+      deferredWorkspace.resolve({ workspace: createWorkspace() });
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-content-reveal='live']")).toHaveAttribute("data-docsera-content-reveal-state", "enter");
+    expect(document.querySelector(".docsera-sidebar__tree")).toHaveAttribute("data-docsera-chrome-reveal-state", "enter");
+    expect(document.querySelector(".docsera-header")).toBe(header);
+  });
+
+  it("reveals My Workspaces once after returning from a workspace with delayed launcher loading", async () => {
+    const deferredList = createDeferred<WorkspaceListResult>();
+    const listWorkspaces = vi.fn(() => deferredList.promise);
+
+    renderApp("/?workspace=product-docs&page=overview", { listWorkspaces });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    const header = document.querySelector(".docsera-header");
+    await waitFor(
+      () => expect(document.querySelector("[data-docsera-content-reveal='live']")).toHaveAttribute("data-docsera-content-reveal-state", "idle"),
+      { timeout: 1000 }
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "My Workspaces" }));
+
+    expect(document.querySelector(".docsera-launcher__content-reveal")).toHaveAttribute("data-docsera-launcher-reveal-state", "pending");
+    await act(async () => {
+      deferredList.resolve({
+        canCreateWorkspaces: true,
+        items: [createWorkspace()],
+        page: 1,
+        pageSize: 10,
+        totalCount: 1,
+        hasNextPage: false,
+        searchText: ""
+      });
+      await Promise.resolve();
+    });
+
+    expect(await screen.findByRole("heading", { name: "My Workspaces" })).toBeInTheDocument();
+    expect(document.querySelector(".docsera-launcher__content-reveal")).toHaveAttribute("data-docsera-launcher-reveal-state", "enter");
+    expect(document.querySelector(".docsera-header")).toBe(header);
+  });
+
+  it("reveals an initially loaded empty workspace once", async () => {
+    const listPages = vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", workspaceSlug, [])
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit", { listPages });
+
+    expect(await screen.findByRole("heading", { name: "No pages yet" })).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "enter");
+    expect(document.querySelectorAll("[data-docsera-content-reveal-state='enter']")).toHaveLength(1);
+
+    await waitFor(
+      () => expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "idle"),
+      { timeout: 1000 }
+    );
+  });
+
+  it("reveals an empty workspace after navigation from My Workspaces", async () => {
+    const listPages = vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }) => {
+      if (workspaceSlug === "api-docs") {
+        return createPageListResult(mode === "edit" ? "edit" : "live", workspaceSlug, []);
+      }
+
+      return createPageListResult(mode === "edit" ? "edit" : "live", workspaceSlug, [createPageRecord()]);
+    });
+
+    renderApp("/?view=my-workspaces", { listPages });
+
+    expect(await screen.findByRole("heading", { name: "My Workspaces" })).toBeInTheDocument();
+    await waitFor(
+      () => expect(document.querySelector(".docsera-launcher__content-reveal")).toHaveAttribute("data-docsera-launcher-reveal-state", "idle"),
+      { timeout: 1000 }
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "API Docs" }));
+
+    expect(await screen.findByRole("heading", { name: "No published pages" })).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-content-reveal='live']")).toHaveAttribute("data-docsera-content-reveal-state", "enter");
+  });
+
+  it("does not replay an empty-workspace entry reveal when creating the first page", async () => {
+    const createdPage = createPageRecord({
+      sysId: "page-created",
+      draftTitle: "Fresh Page",
+      draftSlug: "fresh-page",
+      draftSlugNormalized: "fresh-page",
+      publishedTitle: null,
+      publishedSlug: null,
+      publishedSlugNormalized: null,
+      publicationState: "draft"
+    });
+    const listPages = vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", workspaceSlug, [])
+    );
+    const createPage = vi.fn(async () => ({
+      page: createdPage,
+      state: "succeeded" as const
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit", { createPage, listPages });
+
+    expect(await screen.findByRole("heading", { name: "No pages yet" })).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "enter");
+    await waitFor(
+      () => expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "idle"),
+      { timeout: 1000 }
+    );
+
+    fireEvent.click(within(screen.getByRole("main", { name: "No pages yet" })).getByRole("button", { name: "New page" }));
+    const newPageTitle = screen.getByRole("textbox", { name: "New page title" });
+    fireEvent.change(newPageTitle, { target: { value: "Fresh Page" } });
+    fireEvent.keyDown(newPageTitle, { key: "Enter", code: "Enter" });
+
+    expect(await screen.findByRole("heading", { name: "Fresh Page" })).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "idle");
+    expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
   });
 
   it("retains and disables the committed header controls while a workspace switch is unresolved", async () => {

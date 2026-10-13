@@ -5,6 +5,7 @@ import { PageTree, type InlinePageCreateState } from "./PageTree";
 import type { WorkspaceMode } from "../../shared/types/docsera";
 import type { WorkspacePageView } from "./workspaceViewModels";
 import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
+import type { ContentRevealState } from "./contentReveal";
 
 type WorkspaceSidebarProps = {
   mode: WorkspaceMode;
@@ -39,6 +40,7 @@ type WorkspaceSidebarProps = {
   navigationCollapsed?: boolean;
   onCollapsedPageIdsChange: (pageIds: string[]) => void;
   showCreatePageControl: boolean;
+  contentRevealState?: ContentRevealState;
 };
 
 function SearchIcon() {
@@ -81,7 +83,8 @@ export function WorkspaceSidebar({
   collapsedPageIds,
   navigationCollapsed = false,
   onCollapsedPageIdsChange,
-  showCreatePageControl
+  showCreatePageControl,
+  contentRevealState = "idle"
 }: WorkspaceSidebarProps) {
   const totalPages = pages.length;
   const showLoadingState = Boolean(isLoading);
@@ -130,7 +133,12 @@ export function WorkspaceSidebar({
         </p>
       ) : null}
 
-      <nav ref={treeViewportRef} className="docsera-sidebar__tree" aria-label="Page tree">
+      <nav
+        ref={treeViewportRef}
+        className="docsera-sidebar__tree"
+        aria-label="Page tree"
+        data-docsera-chrome-reveal-state={contentRevealState}
+      >
         {showLoadingState && showPendingState ? (
           <div className="docsera-sidebar__pending" aria-hidden="true">
             <span className="docsera-sidebar__pending-line" />

@@ -529,6 +529,85 @@ describe("WorkspaceMarkdownSourcePanel", () => {
     await waitForSourceSessionCreation();
   });
 
+  it("signals ready again when returning to a preserved source session", async () => {
+    const canonicalEnvelope = createEmptyDocseraDocumentEnvelope();
+    const onReadyStateChange = vi.fn();
+    const { rerender } = render(
+      <WorkspaceMarkdownSourcePanel
+        authoringSurface="visual"
+        canonicalEnvelope={canonicalEnvelope}
+        canonicalTitle="Overview"
+        discardNonce={0}
+        editable={true}
+        pageSysId="page-001"
+        visible={false}
+        onBodyChange={vi.fn()}
+        onInvalidChange={vi.fn()}
+        onReadyStateChange={onReadyStateChange}
+        onTitleChange={vi.fn()}
+      />
+    );
+
+    rerender(
+      <WorkspaceMarkdownSourcePanel
+        authoringSurface="markdown"
+        canonicalEnvelope={canonicalEnvelope}
+        canonicalTitle="Overview"
+        discardNonce={0}
+        editable={true}
+        pageSysId="page-001"
+        visible={true}
+        onBodyChange={vi.fn()}
+        onInvalidChange={vi.fn()}
+        onReadyStateChange={onReadyStateChange}
+        onTitleChange={vi.fn()}
+      />
+    );
+
+    await waitForSourceSessionCreation();
+    await waitFor(() => {
+      expect(onReadyStateChange).toHaveBeenLastCalledWith(true);
+    });
+
+    rerender(
+      <WorkspaceMarkdownSourcePanel
+        authoringSurface="visual"
+        canonicalEnvelope={canonicalEnvelope}
+        canonicalTitle="Overview"
+        discardNonce={0}
+        editable={true}
+        pageSysId="page-001"
+        visible={false}
+        onBodyChange={vi.fn()}
+        onInvalidChange={vi.fn()}
+        onReadyStateChange={onReadyStateChange}
+        onTitleChange={vi.fn()}
+      />
+    );
+
+    rerender(
+      <WorkspaceMarkdownSourcePanel
+        authoringSurface="markdown"
+        canonicalEnvelope={canonicalEnvelope}
+        canonicalTitle="Overview"
+        discardNonce={0}
+        editable={true}
+        pageSysId="page-001"
+        visible={true}
+        onBodyChange={vi.fn()}
+        onInvalidChange={vi.fn()}
+        onReadyStateChange={onReadyStateChange}
+        onTitleChange={vi.fn()}
+      />
+    );
+
+    await waitFor(() => {
+      expect(onReadyStateChange).toHaveBeenLastCalledWith(true);
+    });
+    expect(createMarkdownSourceSessionMock).toHaveBeenCalledTimes(1);
+    expect(destroyMock).not.toHaveBeenCalled();
+  });
+
   it("renders the neutral recovery UI when the lazy session import fails", async () => {
     markdownSourceSessionMockState.failImport = true;
     const onInvalidChange = vi.fn();

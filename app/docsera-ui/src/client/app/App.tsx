@@ -7,6 +7,8 @@ import { PageSettingsOverlay } from "../features/workspaces/PageSettingsOverlay"
 import type { InlinePageCreateState } from "../features/workspaces/PageTree";
 import type { RecentWorkspaceItem } from "../features/workspaces/RecentWorkspacesMenu";
 import { DEFAULT_WORKSPACE_NAV_WIDTH, readStoredWorkspaceNavWidth, WorkspaceShell } from "../features/workspaces/WorkspaceShell";
+import { useContentRevealState, type ContentRevealIntent } from "../features/workspaces/contentReveal";
+import type { WorkspaceContentRevealSurface } from "../features/workspaces/WorkspaceMainPane";
 import { WorkspaceManageAccessOverlay } from "../features/workspaces/WorkspaceManageAccessOverlay";
 import { WorkspaceSettingsOverlay, type WorkspaceSettingsSubmitInput } from "../features/workspaces/WorkspaceSettingsOverlay";
 import type {
@@ -273,6 +275,8 @@ type RequestedRouteTransition = {
   reason?: string;
   beforeCommit?: () => void;
 };
+
+type LauncherContentRevealSurface = "launcher";
 
 type MarkdownSourceStatus = {
   errorMessage: string;
@@ -858,6 +862,21 @@ function createInitialRoute(): DocseraAppRoute {
   return readAppRoute(window.location);
 }
 
+function createInitialWorkspaceRevealIntent(route: DocseraAppRoute): ContentRevealIntent<WorkspaceContentRevealSurface> {
+  if (route.mode !== "workspace") {
+    return null;
+  }
+
+  return {
+    destination: route.workspaceMode === "edit" ? "visual" : "live",
+    key: 1
+  };
+}
+
+function createInitialLauncherRevealIntent(route: DocseraAppRoute): ContentRevealIntent<LauncherContentRevealSurface> {
+  return route.mode === "launcher" ? { destination: "launcher", key: 1 } : null;
+}
+
 function createWorkspaceModeUiState(): WorkspaceModeUiState {
   return {
     collapsedPageIds: [],
@@ -1240,6 +1259,12 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [workspacePublishToastState, setWorkspacePublishToastState] = useState<WorkspacePublishToastState | null>(null);
   const [staleRefreshState, setStaleRefreshState] = useState<StaleRefreshState>({ status: "idle" });
   const [workspaceAuthoringSurfaceState, setWorkspaceAuthoringSurfaceState] = useState<Record<string, WorkspaceAuthoringSurface>>({});
+  const [contentRevealIntent, setContentRevealIntent] = useState<ContentRevealIntent<WorkspaceContentRevealSurface>>(
+    () => createInitialWorkspaceRevealIntent(initialRoute)
+  );
+  const [launcherContentRevealIntent, setLauncherContentRevealIntent] = useState<ContentRevealIntent<LauncherContentRevealSurface>>(
+    () => createInitialLauncherRevealIntent(initialRoute)
+  );
   const [workspaceMarkdownSourceSessionPageSysIdState, setWorkspaceMarkdownSourceSessionPageSysIdState] = useState<Record<string, string>>({});
   const [workspaceMarkdownSourceDiscardNonceState, setWorkspaceMarkdownSourceDiscardNonceState] = useState<Record<string, number>>({});
   const [markdownSourceStatus, setMarkdownSourceStatus] = useState<MarkdownSourceStatus>({
@@ -3502,6 +3527,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           workspaceSysId
         });
       }
+      clearContentRevealIntent();
       editReentryRequestedRef.current = false;
       recordDocseraDiagnosticEvent("lease.acquireResult.accepted", {
         failure: result.state === "failed" ? result.failure : "",
@@ -3517,6 +3543,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     })().catch(() => {
       if (current && workspaceLeaseOperationGenerationRef.current === operationGeneration) {
         clearStoredWorkspaceLease(workspaceSysId, "acquire_exception");
+        clearContentRevealIntent();
         editReentryRequestedRef.current = false;
         setWorkspaceLeaseState(createWorkspaceLeaseFailureNotice({ errorMessage: "Workspace editing is temporarily unavailable. Please try again.", failure: "transient" }));
         setEditAccessLost(true);
@@ -4180,12 +4207,31 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     });
   }
 
+  function requestContentReveal(destination: WorkspaceContentRevealSurface) {
+    setContentRevealIntent((current) => ({
+      destination,
+      key: (current?.key ?? 0) + 1
+    }));
+  }
+
+  function requestLauncherContentReveal() {
+    setLauncherContentRevealIntent((current) => ({
+      destination: "launcher",
+      key: (current?.key ?? 0) + 1
+    }));
+  }
+
+  function clearContentRevealIntent() {
+    setContentRevealIntent((current) => (current ? null : current));
+  }
+
   function openLauncher() {
     requestRouteTransition({
       href: buildLauncherHref(),
       reason: "open_launcher",
       replace: false,
       beforeCommit: () => {
+        requestLauncherContentReveal();
         setWorkspaceSettingsPanelState({ status: "closed" });
         setPendingWorkspaceIdentity(null);
         pageSettingsPendingOpenPageIdRef.current = "";
@@ -4208,6 +4254,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       reason: currentWorkspaceSlug && currentWorkspaceSlug !== workspaceSlug ? "workspace_switch" : "user_navigation",
       replace: false,
       beforeCommit: () => {
+        if (route.mode !== "workspace" || currentWorkspaceSlug !== workspaceSlug) {
+          requestContentReveal("live");
+        }
         if (!settingsIntent) {
           setWorkspaceSettingsPanelState({ status: "closed" });
         }
@@ -4277,6 +4326,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       reason: nextMode === "live" ? "deliberate_edit_exit" : "user_navigation",
       replace: false,
       beforeCommit: () => {
+        requestContentReveal(nextMode === "edit" ? currentWorkspaceAuthoringSurface : "live");
         editReentryRequestedRef.current = isDeliberateBlockedReentry;
         pendingSelectionTargetRef.current = currentPageSysId
           ? {
@@ -6298,6 +6348,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
+    if (currentWorkspaceAuthoringSurface !== nextSurface) {
+      requestContentReveal(nextSurface);
+    }
     setWorkspaceAuthoringSurfaceState((current) => ({
       ...current,
       [currentWorkspaceSlug]: nextSurface
@@ -6922,6 +6975,22 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     pendingChangesSaveBlockedMessage === WORKSPACE_COMMAND_AUTHORING_LOCK_MESSAGE;
   const pendingChangesReadinessMessage = suppressActiveWorkspaceCommandReadinessMessage ? "" : pendingChangesSaveBlockedMessage;
   const pendingChangesUndoBlockedPageSysId = pendingChangesSaveBlockedMessage ? selectedWorkspacePageId : "";
+  const contentRevealSurface: WorkspaceContentRevealSurface =
+    route.mode === "workspace" && appHeaderWorkspaceMode === "edit" ? appHeaderAuthoringSurface : "live";
+  const contentRevealReady =
+    route.mode === "workspace" &&
+    workspaceShellStatus === "ready" &&
+    workspaceMainPaneBodyState === "ready" &&
+    (Boolean(selectedPageView) || workspacePagesLoaded);
+  const chromeContentRevealState = useContentRevealState(contentRevealSurface, contentRevealReady, appHeaderWorkspaceSlug, contentRevealIntent);
+  const launcherContentRevealReady =
+    route.mode === "launcher" && (launcherState.status === "success" || launcherState.status === "error");
+  const launcherContentRevealState = useContentRevealState(
+    "launcher",
+    launcherContentRevealReady,
+    route.mode === "launcher" ? "launcher" : "",
+    launcherContentRevealIntent
+  );
   const workspacePublishErrorMessage =
     workspacePublishState.status === "error" &&
     workspacePublishState.workspaceSlug === currentWorkspaceSlug &&
@@ -7637,6 +7706,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         theme={theme}
         onToggleTheme={() => setTheme((current) => (current === "light" ? "dark" : "light"))}
         workspaceNavWidth={appHeaderWorkspaceNavWidth}
+        contentRevealState={chromeContentRevealState}
       />
 
       <div className="docsera-app__body" aria-busy={showLoadingProgress}>
@@ -7644,6 +7714,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           <>
             <WorkspaceShell
               bodyNotice={visibleShellNotice ? { eyebrow: visibleShellNotice.eyebrow, kind: visibleShellNotice.kind, message: visibleShellNotice.message } : null}
+              contentRevealState={chromeContentRevealState}
+              contentRevealIntent={contentRevealIntent}
               bodyState={workspaceMainPaneBodyState}
               canCreatePage={canCreatePage}
               createPageDisabledReason={createPageDisabledReason}
@@ -7910,6 +7982,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
             searchText={launcherSearchText}
             totalCount={listState.totalCount}
             workspaceListErrorMessage={listState.workspaceListErrorMessage}
+            contentRevealState={launcherContentRevealState}
           />
         )}
       </div>

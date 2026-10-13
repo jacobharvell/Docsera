@@ -10,14 +10,23 @@ import type { WorkspacePageView } from "./workspaceViewModels";
 vi.mock("./WorkspaceMarkdownSourcePanel", () => ({
   WorkspaceMarkdownSourcePanel: ({
     authoringSurface,
+    onReadyStateChange,
     visible
   }: {
     authoringSurface: string;
+    onReadyStateChange?: (ready: boolean) => void;
     visible: boolean;
-  }) => <div data-testid="markdown-source-panel" data-surface={authoringSurface} data-visible={String(visible)} />
+  }) => (
+    <div data-testid="markdown-source-panel" data-surface={authoringSurface} data-visible={String(visible)}>
+      <button type="button" onClick={() => onReadyStateChange?.(true)}>
+        Mark Markdown ready
+      </button>
+    </div>
+  )
 }));
 
 afterEach(() => {
+  vi.useRealTimers();
   cleanup();
 });
 
@@ -153,7 +162,30 @@ function createEmptyWorkspaceProps(
     theme: "light",
     editorFailure: null,
     onEditorFailureChange: vi.fn(),
+    workspaceIdentity: "workspace-a",
     ...overrides
+  };
+}
+
+function mockReducedMotion(matches: boolean): () => void {
+  const originalMatchMedia = window.matchMedia;
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      addEventListener: vi.fn(),
+      matches: query === "(prefers-reduced-motion: reduce)" ? matches : false,
+      media: query,
+      removeEventListener: vi.fn()
+    }))
+  });
+
+  return () => {
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      writable: true,
+      value: originalMatchMedia
+    });
   };
 }
 
@@ -216,6 +248,7 @@ describe("WorkspaceMainPane", () => {
       <WorkspaceMainPane
         bodyState="ready"
         page={page}
+        workspaceIdentity="workspace-a"
         workspaceMode="live"
         canCreatePage={false}
         canEditPageBody={false}
@@ -272,6 +305,7 @@ describe("WorkspaceMainPane", () => {
         <WorkspaceMainPane
           bodyState="ready"
           page={page}
+          workspaceIdentity="workspace-a"
           workspaceMode="edit"
           canCreatePage={false}
           canEditPageBody={true}
@@ -436,7 +470,8 @@ describe("WorkspaceMainPane", () => {
       sessionKey: "session-001",
       theme: "light" as const,
       editorFailure: null,
-      onEditorFailureChange: vi.fn()
+      onEditorFailureChange: vi.fn(),
+      workspaceIdentity: "workspace-a"
     };
 
     const { rerender, unmount } = render(<WorkspaceMainPane {...baseProps} workspaceMode="edit" />);
@@ -488,6 +523,7 @@ describe("WorkspaceMainPane", () => {
         onEditorFailureChange={vi.fn()}
         editorCanonicalEnvelope={page.contentEnvelope}
         authoringSurface="markdown"
+        workspaceIdentity="workspace-a"
         sourceSessionPageSysId="page-001"
         onSourceBodyChange={vi.fn()}
         onSourceDiscardInvalidDraft={vi.fn()}
@@ -531,6 +567,39 @@ describe("WorkspaceMainPane", () => {
     expect(source).toMatch(
       /\.docsera-main__source-editor \.cm-editor \.cm-selectionBackground,\s*\.docsera-main__source-editor \.cm-editor\.cm-focused \.cm-selectionBackground \{\s*background: color-mix\(in srgb, var\(--docsera-primary\) 22%, transparent\);\s*\}/
     );
+  });
+
+  it("defines one 400ms 16px reveal motion contract shared by main content, navigation, and ToC", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+
+    expect(source).toMatch(
+      /\.docsera-main__content-reveal\[data-docsera-content-reveal-state="enter"\]\s*\{\s*animation:\s*docsera-content-reveal 400ms cubic-bezier\(0\.22, 1, 0\.36, 1\);/s
+    );
+    expect(source).toMatch(
+      /\.docsera-main__content-reveal\[data-docsera-content-reveal-pending="true"\]\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(16px\);/s
+    );
+    expect(source).toMatch(
+      /@keyframes docsera-content-reveal\s*\{\s*from\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(16px\);\s*\}\s*to\s*\{\s*opacity:\s*1;\s*transform:\s*translateY\(0\);/s
+    );
+    expect(source).toMatch(
+      /\.docsera-sidebar__tree\[data-docsera-chrome-reveal-state="enter"\] \.docsera-page-tree__row,\s*\.docsera-toc__list\[data-docsera-chrome-reveal-state="enter"\] \.docsera-toc__link\s*\{\s*animation:\s*docsera-content-reveal 400ms cubic-bezier\(0\.22, 1, 0\.36, 1\);/s
+    );
+    expect(source).toMatch(
+      /\.docsera-sidebar__tree\[data-docsera-chrome-reveal-state="pending"\] \.docsera-page-tree__row,\s*\.docsera-toc__list\[data-docsera-chrome-reveal-state="pending"\] \.docsera-toc__link\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(16px\);/s
+    );
+    expect(source).not.toContain("docsera-content-chrome-reveal");
+    expect(source).not.toContain(".docsera-breadcrumbs[data-docsera-chrome-reveal-state");
+    expect(source).toMatch(
+      /\.docsera-main__surface\[data-docsera-content-reveal-state="enter"\]\s*\{\s*transition:\s*none;\s*\}/
+    );
+    expect(source).not.toMatch(/animation-fill-mode:\s*(forwards|both)/);
   });
 
   it("renders a nested page title without an ancestor label above the title", () => {
@@ -581,6 +650,7 @@ describe("WorkspaceMainPane", () => {
         theme="light"
         editorFailure={null}
         onEditorFailureChange={vi.fn()}
+        workspaceIdentity="workspace-a"
       />
     );
 
@@ -629,14 +699,15 @@ describe("WorkspaceMainPane", () => {
       sessionKey: "session-001",
       theme: "light" as const,
       editorFailure: null,
-      onEditorFailureChange: vi.fn()
+      onEditorFailureChange: vi.fn(),
+      workspaceIdentity: "workspace-a"
     };
 
     const { rerender } = render(<WorkspaceMainPane {...props} workspaceMode="live" />);
     expect(screen.queryByRole("button", { name: "Overview" })).toBeNull();
     expect(screen.queryByRole("textbox", { name: "Page title" })).toBeNull();
 
-    rerender(<WorkspaceMainPane {...props} workspaceMode="edit" />);
+    rerender(<WorkspaceMainPane {...props} contentRevealIntent={{ destination: "visual", key: 1 }} workspaceMode="edit" />);
     expect(screen.getByRole("button", { name: "Overview" })).toBeInTheDocument();
   });
 
@@ -676,7 +747,8 @@ describe("WorkspaceMainPane", () => {
       sessionKey: "session-001",
       theme: "light" as const,
       editorFailure: null,
-      onEditorFailureChange: vi.fn()
+      onEditorFailureChange: vi.fn(),
+      workspaceIdentity: "workspace-a"
     };
 
     const { rerender } = render(<WorkspaceMainPane {...props} workspaceMode="edit" pageTitleActive={false} />);
@@ -726,7 +798,8 @@ describe("WorkspaceMainPane", () => {
       sessionKey: "session-001",
       theme: "light" as const,
       editorFailure: null,
-      onEditorFailureChange: vi.fn()
+      onEditorFailureChange: vi.fn(),
+      workspaceIdentity: "workspace-a"
     };
 
     const { rerender } = render(<WorkspaceMainPane {...props} workspaceMode="edit" pageTitleActive={false} />);
@@ -790,6 +863,7 @@ describe("WorkspaceMainPane", () => {
         theme="light"
         editorFailure={null}
         onEditorFailureChange={vi.fn()}
+        workspaceIdentity="workspace-a"
       />
     );
 
@@ -840,6 +914,7 @@ describe("WorkspaceMainPane", () => {
         editorFailure={null}
         onEditorFailureChange={vi.fn()}
         authoringSurface="markdown"
+        workspaceIdentity="workspace-a"
       />
     );
 
@@ -848,5 +923,361 @@ describe("WorkspaceMainPane", () => {
     expect(screen.getByRole("main", { name: "Overview" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: "Page title" })).toBeNull();
     expect(onPageTitleStart).not.toHaveBeenCalled();
+  });
+
+  it("reveals only the destination content on successful live and edit mode switches", async () => {
+    const restoreMotion = mockReducedMotion(false);
+    const page = createPageView();
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      page,
+      pageTitleValue: page.title,
+      workspaceMode: "live"
+    });
+
+    const { rerender } = render(<WorkspaceMainPane {...props} />);
+    expect(screen.getByLabelText("Published page content")).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
+
+    rerender(<WorkspaceMainPane {...props} contentRevealIntent={{ destination: "visual", key: 1 }} workspaceMode="edit" />);
+    expect(document.querySelector(".docsera-main__editor-host")).not.toHaveAttribute("hidden");
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "enter");
+    expect(screen.getByRole("button", { name: "Overview" }).closest("[data-docsera-content-reveal='visual']")).toHaveAttribute(
+      "data-docsera-content-reveal-state",
+      "enter"
+    );
+    expect(document.querySelector(".docsera-main__editor-host")).not.toHaveAttribute("hidden");
+    expect(screen.queryByLabelText("Published page content")).not.toBeInTheDocument();
+
+    rerender(<WorkspaceMainPane {...props} contentRevealIntent={{ destination: "live", key: 2 }} workspaceMode="live" />);
+    expect(document.querySelector("[data-docsera-content-reveal='live']")).toHaveAttribute("data-docsera-content-reveal-state", "enter");
+    expect(document.querySelector(".docsera-main__editor-host")).toBeNull();
+
+    restoreMotion();
+  });
+
+  it("keeps the reveal state active for the full 400ms animation lifetime without a final snap", async () => {
+    vi.useFakeTimers();
+    const restoreMotion = mockReducedMotion(false);
+    const page = createPageView();
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      page,
+      pageTitleValue: page.title,
+      workspaceMode: "live"
+    });
+
+    const { rerender } = render(<WorkspaceMainPane {...props} />);
+    rerender(<WorkspaceMainPane {...props} contentRevealIntent={{ destination: "visual", key: 1 }} workspaceMode="edit" />);
+
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "enter");
+
+    act(() => {
+      vi.advanceTimersByTime(399);
+    });
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "enter");
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    const revealSurface = document.querySelector("[data-docsera-content-reveal='visual']");
+    expect(revealSurface).toHaveAttribute("data-docsera-content-reveal-state", "idle");
+    expect(revealSurface).toHaveClass("docsera-main__surface");
+
+    restoreMotion();
+  });
+
+  it("does not reveal destination content for ordinary same-mode page navigation", () => {
+    const firstPage = createPageView();
+    const secondPage = {
+      ...createPageView(),
+      id: "page-002",
+      page: {
+        ...createPageView().page,
+        sysId: "page-002",
+        draftTitle: "Install",
+        draftSlug: "install",
+        draftSlugNormalized: "install",
+        publishedTitle: "Install",
+        publishedSlug: "install",
+        publishedSlugNormalized: "install"
+      },
+      slug: "install",
+      sysId: "page-002",
+      title: "Install"
+    } as WorkspacePageView;
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      page: firstPage,
+      pageTitleValue: firstPage.title,
+      workspaceMode: "live"
+    });
+
+    const { rerender } = render(<WorkspaceMainPane {...props} />);
+    rerender(<WorkspaceMainPane {...props} page={secondPage} pageTitleValue={secondPage.title} />);
+
+    expect(screen.getByRole("main", { name: "Install" })).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-content-reveal='live']")).toHaveAttribute("data-docsera-content-reveal-state", "idle");
+    expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
+  });
+
+  it("does not reveal destination content when initial workspace loading becomes ready", () => {
+    const page = createPageView();
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      page,
+      pageTitleValue: page.title,
+      stateType: "loading",
+      stateTitle: "Loading",
+      stateCopy: "Loading workspace",
+      workspaceMode: "live"
+    });
+
+    const { rerender } = render(<WorkspaceMainPane {...props} />);
+    rerender(<WorkspaceMainPane {...props} stateType="ready" />);
+
+    expect(screen.getByLabelText("Published page content")).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-content-reveal='live']")).toHaveAttribute("data-docsera-content-reveal-state", "idle");
+    expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
+  });
+
+  it("reveals a successful mode switch after temporary loading resolves", async () => {
+    const page = createPageView();
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      page,
+      pageTitleValue: page.title,
+      workspaceMode: "live"
+    });
+
+    const { rerender } = render(<WorkspaceMainPane {...props} />);
+    rerender(<WorkspaceMainPane {...props} bodyState="loading" contentRevealIntent={{ destination: "visual", key: 1 }} showPendingState={true} workspaceMode="edit" />);
+    expect(screen.getByRole("status", { name: "Loading editor" })).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
+    expect(screen.getByRole("button", { name: "Overview" }).closest("[data-docsera-content-reveal='visual']")).toHaveAttribute(
+      "data-docsera-content-reveal-pending",
+      "true"
+    );
+
+    rerender(<WorkspaceMainPane {...props} contentRevealIntent={{ destination: "visual", key: 1 }} workspaceMode="edit" />);
+
+    await waitFor(() => {
+      expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "enter");
+    });
+    expect(document.querySelector(".docsera-main__editor-host")).not.toHaveAttribute("hidden");
+  });
+
+  it("does not reveal when switching directly from edit in one workspace to delayed live content in another", () => {
+    const sourcePage = createPageView();
+    const destinationPage = {
+      ...createPageView(),
+      id: "workspace-b-page",
+      page: {
+        ...createPageView().page,
+        sysId: "workspace-b-page",
+        draftTitle: "Workspace B Overview",
+        draftSlug: "workspace-b-overview",
+        draftSlugNormalized: "workspace-b-overview",
+        publishedTitle: "Workspace B Overview",
+        publishedSlug: "workspace-b-overview",
+        publishedSlugNormalized: "workspace-b-overview"
+      },
+      slug: "workspace-b-overview",
+      sysId: "workspace-b-page",
+      title: "Workspace B Overview"
+    } as WorkspacePageView;
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      page: sourcePage,
+      pageTitleValue: sourcePage.title,
+      workspaceIdentity: "workspace-a",
+      workspaceMode: "edit"
+    });
+
+    const { rerender } = render(<WorkspaceMainPane {...props} />);
+    expect(document.querySelector(".docsera-main__editor-host")).not.toHaveAttribute("hidden");
+
+    rerender(
+      <WorkspaceMainPane
+        {...props}
+        bodyState="loading"
+        page={destinationPage}
+        pageTitleValue={destinationPage.title}
+        showPendingState={true}
+        workspaceIdentity="workspace-b"
+        workspaceMode="live"
+      />
+    );
+    expect(screen.getByRole("status", { name: "Loading page content" })).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
+
+    rerender(
+      <WorkspaceMainPane
+        {...props}
+        page={destinationPage}
+        pageTitleValue={destinationPage.title}
+        workspaceIdentity="workspace-b"
+        workspaceMode="live"
+      />
+    );
+
+    expect(screen.getByRole("main", { name: "Workspace B Overview" })).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-content-reveal='live']")).toHaveAttribute("data-docsera-content-reveal-state", "idle");
+    expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
+  });
+
+  it("does not start a reveal for blocked or pending destination content", () => {
+    const page = createPageView();
+    const props = createEmptyWorkspaceProps({
+      bodyState: "loading",
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      page,
+      pageTitleValue: page.title,
+      showPendingState: true,
+      workspaceMode: "live"
+    });
+
+    const { rerender } = render(<WorkspaceMainPane {...props} />);
+    expect(screen.getByRole("status", { name: "Loading page content" })).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
+
+    rerender(<WorkspaceMainPane {...props} contentRevealIntent={{ destination: "visual", key: 1 }} workspaceMode="edit" />);
+    expect(screen.getByRole("status", { name: "Loading editor" })).toBeInTheDocument();
+    expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
+    expect(document.querySelector(".docsera-main__editor-host")).toHaveAttribute("hidden");
+  });
+
+  it("waits for the lazy Markdown source session before revealing Markdown content", async () => {
+    const page = createPageView();
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      editorCanonicalEnvelope: page.contentEnvelope,
+      page,
+      pageTitleValue: page.title,
+      sourceSessionPageSysId: page.sysId,
+      onSourceBodyChange: vi.fn(),
+      onSourceDiscardInvalidDraft: vi.fn(),
+      onSourceInvalidChange: vi.fn(),
+      onSourceTitleChange: vi.fn(),
+      workspaceMode: "edit"
+    });
+
+    const { rerender } = render(<WorkspaceMainPane {...props} authoringSurface="visual" />);
+    rerender(<WorkspaceMainPane {...props} authoringSurface="markdown" contentRevealIntent={{ destination: "markdown", key: 1 }} />);
+
+    const sourcePanel = await screen.findByTestId("markdown-source-panel");
+    expect(sourcePanel).toHaveAttribute("data-visible", "true");
+    expect(document.querySelector("[data-docsera-content-reveal='markdown']")).toHaveAttribute("data-docsera-content-reveal-state", "pending");
+    expect(document.querySelector("[data-docsera-content-reveal='markdown']")).toHaveAttribute("data-docsera-content-reveal-pending", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark Markdown ready" }));
+
+    expect(document.querySelector("[data-docsera-content-reveal='markdown']")).toHaveAttribute("data-docsera-content-reveal-state", "enter");
+    expect(document.querySelector("[data-docsera-content-reveal='markdown']")).not.toHaveAttribute("data-docsera-content-reveal-pending");
+    expect(document.querySelector(".docsera-main__editor-host[hidden]")).toBeInTheDocument();
+  });
+
+  it("re-enters Markdown smoothly when a preserved source session becomes visible again", () => {
+    const page = createPageView();
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      editorCanonicalEnvelope: page.contentEnvelope,
+      page,
+      pageTitleValue: page.title,
+      sourceSessionPageSysId: page.sysId,
+      onSourceBodyChange: vi.fn(),
+      onSourceDiscardInvalidDraft: vi.fn(),
+      onSourceInvalidChange: vi.fn(),
+      onSourceTitleChange: vi.fn(),
+      workspaceMode: "edit"
+    });
+
+    const { rerender } = render(<WorkspaceMainPane {...props} authoringSurface="visual" />);
+    rerender(<WorkspaceMainPane {...props} authoringSurface="markdown" contentRevealIntent={{ destination: "markdown", key: 1 }} />);
+    fireEvent.click(screen.getByRole("button", { name: "Mark Markdown ready" }));
+    expect(document.querySelector("[data-docsera-content-reveal='markdown']")).toHaveAttribute("data-docsera-content-reveal-state", "enter");
+
+    rerender(<WorkspaceMainPane {...props} authoringSurface="visual" contentRevealIntent={{ destination: "visual", key: 2 }} />);
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "enter");
+
+    rerender(<WorkspaceMainPane {...props} authoringSurface="markdown" contentRevealIntent={{ destination: "markdown", key: 3 }} />);
+    expect(screen.getByTestId("markdown-source-panel")).toHaveAttribute("data-visible", "true");
+    expect(document.querySelector("[data-docsera-content-reveal='markdown']")).toHaveAttribute("data-docsera-content-reveal-state", "enter");
+    expect(document.querySelector("[data-docsera-content-reveal='markdown']")).not.toHaveAttribute("data-docsera-content-reveal-pending");
+  });
+
+  it("keeps only the latest rapid mode-transition destination in reveal state", () => {
+    const page = createPageView();
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      page,
+      pageTitleValue: page.title,
+      workspaceMode: "live"
+    });
+
+    const { rerender } = render(<WorkspaceMainPane {...props} />);
+    rerender(<WorkspaceMainPane {...props} contentRevealIntent={{ destination: "visual", key: 1 }} workspaceMode="edit" />);
+    rerender(<WorkspaceMainPane {...props} contentRevealIntent={{ destination: "live", key: 2 }} workspaceMode="live" />);
+    rerender(<WorkspaceMainPane {...props} contentRevealIntent={{ destination: "visual", key: 3 }} workspaceMode="edit" />);
+
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "enter");
+    expect(document.querySelectorAll("[data-docsera-content-reveal-state='enter']")).toHaveLength(1);
+    expect(screen.queryByLabelText("Published page content")).not.toBeInTheDocument();
+  });
+
+  it("keeps stale rapid switches from retaining an interactive obsolete editor surface", () => {
+    const page = createPageView();
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      editorCanonicalEnvelope: page.contentEnvelope,
+      page,
+      pageTitleValue: page.title,
+      sourceSessionPageSysId: page.sysId,
+      onSourceBodyChange: vi.fn(),
+      onSourceDiscardInvalidDraft: vi.fn(),
+      onSourceInvalidChange: vi.fn(),
+      onSourceTitleChange: vi.fn(),
+      workspaceMode: "edit"
+    });
+
+    const { rerender } = render(<WorkspaceMainPane {...props} authoringSurface="visual" />);
+    rerender(<WorkspaceMainPane {...props} authoringSurface="markdown" contentRevealIntent={{ destination: "markdown", key: 1 }} />);
+    rerender(<WorkspaceMainPane {...props} authoringSurface="visual" contentRevealIntent={{ destination: "visual", key: 2 }} />);
+
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).toBeInTheDocument();
+    expect(document.querySelector(".docsera-main__editor-host")).not.toHaveAttribute("hidden");
+    expect(screen.queryByTestId("markdown-source-panel")).toBeInTheDocument();
+    expect(screen.getByTestId("markdown-source-panel")).toHaveAttribute("data-visible", "false");
+  });
+
+  it("displays destination content immediately when reduced motion is requested", () => {
+    const restoreMotion = mockReducedMotion(true);
+    const page = createPageView();
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      page,
+      pageTitleValue: page.title,
+      workspaceMode: "live"
+    });
+
+    const { rerender } = render(<WorkspaceMainPane {...props} />);
+    rerender(<WorkspaceMainPane {...props} contentRevealIntent={{ destination: "visual", key: 1 }} workspaceMode="edit" />);
+
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "idle");
+    expect(document.querySelector(".docsera-main__editor-host")).not.toHaveAttribute("hidden");
+
+    restoreMotion();
   });
 });

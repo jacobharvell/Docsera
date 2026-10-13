@@ -9,6 +9,8 @@ import { WorkspaceToc } from "./WorkspaceToc";
 import type { WorkspacePageOutlineItem, WorkspacePageView } from "./workspaceViewModels";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
 import type { WorkspaceAuthoringSurface } from "./workspaceAuthoringSurface";
+import type { ContentRevealIntent, ContentRevealState } from "./contentReveal";
+import type { WorkspaceContentRevealSurface } from "./WorkspaceMainPane";
 
 type WorkspaceShellProps = {
   bodyNotice?: {
@@ -113,6 +115,8 @@ type WorkspaceShellProps = {
   workspaceSettingsOverlay?: ReactNode;
   workspaceTocAvailable: boolean;
   onTreeFilterChange: (value: string) => void;
+  contentRevealState?: ContentRevealState;
+  contentRevealIntent?: ContentRevealIntent<WorkspaceContentRevealSurface>;
 };
 
 export const DEFAULT_WORKSPACE_NAV_WIDTH = 280;
@@ -244,7 +248,9 @@ export function WorkspaceShell({
   treePages,
   workspaceSettingsOverlay,
   workspaceTocAvailable,
-  onTreeFilterChange
+  onTreeFilterChange,
+  contentRevealState = "idle",
+  contentRevealIntent = null
 }: WorkspaceShellProps) {
   const [tocCollapsed, setTocCollapsed] = useState(() => readStoredWorkspaceTocCollapsedPreference(currentWorkspaceSlug) ?? false);
   const tocCollapsedHasUserPreferenceRef = useRef(readStoredWorkspaceTocCollapsedPreference(currentWorkspaceSlug) !== null);
@@ -426,6 +432,7 @@ export function WorkspaceShell({
               showCreatePageControl={showCreatePageControls}
               treeFilter={treeFilter}
               onTreeFilterChange={onTreeFilterChange}
+              contentRevealState={contentRevealState}
             />
           </div>
           <button
@@ -489,7 +496,9 @@ export function WorkspaceShell({
           showPendingState={showPendingState}
           sessionKey={sessionKey}
           theme={theme}
+          workspaceIdentity={currentWorkspaceSlug}
           workspaceMode={mode}
+          contentRevealIntent={contentRevealIntent}
         />
 
         {workspaceTocAvailable ? (
@@ -501,6 +510,7 @@ export function WorkspaceShell({
               page={outlinePageForShell}
               panelId={`docsera-workspace-toc-${currentWorkspaceSlug || "workspace"}`}
               onToggleCollapsed={toggleTocCollapsed}
+              contentRevealState={contentRevealState}
             />
           </div>
         ) : null}

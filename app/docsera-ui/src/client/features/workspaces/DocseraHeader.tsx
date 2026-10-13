@@ -18,6 +18,7 @@ import { WorkspaceIconBadge, type WorkspaceUploadedIconLoader } from "./Workspac
 import type { WorkspacePageView } from "./workspaceViewModels";
 import type { WorkspaceAuthoringSurface } from "./workspaceAuthoringSurface";
 import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
+import type { ContentRevealState } from "./contentReveal";
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -98,6 +99,7 @@ type DocseraHeaderProps = {
   onToggleTheme: () => void;
   loadUploadedIcon?: WorkspaceUploadedIconLoader;
   workspaceNavWidth?: number;
+  contentRevealState?: ContentRevealState;
 };
 
 function getCurrentUserInitials(currentUser: Pick<PingResult, "userDisplayName" | "userName">): string {
@@ -305,7 +307,8 @@ export function DocseraHeader({
   sidebarCollapsed = false,
   theme,
   onToggleTheme,
-  workspaceNavWidth
+  workspaceNavWidth,
+  contentRevealState = "idle"
 }: DocseraHeaderProps) {
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);

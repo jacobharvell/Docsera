@@ -4,7 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import { WorkspaceShell } from "./WorkspaceShell";
 
 vi.mock("./WorkspaceSidebar", () => ({
-  WorkspaceSidebar: () => <aside aria-label="Workspace navigation" />
+  WorkspaceSidebar: ({ contentRevealState }: { contentRevealState?: string }) => (
+    <aside aria-label="Workspace navigation" data-reveal-state={contentRevealState} />
+  )
 }));
 
 vi.mock("./WorkspaceMainPane", () => ({
@@ -12,7 +14,9 @@ vi.mock("./WorkspaceMainPane", () => ({
 }));
 
 vi.mock("./WorkspaceToc", () => ({
-  WorkspaceToc: () => <aside aria-label="Page outline" />
+  WorkspaceToc: ({ contentRevealState }: { contentRevealState?: string }) => (
+    <aside aria-label="Page outline" data-reveal-state={contentRevealState} />
+  )
 }));
 
 function createShellProps(overrides: Partial<Parameters<typeof WorkspaceShell>[0]> = {}): Parameters<typeof WorkspaceShell>[0] {
@@ -123,5 +127,13 @@ describe("WorkspaceShell", () => {
     fireEvent.focus(resizer);
     fireEvent.mouseOver(resizer);
     await waitFor(() => expect(screen.queryByRole("tooltip")).not.toBeInTheDocument());
+  });
+
+  it("passes content reveal state only into navigation content regions", () => {
+    renderShell({ contentRevealState: "enter", workspaceTocAvailable: true });
+
+    expect(screen.getByRole("complementary", { name: "Workspace navigation" })).toHaveAttribute("data-reveal-state", "enter");
+    expect(screen.getByRole("complementary", { name: "Page outline" })).toHaveAttribute("data-reveal-state", "enter");
+    expect(screen.getByRole("button", { name: "Resize navigation panel" })).not.toHaveAttribute("data-reveal-state");
   });
 });

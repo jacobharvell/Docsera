@@ -4865,6 +4865,55 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   line-height: var(--docsera-document-body-line-height);
 }
 
+.docsera-main__content-reveal {
+  min-width: 0;
+}
+
+.docsera-main__content-reveal[data-docsera-content-reveal-pending="true"] {
+  opacity: 0;
+  transform: translateY(16px);
+}
+
+.docsera-launcher__content-reveal[data-docsera-launcher-reveal-pending="true"] {
+  opacity: 0;
+  transform: translateY(16px);
+}
+
+.docsera-main__content-reveal[data-docsera-content-reveal-state="enter"] {
+  animation: docsera-content-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.docsera-launcher__content-reveal[data-docsera-launcher-reveal-state="enter"] {
+  animation: docsera-content-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.docsera-main__surface[data-docsera-content-reveal-state="enter"] {
+  transition: none;
+}
+
+@keyframes docsera-content-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.docsera-sidebar__tree[data-docsera-chrome-reveal-state="enter"] .docsera-page-tree__row,
+.docsera-toc__list[data-docsera-chrome-reveal-state="enter"] .docsera-toc__link {
+  animation: docsera-content-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.docsera-sidebar__tree[data-docsera-chrome-reveal-state="pending"] .docsera-page-tree__row,
+.docsera-toc__list[data-docsera-chrome-reveal-state="pending"] .docsera-toc__link {
+  opacity: 0;
+  transform: translateY(16px);
+}
+
 .docsera-main__reader > :first-child {
   margin-top: 0;
 }
@@ -6250,6 +6299,7 @@ html[data-docsera-theme="dark"] .docsera-main__callout-icon {
   .docsera-workspace,
   .docsera-workspace__nav-frame,
   .docsera-main__surface,
+  .docsera-main__content-reveal,
   .docsera-workspace__aside,
   .docsera-toc-rail__toggle,
   .docsera-toc-rail__toggle-icon,
@@ -6258,6 +6308,13 @@ html[data-docsera-theme="dark"] .docsera-main__callout-icon {
   .docsera-manage-access::after,
   .docsera-manage-access__panel {
     transition: none;
+  }
+
+  .docsera-main__content-reveal,
+  .docsera-launcher__content-reveal[data-docsera-launcher-reveal-state="enter"],
+  .docsera-sidebar__tree[data-docsera-chrome-reveal-state="enter"] .docsera-page-tree__row,
+  .docsera-toc__list[data-docsera-chrome-reveal-state="enter"] .docsera-toc__link {
+    animation: none !important;
   }
 }
 

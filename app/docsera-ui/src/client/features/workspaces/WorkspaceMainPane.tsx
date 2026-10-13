@@ -14,6 +14,7 @@ import type { WorkspaceMediaLoader } from "../../shared/types/docsera";
 import type { WorkspacePageView } from "./workspaceViewModels";
 import type { WorkspaceAuthoringSurface } from "./workspaceAuthoringSurface";
 import { WorkspaceMarkdownSourcePanel } from "./WorkspaceMarkdownSourcePanel";
+import { useContentRevealState, type ContentRevealIntent } from "./contentReveal";
 
 type WorkspaceMainPaneProps = {
   bodyNotice?: {
@@ -27,6 +28,7 @@ type WorkspaceMainPaneProps = {
   mediaAdapter?: EditorMediaAdapter;
   loadMedia?: WorkspaceMediaLoader;
   page: WorkspacePageView | null;
+  workspaceIdentity: string;
   workspaceMode: WorkspaceMode;
   canCreatePage: boolean;
   canEditPageBody: boolean;
@@ -76,7 +78,11 @@ type WorkspaceMainPaneProps = {
   theme: "dark" | "light";
   editorFailure: PageEditorHostFailure | null;
   onEditorFailureChange: (failure: PageEditorHostFailure | null) => void;
+  contentRevealIntent?: ContentRevealIntent<ContentRevealSurface>;
 };
+
+type ContentRevealSurface = "live" | WorkspaceAuthoringSurface;
+export type WorkspaceContentRevealSurface = ContentRevealSurface;
 
 function InlinePageTitle({
   active,
@@ -296,6 +302,7 @@ export function WorkspaceMainPane({
   markdownSourceRetryNonce = 0,
   sourceDiscardNonce = 0,
   sourceSessionPageSysId = "",
+  workspaceIdentity,
   onSourceBodyChange,
   onSourceDiscardComplete,
   onSourceDiscardInvalidDraft,
@@ -304,9 +311,49 @@ export function WorkspaceMainPane({
   sessionKey,
   theme,
   editorFailure,
-  onEditorFailureChange
+  onEditorFailureChange,
+  contentRevealIntent = null
 }: WorkspaceMainPaneProps) {
   const [editorHistoryControlsMount, setEditorHistoryControlsMount] = useState<HTMLDivElement | null>(null);
+  const [markdownSourceReady, setMarkdownSourceReady] = useState(false);
+  const showBodyPending = bodyState === "loading";
+  const showBodyPendingPlaceholder = showBodyPending && showPendingState;
+  const sourceEnvelope = page ? editorCanonicalEnvelope ?? editorInitialSavedEnvelope ?? page.contentEnvelope : undefined;
+  const showMarkdownSource =
+    stateType === "ready" &&
+    workspaceMode === "edit" &&
+    Boolean(page?.contentEnvelope) &&
+    Boolean(sourceEnvelope) &&
+    Boolean(sourceSessionPageSysId) &&
+    page?.sysId === sourceSessionPageSysId &&
+    Boolean(onSourceBodyChange) &&
+    Boolean(onSourceInvalidChange) &&
+    Boolean(onSourceTitleChange) &&
+    Boolean(onSourceDiscardInvalidDraft);
+  const displayedSurface: ContentRevealSurface = workspaceMode === "live" ? "live" : authoringSurface;
+  const showEditorRecovery =
+    stateType === "ready" &&
+    workspaceMode === "edit" &&
+    !showBodyPending &&
+    Boolean(page) &&
+    (page?.contentState !== "ready" || Boolean(editorFailure));
+  const destinationReady =
+    stateType === "ready" &&
+    !showBodyPending &&
+    (!page ||
+      workspaceMode === "live" ||
+      showEditorRecovery ||
+      (authoringSurface === "visual" && Boolean(page?.contentEnvelope)) ||
+      (authoringSurface === "markdown" && showMarkdownSource && markdownSourceReady));
+  const contentRevealState = useContentRevealState(displayedSurface, destinationReady, workspaceIdentity, contentRevealIntent);
+  const markdownSourceRevealPending = authoringSurface === "markdown" && showMarkdownSource && !markdownSourceReady;
+  const contentRevealPending = contentRevealState === "pending" || markdownSourceRevealPending;
+
+  useEffect(() => {
+    if (!showMarkdownSource) {
+      setMarkdownSourceReady(false);
+    }
+  }, [page?.sysId, showMarkdownSource]);
 
   if (stateType !== "ready") {
     return (
@@ -338,7 +385,12 @@ export function WorkspaceMainPane({
 
     return (
       <main className="docsera-main" aria-labelledby="docsera-empty-workspace-title">
-        <article className="docsera-main__surface docsera-main__surface--empty">
+        <article
+          className="docsera-main__surface docsera-main__surface--empty docsera-main__content-reveal"
+          data-docsera-content-reveal={displayedSurface}
+          data-docsera-content-reveal-pending={contentRevealPending ? "true" : undefined}
+          data-docsera-content-reveal-state={contentRevealState}
+        >
           <div className="docsera-main__intro">
             <h1 id="docsera-empty-workspace-title" className="docsera-main__title">
               {isEditMode ? "No pages yet" : "No published pages"}
@@ -360,29 +412,12 @@ export function WorkspaceMainPane({
     );
   }
 
-  const showBodyPending = bodyState === "loading";
-  const showBodyPendingPlaceholder = showBodyPending && showPendingState;
-  const showEditorRecovery =
-    workspaceMode === "edit" &&
-    !showBodyPending &&
-    (page.contentState !== "ready" || Boolean(editorFailure));
   const canEditPageTitle = workspaceMode === "edit" && canManagePageSettings && !editAccessLost && authoringSurface === "visual";
   const displayPageTitle = pageTitleValue !== undefined ? pageTitleValue : page.title || "Untitled page";
-  const sourceEnvelope = editorCanonicalEnvelope ?? editorInitialSavedEnvelope ?? page.contentEnvelope;
   const mainLabelProps =
     authoringSurface === "markdown"
       ? { "aria-label": displayPageTitle }
       : { "aria-labelledby": "docsera-page-title" };
-  const showMarkdownSource =
-    workspaceMode === "edit" &&
-    Boolean(page.contentEnvelope) &&
-    Boolean(sourceEnvelope) &&
-    Boolean(sourceSessionPageSysId) &&
-    page.sysId === sourceSessionPageSysId &&
-    Boolean(onSourceBodyChange) &&
-    Boolean(onSourceInvalidChange) &&
-    Boolean(onSourceTitleChange) &&
-    Boolean(onSourceDiscardInvalidDraft);
 
   return (
     <main className="docsera-main" {...mainLabelProps}>
@@ -393,7 +428,12 @@ export function WorkspaceMainPane({
           data-docsera-editor-history-controls-mount="true"
         />
       ) : null}
-      <article className={`docsera-main__surface${workspaceMode === "edit" ? " docsera-main__surface--editor" : ""}`}>
+      <article
+        className={`docsera-main__surface docsera-main__content-reveal${workspaceMode === "edit" ? " docsera-main__surface--editor" : ""}`}
+        data-docsera-content-reveal={displayedSurface}
+        data-docsera-content-reveal-pending={contentRevealPending ? "true" : undefined}
+        data-docsera-content-reveal-state={contentRevealState}
+      >
         {authoringSurface === "visual" ? (
           <div className="docsera-main__intro">
             <div className="docsera-main__page-header">
@@ -474,6 +514,7 @@ export function WorkspaceMainPane({
                 onDiscardComplete={onSourceDiscardComplete}
                 onDiscardInvalidDraft={onSourceDiscardInvalidDraft}
                 onInvalidChange={onSourceInvalidChange}
+                onReadyStateChange={setMarkdownSourceReady}
                 onTitleChange={onSourceTitleChange}
               />
             ) : null}

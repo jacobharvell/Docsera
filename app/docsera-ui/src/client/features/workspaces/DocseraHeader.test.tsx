@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DocseraHeader } from "./DocseraHeader";
 import type { WorkspacePendingChangesResult } from "../../shared/types/docsera";
+import type { WorkspacePageView } from "./workspaceViewModels";
 type PendingRow = Extract<WorkspacePendingChangesResult, { state: "succeeded" }>["rows"][number];
 
 const baseProps = {
@@ -34,6 +35,22 @@ function pending(rows: PendingRow[]): WorkspacePendingChangesResult {
 describe("DocseraHeader publishing changes", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("keeps breadcrumbs unanimated even while content regions reveal", () => {
+    render(
+      <DocseraHeader
+        {...baseProps}
+        breadcrumbs={[
+          { id: "parent", title: "Parent" },
+          { id: "child", title: "Child" }
+        ] as unknown as WorkspacePageView[]}
+        contentRevealState="enter"
+      />
+    );
+
+    expect(screen.getByRole("navigation", { name: "Page breadcrumbs" })).not.toHaveAttribute("data-docsera-chrome-reveal-state");
+    expect(screen.getByRole("button", { name: "Parent" })).toBeInTheDocument();
   });
 
   it("shows a neutral account placeholder before authenticated identity is available", () => {

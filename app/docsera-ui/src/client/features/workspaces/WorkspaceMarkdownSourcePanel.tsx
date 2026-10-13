@@ -25,6 +25,7 @@ type WorkspaceMarkdownSourcePanelProps = {
   onDiscardComplete?: () => void;
   onDiscardInvalidDraft?: () => void;
   onInvalidChange?: (state: MarkdownSourceStatus) => void;
+  onReadyStateChange?: (ready: boolean) => void;
   onTitleChange?: (title: string) => void;
 };
 
@@ -79,6 +80,7 @@ export function WorkspaceMarkdownSourcePanel({
   onDiscardComplete,
   onDiscardInvalidDraft,
   onInvalidChange,
+  onReadyStateChange,
   onTitleChange
 }: WorkspaceMarkdownSourcePanelProps) {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -101,6 +103,7 @@ export function WorkspaceMarkdownSourcePanel({
     onDiscardComplete,
     onDiscardInvalidDraft,
     onInvalidChange,
+    onReadyStateChange,
     onTitleChange,
     pageSysId
   });
@@ -153,10 +156,11 @@ export function WorkspaceMarkdownSourcePanel({
       onDiscardComplete,
       onDiscardInvalidDraft,
       onInvalidChange,
+      onReadyStateChange,
       onTitleChange,
       pageSysId
     };
-  }, [onBodyChange, onDiscardComplete, onDiscardInvalidDraft, onInvalidChange, onTitleChange, pageSysId]);
+  }, [onBodyChange, onDiscardComplete, onDiscardInvalidDraft, onInvalidChange, onReadyStateChange, onTitleChange, pageSysId]);
 
   function invalidatePendingSessionLoad(): void {
     sessionLoadRequestIdRef.current += 1;
@@ -168,6 +172,7 @@ export function WorkspaceMarkdownSourcePanel({
     setSessionError("");
     snapshotRef.current = null;
     sourceUnavailableRef.current = false;
+    callbacksRef.current.onReadyStateChange?.(false);
     sessionRef.current?.destroy();
     sessionRef.current = null;
   }
@@ -253,11 +258,13 @@ export function WorkspaceMarkdownSourcePanel({
         if (!result.ok) {
           setSessionError(result.failure.message);
           callbacksRef.current.onInvalidChange?.(invalidState(callbacksRef.current.pageSysId, result.failure));
+          callbacksRef.current.onReadyStateChange?.(true);
           return;
         }
 
         sessionRef.current = result.session;
         projectedCanonicalKeyRef.current = currentCanonicalKeyRef.current;
+        callbacksRef.current.onReadyStateChange?.(true);
       } catch {
         if (requestId !== sessionLoadRequestIdRef.current) {
           return;
@@ -272,6 +279,7 @@ export function WorkspaceMarkdownSourcePanel({
           isInvalid: false,
           pageSysId: callbacksRef.current.pageSysId
         });
+        callbacksRef.current.onReadyStateChange?.(true);
       }
     })();
 
@@ -308,6 +316,8 @@ export function WorkspaceMarkdownSourcePanel({
         invalidatePendingSessionLoad();
       };
     }
+
+    callbacksRef.current.onReadyStateChange?.(true);
 
     return () => {
       invalidatePendingSessionLoad();

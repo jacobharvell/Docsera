@@ -407,12 +407,11 @@ describe("WorkspaceToc", () => {
 
   it("keeps hover and active presentation paint-only on top of the neutral baseline", () => {
     const runtimeShellCss = readRuntimeShellCss();
-    const baseLinkRule = readCssRuleBlock(runtimeShellCss, ".docsera-toc__link");
     const hoverRule = readCssRuleBlock(runtimeShellCss, ".docsera-toc__link:hover");
     const activeRule = readCssRuleBlock(runtimeShellCss, ".docsera-toc__link--active");
 
-    expect(baseLinkRule).toMatch(/font-weight:\s*500;/);
-    expect(baseLinkRule).not.toMatch(/border-left/);
+    expect(runtimeShellCss).toMatch(/\.docsera-toc__link\s*\{[^}]*font-weight:\s*500;/s);
+    expect(runtimeShellCss).not.toMatch(/\.docsera-toc__link\s*\{[^}]*border-left/s);
     expect(hoverRule).toMatch(/color:\s*var\(--docsera-primary\);/);
     expect(hoverRule).not.toMatch(/padding|border|font-weight|line-height/);
     expect(activeRule).toMatch(/color:\s*var\(--docsera-primary\);/);

@@ -21,6 +21,14 @@ Accepted product behavior remains authoritative in `Requirements/40 Editor.md`.
 - Live mode does not expose the markdown source runtime or source toggle.
 - The App now tracks canonical-handoff readiness as explicit React state derived from the mounted editor session capabilities instead of reading the current capability ref directly during readiness resolution. The surface toggle still requires both TipTap ready state and canonical handoff availability.
 
+## Content-Only Mode Reveals
+
+- Successful Live/Edit and Visual/Markdown switches reveal only the destination page-content region inside `WorkspaceMainPane`; header chrome, navigation, ToC, and the workspace shell do not participate in the reveal.
+- The reveal is a destination-only opacity animation with no retained obsolete editable surface and no crossfade between authoring surfaces.
+- Reveal keys are scoped to the current page and rendered destination surface, so ordinary page navigation, pending body loads, blocked switches, and stale rapid switches do not replay old animations.
+- Markdown Source reports lazy-session readiness to the main pane. Markdown reveal starts only after the source session has either initialized or reached a source-session error state, rather than animating an empty lazy mount.
+- Reduced-motion users receive the destination content immediately; the reveal animation is disabled under `prefers-reduced-motion: reduce`.
+
 ## Markdown Source Runtime Boundary
 
 - `WorkspaceMarkdownSourcePanel` now ships with the normal Docsera React bundle so its hooks execute in the main renderer runtime.
