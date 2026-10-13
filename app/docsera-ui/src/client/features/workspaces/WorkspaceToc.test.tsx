@@ -197,6 +197,69 @@ describe("WorkspaceToc", () => {
     expect(runtimeShellCss).not.toMatch(/\.docsera-toc-rail__body\s*\{[^}]*top:\s*40px;/s);
   });
 
+  it("keeps the panel chrome stable without placeholder rows while loading headings", () => {
+    const page = buildWorkspacePageView(createPageRecord(createHeadingHierarchyDocseraDocumentEnvelope()), "live");
+    render(
+      <WorkspaceToc
+        collapsed={false}
+        isLoading={true}
+        page={page}
+        panelId="docsera-workspace-toc"
+        showPendingState={true}
+        onToggleCollapsed={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("On this page")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Collapse table of contents" })).toBeInTheDocument();
+    expect(document.querySelector(".docsera-toc__loading")).toBeNull();
+    expect(screen.queryByRole("link", { name: "Overview" })).not.toBeInTheDocument();
+  });
+
+  it("does not render ToC placeholder rows while loading an outline that resolves empty", () => {
+    const emptyPage = buildWorkspacePageView(
+      createPageRecord(
+        createEnvelope([
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "No headings on this page." }]
+          }
+        ]),
+        { sysId: "page-empty" }
+      ),
+      "live"
+    );
+    const { rerender } = render(
+      <WorkspaceToc
+        collapsed={false}
+        isLoading={true}
+        page={emptyPage}
+        panelId="docsera-workspace-toc"
+        showPendingState={true}
+        onToggleCollapsed={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("On this page")).toBeInTheDocument();
+    expect(document.querySelector(".docsera-toc__loading")).toBeNull();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+
+    rerender(
+      <WorkspaceToc
+        collapsed={false}
+        isLoading={false}
+        page={emptyPage}
+        panelId="docsera-workspace-toc"
+        showPendingState={true}
+        onToggleCollapsed={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("On this page")).toBeInTheDocument();
+    expect(document.querySelector(".docsera-toc__loading")).toBeNull();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
   it("reserves matching top and bottom viewport clearance for the sticky ToC rail", () => {
     const runtimeShellCss = readRuntimeShellCss();
     const railRule = readCssRuleBlock(runtimeShellCss, ".docsera-toc-rail");

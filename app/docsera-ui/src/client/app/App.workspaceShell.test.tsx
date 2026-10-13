@@ -16,14 +16,20 @@ import type {
   WorkspaceViewRecord
 } from "../shared/types/docsera";
 
+const editorHostMockState = vi.hoisted(() => ({
+  readyDelayMs: 0
+}));
+
 vi.mock("../editor/PageEditorHost", () => ({
   PageEditorHost: function MockPageEditorHost({
     canEdit,
     onEditorFailureChange,
+    onReadyStateChange,
     onStatusChange
   }: {
     canEdit: boolean;
     onEditorFailureChange?: (failure: null) => void;
+    onReadyStateChange?: (ready: boolean) => void;
     onStatusChange?: (state: { isDirty: boolean; isSaving: boolean; status: "Saved" }) => void;
   }) {
     useEffect(() => {
@@ -33,7 +39,16 @@ vi.mock("../editor/PageEditorHost", () => ({
         isSaving: false,
         status: "Saved"
       });
-    }, [onEditorFailureChange, onStatusChange]);
+      onReadyStateChange?.(false);
+
+      const timeout = window.setTimeout(() => {
+        onReadyStateChange?.(true);
+      }, editorHostMockState.readyDelayMs);
+
+      return () => {
+        window.clearTimeout(timeout);
+      };
+    }, []);
 
     return canEdit ? <div data-docsera-page-editor-host="true" /> : null;
   }
@@ -378,6 +393,7 @@ describe("App workspace shell integration", () => {
 
   beforeEach(() => {
     window.localStorage.clear();
+    editorHostMockState.readyDelayMs = 0;
   });
 
   it("records successful direct workspace access as user-scoped MRU history with dedupe and a ten-entry cap", async () => {
@@ -644,6 +660,144 @@ describe("App workspace shell integration", () => {
     });
     expect(await screen.findByText("No workspaces to show")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Docsera" })).toBeInTheDocument();
+  });
+
+  it("does not show decorative workspace loading lines when loading completes before the threshold", async () => {
+    vi.useFakeTimers();
+    try {
+      const deferredWorkspace = createDeferred<{ workspace: WorkspaceViewRecord }>();
+      const getWorkspace = vi.fn(() => deferredWorkspace.promise);
+
+      renderApp("/?workspace=product-docs&page=overview", { getWorkspace });
+
+      expect(screen.getByLabelText("Workspace navigation")).toHaveAttribute("aria-busy", "true");
+      expect(document.querySelector(".docsera-sidebar__pending")).toBeNull();
+      expect(document.querySelector(".docsera-main__pending")).toBeNull();
+      expect(document.querySelector(".docsera-toc__loading")).toBeNull();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(349);
+      });
+      expect(document.querySelector(".docsera-sidebar__pending")).toBeNull();
+      expect(document.querySelector(".docsera-main__pending")).toBeNull();
+      expect(document.querySelector(".docsera-toc__loading")).toBeNull();
+
+      await act(async () => {
+        deferredWorkspace.resolve({ workspace: createWorkspace() });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
+      expect(document.querySelector(".docsera-sidebar__pending")).toBeNull();
+      expect(document.querySelector(".docsera-main__pending")).toBeNull();
+      expect(document.querySelector(".docsera-toc__loading")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows decorative workspace loading lines after the threshold without adding ToC placeholders", async () => {
+    vi.useFakeTimers();
+    try {
+      const deferredWorkspace = createDeferred<{ workspace: WorkspaceViewRecord }>();
+      const getWorkspace = vi.fn(() => deferredWorkspace.promise);
+
+      renderApp("/?workspace=product-docs&page=overview", { getWorkspace });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(350);
+      });
+
+      expect(document.querySelector(".docsera-sidebar__pending")).toBeInTheDocument();
+      expect(document.querySelector(".docsera-main__pending")).toBeInTheDocument();
+      expect(document.querySelector(".docsera-toc__loading")).toBeNull();
+      expect(screen.getByText("On this page")).toBeInTheDocument();
+
+      await act(async () => {
+        deferredWorkspace.resolve({ workspace: createWorkspace() });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(screen.getByRole("heading", { name: "Overview" })).toBeInTheDocument();
+      expect(document.querySelector(".docsera-sidebar__pending")).toBeNull();
+      expect(document.querySelector(".docsera-main__pending")).toBeNull();
+      expect(document.querySelector(".docsera-toc__loading")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("starts a fresh editor placeholder delay after prolonged workspace loading resolves", async () => {
+    vi.useFakeTimers();
+    try {
+      editorHostMockState.readyDelayMs = 300;
+      const deferredWorkspace = createDeferred<{ workspace: WorkspaceViewRecord }>();
+      const getWorkspace = vi.fn(() => deferredWorkspace.promise);
+
+      renderApp("/?workspace=product-docs&mode=edit&page=overview", { getWorkspace });
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(350);
+      });
+
+      expect(document.querySelector(".docsera-sidebar__pending")).toBeInTheDocument();
+      expect(document.querySelector(".docsera-main__pending")).toBeInTheDocument();
+      expect(screen.queryByRole("status", { name: "Loading editor" })).not.toBeInTheDocument();
+
+      await act(async () => {
+        deferredWorkspace.resolve({ workspace: createWorkspace() });
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(document.querySelector(".docsera-sidebar__pending")).toBeNull();
+      expect(screen.queryByRole("status", { name: "Loading editor" })).not.toBeInTheDocument();
+      expect(document.querySelector(".docsera-main__editor-host")).toHaveAttribute("hidden");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(300);
+      });
+
+      expect(screen.queryByRole("status", { name: "Loading editor" })).not.toBeInTheDocument();
+      expect(document.querySelector(".docsera-main__editor-host")).not.toHaveAttribute("hidden");
+    } finally {
+      editorHostMockState.readyDelayMs = 0;
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows decorative editor loading lines after the editor threshold and removes them promptly when ready", async () => {
+    vi.useFakeTimers();
+    try {
+      editorHostMockState.readyDelayMs = 400;
+
+      renderApp("/?workspace=product-docs&mode=edit&page=overview");
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve();
+      });
+
+      expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+      expect(screen.queryByRole("status", { name: "Loading editor" })).not.toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(350);
+      });
+
+      expect(screen.getByRole("status", { name: "Loading editor" })).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(50);
+      });
+
+      expect(screen.queryByRole("status", { name: "Loading editor" })).not.toBeInTheDocument();
+      expect(document.querySelector(".docsera-main__editor-host")).not.toHaveAttribute("hidden");
+    } finally {
+      editorHostMockState.readyDelayMs = 0;
+      vi.useRealTimers();
+    }
   });
 
   it("keeps the shared header mounted across launcher and workspace navigation", async () => {

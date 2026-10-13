@@ -334,6 +334,72 @@ describe("WorkspaceMainPane", () => {
     view.unmount();
   });
 
+  it("keeps editor readiness separate from decorative editor placeholders", () => {
+    const page = createPageView();
+    const { rerender } = render(
+      <WorkspaceMainPane
+        {...createEmptyWorkspaceProps({
+          bodyState: "loading",
+          canEditPageBody: true,
+          canManagePageSettings: true,
+          page,
+          pageTitleValue: page.title,
+          showPendingState: false
+        })}
+      />
+    );
+
+    expect(screen.queryByRole("status", { name: "Loading editor" })).not.toBeInTheDocument();
+    expect(document.querySelector(".docsera-main__editor-host")).toHaveAttribute("hidden");
+
+    rerender(
+      <WorkspaceMainPane
+        {...createEmptyWorkspaceProps({
+          bodyState: "loading",
+          canEditPageBody: true,
+          canManagePageSettings: true,
+          page,
+          pageTitleValue: page.title,
+          showPendingState: true
+        })}
+      />
+    );
+
+    expect(screen.getByRole("status", { name: "Loading editor" })).toBeInTheDocument();
+    expect(document.querySelector(".docsera-main__editor-host")).toHaveAttribute("hidden");
+  });
+
+  it("does not let delayed live content placeholders control reader readiness", () => {
+    const page = createPageView();
+    const { rerender } = render(
+      <WorkspaceMainPane
+        {...createEmptyWorkspaceProps({
+          bodyState: "loading",
+          page,
+          workspaceMode: "live",
+          showPendingState: false
+        })}
+      />
+    );
+
+    expect(screen.queryByRole("status", { name: "Loading page content" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Published page content")).not.toBeInTheDocument();
+
+    rerender(
+      <WorkspaceMainPane
+        {...createEmptyWorkspaceProps({
+          bodyState: "ready",
+          page,
+          workspaceMode: "live",
+          showPendingState: false
+        })}
+      />
+    );
+
+    expect(screen.getByLabelText("Published page content")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Loading page content" })).not.toBeInTheDocument();
+  });
+
   it("keeps current-page save status out of the page body", async () => {
     const page = createPageView();
     const baseProps = {

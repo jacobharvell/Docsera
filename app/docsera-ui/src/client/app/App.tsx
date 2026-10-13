@@ -291,7 +291,7 @@ type ShellNoticeState = {
 };
 
 const DEFAULT_PAGE_SIZE = 10;
-const TRANSITION_PROGRESS_DELAY_MS = 220;
+const TRANSITION_PROGRESS_DELAY_MS = 350;
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
 const STALE_REFRESH_BLOCKED_MESSAGE = "Reloading the latest draft projection. Saving is temporarily unavailable.";
 const DOCSERA_THEME_STORAGE_KEY = "docsera.theme";
@@ -303,6 +303,28 @@ const DOCSERA_WORKSPACE_LEASE_RELOAD_MARKER_PREFIX = "docsera.workspace-edit-lea
 const DOCSERA_WORKSPACE_LEASE_TAB_SESSION_PREFIX = "docsera.workspace-edit-lease-tab:";
 const DOCSERA_WORKSPACE_LEASE_CHANNEL_NAME = "docsera.workspace-edit-lease.v1";
 const DOCSERA_WORKSPACE_LEASE_PROBE_TIMEOUT_MS = 250;
+
+function useDelayedTransitionProgress(active: boolean, phaseKey: string): boolean {
+  const [progress, setProgress] = useState({ phaseKey: "", visible: false });
+
+  useEffect(() => {
+    if (!active) {
+      setProgress({ phaseKey, visible: false });
+      return;
+    }
+
+    setProgress({ phaseKey, visible: false });
+    const timeout = window.setTimeout(() => {
+      setProgress({ phaseKey, visible: true });
+    }, TRANSITION_PROGRESS_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [active, phaseKey]);
+
+  return active && progress.phaseKey === phaseKey && progress.visible;
+}
 const DOCSERA_WORKSPACE_LEASE_RELOAD_MARKER_MAX_AGE_MS = 10_000;
 const RESTORED_BODY_NOTICE = "Your unsaved changes were restored. Review them before saving.";
 const RESTORED_BODY_MISMATCH_NOTICE = "Your earlier unsaved changes could not be restored because the shared draft changed.";
@@ -1264,7 +1286,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [pageOutlineOverrides, setPageOutlineOverrides] = useState<Record<string, WorkspacePageOutlineItem[]>>({});
   const [pageSettingsState, setPageSettingsState] = useState<PageSettingsState>(createEmptyPageSettingsState);
   const [inlineRenamePageId, setInlineRenamePageId] = useState("");
-  const [showTransitionProgress, setShowTransitionProgress] = useState(false);
   const [isEditorReady, setIsEditorReady] = useState(false);
   const [editorCanonicalHandoffReady, setEditorCanonicalHandoffReady] = useState(false);
   const [markdownSourceRetryNonce, setMarkdownSourceRetryNonce] = useState(0);
@@ -2749,7 +2770,14 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const workspaceMainPaneBodyState: "loading" | "ready" = showEditorBodyPending ? "loading" : "ready";
   const isLauncherBusy = route.mode === "launcher" && (launcherState.status === "loading" || launcherState.status === "idle" || launcherState.status === "refreshing");
   const isWorkspaceBusy = route.mode === "workspace" && workspaceShellStatus === "loading";
-  const showLoadingProgress = isLauncherBusy || isWorkspaceBusy;
+  const showLoadingProgress = isLauncherBusy || isWorkspaceBusy || showEditorBodyPending;
+  const launcherLoadingProgressKey = `launcher:${launcherSearchText}:${launcherPage}`;
+  const workspaceLoadingProgressKey = `workspace:${currentWorkspaceSlug}:${activeWorkspaceMode}`;
+  const editorLoadingProgressKey = `editor:${editorRenderSessionKey}`;
+  const showLauncherTransitionProgress = useDelayedTransitionProgress(isLauncherBusy, launcherLoadingProgressKey);
+  const showWorkspaceTransitionProgress = useDelayedTransitionProgress(isWorkspaceBusy, workspaceLoadingProgressKey);
+  const showEditorTransitionProgress = useDelayedTransitionProgress(showEditorBodyPending, editorLoadingProgressKey);
+  const showWorkspaceShellPendingState = displayedWorkspaceShellStatus === "loading" ? showWorkspaceTransitionProgress : showEditorTransitionProgress;
 
   useEffect(() => {
     if (route.mode !== "workspace" || workspaceShellStatus !== "ready" || workspaceState.status !== "success") {
@@ -3051,21 +3079,6 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     (!shellNotice.pageSysId || shellNotice.pageSysId === selectedWorkspacePageId)
       ? shellNotice
       : null;
-
-  useEffect(() => {
-    if (!showLoadingProgress) {
-      setShowTransitionProgress(false);
-      return;
-    }
-
-    const timeout = window.setTimeout(() => {
-      setShowTransitionProgress(true);
-    }, TRANSITION_PROGRESS_DELAY_MS);
-
-    return () => {
-      window.clearTimeout(timeout);
-    };
-  }, [showLoadingProgress]);
 
   useEffect(() => {
     if (!runtime.config.backendPingPath) {
@@ -7816,7 +7829,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               shellStatus={displayedWorkspaceShellStatus}
               shellTitle={workspaceShellTitle}
               shellCopy={workspaceShellCopy}
-              showPendingState={showTransitionProgress}
+              showPendingState={showWorkspaceShellPendingState}
               sidebarCollapsed={appHeaderSidebarCollapsed}
               showEditModeToggle={appHeaderShowEditToggle}
               showCreatePageControls={showCreatePageControls}
@@ -7891,7 +7904,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
             isRefreshing={listState.isRefreshing}
             items={listState.items}
             loadUploadedIcon={serviceNowClient.loadWorkspaceIcon}
-            showLoadingState={showTransitionProgress}
+            showLoadingState={showLauncherTransitionProgress}
             page={listState.page}
             pageSize={listState.pageSize}
             searchText={launcherSearchText}

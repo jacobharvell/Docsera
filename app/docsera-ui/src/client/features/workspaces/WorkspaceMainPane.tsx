@@ -361,6 +361,7 @@ export function WorkspaceMainPane({
   }
 
   const showBodyPending = bodyState === "loading";
+  const showBodyPendingPlaceholder = showBodyPending && showPendingState;
   const showEditorRecovery =
     workspaceMode === "edit" &&
     !showBodyPending &&
@@ -431,13 +432,13 @@ export function WorkspaceMainPane({
             </button>
           </section>
         ) : workspaceMode === "live" ? (
-          showBodyPending ? (
+          showBodyPendingPlaceholder ? (
             <section className="docsera-main__pending" aria-label="Loading page content" role="status">
               <span className="docsera-main__pending-line" />
               <span className="docsera-main__pending-line docsera-main__pending-line--wide" />
               <span className="docsera-main__pending-line" />
             </section>
-          ) : page.contentState === "ready" && page.contentEnvelope ? (
+          ) : showBodyPending ? null : page.contentState === "ready" && page.contentEnvelope ? (
             <PublishedDocumentReader
               envelope={page.contentEnvelope}
               loadMedia={loadMedia}
@@ -498,7 +499,7 @@ export function WorkspaceMainPane({
                 />
               </div>
             ) : null}
-            {showBodyPending ? (
+            {showBodyPendingPlaceholder ? (
               <section className="docsera-main__pending" aria-label="Loading editor" role="status">
                 <span className="docsera-main__pending-line" />
                 <span className="docsera-main__pending-line docsera-main__pending-line--wide" />

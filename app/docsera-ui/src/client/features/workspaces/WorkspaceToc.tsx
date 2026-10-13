@@ -91,7 +91,7 @@ function resolveInitialActiveAnchorId(page: WorkspacePageView | null): string | 
   return page?.tocItems[0]?.anchorId ?? null;
 }
 
-export function WorkspaceToc({ collapsed, isLoading = false, showPendingState, page, panelId, onToggleCollapsed }: WorkspaceTocProps) {
+export function WorkspaceToc({ collapsed, isLoading = false, page, panelId, onToggleCollapsed }: WorkspaceTocProps) {
   const hasSections = Boolean(page && page.tocItems.length > 0);
   const [activeState, setActiveState] = useState<WorkspaceTocActiveState>(() => ({
     anchorId: resolveInitialActiveAnchorId(page),
@@ -142,13 +142,7 @@ export function WorkspaceToc({ collapsed, isLoading = false, showPendingState, p
               <DocseraIcon className="docsera-toc__eyebrow-icon" icon={docseraIcons.tableOfContents} size={14} />
               <span>On this page</span>
             </p>
-            {isLoading && showPendingState ? (
-              <div className="docsera-toc__loading" aria-hidden="true">
-                <span className="docsera-toc__loading-line" />
-                <span className="docsera-toc__loading-line docsera-toc__loading-line--wide" />
-                <span className="docsera-toc__loading-line" />
-              </div>
-            ) : !isLoading && hasSections ? (
+            {!isLoading && hasSections ? (
               <ol className="docsera-toc__list">
                 {page!.tocItems.map((section, index) => (
                   <li key={section.id} className="docsera-toc__item">
