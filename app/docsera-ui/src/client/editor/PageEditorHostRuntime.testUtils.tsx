@@ -117,7 +117,7 @@ function createSuccessPage(revision: number) {
 
 function renderRuntime(
   overrides: Partial<Parameters<typeof PageEditorHostRuntime>[0]> = {},
-  options: { overlayRoot?: HTMLElement } = {}
+  options: { overlayRoot?: HTMLElement; renderContainer?: HTMLElement; renderBaseElement?: HTMLElement | DocumentFragment } = {}
 ) {
   const editorReady: Editor[] = [];
   const onAccessLost = vi.fn();
@@ -166,7 +166,10 @@ function renderRuntime(
     );
   }
 
-  const view = render(<RuntimeHarness runtimeProps={overrides} />);
+  const view = render(<RuntimeHarness runtimeProps={overrides} />, {
+    container: options.renderContainer,
+    baseElement: options.renderBaseElement
+  });
   const rerenderRuntime = (nextRuntime: ReactElement<RuntimeProps> | Partial<RuntimeProps>) => {
     const nextRuntimeProps = isValidElement<RuntimeProps>(nextRuntime) ? nextRuntime.props : nextRuntime;
     view.rerender(<RuntimeHarness runtimeProps={nextRuntimeProps} />);

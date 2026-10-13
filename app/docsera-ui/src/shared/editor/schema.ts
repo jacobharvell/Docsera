@@ -5,7 +5,7 @@ import { Highlight } from "@tiptap/extension-highlight";
 import { Link } from "@tiptap/extension-link";
 import { ListItem as BaseListItem, TaskItem, TaskList } from "@tiptap/extension-list";
 import { Table, TableCell as BaseTableCell, TableHeader as BaseTableHeader, TableRow } from "@tiptap/extension-table";
-import { EditorState, Plugin, PluginKey, Selection } from "@tiptap/pm/state";
+import { EditorState, Plugin, PluginKey, Selection, TextSelection } from "@tiptap/pm/state";
 import { CellSelection, findTable, selectedRect, TableMap } from "@tiptap/pm/tables";
 import { Subscript } from "@tiptap/extension-subscript";
 import { Superscript } from "@tiptap/extension-superscript";
@@ -1548,92 +1548,133 @@ function createDocseraCalloutExtension() {
       return;
     }
 
-    view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { ...currentNode.attrs, ...attrs }));
-  }
-
-  function getPlainTextSelectionOffset(container: HTMLElement): number | null {
-    const selection = container.ownerDocument.getSelection();
-    if (!selection || selection.rangeCount === 0) {
-      return null;
-    }
-
-    const range = selection.getRangeAt(0);
-    if (!container.contains(range.startContainer)) {
-      return null;
-    }
-
-    const prefix = range.cloneRange();
-    prefix.selectNodeContents(container);
-    prefix.setEnd(range.startContainer, range.startOffset);
-    return prefix.toString().length;
-  }
-
-  function restorePlainTextSelectionOffset(container: HTMLElement, offset: number | null) {
-    if (offset === null) {
+    const nextAttrs = { ...currentNode.attrs, ...attrs };
+    if (
+      Object.keys(nextAttrs).every((key) => currentNode.attrs[key] === nextAttrs[key]) &&
+      Object.keys(currentNode.attrs).every((key) => currentNode.attrs[key] === nextAttrs[key])
+    ) {
       return;
     }
 
-    const selection = container.ownerDocument.getSelection();
-    if (!selection) {
+    view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, nextAttrs));
+  }
+
+  function sanitizeCalloutTitleValue(value: string): string {
+    return value.replace(/[\r\n]+/g, " ");
+  }
+
+  function autosizeCalloutTitleInput(titleInput: HTMLTextAreaElement) {
+    titleInput.style.height = "auto";
+    titleInput.style.height = `${titleInput.scrollHeight}px`;
+  }
+
+  function selectCalloutBodyStart(view: Editor["view"], getPos: (() => number | undefined) | boolean) {
+    if (typeof getPos !== "function") {
       return;
     }
 
-    const boundedOffset = Math.max(0, Math.min(offset, container.textContent?.length ?? 0));
-    const walker = container.ownerDocument.createTreeWalker(container, globalThis.NodeFilter.SHOW_TEXT);
-    let remaining = boundedOffset;
-    let target: globalThis.Node = container;
-    let targetOffset = container.childNodes.length;
+    const pos = getPos();
+    if (typeof pos !== "number") {
+      return;
+    }
 
-    for (let current = walker.nextNode(); current; current = walker.nextNode()) {
-      const length = current.textContent?.length ?? 0;
-      if (remaining <= length) {
-        target = current;
-        targetOffset = remaining;
-        break;
+    const currentNode = view.state.doc.nodeAt(pos);
+    if (!currentNode || currentNode.type.name !== "callout" || currentNode.childCount === 0) {
+      return;
+    }
+
+    const bodyStart = pos + 1;
+    view.dispatch(view.state.tr.setSelection(Selection.near(view.state.doc.resolve(bodyStart + 1), 1)).scrollIntoView());
+    view.focus();
+  }
+
+  function findCalloutDepth(selection: Selection): number | null {
+    const $from = selection.$from;
+    for (let depth = $from.depth; depth > 0; depth -= 1) {
+      if ($from.node(depth).type.name === "callout") {
+        return depth;
       }
-      remaining -= length;
     }
 
-    const range = container.ownerDocument.createRange();
-    range.setStart(target, targetOffset);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
+    return null;
   }
 
-  function sanitizeCalloutTitleInput(titleInput: HTMLElement): string {
-    const title = (titleInput.textContent ?? "").replace(/[\r\n]+/g, " ");
-    const hasNonTextChildren = Array.from(titleInput.childNodes).some(
-      (child) => child.nodeType !== globalThis.Node.TEXT_NODE
-    );
-    if (hasNonTextChildren || titleInput.textContent !== title) {
-      const offset = getPlainTextSelectionOffset(titleInput);
-      titleInput.textContent = title;
-      restorePlainTextSelectionOffset(titleInput, offset);
+  function focusCalloutTitleInput(view: Editor["view"], calloutPos: number): boolean {
+    const dom = view.nodeDOM(calloutPos);
+    if (!(dom instanceof HTMLElement)) {
+      return false;
     }
-    return title;
+
+    const titleInput = dom.querySelector<HTMLTextAreaElement>("[data-docsera-callout-title-input='true']");
+    if (!titleInput) {
+      return false;
+    }
+
+    titleInput.focus();
+    const titleEnd = titleInput.value.length;
+    titleInput.setSelectionRange(titleEnd, titleEnd);
+    return true;
   }
 
-  function insertPlainTextIntoCalloutTitle(titleInput: HTMLElement, text: string) {
-    if (typeof titleInput.ownerDocument.execCommand === "function") {
-      titleInput.ownerDocument.execCommand("insertText", false, text);
-      return;
+  function focusCalloutTitleFromBodyTop(editor: Editor): boolean {
+    const { selection } = editor.state;
+    if (!(selection instanceof TextSelection) || !selection.empty) {
+      return false;
     }
 
-    const selection = titleInput.ownerDocument.getSelection();
-    if (!selection || selection.rangeCount === 0 || !titleInput.contains(selection.getRangeAt(0).startContainer)) {
-      titleInput.append(titleInput.ownerDocument.createTextNode(text));
-      return;
+    const calloutDepth = findCalloutDepth(selection);
+    if (typeof calloutDepth !== "number") {
+      return false;
     }
 
-    const range = selection.getRangeAt(0);
-    range.deleteContents();
-    const textNode = titleInput.ownerDocument.createTextNode(text);
-    range.insertNode(textNode);
-    range.setStart(textNode, text.length);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
+    const $from = selection.$from;
+    const parentDepth = $from.depth;
+    const parent = $from.parent;
+    if (!parent.isTextblock || parentDepth <= calloutDepth) {
+      return false;
+    }
+
+    const callout = $from.node(calloutDepth);
+    const calloutStart = $from.before(calloutDepth);
+    const currentTextblockStart = $from.start(parentDepth);
+    const currentTextblockEnd = $from.end(parentDepth);
+    let firstTextblockStart: number | null = null;
+    let lastTextblockEnd: number | null = null;
+
+    callout.descendants((node, pos) => {
+      if (!node.isTextblock) {
+        return true;
+      }
+
+      const textblockStart = calloutStart + 1 + pos + 1;
+      firstTextblockStart ??= textblockStart;
+      return false;
+    });
+
+    if (currentTextblockStart !== firstTextblockStart || !editor.view.endOfTextblock("up")) {
+      return false;
+    }
+
+    return focusCalloutTitleInput(editor.view, calloutStart);
+  }
+
+  function focusNextCalloutTitle(editor: Editor): boolean {
+    const { selection } = editor.state;
+    if (!(selection instanceof TextSelection) || !selection.empty || !selection.$from.parent.isTextblock) {
+      return false;
+    }
+
+    if (findCalloutDepth(selection) !== null || !editor.view.endOfTextblock("down")) {
+      return false;
+    }
+
+    const afterCurrentBlock = selection.$from.after(selection.$from.depth);
+    const nextNode = editor.state.doc.nodeAt(afterCurrentBlock);
+    if (!nextNode || nextNode.type.name !== "callout") {
+      return false;
+    }
+
+    return focusCalloutTitleInput(editor.view, afterCurrentBlock);
   }
 
   function renderCalloutIcon(ownerDocument: globalThis.Document, icon: HTMLElement, type: DocseraCalloutType) {
@@ -1694,6 +1735,12 @@ function createDocseraCalloutExtension() {
     parseHTML() {
       return [{ tag: "aside[data-docsera-callout='true']", priority: 1000 }];
     },
+    addKeyboardShortcuts() {
+      return {
+        ArrowUp: () => focusCalloutTitleFromBodyTop(this.editor),
+        ArrowDown: () => focusNextCalloutTitle(this.editor)
+      };
+    },
     addNodeView() {
       return ({ editor, getPos, node }) => {
         const ownerDocument = document;
@@ -1702,7 +1749,7 @@ function createDocseraCalloutExtension() {
         const icon = ownerDocument.createElement("span");
         const content = ownerDocument.createElement("div");
         const controls = ownerDocument.createElement("div");
-        const titleInput = ownerDocument.createElement("div");
+        const titleInput = ownerDocument.createElement("textarea");
         const select = ownerDocument.createElement("select");
         const body = ownerDocument.createElement("div");
 
@@ -1716,14 +1763,11 @@ function createDocseraCalloutExtension() {
         content.className = "docsera-editor-callout__content";
         controls.className = "docsera-editor-callout__controls";
         titleInput.className = "docsera-editor-callout__title";
-        titleInput.contentEditable = "plaintext-only";
-        titleInput.setAttribute("contenteditable", "plaintext-only");
-        titleInput.setAttribute("tabindex", "0");
-        titleInput.setAttribute("role", "textbox");
+        titleInput.rows = 1;
         titleInput.setAttribute("aria-multiline", "false");
         titleInput.setAttribute("aria-label", "Callout title");
         titleInput.setAttribute("data-docsera-callout-title-input", "true");
-        titleInput.setAttribute("data-placeholder", DOCSERA_EMPTY_CALLOUT_TITLE_PLACEHOLDER);
+        titleInput.placeholder = DOCSERA_EMPTY_CALLOUT_TITLE_PLACEHOLDER;
         select.className = "docsera-editor-callout__type";
         select.setAttribute("aria-label", "Callout type");
         select.setAttribute("data-docsera-callout-type-selector", "true");
@@ -1742,6 +1786,15 @@ function createDocseraCalloutExtension() {
         frame.append(icon, content);
         root.append(controls, frame);
 
+        const commitTitleInput = () => {
+          const title = sanitizeCalloutTitleValue(titleInput.value);
+          if (titleInput.value !== title) {
+            titleInput.value = title;
+            autosizeCalloutTitleInput(titleInput);
+          }
+          updateCalloutAttrs(editor.view, getPos, { title: title.length ? title : null });
+        };
+
         const sync = (nextNode: PMNode) => {
           const type = isCalloutType(nextNode.attrs.type) ? nextNode.attrs.type : "info";
           const title = typeof nextNode.attrs.title === "string" ? nextNode.attrs.title : "";
@@ -1754,8 +1807,9 @@ function createDocseraCalloutExtension() {
           root.style.setProperty("--docsera-callout-accent", presentation.accent);
           root.style.setProperty("--docsera-callout-icon-color", presentation.lightIcon);
           renderCalloutIcon(ownerDocument, icon, type);
-          if (titleInput.textContent !== title) {
-            titleInput.textContent = title;
+          if (titleInput.value !== title) {
+            titleInput.value = title;
+            autosizeCalloutTitleInput(titleInput);
           }
           if (select.value !== type) {
             select.value = type;
@@ -1765,19 +1819,53 @@ function createDocseraCalloutExtension() {
         titleInput.addEventListener("keydown", (event) => {
           if (event.key === "Enter") {
             event.preventDefault();
-            editor.view.focus();
+            commitTitleInput();
+            selectCalloutBodyStart(editor.view, getPos);
+            return;
+          }
+
+          if (event.key === "ArrowDown" && (titleInput.selectionEnd ?? 0) === titleInput.value.length) {
+            event.preventDefault();
+            commitTitleInput();
+            selectCalloutBodyStart(editor.view, getPos);
+            return;
+          }
+
+          if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "z") {
+            event.preventDefault();
+            if (event.shiftKey) {
+              editor.commands.redo();
+            } else {
+              editor.commands.undo();
+            }
+            return;
+          }
+
+          if ((event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "y") {
+            event.preventDefault();
+            editor.commands.redo();
           }
         });
         titleInput.addEventListener("paste", (event) => {
           event.preventDefault();
           const title = event.clipboardData?.getData("text/plain").replace(/[\r\n]+/g, " ") ?? "";
-          insertPlainTextIntoCalloutTitle(titleInput, title);
-          updateCalloutAttrs(editor.view, getPos, { title: sanitizeCalloutTitleInput(titleInput) || null });
+          const start = titleInput.selectionStart ?? titleInput.value.length;
+          const end = titleInput.selectionEnd ?? start;
+          titleInput.setRangeText(title, start, end, "end");
+          autosizeCalloutTitleInput(titleInput);
+          commitTitleInput();
         });
         titleInput.addEventListener("input", () => {
-          const title = sanitizeCalloutTitleInput(titleInput);
-          updateCalloutAttrs(editor.view, getPos, { title: title.length ? title : null });
+          const title = sanitizeCalloutTitleValue(titleInput.value);
+          if (titleInput.value !== title) {
+            const cursor = titleInput.selectionStart ?? title.length;
+            titleInput.value = title;
+            titleInput.setSelectionRange(Math.min(cursor, title.length), Math.min(cursor, title.length));
+          }
+          autosizeCalloutTitleInput(titleInput);
+          commitTitleInput();
         });
+        titleInput.addEventListener("blur", commitTitleInput);
         select.addEventListener("mousedown", (event) => {
           event.stopPropagation();
         });

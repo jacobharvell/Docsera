@@ -7326,6 +7326,12 @@ export function PageEditorHostRuntime({
           font-family: inherit;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__title {
+          display: block;
+          box-sizing: border-box;
+          width: 100%;
+          min-height: calc(var(--docsera-document-body-font-size) * var(--docsera-document-body-line-height));
+          resize: none;
+          overflow: hidden;
           padding: 0;
           border: 0;
           border-radius: 0;
@@ -7337,10 +7343,10 @@ export function PageEditorHostRuntime({
           outline: none;
           cursor: text;
         }
-        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__title:empty::before {
-          content: attr(data-placeholder);
-          color: var(--docsera-text-muted);
-          font-weight: 600;
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__title::placeholder {
+          color: color-mix(in srgb, var(--docsera-text-muted) 58%, transparent);
+          font-weight: 500;
+          opacity: 1;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="true"] .docsera-editor-callout__title {
           margin-bottom: 8px;
@@ -7356,16 +7362,7 @@ export function PageEditorHostRuntime({
           cursor: pointer;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"] .docsera-editor-callout__title {
-          max-height: 0;
-          margin-bottom: 0;
-          opacity: 0;
-          overflow: hidden;
-        }
-        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"]:hover .docsera-editor-callout__title,
-        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"] .docsera-editor-callout__title:focus {
-          max-height: none;
           margin-bottom: 8px;
-          opacity: 1;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__type:hover,
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout__type:focus {

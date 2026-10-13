@@ -3,7 +3,13 @@
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Editor, JSONContent } from "@tiptap/core";
+import { undoDepth } from "@tiptap/pm/history";
+import { TextSelection } from "@tiptap/pm/state";
 import type { DocseraTiptapDocument } from "../../shared/editor/document";
+import {
+  parseDocseraMarkdownDocument,
+  serializeDocseraMarkdownDocument
+} from "../../shared/editor/markdown";
 import { PublishedDocumentReader } from "../features/workspaces/PublishedDocumentReader";
 import {
   createClipboardData,
@@ -12,7 +18,7 @@ import {
   openSlashQueryAtSelection,
   renderRuntime
 } from "./PageEditorHostRuntime.testUtils";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 function getOptionNames(container: HTMLElement): string[] {
   return within(container)
@@ -57,6 +63,33 @@ function createCalloutDocument(type: "info" | "warning" | "success" | "error" = 
         attrs: { type, title },
         content: [{ type: "paragraph" }]
       }
+    ]
+  };
+}
+
+function createMultiParagraphCalloutDocument(): DocseraTiptapDocument {
+  return {
+    type: "doc",
+    content: [
+      {
+        type: "callout",
+        attrs: { type: "info", title: "Steps" },
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "First body" }] },
+          { type: "paragraph", content: [{ type: "text", text: "Second body" }] }
+        ]
+      }
+    ]
+  };
+}
+
+function createAdjacentCalloutDocument(): DocseraTiptapDocument {
+  return {
+    type: "doc",
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: "Before" }] },
+      ...(createMultiParagraphCalloutDocument().content ?? []),
+      { type: "paragraph", content: [{ type: "text", text: "After" }] }
     ]
   };
 }
@@ -132,6 +165,53 @@ function getFirstTextblockPositionInsideNode(editor: Editor, ancestorTypeName: s
   }
 
   return position;
+}
+
+function getTextblockPositionsInsideNode(editor: Editor, ancestorTypeName: string): Array<{ contentEnd: number; contentStart: number }> {
+  const positions: Array<{ contentEnd: number; contentStart: number }> = [];
+  editor.state.doc.descendants((node, pos) => {
+    if (!node.isTextblock) {
+      return true;
+    }
+
+    const $pos = editor.state.doc.resolve(pos);
+    for (let depth = $pos.depth; depth > 0; depth -= 1) {
+      if ($pos.node(depth).type.name === ancestorTypeName) {
+        positions.push({ contentStart: pos + 1, contentEnd: pos + 1 + node.content.size });
+        return false;
+      }
+    }
+
+    return true;
+  });
+
+  if (positions.length === 0) {
+    throw new Error(`Expected textblocks inside ${ancestorTypeName}.`);
+  }
+
+  return positions;
+}
+
+function expectSelectionInsideCalloutBody(editor: Editor) {
+  expect(editor.state.selection).toBeInstanceOf(TextSelection);
+  expect(editor.state.selection.$from.parent.type.name).toBe("paragraph");
+  const ancestorNames = Array.from({ length: editor.state.selection.$from.depth }, (_entry, index) =>
+    editor.state.selection.$from.node(index + 1).type.name
+  );
+  expect(ancestorNames).toContain("callout");
+}
+
+function mockEndOfTextblock(editor: Editor, handler: (direction: "up" | "down") => boolean) {
+  const original = editor.view.endOfTextblock.bind(editor.view);
+  const mock = vi.fn((direction: "up" | "down") => handler(direction));
+  editor.view.endOfTextblock = mock;
+
+  return {
+    mock,
+    restore: () => {
+      editor.view.endOfTextblock = original;
+    }
+  };
 }
 
 function mockElementRect(element: Element, rect: DOMRect) {
@@ -268,8 +348,7 @@ describe("PageEditorHostRuntime callouts", () => {
     const title = await screen.findByRole("textbox", { name: "Callout title" });
     const type = await screen.findByRole("combobox", { name: "Callout type" });
 
-    title.textContent = "Read this";
-    fireEvent.input(title);
+    fireEvent.input(title, { target: { value: "Read this" } });
     fireEvent.keyDown(title, { key: "Enter" });
     fireEvent.change(type, { target: { value: "warning" } });
 
@@ -287,9 +366,22 @@ describe("PageEditorHostRuntime callouts", () => {
       editor.commands.redo();
     });
     expect(editor.getJSON()).toEqual(createCalloutDocument("warning", "Read this"));
+
+    const serialized = serializeDocseraMarkdownDocument("Callout page", createEnvelopeFromDocument(editor.getJSON() as DocseraTiptapDocument));
+    expect(serialized.ok).toBe(true);
+    if (!serialized.ok) {
+      return;
+    }
+    expect(serialized.markdown).toContain(':::docsera-callout{type="warning" title="Read this"}');
+    const parsed = parseDocseraMarkdownDocument(serialized.markdown);
+    expect(parsed).toMatchObject({
+      ok: true,
+      title: "Callout page",
+      envelope: createEnvelopeFromDocument(createCalloutDocument("warning", "Read this"))
+    });
   });
 
-  it("preserves incremental multiword callout title typing without trimming spaces", async () => {
+  it("keeps an untitled title field visible and persists browser-like multiword edits across focus and pointer changes", async () => {
     const { editorReady } = renderRuntime({
       initialEnvelope: createEnvelopeFromDocument(createCalloutDocument())
     });
@@ -297,21 +389,45 @@ describe("PageEditorHostRuntime callouts", () => {
     const editor = editorReady[0];
 
     const title = await screen.findByRole("textbox", { name: "Callout title" });
+    const body = editor.view.dom.querySelector("[data-docsera-callout-body='true']");
+    const callout = editor.view.dom.querySelector(".docsera-editor-callout");
+    expect(body).toBeInTheDocument();
+    expect(callout).toHaveAttribute("data-docsera-callout-has-title", "false");
+    expect(title).toHaveAttribute("placeholder", "Optional title");
+    expect(title).toHaveValue("");
+    expect(
+      getRuntimeRuleBody(
+        getEditorRuntimeStyleText(),
+        '.docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"] .docsera-editor-callout__title'
+      )
+    ).toContain("margin-bottom: 8px;");
     title.focus();
+    expect(title).toHaveFocus();
 
-    title.textContent = "Read ";
-    fireEvent.input(title);
-    expect(title.textContent).toBe("Read ");
+    fireEvent.input(title, { target: { value: "Read " } });
+    expect(title).toHaveValue("Read ");
     await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", "Read ")));
 
-    title.textContent = "Read this";
-    fireEvent.input(title);
-    expect(title.textContent).toBe("Read this");
+    fireEvent.input(title, { target: { value: "Read this" } });
+    fireEvent.pointerMove(body as Element);
+    (body as HTMLElement).focus();
+    fireEvent.blur(title);
+    fireEvent.pointerOut(callout as Element);
+    expect(title).toHaveValue("Read this");
     await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", "Read this")));
+    expect(callout).toHaveAttribute("data-docsera-callout-has-title", "true");
 
-    title.textContent = "";
-    fireEvent.input(title);
-    expect(title.textContent).toBe("");
+    await act(async () => {
+      editor.commands.undo();
+    });
+    expect((editor.getJSON().content?.[0]?.attrs as Record<string, unknown>).title).toBeNull();
+    await act(async () => {
+      editor.commands.redo();
+    });
+    expect(editor.getJSON()).toEqual(createCalloutDocument("info", "Read this"));
+
+    fireEvent.input(title, { target: { value: "" } });
+    expect(title).toHaveValue("");
     await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", null)));
   });
 
@@ -321,12 +437,257 @@ describe("PageEditorHostRuntime callouts", () => {
     });
 
     const title = await screen.findByRole("textbox", { name: "Callout title" });
-    expect(title).toHaveAttribute("tabindex", "0");
-    expect(title).toHaveAttribute("contenteditable", "plaintext-only");
+    expect(title.tagName).toBe("TEXTAREA");
     expect(title).toHaveAttribute("aria-multiline", "false");
 
     title.focus();
     expect(title).toHaveFocus();
+  });
+
+  it("does not create an undo step when an unchanged callout title loses focus to a real control", async () => {
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createCalloutDocument("warning", "Watch this"))
+    });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+    const beforeDocument = editor.getJSON();
+    const beforeUndoDepth = undoDepth(editor.state);
+
+    const title = await screen.findByRole("textbox", { name: "Callout title" });
+    const type = await screen.findByRole("combobox", { name: "Callout type" });
+
+    title.focus();
+    expect(title).toHaveFocus();
+    type.focus();
+    fireEvent.blur(title);
+
+    expect(type).toHaveFocus();
+    expect(editor.getJSON()).toEqual(beforeDocument);
+    expect(undoDepth(editor.state)).toBe(beforeUndoDepth);
+    expect(editor.can().undo()).toBe(false);
+  });
+
+  it("owns callout title editing and body navigation inside a ShadowRoot", async () => {
+    const shadowHost = document.createElement("section");
+    document.body.append(shadowHost);
+    const shadowRoot = shadowHost.attachShadow({ mode: "open" });
+    const renderContainer = document.createElement("div");
+    const overlayRoot = document.createElement("div");
+    shadowRoot.append(renderContainer);
+
+    const { editorReady } = renderRuntime(
+      {
+        initialEnvelope: createEnvelopeFromDocument(createCalloutDocument())
+      },
+      { overlayRoot, renderContainer, renderBaseElement: shadowRoot }
+    );
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: vi.fn(() => false)
+    });
+    const shadowQueries = within(shadowRoot as unknown as HTMLElement);
+    const title = await shadowQueries.findByRole("textbox", { name: "Callout title" });
+    const body = editor.view.dom.querySelector("[data-docsera-callout-body='true']");
+    expect(body).toBeInTheDocument();
+
+    title.focus();
+    expect(document.activeElement).toBe(shadowHost);
+    expect(shadowRoot.activeElement).toBe(title);
+
+    fireEvent.input(title, { target: { value: "Read these words" } });
+    fireEvent.input(title, { target: { value: "Read these word" } });
+    fireEvent.input(title, { target: { value: "Read these words now" } });
+    await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", "Read these words now")));
+
+    const beforeEnterBlockCount = editor.state.doc.childCount;
+    fireEvent.keyDown(title, { key: "Enter" });
+    await waitFor(() => {
+      expect(editor.state.selection.$from.parent.type.name).toBe("paragraph");
+      expect(editor.state.selection.$from.node(editor.state.selection.$from.depth - 1).type.name).toBe("callout");
+    });
+    expect(editor.getJSON()).toEqual(createCalloutDocument("info", "Read these words now"));
+    expect(editor.state.doc.childCount).toBe(beforeEnterBlockCount);
+
+    title.focus();
+    fireEvent.keyDown(title, { key: "ArrowDown" });
+    await waitFor(() => {
+      expect(editor.state.selection.$from.parent.type.name).toBe("paragraph");
+      expect(editor.state.selection.$from.node(editor.state.selection.$from.depth - 1).type.name).toBe("callout");
+    });
+    expect(editor.state.doc.childCount).toBe(beforeEnterBlockCount);
+
+    title.focus();
+    fireEvent.input(title, { target: { value: "Body click title" } });
+    fireEvent.blur(title, { relatedTarget: body });
+    fireEvent.click(body as Element);
+    await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", "Body click title")));
+
+    title.focus();
+    fireEvent.input(title, { target: { value: "Outside click title" } });
+    fireEvent.blur(title);
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", "Outside click title")));
+
+    const beforeUnchangedUndoDepth = undoDepth(editor.state);
+    title.focus();
+    fireEvent.blur(title);
+    expect(undoDepth(editor.state)).toBe(beforeUnchangedUndoDepth);
+
+    fireEvent.input(title, { target: { value: "Shortcut title" } });
+    await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", "Shortcut title")));
+    fireEvent.keyDown(title, { key: "z", ctrlKey: true });
+    await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", null)));
+    fireEvent.keyDown(title, { key: "y", ctrlKey: true });
+    await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", "Shortcut title")));
+  });
+
+  it("moves ArrowUp from the first callout body line into the optional title without changing the document", async () => {
+    const shadowHost = document.createElement("section");
+    document.body.append(shadowHost);
+    const shadowRoot = shadowHost.attachShadow({ mode: "open" });
+    const renderContainer = document.createElement("div");
+    const overlayRoot = document.createElement("div");
+    shadowRoot.append(renderContainer);
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createCalloutDocument("info", "Only callout"))
+    }, { overlayRoot, renderContainer, renderBaseElement: shadowRoot });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+    const shadowQueries = within(shadowRoot as unknown as HTMLElement);
+    const title = await shadowQueries.findByRole("textbox", { name: "Callout title" });
+    const { mock, restore } = mockEndOfTextblock(editor, () => true);
+
+    try {
+      await act(async () => {
+        editor.commands.insertContent("Alpha beta gamma");
+      });
+      const [bodyParagraph] = getTextblockPositionsInsideNode(editor, "callout");
+
+      await act(async () => {
+        editor.commands.setTextSelection(bodyParagraph.contentStart + 6);
+      });
+      const beforeDocument = editor.getJSON();
+      const beforeTopLevelBlockCount = editor.state.doc.childCount;
+
+      expect(fireEvent.keyDown(editor.view.dom, { key: "ArrowUp" })).toBe(false);
+
+      expect(mock).toHaveBeenCalledWith("up");
+      expect(document.activeElement).toBe(shadowHost);
+      expect(shadowRoot.activeElement).toBe(title);
+      expect(editor.getJSON()).toEqual(beforeDocument);
+      expect(editor.state.doc.childCount).toBe(beforeTopLevelBlockCount);
+    } finally {
+      restore();
+      shadowHost.remove();
+    }
+  });
+
+  it("leaves ArrowUp and ArrowDown unconsumed when visual movement remains inside a callout textblock", async () => {
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createCalloutDocument("info", "Only callout"))
+    });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+    const { mock, restore } = mockEndOfTextblock(editor, () => false);
+
+    try {
+      await act(async () => {
+        editor.commands.insertContent("Alpha beta gamma");
+      });
+      const [bodyParagraph] = getTextblockPositionsInsideNode(editor, "callout");
+
+      await act(async () => {
+        editor.commands.setTextSelection(bodyParagraph.contentStart + 6);
+      });
+      const beforeDocument = editor.getJSON();
+      const beforeSelection = editor.state.selection.toJSON();
+      expect(fireEvent.keyDown(editor.view.dom, { key: "ArrowUp" })).toBe(true);
+      expect(fireEvent.keyDown(editor.view.dom, { key: "ArrowDown" })).toBe(true);
+      expect(mock).toHaveBeenCalledWith("up");
+      expect(mock).toHaveBeenCalledWith("down");
+      expect(editor.state.selection.toJSON()).toEqual(beforeSelection);
+      expect(editor.getJSON()).toEqual(beforeDocument);
+    } finally {
+      restore();
+    }
+  });
+
+  it("keeps wrapped-title ArrowDown native until the caret reaches the title end", async () => {
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createCalloutDocument("info", "Long wrapped title"))
+    });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+    const title = await screen.findByRole("textbox", { name: "Callout title" }) as HTMLTextAreaElement;
+    const beforeDocument = editor.getJSON();
+
+    title.focus();
+    title.setSelectionRange(4, 4);
+    expect(fireEvent.keyDown(title, { key: "ArrowDown" })).toBe(true);
+    expect(title).toHaveFocus();
+    expect(editor.getJSON()).toEqual(beforeDocument);
+
+    title.setSelectionRange(title.value.length, title.value.length);
+    expect(fireEvent.keyDown(title, { key: "ArrowDown" })).toBe(false);
+    await waitFor(() => expectSelectionInsideCalloutBody(editor));
+    expect(editor.getJSON()).toEqual(beforeDocument);
+  });
+
+  it("enters the callout title from the immediately preceding block and then the existing body", async () => {
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createAdjacentCalloutDocument())
+    });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+    const title = await screen.findByRole("textbox", { name: "Callout title" });
+    const beforeDocument = editor.getJSON();
+    const beforeTopLevelBlockCount = editor.state.doc.childCount;
+    const { mock, restore } = mockEndOfTextblock(editor, (direction) => direction === "down");
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(7);
+      });
+
+      expect(fireEvent.keyDown(editor.view.dom, { key: "ArrowDown" })).toBe(false);
+      expect(mock).toHaveBeenCalledWith("down");
+      expect(title).toHaveFocus();
+
+      expect(fireEvent.keyDown(title, { key: "ArrowDown" })).toBe(false);
+      await waitFor(() => expectSelectionInsideCalloutBody(editor));
+      expect(editor.getJSON()).toEqual(beforeDocument);
+      expect(editor.state.doc.childCount).toBe(beforeTopLevelBlockCount);
+    } finally {
+      restore();
+    }
+  });
+
+  it("lets ArrowDown leave the last callout body block for neighboring content", async () => {
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createAdjacentCalloutDocument())
+    });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+    const beforeDocument = editor.getJSON();
+    const beforeTopLevelBlockCount = editor.state.doc.childCount;
+    const bodyParagraphs = getTextblockPositionsInsideNode(editor, "callout");
+    const { restore } = mockEndOfTextblock(editor, () => true);
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(bodyParagraphs[1].contentEnd - 2);
+      });
+      const beforeArrowDownSelection = editor.state.selection.toJSON();
+      expect(fireEvent.keyDown(editor.view.dom, { key: "ArrowDown" })).toBe(true);
+      expectSelectionInsideCalloutBody(editor);
+      expect(editor.state.selection.toJSON()).toEqual(beforeArrowDownSelection);
+      expect(editor.getJSON()).toEqual(beforeDocument);
+      expect(editor.state.doc.childCount).toBe(beforeTopLevelBlockCount);
+    } finally {
+      restore();
+    }
   });
 
   it("flattens formatted callout title paste to plain text", async () => {
@@ -342,12 +703,11 @@ describe("PageEditorHostRuntime callouts", () => {
       clipboardData: createClipboardData("<strong>Formatted</strong> <em>title</em>", "Formatted title")
     } as never);
 
-    expect(title).toHaveTextContent("Formatted title");
-    expect(title.querySelector("strong, em, span, div, p")).toBeNull();
+    expect(title).toHaveValue("Formatted title");
     await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", "Formatted title")));
   });
 
-  it("sanitizes formatted callout title DOM without moving focus", async () => {
+  it("sanitizes pasted callout title newlines without moving focus", async () => {
     const { editorReady } = renderRuntime({
       initialEnvelope: createEnvelopeFromDocument(createCalloutDocument())
     });
@@ -356,13 +716,11 @@ describe("PageEditorHostRuntime callouts", () => {
 
     const title = await screen.findByRole("textbox", { name: "Callout title" });
     title.focus();
-    title.innerHTML = 'Alpha <strong>beta</strong><span style="color:red"> gamma</span>';
-    fireEvent.input(title);
+    fireEvent.input(title, { target: { value: "Alpha\nbeta\r\n gamma" } });
 
     expect(title).toHaveFocus();
-    expect(title.textContent).toBe("Alpha beta gamma");
-    expect(title.querySelector("strong, span")).toBeNull();
-    await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", "Alpha beta gamma")));
+    expect(title).toHaveValue("Alpha beta  gamma");
+    await waitFor(() => expect(editor.getJSON()).toEqual(createCalloutDocument("info", "Alpha beta  gamma")));
   });
 
   it("keeps keyboard focus on the callout type selector through successive changes", async () => {
@@ -478,13 +836,14 @@ describe("PageEditorHostRuntime callouts", () => {
     const type = callout?.querySelector(".docsera-editor-callout__type");
     expect(title).toBeInTheDocument();
     expect(type).toBeInTheDocument();
-    expect(title).toHaveAttribute("contenteditable", "plaintext-only");
-    expect(title).toHaveAttribute("tabindex", "0");
+    expect(title?.tagName).toBe("TEXTAREA");
     expect(title).toHaveAttribute("aria-multiline", "false");
     expect(runtimeStyle).toContain("white-space: pre-wrap;");
     expect(runtimeStyle).toContain("overflow-wrap: anywhere;");
     expect(runtimeStyle).toContain("font-size: var(--docsera-document-body-font-size);");
     expect(runtimeStyle).toContain("line-height: var(--docsera-document-body-line-height);");
+    expect(runtimeStyle).toContain("color: color-mix(in srgb, var(--docsera-text-muted) 58%, transparent);");
+    expect(runtimeStyle).toContain("font-weight: 500;");
     expect(runtimeStyle).toContain("font-size: 14px;");
     expect(runtimeStyle).toContain("line-height: 1.3;");
   });
@@ -559,12 +918,15 @@ describe("PageEditorHostRuntime callouts", () => {
     expect(controls?.firstElementChild).toBe(type);
     expect(runtimeStyle).toMatch(/\.docsera-editor-callout__controls\s*{[^}]*display:\s*flex;[^}]*justify-content:\s*flex-end;[^}]*margin-bottom:\s*4px;/s);
     expect(runtimeStyle).toContain('[data-docsera-callout-has-title="false"] .docsera-editor-callout__title');
-    expect(runtimeStyle).toContain("max-height: 0;");
-    expect(runtimeStyle).toContain("margin-bottom: 0;");
-    expect(runtimeStyle).toContain("opacity: 0;");
-    expect(runtimeStyle).toContain("overflow: hidden;");
-    expect(runtimeStyle).toContain("max-height: none;");
-    expect(runtimeStyle).toContain("margin-bottom: 8px;");
+    const untitledTitleRule = getRuntimeRuleBody(
+      runtimeStyle,
+      '.docsera-editor-runtime__surface .ProseMirror .docsera-editor-callout[data-docsera-callout-has-title="false"] .docsera-editor-callout__title'
+    );
+    expect(untitledTitleRule).toContain("margin-bottom: 8px;");
+    expect(untitledTitleRule).not.toContain("max-height: 0;");
+    expect(untitledTitleRule).not.toContain("opacity: 0;");
+    expect(untitledTitleRule).not.toContain("overflow: hidden;");
+    expect(runtimeStyle).not.toMatch(/\[data-docsera-callout-has-title="false"\]:hover\s+\.docsera-editor-callout__title/);
     expect(controlsRule).not.toContain("position: absolute;");
     expect(controlsRule).not.toContain("right: 18px;");
     expect(runtimeStyle).not.toContain("padding-right: 8.5rem;");
