@@ -210,6 +210,7 @@ export const testSuites = [
       "scripts/test-suite-manifest.test.mjs",
       "scripts/validation-process.test.ts",
       "scripts/verification-output-safety.test.mjs",
+      "scripts/verify-sdk-runtime.test.mjs",
       "scripts/verify-standalone-layout.test.mjs",
       "scripts/workspace-verifier-runtime-sequence.test.mjs",
       "src/client/bootstrap.test.tsx",

@@ -208,6 +208,23 @@ describe("PageTree presentation", () => {
     expect(cssSource).toContain(".docsera-page-tree__inline-input {\n  width: 100%;\n  min-width: 0;\n  padding: 6px 12px;");
     expect(cssSource).not.toContain(".docsera-page-tree__row--inline-create .docsera-page-tree__inline-input {\n  padding: 0;");
   });
+
+  it("keeps page-tree action controls on the established primary hover treatment", () => {
+    renderTree([page({ id: "parent", title: "Parent" })], {
+      canCreatePage: true
+    });
+
+    expect(screen.getByRole("button", { name: "Page actions for Parent" })).toHaveClass(
+      "docsera-page-tree__action-button",
+      "docsera-page-tree__action-button--actions"
+    );
+
+    const cwd = new Function("return process.cwd()")() as string;
+    const cssSource = readFileSync(join(cwd, "src/client/styles/runtime-shell.css"), "utf8").replace(/\r\n/g, "\n");
+    expect(cssSource).toContain(
+      ".docsera-page-tree__action-button:hover,\n.docsera-page-tree__row--menu-open .docsera-page-tree__action-button--actions {\n  background: transparent;\n  color: var(--docsera-primary);"
+    );
+  });
 });
 
 describe("PageTree row interaction", () => {

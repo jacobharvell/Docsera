@@ -169,6 +169,13 @@ describe("PageEditorHostRuntime", () => {
     expect(source).toContain("padding-left: var(--docsera-document-list-padding-left, 1.5rem);");
     expect(source).toContain("margin-top: var(--docsera-document-list-item-gap, 0.35rem);");
     expect(source).toContain("border-left: 3px solid var(--docsera-document-blockquote-border-color");
+    expect(source).toContain(".docsera-editor-floating__block-drag-preview blockquote {");
+    expect(source.match(/border-left: 3px solid var\(--docsera-document-blockquote-border-color/g)).toHaveLength(2);
+    const editorBlockquoteRule = source.match(/\.docsera-editor-runtime__surface \.ProseMirror blockquote\s*\{[^}]*\}/s)?.[0] ?? "";
+    const dragPreviewBlockquoteRule = source.match(/\.docsera-editor-floating__block-drag-preview blockquote\s*\{[^}]*\}/s)?.[0] ?? "";
+    expect(editorBlockquoteRule).toContain("border-left: 3px solid var(--docsera-document-blockquote-border-color");
+    expect(dragPreviewBlockquoteRule).toContain("border-left: 3px solid var(--docsera-document-blockquote-border-color");
+    expect(`${editorBlockquoteRule}${dragPreviewBlockquoteRule}`).not.toMatch(/(?:#015ec2|#58a6ff|var\(--docsera-editor-primary\) 24%)/i);
     expect(source).toContain("padding: var(--docsera-document-code-block-padding, 0.9rem 1rem);");
     expect(source).toContain("background: var(--docsera-document-code-block-bg");
     expect(source).toContain("font-family: var(--docsera-document-mono-font-family");

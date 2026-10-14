@@ -978,6 +978,7 @@ describe("PageEditorHostRuntime accordion corrections", () => {
       throw new Error("Expected the hidden delete menu item.");
     }
     expect(secondDeleteItem).toHaveClass("docsera-block-menu__item", "docsera-block-menu__item--destructive");
+    expect(secondDeleteItem).toHaveClass("docsera-editor-accordion__delete-item");
     expect(secondDeleteItem).toHaveAttribute("aria-label", "Delete item");
     const secondDeleteIcon = secondDeleteItem.querySelector<HTMLElement>(".docsera-block-menu__icon");
     const secondDeleteLabel = secondDeleteItem.querySelector<HTMLElement>(".docsera-block-menu__label");
@@ -1025,6 +1026,7 @@ describe("PageEditorHostRuntime accordion corrections", () => {
     expect(within(secondItem).queryByRole("menu", { name: "Accordion item actions: Plan" })).toBeNull();
     expect(secondToggle).not.toHaveTextContent("▸");
     expect(secondToggleIcon).toHaveAttribute("aria-hidden", "true");
+    expect(secondToggleIcon).toHaveClass("docsera-editor-accordion__chevron");
     expect(secondToggleIcon).toHaveAttribute("width", "18");
     expect(secondToggleIcon).toHaveAttribute("height", "18");
     expect(secondToggleIcon).toHaveAttribute("stroke-width", "2.2");

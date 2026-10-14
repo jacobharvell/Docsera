@@ -246,6 +246,7 @@ describe("WorkspaceSidebar page tree drag surface", () => {
     if (!(newPageButton instanceof HTMLButtonElement)) {
       throw new Error("Expected the compact New page button.");
     }
+    expect(newPageButton).toHaveClass("docsera-sidebar__icon-button");
     expect(newPageButton).not.toHaveAttribute("title");
 
     fireEvent.focus(newPageButton);

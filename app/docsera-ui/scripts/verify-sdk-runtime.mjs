@@ -2,12 +2,13 @@
 
 import { Entry } from "@napi-rs/keyring";
 import { chromium } from "playwright-core";
-import { parseArgs } from "node:util";
+import { fileURLToPath } from "node:url";
 import {
   collectLocalInlineRuntimeCssBuild,
   runtimeStyleIdentity,
   sha256Hex
 } from "./inline-runtime-css.mjs";
+import { parseRuntimeVerificationOptions } from "./sdk-runtime-verification-options.mjs";
 
 const defaults = {
   authAlias: "docsera-pdi",
@@ -126,7 +127,8 @@ Options:
   --auth-alias <alias>   Override the SDK auth alias.
   --page-endpoint <path> Override the UI Page endpoint.
   --ping-path <path>     Override the REST ping path.
-  --skip-browser         Skip the browser/computed-style verification step.
+  --browser              Run the optional browser/computed-style verification step.
+  --skip-browser         Explicitly skip browser proof (retained for compatibility).
   -h, --help             Show this message.
 
 Environment overrides:
@@ -559,42 +561,30 @@ async function runBrowserVerification({
 }
 
 async function main() {
-  const parsedArgs = parseArgs({
-    allowPositionals: false,
-    options: {
-      "auth-alias": { type: "string" },
-      "instance-url": { type: "string" },
-      "page-endpoint": { type: "string" },
-      "ping-path": { type: "string" },
-      "skip-browser": { type: "boolean" },
-      help: { type: "boolean", short: "h" }
-    },
-    args: process.argv.slice(2)
-  });
+  const parsedOptions = parseRuntimeVerificationOptions(process.argv.slice(2));
+  const { values: parsedArgs, browserProofEnabled } = parsedOptions;
 
-  if (parsedArgs.values.help) {
+  if (parsedOptions.help) {
     printUsage();
     return;
   }
 
   const authAlias =
-    getOptionValue(parsedArgs.values["auth-alias"]) ??
+    getOptionValue(parsedArgs["auth-alias"]) ??
     readEnv("DOCSERA_SDK_AUTH_ALIAS", "SN_SDK_AUTH_ALIAS") ??
     defaults.authAlias;
   const instanceUrl =
-    getOptionValue(parsedArgs.values["instance-url"]) ??
+    getOptionValue(parsedArgs["instance-url"]) ??
     readEnv("DOCSERA_SDK_INSTANCE_URL", "SN_SDK_INSTANCE_URL") ??
     defaults.instanceUrl;
   const pageEndpoint =
-    getOptionValue(parsedArgs.values["page-endpoint"]) ??
+    getOptionValue(parsedArgs["page-endpoint"]) ??
     readEnv("DOCSERA_SDK_PAGE_ENDPOINT") ??
     defaults.pageEndpoint;
   const pingPath =
-    getOptionValue(parsedArgs.values["ping-path"]) ??
+    getOptionValue(parsedArgs["ping-path"]) ??
     readEnv("DOCSERA_SDK_PING_PATH") ??
     defaults.pingPath;
-  const skipBrowser = Boolean(parsedArgs.values["skip-browser"]);
-
   const checks = [];
   let fatalError = false;
   let localBuild;
@@ -603,7 +593,7 @@ async function main() {
   console.log("");
   console.log(`Instance: ${instanceUrl}`);
   console.log(`Auth alias: ${authAlias}`);
-  console.log(`Browser proof: ${skipBrowser ? "skipped" : "enabled"}`);
+  console.log(`Browser proof: ${browserProofEnabled ? "enabled" : "skipped"}`);
   console.log("");
 
   try {
@@ -898,7 +888,7 @@ async function main() {
     });
   }
 
-  if (!skipBrowser) {
+  if (browserProofEnabled) {
     try {
       const browserResult = await runBrowserVerification({
         authHeaders,
@@ -991,4 +981,6 @@ async function main() {
   }
 }
 
-await main();
+if (fileURLToPath(import.meta.url) === process.argv[1]) {
+  await main();
+}

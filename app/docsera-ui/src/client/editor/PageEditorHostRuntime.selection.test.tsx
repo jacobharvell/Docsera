@@ -60,6 +60,36 @@ function createSelectionEnvelope() {
   });
 }
 
+function createSingleParagraphEnvelope(text: string) {
+  return createEnvelopeFromDocument({
+    type: "doc",
+    content: [
+      {
+        type: "paragraph",
+        content: [{ type: "text", text }]
+      }
+    ]
+  });
+}
+
+function createCalloutEnvelope() {
+  return createEnvelopeFromDocument({
+    type: "doc",
+    content: [
+      {
+        type: "callout",
+        attrs: { type: "info", title: "Note" },
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Callout body" }]
+          }
+        ]
+      }
+    ]
+  });
+}
+
 function getEditorSurface(editor: Editor): HTMLElement {
   const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
   if (!(surface instanceof HTMLElement)) {
@@ -465,6 +495,32 @@ async function dispatchOwnerPointerEvent(
   return event;
 }
 
+async function dispatchShellPointerClick(
+  editor: Editor,
+  target: EventTarget,
+  point: { clientX: number; clientY: number },
+  options: {
+    composedPath?: Array<EventTarget | null | undefined>;
+    pointerId?: number;
+  } = {}
+) {
+  const surface = getEditorSurface(editor);
+  const pointerId = options.pointerId ?? 1;
+  const composedPath = options.composedPath ?? [target];
+  await dispatchOwnerPointerEvent(surface.ownerDocument, target, "pointerdown", point, {
+    button: 0,
+    buttons: 1,
+    composedPath,
+    pointerId
+  });
+  await dispatchOwnerPointerEvent(surface.ownerDocument, target, "pointerup", point, {
+    button: 0,
+    buttons: 0,
+    composedPath,
+    pointerId
+  });
+}
+
 async function dispatchBlankGutterDrag(
   editor: Editor,
   start: { clientX: number; clientY: number },
@@ -774,6 +830,291 @@ describe("PageEditorHostRuntime gutter range selection", () => {
       expect(getSelectedBlockTags(editor)).toEqual(["HR", "P"]);
     } finally {
       geometry.mockRestore();
+    }
+  });
+
+  it("appends one focused final paragraph from a shell-owned click below a non-empty final paragraph", async () => {
+    const { editorReady, onSaveDraft } = renderRuntime({ initialEnvelope: createSingleParagraphEnvelope("Tail") });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0]!;
+    const geometry = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 140, 620, 36)]);
+
+    try {
+      await runAutosave();
+      onSaveDraft.mockClear();
+      const undoDepthBeforeInsert = undoDepth(editor.state);
+
+      await dispatchShellPointerClick(editor, geometry.elements.mainPane, { clientX: 180, clientY: 220 }, {
+        composedPath: [geometry.elements.mainPane, geometry.elements.workspace, document.body],
+        pointerId: 101
+      });
+
+      expect(editor.getJSON()).toEqual({
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Tail" }] },
+          { type: "paragraph" }
+        ]
+      });
+      expect(editor.view.dom).toHaveFocus();
+      expect(
+        editor.view.dom.querySelector(
+          "p[data-docsera-empty-paragraph='true'][data-placeholder=\"Start typing or press '/' for commands\"]"
+        )
+      ).toBeInTheDocument();
+      expect(undoDepth(editor.state)).toBe(undoDepthBeforeInsert + 1);
+
+      await runAutosave();
+      expect(onSaveDraft).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        editor.commands.undo();
+      });
+      expect(editor.getJSON()).toEqual({
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Tail" }] }]
+      });
+
+      await act(async () => {
+        editor.commands.redo();
+      });
+      expect(editor.getJSON()).toEqual({
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Tail" }] },
+          { type: "paragraph" }
+        ]
+      });
+    } finally {
+      geometry.mockRestore();
+    }
+  });
+
+  it("uses shell-owned blank space below a content-sized editor surface for final paragraph insertion", async () => {
+    const { editorReady, onSaveDraft } = renderRuntime({ initialEnvelope: createSingleParagraphEnvelope("Tail") });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0]!;
+    const blockRect = new DOMRect(132, 140, 620, 36);
+    const geometry = mockTopLevelBlockGeometry(editor, [blockRect]);
+
+    geometry.setLayoutRects({
+      hostRect: new DOMRect(72, 136, 760, 40),
+      mainPaneRect: new DOMRect(40, 36, 960, 620),
+      panelRect: new DOMRect(132, 36, 768, 620),
+      proseMirrorRect: new DOMRect(132, 140, 620, 36),
+      surfaceRect: new DOMRect(72, 136, 760, 40)
+    });
+
+    try {
+      await runAutosave();
+      onSaveDraft.mockClear();
+      const undoDepthBeforeInsert = undoDepth(editor.state);
+
+      await dispatchShellPointerClick(editor, geometry.elements.mainPane, { clientX: 180, clientY: 240 }, {
+        composedPath: [geometry.elements.mainPane, geometry.elements.workspace, document.body],
+        pointerId: 201
+      });
+
+      const afterInsert = editor.getJSON();
+      expect(afterInsert).toEqual({
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Tail" }] },
+          { type: "paragraph" }
+        ]
+      });
+      expect(editor.view.dom).toHaveFocus();
+      expect(undoDepth(editor.state)).toBe(undoDepthBeforeInsert + 1);
+
+      await runAutosave();
+      expect(onSaveDraft).toHaveBeenCalledTimes(1);
+      onSaveDraft.mockClear();
+      const undoDepthAfterInsert = undoDepth(editor.state);
+
+      await dispatchShellPointerClick(editor, geometry.elements.mainPane, { clientX: 180, clientY: 240 }, {
+        composedPath: [geometry.elements.mainPane, geometry.elements.workspace, document.body],
+        pointerId: 202
+      });
+      expect(editor.getJSON()).toEqual(afterInsert);
+      expect(undoDepth(editor.state)).toBe(undoDepthAfterInsert);
+      await runAutosave();
+      expect(onSaveDraft).toHaveBeenCalledTimes(0);
+
+      await dispatchShellPointerClick(editor, geometry.elements.mainPane, { clientX: 940, clientY: 240 }, {
+        composedPath: [geometry.elements.mainPane, geometry.elements.workspace, document.body],
+        pointerId: 203
+      });
+      expect(editor.getJSON()).toEqual(afterInsert);
+
+      await dispatchBlankGutterDrag(editor, { clientX: 180, clientY: 240 }, [{ clientX: 184, clientY: 150 }], {
+        composedPath: [geometry.elements.mainPane, geometry.elements.workspace, document.body],
+        target: geometry.elements.mainPane
+      });
+      expect(editor.getJSON()).toEqual(afterInsert);
+      expect(getSelectedBlockTags(editor)).toEqual(["P"]);
+
+      await act(async () => {
+        editor.commands.undo();
+      });
+      expect(editor.getJSON()).toEqual({
+        type: "doc",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Tail" }] }]
+      });
+
+      await act(async () => {
+        editor.commands.redo();
+      });
+      expect(editor.getJSON()).toEqual(afterInsert);
+    } finally {
+      geometry.mockRestore();
+    }
+  });
+
+  it("reuses an existing final empty paragraph from repeated shell-owned clicks without autosave or undo history", async () => {
+    const initialEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Tail" }] },
+        { type: "paragraph" }
+      ]
+    });
+    const { editorReady, onSaveDraft } = renderRuntime({ initialEnvelope });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0]!;
+    const geometry = mockTopLevelBlockGeometry(editor, [
+      new DOMRect(132, 140, 620, 36),
+      new DOMRect(132, 188, 620, 36)
+    ]);
+
+    try {
+      await runAutosave();
+      onSaveDraft.mockClear();
+      const before = editor.getJSON();
+      const undoDepthBeforeClick = undoDepth(editor.state);
+
+      await dispatchShellPointerClick(editor, geometry.elements.mainPane, { clientX: 180, clientY: 260 }, {
+        composedPath: [geometry.elements.mainPane, geometry.elements.workspace, document.body],
+        pointerId: 102
+      });
+      await dispatchShellPointerClick(editor, geometry.elements.mainPane, { clientX: 180, clientY: 260 }, {
+        composedPath: [geometry.elements.mainPane, geometry.elements.workspace, document.body],
+        pointerId: 103
+      });
+
+      expect(editor.getJSON()).toEqual(before);
+      expect(editor.view.dom).toHaveFocus();
+      expect(undoDepth(editor.state)).toBe(undoDepthBeforeClick);
+      await runAutosave();
+      expect(onSaveDraft).toHaveBeenCalledTimes(0);
+    } finally {
+      geometry.mockRestore();
+    }
+  });
+
+  it("appends below a structural final block while preserving between-block and outside-lane clicks", async () => {
+    const { editorReady } = renderRuntime({ initialEnvelope: createCalloutEnvelope() });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0]!;
+    const geometry = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 140, 620, 72)]);
+
+    try {
+      await dispatchShellPointerClick(editor, geometry.elements.mainPane, { clientX: 180, clientY: 260 }, {
+        composedPath: [geometry.elements.mainPane, geometry.elements.workspace, document.body],
+        pointerId: 104
+      });
+      expect(editor.getJSON().content).toHaveLength(2);
+      expect(editor.getJSON().content?.[1]).toEqual({ type: "paragraph" });
+
+      const afterInsert = editor.getJSON();
+      await dispatchShellPointerClick(editor, geometry.elements.mainPane, { clientX: 180, clientY: 128 }, {
+        composedPath: [geometry.elements.mainPane, geometry.elements.workspace, document.body],
+        pointerId: 105
+      });
+      await dispatchShellPointerClick(editor, geometry.elements.mainPane, { clientX: 940, clientY: 300 }, {
+        composedPath: [geometry.elements.mainPane, geometry.elements.workspace, document.body],
+        pointerId: 106
+      });
+
+      expect(editor.getJSON()).toEqual(afterInsert);
+    } finally {
+      geometry.mockRestore();
+    }
+  });
+
+  it("keeps blank-area drag selection from inserting a final paragraph", async () => {
+    const initialEnvelope = createSelectionEnvelope();
+    const { editorReady } = renderRuntime({ initialEnvelope });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0]!;
+    const geometry = mockTopLevelBlockGeometry(editor, [
+      new DOMRect(132, 140, 620, 36),
+      new DOMRect(132, 188, 620, 36),
+      new DOMRect(132, 236, 620, 36),
+      new DOMRect(132, 284, 620, 36),
+      new DOMRect(132, 332, 620, 36),
+      new DOMRect(132, 380, 620, 36),
+      new DOMRect(132, 428, 620, 36)
+    ]);
+
+    try {
+      const before = editor.getJSON();
+      await dispatchBlankGutterDrag(editor, { clientX: 180, clientY: 484 }, [{ clientX: 184, clientY: 396 }], {
+        composedPath: [geometry.elements.mainPane, geometry.elements.workspace, document.body],
+        target: geometry.elements.mainPane
+      });
+
+      expect(editor.getJSON()).toEqual(before);
+      expect(getSelectedBlockTags(editor)).toEqual(["HR", "P"]);
+    } finally {
+      geometry.mockRestore();
+    }
+  });
+
+  it("uses shell geometry for below-final-block clicks when the runtime is mounted in a ShadowRoot", async () => {
+    const originalExecCommand = Object.getOwnPropertyDescriptor(document, "execCommand");
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: vi.fn(() => false)
+    });
+    const shadowHost = document.createElement("div");
+    const shadowRoot = shadowHost.attachShadow({ mode: "open" });
+    const runtimeRoot = document.createElement("div");
+    shadowRoot.append(runtimeRoot);
+    document.body.append(shadowHost);
+    const runtime = renderRuntime(
+      { initialEnvelope: createSingleParagraphEnvelope("Shadow tail") },
+      { renderContainer: runtimeRoot, renderBaseElement: shadowRoot }
+    );
+
+    try {
+      await waitFor(() => expect(runtime.editorReady[0]).toBeDefined());
+      const editor = runtime.editorReady[0]!;
+      const geometry = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 140, 620, 36)]);
+
+      try {
+        await dispatchShellPointerClick(editor, geometry.elements.mainPane, { clientX: 180, clientY: 220 }, {
+          composedPath: [geometry.elements.mainPane, geometry.elements.workspace, document.body],
+          pointerId: 107
+        });
+
+        expect(editor.getJSON()).toEqual({
+          type: "doc",
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "Shadow tail" }] },
+            { type: "paragraph" }
+          ]
+        });
+      } finally {
+        geometry.mockRestore();
+      }
+    } finally {
+      runtime.unmount();
+      shadowHost.remove();
+      if (originalExecCommand) {
+        Object.defineProperty(document, "execCommand", originalExecCommand);
+      } else {
+        Reflect.deleteProperty(document, "execCommand");
+      }
     }
   });
 

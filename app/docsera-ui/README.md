@@ -51,7 +51,15 @@ npm run install:sdk
 npm run verify:sdk-runtime
 ```
 
-`deploy:sdk-ui-page` runs clean, build, install, and deployed-runtime verification in sequence.
+`deploy:sdk-ui-page` runs clean, build, install, and deployed-runtime verification in sequence. Normal deployment and standalone verification perform non-browser checks and report `Browser proof: skipped`.
+
+Browser proof is separate and requires Jacob's explicit authorization. Run the verifier entrypoint directly when it is authorized:
+
+```powershell
+node app/docsera-ui/scripts/verify-sdk-runtime.mjs --browser
+```
+
+From `app/docsera-ui/`, use `node ./scripts/verify-sdk-runtime.mjs --browser`. `--skip-browser` remains accepted for compatibility, but is no longer necessary for normal commands.
 
 ## What The Runtime Verifier Proves
 
@@ -61,12 +69,9 @@ npm run verify:sdk-runtime
 - live UI page returns `200`
 - live `main.jsdbx` hash matches the local build
 - live bundle contains the style injection marker
-- browser requests `main.jsdbx`
-- browser does not request a runtime-shell CSS asset
-- browser has exactly one injected runtime style tag
-- computed style proves the injected CSS applied
-- browser console has no CSP/style-injection violations
 - REST ping still returns the authenticated scoped payload
+
+With the explicit `--browser` opt-in, it additionally checks browser bundle loading, runtime CSS requests and application, and browser CSP/runtime errors.
 
 The verifier also waits through bounded `uxpcb` propagation after install and fails clearly if stale JS is still being served.
 

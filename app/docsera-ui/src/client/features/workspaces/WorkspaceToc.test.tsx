@@ -191,8 +191,10 @@ describe("WorkspaceToc", () => {
     renderTocOnly(envelope);
 
     expect(document.querySelector(".docsera-toc-rail")).not.toHaveClass("docsera-toc-rail--lower-toggle");
+    expect(screen.getByRole("button", { name: "Collapse table of contents" })).toHaveClass("docsera-toc-rail__toggle");
     const runtimeShellCss = readRuntimeShellCss();
     expect(runtimeShellCss).toMatch(/\.docsera-toc-rail__toggle\s*\{[^}]*top:\s*36px;/s);
+    expect(runtimeShellCss).toMatch(/\.docsera-toc-rail__toggle:hover\s*\{[^}]*color:\s*var\(--docsera-primary\);/s);
     expect(runtimeShellCss).not.toMatch(/docsera-toc-rail--lower-toggle/);
     expect(runtimeShellCss).not.toMatch(/\.docsera-toc-rail__body\s*\{[^}]*top:\s*40px;/s);
   });

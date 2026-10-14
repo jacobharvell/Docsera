@@ -46,6 +46,35 @@ describe("DocseraHeader workspace shell", () => {
     expect(settingsButton).toHaveAccessibleName("Workspace settings");
   });
 
+  it("renders ordinary navigation controls with the classes covered by primary-accent hover styles", () => {
+    const { container } = render(
+      <DocseraHeader
+        {...baseProps}
+        onOpenWorkspaceSettings={vi.fn()}
+        onToggleSidebar={vi.fn()}
+        recentWorkspaces={[{ icon: { type: "builtin", key: "docs", label: "Docs" }, name: "Docs", slug: "docs" }]}
+        showWorkspaceSettings
+        showWorkspaceSwitcher
+      />
+    );
+
+    const workspaceButton = screen.getByRole("button", { name: "Workspace switcher: Docs" });
+    expect(workspaceButton).toHaveClass("docsera-header__workspace-button");
+    expect(workspaceButton.querySelector(".docsera-header__workspace-icon")).toBeInTheDocument();
+    expect(workspaceButton.querySelector(".docsera-header__workspace-chevron")).toBeInTheDocument();
+
+    expect(screen.getByRole("button", { name: "Collapse navigation" })).toHaveClass(
+      "docsera-header__ghost-button",
+      "docsera-header__ghost-button--sidebar-toggle"
+    );
+    expect(screen.getByRole("button", { name: "Workspace settings" })).toHaveClass("docsera-header__ghost-button");
+    expect(screen.getByRole("button", { name: "Toggle theme" })).toHaveClass(
+      "docsera-header__ghost-button",
+      "docsera-header__ghost-button--theme"
+    );
+    expect(container.querySelector(".docsera-header__profile")).toBeInTheDocument();
+  });
+
   it("shows the leading action-cluster divider in edit and hides only its paint in live", () => {
     const editRender = render(<DocseraHeader {...baseProps} showWorkspaceMode="edit" />);
     expect(editRender.container.querySelector(".docsera-header")).not.toHaveClass("docsera-header--live");

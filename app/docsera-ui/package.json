@@ -15,7 +15,7 @@
     "dev": "now-sdk run dev",
     "build": "now-sdk build",
     "install:sdk": "node ./scripts/verify-sdk-install-prereqs.mjs && npm run build && now-sdk install",
-    "deploy:sdk": "npm run clean && npm run build && node ./scripts/verify-sdk-install-prereqs.mjs && now-sdk install && npm run verify:sdk-runtime",
+    "deploy:sdk": "npm run clean && npm run build && node ./scripts/verify-sdk-install-prereqs.mjs && now-sdk install && node ./scripts/verify-sdk-runtime.mjs",
     "transform:sdk": "now-sdk transform",
     "types:sdk": "now-sdk dependencies",
     "verify:editor-runtime-boundary": "node ./scripts/verify-editor-runtime-boundary.mjs",

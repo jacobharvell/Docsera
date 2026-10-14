@@ -384,6 +384,18 @@ test("keeps live reader core text on edit-mode typography and normal block flow"
   expect(css).toContain("--docsera-document-title-body-gap: 40px;");
 });
 
+test("uses the shared primary-and-border accent token for Blockquote in both themes", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+  const blockquoteRule = getRuleBody(css, ".docsera-main__blockquote");
+  const accent = "color-mix(in srgb, var(--docsera-primary) 38%, var(--docsera-border))";
+
+  expect(css.match(/--docsera-document-blockquote-border-color:/g)).toHaveLength(2);
+  expect(css.match(/--docsera-document-blockquote-border-color: color-mix\(in srgb, var\(--docsera-primary\) 38%, var\(--docsera-border\)\);/g)).toHaveLength(2);
+  expect(css).toContain(`--docsera-document-blockquote-border-color: ${accent};`);
+  expect(css).not.toMatch(/--docsera-document-blockquote-border-color:\s*[^;]*(?:#015ec2|#58a6ff)/i);
+  expect(blockquoteRule).toContain("border-left: 3px solid var(--docsera-document-blockquote-border-color);");
+});
+
 test("keeps the same main-surface anchor contract when the ToC auto-hides at the responsive breakpoint", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
   const responsive = css.slice(css.indexOf("@media (max-width: 1180px)"), css.indexOf("@media (max-width: 920px)"));
@@ -605,6 +617,7 @@ test("keeps authenticated header avatars clipped to a neutral circular viewport"
   expect(profileRule).toContain("box-shadow: none;");
   expect(profileRule).toContain("overflow: hidden;");
   expect(profileHoverRule).toContain("background: var(--docsera-surface-muted);");
+  expect(profileHoverRule).toContain("box-shadow: 0 0 0 2px color-mix(in srgb, var(--docsera-primary) 32%, transparent);");
   expect(avatarImageRule).toContain("display: block;");
   expect(avatarImageRule).toContain("width: 100%;");
   expect(avatarImageRule).toContain("height: 100%;");
@@ -613,6 +626,48 @@ test("keeps authenticated header avatars clipped to a neutral circular viewport"
   expect(avatarImageRule).toContain("object-position: center;");
   expect(profileRule).not.toContain("background: transparent;");
   expect(profileHoverRule).not.toContain("background: transparent;");
+});
+
+test("keeps shell navigation icon hover and focus states on the Docsera primary accent", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+
+  expect(css).toMatch(
+    /\.docsera-header__workspace-button:not\(:disabled\):hover \.docsera-header__workspace-chevron,\s*\.docsera-header__workspace-button:focus-visible \.docsera-header__workspace-chevron\s*{[^}]*color:\s*var\(--docsera-primary\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-header__workspace-button:focus-visible\s*{[^}]*outline:\s*2px solid color-mix\(in srgb, var\(--docsera-primary\) 32%, transparent\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-header__ghost-button:hover:not\(:disabled\),\s*\.docsera-header__ghost-button:focus-visible,\s*\.docsera-sidebar__icon-button:hover:not\(:disabled\),\s*\.docsera-sidebar__icon-button:focus-visible\s*{[^}]*background:\s*var\(--docsera-surface-muted\);[^}]*color:\s*var\(--docsera-primary\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-header__ghost-button:focus-visible,\s*\.docsera-sidebar__icon-button:focus-visible\s*{[^}]*outline:\s*2px solid color-mix\(in srgb, var\(--docsera-primary\) 32%, transparent\);[^}]*outline-offset:\s*2px;/s
+  );
+  expect(css).toMatch(
+    /\.docsera-header__menu-item:hover,\s*\.docsera-header__menu-footer:hover\s*{[^}]*background:\s*var\(--docsera-surface-muted\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-header__menu-item:focus-visible,\s*\.docsera-header__menu-footer:focus-visible\s*{[^}]*outline:\s*none;[^}]*background:\s*var\(--docsera-surface-muted\);[^}]*box-shadow:\s*inset 0 0 0 2px color-mix\(in srgb, var\(--docsera-primary\) 72%, transparent\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-header__menu-item:hover \.docsera-header__menu-item-label,\s*\.docsera-header__menu-item:focus-visible \.docsera-header__menu-item-label\s*{[^}]*color:\s*var\(--docsera-primary\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-header__menu-item--current \.docsera-header__menu-item-label\s*{[^}]*color:\s*var\(--docsera-primary\);[^}]*font-weight:\s*700;/s
+  );
+  const menuHoverRule = getRuleBody(css, ".docsera-header__menu-item:hover,\n.docsera-header__menu-footer:hover");
+  const menuFocusRule = getRuleBody(css, ".docsera-header__menu-item:focus-visible,\n.docsera-header__menu-footer:focus-visible");
+  expect(menuHoverRule).not.toContain("color: var(--docsera-primary);");
+  expect(menuFocusRule).not.toContain("color: var(--docsera-primary);");
+  expect(css).not.toMatch(/\.docsera-header__menu-item(?::hover|:focus-visible) \.docsera-header__menu-item-icon\s*{[^}]*color:/s);
+  expect(css).not.toMatch(/\.docsera-header__menu-footer(?::hover|:focus-visible)[^{]*\{[^}]*color:\s*var\(--docsera-text\);/s);
+  expect(css).toMatch(/html\[data-docsera-theme="light"\] \.docsera-header__ghost-button--theme:focus-visible\s*{[^}]*color:\s*rgb\(79 70 229 \/ var\(--tw-text-opacity, 1\)\);/s);
+  expect(css).toMatch(/html\[data-docsera-theme="dark"\] \.docsera-header__ghost-button--theme:focus-visible\s*{[^}]*color:\s*rgb\(245 158 11 \/ var\(--tw-text-opacity, 1\)\);/s);
+  expect(css).toMatch(
+    /\.docsera-page-tree__action-button:hover,\s*\.docsera-page-tree__row--menu-open \.docsera-page-tree__action-button--actions\s*{[^}]*color:\s*var\(--docsera-primary\);/s
+  );
+  expect(getRuleBody(css, ".docsera-toc-rail__toggle:hover")).toContain("color: var(--docsera-primary);");
+  expect(getRuleBody(css, ".docsera-page-tree__context-menu-item--destructive")).toContain("color: var(--docsera-error);");
 });
 
 test("keeps the staged My Workspaces list chrome normalized", () => {
@@ -940,11 +995,32 @@ test("keeps editor accordion affordances anchored to the title row and hides clo
   );
   expect(css).toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--toggle\s*{[^}]*left:\s*var\(--docsera-editor-accordion-toggle-left\);[^}]*top:\s*var\(--docsera-editor-accordion-title-row-center\);[^}]*color:\s*var\(--docsera-text-soft\);[^}]*visibility:\s*visible;/s);
   expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--toggle\s*{[^}]*transform:\s*translateY\(-50%\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--toggle \.docsera-editor-accordion__chevron\s*{[^}]*transform:\s*rotate\(0deg\);[^}]*transition:\s*transform 0\.16s ease;/s
+  );
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__item\[data-docsera-accordion-open="true"\] \.docsera-editor-accordion__control--toggle \.docsera-editor-accordion__chevron\s*{[^}]*transform:\s*rotate\(90deg\);/s
+  );
+  expect(css).toMatch(
+    /@media \(prefers-reduced-motion: reduce\)\s*{[^}]*\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--toggle \.docsera-editor-accordion__chevron\s*{[^}]*transition:\s*none;/s
+  );
+  expect(css).toMatch(
     /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__menu\s*{[^}]*top:\s*calc\(\s*var\(--docsera-editor-accordion-title-row-center\)\s*\+\s*\(var\(--docsera-editor-accordion-control-size\) \/ 2\)\s*\+\s*var\(--docsera-editor-accordion-menu-gap\)\s*\);/s
   );
   expect(css).toContain(".docsera-block-menu__item:disabled,");
   expect(css).toContain(".docsera-block-menu__item--destructive:disabled,");
   expect(css).toContain(".docsera-block-menu__item--destructive:disabled.docsera-block-menu__item--active {");
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__delete-item\s*{[^}]*color:\s*var\(--docsera-error\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__delete-item:hover,[\s\S]*\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__delete-item:focus-visible,[\s\S]*\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__delete-item\.docsera-block-menu__item--active\s*{[^}]*background:\s*color-mix\(in srgb, var\(--docsera-error\) 10%, var\(--docsera-surface\)\);[^}]*color:\s*var\(--docsera-error\);/s
+  );
+  expect(css).toMatch(
+    /\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__delete-item:disabled,[\s\S]*\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__delete-item:disabled\.docsera-block-menu__item--active\s*{[^}]*color:\s*var\(--docsera-text-soft\);[^}]*background:\s*transparent;/s
+  );
   expect(css).toMatch(/\.docsera-block-menu__item:disabled,\s*\.docsera-block-menu__item:disabled:hover,\s*\.docsera-block-menu__item:disabled:focus-visible\s*{[^}]*cursor:\s*not-allowed;[^}]*color:\s*var\(--docsera-text-soft\);[^}]*background:\s*transparent;[^}]*box-shadow:\s*none;/s);
   expect(css).toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__menu\[hidden\]\s*{\s*display:\s*none;/s);
   expect(css).toMatch(

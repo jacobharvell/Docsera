@@ -127,6 +127,7 @@ describe("DocseraHeader publishing changes", () => {
     expect(avatarProfileBlock).toContain("box-shadow: none;");
     expect(avatarProfileBlock).toContain("overflow: hidden;");
     expect(avatarHoverBlock).toContain("background: var(--docsera-surface-muted);");
+    expect(avatarHoverBlock).toContain("box-shadow: 0 0 0 2px color-mix(in srgb, var(--docsera-primary) 32%, transparent);");
     expect(avatarImageBlock).toContain("width: 100%;");
     expect(avatarImageBlock).toContain("height: 100%;");
     expect(avatarImageBlock).toContain("border-radius: inherit;");

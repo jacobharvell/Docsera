@@ -166,6 +166,7 @@ function createAccordionSvgIcon(applyAttributes: (icon: SVGSVGElement) => void):
 
 function createAccordionChevronIcon() {
   const icon = createAccordionSvgIcon((svg) => {
+    svg.classList.add("docsera-editor-accordion__chevron");
     svg.setAttribute("width", String(DOCSERA_ACCORDION_CHEVRON_ICON_SIZE));
     svg.setAttribute("height", String(DOCSERA_ACCORDION_CHEVRON_ICON_SIZE));
 
@@ -588,7 +589,8 @@ function createDocseraAccordionExtensions() {
           menu.setAttribute("contenteditable", "false");
           menu.setAttribute("role", "menu");
           menuDeleteButton.type = "button";
-          menuDeleteButton.className = "docsera-block-menu__item docsera-block-menu__item--destructive";
+          menuDeleteButton.className =
+            "docsera-block-menu__item docsera-block-menu__item--destructive docsera-editor-accordion__delete-item";
           menuDeleteButton.setAttribute("role", "menuitem");
           menuDeleteButton.setAttribute("aria-label", "Delete item");
           menuDeleteIcon.className = "docsera-block-menu__icon";

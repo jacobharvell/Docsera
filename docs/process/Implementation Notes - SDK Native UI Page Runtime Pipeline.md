@@ -106,13 +106,19 @@ It runs, in order:
 3. `install`
 4. deployed runtime verification
 
-The app-level script is `npm --prefix app/docsera-ui run deploy:sdk`.
+The app-level script is `npm --prefix app/docsera-ui run deploy:sdk`. Both deployment commands invoke the runtime verifier directly after installation, so normal verification does not depend on an argument surviving nested npm scripts.
 
 `npm --prefix app/docsera-ui run install:sdk` now also runs a build before `now-sdk install` so direct install usage does not depend on stale local artifacts.
 
 ## Runtime Verification Chain
 
 `npm run verify:sdk-ui-page` / `npm --prefix app/docsera-ui run verify:sdk-runtime` now verify the inline-CSS architecture, not the legacy theme-asset path.
+
+Normal deployment and standalone verification are non-browser by default and report `Browser proof: skipped`. They continue to verify local/build and installed bundle freshness, inline-CSS invariants, UI Page availability, and the authenticated REST ping. Browser proof is an explicitly authorized follow-up command at the verifier entrypoint:
+
+`node app/docsera-ui/scripts/verify-sdk-runtime.mjs --browser`
+
+From `app/docsera-ui/`, use `node ./scripts/verify-sdk-runtime.mjs --browser`. `--skip-browser` remains supported for compatibility but is not required by normal commands.
 
 The verifier proves:
 
@@ -123,13 +129,9 @@ The verifier proves:
 - the live bundle contains the style injection marker
 - the live bundle contains the inline CSS probe value
 - the live bundle contains no runtime CSS asset URL
-- the browser requests `main.jsdbx`
-- the browser does not request a runtime-shell CSS asset
-- the browser has exactly one `style[data-docsera-runtime-style="runtime-shell"]`
-- computed style on `#docsera-root` matches the probe value
-- browser console has no CSP/style-injection violations
-- no uncaught browser runtime errors occur
 - the authenticated REST ping still returns the expected scoped payload
+
+When `--browser` is explicitly supplied, the verifier additionally proves that the browser requests the current bundle, does not request a runtime-shell CSS asset, has one injected runtime style tag with the expected computed probe value, and reports no CSP/style-injection or uncaught runtime errors.
 
 The verifier currently proves installed freshness for `main.jsdbx`, which remains the shell/lazy-import bundle. The lazily loaded `PageEditorHostRuntime.jsdbx` chunk is validated locally by build and boundary checks, but the installed-runtime verifier does not yet prove that chunk's freshness directly. That gap remains process debt for a follow-up verifier improvement.
 

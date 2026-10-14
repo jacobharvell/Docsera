@@ -1835,6 +1835,10 @@ function isPointInsideRect(rect: DOMRect | null | undefined, clientX: number, cl
   );
 }
 
+function isPointInsideHorizontalBounds(rect: DOMRect | null | undefined, clientX: number): boolean {
+  return Boolean(rect && clientX >= rect.left && clientX <= rect.right);
+}
+
 function inflateRect(rect: DOMRect, horizontalPadding: number, verticalPadding: number): DOMRect {
   return new DOMRect(
     rect.left - horizontalPadding,
@@ -3180,6 +3184,43 @@ function isBelowEditorContentCanvasClick(event: React.MouseEvent<HTMLElement>, p
   return event.clientY >= lastContentRect.bottom;
 }
 
+function isEndOfPageInsertionPoint(editor: Editor, surfaceElement: HTMLElement, clientX: number, clientY: number): boolean {
+  if (!(editor.view.dom instanceof HTMLElement)) {
+    return false;
+  }
+
+  const classification = resolvePanelPointerClassification(editor, surfaceElement, clientX, clientY);
+  if (classification.zone !== "panel-background") {
+    return false;
+  }
+
+  const { laneRect } = resolveEditorLaneGeometry(surfaceElement, editor.view.dom);
+  if (!isPointInsideHorizontalBounds(laneRect, clientX)) {
+    return false;
+  }
+
+  const entries = getTopLevelBlockEntries(editor);
+  const finalEntry = entries[entries.length - 1] ?? null;
+  return finalEntry ? clientY >= finalEntry.rect.bottom : true;
+}
+
+function focusOrAppendEditableFinalParagraph(editor: Editor): boolean {
+  const lastChild = editor.state.doc.lastChild;
+  if (lastChild?.type.name === "paragraph" && lastChild.content.size === 0) {
+    const focused = editor.commands.focus("end", { scrollIntoView: false });
+    editor.view.focus();
+    return focused;
+  }
+
+  const inserted = editor
+    .chain()
+    .insertContentAt(editor.state.doc.content.size, { type: "paragraph" })
+    .focus("end", { scrollIntoView: false })
+    .run();
+  editor.view.focus();
+  return inserted;
+}
+
 function trySetEditorTabIndex(editor: Editor, isEditable: boolean): boolean {
   try {
     editor.view.dom.tabIndex = isEditable ? 0 : -1;
@@ -3769,6 +3810,7 @@ export function PageEditorHostRuntime({
     activated: boolean;
     anchorBlockIndex: number;
     currentBlockIndex: number;
+    endOfPageInsertionCandidate: boolean;
     lastClientX: number;
     lastClientY: number;
     pointerId: number;
@@ -5270,7 +5312,7 @@ export function PageEditorHostRuntime({
   }, [clearTransientBlockSelection]);
 
   const startBlankGutterRangeGesture = useCallback(
-    (event: PointerEvent, anchorBlockIndex: number) => {
+    (event: PointerEvent, anchorBlockIndex: number, options: { endOfPageInsertionCandidate?: boolean } = {}) => {
       const runtimeEditor = editorRef.current;
       const surfaceElement = surfaceRef.current;
       if (!runtimeEditor || !surfaceElement) {
@@ -5407,11 +5449,15 @@ export function PageEditorHostRuntime({
         }
 
         pointerEvent.preventDefault();
+        const shouldInsertFinalParagraph = !gesture.activated && gesture.endOfPageInsertionCandidate;
         clearGutterRangeGesture({
           clearSelection: !gesture.activated,
           reason: "pointerup",
           releaseClickSuppression: true
         });
+        if (shouldInsertFinalParagraph && !runtimeEditor.isDestroyed) {
+          focusOrAppendEditableFinalParagraph(runtimeEditor);
+        }
       };
 
       const handlePointerCancel = (pointerEvent: PointerEvent) => {
@@ -5458,6 +5504,7 @@ export function PageEditorHostRuntime({
         activated: false,
         anchorBlockIndex,
         currentBlockIndex: anchorBlockIndex,
+        endOfPageInsertionCandidate: Boolean(options.endOfPageInsertionCandidate),
         lastClientX: event.clientX,
         lastClientY: event.clientY,
         pointerId: event.pointerId,
@@ -6083,7 +6130,9 @@ export function PageEditorHostRuntime({
       }
 
       if (anchorTarget) {
-        startBlankGutterRangeGesture(event, anchorTarget.blockIndex);
+        startBlankGutterRangeGesture(event, anchorTarget.blockIndex, {
+          endOfPageInsertionCandidate: isEndOfPageInsertionPoint(runtimeEditor, surfaceElement, event.clientX, event.clientY)
+        });
         return;
       }
 
@@ -7075,7 +7124,7 @@ export function PageEditorHostRuntime({
         .docsera-editor-runtime__surface .ProseMirror blockquote {
           margin: 0 0 var(--docsera-document-block-spacing, 1rem);
           padding-left: var(--docsera-document-blockquote-padding-left, 1rem);
-          border-left: 3px solid var(--docsera-document-blockquote-border-color, color-mix(in srgb, var(--docsera-editor-primary) 24%, transparent));
+          border-left: 3px solid var(--docsera-document-blockquote-border-color, color-mix(in srgb, var(--docsera-primary) 38%, var(--docsera-border)));
           color: var(--docsera-document-blockquote-color, var(--docsera-editor-muted));
         }
         .docsera-editor-runtime__surface .ProseMirror blockquote > p[data-placeholder]::before {
@@ -7170,10 +7219,14 @@ export function PageEditorHostRuntime({
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--toggle {
           left: var(--docsera-editor-accordion-toggle-left);
           top: var(--docsera-editor-accordion-title-row-center);
-          transform: translateY(-50%) rotate(0deg);
+          transform: translateY(-50%);
           color: var(--docsera-text-soft);
           opacity: 1;
           visibility: visible;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--toggle .docsera-editor-accordion__chevron {
+          transform: rotate(0deg);
+          transition: transform 0.16s ease;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--toggle:hover {
           background: transparent;
@@ -7188,7 +7241,26 @@ export function PageEditorHostRuntime({
           box-shadow: 0 0 0 2px color-mix(in srgb, var(--docsera-primary) 18%, white 20%);
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__item[data-docsera-accordion-open="true"] .docsera-editor-accordion__control--toggle {
-          transform: translateY(-50%) rotate(90deg);
+          transform: translateY(-50%);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__item[data-docsera-accordion-open="true"] .docsera-editor-accordion__control--toggle .docsera-editor-accordion__chevron {
+          transform: rotate(90deg);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__delete-item {
+          color: var(--docsera-error);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__delete-item:hover,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__delete-item:focus-visible,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__delete-item.docsera-block-menu__item--active {
+          background: color-mix(in srgb, var(--docsera-error) 10%, var(--docsera-surface));
+          color: var(--docsera-error);
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__delete-item:disabled,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__delete-item:disabled:hover,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__delete-item:disabled:focus-visible,
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__delete-item:disabled.docsera-block-menu__item--active {
+          color: var(--docsera-text-soft);
+          background: transparent;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--ellipsis,
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--add {
@@ -7702,7 +7774,7 @@ export function PageEditorHostRuntime({
         .docsera-editor-floating__block-drag-preview blockquote {
           margin: 0 0 1rem;
           padding-left: 1rem;
-          border-left: 3px solid color-mix(in srgb, var(--docsera-editor-primary) 24%, transparent);
+          border-left: 3px solid var(--docsera-document-blockquote-border-color, color-mix(in srgb, var(--docsera-primary) 38%, var(--docsera-border)));
           color: var(--docsera-editor-muted);
         }
         .docsera-editor-floating__block-drag-preview pre {
@@ -7911,6 +7983,11 @@ export function PageEditorHostRuntime({
           font-weight: 500;
           line-height: 1.2;
         }
+        @media (prefers-reduced-motion: reduce) {
+          .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--toggle .docsera-editor-accordion__chevron {
+            transition: none;
+          }
+        }
         .docsera-block-action-menu__divider {
           height: 1px;
           margin: 6px 2px;
@@ -7954,12 +8031,7 @@ export function PageEditorHostRuntime({
             return;
           }
           if (event.target === proseMirror && !isBelowEditorContentCanvasClick(event, proseMirror)) return;
-          const lastChild = editor.state.doc.lastChild;
-          if (lastChild?.type.name === "paragraph" && lastChild.content.size === 0) {
-            editor.commands.focus("end", { scrollIntoView: false });
-            return;
-          }
-          editor.chain().insertContentAt(editor.state.doc.content.size, { type: "paragraph" }).focus("end", { scrollIntoView: false }).run();
+          focusOrAppendEditableFinalParagraph(editor);
         }}
       >
         <EditorContent editor={editor} />
