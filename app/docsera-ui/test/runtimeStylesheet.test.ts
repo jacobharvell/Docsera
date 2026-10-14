@@ -104,6 +104,30 @@ test("injects one runtime style tag and reuses it on repeat calls", () => {
   expect(styleTags[0]?.textContent).toBe("body { color: red; }");
 });
 
+test("keeps Markdown source typography and semantic token colors readable in both themes", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+
+  expect(css).toContain('font-family: "Paper Mono";');
+  expect(css).toContain('font-weight: 100 800;');
+  expect(css).toContain('src: url("__DOCSERA_PAPER_MONO_VARIABLE_WOFF2__") format("woff2");');
+  expect(css).toContain("JetBrains+Mono:wght@500;700");
+  expect(css).toContain('--docsera-document-mono-font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;');
+  expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor \.cm-content\s*{[^}]*font-family:\s*var\(--docsera-markdown-source-font-family\);[^}]*font-size:\s*14px;[^}]*font-weight:\s*400;[^}]*line-height:\s*1\.65;/s);
+  expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor \.docsera-markdown-source-token--heading\s*{[^}]*color:\s*var\(--docsera-document-text-color, var\(--docsera-text\)\) !important;[^}]*font-weight:\s*700;/s);
+  expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor \.docsera-markdown-source-token--heading-marker,[\s\S]*?font-weight:\s*400;/s);
+  expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor \.docsera-markdown-source-token--strikethrough\s*{[^}]*text-decoration:\s*line-through;/s);
+  expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor \.docsera-markdown-source-token--link\s*{[^}]*color:\s*var\(--docsera-markdown-source-link\);[^}]*text-decoration:\s*underline;/s);
+  expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor \.docsera-markdown-source-token--marker\s*{[^}]*color:\s*var\(--docsera-markdown-source-marker\);/s);
+  expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor \.docsera-markdown-source-token--strong-content\s*{[^}]*font-weight:\s*700;/s);
+  expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor \.docsera-markdown-source-token--strong-delimiter\s*{[^}]*color:\s*var\(--docsera-markdown-source-marker\);[^}]*font-weight:\s*500;/s);
+  expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor \.docsera-markdown-source-token--plain,[\s\S]*?\.docsera-main__source-editor \.cm-editor \.docsera-markdown-source-token--directive-label\s*{[^}]*color:\s*var\(--docsera-document-text-color, var\(--docsera-text\)\);[^}]*text-decoration:\s*none;/s);
+  expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor \.docsera-markdown-source-token--frontmatter-delimiter,[\s\S]*?\.docsera-main__source-editor \.cm-editor \.docsera-markdown-source-token--directive-identifier\s*{[^}]*color:\s*var\(--docsera-markdown-source-marker\);/s);
+  expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor \.docsera-markdown-source-token--frontmatter-delimiter,[\s\S]*?color:\s*var\(--docsera-markdown-source-marker\) !important;[^}]*font-weight:\s*400;/s);
+  expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor \.docsera-markdown-source-token--frontmatter-neutral,[\s\S]*?color:\s*var\(--docsera-document-text-color, var\(--docsera-text\)\) !important;/s);
+  expect(css).toMatch(/:root\s*{[^}]*--docsera-markdown-source-heading:\s*#[0-9a-f]{6};/s);
+  expect(css).toMatch(/:root\[data-docsera-theme="dark"\]\s*{[^}]*--docsera-markdown-source-heading:\s*#[0-9a-f]{6};[^}]*--docsera-markdown-source-url:\s*#[0-9a-f]{6};/s);
+});
+
 test("replaces runtime style text when the css changes", () => {
   ensureRuntimeStylesheet("body { color: red; }");
   const styleElement = ensureRuntimeStylesheet("body { color: blue; }");

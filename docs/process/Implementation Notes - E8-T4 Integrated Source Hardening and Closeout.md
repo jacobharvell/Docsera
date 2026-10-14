@@ -41,6 +41,11 @@ This is unrelated autosave retry debt and was not expanded into E8-T4.
 
 Markdown file Import/Export remains post-MVP. E8-T4 did not add file import/export behavior or a second parser/serializer policy.
 
+## Source Typography Refinement
+
+- The Markdown Source surface alone uses bundled Paper Mono v1.000 through the existing single-bundle Direct UI Page runtime path. Its official SIL OFL 1.1 text is retained with the WOFF2 source asset; no local font installation or separate ServiceNow asset URL is required.
+- Source decorations split heading markers from heading text and explicitly layer frontmatter delimiter, neutral syntax, and title-value ranges over CodeMirror token spans. This is presentation-only: Markdown parsing, serialization, source text ownership, selection, history, and recovery behavior are unchanged.
+
 ## Closeout Assessment
 
 Repository evidence supports closing E8 for the accepted MVP Visual/Markdown Source workflow: conversion, Source handoff, invalid/unavailable recovery, workspace-scoped surface ownership, command readiness, and runtime separation are covered, with only unrelated autosave retry debt remaining.

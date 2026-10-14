@@ -75,6 +75,154 @@ describe("MarkdownSourceSession", () => {
     result.session.destroy();
   });
 
+  it("layers Docsera source highlighting over GFM tokens without changing the raw source", async () => {
+    const mount = document.createElement("div");
+    document.body.append(mount);
+    const result = createMarkdownSourceSession({
+      mount,
+      title: "Overview",
+      envelope: createCanonicalDocseraDocumentEnvelope()
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) {
+      return;
+    }
+
+    const source = [
+      "---",
+      'title: "Syntax coverage"',
+      "---",
+      "# Heading",
+      "",
+      "**bold** and *italic* and ~~struck~~.",
+      "[Docsera](https://example.com/docs)",
+      "",
+      "- bullet",
+      "1. numbered",
+      "- [x] complete task",
+      "> quoted",
+      "",
+      "`inline code`",
+      "```ts",
+      "const visible = true;",
+      "```",
+      "<span data-docsera-text-color=\"blue\">raw HTML</span>",
+      ':::docsera-accordion[Getting started]{accordion-id="638d0f15-5298-4a38-a214-44fa5c571914"}',
+      ':::docsera-accordion-item[Install the package]{item-id="52a4d9f1-7400-4e4d-8b5c-676c3e52e1f4"}',
+      "Directive body stays visible",
+      ":::",
+      ":::"
+    ].join("\n");
+    const session = result.session;
+
+    await act(async () => {
+      session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: source } });
+    });
+
+    expect(session.view.state.doc.toString()).toBe(source);
+    expect(mount.querySelector(".docsera-markdown-source-token--heading")).toBeInTheDocument();
+    expect(mount.querySelector(".docsera-markdown-source-token--heading-marker")).toHaveTextContent("#");
+    expect(mount.querySelector(".docsera-markdown-source-token--strong")).toBeInTheDocument();
+    expect(mount.querySelector(".docsera-markdown-source-token--emphasis")).toBeInTheDocument();
+    expect(mount.querySelector(".docsera-markdown-source-token--strikethrough")).toBeInTheDocument();
+    expect(mount.querySelector(".docsera-markdown-source-token--link")).toBeInTheDocument();
+    expect(mount.querySelector(".docsera-markdown-source-token--url")).toBeInTheDocument();
+    expect(mount.querySelector(".docsera-markdown-source-token--structure")).toBeInTheDocument();
+    expect(mount.querySelector(".docsera-markdown-source-token--task-marker")).toBeInTheDocument();
+    expect(mount.querySelector(".docsera-markdown-source-token--inline-code")).toBeInTheDocument();
+    expect(mount.querySelector(".docsera-markdown-source-token--code-language")).toBeInTheDocument();
+    expect(mount.querySelector(".docsera-markdown-source-token--marker")).toBeInTheDocument();
+    expect(mount.querySelector(".docsera-markdown-source-token--html")).toBeInTheDocument();
+    expect(mount.querySelectorAll(".docsera-markdown-source-token--frontmatter-delimiter")).toHaveLength(2);
+    expect([...mount.querySelectorAll(".docsera-markdown-source-token--frontmatter-delimiter")].map((element) => element.textContent)).toEqual(["---", "---"]);
+    expect(mount.querySelectorAll(".docsera-markdown-source-token--frontmatter-neutral")).toHaveLength(3);
+    expect(mount.querySelector(".docsera-markdown-source-token--frontmatter-title-value")).toHaveTextContent("Syntax coverage");
+    expect(mount.querySelector(".docsera-markdown-source-token--strong-content")).toHaveTextContent("bold");
+    expect(mount.querySelectorAll(".docsera-markdown-source-token--strong-delimiter")).toHaveLength(2);
+    expect(mount.querySelectorAll(".docsera-markdown-source-token--structure-marker")).toHaveLength(4);
+    expect(mount.querySelector(".docsera-markdown-source-token--directive-name")).toHaveTextContent("docsera-accordion");
+    expect(mount.querySelectorAll(".docsera-markdown-source-token--directive-attribute-name")).toHaveLength(2);
+    expect(mount.querySelector(".docsera-markdown-source-token--directive-identifier")).toHaveTextContent("638d0f15-5298-4a38-a214-44fa5c571914");
+    const accordionLabel = mount.querySelector(".docsera-markdown-source-token--directive-label");
+    expect(accordionLabel).toHaveTextContent("Getting started");
+    expect(accordionLabel).not.toHaveClass("docsera-markdown-source-token--link");
+    expect(mount.textContent).toContain("Directive body stays visible");
+    result.session.destroy();
+  });
+
+  it("scans quoted source values linearly and keeps frontmatter chrome neutral", async () => {
+    const mount = document.createElement("div");
+    document.body.append(mount);
+    const result = createMarkdownSourceSession({
+      mount,
+      title: "Overview",
+      envelope: createCanonicalDocseraDocumentEnvelope()
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const longUnclosedValue = `"${"\\\"".repeat(12_000)}`;
+    const source = [
+      "---",
+      'title: "Escaped \\\"quote\\\" title"',
+      "---",
+      `:::docsera-accordion{label=${longUnclosedValue}`,
+      ""
+    ].join("\n");
+    await act(async () => {
+      result.session.view.dispatch({ changes: { from: 0, to: result.session.view.state.doc.length, insert: source } });
+    });
+
+    expect(result.session.view.state.doc.toString()).toBe(source);
+    expect(mount.querySelector(".docsera-markdown-source-token--frontmatter-title-value")).toHaveTextContent('Escaped \\\"quote\\\" title');
+    expect([...mount.querySelectorAll(".docsera-markdown-source-token--frontmatter-neutral")].map((element) => element.textContent)).toEqual(expect.arrayContaining(["title: ", "\"", "\""]));
+    expect(mount.querySelectorAll(".docsera-markdown-source-token--directive-attribute-name")).toHaveLength(1);
+    expect(mount.querySelector(".docsera-markdown-source-token--directive-attribute-value")).toBeInTheDocument();
+
+    const unclosedFrontmatter = ["---", `title: ${longUnclosedValue}`, "---"].join("\n");
+    await act(async () => {
+      result.session.view.dispatch({ changes: { from: 0, to: result.session.view.state.doc.length, insert: unclosedFrontmatter } });
+    });
+    expect(result.session.view.state.doc.toString()).toBe(unclosedFrontmatter);
+    expect(mount.querySelector(".docsera-markdown-source-token--frontmatter-title-value")).toBeInTheDocument();
+    result.session.destroy();
+  });
+
+  it("does not apply Docsera or custom bold decorations in literal Markdown code regions", async () => {
+    const mount = document.createElement("div");
+    document.body.append(mount);
+    const result = createMarkdownSourceSession({
+      mount,
+      title: "Overview",
+      envelope: createCanonicalDocseraDocumentEnvelope()
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    const source = [
+      "**outside bold**",
+      ':::docsera-accordion[Outside]{item-id="638d0f15-5298-4a38-a214-44fa5c571914"}',
+      "`**inline literal** :::docsera-accordion`",
+      "```md",
+      "**fenced literal**",
+      ':::docsera-accordion[Literal]{item-id="638d0f15-5298-4a38-a214-44fa5c571914"}',
+      ":::",
+      "```"
+    ].join("\n");
+    await act(async () => {
+      result.session.view.dispatch({ changes: { from: 0, to: result.session.view.state.doc.length, insert: source } });
+    });
+
+    expect(mount.querySelectorAll(".docsera-markdown-source-token--strong-content")).toHaveLength(1);
+    expect(mount.querySelector(".docsera-markdown-source-token--strong-content")).toHaveTextContent("outside bold");
+    expect(mount.querySelectorAll(".docsera-markdown-source-token--directive-name")).toHaveLength(1);
+    expect(mount.querySelector(".docsera-markdown-source-token--directive-name")).toHaveTextContent("docsera-accordion");
+    result.session.destroy();
+  });
+
   it("lets mouse interaction focus the editable CodeMirror content surface", () => {
     const mount = document.createElement("div");
     document.body.append(mount);

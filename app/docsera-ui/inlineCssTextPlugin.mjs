@@ -1,6 +1,6 @@
 export function inlineCssTextPlugin({ fs, path }) {
   const prefix = "\0inline-asset:";
-  const supportedExtensions = new Set([".css", ".png"]);
+  const supportedExtensions = new Set([".css", ".png", ".woff2"]);
 
   const getSourcePath = (source) => {
     if (!source.endsWith("?inline")) {
@@ -56,6 +56,12 @@ export function inlineCssTextPlugin({ fs, path }) {
         const dataUri = `data:image/png;base64,${pngBytes.toString("base64")}`;
         return `export default ${JSON.stringify(dataUri)};`;
       }
+
+    if (extension === ".woff2") {
+      const fontBytes = fs.readFileSync(assetPath);
+      const dataUri = `data:font/woff2;base64,${fontBytes.toString("base64")}`;
+      return `export default ${JSON.stringify(dataUri)};`;
+    }
 
       return null;
     }

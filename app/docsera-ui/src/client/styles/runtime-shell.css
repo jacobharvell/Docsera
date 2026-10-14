@@ -1,4 +1,14 @@
-@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap");
+
+/* Paper Mono v1.000 is bundled from the official release under SIL OFL 1.1.
+   See ../assets/fonts/PaperMono-OFL.txt for the full license text. */
+@font-face {
+  font-family: "Paper Mono";
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url("__DOCSERA_PAPER_MONO_VARIABLE_WOFF2__") format("woff2");
+}
 
 :root {
   color-scheme: light;
@@ -36,6 +46,7 @@
   --docsera-document-body-font-family: Inter, "Segoe UI", sans-serif;
   --docsera-document-heading-font-family: Inter, "Segoe UI", sans-serif;
   --docsera-document-mono-font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+  --docsera-markdown-source-font-family: "Paper Mono", "Fira Code", Consolas, monospace;
   --docsera-document-body-font-size: 1rem;
   --docsera-document-body-line-height: 1.7;
   --docsera-document-block-spacing: 1rem;
@@ -64,6 +75,18 @@
   --docsera-document-link-decoration-thickness: 0.08em;
   --docsera-document-link-hover-decoration-thickness: 0.12em;
   --docsera-document-link-underline-offset: 0.16em;
+  --docsera-markdown-source-heading: #3347a8;
+  --docsera-markdown-source-emphasis: #7c3f8c;
+  --docsera-markdown-source-link: #2459b8;
+  --docsera-markdown-source-url: #087866;
+  --docsera-markdown-source-code: #9a4f16;
+  --docsera-markdown-source-structure: #775a13;
+  --docsera-markdown-source-marker: #74829a;
+  --docsera-markdown-source-html: #a23f61;
+  --docsera-markdown-source-string: #166f5b;
+  --docsera-markdown-source-directive: #5e4ab1;
+  --docsera-markdown-source-attribute: #087866;
+  --docsera-markdown-source-value: #a35318;
   --docsera-document-highlight-bg: color-mix(in srgb, #f6d84e 58%, rgba(255, 255, 255, 0.98));
   --docsera-palette-gray-text: #475569;
   --docsera-palette-red-text: #b42318;
@@ -109,6 +132,18 @@
   --docsera-document-blockquote-color: #a7b3c5;
   --docsera-document-code-block-bg: color-mix(in srgb, rgba(15, 18, 24, 0.98) 86%, black 14%);
   --docsera-document-code-inline-bg: color-mix(in srgb, rgba(15, 18, 24, 0.98) 88%, black 12%);
+  --docsera-markdown-source-heading: #aeb7ff;
+  --docsera-markdown-source-emphasis: #e6a7ed;
+  --docsera-markdown-source-link: #9ab8ff;
+  --docsera-markdown-source-url: #75e4c6;
+  --docsera-markdown-source-code: #f4bd83;
+  --docsera-markdown-source-structure: #e6ca8a;
+  --docsera-markdown-source-marker: #9aa9bd;
+  --docsera-markdown-source-html: #f3a8bd;
+  --docsera-markdown-source-string: #7ee3c0;
+  --docsera-markdown-source-directive: #b9adff;
+  --docsera-markdown-source-attribute: #75e4c6;
+  --docsera-markdown-source-value: #f4bd83;
   --docsera-document-rule-border-color: color-mix(in srgb, rgba(122, 139, 167, 0.22) 88%, transparent);
   --docsera-document-highlight-bg: color-mix(in srgb, #f6d84e 58%, rgba(15, 18, 24, 0.98));
   --docsera-palette-gray-text: #cbd5e1;
@@ -3401,6 +3436,131 @@ html[data-docsera-theme="dark"] .docsera-header__ghost-button--theme:focus-visib
 
 .docsera-main__source-editor .cm-editor .cm-content {
   caret-color: var(--docsera-document-text-color, var(--docsera-text));
+  font-family: var(--docsera-markdown-source-font-family);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.65;
+}
+
+.docsera-main__source-editor .cm-editor .cm-line {
+  padding: 0;
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--heading {
+  color: var(--docsera-document-text-color, var(--docsera-text)) !important;
+  font-weight: 700;
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--heading-marker,
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--heading-marker * {
+  color: var(--docsera-markdown-source-marker) !important;
+  font-weight: 400;
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--strong {
+  font-weight: 700;
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--strong-content {
+  font-weight: 700;
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--strong-delimiter {
+  color: var(--docsera-markdown-source-marker);
+  font-weight: 500;
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--emphasis {
+  color: var(--docsera-markdown-source-emphasis);
+  font-style: italic;
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--strikethrough {
+  color: var(--docsera-markdown-source-emphasis);
+  text-decoration: line-through;
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--link {
+  color: var(--docsera-markdown-source-link);
+  text-decoration: underline;
+  text-decoration-thickness: 0.08em;
+  text-underline-offset: 0.14em;
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--url {
+  color: var(--docsera-markdown-source-url);
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--inline-code,
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--code-language {
+  color: var(--docsera-markdown-source-code);
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--structure,
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--task-marker {
+  color: var(--docsera-markdown-source-structure);
+  font-weight: 600;
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--structure-marker {
+  color: var(--docsera-markdown-source-structure);
+  font-weight: 600;
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--plain,
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--directive-label {
+  color: var(--docsera-document-text-color, var(--docsera-text));
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--marker {
+  color: var(--docsera-markdown-source-marker);
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--html {
+  color: var(--docsera-markdown-source-html);
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--string {
+  color: var(--docsera-markdown-source-string);
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--frontmatter-delimiter,
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--directive-delimiter,
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--directive-identifier {
+  color: var(--docsera-markdown-source-marker);
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--frontmatter-delimiter,
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--frontmatter-delimiter *,
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--frontmatter-neutral,
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--frontmatter-neutral * {
+  color: var(--docsera-markdown-source-marker) !important;
+  font-weight: 400;
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--frontmatter-neutral,
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--frontmatter-neutral * {
+  color: var(--docsera-document-text-color, var(--docsera-text)) !important;
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--frontmatter-title-value,
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--frontmatter-title-value * {
+  color: var(--docsera-markdown-source-heading) !important;
+  font-weight: 400;
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--directive-name {
+  color: var(--docsera-markdown-source-directive);
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--directive-attribute-name {
+  color: var(--docsera-markdown-source-attribute);
+}
+
+.docsera-main__source-editor .cm-editor .docsera-markdown-source-token--directive-attribute-value {
+  color: var(--docsera-markdown-source-value);
 }
 
 .docsera-main__source-editor .cm-editor .cm-content ::selection {
