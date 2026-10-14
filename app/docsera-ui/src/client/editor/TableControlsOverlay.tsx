@@ -361,11 +361,9 @@ function resolveHandleStateFromEvent(event: Event): TableHandleState | null {
   return resolveHandleStateFromTarget(event.target);
 }
 
-function isEventInsideOwnedTableSurface(
+function isEventInsideOpenTableMenu(
   event: Event,
-  menuElement: HTMLElement | null,
-  overlayRoot: HTMLElement,
-  editor: TiptapEditor | null
+  menuElement: HTMLElement | null
 ): boolean {
   for (const entry of getEventComposedPath(event)) {
     if (!(entry instanceof Node)) {
@@ -373,14 +371,6 @@ function isEventInsideOwnedTableSurface(
     }
 
     if (menuElement?.contains(entry)) {
-      return true;
-    }
-
-    if (overlayRoot.contains(entry)) {
-      return true;
-    }
-
-    if (editor && !editor.isDestroyed && editor.view.dom.contains(entry)) {
       return true;
     }
   }
@@ -676,6 +666,46 @@ function resolveHandleStateFromTarget(target: EventTarget | null): TableHandleSt
   return { kind, index };
 }
 
+function resolveActiveTableGeometryElements(editor: TiptapEditor): {
+  editorElement: HTMLElement;
+  tableElement: HTMLTableElement;
+  tableWrapperElement: HTMLElement;
+} | null {
+  const tableContext = getLiveTableContext(editor);
+  if (!tableContext) {
+    return null;
+  }
+
+  const nodeDom = editor.view.nodeDOM(tableContext.tablePos);
+  let tableElement: HTMLTableElement | null = null;
+  let tableWrapperElement: HTMLElement | null = null;
+  if (nodeDom instanceof HTMLTableElement) {
+    tableElement = nodeDom;
+  } else if (nodeDom instanceof HTMLElement) {
+    tableWrapperElement = nodeDom.classList.contains("tableWrapper") ? nodeDom : null;
+    tableElement = nodeDom.querySelector("table");
+  }
+
+  if (!tableElement) {
+    return null;
+  }
+
+  if (!tableWrapperElement) {
+    const wrapperAncestor = tableElement.closest(".tableWrapper");
+    tableWrapperElement = wrapperAncestor instanceof HTMLElement ? wrapperAncestor : null;
+  }
+
+  if (!(tableWrapperElement instanceof HTMLElement) || !(editor.view.dom instanceof HTMLElement)) {
+    return null;
+  }
+
+  return {
+    editorElement: editor.view.dom,
+    tableElement,
+    tableWrapperElement,
+  };
+}
+
 function resolveTableCellAlignmentFromNode(node: ProseMirrorNode | null | undefined): DocseraTableCellAlignment {
   const alignment = node?.attrs?.align;
   return alignment === "left" || alignment === "center" || alignment === "right" ? alignment : "left";
@@ -790,11 +820,63 @@ export default function TableControlsOverlay({
     ownerDocument.addEventListener("scroll", scheduleRefresh, true);
     ownerWindow.addEventListener("resize", scheduleRefresh);
 
+    const ResizeObserverConstructor = (ownerWindow as Window & { ResizeObserver?: typeof ResizeObserver }).ResizeObserver;
+    let geometryObserver: ResizeObserver | null = null;
+    let observedTableElement: HTMLTableElement | null = null;
+    let observedWrapperElement: HTMLElement | null = null;
+    let observedEditorElement: HTMLElement | null = null;
+
+    const disconnectGeometryObserver = () => {
+      geometryObserver?.disconnect();
+      geometryObserver = null;
+      observedTableElement = null;
+      observedWrapperElement = null;
+      observedEditorElement = null;
+    };
+
+    const syncObservedGeometryElements = () => {
+      if (!ResizeObserverConstructor) {
+        return;
+      }
+
+      const geometryElements = resolveActiveTableGeometryElements(editor);
+      if (!geometryElements) {
+        disconnectGeometryObserver();
+        return;
+      }
+
+      if (
+        geometryObserver &&
+        observedTableElement === geometryElements.tableElement &&
+        observedWrapperElement === geometryElements.tableWrapperElement &&
+        observedEditorElement === geometryElements.editorElement
+      ) {
+        return;
+      }
+
+      disconnectGeometryObserver();
+      const nextGeometryObserver = new ResizeObserverConstructor(scheduleRefresh);
+      geometryObserver = nextGeometryObserver;
+      observedTableElement = geometryElements.tableElement;
+      observedWrapperElement = geometryElements.tableWrapperElement;
+      observedEditorElement = geometryElements.editorElement;
+      nextGeometryObserver.observe(geometryElements.tableElement);
+      nextGeometryObserver.observe(geometryElements.tableWrapperElement);
+      nextGeometryObserver.observe(geometryElements.editorElement);
+    };
+
+    editor.on("selectionUpdate", syncObservedGeometryElements);
+    editor.on("transaction", syncObservedGeometryElements);
+    syncObservedGeometryElements();
+
     return () => {
       editor.off("selectionUpdate", scheduleRefresh);
       editor.off("transaction", scheduleRefresh);
+      editor.off("selectionUpdate", syncObservedGeometryElements);
+      editor.off("transaction", syncObservedGeometryElements);
       ownerDocument.removeEventListener("scroll", scheduleRefresh, true);
       ownerWindow.removeEventListener("resize", scheduleRefresh);
+      disconnectGeometryObserver();
       if (hasRequestAnimationFrame && pendingRefreshRafId !== null) {
         ownerWindow.cancelAnimationFrame(pendingRefreshRafId);
       }
@@ -899,7 +981,7 @@ export default function TableControlsOverlay({
     if (!ownerWindow) return;
 
     const handleOutsidePointerDown = (event: MouseEvent | PointerEvent) => {
-      if (isEventInsideOwnedTableSurface(event, menuRef.current, overlayRoot, editor)) return;
+      if (isEventInsideOpenTableMenu(event, menuRef.current)) return;
       setMenuState(null);
     };
 

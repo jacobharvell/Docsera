@@ -569,7 +569,7 @@ describe("WorkspaceMainPane", () => {
     );
   });
 
-  it("defines one 400ms 16px reveal motion contract shared by main content, navigation, and ToC", () => {
+  it("keeps the editor content reveal transform-free while preserving other reveal motion", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;
       getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
@@ -578,28 +578,103 @@ describe("WorkspaceMainPane", () => {
       `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
       "utf8"
     );
+    const style = document.createElement("style");
+    style.textContent = source;
+    document.head.append(style);
+    const fixture = document.createElement("div");
+    document.body.append(fixture);
+    const matchingPropertyValues = (element: Element, property: string): string[] =>
+      Array.from(style.sheet?.cssRules ?? []).flatMap((rule) => {
+        if (!(rule instanceof CSSStyleRule)) {
+          return [];
+        }
+        const selectorMatches = rule.selectorText.split(",").some((selector) => {
+          try {
+            return element.matches(selector.trim());
+          } catch {
+            return false;
+          }
+        });
+        return selectorMatches ? [rule.style.getPropertyValue(property)].filter(Boolean) : [];
+      });
+    const lastValue = (values: string[]): string | undefined => values[values.length - 1];
 
-    expect(source).toMatch(
-      /\.docsera-main__content-reveal\[data-docsera-content-reveal-state="enter"\]\s*\{\s*animation:\s*docsera-content-reveal 400ms cubic-bezier\(0\.22, 1, 0\.36, 1\);/s
-    );
-    expect(source).toMatch(
-      /\.docsera-main__content-reveal\[data-docsera-content-reveal-pending="true"\]\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(16px\);/s
-    );
-    expect(source).toMatch(
-      /@keyframes docsera-content-reveal\s*\{\s*from\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(16px\);\s*\}\s*to\s*\{\s*opacity:\s*1;\s*transform:\s*translateY\(0\);/s
-    );
-    expect(source).toMatch(
-      /\.docsera-sidebar__tree\[data-docsera-chrome-reveal-state="enter"\] \.docsera-page-tree__row,\s*\.docsera-toc__list\[data-docsera-chrome-reveal-state="enter"\] \.docsera-toc__link\s*\{\s*animation:\s*docsera-content-reveal 400ms cubic-bezier\(0\.22, 1, 0\.36, 1\);/s
-    );
-    expect(source).toMatch(
-      /\.docsera-sidebar__tree\[data-docsera-chrome-reveal-state="pending"\] \.docsera-page-tree__row,\s*\.docsera-toc__list\[data-docsera-chrome-reveal-state="pending"\] \.docsera-toc__link\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(16px\);/s
-    );
-    expect(source).not.toContain("docsera-content-chrome-reveal");
-    expect(source).not.toContain(".docsera-breadcrumbs[data-docsera-chrome-reveal-state");
-    expect(source).toMatch(
-      /\.docsera-main__surface\[data-docsera-content-reveal-state="enter"\]\s*\{\s*transition:\s*none;\s*\}/
-    );
-    expect(source).not.toMatch(/animation-fill-mode:\s*(forwards|both)/);
+    const editorSurface = document.createElement("article");
+    editorSurface.className = "docsera-main__surface docsera-main__surface--editor docsera-main__content-reveal";
+    editorSurface.dataset.docseraContentRevealPending = "true";
+    editorSurface.dataset.docseraContentRevealState = "enter";
+    fixture.append(editorSurface);
+
+    const liveSurface = document.createElement("article");
+    liveSurface.className = "docsera-main__surface docsera-main__content-reveal";
+    liveSurface.dataset.docseraContentRevealPending = "true";
+    liveSurface.dataset.docseraContentRevealState = "enter";
+    fixture.append(liveSurface);
+
+    const launcherContent = document.createElement("section");
+    launcherContent.className = "docsera-launcher__content-reveal";
+    launcherContent.dataset.docseraLauncherRevealPending = "true";
+    launcherContent.dataset.docseraLauncherRevealState = "enter";
+    fixture.append(launcherContent);
+
+    const sidebarTree = document.createElement("nav");
+    sidebarTree.className = "docsera-sidebar__tree";
+    sidebarTree.dataset.docseraChromeRevealState = "enter";
+    const sidebarRow = document.createElement("button");
+    sidebarRow.className = "docsera-page-tree__row";
+    sidebarTree.append(sidebarRow);
+    fixture.append(sidebarTree);
+
+    const tocList = document.createElement("ol");
+    tocList.className = "docsera-toc__list";
+    tocList.dataset.docseraChromeRevealState = "pending";
+    const tocLink = document.createElement("a");
+    tocLink.className = "docsera-toc__link";
+    tocList.append(tocLink);
+    fixture.append(tocList);
+
+    try {
+      expect(editorSurface.matches(".docsera-main__surface--editor.docsera-main__content-reveal")).toBe(true);
+      expect(editorSurface.matches(".docsera-main__surface--editor .docsera-main__content-reveal")).toBe(false);
+
+      expect(getComputedStyle(editorSurface).transform).toBe("none");
+      expect(lastValue(matchingPropertyValues(editorSurface, "animation"))).toBe(
+        "docsera-content-opacity-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1)"
+      );
+      expect(getComputedStyle(liveSurface).transform).toBe("translateY(16px)");
+      expect(lastValue(matchingPropertyValues(liveSurface, "animation"))).toBe(
+        "docsera-content-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1)"
+      );
+      expect(getComputedStyle(launcherContent).transform).toBe("translateY(16px)");
+      expect(lastValue(matchingPropertyValues(launcherContent, "animation"))).toBe(
+        "docsera-content-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1)"
+      );
+      expect(lastValue(matchingPropertyValues(sidebarRow, "animation"))).toBe(
+        "docsera-content-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1)"
+      );
+      expect(getComputedStyle(tocLink).transform).toBe("translateY(16px)");
+      expect(source).toMatch(
+        /@keyframes docsera-content-reveal\s*\{\s*from\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(16px\);\s*\}\s*to\s*\{\s*opacity:\s*1;\s*transform:\s*translateY\(0\);/s
+      );
+      expect(source).toMatch(
+        /@keyframes docsera-content-opacity-reveal\s*\{\s*from\s*\{\s*opacity:\s*0;\s*\}\s*to\s*\{\s*opacity:\s*1;\s*\}\s*\}/s
+      );
+      expect(source).toMatch(
+        /\.docsera-sidebar__tree\[data-docsera-chrome-reveal-state="enter"\] \.docsera-page-tree__row,\s*\.docsera-toc__list\[data-docsera-chrome-reveal-state="enter"\] \.docsera-toc__link\s*\{\s*animation:\s*docsera-content-reveal 400ms cubic-bezier\(0\.22, 1, 0\.36, 1\);/s
+      );
+      expect(source).toMatch(
+        /\.docsera-sidebar__tree\[data-docsera-chrome-reveal-state="pending"\] \.docsera-page-tree__row,\s*\.docsera-toc__list\[data-docsera-chrome-reveal-state="pending"\] \.docsera-toc__link\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(16px\);/s
+      );
+      expect(source).not.toContain("docsera-content-chrome-reveal");
+      expect(source).not.toContain(".docsera-breadcrumbs[data-docsera-chrome-reveal-state");
+      expect(source).toMatch(
+        /\.docsera-main__surface\[data-docsera-content-reveal-state="enter"\]\s*\{\s*transition:\s*none;\s*\}/
+      );
+      expect(source).not.toMatch(/animation-fill-mode:\s*(forwards|both)/);
+    } finally {
+      fixture.remove();
+      style.remove();
+    }
   });
 
   it("renders a nested page title without an ancestor label above the title", () => {

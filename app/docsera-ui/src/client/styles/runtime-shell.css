@@ -4883,6 +4883,14 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   animation: docsera-content-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.docsera-main__surface--editor.docsera-main__content-reveal[data-docsera-content-reveal-pending="true"] {
+  transform: none;
+}
+
+.docsera-main__surface--editor.docsera-main__content-reveal[data-docsera-content-reveal-state="enter"] {
+  animation: docsera-content-opacity-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .docsera-launcher__content-reveal[data-docsera-launcher-reveal-state="enter"] {
   animation: docsera-content-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -4900,6 +4908,16 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes docsera-content-opacity-reveal {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
   }
 }
 

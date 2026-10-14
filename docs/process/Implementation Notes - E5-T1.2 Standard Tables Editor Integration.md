@@ -60,6 +60,7 @@ The table controls overlay is a live active-table surface, not a structural reco
 - adjacent sticky ToC and workspace chrome are not part of table scroll content;
 - the bottom rail still appends exactly one final row at the bottom edge, regardless of the currently active interior cell;
 - overlay lifecycle uses the owning `Document` and `Window` for scheduling, scroll, resize, pane-resize observation, and viewport measurements;
+- active table geometry observation follows the current table, wrapper, and editor surface and feeds the existing scheduled overlay refresh path so layout-only changes after insertion, mount, refresh, or container resizing update controls without document transactions;
 - the right rail appends exactly one final column at the far-right edge, regardless of the currently active interior cell;
 - the wrapper bottom lane keeps the row rail separated from the horizontal scrollbar lane;
 - this overlay is the foundation that T1.3C extends with legacy row/column pills and basic structural menus;
@@ -81,6 +82,7 @@ E5-T1.3C layers the legacy row/column control affordances onto the live overlay 
 - E5-T1.6A later extends those same menus with `Move up`, `Move down`, `Move left`, and `Move right` actions while preserving the accepted row/column selection-on-open behavior;
 - the menu surface keeps using the live row and column centers derived from the active table DOM, so offscreen controls stay hidden when horizontal scrolling clips them;
 - the Add Row and Add Column rails from T1.3B remain in place and continue to honor wrapper scroll-content coordinates.
+- geometry-only overlay synchronization does not dispatch editor transactions, change selection, dirty the document, create undo history, or participate in autosave.
 
 ## T1.6B Structured Row/Column Clipboard
 

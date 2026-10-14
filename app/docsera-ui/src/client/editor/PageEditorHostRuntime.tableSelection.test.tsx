@@ -72,6 +72,20 @@ function createTableDocument(rows: number, columns: number): DocseraDocumentEnve
   };
 }
 
+function createTableDocumentWithTrailingParagraph(rows: number, columns: number): DocseraDocumentEnvelope["document"] {
+  const tableDocument = createTableDocument(rows, columns);
+  return {
+    type: "doc",
+    content: [
+      ...(tableDocument.content ?? []),
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: "After the table" }]
+      }
+    ]
+  };
+}
+
 function createWorkspacePageRecord(overrides: Partial<WorkspacePageRecord> & Pick<WorkspacePageRecord, "draftTitle" | "sysId">): WorkspacePageRecord {
   const draftSlug = slugify(overrides.draftSlug ?? overrides.draftTitle);
   return {
@@ -146,7 +160,13 @@ function installTableGeometry(input: {
   scrollLeft?: number;
   wrapperWidth?: number;
 }) {
-  const { editor, left, top, rows, columns, cellHeight, cellWidth } = input;
+  const { editor, rows, columns } = input;
+  let left = input.left;
+  let top = input.top;
+  let cellHeight = input.cellHeight;
+  let cellWidth = input.cellWidth;
+  let wrapperWidth = input.wrapperWidth ?? columns * cellWidth;
+  let scrollLeft = input.scrollLeft ?? 0;
   const wrapper = getTableWrapper(editor);
   const table = editor.querySelector(".ProseMirror table");
   if (!(table instanceof HTMLTableElement)) {
@@ -154,11 +174,9 @@ function installTableGeometry(input: {
   }
 
   const cells = Array.from(table.querySelectorAll("td, th")) as HTMLTableCellElement[];
-  const wrapperWidth = input.wrapperWidth ?? columns * cellWidth;
-  let scrollLeft = input.scrollLeft ?? 0;
-  const wrapperHeight = rows * cellHeight;
+  const wrapperHeight = () => rows * cellHeight;
   const tableRect = () => new DOMRect(left - scrollLeft, top, columns * cellWidth, rows * cellHeight);
-  const wrapperRect = () => new DOMRect(left, top, wrapperWidth, wrapperHeight);
+  const wrapperRect = () => new DOMRect(left, top, wrapperWidth, wrapperHeight());
   const cellRect = (rowIndex: number, columnIndex: number) =>
     new DOMRect(
       left - scrollLeft + columnIndex * cellWidth,
@@ -189,11 +207,11 @@ function installTableGeometry(input: {
     defineRect(cell, () => cellRect(Math.floor(index / columns), index % columns));
   });
 
-  const defineMetric = (element: Element, property: string, value: number) => {
+  const defineMetric = (element: Element, property: string, getValue: () => number) => {
     const original = Object.getOwnPropertyDescriptor(element, property);
     Object.defineProperty(element, property, {
       configurable: true,
-      get: () => value
+      get: getValue
     });
     restore.push(() => {
       if (original) {
@@ -204,12 +222,12 @@ function installTableGeometry(input: {
     });
   };
 
-  defineMetric(wrapper, "clientWidth", wrapperWidth);
-  defineMetric(wrapper, "scrollWidth", columns * cellWidth);
-  defineMetric(wrapper, "clientHeight", wrapperHeight);
-  defineMetric(wrapper, "offsetWidth", wrapperWidth);
-  defineMetric(wrapper, "offsetHeight", wrapperHeight + 12);
-  defineMetric(wrapper, "scrollHeight", wrapperHeight);
+  defineMetric(wrapper, "clientWidth", () => wrapperWidth);
+  defineMetric(wrapper, "scrollWidth", () => columns * cellWidth);
+  defineMetric(wrapper, "clientHeight", () => wrapperHeight());
+  defineMetric(wrapper, "offsetWidth", () => wrapperWidth);
+  defineMetric(wrapper, "offsetHeight", () => wrapperHeight() + 12);
+  defineMetric(wrapper, "scrollHeight", () => wrapperHeight());
   Object.defineProperty(wrapper, "scrollLeft", {
     configurable: true,
     get: () => scrollLeft,
@@ -253,6 +271,19 @@ function installTableGeometry(input: {
   });
 
   return {
+    setGeometry(next: Partial<{
+      cellHeight: number;
+      cellWidth: number;
+      left: number;
+      top: number;
+      wrapperWidth: number;
+    }>) {
+      left = next.left ?? left;
+      top = next.top ?? top;
+      cellHeight = next.cellHeight ?? cellHeight;
+      cellWidth = next.cellWidth ?? cellWidth;
+      wrapperWidth = next.wrapperWidth ?? wrapperWidth;
+    },
     setScrollLeft(next: number) {
       scrollLeft = next;
     },
@@ -397,6 +428,140 @@ function getTableHandleButton(
   const selector = `[data-docsera-table-handle-kind="${kind}"][data-docsera-table-handle-index="${index}"]`;
   const handle = overlayRoot.querySelector(selector) ?? overlayRoot.ownerDocument.querySelector(selector);
   return handle instanceof HTMLButtonElement ? handle : null;
+}
+
+function getTableMenu(
+  overlayRoot: HTMLElement,
+  kind: "row" | "column",
+  index: number
+): HTMLElement | null {
+  const selector = `[data-docsera-table-menu="true"][data-docsera-table-menu-kind="${kind}"][data-docsera-table-menu-index="${index}"]`;
+  const menu = overlayRoot.querySelector(selector) ?? overlayRoot.ownerDocument.querySelector(selector);
+  return menu instanceof HTMLElement ? menu : null;
+}
+
+function getTableAddRail(overlayRoot: HTMLElement, kind: "row" | "column"): HTMLElement | null {
+  const selector = `[data-docsera-table-add-rail-kind="${kind}"]`;
+  const railButton = overlayRoot.querySelector(selector) ?? overlayRoot.ownerDocument.querySelector(selector);
+  return railButton instanceof HTMLElement ? railButton.parentElement : null;
+}
+
+function expectTableControlsAligned(
+  overlayRoot: HTMLElement,
+  input: {
+    cellHeight: number;
+    cellWidth: number;
+    columns: number;
+    left: number;
+    rows: number;
+    scrollLeft?: number;
+    top: number;
+    wrapperWidth?: number;
+  }
+): void {
+  const scrollLeft = input.scrollLeft ?? 0;
+  const wrapperWidth = input.wrapperWidth ?? input.columns * input.cellWidth;
+  const tableLeft = input.left - scrollLeft;
+  const tableRight = tableLeft + input.columns * input.cellWidth;
+  const visibleLeft = Math.max(tableLeft, input.left);
+  const visibleRight = Math.min(tableRight, input.left + wrapperWidth);
+  const visibleBottom = input.top + input.rows * input.cellHeight;
+  const rowButton = getTableHandleButton(overlayRoot, "row", 0);
+  const columnButton = getTableHandleButton(overlayRoot, "column", 0);
+  const rowRail = getTableAddRail(overlayRoot, "row");
+  const columnRail = getTableAddRail(overlayRoot, "column");
+
+  expect(rowButton).toBeInstanceOf(HTMLButtonElement);
+  expect(columnButton).toBeInstanceOf(HTMLButtonElement);
+  expect(rowRail).toBeInstanceOf(HTMLElement);
+  expect(columnRail).toBeInstanceOf(HTMLElement);
+  expect(rowButton?.style.left).toBe(`${tableLeft - 13}px`);
+  expect(rowButton?.style.top).toBe(`${input.top + input.cellHeight / 2 - 21}px`);
+  expect(columnButton?.style.left).toBe(`${tableLeft + input.cellWidth / 2 - 21}px`);
+  expect(columnButton?.style.top).toBe(`${input.top - 13}px`);
+  expect(rowRail?.style.left).toBe(`${visibleLeft}px`);
+  expect(rowRail?.style.top).toBe(`${visibleBottom - 22}px`);
+  expect(rowRail?.style.width).toBe(`${Math.max(0, visibleRight - visibleLeft)}px`);
+  expect(columnRail?.style.left).toBe(`${visibleRight}px`);
+  expect(columnRail?.style.top).toBe(`${input.top}px`);
+  expect(columnRail?.style.height).toBe(`${input.rows * input.cellHeight}px`);
+}
+
+function installMockResizeObserver() {
+  const originalResizeObserver = window.ResizeObserver;
+  const callbacks: ResizeObserverCallback[] = [];
+
+  class MockResizeObserver {
+    callback: ResizeObserverCallback;
+
+    constructor(callback: ResizeObserverCallback) {
+      this.callback = callback;
+      callbacks.push(callback);
+    }
+
+    observe = vi.fn();
+    unobserve = vi.fn();
+    disconnect = vi.fn();
+  }
+
+  Object.defineProperty(window, "ResizeObserver", {
+    configurable: true,
+    value: MockResizeObserver
+  });
+
+  return {
+    trigger() {
+      callbacks.forEach((callback) => callback([], {} as ResizeObserver));
+    },
+    restore() {
+      Object.defineProperty(window, "ResizeObserver", {
+        configurable: true,
+        value: originalResizeObserver
+      });
+    }
+  };
+}
+
+async function openTableMenu(input: {
+  editor: Editor;
+  index: number;
+  kind: "row" | "column";
+  overlayRoot: HTMLElement;
+  pointerId?: number;
+}): Promise<HTMLElement> {
+  await act(async () => {
+    input.editor.commands.setTextSelection(getTableCellTextPosition(input.editor, 1, 1, 1));
+  });
+
+  await waitFor(() => {
+    expect(getTableHandleButton(input.overlayRoot, input.kind, input.index)).toBeInstanceOf(HTMLButtonElement);
+  });
+
+  const button = getTableHandleButton(input.overlayRoot, input.kind, input.index);
+  if (!(button instanceof HTMLButtonElement)) {
+    throw new Error(`Expected the ${input.kind} table pill to be available.`);
+  }
+
+  await act(async () => {
+    dispatchPointerEvent(button, "pointerdown", {
+      button: 0,
+      buttons: 1,
+      clientX: button.getBoundingClientRect().left + 8,
+      clientY: button.getBoundingClientRect().top + 8,
+      pointerId: input.pointerId ?? 1,
+      pointerType: "mouse"
+    });
+  });
+
+  await waitFor(() => {
+    expect(getTableMenu(input.overlayRoot, input.kind, input.index)).toBeInstanceOf(HTMLElement);
+  });
+
+  const menu = getTableMenu(input.overlayRoot, input.kind, input.index);
+  if (!(menu instanceof HTMLElement)) {
+    throw new Error(`Expected the ${input.kind} table menu to be open.`);
+  }
+  return menu;
 }
 
 function getTableHandleShell(
@@ -807,6 +972,198 @@ function headerNewPageButton(): HTMLButtonElement {
 }
 
 describe("PageEditorHostRuntime table drag selection", () => {
+  it("keeps table controls aligned after inserting a table and after geometry-only layout changes", async () => {
+    const resizeObserver = installMockResizeObserver();
+    const { editorReady, overlayRoot } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument({
+        type: "doc",
+        content: [{ type: "paragraph" }]
+      })
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+
+    try {
+      await act(async () => {
+        editor.chain().focus(undefined, { scrollIntoView: false }).insertTable({ rows: 2, cols: 2, withHeaderRow: false }).run();
+      });
+
+      const geometry = installTableGeometry({
+        editor: editor.view.dom,
+        left: 80,
+        top: 90,
+        rows: 2,
+        columns: 2,
+        cellWidth: 96,
+        cellHeight: 42
+      });
+
+      try {
+        await waitFor(() => {
+          expectTableControlsAligned(overlayRoot, {
+            left: 80,
+            top: 90,
+            rows: 2,
+            columns: 2,
+            cellWidth: 96,
+            cellHeight: 42
+          });
+        });
+
+        const beforeDocument = editor.getJSON();
+        const beforeSelection = editor.state.selection.toJSON();
+
+        geometry.setGeometry({
+          left: 132,
+          top: 126,
+          cellWidth: 124,
+          cellHeight: 58,
+          wrapperWidth: 248
+        });
+        await act(async () => {
+          resizeObserver.trigger();
+        });
+
+        await waitFor(() => {
+          expectTableControlsAligned(overlayRoot, {
+            left: 132,
+            top: 126,
+            rows: 2,
+            columns: 2,
+            cellWidth: 124,
+            cellHeight: 58
+          });
+        });
+        expect(editor.getJSON()).toEqual(beforeDocument);
+        expect(editor.state.selection.toJSON()).toEqual(beforeSelection);
+      } finally {
+        geometry.restore();
+      }
+    } finally {
+      resizeObserver.restore();
+    }
+  });
+
+  it("keeps loaded table controls aligned after layout-only changes, horizontal scrolling, and outside menu dismissal", async () => {
+    const resizeObserver = installMockResizeObserver();
+    const { editorReady, overlayRoot } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createTableDocumentWithTrailingParagraph(2, 3))
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometry = installTableGeometry({
+      editor: editor.view.dom,
+      left: 100,
+      top: 120,
+      rows: 2,
+      columns: 3,
+      cellWidth: 110,
+      cellHeight: 48,
+      wrapperWidth: 250
+    });
+
+    try {
+      await act(async () => {
+        editor.commands.setTextSelection(getTableCellTextPosition(editor, 1, 1, 1));
+      });
+
+      await waitFor(() => {
+        expectTableControlsAligned(overlayRoot, {
+          left: 100,
+          top: 120,
+          rows: 2,
+          columns: 3,
+          cellWidth: 110,
+          cellHeight: 48,
+          wrapperWidth: 250
+        });
+      });
+
+      geometry.setGeometry({
+        left: 148,
+        top: 164,
+        cellWidth: 132,
+        cellHeight: 64,
+        wrapperWidth: 260
+      });
+      await act(async () => {
+        resizeObserver.trigger();
+      });
+
+      await waitFor(() => {
+        expectTableControlsAligned(overlayRoot, {
+          left: 148,
+          top: 164,
+          rows: 2,
+          columns: 3,
+          cellWidth: 132,
+          cellHeight: 64,
+          wrapperWidth: 260
+        });
+      });
+
+      geometry.setScrollLeft(52);
+      await act(async () => {
+        fireEvent.scroll(getTableWrapper(editor.view.dom));
+      });
+
+      await waitFor(() => {
+        expectTableControlsAligned(overlayRoot, {
+          left: 148,
+          top: 164,
+          rows: 2,
+          columns: 3,
+          cellWidth: 132,
+          cellHeight: 64,
+          scrollLeft: 52,
+          wrapperWidth: 260
+        });
+      });
+
+      await openTableMenu({ editor, index: 0, kind: "row", overlayRoot, pointerId: 40 });
+      const outsideClick = vi.fn();
+      const trailingParagraph = Array.from(editor.view.dom.querySelectorAll(".ProseMirror p")).find(
+        (node) => node.textContent === "After the table"
+      );
+      if (!(trailingParagraph instanceof HTMLElement)) {
+        throw new Error("Expected trailing paragraph outside the table.");
+      }
+      trailingParagraph.addEventListener("click", outsideClick);
+
+      await act(async () => {
+        dispatchPointerEvent(trailingParagraph, "pointerdown", {
+          button: 0,
+          buttons: 1,
+          clientX: 24,
+          clientY: 24,
+          pointerId: 41,
+          pointerType: "mouse"
+        });
+      });
+
+      await waitFor(() => {
+        expect(getTableMenu(overlayRoot, "row", 0)).toBeNull();
+      });
+
+      await act(async () => {
+        fireEvent.click(trailingParagraph);
+      });
+      expect(outsideClick).toHaveBeenCalledTimes(1);
+      trailingParagraph.removeEventListener("click", outsideClick);
+    } finally {
+      geometry.restore();
+      resizeObserver.restore();
+    }
+  });
+
   it("keeps ordinary within-cell pointer gestures available and promotes cross-cell drags to CellSelection", async () => {
     const { editorReady } = renderRuntime({
       initialEnvelope: createEnvelopeFromDocument(createTableDocument(3, 3))
@@ -2104,6 +2461,205 @@ describe("PageEditorHostRuntime table drag selection", () => {
       });
       expectTableHandleVisualState(overlayRoot, { index: 1, kind: "row", state: "muted" });
       expectTableHandleVisualState(overlayRoot, { index: 1, kind: "column", state: "muted" });
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it.each([
+    {
+      getTarget: (editor: Editor) => getTableCell(editor.view.dom, 1, 2),
+      kind: "row" as const,
+      label: "a table cell",
+    },
+    {
+      getTarget: (editor: Editor) => {
+        const target = Array.from(editor.view.dom.querySelectorAll(".ProseMirror p")).find(
+          (node) => node.textContent === "After the table"
+        );
+        if (!(target instanceof HTMLElement)) {
+          throw new Error("Expected trailing editor paragraph to be available.");
+        }
+        return target;
+      },
+      kind: "column" as const,
+      label: "elsewhere inside the editor",
+    },
+    {
+      getTarget: (_editor: Editor, overlayRoot: HTMLElement) => {
+        const target = overlayRoot.querySelector("[data-docsera-table-overlay-root='true']");
+        if (!(target instanceof HTMLElement)) {
+          throw new Error("Expected the table overlay root to be available.");
+        }
+        return target;
+      },
+      kind: "row" as const,
+      label: "the overlay outside the menu",
+    },
+    {
+      getTarget: (editor: Editor) => editor.view.dom.ownerDocument.body,
+      kind: "column" as const,
+      label: "outside the editor",
+    },
+  ])("dismisses an open $kind menu on first outside pointerdown from $label without consuming the click", async ({ getTarget, kind }) => {
+    const outsidePointerDown = vi.fn((event: Event) => {
+      expect(event.defaultPrevented).toBe(false);
+    });
+    const outsideClick = vi.fn();
+    const { editorReady, overlayRoot } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createTableDocumentWithTrailingParagraph(2, 2))
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometry = installTableGeometry({
+      editor: editor.view.dom,
+      left: 120,
+      top: 140,
+      rows: 2,
+      columns: 2,
+      cellWidth: 120,
+      cellHeight: 56
+    });
+
+    try {
+      await openTableMenu({ editor, index: 0, kind, overlayRoot, pointerId: 30 });
+      const beforeDocument = editor.getJSON();
+      const target = getTarget(editor, overlayRoot);
+      target.addEventListener("pointerdown", outsidePointerDown);
+      target.addEventListener("click", outsideClick);
+
+      await act(async () => {
+        dispatchPointerEvent(target, "pointerdown", {
+          button: 0,
+          buttons: 1,
+          clientX: 24,
+          clientY: 24,
+          pointerId: 31,
+          pointerType: "mouse"
+        });
+      });
+
+      await waitFor(() => {
+        expect(getTableMenu(overlayRoot, kind, 0)).toBeNull();
+      });
+      expect(outsidePointerDown).toHaveBeenCalledTimes(1);
+      expect(editor.getJSON()).toEqual(beforeDocument);
+
+      await act(async () => {
+        fireEvent.click(target);
+      });
+      expect(outsideClick).toHaveBeenCalledTimes(1);
+
+      target.removeEventListener("pointerdown", outsidePointerDown);
+      target.removeEventListener("click", outsideClick);
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it("keeps pointerdown inside the menu owned and runs the selected row command exactly once before closing", async () => {
+    const { editorReady, overlayRoot } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createTableDocument(2, 2))
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometry = installTableGeometry({
+      editor: editor.view.dom,
+      left: 120,
+      top: 140,
+      rows: 2,
+      columns: 2,
+      cellWidth: 120,
+      cellHeight: 56
+    });
+
+    try {
+      const rowMenu = await openTableMenu({ editor, index: 0, kind: "row", overlayRoot, pointerId: 40 });
+      const insertAfterItem = within(rowMenu).getByRole("menuitem", { name: "Insert after" });
+
+      await act(async () => {
+        dispatchPointerEvent(insertAfterItem, "pointerdown", {
+          button: 0,
+          buttons: 1,
+          clientX: 12,
+          clientY: 12,
+          pointerId: 41,
+          pointerType: "mouse"
+        });
+      });
+
+      expect(getTableRowCount(editor)).toBe(2);
+      expect(getTableMenu(overlayRoot, "row", 0)).toBeInstanceOf(HTMLElement);
+
+      await act(async () => {
+        fireEvent.click(insertAfterItem);
+      });
+
+      await waitFor(() => {
+        expect(getTableRowCount(editor)).toBe(3);
+        expect(getTableMenu(overlayRoot, "row", 0)).toBeNull();
+      });
+
+      await act(async () => {
+        fireEvent.click(insertAfterItem);
+      });
+      expect(getTableRowCount(editor)).toBe(3);
+    } finally {
+      geometry.restore();
+    }
+  });
+
+  it("switches between row and column menus without treating the next pill pointerdown as an outside-only dismissal", async () => {
+    const { editorReady, overlayRoot } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(createTableDocument(2, 2))
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometry = installTableGeometry({
+      editor: editor.view.dom,
+      left: 120,
+      top: 140,
+      rows: 2,
+      columns: 2,
+      cellWidth: 120,
+      cellHeight: 56
+    });
+
+    try {
+      await openTableMenu({ editor, index: 0, kind: "row", overlayRoot, pointerId: 50 });
+
+      const columnButton = getTableHandleButton(overlayRoot, "column", 0);
+      if (!(columnButton instanceof HTMLButtonElement)) {
+        throw new Error("Expected the first column pill to be available.");
+      }
+
+      await act(async () => {
+        dispatchPointerEvent(columnButton, "pointerdown", {
+          button: 0,
+          buttons: 1,
+          clientX: 12,
+          clientY: 12,
+          pointerId: 51,
+          pointerType: "mouse"
+        });
+      });
+
+      await waitFor(() => {
+        expect(getTableMenu(overlayRoot, "row", 0)).toBeNull();
+        expect(getTableMenu(overlayRoot, "column", 0)).toBeInstanceOf(HTMLElement);
+      });
     } finally {
       geometry.restore();
     }
