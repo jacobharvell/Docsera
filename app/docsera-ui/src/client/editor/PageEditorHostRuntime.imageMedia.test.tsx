@@ -7,6 +7,7 @@ import type { DocseraTiptapDocument } from "../../shared/editor/document";
 import { createEmptyDocseraDocumentEnvelope } from "../../shared/editor/document";
 import { describe, expect, it, vi } from "vitest";
 import { PageEditorHostRuntime } from "./PageEditorHostRuntime";
+import { EDITOR_IMAGE_STYLES } from "./EditorImageStyles";
 import type { EditorMediaAdapter, EditorMediaReference } from "./contracts";
 import {
   createEnvelopeFromDocument,
@@ -118,6 +119,16 @@ async function openQuickAdd(editor: Editor, pointer: { clientX: number; clientY:
 }
 
 describe("PageEditorHostRuntime", () => {
+  it("uses document block spacing only for non-final top-level image figures while retaining caption attachment", () => {
+    expect(EDITOR_IMAGE_STYLES).toMatch(
+      /\.docsera-editor-image\s*\{[^}]*display:\s*grid;[^}]*gap:\s*0\.65rem;[^}]*margin:\s*0;/s
+    );
+    expect(EDITOR_IMAGE_STYLES).toMatch(
+      /\.docsera-editor-runtime__surface \.ProseMirror > \.docsera-editor-image:not\(:last-child\)\s*\{\s*margin-bottom:\s*calc\(var\(--docsera-document-block-spacing, 1rem\) \+ 0\.25rem\);\s*}/s
+    );
+    expect(EDITOR_IMAGE_STYLES).toMatch(/\.docsera-editor-image__caption\s*\{[^}]*margin:\s*0;/s);
+  });
+
   it("opens the image picker from slash commands and inserts a canonical image block", async () => {
     const mediaAdapter: EditorMediaAdapter = {
       list: vi.fn(async () => [

@@ -11,6 +11,10 @@ export const EDITOR_IMAGE_STYLES = `
     color: var(--docsera-editor-text);
   }
 
+  .docsera-editor-runtime__surface .ProseMirror > .docsera-editor-image:not(:last-child) {
+    margin-bottom: calc(var(--docsera-document-block-spacing, 1rem) + 0.25rem);
+  }
+
   .docsera-editor-image[data-docsera-image-align="left"] {
     margin-inline: 0 auto;
   }

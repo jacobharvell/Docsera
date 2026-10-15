@@ -233,6 +233,10 @@ describe("PublishedDocumentReader", () => {
       `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
       "utf8"
     ).replace(/\r\n/g, "\n");
+    const readerSource = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/features/workspaces/PublishedDocumentReader.tsx`,
+      "utf8"
+    );
     const getRuleBody = (selector: string) => {
       const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       return source.match(new RegExp(`${escapedSelector}\\s*\\{(?<body>[^}]*)\\}`, "s"))?.groups?.body ?? "";
@@ -286,6 +290,10 @@ describe("PublishedDocumentReader", () => {
     expect(source).toContain(".docsera-main__list-item + .docsera-main__list-item {");
     expect(source).toContain("margin-top: var(--docsera-document-list-item-gap);");
     expect(source).toContain(".docsera-main__blockquote {\n  margin: 0 0 var(--docsera-document-block-spacing);");
+    expect(source).toContain(".docsera-main__media {\n  display: grid;\n  gap: 12px;\n  margin: 0;\n}");
+    expect(source).toContain(".docsera-main__reader > .docsera-main__media:not(:last-child) {\n  margin-bottom: calc(var(--docsera-document-block-spacing) + 0.25rem);\n}");
+    expect(readerSource).not.toContain('margin: "0 0 var(--docsera-document-block-spacing)",');
+    expect(source).toContain(".docsera-main__media-caption {\n  margin: 0;");
     expect(source).toContain(".docsera-main__inline-code {\n  padding: var(--docsera-document-code-inline-padding);");
     expect(source).toContain(".docsera-main__code {\n  margin: 0 0 var(--docsera-document-block-spacing);");
     expect(source).toContain(".docsera-main__divider {\n  width: 100%;\n  height: 0;\n  margin: var(--docsera-document-rule-margin);");
@@ -496,6 +504,71 @@ describe("PublishedDocumentReader", () => {
     expect(within(reader).getByText("Published in both light and dark modes")).toBeInTheDocument();
     createObjectUrlSpy.mockRestore();
     revokeObjectUrlSpy.mockRestore();
+  });
+
+  it("keeps image figures as direct reader blocks so only non-final top-level images receive document spacing", async () => {
+    const imageAttrs = {
+      mediaId: "workspace-media-001",
+      alt: "Spacing diagram",
+      caption: "Caption remains attached",
+      frame: false,
+      align: "center",
+      widthPct: 80
+    };
+    const envelope: DocseraDocumentEnvelope = {
+      schemaVersion: 1,
+      document: {
+        type: "doc",
+        content: [
+          { type: "image", attrs: imageAttrs },
+          { type: "image", attrs: { ...imageAttrs, alt: "Following diagram", align: "right" } },
+          { type: "paragraph", content: [{ type: "text", text: "After paragraph" }] },
+          { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "After heading" }] },
+          {
+            type: "columns",
+            content: [
+              {
+                type: "column",
+                content: [{ type: "image", attrs: { ...imageAttrs, alt: "Nested diagram", align: "left" } }]
+              },
+              {
+                type: "column",
+                content: [{ type: "paragraph", content: [{ type: "text", text: "Nested companion copy" }] }]
+              }
+            ]
+          },
+          { type: "image", attrs: { ...imageAttrs, alt: "Final diagram", align: "right" } }
+        ]
+      }
+    };
+
+    renderReader(envelope, { loadMedia: async ({ mediaId }) => createMediaBlob(mediaId) });
+
+    const reader = screen.getByLabelText("Published page content");
+    await waitFor(() => {
+      expect(within(reader).getByRole("img", { name: "Spacing diagram" })).toBeInTheDocument();
+    });
+    const topLevelFigures = Array.from(reader.children).filter(
+      (child): child is HTMLElement => child instanceof HTMLElement && child.matches("figure.docsera-main__media")
+    );
+    const nestedFigure = reader.querySelector(".docsera-main__column figure.docsera-main__media");
+
+    expect(topLevelFigures).toHaveLength(3);
+    expect(topLevelFigures[0].nextElementSibling).toBe(topLevelFigures[1]);
+    expect(topLevelFigures[1].nextElementSibling).toHaveTextContent("After paragraph");
+    expect(within(reader).getByRole("heading", { name: "After heading" }).nextElementSibling).toHaveClass("docsera-main__columns");
+    expect(topLevelFigures[2].nextElementSibling).toBeNull();
+    expect(topLevelFigures[0]).toHaveStyle({ width: "80%" });
+    expect(topLevelFigures[2]).toHaveStyle({ width: "80%" });
+    expect(topLevelFigures[0].style.margin).toBe("");
+    expect(topLevelFigures[2].style.margin).toBe("");
+    expect(within(topLevelFigures[0]).getByText("Caption remains attached")).toHaveClass("docsera-main__media-caption");
+    expect(nestedFigure).toBeInstanceOf(HTMLElement);
+    if (!(nestedFigure instanceof HTMLElement)) {
+      throw new Error("Expected the nested column image figure to render.");
+    }
+    expect(nestedFigure.parentElement).not.toBe(reader);
+    expect(nestedFigure.style.margin).toBe("");
   });
 
   it("renders a right-aligned framed image with responsive width in the published reader", async () => {

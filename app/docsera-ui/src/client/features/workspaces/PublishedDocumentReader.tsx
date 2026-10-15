@@ -149,7 +149,6 @@ function getImageFigureStyle(attrs: DocseraImageAttrs): CSSProperties {
     return {
       display: "grid",
       gap: "12px",
-      margin: 0,
       width: `${attrs.widthPct}%`,
       marginInlineStart: "auto",
       marginInlineEnd: "auto"
@@ -159,7 +158,6 @@ function getImageFigureStyle(attrs: DocseraImageAttrs): CSSProperties {
   return {
     display: "grid",
     gap: "12px",
-    margin: 0,
     width: `${attrs.widthPct}%`,
     marginInlineStart: attrs.align === "right" ? "auto" : undefined,
     marginInlineEnd: attrs.align === "left" ? "auto" : undefined
