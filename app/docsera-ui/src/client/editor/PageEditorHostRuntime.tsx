@@ -44,6 +44,7 @@ import { CompactTextToolbar } from "./CompactTextToolbar";
 import { resolveToolbarMenuSurfaceStyle } from "./CompactTextToolbar";
 import { COMPACT_MENU_STYLES } from "./CompactMenuStyles";
 import { EditorHistoryControls } from "./EditorHistoryControls";
+import { EmojiPickerControls } from "./EmojiPickerControls";
 import {
   DOCSERA_TOOLTIP_DELAY_MS,
   DOCSERA_TOOLTIP_STYLES,
@@ -8053,19 +8054,17 @@ export function PageEditorHostRuntime({
         {isInteractionActive && historyControlsEditor
           ? historyControlsMount
             ? createPortal(
-                <EditorHistoryControls
-                  canEdit={isEditable}
-                  editor={historyControlsEditor}
-                  ownerDocument={historyControlsMount.ownerDocument}
-                />,
+                <div className="docsera-editor-command-controls">
+                  <EditorHistoryControls canEdit={isEditable} editor={historyControlsEditor} ownerDocument={historyControlsMount.ownerDocument} />
+                  <EmojiPickerControls canEdit={isEditable} editor={historyControlsEditor} ownerDocument={historyControlsMount.ownerDocument} />
+                </div>,
                 historyControlsMount
               )
             : (
-                <EditorHistoryControls
-                  canEdit={isEditable}
-                  editor={historyControlsEditor}
-                  ownerDocument={overlayOwnerDocument}
-                />
+                <div className="docsera-editor-command-controls">
+                  <EditorHistoryControls canEdit={isEditable} editor={historyControlsEditor} ownerDocument={overlayOwnerDocument} />
+                  <EmojiPickerControls canEdit={isEditable} editor={historyControlsEditor} ownerDocument={overlayOwnerDocument} />
+                </div>
               )
           : null}
         {createPortal(

@@ -119,6 +119,7 @@ export const testSuites = [
       "src/client/editor/PageEditorHost.test.tsx",
       "src/client/editor/PageEditorHostRuntime.interactionOwnership.test.tsx",
       "src/client/editor/EditorHistoryControls.test.tsx",
+      "src/client/editor/EmojiPickerControls.test.tsx",
       "src/client/editor/PageEditorHostRuntime.historyControls.test.tsx",
       "src/client/editor/PageEditorHostRuntime.initialization.test.tsx",
       "src/client/editor/PageEditorHostRuntime.commands.test.tsx",

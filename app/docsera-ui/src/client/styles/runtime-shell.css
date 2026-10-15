@@ -5013,7 +5013,7 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   pointer-events: none;
 }
 
-.docsera-main__editor-history-controls-mount > .docsera-editor-history-controls {
+.docsera-main__editor-history-controls-mount > .docsera-editor-command-controls {
   transform: translate(-8px, 8px);
 }
 

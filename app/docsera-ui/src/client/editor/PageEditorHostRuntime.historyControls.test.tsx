@@ -109,7 +109,7 @@ describe("PageEditorHostRuntime history controls", () => {
       runtimeShellSource.match(/\.docsera-main__editor-history-controls-mount\s*\{(?<body>[\s\S]*?)\n\}/)?.groups?.body ?? "";
     const controlsOffsetRule =
       runtimeShellSource.match(
-        /\.docsera-main__editor-history-controls-mount\s*>\s*\.docsera-editor-history-controls\s*\{(?<body>[\s\S]*?)\n\}/
+        /\.docsera-main__editor-history-controls-mount\s*>\s*\.docsera-editor-command-controls\s*\{(?<body>[\s\S]*?)\n\}/
       )?.groups?.body ?? "";
 
     expect(mountRule).toContain("position: sticky;");
