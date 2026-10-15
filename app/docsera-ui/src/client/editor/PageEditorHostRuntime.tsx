@@ -2300,7 +2300,11 @@ function applySlashCommand(
     return true;
   }
 
-  return applyCommandSelectionOffset(editor, selector.ownerBlockIndex, command.slashSelectionOffset);
+  // Block conversion has completed even if restoring the command-specific
+  // caret cannot resolve. Selector lifecycle must not depend on this best-
+  // effort selection refinement.
+  applyCommandSelectionOffset(editor, selector.ownerBlockIndex, command.slashSelectionOffset);
+  return true;
 }
 
 const TURN_INTO_EDITOR_BLOCK_COMMAND_IDS = [
@@ -5577,6 +5581,13 @@ export function PageEditorHostRuntime({
       return;
     }
 
+    // The selector session is consumed by choosing a command, not by the
+    // follow-up caret adjustment. Preserve the session above for command
+    // execution, then clear each selector-owned presentation immediately.
+    clearTransientBlockSelection();
+    closeCommandSelector();
+    syncCommandQueryPresentation(null);
+
     let didExecute = false;
     if (activeSelector.source === "quickAdd") {
       didExecute = runEditorCommandWithHistoryTime(runtimeEditor, activeSelector.historyTime, () => {
@@ -5600,8 +5611,6 @@ export function PageEditorHostRuntime({
       return;
     }
     const selectionAnchor = runtimeEditor.state.selection.from;
-    clearTransientBlockSelection();
-    closeCommandSelector();
     if (activeSelector.source === "quickAdd" || activeSelector.source === "slash") {
       if (editorRef.current === runtimeEditor && !runtimeEditor.isDestroyed) {
         const shouldPreserveSelection =

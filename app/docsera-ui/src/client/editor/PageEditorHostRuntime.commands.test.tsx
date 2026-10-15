@@ -9558,15 +9558,26 @@ describe("PageEditorHostRuntime", () => {
   it.each([
     [
       "Heading 1",
-      "heading",
-      {
-        type: "doc",
-        content: [{ type: "heading", attrs: { level: 1 } }]
-      }
+      "h1",
+      1,
+      undefined
+    ],
+    [
+      "Heading 2",
+      "h2",
+      2,
+      undefined
+    ],
+    [
+      "Heading 3",
+      "h3",
+      3,
+      undefined
     ],
     [
       "Blockquote",
       "quote",
+      undefined,
       {
         type: "doc",
         content: [{ type: "blockquote", content: [{ type: "paragraph" }] }]
@@ -9575,12 +9586,13 @@ describe("PageEditorHostRuntime", () => {
     [
       "Table",
       "table",
+      undefined,
       {
         type: "doc",
         content: [createCanonicalDefaultTableNode()]
       }
     ]
-  ])("keeps Slash pointer activation equivalent to Enter for %s", async (label, query, expected) => {
+  ])("keeps Slash pointer activation equivalent to Enter for %s", async (label, query, headingLevel, nonHeadingExpected) => {
     const { editorReady } = renderRuntime();
 
     await waitFor(() => {
@@ -9593,9 +9605,38 @@ describe("PageEditorHostRuntime", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("listbox", { name: "Slash command menu" })).toBeNull();
+      expect(getCommandQueryPresentationState(editor)).toBeNull();
+      expect(getCommandQueryParagraph(editor)).toBeNull();
+      expect(getCommandQueryInline(editor)).toBeNull();
+      expect(getCommandQuerySlash(editor)).toBeNull();
+      expect(getCommandQueryHelper(editor)).toBeNull();
     });
+    const expected =
+      headingLevel === undefined
+        ? nonHeadingExpected
+        : {
+            type: "doc",
+            content: [{ type: "heading", attrs: { level: headingLevel } }]
+          };
     expectCanonicalDocument(editor, expected);
+    expect(document.activeElement).toBe(editor.view.dom);
     const keyboardJson = editor.getJSON();
+    if (headingLevel !== undefined) {
+      expect(fireEvent.keyDown(editor.view.dom, { key: "x" })).toBe(true);
+      await act(async () => {
+        editor.commands.insertContent(`Continued H${headingLevel}`);
+      });
+      expect(editor.getJSON()).toEqual({
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            attrs: { level: headingLevel },
+            content: [{ type: "text", text: `Continued H${headingLevel}` }]
+          }
+        ]
+      });
+    }
 
     await act(async () => {
       editor.commands.setContent({ type: "doc", content: [{ type: "paragraph" }] });
@@ -9607,9 +9648,31 @@ describe("PageEditorHostRuntime", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("listbox", { name: "Slash command menu" })).toBeNull();
+      expect(getCommandQueryPresentationState(editor)).toBeNull();
+      expect(getCommandQueryParagraph(editor)).toBeNull();
+      expect(getCommandQueryInline(editor)).toBeNull();
+      expect(getCommandQuerySlash(editor)).toBeNull();
+      expect(getCommandQueryHelper(editor)).toBeNull();
     });
     expect(editor.getJSON()).toEqual(keyboardJson);
     expectCanonicalDocument(editor, expected);
+    expect(document.activeElement).toBe(editor.view.dom);
+    if (headingLevel !== undefined) {
+      expect(fireEvent.keyDown(editor.view.dom, { key: "x" })).toBe(true);
+      await act(async () => {
+        editor.commands.insertContent(`Continued H${headingLevel}`);
+      });
+      expect(editor.getJSON()).toEqual({
+        type: "doc",
+        content: [
+          {
+            type: "heading",
+            attrs: { level: headingLevel },
+            content: [{ type: "text", text: `Continued H${headingLevel}` }]
+          }
+        ]
+      });
+    }
   });
 
   it("creates a nested table from Slash when the active schema permits that context", async () => {
