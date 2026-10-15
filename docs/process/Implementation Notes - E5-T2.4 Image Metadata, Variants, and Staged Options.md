@@ -15,7 +15,7 @@ Status: implementation note
 
 - The image-options trigger retains its compact top-right hover position on the image block.
 - The image hover UI now renders the full reference-like two-pill control set: a top-left light/dark preview pill and a top-right zoom/frame/alignment/Image Options pill.
-- The Image Options panel now opens immediately beneath that trigger and remains right-aligned to the trigger geometry.
+- The Image Options panel remains right-aligned to its trigger geometry and chooses above or below placement from measured viewport space. It uses its complete compact height on ordinary desktop viewports and only becomes internally scrollable when neither side can fit it.
 - The panel chrome was restructured into a compact header, divider, body, and footer, with a single-line caption field and a `Save Changes` footer action to match the accepted visual parity correction.
 - Panel positioning is remeasured from the live trigger element so scroll, resize, and image geometry changes keep the panel attached to the same control.
 - The panel UI was compacted to remove extra eyebrow/subtitle chrome and card-like subsections while preserving the same staged-edit fields and actions.

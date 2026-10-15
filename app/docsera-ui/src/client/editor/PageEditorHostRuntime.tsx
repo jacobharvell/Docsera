@@ -1501,7 +1501,11 @@ function buildImageOptionsPanelStyle(
     Math.max(VIEWPORT_GUTTER, preferredLeft),
     Math.max(VIEWPORT_GUTTER, viewportWidth - clampedWidth - VIEWPORT_GUTTER)
   );
-  const top = Math.max(VIEWPORT_GUTTER, rect.bottom + POPOVER_GAP);
+  const preferredTop = placement === "above" ? rect.top - clampedHeight - POPOVER_GAP : rect.bottom + POPOVER_GAP;
+  const top = Math.min(
+    Math.max(VIEWPORT_GUTTER, preferredTop),
+    Math.max(VIEWPORT_GUTTER, viewportHeight - clampedHeight - VIEWPORT_GUTTER)
+  );
 
   return {
     position: "fixed",
@@ -4363,7 +4367,7 @@ export function PageEditorHostRuntime({
         anchorRect,
         blockIndex,
         initialAttrs,
-        placement: "below",
+        placement: resolveCommandSelectorPlacement(overlayOwnerDocument, anchorRect, IMAGE_OPTIONS_PANEL_HEIGHT),
         sessionId: `image-options-${imageOptionsSessionCounterRef.current}`
       };
       imageOptionsSessionRef.current = nextSession;
@@ -5726,7 +5730,8 @@ export function PageEditorHostRuntime({
       return;
     }
 
-    if (areDomRectsEqual(imageOptionsSession.anchorRect, targetRect)) {
+    const nextPlacement = resolveCommandSelectorPlacement(overlayOwnerDocument, targetRect, IMAGE_OPTIONS_PANEL_HEIGHT);
+    if (areDomRectsEqual(imageOptionsSession.anchorRect, targetRect) && imageOptionsSession.placement === nextPlacement) {
       return;
     }
 
@@ -5734,7 +5739,8 @@ export function PageEditorHostRuntime({
       current
         ? {
             ...current,
-            anchorRect: targetRect
+            anchorRect: targetRect,
+            placement: nextPlacement
           }
         : current
     );

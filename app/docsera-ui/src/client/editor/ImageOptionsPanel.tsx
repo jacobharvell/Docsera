@@ -445,7 +445,7 @@ export function ImageOptionsPanel({
             onClick={handleDelete}
           >
             <Trash2 size={14} strokeWidth={2.2} aria-hidden="true" focusable="false" />
-            <span style={{ marginInlineStart: 6 }}>Delete</span>
+            <span className="docsera-image-options-panel__button-label">Delete</span>
           </button>
           <button
             type="button"

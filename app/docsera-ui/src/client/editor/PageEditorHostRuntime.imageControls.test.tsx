@@ -272,6 +272,113 @@ describe("PageEditorHostRuntime", () => {
     viewerRoot.remove();
   });
 
+  it("positions Image Options above a lower desktop trigger so the complete compact form remains visible", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-base",
+            darkMediaId: null,
+            alt: "",
+            caption: "",
+            frame: false,
+            align: "left",
+            widthPct: 100
+          }
+        }
+      ]
+    };
+    const originalInnerHeight = Object.getOwnPropertyDescriptor(window, "innerHeight");
+    const originalInnerWidth = Object.getOwnPropertyDescriptor(window, "innerWidth");
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 768 });
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1024 });
+
+    const { editorReady } = renderRuntime({ initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument) });
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 500, 620, 28)]);
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this.dataset.docseraImageControls === "true" && this.dataset.docseraImageControlsBlockIndex === "0") {
+        return new DOMRect(640, 506, 96, 32);
+      }
+      return new DOMRect(0, 0, 1, 1);
+    });
+
+    try {
+      await openImageOptions(editor, { clientX: 720, clientY: 510 });
+      const panel = await screen.findByRole("dialog", { name: "Image Options" });
+      expect(panel).toHaveStyle({ top: "68px", maxHeight: "428px" });
+      expect(within(panel).getByRole("button", { name: "Delete" })).toBeVisible();
+      expect(within(panel).getByRole("button", { name: "Save Changes" })).toBeVisible();
+
+      const runtimeStyleText = getRuntimeStyleText();
+      expect(runtimeStyleText).toMatch(/\.docsera-image-options-panel__button\s*{[^}]*gap:\s*6px;/s);
+      expect(runtimeStyleText).toMatch(/\.docsera-image-options-panel__button,\s*\.docsera-image-options-panel__chip\s*{[^}]*border-radius:\s*4px;/s);
+      expect(runtimeStyleText).toMatch(/\.docsera-image-options-panel__button--destructive\s*{[^}]*border-color:\s*color-mix\(in srgb, var\(--docsera-error\) 18%, var\(--docsera-border\)\);[^}]*background:\s*color-mix\(in srgb, var\(--docsera-error\) 10%, var\(--docsera-surface\)\);[^}]*color:\s*var\(--docsera-error\);/s);
+      expect(runtimeStyleText).toMatch(/\.docsera-image-options-panel__button--destructive:hover:not\(:disabled\),\s*\.docsera-image-options-panel__button--destructive:focus-visible\s*{[^}]*border-color:\s*color-mix\(in srgb, var\(--docsera-error\) 28%, var\(--docsera-border\)\);[^}]*background:\s*color-mix\(in srgb, var\(--docsera-error\) 14%, var\(--docsera-surface\)\);[^}]*color:\s*var\(--docsera-error\);/s);
+      expect(runtimeStyleText).toContain(':host-context(html[data-docsera-theme="dark"]) .docsera-image-picker__backdrop');
+      expect(runtimeStyleText).not.toMatch(
+        /html\[data-docsera-theme=[^\]]+\]\s+\.docsera-image-options-panel__button--destructive/
+      );
+    } finally {
+      rectSpy.mockRestore();
+      geometrySpy.mockRestore();
+      if (originalInnerHeight) Object.defineProperty(window, "innerHeight", originalInnerHeight);
+      if (originalInnerWidth) Object.defineProperty(window, "innerWidth", originalInnerWidth);
+    }
+  });
+
+  it("constrains Image Options to accessible scrolling only when the viewport cannot fit the form", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: {
+            mediaId: "workspace-media-base",
+            darkMediaId: null,
+            alt: "",
+            caption: "",
+            frame: false,
+            align: "left",
+            widthPct: 100
+          }
+        }
+      ]
+    };
+    const originalInnerHeight = Object.getOwnPropertyDescriptor(window, "innerHeight");
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 360 });
+    const { editorReady } = renderRuntime({ initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument) });
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 200, 620, 28)]);
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      if (this.dataset.docseraImageControls === "true" && this.dataset.docseraImageControlsBlockIndex === "0") {
+        return new DOMRect(640, 206, 96, 32);
+      }
+      return new DOMRect(0, 0, 1, 1);
+    });
+
+    try {
+      await openImageOptions(editor, { clientX: 720, clientY: 210 });
+      const panel = await screen.findByRole("dialog", { name: "Image Options" });
+      expect(panel).toHaveStyle({ top: "12px", maxHeight: "184px" });
+      expect(getComputedStyle(panel).overflowY).toBe("auto");
+    } finally {
+      rectSpy.mockRestore();
+      geometrySpy.mockRestore();
+      if (originalInnerHeight) Object.defineProperty(window, "innerHeight", originalInnerHeight);
+    }
+  });
+
 
   it("marks Dark preview selected in dark theme while keeping future controls inert", async () => {
     const mediaAdapter: EditorMediaAdapter = {

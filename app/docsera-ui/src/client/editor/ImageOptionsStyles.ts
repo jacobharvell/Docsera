@@ -275,7 +275,7 @@ export const IMAGE_OPTIONS_STYLES = `
     min-height: 32px;
     padding: 0 10px;
     border: 1px solid var(--docsera-border);
-    border-radius: 8px;
+    border-radius: 4px;
     background: var(--docsera-surface);
     color: var(--docsera-text);
     font: inherit;
@@ -306,14 +306,22 @@ export const IMAGE_OPTIONS_STYLES = `
   }
 
   .docsera-image-options-panel__button--destructive {
-    color: #d92d20;
+    border-color: color-mix(in srgb, var(--docsera-error) 18%, var(--docsera-border));
+    background: color-mix(in srgb, var(--docsera-error) 10%, var(--docsera-surface));
+    color: var(--docsera-error);
   }
 
   .docsera-image-options-panel__button--destructive:hover:not(:disabled),
   .docsera-image-options-panel__button--destructive:focus-visible {
-    border-color: color-mix(in srgb, #d92d20 24%, var(--docsera-border));
-    background: color-mix(in srgb, #d92d20 10%, var(--docsera-surface));
-    color: #b42318;
+    border-color: color-mix(in srgb, var(--docsera-error) 28%, var(--docsera-border));
+    background: color-mix(in srgb, var(--docsera-error) 14%, var(--docsera-surface));
+    color: var(--docsera-error);
+  }
+
+  .docsera-image-options-panel__button--destructive:focus-visible,
+  .docsera-image-options-panel__button--primary:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--docsera-primary) 32%, transparent);
+    outline-offset: 2px;
   }
 
   .docsera-image-options-panel__button--primary {
@@ -392,4 +400,20 @@ export const IMAGE_OPTIONS_STYLES = `
     flex: 1 1 0;
     min-width: 0;
   }
+
+  .docsera-image-options-panel__button svg {
+    width: 14px;
+    height: 14px;
+    flex: 0 0 auto;
+  }
+
+  .docsera-image-options-panel__button {
+    gap: 6px;
+  }
+
+  .docsera-image-options-panel__button-label {
+    display: inline-flex;
+    align-items: center;
+  }
+
 `;
