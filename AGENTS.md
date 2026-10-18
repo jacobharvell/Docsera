@@ -73,6 +73,12 @@ Prototypes are visual and interaction references, especially for layout, spacing
 - If a task requires secrets or credentials, stop and ask for a safe manual setup path.
 - Do not add telemetry, analytics, external network calls, or third-party SaaS dependencies without explicit approval.
 
+## SDK Generated Module Identity Completion
+
+- Every new production `app/docsera-ui/src/server` module requires its committed SDK-generated `sys_module` identity in `src/fluent/generated/keys.ts`; the final SDK build must pass `verify:sdk-module-keys`.
+- For tasks that add or modify ServiceNow server modules or generated SDK metadata, finish implementation and SDK generation, review and commit generated metadata with its owning changes, run `verify:sdk-module-keys:checkpoint`, confirm the worktree is clean, then push that verified checkpoint. If a later build or generation runs, repeat the checkpoint verification before reporting completion.
+- Do not bypass or weaken the task-worktree guard to accommodate SDK-generated drift.
+
 ## ServiceNow Platform Guardrails
 
 - Keep all application work inside the project scoped app unless explicitly approved.
