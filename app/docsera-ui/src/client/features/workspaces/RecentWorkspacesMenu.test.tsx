@@ -8,6 +8,22 @@ describe("RecentWorkspacesMenu", () => {
     vi.restoreAllMocks();
   });
 
+  it("keeps heading and footer outside the scrollable workspace list", () => {
+    const items: RecentWorkspaceItem[] = Array.from({ length: 20 }, (_, index) => ({
+      icon: { type: "builtin", key: "docs", label: "Docs" }, name: `Workspace ${index}`, slug: `workspace-${index}`
+    }));
+    const openWorkspace = vi.fn();
+    render(<RecentWorkspacesMenu items={items} onOpenMyWorkspaces={vi.fn()} onOpenWorkspace={openWorkspace} />);
+    const menu = screen.getByRole("menu", { name: "Recent workspaces" });
+    const list = menu.querySelector(".docsera-header__menu-list")!;
+    expect(list).toContainElement(screen.getByRole("menuitem", { name: "Workspace 19" }));
+    expect(list).not.toContainElement(screen.getByText("Recent workspaces"));
+    expect(list).not.toContainElement(screen.getByRole("menuitem", { name: "My Workspaces" }));
+    expect(list).not.toContainElement(menu.querySelector(".docsera-header__menu-divider"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Workspace 19" }));
+    expect(openWorkspace).toHaveBeenCalledWith("workspace-19", items[19]);
+  });
+
   it("keeps long workspace names within the identity layout and preserves the existing footer and current-state treatment", () => {
     const onOpenMyWorkspaces = vi.fn();
     const onOpenWorkspace = vi.fn();

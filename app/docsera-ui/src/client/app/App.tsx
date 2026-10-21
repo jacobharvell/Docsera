@@ -2812,7 +2812,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const showLauncherTransitionProgress = useDelayedTransitionProgress(isLauncherBusy, launcherLoadingProgressKey);
   const showWorkspaceTransitionProgress = useDelayedTransitionProgress(isWorkspaceBusy, workspaceLoadingProgressKey);
   const showEditorTransitionProgress = useDelayedTransitionProgress(showEditorBodyPending, editorLoadingProgressKey);
-  const showWorkspaceShellPendingState = displayedWorkspaceShellStatus === "loading" ? showWorkspaceTransitionProgress : showEditorTransitionProgress;
+  const suppressEditToLivePlaceholder =
+    canRetainWorkspaceShell && lastReadyWorkspaceShell.mode === "edit" && activeWorkspaceMode === "live" && contentRevealIntent?.destination === "live";
+  const showWorkspaceShellPendingState = displayedWorkspaceShellStatus === "loading"
+    ? showWorkspaceTransitionProgress && !suppressEditToLivePlaceholder
+    : showEditorTransitionProgress;
 
   useEffect(() => {
     if (route.mode !== "workspace" || workspaceShellStatus !== "ready" || workspaceState.status !== "success") {

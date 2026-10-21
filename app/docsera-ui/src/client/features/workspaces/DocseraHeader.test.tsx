@@ -1294,7 +1294,14 @@ describe("DocseraHeader publishing changes", () => {
 
       expect(indicator).toHaveTextContent(state.label);
       expect(indicator).toHaveAttribute("aria-label", state.label);
-      expect(indicator).toHaveAttribute("title", state.label);
+      expect(indicator).not.toHaveAttribute("title");
+      expect(indicator).toHaveAttribute("aria-live", "polite");
+      expect(indicator).toHaveAttribute("aria-atomic", "true");
+      expect(indicator).toHaveAttribute("tabindex", "0");
+      fireEvent.focus(indicator);
+      expect(screen.getByRole("tooltip")).toHaveTextContent(state.label);
+      fireEvent.blur(indicator);
+      expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
       expect(indicator).toHaveClass(state.statusClass);
       expect(indicator.querySelector(".docsera-header__save-status-icon-slot")).toBeInTheDocument();
       expect(indicator.querySelector(".docsera-header__save-status-sr-only")).toHaveTextContent(state.label);
@@ -1310,6 +1317,18 @@ describe("DocseraHeader publishing changes", () => {
         expect(indicator.querySelector(".docsera-header__save-status-cloud")).toBeNull();
       }
     }
+
+    fireEvent.focus(indicator);
+    rerender(<DocseraHeader {...baseProps} onPublishPendingChanges={vi.fn()} pendingChanges={pending([])} saveStatus="Unsaved" />);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(states[0].label);
+    fireEvent.blur(indicator);
+    vi.useFakeTimers();
+    fireEvent.mouseEnter(indicator);
+    act(() => vi.advanceTimersByTime(180));
+    expect(screen.getByRole("tooltip")).toHaveTextContent(states[0].label);
+    fireEvent.mouseLeave(indicator);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    vi.useRealTimers();
 
     expect(container.querySelector(".docsera-header__publish-divider")).toBeInTheDocument();
     expect(publish).toHaveTextContent("Publish");
@@ -1331,6 +1350,9 @@ describe("DocseraHeader publishing changes", () => {
     expect(reservedSaveStatus).not.toBeNull();
     expect(reservedSaveStatus).toHaveClass("docsera-header__save-status--reserved");
     expect(reservedSaveStatus).toHaveAttribute("aria-hidden", "true");
+    fireEvent.mouseEnter(reservedSaveStatus!);
+    fireEvent.focus(reservedSaveStatus!);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
     expect(container.querySelector(".docsera-header__publish-divider")).toBeInTheDocument();
   });
 

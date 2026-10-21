@@ -193,34 +193,36 @@ function CurrentPageSaveStatusIndicator({ status }: { status: CurrentPageSaveSta
           : "saved";
 
   return (
-    <span
-      className={`docsera-header__save-status docsera-header__save-status--${statusClass}`}
-      role="status"
-      aria-atomic="true"
-      aria-live="polite"
-      aria-label={label}
-      title={label}
-    >
-      <span className="docsera-header__save-status-icon-slot" aria-hidden="true">
-        {status === "Saving…" ? (
-          <SavingCloudSyncIcon />
-        ) : (
-          <DocseraIcon
-            className="docsera-header__save-status-icon"
-            icon={
-              status === "Unsaved"
-                ? docseraIcons.cloudOff
-                : status === "Changes not saved"
-                  ? docseraIcons.cloudAlert
-                  : docseraIcons.cloudCheck
-            }
-            size={20}
-            strokeWidth={2}
-          />
-        )}
+    <DocseraCompactTooltip label={label}>
+      <span
+        className={`docsera-header__save-status docsera-header__save-status--${statusClass}`}
+        role="status"
+        aria-atomic="true"
+        aria-live="polite"
+        aria-label={label}
+        tabIndex={0}
+      >
+        <span className="docsera-header__save-status-icon-slot" aria-hidden="true">
+          {status === "Saving…" ? (
+            <SavingCloudSyncIcon />
+          ) : (
+            <DocseraIcon
+              className="docsera-header__save-status-icon"
+              icon={
+                status === "Unsaved"
+                  ? docseraIcons.cloudOff
+                  : status === "Changes not saved"
+                    ? docseraIcons.cloudAlert
+                    : docseraIcons.cloudCheck
+              }
+              size={20}
+              strokeWidth={2}
+            />
+          )}
+        </span>
+        <span className="docsera-header__save-status-sr-only">{label}</span>
       </span>
-      <span className="docsera-header__save-status-sr-only">{label}</span>
-    </span>
+    </DocseraCompactTooltip>
   );
 }
 

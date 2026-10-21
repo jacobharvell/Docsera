@@ -636,8 +636,28 @@ describe("App workspace shell integration", () => {
     expect(document.querySelectorAll("[data-docsera-content-reveal-state='enter']")).toHaveLength(1);
   });
 
+  it("suppresses workspace placeholders during a prolonged Edit to Live transition and reveals Live when ready", async () => {
+    const livePages = createDeferred<PageListResult>();
+    const listPages = vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      mode === "live" ? livePages.promise : createPageListResult("edit", workspaceSlug, [createPageRecord()])
+    );
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { listPages });
+    await waitFor(() => expect(document.querySelector(".docsera-main__editor-host")).not.toHaveAttribute("hidden"));
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+    await waitFor(() => expect(listPages).toHaveBeenCalledWith({ mode: "live", workspaceSlug: "product-docs" }));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 450)); });
+    expect(document.querySelector(".docsera-sidebar__pending")).toBeNull();
+    expect(document.querySelector(".docsera-main__pending")).toBeNull();
+    expect(screen.getByLabelText("Workspace navigation")).toHaveAttribute("aria-busy", "true");
+
+    await act(async () => { livePages.resolve(createPageListResult("live", "product-docs", [createPageRecord()])); });
+    await waitFor(() => expect(document.querySelector("[data-docsera-content-reveal='live']")).toHaveAttribute("data-docsera-content-reveal-state", "enter"));
+    expect(document.querySelector(".docsera-sidebar__tree")).toHaveAttribute("data-docsera-chrome-reveal-state", "enter");
+  }, 10_000);
+
   it("preserves a Live to Edit reveal intent until delayed lease acquisition, draft loading, and editor readiness complete", async () => {
-    editorHostMockState.readyDelayMs = 75;
+    editorHostMockState.readyDelayMs = 500;
     const lease = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["acquireWorkspaceEditLease"]>>>>();
     const editPages = createDeferred<PageListResult>();
     const acquireWorkspaceEditLease = vi.fn(() => lease.promise);
@@ -692,9 +712,15 @@ describe("App workspace shell integration", () => {
     expect(document.querySelector(".docsera-sidebar__tree")).toHaveAttribute("data-docsera-chrome-reveal-state", "pending");
     expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
 
+    const placeholder = await screen.findByRole("status", { name: "Loading editor" });
+    expect(placeholder).toBeVisible();
+    expect(placeholder.closest("[data-docsera-content-reveal-pending='true']")).toBeNull();
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-pending", "true");
+
     await waitFor(() =>
       expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "enter")
     );
+    expect(screen.queryByRole("status", { name: "Loading editor" })).not.toBeInTheDocument();
     expect(document.querySelector(".docsera-sidebar__tree")).toHaveAttribute("data-docsera-chrome-reveal-state", "enter");
     expect(document.querySelector("[data-docsera-content-reveal='visual']")).not.toHaveAttribute("data-docsera-content-reveal-pending");
     expect(document.querySelectorAll("[data-docsera-content-reveal-state='enter']")).toHaveLength(1);
@@ -1029,7 +1055,9 @@ describe("App workspace shell integration", () => {
         await vi.advanceTimersByTimeAsync(350);
       });
 
-      expect(screen.getByRole("status", { name: "Loading editor" })).toBeInTheDocument();
+      const placeholder = screen.getByRole("status", { name: "Loading editor" });
+      expect(placeholder).toBeVisible();
+      expect(placeholder.closest("[data-docsera-content-reveal-pending='true']")).toBeNull();
 
       await act(async () => {
         await vi.advanceTimersByTimeAsync(50);

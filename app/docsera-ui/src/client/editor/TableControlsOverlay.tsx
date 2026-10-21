@@ -1,3 +1,4 @@
+import { EDITOR_SCROLLBAR_STYLES } from "./ScrollbarStyles";
 import type { Editor as TiptapEditor, JSONContent } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import {
@@ -1284,7 +1285,7 @@ export default function TableControlsOverlay({
 
   return (
     <>
-      <style>{`${COMPACT_MENU_STYLES}\n${TABLE_CONTROLS_OVERLAY_STYLES}`}</style>
+      <style>{`${COMPACT_MENU_STYLES}\n${EDITOR_SCROLLBAR_STYLES}\n${TABLE_CONTROLS_OVERLAY_STYLES}`}</style>
       <div
         data-docsera-table-overlay-root="true"
         data-docsera-table-overflow-x={renderLayout?.wrapperOverflowX ? "true" : "false"}

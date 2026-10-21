@@ -262,6 +262,36 @@ describe("WorkspaceToc", () => {
     expect(screen.queryByRole("link")).not.toBeInTheDocument();
   });
 
+  it("keeps the heading and toggle outside a shrinkable native outline scroller", () => {
+    renderTocOnly(createHeadingHierarchyDocseraDocumentEnvelope());
+    const list = document.querySelector(".docsera-toc__list");
+    const heading = screen.getByText("On this page");
+    const toggle = screen.getByRole("button", { name: "Collapse table of contents" });
+    expect(list).toContainElement(screen.getAllByRole("link")[0]);
+    expect(list).not.toContainElement(heading);
+    expect(list).not.toContainElement(toggle);
+
+    const css = readRuntimeShellCss();
+    const toc = readCssRuleBlock(css, ".docsera-toc");
+    const outline = readCssRuleBlock(css, ".docsera-toc__list");
+    expect(toc).toMatch(/display:\s*flex;[\s\S]*flex-direction:\s*column;/);
+    expect(toc).toMatch(/height:\s*100%;[\s\S]*min-height:\s*0;/);
+    expect(outline).toMatch(/flex:\s*0 1 auto;[\s\S]*min-height:\s*0;/);
+    expect(outline).toMatch(/overflow-y:\s*auto;/);
+    expect(outline).toMatch(/scrollbar-gutter:\s*stable;/);
+    expect(outline).not.toMatch(/scrollbar-(?:width|color):/);
+    expect(readCssRuleBlock(css, ".docsera-toc-rail__clip")).toMatch(/width:\s*calc\(100% \+ 2px\);/);
+    expect(readCssRuleBlock(css, ".docsera-toc-rail__body")).toMatch(/padding:\s*16px 6px 16px 16px;/);
+    expect(readCssRuleBlock(css, ".docsera-toc__list::-webkit-scrollbar-thumb")).toMatch(/background:\s*transparent;/);
+    expect(css).toMatch(/\.docsera-toc-rail__body:hover \.docsera-toc__list::-webkit-scrollbar-thumb/);
+    expect(css).toMatch(/\.docsera-toc-rail__body:focus-within \.docsera-toc__list::-webkit-scrollbar-thumb/);
+    expect(css).toMatch(/\.docsera-toc__list::-webkit-scrollbar-thumb:active/);
+    expect(css).toMatch(/@supports not selector\(::-webkit-scrollbar\)/);
+    expect(readCssRuleBlock(css, ".docsera-toc__list::-webkit-scrollbar")).toMatch(/width:\s*4px;/);
+    expect(readCssRuleBlock(css, ".docsera-toc__list::-webkit-scrollbar-button")).toMatch(/display:\s*none;/);
+    expect(css).toMatch(/\.docsera-toc__link\s*\{[^}]*overflow-wrap:\s*anywhere;/s);
+  });
+
   it("reserves matching top and bottom viewport clearance for the sticky ToC rail", () => {
     const runtimeShellCss = readRuntimeShellCss();
     const railRule = readCssRuleBlock(runtimeShellCss, ".docsera-toc-rail");

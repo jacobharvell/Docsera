@@ -1,3 +1,4 @@
+import { EDITOR_SCROLLBAR_STYLES } from "./ScrollbarStyles";
 import { Extension, type Editor, type JSONContent } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { createPortal } from "react-dom";
@@ -7699,6 +7700,7 @@ export function PageEditorHostRuntime({
         .docsera-editor-floating-layer--block-dragging * {
           cursor: grabbing !important;
         }
+        ${EDITOR_SCROLLBAR_STYLES}
         ${BLOCK_SELECTOR_STYLES}
         ${COMPACT_MENU_STYLES}
         ${EDITOR_DROPDOWN_MOTION_STYLES}

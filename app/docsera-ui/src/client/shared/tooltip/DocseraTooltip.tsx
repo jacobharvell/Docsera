@@ -9,8 +9,6 @@ const TOOLTIP_GAP = 10;
 
 type CompactTooltipState = {
   anchorRect: DOMRect;
-  label: string;
-  shortcut?: string | null;
 };
 
 type CompactTooltipTriggerProps = {
@@ -158,9 +156,7 @@ export function DocseraCompactTooltip({
       return;
     }
     const nextTooltip = {
-      anchorRect: resolveAnchorRect?.(target) ?? target.getBoundingClientRect(),
-      label,
-      shortcut
+      anchorRect: resolveAnchorRect?.(target) ?? target.getBoundingClientRect()
     };
     clearTooltipTimer();
     setTooltip(null);
@@ -211,13 +207,13 @@ export function DocseraCompactTooltip({
       {tooltip && resolvedOwnerDocument
         ? createPortal(
             <DocseraTooltip anchorRect={tooltip.anchorRect} ownerDocument={resolvedOwnerDocument} tooltipRef={tooltipRef}>
-              {tooltip.shortcut ? (
+              {shortcut ? (
                 <span className="docsera-tooltip__line docsera-tooltip__line--inline">
-                  <span className="docsera-tooltip__label">{tooltip.label}</span>
-                  <span className="docsera-tooltip__shortcut">{tooltip.shortcut}</span>
+                  <span className="docsera-tooltip__label">{label}</span>
+                  <span className="docsera-tooltip__shortcut">{shortcut}</span>
                 </span>
               ) : (
-                <span className="docsera-tooltip__label">{tooltip.label}</span>
+                <span className="docsera-tooltip__label">{label}</span>
               )}
             </DocseraTooltip>,
             resolvedOwnerDocument.body

@@ -797,29 +797,32 @@ function PageTreeNode({
               </DocseraCompactTooltip>
             ) : null}
             {showActionsButton ? (
-              <DocseraCompactTooltip label={`Page actions for ${page.title}`}>
-                <button
-                  type="button"
-                  className="docsera-page-tree__action-button docsera-page-tree__action-button--actions"
-                  aria-label={`Page actions for ${page.title}`}
-                  aria-haspopup="menu"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    const rect = event.currentTarget.getBoundingClientRect();
-                    onShowPageContextMenu({
-                      origin: event.currentTarget,
-                      placement: "control",
-                      page,
-                      x: rect.left,
-                      y: rect.bottom + CONTEXT_MENU_CONTROL_OFFSET,
-                      anchorY: rect.bottom + CONTEXT_MENU_CONTROL_OFFSET
-                    });
-                  }}
-                >
-                  <EllipsisIcon />
-                </button>
-              </DocseraCompactTooltip>
+              <span className="docsera-page-tree__action-slot" onClick={(event) => event.stopPropagation()}>
+                <DocseraCompactTooltip label={`Page actions for ${page.title}`}>
+                  <button
+                    type="button"
+                    className="docsera-page-tree__action-button docsera-page-tree__action-button--actions"
+                    data-menu-open={isContextMenuOpen || undefined}
+                    aria-label={`Page actions for ${page.title}`}
+                    aria-haspopup="menu"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      const rect = event.currentTarget.getBoundingClientRect();
+                      onShowPageContextMenu({
+                        origin: event.currentTarget,
+                        placement: "control",
+                        page,
+                        x: rect.left,
+                        y: rect.bottom + CONTEXT_MENU_CONTROL_OFFSET,
+                        anchorY: rect.bottom + CONTEXT_MENU_CONTROL_OFFSET
+                      });
+                    }}
+                  >
+                    <EllipsisIcon />
+                  </button>
+                </DocseraCompactTooltip>
+              </span>
             ) : null}
           </div>
         ) : null}

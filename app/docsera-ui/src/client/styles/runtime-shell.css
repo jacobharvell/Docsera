@@ -1041,6 +1041,7 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__clear {
   isolation: isolate;
   overflow-x: clip;
   overflow-y: auto;
+  scrollbar-gutter: stable;
   overscroll-behavior: contain;
   opacity: 0;
   pointer-events: none;
@@ -3073,6 +3074,8 @@ html[data-docsera-theme="dark"] .docsera-header__bar {
   left: 16px;
   z-index: 40;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  max-height: max(0px, calc(100dvh - var(--docsera-header-height) + 10px - 8px));
   gap: 4px;
   width: min(288px, calc(100vw - 32px));
   padding: 8px 0;
@@ -3101,6 +3104,9 @@ html[data-docsera-theme="dark"] .docsera-header__bar {
 
 .docsera-header__menu-list {
   display: grid;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .docsera-header__menu-item,
@@ -4500,13 +4506,11 @@ html[data-docsera-theme="dark"] .docsera-shell {
   display: block;
   flex: 1 1 auto;
   min-height: 0;
-  margin-right: -10px;
+  margin-right: -9px;
   padding-right: 2px;
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--docsera-text-soft) 42%, transparent) transparent;
 }
 
 .docsera-sidebar__tree::-webkit-scrollbar {
@@ -4520,8 +4524,24 @@ html[data-docsera-theme="dark"] .docsera-shell {
 .docsera-sidebar__tree::-webkit-scrollbar-thumb {
   border: 2px solid transparent;
   border-radius: 999px;
-  background-color: color-mix(in srgb, var(--docsera-text-soft) 42%, transparent);
+  background-color: transparent;
   background-clip: content-box;
+  transition: background-color 120ms ease;
+}
+
+.docsera-sidebar:hover .docsera-sidebar__tree::-webkit-scrollbar-thumb,
+.docsera-sidebar:focus-within .docsera-sidebar__tree::-webkit-scrollbar-thumb,
+.docsera-sidebar__tree::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--docsera-text-soft) 32%, transparent);
+}
+
+.docsera-sidebar:hover .docsera-sidebar__tree::-webkit-scrollbar-thumb:hover,
+.docsera-sidebar .docsera-sidebar__tree::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--docsera-text-soft) 60%, transparent);
+}
+
+.docsera-sidebar__tree::-webkit-scrollbar-button {
+  display: none;
 }
 
 .docsera-sidebar__empty {
@@ -4554,6 +4574,15 @@ html[data-docsera-theme="dark"] .docsera-shell {
 .docsera-sidebar__pending-line--wide,
 .docsera-main__pending-line--wide {
   width: 100%;
+}
+
+.docsera-sidebar__pending-line--child {
+  margin-left: 18px;
+  width: 58%;
+}
+
+.docsera-sidebar__pending-line--short {
+  width: 42%;
 }
 
 .docsera-workspace__nav-resizer {
@@ -4880,6 +4909,15 @@ html[data-docsera-theme="dark"] .docsera-page-tree__row--selected.docsera-page-t
   height: 14px;
 }
 
+.docsera-page-tree__action-slot {
+  display: inline-flex;
+}
+
+.docsera-page-tree__action-button--actions[data-menu-open] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .docsera-page-tree__action-button:hover,
 .docsera-page-tree__row--menu-open .docsera-page-tree__action-button--actions {
   background: transparent;
@@ -5050,9 +5088,22 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   justify-items: start;
 }
 
+.docsera-main__pending-overlay {
+  position: absolute;
+  top: 0;
+  pointer-events: none;
+}
+
 .docsera-main__pending {
   min-height: 240px;
-  padding-top: 24px;
+  width: 100%;
+  padding-top: 0;
+}
+
+.docsera-main__pending-line.docsera-main__pending-line--title {
+  width: 48%;
+  height: 28px;
+  margin-bottom: 24px;
 }
 
 .docsera-main__pending-line {
@@ -5071,6 +5122,11 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
   min-width: 0;
 }
 
+.docsera-main__content-reveal[data-docsera-editor-placeholder="true"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
 .docsera-main__content-reveal[data-docsera-content-reveal-pending="true"] {
   opacity: 0;
   transform: translateY(16px);
@@ -5083,6 +5139,11 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 
 .docsera-main__content-reveal[data-docsera-content-reveal-state="enter"] {
   animation: docsera-content-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.docsera-main__surface--editor.docsera-main__content-reveal[data-docsera-editor-placeholder="true"] {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .docsera-main__surface--editor.docsera-main__content-reveal[data-docsera-content-reveal-pending="true"] {
@@ -6144,7 +6205,7 @@ html[data-docsera-theme="dark"] .docsera-main__callout-icon {
   width: var(--docsera-toc-panel-width);
   min-width: 0;
   min-height: 0;
-  padding: 16px;
+  padding: 16px 6px 16px 16px;
   background: var(--docsera-toc-surface);
   color: var(--docsera-text);
   overflow: visible;
@@ -6152,7 +6213,7 @@ html[data-docsera-theme="dark"] .docsera-main__callout-icon {
 
 .docsera-toc-rail__clip {
   position: relative;
-  width: 100%;
+  width: calc(100% + 2px);
   height: 100%;
   overflow: hidden;
 }
@@ -6185,16 +6246,17 @@ html[data-docsera-theme="dark"] .docsera-main__callout-icon {
 }
 
 .docsera-toc {
-  display: grid;
-  align-content: start;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
   height: 100%;
   width: 100%;
   min-width: 0;
-  min-height: calc(100dvh - var(--docsera-header-height) - 40px);
+  min-height: 0;
 }
 
 .docsera-toc__eyebrow {
+  flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -6213,9 +6275,143 @@ html[data-docsera-theme="dark"] .docsera-main__callout-icon {
   position: relative;
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 4px 0 0;
   display: grid;
+  flex: 0 1 auto;
+  min-height: 0;
+  min-width: 0;
   gap: 4px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+.docsera-toc__list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.docsera-toc__list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.docsera-toc__list::-webkit-scrollbar-thumb {
+  border-radius: 4px;
+  background: transparent;
+  transition: background-color 120ms ease;
+}
+
+.docsera-toc-rail__body:hover .docsera-toc__list::-webkit-scrollbar-thumb,
+.docsera-toc-rail__body:focus-within .docsera-toc__list::-webkit-scrollbar-thumb,
+.docsera-toc__list::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--docsera-text-soft) 32%, transparent);
+}
+
+.docsera-toc-rail__body:hover .docsera-toc__list::-webkit-scrollbar-thumb:hover,
+.docsera-toc-rail__body .docsera-toc__list::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--docsera-text-soft) 60%, transparent);
+}
+
+.docsera-toc__list::-webkit-scrollbar-button {
+  display: none;
+}
+
+/* Docsera-owned vertical scroll regions; native 12px lane with a 4px thumb. */
+:is(.docsera-modal--top-biased, .docsera-page-settings, .docsera-workspace-settings-overlay__body, .docsera-manage-access__body, .docsera-manage-access__add-body, .docsera-manage-access__search-results, .docsera-manage-access__staged-list, .docsera-modal__user-results, .docsera-changes-center__list, .docsera-header__menu-list)::-webkit-scrollbar { width: 12px; }
+:is(.docsera-modal--top-biased, .docsera-page-settings, .docsera-workspace-settings-overlay__body, .docsera-manage-access__body, .docsera-manage-access__add-body, .docsera-manage-access__search-results, .docsera-manage-access__staged-list, .docsera-modal__user-results, .docsera-changes-center__list, .docsera-header__menu-list)::-webkit-scrollbar-track { background: transparent; }
+:is(.docsera-modal--top-biased, .docsera-page-settings, .docsera-workspace-settings-overlay__body, .docsera-manage-access__body, .docsera-manage-access__add-body, .docsera-manage-access__search-results, .docsera-manage-access__staged-list, .docsera-modal__user-results, .docsera-changes-center__list, .docsera-header__menu-list)::-webkit-scrollbar-thumb {
+  border: 4px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  background-clip: content-box;
+}
+.docsera-modal--top-biased:hover::-webkit-scrollbar-thumb,
+.docsera-modal--top-biased:focus-within::-webkit-scrollbar-thumb,
+.docsera-page-settings-shell:hover .docsera-page-settings::-webkit-scrollbar-thumb,
+.docsera-page-settings-shell:focus-within .docsera-page-settings::-webkit-scrollbar-thumb,
+.docsera-workspace-settings-overlay__panel:hover .docsera-workspace-settings-overlay__body::-webkit-scrollbar-thumb,
+.docsera-workspace-settings-overlay__panel:focus-within .docsera-workspace-settings-overlay__body::-webkit-scrollbar-thumb,
+.docsera-manage-access__panel:hover .docsera-manage-access__body::-webkit-scrollbar-thumb,
+.docsera-manage-access__panel:focus-within .docsera-manage-access__body::-webkit-scrollbar-thumb,
+.docsera-manage-access__add-panel:hover .docsera-manage-access__add-body::-webkit-scrollbar-thumb,
+.docsera-manage-access__add-panel:focus-within .docsera-manage-access__add-body::-webkit-scrollbar-thumb,
+.docsera-manage-access__add-column:hover .docsera-manage-access__search-results::-webkit-scrollbar-thumb,
+.docsera-manage-access__add-column:focus-within .docsera-manage-access__search-results::-webkit-scrollbar-thumb,
+.docsera-manage-access__add-column:hover .docsera-manage-access__staged-list::-webkit-scrollbar-thumb,
+.docsera-manage-access__add-column:focus-within .docsera-manage-access__staged-list::-webkit-scrollbar-thumb,
+.docsera-modal__user-results:hover::-webkit-scrollbar-thumb,
+.docsera-modal__user-results:focus-within::-webkit-scrollbar-thumb,
+.docsera-changes-center:hover .docsera-changes-center__list::-webkit-scrollbar-thumb,
+.docsera-changes-center:focus-within .docsera-changes-center__list::-webkit-scrollbar-thumb,
+.docsera-header__menu:hover .docsera-header__menu-list::-webkit-scrollbar-thumb,
+.docsera-header__menu:focus-within .docsera-header__menu-list::-webkit-scrollbar-thumb,
+.docsera-modal--top-biased::-webkit-scrollbar-thumb:active,
+.docsera-page-settings::-webkit-scrollbar-thumb:active,
+.docsera-workspace-settings-overlay__body::-webkit-scrollbar-thumb:active,
+.docsera-manage-access__body::-webkit-scrollbar-thumb:active,
+.docsera-manage-access__add-body::-webkit-scrollbar-thumb:active,
+.docsera-manage-access__search-results::-webkit-scrollbar-thumb:active,
+.docsera-manage-access__staged-list::-webkit-scrollbar-thumb:active,
+.docsera-modal__user-results::-webkit-scrollbar-thumb:active,
+.docsera-changes-center__list::-webkit-scrollbar-thumb:active,
+.docsera-header__menu-list::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--docsera-text-soft) 32%, transparent);
+}
+.docsera-workspace-settings-overlay__panel:hover .docsera-workspace-settings-overlay__body::-webkit-scrollbar-thumb:hover,
+.docsera-workspace-settings-overlay__panel .docsera-workspace-settings-overlay__body::-webkit-scrollbar-thumb:active,
+.docsera-manage-access__panel:hover .docsera-manage-access__body::-webkit-scrollbar-thumb:hover,
+.docsera-manage-access__panel .docsera-manage-access__body::-webkit-scrollbar-thumb:active,
+.docsera-manage-access__add-panel:hover .docsera-manage-access__add-body::-webkit-scrollbar-thumb:hover,
+.docsera-manage-access__add-panel .docsera-manage-access__add-body::-webkit-scrollbar-thumb:active,
+.docsera-manage-access__add-column:hover .docsera-manage-access__search-results::-webkit-scrollbar-thumb:hover,
+.docsera-manage-access__add-column .docsera-manage-access__search-results::-webkit-scrollbar-thumb:active,
+.docsera-manage-access__add-column:hover .docsera-manage-access__staged-list::-webkit-scrollbar-thumb:hover,
+.docsera-manage-access__add-column .docsera-manage-access__staged-list::-webkit-scrollbar-thumb:active,
+.docsera-changes-center:hover .docsera-changes-center__list::-webkit-scrollbar-thumb:hover,
+.docsera-changes-center .docsera-changes-center__list::-webkit-scrollbar-thumb:active,
+.docsera-header__menu:hover .docsera-header__menu-list::-webkit-scrollbar-thumb:hover,
+.docsera-header__menu .docsera-header__menu-list::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--docsera-text-soft) 60%, transparent);
+}
+:is(.docsera-modal--top-biased, .docsera-page-settings, .docsera-workspace-settings-overlay__body, .docsera-manage-access__body, .docsera-manage-access__add-body, .docsera-manage-access__search-results, .docsera-manage-access__staged-list, .docsera-modal__user-results, .docsera-changes-center__list, .docsera-header__menu-list)::-webkit-scrollbar-thumb:hover,
+:is(.docsera-modal--top-biased, .docsera-page-settings, .docsera-workspace-settings-overlay__body, .docsera-manage-access__body, .docsera-manage-access__add-body, .docsera-manage-access__search-results, .docsera-manage-access__staged-list, .docsera-modal__user-results, .docsera-changes-center__list, .docsera-header__menu-list)::-webkit-scrollbar-thumb:active {
+  background-color: color-mix(in srgb, var(--docsera-text-soft) 60%, transparent);
+}
+:is(.docsera-modal--top-biased, .docsera-page-settings, .docsera-workspace-settings-overlay__body, .docsera-manage-access__body, .docsera-manage-access__add-body, .docsera-manage-access__search-results, .docsera-manage-access__staged-list, .docsera-modal__user-results, .docsera-changes-center__list, .docsera-header__menu-list)::-webkit-scrollbar-button { display: none; }
+
+@supports not selector(::-webkit-scrollbar) {
+  :is(.docsera-modal--top-biased, .docsera-page-settings, .docsera-workspace-settings-overlay__body, .docsera-manage-access__body, .docsera-manage-access__add-body, .docsera-manage-access__search-results, .docsera-manage-access__staged-list, .docsera-modal__user-results, .docsera-changes-center__list, .docsera-header__menu-list) { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--docsera-text-soft) 32%, transparent) transparent; }
+  :is(.docsera-modal--top-biased, .docsera-page-settings, .docsera-workspace-settings-overlay__body, .docsera-manage-access__body, .docsera-manage-access__add-body, .docsera-manage-access__search-results, .docsera-manage-access__staged-list, .docsera-modal__user-results, .docsera-changes-center__list, .docsera-header__menu-list):hover, :is(.docsera-modal--top-biased, .docsera-page-settings, .docsera-workspace-settings-overlay__body, .docsera-manage-access__body, .docsera-manage-access__add-body, .docsera-manage-access__search-results, .docsera-manage-access__staged-list, .docsera-modal__user-results, .docsera-changes-center__list, .docsera-header__menu-list):focus-within {
+    scrollbar-color: color-mix(in srgb, var(--docsera-text-soft) 32%, transparent) transparent;
+  }
+}
+@media (hover: none) {
+  :is(.docsera-modal--top-biased, .docsera-page-settings, .docsera-workspace-settings-overlay__body, .docsera-manage-access__body, .docsera-manage-access__add-body, .docsera-manage-access__search-results, .docsera-manage-access__staged-list, .docsera-modal__user-results, .docsera-changes-center__list, .docsera-header__menu-list)::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--docsera-text-soft) 32%, transparent); }
+  @supports not selector(::-webkit-scrollbar) { :is(.docsera-modal--top-biased, .docsera-page-settings, .docsera-workspace-settings-overlay__body, .docsera-manage-access__body, .docsera-manage-access__add-body, .docsera-manage-access__search-results, .docsera-manage-access__staged-list, .docsera-modal__user-results, .docsera-changes-center__list, .docsera-header__menu-list) { scrollbar-color: color-mix(in srgb, var(--docsera-text-soft) 32%, transparent) transparent; } }
+}
+
+@media (hover: none) {
+  .docsera-sidebar__tree::-webkit-scrollbar-thumb,
+  .docsera-toc__list::-webkit-scrollbar-thumb {
+    background-color: color-mix(in srgb, var(--docsera-text-soft) 32%, transparent);
+  }
+  @supports not selector(::-webkit-scrollbar) {
+    .docsera-sidebar__tree, .docsera-toc__list { scrollbar-color: color-mix(in srgb, var(--docsera-text-soft) 32%, transparent) transparent; }
+  }
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .docsera-sidebar__tree,
+  .docsera-toc__list {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--docsera-text-soft) 32%, transparent) transparent;
+  }
+
+  .docsera-sidebar:hover .docsera-sidebar__tree,
+  .docsera-sidebar:focus-within .docsera-sidebar__tree,
+  .docsera-toc-rail__body:hover .docsera-toc__list,
+  .docsera-toc-rail__body:focus-within .docsera-toc__list {
+    scrollbar-color: color-mix(in srgb, var(--docsera-text-soft) 32%, transparent) transparent;
+  }
 }
 
 .docsera-toc__list::before {
@@ -6236,6 +6432,7 @@ html[data-docsera-theme="dark"] .docsera-main__callout-icon {
   font-weight: 500;
   line-height: 1.4286;
   text-decoration: none;
+  overflow-wrap: anywhere;
   transition: color 0.16s ease;
 }
 
@@ -6549,6 +6746,8 @@ html[data-docsera-theme="dark"] .docsera-main__callout-icon {
   .docsera-workspace__aside,
   .docsera-toc-rail__toggle,
   .docsera-toc-rail__toggle-icon,
+  .docsera-toc__list::-webkit-scrollbar-thumb,
+  .docsera-sidebar__tree::-webkit-scrollbar-thumb,
   .docsera-page-settings,
   .docsera-workspace-settings-overlay__panel,
   .docsera-manage-access::after,

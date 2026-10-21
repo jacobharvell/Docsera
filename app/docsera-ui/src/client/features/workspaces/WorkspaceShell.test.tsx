@@ -103,7 +103,7 @@ describe("WorkspaceShell", () => {
     const css = nodeProcess.getBuiltinModule("fs").readFileSync(`${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`, "utf8").replace(/\r\n/g, "\n");
     expect(css).toMatch(/@media \(min-width: 921px\) and \(max-width: 1180px\)\s*\{\s*\.docsera-workspace__nav-frame\s*\{[^}]*z-index:\s*1;/);
     expect(css).toMatch(/\.docsera-workspace__nav-resizer\s*\{[^}]*right:\s*-6px;[^}]*width:\s*var\(--docsera-workspace-nav-resizer-width\)/);
-    expect(css).toMatch(/\.docsera-sidebar__tree\s*\{[^}]*margin-right:\s*-10px;[^}]*overflow-y:\s*auto;/);
+    expect(css).toMatch(/\.docsera-sidebar__tree\s*\{[^}]*margin-right:\s*-9px;[^}]*overflow-y:\s*auto;/);
     expect(css).toMatch(/@media \(max-width: 920px\)[\s\S]*?\.docsera-workspace__nav-resizer\s*\{\s*display:\s*none;/);
     expect(css).toMatch(/\.docsera-workspace--sidebar-resizing \.docsera-workspace__nav-resizer-pill\s*\{\s*opacity:\s*1;/);
   });

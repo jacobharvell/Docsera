@@ -142,8 +142,9 @@ export function WorkspaceSidebar({
         {showLoadingState && showPendingState ? (
           <div className="docsera-sidebar__pending" aria-hidden="true">
             <span className="docsera-sidebar__pending-line" />
+            <span className="docsera-sidebar__pending-line docsera-sidebar__pending-line--child" />
+            <span className="docsera-sidebar__pending-line docsera-sidebar__pending-line--child docsera-sidebar__pending-line--short" />
             <span className="docsera-sidebar__pending-line docsera-sidebar__pending-line--wide" />
-            <span className="docsera-sidebar__pending-line" />
           </div>
         ) : showLoadingState ? null : !showPageTree ? (
           <p className="docsera-sidebar__empty">

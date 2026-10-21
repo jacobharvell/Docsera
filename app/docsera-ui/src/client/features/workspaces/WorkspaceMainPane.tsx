@@ -378,7 +378,7 @@ export function WorkspaceMainPane({
             />
           ) : showPendingState ? (
             <div className="docsera-main__pending" aria-hidden="true">
-              <span className="docsera-main__pending-line" />
+              <span className="docsera-main__pending-line docsera-main__pending-line--title" />
               <span className="docsera-main__pending-line docsera-main__pending-line--wide" />
               <span className="docsera-main__pending-line" />
             </div>
@@ -451,6 +451,7 @@ export function WorkspaceMainPane({
 
   const canEditPageTitle = workspaceMode === "edit" && canManagePageSettings && !editAccessLost && authoringSurface === "visual";
   const displayPageTitle = pageTitleValue !== undefined ? pageTitleValue : page.title || "Untitled page";
+  const editorPlaceholderVisible = Boolean(workspaceMode === "edit" && !editAccessLost && !showEditorRecovery && page.contentEnvelope && showBodyPendingPlaceholder);
   const mainLabelProps =
     authoringSurface === "markdown"
       ? { "aria-label": displayPageTitle }
@@ -465,12 +466,24 @@ export function WorkspaceMainPane({
           data-docsera-editor-history-controls-mount="true"
         />
       ) : null}
+      {editorPlaceholderVisible ? (
+        <section className="docsera-main__surface docsera-main__pending-overlay" aria-label="Loading editor" role="status">
+          <div className="docsera-main__pending">
+            <span className="docsera-main__pending-line docsera-main__pending-line--title" />
+            <span className="docsera-main__pending-line docsera-main__pending-line--wide" />
+            <span className="docsera-main__pending-line" />
+          </div>
+        </section>
+      ) : null}
       <article
         className={`docsera-main__surface docsera-main__content-reveal${workspaceMode === "edit" ? " docsera-main__surface--editor" : ""}`}
         data-docsera-content-reveal={displayedSurface}
         data-docsera-content-reveal-scope={contentRevealIntent?.scope ?? "workspace"}
         data-docsera-content-reveal-pending={contentRevealPending ? "true" : undefined}
         data-docsera-content-reveal-state={contentRevealState}
+        data-docsera-editor-placeholder={editorPlaceholderVisible ? "true" : undefined}
+        {...{ inert: editorPlaceholderVisible ? "" : undefined }}
+        aria-hidden={editorPlaceholderVisible ? "true" : undefined}
       >
         {authoringSurface === "visual" ? (
           <div className="docsera-main__intro">
@@ -503,7 +516,7 @@ export function WorkspaceMainPane({
         ) : workspaceMode === "live" ? (
           showBodyPendingPlaceholder ? (
             <section className="docsera-main__pending" aria-label="Loading page content" role="status">
-              <span className="docsera-main__pending-line" />
+              <span className="docsera-main__pending-line docsera-main__pending-line--title" />
               <span className="docsera-main__pending-line docsera-main__pending-line--wide" />
               <span className="docsera-main__pending-line" />
             </section>
@@ -568,13 +581,6 @@ export function WorkspaceMainPane({
                   theme={theme}
                 />
               </div>
-            ) : null}
-            {showBodyPendingPlaceholder ? (
-              <section className="docsera-main__pending" aria-label="Loading editor" role="status">
-                <span className="docsera-main__pending-line" />
-                <span className="docsera-main__pending-line docsera-main__pending-line--wide" />
-                <span className="docsera-main__pending-line" />
-              </section>
             ) : null}
           </>
         ) : null}

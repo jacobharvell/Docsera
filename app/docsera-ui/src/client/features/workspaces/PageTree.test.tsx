@@ -748,6 +748,41 @@ describe("PageTree row interaction", () => {
     expect(screen.queryByRole("button", { name: "Page actions for Parent" })).not.toBeInTheDocument();
   });
 
+  it("suppresses the owning trigger through a dismissal gesture and restores it afterward", async () => {
+    const onSelectPage = vi.fn();
+    const onCollapsedPageIdsChange = vi.fn();
+    renderTree([
+      page({ id: "parent", title: "Parent", children: [page({ id: "child", title: "Child", parentPageSysId: "parent" })] }),
+      page({ id: "other", title: "Other" })
+    ], { canCreatePage: true, onSelectPage, onCollapsedPageIdsChange });
+
+    const trigger = screen.getByRole("button", { name: "Page actions for Parent" });
+    const slot = trigger.parentElement!;
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menu", { name: "Page actions for Parent" })).toBeInTheDocument();
+    expect(trigger).toHaveAttribute("data-menu-open", "true");
+    const css = readFileSync(join(new Function("return process.cwd()")() as string, "src/client/styles/runtime-shell.css"), "utf8").replace(/\r\n/g, "\n");
+    expect(css).toContain(".docsera-page-tree__action-button--actions[data-menu-open] {\n  visibility: hidden;\n  pointer-events: none;\n}");
+
+    fireEvent.pointerDown(slot);
+    fireEvent.click(slot);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(onSelectPage).not.toHaveBeenCalled();
+    expect(onCollapsedPageIdsChange).not.toHaveBeenCalled();
+    expect(trigger).not.toHaveAttribute("data-menu-open");
+
+    fireEvent.click(trigger);
+    const other = screen.getByRole("button", { name: "Page actions for Other" });
+    fireEvent.pointerDown(other);
+    fireEvent.click(other);
+    expect(screen.getByRole("menu", { name: "Page actions for Other" })).toBeInTheDocument();
+    expect(trigger).not.toHaveAttribute("data-menu-open");
+    expect(other).toHaveAttribute("data-menu-open", "true");
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => expect(other).toHaveFocus());
+    expect(other).not.toHaveAttribute("data-menu-open");
+  });
+
   it("retains the resolved page menu position while exiting and replaces it on reopen", () => {
     vi.useFakeTimers();
     try {

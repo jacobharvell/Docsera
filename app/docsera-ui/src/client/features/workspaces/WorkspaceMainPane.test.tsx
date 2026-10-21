@@ -1158,18 +1158,28 @@ describe("WorkspaceMainPane", () => {
 
     const { rerender } = render(<WorkspaceMainPane {...props} />);
     rerender(<WorkspaceMainPane {...props} bodyState="loading" contentRevealIntent={{ destination: "visual", key: 1 }} showPendingState={true} workspaceMode="edit" />);
-    expect(screen.getByRole("status", { name: "Loading editor" })).toBeInTheDocument();
+    const placeholder = screen.getByRole("status", { name: "Loading editor" });
+    expect(placeholder).toBeVisible();
+    expect(placeholder.closest("[data-docsera-content-reveal-pending='true']")).toBeNull();
+    const editorSurface = document.querySelector("[data-docsera-content-reveal='visual']");
+    expect(editorSurface).toHaveAttribute("data-docsera-editor-placeholder", "true");
+    expect(editorSurface).toHaveAttribute("inert");
+    expect(editorSurface).toHaveAttribute("aria-hidden", "true");
+    expect(screen.queryByRole("button", { name: "Overview" })).not.toBeInTheDocument();
+    expect(editorSurface?.querySelector("button")).toBeInTheDocument();
+    expect(document.querySelector(".docsera-main__editor-host")).toHaveAttribute("hidden");
     expect(document.querySelector("[data-docsera-content-reveal-state='enter']")).toBeNull();
-    expect(screen.getByRole("button", { name: "Overview" }).closest("[data-docsera-content-reveal='visual']")).toHaveAttribute(
-      "data-docsera-content-reveal-pending",
-      "true"
-    );
+    expect(editorSurface).toHaveAttribute("data-docsera-content-reveal-pending", "true");
 
     rerender(<WorkspaceMainPane {...props} contentRevealIntent={{ destination: "visual", key: 1 }} workspaceMode="edit" />);
 
     await waitFor(() => {
       expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-state", "enter");
     });
+    expect(screen.queryByRole("status", { name: "Loading editor" })).not.toBeInTheDocument();
+    expect(editorSurface).not.toHaveAttribute("inert");
+    expect(editorSurface).not.toHaveAttribute("aria-hidden");
+    expect(screen.getByRole("button", { name: "Overview" })).toBeEnabled();
     expect(document.querySelector(".docsera-main__editor-host")).not.toHaveAttribute("hidden");
   });
 

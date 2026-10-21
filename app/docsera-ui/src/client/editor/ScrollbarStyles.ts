@@ -1,0 +1,22 @@
+// Shared by editor-owned scroll regions, including those rendered in a shadow root.
+export const EDITOR_SCROLLBAR_STYLES = `
+  :is(.docsera-block-selector__scroll, .docsera-table-controls-overlay__menu, .docsera-image-picker__backdrop, .docsera-image-picker__library-scroll, .docsera-image-options-panel)::-webkit-scrollbar { width: 12px; }
+  :is(.docsera-block-selector__scroll, .docsera-table-controls-overlay__menu, .docsera-image-picker__backdrop, .docsera-image-picker__library-scroll, .docsera-image-options-panel)::-webkit-scrollbar-track { background: transparent; }
+  :is(.docsera-block-selector__scroll, .docsera-table-controls-overlay__menu, .docsera-image-picker__backdrop, .docsera-image-picker__library-scroll, .docsera-image-options-panel)::-webkit-scrollbar-thumb { border: 4px solid transparent; border-radius: 999px; background: transparent; background-clip: content-box; }
+  :is(.docsera-block-selector:hover .docsera-block-selector__scroll, .docsera-block-selector:focus-within .docsera-block-selector__scroll, .docsera-table-controls-overlay__menu:hover, .docsera-table-controls-overlay__menu:focus-within, .docsera-image-picker__backdrop:hover, .docsera-image-picker__backdrop:focus-within, .docsera-image-picker:hover .docsera-image-picker__library-scroll, .docsera-image-picker:focus-within .docsera-image-picker__library-scroll, .docsera-image-options-panel:hover, .docsera-image-options-panel:focus-within)::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--docsera-text-soft) 32%, transparent); }
+  :is(.docsera-block-selector__scroll, .docsera-table-controls-overlay__menu, .docsera-image-picker__backdrop, .docsera-image-picker__library-scroll, .docsera-image-options-panel)::-webkit-scrollbar-thumb:hover,
+  :is(.docsera-block-selector__scroll, .docsera-table-controls-overlay__menu, .docsera-image-picker__backdrop, .docsera-image-picker__library-scroll, .docsera-image-options-panel)::-webkit-scrollbar-thumb:active { background-color: color-mix(in srgb, var(--docsera-text-soft) 60%, transparent); }
+  .docsera-block-selector:hover .docsera-block-selector__scroll::-webkit-scrollbar-thumb:hover,
+  .docsera-block-selector .docsera-block-selector__scroll::-webkit-scrollbar-thumb:active,
+  .docsera-image-picker:hover .docsera-image-picker__library-scroll::-webkit-scrollbar-thumb:hover,
+  .docsera-image-picker .docsera-image-picker__library-scroll::-webkit-scrollbar-thumb:active { background-color: color-mix(in srgb, var(--docsera-text-soft) 60%, transparent); }
+  :is(.docsera-block-selector__scroll, .docsera-table-controls-overlay__menu, .docsera-image-picker__backdrop, .docsera-image-picker__library-scroll, .docsera-image-options-panel)::-webkit-scrollbar-button { display: none; }
+  @supports not selector(::-webkit-scrollbar) {
+    :is(.docsera-block-selector__scroll, .docsera-table-controls-overlay__menu, .docsera-image-picker__backdrop, .docsera-image-picker__library-scroll, .docsera-image-options-panel) { scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--docsera-text-soft) 32%, transparent) transparent; }
+    @supports not selector(::-webkit-scrollbar) { :is(.docsera-block-selector:hover .docsera-block-selector__scroll, .docsera-block-selector:focus-within .docsera-block-selector__scroll, .docsera-table-controls-overlay__menu:hover, .docsera-table-controls-overlay__menu:focus-within, .docsera-image-picker__backdrop:hover, .docsera-image-picker__backdrop:focus-within, .docsera-image-picker:hover .docsera-image-picker__library-scroll, .docsera-image-picker:focus-within .docsera-image-picker__library-scroll, .docsera-image-options-panel:hover, .docsera-image-options-panel:focus-within) { scrollbar-color: color-mix(in srgb, var(--docsera-text-soft) 32%, transparent) transparent; } }
+  }
+  @media (hover: none) {
+    :is(.docsera-block-selector__scroll, .docsera-table-controls-overlay__menu, .docsera-image-picker__backdrop, .docsera-image-picker__library-scroll, .docsera-image-options-panel)::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--docsera-text-soft) 32%, transparent); }
+    @supports not selector(::-webkit-scrollbar) { :is(.docsera-block-selector__scroll, .docsera-table-controls-overlay__menu, .docsera-image-picker__backdrop, .docsera-image-picker__library-scroll, .docsera-image-options-panel) { scrollbar-color: color-mix(in srgb, var(--docsera-text-soft) 32%, transparent) transparent; } }
+  }
+`;
