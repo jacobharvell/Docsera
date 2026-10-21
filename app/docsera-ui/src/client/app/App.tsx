@@ -1264,6 +1264,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [contentRevealIntent, setContentRevealIntent] = useState<ContentRevealIntent<WorkspaceContentRevealSurface>>(
     () => createInitialWorkspaceRevealIntent(initialRoute)
   );
+  const [chromeRevealIntent, setChromeRevealIntent] = useState<ContentRevealIntent<WorkspaceContentRevealSurface>>(
+    () => createInitialWorkspaceRevealIntent(initialRoute)
+  );
   const [launcherContentRevealIntent, setLauncherContentRevealIntent] = useState<ContentRevealIntent<LauncherContentRevealSurface>>(
     () => createInitialLauncherRevealIntent(initialRoute)
   );
@@ -4239,11 +4242,15 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     });
   }
 
-  function requestContentReveal(destination: WorkspaceContentRevealSurface) {
+  function requestContentReveal(destination: WorkspaceContentRevealSurface, scope: "workspace" | "authoring-surface" = "workspace") {
     setContentRevealIntent((current) => ({
       destination,
-      key: (current?.key ?? 0) + 1
+      key: (current?.key ?? 0) + 1,
+      scope
     }));
+    if (scope === "workspace") {
+      setChromeRevealIntent((current) => ({ destination: destination === "live" ? "live" : "visual", key: (current?.key ?? 0) + 1, scope }));
+    }
   }
 
   function requestLauncherContentReveal() {
@@ -4255,6 +4262,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
   function clearContentRevealIntent() {
     setContentRevealIntent((current) => (current ? null : current));
+    setChromeRevealIntent((current) => (current ? null : current));
   }
 
   function openLauncher() {
@@ -6381,7 +6389,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
 
     if (currentWorkspaceAuthoringSurface !== nextSurface) {
-      requestContentReveal(nextSurface);
+      requestContentReveal(nextSurface, "authoring-surface");
     }
     setWorkspaceAuthoringSurfaceState((current) => ({
       ...current,
@@ -7007,14 +7015,14 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     pendingChangesSaveBlockedMessage === WORKSPACE_COMMAND_AUTHORING_LOCK_MESSAGE;
   const pendingChangesReadinessMessage = suppressActiveWorkspaceCommandReadinessMessage ? "" : pendingChangesSaveBlockedMessage;
   const pendingChangesUndoBlockedPageSysId = pendingChangesSaveBlockedMessage ? selectedWorkspacePageId : "";
-  const contentRevealSurface: WorkspaceContentRevealSurface =
-    route.mode === "workspace" && appHeaderWorkspaceMode === "edit" ? appHeaderAuthoringSurface : "live";
+  const chromeRevealSurface: WorkspaceContentRevealSurface =
+    route.mode === "workspace" && appHeaderWorkspaceMode === "edit" ? "visual" : "live";
   const contentRevealReady =
     route.mode === "workspace" &&
     workspaceShellStatus === "ready" &&
     workspaceMainPaneBodyState === "ready" &&
     (Boolean(selectedPageView) || workspacePagesLoaded);
-  const chromeContentRevealState = useContentRevealState(contentRevealSurface, contentRevealReady, appHeaderWorkspaceSlug, contentRevealIntent);
+  const chromeContentRevealState = useContentRevealState(chromeRevealSurface, contentRevealReady, appHeaderWorkspaceSlug, chromeRevealIntent);
   const launcherContentRevealReady =
     route.mode === "launcher" && (launcherState.status === "success" || launcherState.status === "error");
   const launcherContentRevealState = useContentRevealState(

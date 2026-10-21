@@ -587,7 +587,7 @@ describe("WorkspaceMainPane", () => {
     );
   });
 
-  it("keeps the editor content reveal transform-free while preserving other reveal motion", () => {
+  it("moves mode reveals without transforming the editor and keeps surface reveals opacity-only", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;
       getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
@@ -619,6 +619,7 @@ describe("WorkspaceMainPane", () => {
 
     const editorSurface = document.createElement("article");
     editorSurface.className = "docsera-main__surface docsera-main__surface--editor docsera-main__content-reveal";
+    editorSurface.dataset.docseraContentRevealScope = "workspace";
     editorSurface.dataset.docseraContentRevealPending = "true";
     editorSurface.dataset.docseraContentRevealState = "enter";
     fixture.append(editorSurface);
@@ -656,9 +657,16 @@ describe("WorkspaceMainPane", () => {
       expect(editorSurface.matches(".docsera-main__surface--editor .docsera-main__content-reveal")).toBe(false);
 
       expect(getComputedStyle(editorSurface).transform).toBe("none");
+      expect(getComputedStyle(editorSurface).top).toBe("16px");
+      expect(lastValue(matchingPropertyValues(editorSurface, "animation"))).toBe(
+        "docsera-editor-mode-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1)"
+      );
+      editorSurface.dataset.docseraContentRevealScope = "authoring-surface";
+      expect(getComputedStyle(editorSurface).transform).toBe("none");
       expect(lastValue(matchingPropertyValues(editorSurface, "animation"))).toBe(
         "docsera-content-opacity-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1)"
       );
+      expect(source).toMatch(/@keyframes docsera-editor-mode-reveal\s*\{\s*from\s*\{\s*opacity:\s*0;\s*top:\s*16px;\s*\}\s*to\s*\{\s*opacity:\s*1;\s*top:\s*0;/s);
       expect(getComputedStyle(liveSurface).transform).toBe("translateY(16px)");
       expect(lastValue(matchingPropertyValues(liveSurface, "animation"))).toBe(
         "docsera-content-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1)"

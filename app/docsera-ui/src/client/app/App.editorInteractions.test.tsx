@@ -653,8 +653,28 @@ describe("App editor interactions integration", () => {
     expect(screen.getByRole("main", { name: "Overview Draft ABC" })).toBeInTheDocument();
   });
 
-  it("keeps the hidden visual host mounted but inactive in markdown and restores interaction when returning to visual", async () => {
+  it("preserves an active workspace chrome reveal across authoring surface switches", async () => {
     renderApp("/?workspace=product-docs&mode=edit&page=overview");
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    await waitForEditWorkspaceMode();
+    await waitForEditorHostMounted();
+    await settleEditorHostReady();
+
+    const tree = document.querySelector(".docsera-sidebar__tree");
+    expect(tree).toHaveAttribute("data-docsera-chrome-reveal-state", "enter");
+    fireEvent.click(screen.getByRole("button", { name: "Markdown" }));
+    await waitFor(() => expect(lastMarkdownSourcePanelProps).toMatchObject({ visible: true }));
+    expect(tree).toHaveAttribute("data-docsera-chrome-reveal-state", "enter");
+    fireEvent.click(screen.getByRole("button", { name: "Visual" }));
+    expect(tree).toHaveAttribute("data-docsera-chrome-reveal-state", "enter");
+    await waitFor(() => expect(tree).toHaveAttribute("data-docsera-chrome-reveal-state", "idle"), { timeout: 1000 });
+  });
+
+  it("keeps the hidden visual host mounted but inactive in markdown and restores interaction when returning to visual", async () => {
+    const listPages = vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
+      createPageListResult(mode === "edit" ? "edit" : "live", workspaceSlug, [createPageRecord()])
+    );
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { listPages });
 
     expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
     await waitForEditWorkspaceMode();
@@ -662,15 +682,28 @@ describe("App editor interactions integration", () => {
     await settleEditorHostReady();
 
     expect(lastPageEditorHostProps?.interactionActive).toBe(true);
+    await waitFor(() => expect(document.querySelector(".docsera-sidebar__tree")).toHaveAttribute("data-docsera-chrome-reveal-state", "idle"));
+    const tree = document.querySelector(".docsera-sidebar__tree");
+    const host = document.querySelector("[data-docsera-page-editor-host='true']");
+    const toc = document.querySelector(".docsera-toc__list");
+    const pageLoads = listPages.mock.calls.length;
 
     fireEvent.click(screen.getByRole("button", { name: "Markdown" }));
     await waitFor(() => expect(lastMarkdownSourcePanelProps).toMatchObject({ visible: true }));
     await waitFor(() => expect(lastPageEditorHostProps?.interactionActive).toBe(false));
-    expect(document.querySelector("[data-docsera-page-editor-host='true']")).not.toBeNull();
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBe(host);
+    expect(document.querySelector("[data-docsera-content-reveal='markdown']")).toHaveAttribute("data-docsera-content-reveal-scope", "authoring-surface");
+    expect(tree).toHaveAttribute("data-docsera-chrome-reveal-state", "idle");
 
     fireEvent.click(screen.getByRole("button", { name: "Visual" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Markdown" })).toBeEnabled());
     await waitFor(() => expect(lastPageEditorHostProps?.interactionActive).toBe(true));
+    expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBe(host);
+    expect(document.querySelector(".docsera-sidebar__tree")).toBe(tree);
+    expect(tree).toHaveAttribute("data-docsera-chrome-reveal-state", "idle");
+    if (toc) expect(toc).toHaveAttribute("data-docsera-chrome-reveal-state", "idle");
+    expect(listPages).toHaveBeenCalledTimes(pageLoads);
+    expect(document.querySelector("[data-docsera-content-reveal='visual']")).toHaveAttribute("data-docsera-content-reveal-scope", "authoring-surface");
   });
 
   it("flushes a pending source title change before navigating away from the page", async () => {

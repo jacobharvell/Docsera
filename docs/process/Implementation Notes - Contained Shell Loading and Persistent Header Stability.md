@@ -55,8 +55,8 @@ It documents verified repository behavior only. Accepted product requirements re
 
 ## Content Reveal Transitions
 
-- Successful Live/Edit, Visual/Markdown, workspace-entry, and launcher-entry destination changes use a shared 400 ms fade-up reveal state.
-- Workspace entry reveals coordinate main content, navigation rows, and ToC links from 16 px below their final position with the same timing and easing. Breadcrumbs and the persistent application header do not animate.
+- Successful Live/Edit, workspace-entry, and launcher-entry destination changes use a 400 ms fade-up reveal. Visual/Markdown switches reveal only the destination editor content with opacity over the same duration.
+- Workspace entry and Live/Edit reveals coordinate main content, navigation rows, and ToC links from 16 px below their final position with the same timing and easing. Editor mode reveals animate relative top instead of transform to preserve fixed overlay geometry. Breadcrumbs and the persistent application header do not animate.
 - My Workspaces entry reveals apply to the loaded launcher content region as one unit, including the intro, toolbar, list states, and pagination. Delayed launcher loading feedback remains visible while the loaded content waits for its reveal.
 - Empty workspaces count as ready workspace-entry destinations once their page list has successfully resolved. The empty-state surface consumes the entry intent so creating the first page later does not replay the prior workspace-entry animation.
 - The reveal state is driven by explicit destination-aware intents for committed mode/surface changes, workspace navigation entry, launcher navigation entry, and initial route load. Workspace entry intents survive asynchronous workspace/page loading and Edit/editor readiness, and are consumed only by the intended destination surface, including empty workspace surfaces.

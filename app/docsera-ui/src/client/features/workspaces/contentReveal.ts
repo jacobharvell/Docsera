@@ -4,6 +4,7 @@ export type ContentRevealState = "idle" | "pending" | "enter";
 export type ContentRevealIntent<TSurface> = {
   destination: TSurface;
   key: number;
+  scope?: "workspace" | "authoring-surface";
 } | null;
 
 export const DOCSERA_CONTENT_REVEAL_DURATION_MS = 400;

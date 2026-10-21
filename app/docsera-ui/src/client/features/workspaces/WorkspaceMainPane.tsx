@@ -424,6 +424,7 @@ export function WorkspaceMainPane({
         <article
           className="docsera-main__surface docsera-main__surface--empty docsera-main__content-reveal"
           data-docsera-content-reveal={displayedSurface}
+          data-docsera-content-reveal-scope={contentRevealIntent?.scope ?? "workspace"}
           data-docsera-content-reveal-pending={contentRevealPending ? "true" : undefined}
           data-docsera-content-reveal-state={contentRevealState}
         >
@@ -467,6 +468,7 @@ export function WorkspaceMainPane({
       <article
         className={`docsera-main__surface docsera-main__content-reveal${workspaceMode === "edit" ? " docsera-main__surface--editor" : ""}`}
         data-docsera-content-reveal={displayedSurface}
+        data-docsera-content-reveal-scope={contentRevealIntent?.scope ?? "workspace"}
         data-docsera-content-reveal-pending={contentRevealPending ? "true" : undefined}
         data-docsera-content-reveal-state={contentRevealState}
       >
