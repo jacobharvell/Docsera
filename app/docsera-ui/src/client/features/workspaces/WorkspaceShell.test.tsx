@@ -95,6 +95,35 @@ function renderShell(overrides: Partial<Parameters<typeof WorkspaceShell>[0]> = 
 }
 
 describe("WorkspaceShell", () => {
+  it("keeps narrow desktop navigation above the main pane without changing its targets or stacked layout", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const css = nodeProcess.getBuiltinModule("fs").readFileSync(`${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`, "utf8").replace(/\r\n/g, "\n");
+    expect(css).toMatch(/@media \(min-width: 921px\) and \(max-width: 1180px\)\s*\{\s*\.docsera-workspace__nav-frame\s*\{[^}]*z-index:\s*1;/);
+    expect(css).toMatch(/\.docsera-workspace__nav-resizer\s*\{[^}]*right:\s*-6px;[^}]*width:\s*var\(--docsera-workspace-nav-resizer-width\)/);
+    expect(css).toMatch(/\.docsera-sidebar__tree\s*\{[^}]*margin-right:\s*-10px;[^}]*overflow-y:\s*auto;/);
+    expect(css).toMatch(/@media \(max-width: 920px\)[\s\S]*?\.docsera-workspace__nav-resizer\s*\{\s*display:\s*none;/);
+    expect(css).toMatch(/\.docsera-workspace--sidebar-resizing \.docsera-workspace__nav-resizer-pill\s*\{\s*opacity:\s*1;/);
+  });
+
+  it.each(["live", "edit"] as const)("resizes and clamps navigation in %s mode", (mode) => {
+    const onWorkspaceNavWidthChange = vi.fn();
+    const { container, rerender } = renderShell({ mode, onWorkspaceNavWidthChange });
+    const resizer = screen.getByRole("button", { name: "Resize navigation panel" });
+    fireEvent.mouseDown(resizer);
+    expect(container.querySelector(".docsera-workspace")).toHaveClass("docsera-workspace--sidebar-resizing");
+    fireEvent.mouseMove(window, { clientX: 100 });
+    fireEvent.mouseMove(window, { clientX: 600 });
+    expect(onWorkspaceNavWidthChange.mock.calls.map(([width]) => width)).toEqual([180, 480]);
+    fireEvent.mouseUp(window);
+    expect(container.querySelector(".docsera-workspace")).not.toHaveClass("docsera-workspace--sidebar-resizing");
+    rerender(<WorkspaceShell {...createShellProps({ mode, sidebarCollapsed: true, onWorkspaceNavWidthChange })} />);
+    fireEvent.mouseDown(resizer);
+    fireEvent.mouseMove(window, { clientX: 300 });
+    expect(onWorkspaceNavWidthChange).toHaveBeenCalledTimes(2);
+  });
   it("keeps the stored navigation width stable while the animated track collapses", () => {
     const { container, rerender } = renderShell({ sidebarCollapsed: false, workspaceNavWidth: 312 });
     const shell = container.querySelector<HTMLElement>(".docsera-shell");

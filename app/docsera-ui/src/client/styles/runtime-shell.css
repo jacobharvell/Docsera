@@ -4572,7 +4572,8 @@ html[data-docsera-theme="dark"] .docsera-shell {
   z-index: 2;
 }
 
-.docsera-workspace__nav-resizer:hover .docsera-workspace__nav-resizer-pill {
+.docsera-workspace__nav-resizer:hover .docsera-workspace__nav-resizer-pill,
+.docsera-workspace--sidebar-resizing .docsera-workspace__nav-resizer-pill {
   opacity: 1;
 }
 
@@ -6302,6 +6303,13 @@ html[data-docsera-theme="dark"] .docsera-main__callout-icon {
 
   .docsera-workspace__aside {
     display: none;
+  }
+}
+
+@media (min-width: 921px) and (max-width: 1180px) {
+  .docsera-workspace__nav-frame {
+    /* Keep the tree scrollbar and resizer above the adjacent main pane. */
+    z-index: 1;
   }
 }
 
