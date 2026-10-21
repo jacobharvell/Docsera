@@ -1,3 +1,4 @@
+import { EDITOR_DROPDOWN_MOTION_STYLES } from "./CompactMenuStyles";
 import type { Editor } from "@tiptap/core";
 import { SmilePlus } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -176,7 +177,7 @@ export function EmojiPickerControls({ canEdit, editor, ownerDocument }: EmojiPic
         </button>
       </DocseraCompactTooltip>
       {isOpen ? (
-        <div id={pickerId} className="docsera-emoji-picker" role="dialog" aria-label="Emoji picker">
+        <div id={pickerId} className="docsera-emoji-picker docsera-editor-dropdown--enter" role="dialog" aria-label="Emoji picker">
           <label className="docsera-emoji-picker__search-label" htmlFor={`${pickerId}-search`}>Search emoji</label>
           <input
             id={`${pickerId}-search`}
@@ -234,6 +235,7 @@ export function EmojiPickerControls({ canEdit, editor, ownerDocument }: EmojiPic
         </div>
       ) : null}
       <style>{`
+        ${EDITOR_DROPDOWN_MOTION_STYLES}
         .docsera-editor-command-controls { display: inline-flex; align-items: center; gap: 4px; pointer-events: auto; }
         .docsera-emoji-picker-controls { position: relative; display: inline-flex; pointer-events: auto; }
         .docsera-emoji-picker-controls__trigger { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 5px; padding: 0; color: var(--docsera-text-soft); background: transparent; cursor: pointer; }

@@ -30,7 +30,9 @@ async function select(editor: Editor, from: number, to = from) {
 
 function openPicker() {
   fireEvent.click(screen.getByRole("button", { name: "Insert emoji" }));
-  return screen.getByRole("dialog", { name: "Emoji picker" });
+  const picker = screen.getByRole("dialog", { name: "Emoji picker" });
+  expect(picker).toHaveClass("docsera-editor-dropdown--enter");
+  return picker;
 }
 
 afterEach(() => {
@@ -43,6 +45,12 @@ afterEach(() => {
 });
 
 describe("EmojiPickerControls", () => {
+  it("provides reduced-motion overrides for every editor entrance variant", () => {
+    renderControls(createEditor());
+    const styles = document.querySelector(".docsera-emoji-picker-controls style")?.textContent ?? "";
+    expect(styles).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*dropdown--enter[\s\S]*dropdown--fade-enter[\s\S]*dropdown--shift-enter[\s\S]*animation: none/);
+  });
+
   it("overrides global SVG sizing with compact 15px picker icon dimensions", () => {
     const editor = createEditor();
     const globalSvgStyle = document.createElement("style");

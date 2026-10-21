@@ -1781,6 +1781,7 @@ describe("PageEditorHostRuntime", () => {
     await openSlashQuery(editor, "he");
 
     const slashMenu = await screen.findByRole("listbox", { name: "Slash command menu" });
+    expect(slashMenu).toHaveClass("docsera-editor-dropdown--enter");
     expect(within(slashMenu).getByRole("option", { name: /Heading 1/ })).toBeInTheDocument();
     expect(within(slashMenu).getByRole("option", { name: /Heading 2/ })).toBeInTheDocument();
     expect(within(slashMenu).getByRole("option", { name: /Heading 3/ })).toBeInTheDocument();
@@ -2932,6 +2933,7 @@ describe("PageEditorHostRuntime", () => {
     const quickAddButton = await screen.findByRole("button", { name: "Add block after Text" });
     fireEvent.click(quickAddButton);
     const quickAddMenu = await screen.findByRole("listbox", { name: "Insert block after Text" });
+    expect(quickAddMenu).toHaveClass("docsera-editor-dropdown--enter");
     const option = within(quickAddMenu).getByRole("option", { name: "Heading 1" });
 
     expect(window.getComputedStyle(quickAddButton).cursor).toBe("pointer");
@@ -4935,9 +4937,15 @@ describe("PageEditorHostRuntime", () => {
     await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
 
     const menu = await screen.findByRole("menu", { name: "Block actions for Text" });
+    Object.defineProperty(menu, "getBoundingClientRect", { configurable: true, value: () => new DOMRect(200, 100, 180, 240) });
     fireEvent.keyDown(menu, { key: "ArrowRight" });
 
     const submenu = await screen.findByRole("menu", { name: "Turn into Text" });
+    expect(menu).toHaveClass("docsera-editor-dropdown--fade-enter");
+    expect(menu).not.toHaveClass("docsera-editor-dropdown--enter", "docsera-editor-dropdown--shift-enter");
+    expect(menu.querySelector(".docsera-block-action-menu__list")).toHaveClass("docsera-editor-dropdown--shift-enter");
+    expect(submenu).toHaveClass("docsera-editor-dropdown--enter");
+    expect(submenu).toHaveStyle({ left: "386px", top: "100px" });
     expect(getMenuItemNames(submenu)).toEqual(["Text", "Heading 1", "Heading 2", "Heading 3", "Blockquote", "Bulleted List", "Numbered List"]);
     expect(within(submenu).queryByText("Turn into")).toBeNull();
     expect(within(submenu).getByRole("menuitemradio", { name: "Text" })).toHaveAttribute("aria-checked", "true");
@@ -11357,6 +11365,7 @@ describe("PageEditorHostRuntime", () => {
     });
 
     const blockMenu = await screen.findByRole("menu", { name: "Change to" });
+    expect(blockMenu).toHaveClass("docsera-editor-dropdown--enter");
     await waitFor(() => {
       expect(blockMenu).toHaveStyle(expectedBlockMenuStyle as Record<string, unknown>);
     });
@@ -11377,6 +11386,7 @@ describe("PageEditorHostRuntime", () => {
     });
 
     const colorMenu = await screen.findByRole("menu", { name: "Color" });
+    expect(colorMenu).toHaveClass("docsera-editor-dropdown--enter");
     await waitFor(() => {
       expect(colorMenu).toHaveStyle(expectedColorMenuStyle as Record<string, unknown>);
     });

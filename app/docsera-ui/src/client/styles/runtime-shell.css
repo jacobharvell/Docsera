@@ -6572,3 +6572,17 @@ html[data-docsera-theme="dark"] .docsera-main__callout-icon {
 .docsera-main__holder-link:hover {
   text-decoration-thickness: var(--docsera-document-link-hover-decoration-thickness);
 }
+
+@keyframes docsera-dropdown-enter {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes docsera-dropdown-exit {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-4px); }
+}
+[data-docsera-dropdown-motion="enter"] { animation: docsera-dropdown-enter 130ms ease-out both; }
+[data-docsera-dropdown-motion="exit"] { animation: docsera-dropdown-exit 130ms ease-in both; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  [data-docsera-dropdown-motion] { animation: none; }
+}

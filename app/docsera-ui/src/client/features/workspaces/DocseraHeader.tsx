@@ -1,3 +1,4 @@
+import { useDropdownExitPresence } from "./useDropdownExitPresence";
 import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { Code2, Eye } from "lucide-react";
@@ -313,6 +314,9 @@ export function DocseraHeader({
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [changesOpen, setChangesOpen] = useState(false);
+  const workspacePresence = useDropdownExitPresence(workspaceMenuOpen ? true : null);
+  const accountPresence = useDropdownExitPresence(accountMenuOpen ? true : null);
+  const changesPresence = useDropdownExitPresence(changesOpen ? true : null);
   const [discardAllModalOpen, setDiscardAllModalOpen] = useState(false);
   const [discardPageTarget, setDiscardPageTarget] = useState<{ pageSysId: string; title: string } | null>(null);
   const [failedProfileAvatarPath, setFailedProfileAvatarPath] = useState("");
@@ -403,7 +407,7 @@ export function DocseraHeader({
 
   useLayoutEffect(() => {
     if (!changesOpen || typeof window === "undefined") {
-      setChangesCenterStyle(undefined);
+      if (!changesPresence.item) setChangesCenterStyle(undefined);
       return;
     }
 
@@ -430,7 +434,7 @@ export function DocseraHeader({
       window.removeEventListener("resize", updateChangesCenterStyle);
       window.removeEventListener("scroll", updateChangesCenterStyle, true);
     };
-  }, [changesOpen, pendingChangesPublishToastMessage, showCurrentPageSaveStatus]);
+  }, [changesOpen, changesPresence.item, pendingChangesPublishToastMessage, showCurrentPageSaveStatus]);
 
   useEffect(() => {
     if (!workspaceMenuOpen) {
@@ -684,8 +688,9 @@ export function DocseraHeader({
               {canSwitchWorkspaces ? <DoubleChevronIcon /> : null}
             </button>
 
-            {workspaceMenuOpen ? (
+            {workspacePresence.item ? (
               <RecentWorkspacesMenu
+                open={workspacePresence.open}
                 currentWorkspaceSlug={currentWorkspaceSlug}
                 items={recentWorkspaces}
                 loadUploadedIcon={loadUploadedIcon}
@@ -871,13 +876,16 @@ export function DocseraHeader({
                 Publish
                 <PublishChevron open={changesOpen} />
               </button>
-              {showPublishControl && changesOpen ? (
+              {showPublishControl && changesPresence.item ? (
                 typeof document !== "undefined"
                   ? createPortal(
                       <section
                         ref={changesCenterRef}
                         className="docsera-changes-center docsera-changes-center--portal"
                         data-docsera-changes-center="true"
+                        data-docsera-dropdown-motion={changesPresence.open ? "enter" : "exit"}
+                        {...(!changesPresence.open ? { inert: "" } : {})}
+                        aria-hidden={!changesPresence.open || undefined}
                         role="dialog"
                         aria-label="Changes Center"
                         style={changesCenterStyle}
@@ -1086,8 +1094,8 @@ export function DocseraHeader({
                 <span className="docsera-header__profile-placeholder-dot" aria-hidden="true" />
               )}
             </button>
-            {accountMenuOpen ? (
-              <div className="docsera-account-menu" role="menu" aria-label="Account menu">
+            {accountPresence.item ? (
+              <div className="docsera-account-menu" role="menu" aria-label="Account menu" data-docsera-dropdown-motion={accountPresence.open ? "enter" : "exit"} {...(!accountPresence.open ? { inert: "" } : {})} aria-hidden={!accountPresence.open || undefined}>
                 {currentUserAvailable ? (
                   <div className="docsera-account-menu__identity" role="presentation">
                     <strong>{currentUserDisplayName || currentUserName}</strong>

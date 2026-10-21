@@ -52,6 +52,7 @@ describe("CompactTextToolbar secondary formatting toolbar", () => {
     fireEvent.click(moreTrigger);
 
     const moreToolbar = await screen.findByRole("toolbar", { name: "More formatting" });
+    expect(moreToolbar).toHaveClass("docsera-editor-dropdown--enter");
     expect(moreTrigger).toHaveAttribute("aria-expanded", "true");
     expect(moreTrigger).toHaveClass("docsera-text-toolbar__trigger--active");
     expect(screen.queryByRole("menu", { name: "More" })).toBeNull();

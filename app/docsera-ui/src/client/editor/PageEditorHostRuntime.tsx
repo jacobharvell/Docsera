@@ -42,7 +42,7 @@ import { CellSelection } from "@tiptap/pm/tables";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { CompactTextToolbar } from "./CompactTextToolbar";
 import { resolveToolbarMenuSurfaceStyle } from "./CompactTextToolbar";
-import { COMPACT_MENU_STYLES } from "./CompactMenuStyles";
+import { COMPACT_MENU_STYLES, EDITOR_DROPDOWN_MOTION_STYLES } from "./CompactMenuStyles";
 import { EditorHistoryControls } from "./EditorHistoryControls";
 import { EmojiPickerControls } from "./EmojiPickerControls";
 import {
@@ -7701,6 +7701,7 @@ export function PageEditorHostRuntime({
         }
         ${BLOCK_SELECTOR_STYLES}
         ${COMPACT_MENU_STYLES}
+        ${EDITOR_DROPDOWN_MOTION_STYLES}
         ${IMAGE_PICKER_STYLES}
         ${IMAGE_OPTIONS_STYLES}
         ${EDITOR_IMAGE_STYLES}
@@ -8442,7 +8443,7 @@ export function PageEditorHostRuntime({
 
             {editor && imageAlignmentMenu && imageAlignmentMenuStyle ? (
               <div
-                className={`docsera-compact-menu docsera-image-alignment-menu${imageAlignmentMenu.blockIndex === imageOptionsBlockIndex ? " docsera-image-alignment-menu--active" : ""}`}
+                className={`docsera-compact-menu docsera-image-alignment-menu docsera-editor-dropdown--enter${imageAlignmentMenu.blockIndex === imageOptionsBlockIndex ? " docsera-image-alignment-menu--active" : ""}`}
                 style={imageAlignmentMenuStyle}
                 role="menu"
                 id={imageAlignmentMenuId}
@@ -8489,7 +8490,7 @@ export function PageEditorHostRuntime({
 
             {editor && imageAlignmentPickerMenu && imageAlignmentPickerMenuStyle ? (
               <div
-                className={`docsera-compact-menu docsera-image-alignment-menu docsera-image-alignment-menu--picker${imageAlignmentPickerMenu.blockIndex === imageOptionsBlockIndex ? " docsera-image-alignment-menu--active" : ""}`}
+                className={`docsera-compact-menu docsera-image-alignment-menu docsera-image-alignment-menu--picker docsera-editor-dropdown--enter${imageAlignmentPickerMenu.blockIndex === imageOptionsBlockIndex ? " docsera-image-alignment-menu--active" : ""}`}
                 style={imageAlignmentPickerMenuStyle}
                 role="menu"
                 id={imageAlignmentPickerMenuId}
@@ -8535,7 +8536,7 @@ export function PageEditorHostRuntime({
             {blockActionMenu && blockActionMenuStyle && blockActionMenuNode ? (
               <div
                 ref={blockActionMenuSurfaceRef}
-                className="docsera-editor-floating docsera-block-selector docsera-block-action-menu"
+                className="docsera-editor-floating docsera-block-selector docsera-block-action-menu docsera-editor-dropdown--fade-enter"
                 style={blockActionMenuStyle}
                 role="menu"
                 id={blockActionMenuId}
@@ -8543,7 +8544,7 @@ export function PageEditorHostRuntime({
                 data-surface="block-actions"
                 onKeyDown={handleBlockActionMenuKeyDown}
               >
-                <div className="docsera-block-action-menu__list">
+                <div className="docsera-block-action-menu__list docsera-editor-dropdown--shift-enter">
                   {blockActionMenuEntries.map((entry) => {
                     if (entry.kind === "turnInto") {
                       const turnIntoItemIndex = 0;
@@ -8635,7 +8636,7 @@ export function PageEditorHostRuntime({
 
             {blockTurnIntoMenu && blockTurnIntoMenuStyle && blockActionMenuNode && blockTurnIntoCommands.length ? (
               <div
-                className="docsera-editor-floating docsera-block-selector docsera-block-turn-into-menu"
+                className="docsera-editor-floating docsera-block-selector docsera-block-turn-into-menu docsera-editor-dropdown--enter"
                 style={blockTurnIntoMenuStyle}
                 role="menu"
                 id={blockTurnIntoMenuId}
@@ -8692,7 +8693,7 @@ export function PageEditorHostRuntime({
 
             {commandSelector && selectorStyle ? (
               <div
-                className="docsera-editor-floating docsera-block-selector"
+                className="docsera-editor-floating docsera-block-selector docsera-editor-dropdown--enter"
                 style={selectorSurfaceStyle}
                 role="listbox"
                 id={selectorListboxId}

@@ -11,7 +11,7 @@ import { DocseraIcon } from "../shared/icons/DocseraIcon";
 import { docseraIcons } from "../shared/icons/docseraIcons";
 import { DOCSERA_PALETTE_KEYS, isDocseraPaletteKey, type DocseraPaletteKey } from "../../server/editor/colorContract";
 import { isDocseraAllowedLinkHref } from "../../shared/editor/schema";
-import { COMPACT_MENU_STYLES } from "./CompactMenuStyles";
+import { COMPACT_MENU_STYLES, EDITOR_DROPDOWN_MOTION_STYLES } from "./CompactMenuStyles";
 import {
   DOCSERA_TOOLTIP_DELAY_MS,
   DOCSERA_TOOLTIP_STYLES,
@@ -2538,7 +2538,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
       ) : null}
 
       {isBlockTypeMenuOpen && toolbarSelection ? (
-        <div ref={blockMenuRef} className="docsera-text-toolbar__menu" role="menu" aria-label="Change to" id={blockTypeMenuId} style={blockMenuStyle ?? { visibility: "hidden" }} data-surface="text-toolbar-menu">
+        <div ref={blockMenuRef} className="docsera-text-toolbar__menu docsera-editor-dropdown--enter" role="menu" aria-label="Change to" id={blockTypeMenuId} style={blockMenuStyle ?? { visibility: "hidden" }} data-surface="text-toolbar-menu">
           <p className="docsera-text-toolbar__surface-heading">Change to</p>
           <div className="docsera-text-toolbar__menu-list" role="presentation">
             {BLOCK_TYPE_MENU_ITEMS.map((item) => (
@@ -2572,7 +2572,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
       ) : null}
 
       {isColorMenuOpen && toolbarSelection ? (
-        <div ref={colorMenuRef} className="docsera-text-toolbar__menu docsera-text-toolbar__color-menu" role="menu" aria-label="Color" id={colorMenuId} style={colorMenuStyle ?? { visibility: "hidden" }} data-surface="text-toolbar-menu">
+        <div ref={colorMenuRef} className="docsera-text-toolbar__menu docsera-text-toolbar__color-menu docsera-editor-dropdown--enter" role="menu" aria-label="Color" id={colorMenuId} style={colorMenuStyle ?? { visibility: "hidden" }} data-surface="text-toolbar-menu">
           <div className="docsera-text-toolbar__color-group" role="group" aria-label="Text color">
             <p className="docsera-text-toolbar__surface-heading">Text Color</p>
             <div className="docsera-text-toolbar__color-grid" role="presentation">
@@ -2652,7 +2652,7 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
       {isMoreMenuOpen && toolbarSelection ? (
         <div
           ref={moreMenuRef}
-          className="docsera-text-toolbar docsera-text-toolbar--secondary"
+          className="docsera-text-toolbar docsera-text-toolbar--secondary docsera-editor-dropdown--enter"
           role="toolbar"
           aria-label="More formatting"
           id={moreMenuId}
@@ -2871,29 +2871,12 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
         }
 
         ${COMPACT_MENU_STYLES}
+        ${EDITOR_DROPDOWN_MOTION_STYLES}
 
         .docsera-text-toolbar__menu {
           min-width: ${TOOLBAR_MENU_TARGET_WIDTH}px;
           max-width: min(${TOOLBAR_MENU_MAX_WIDTH}px, calc(100vw - ${VIEWPORT_GUTTER * 2}px));
           transform-origin: top center;
-        }
-
-        @keyframes docsera-text-toolbar-menu-enter {
-          from {
-            opacity: 0;
-            transform: translateY(-4px);
-          }
-
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .docsera-text-toolbar__color-menu {
-            animation: none;
-          }
         }
 
         .docsera-text-toolbar__menu-check {
@@ -2928,7 +2911,6 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
           width: ${COLOR_MENU_WIDTH}px;
           min-width: ${COLOR_MENU_WIDTH}px;
           padding: 10px 12px;
-          animation: docsera-text-toolbar-menu-enter 0.13s ease-out;
         }
 
         .docsera-text-toolbar__color-group + .docsera-text-toolbar__color-group {

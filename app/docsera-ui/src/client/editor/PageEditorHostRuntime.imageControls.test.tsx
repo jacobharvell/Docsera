@@ -952,6 +952,7 @@ describe("PageEditorHostRuntime", () => {
 
     fireEvent.click(alignmentButton);
     const alignmentMenu = await screen.findByRole("menu", { name: "Alignment options" });
+    expect(alignmentMenu).toHaveClass("docsera-editor-dropdown--enter");
     expect(getMenuItemNames(alignmentMenu)).toEqual([
       "Left Move the image to the left",
       "Center Center the image",

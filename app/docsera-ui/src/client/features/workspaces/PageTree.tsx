@@ -1,3 +1,4 @@
+import { useDropdownExitPresence } from "./useDropdownExitPresence";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, RefObject } from "react";
 import { createPortal } from "react-dom";
@@ -925,6 +926,7 @@ export function PageTree({
   const [draggedPageId, setDraggedPageId] = useState("");
   const [dropPreview, setDropPreview] = useState<PageTreeDropPreviewState | null>(null);
   const [contextMenu, setContextMenu] = useState<PageTreeContextMenuState | null>(null);
+  const contextMenuPresence = useDropdownExitPresence(contextMenu);
   const menuRef = useRef<HTMLDivElement>(null);
   const draggedPageIdRef = useRef("");
   const effectiveCollapsedPageIds = useMemo(() => new Set(collapsedPageIds), [collapsedPageIds]);
@@ -1203,14 +1205,17 @@ export function PageTree({
   }, [canMovePage, dragSurfaceRef, treeViewportRef]);
 
   const contextMenuElement =
-    contextMenu && contextMenuActions.length > 0
+    contextMenuPresence.item && contextMenuActions.length > 0
       ? createPortal(
           <div
             ref={menuRef}
-            className={`docsera-page-tree__context-menu docsera-page-tree__context-menu--${contextMenu.placement}`}
+            className={`docsera-page-tree__context-menu docsera-page-tree__context-menu--${contextMenuPresence.item.placement}`}
+            data-docsera-dropdown-motion={contextMenuPresence.open ? "enter" : "exit"}
+            {...(!contextMenuPresence.open ? { inert: "" } : {})}
+            aria-hidden={!contextMenuPresence.open || undefined}
             role="menu"
-            aria-label={`Page actions for ${contextMenu.page.title}`}
-            style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
+            aria-label={`Page actions for ${contextMenuPresence.item.page.title}`}
+            style={{ left: `${contextMenuPresence.item.x}px`, top: `${contextMenuPresence.item.y}px` }}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
                 event.preventDefault();

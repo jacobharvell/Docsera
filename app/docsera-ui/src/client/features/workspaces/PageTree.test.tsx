@@ -748,6 +748,27 @@ describe("PageTree row interaction", () => {
     expect(screen.queryByRole("button", { name: "Page actions for Parent" })).not.toBeInTheDocument();
   });
 
+  it("retains the resolved page menu position while exiting and replaces it on reopen", () => {
+    vi.useFakeTimers();
+    try {
+      mockPageTreeMenuRects({ menu: { width: 180, height: 160 } });
+      renderTree([page({ id: "middle", title: "Middle" }), page({ id: "other", title: "Other" })], { canCreatePage: true });
+      fireEvent.contextMenu(row("Middle"), { clientX: 120, clientY: 220 });
+      const menu = screen.getByRole("menu", { name: "Page actions for Middle" });
+      expect(menu).toHaveAttribute("data-docsera-dropdown-motion", "enter");
+      const position = menu.style.cssText;
+      fireEvent.pointerDown(document.body);
+      expect(menu).toHaveAttribute("inert");
+      expect(menu).toHaveAttribute("aria-hidden", "true");
+      expect(menu.style.cssText).toBe(position);
+      fireEvent.contextMenu(row("Other"), { clientX: 50, clientY: 60 });
+      expect(screen.getByRole("menu", { name: "Page actions for Other" })).toBeInTheDocument();
+      fireEvent.pointerDown(document.body);
+      act(() => vi.advanceTimersByTime(130));
+      expect(menu).not.toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
+  });
+
   it("opens the page context menu on right-click without activating the row", async () => {
     const onSelectPage = vi.fn();
     const onCollapsedPageIdsChange = vi.fn();

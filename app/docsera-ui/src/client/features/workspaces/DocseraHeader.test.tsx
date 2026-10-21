@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DocseraHeader } from "./DocseraHeader";
 import type { WorkspacePendingChangesResult } from "../../shared/types/docsera";
@@ -155,6 +155,53 @@ describe("DocseraHeader publishing changes", () => {
 
     expect(trigger.querySelector(".docsera-header__profile-avatar")).toBeNull();
     expect(trigger).toHaveTextContent("PW");
+  });
+
+  it("retains an inert account menu for exit and cancels removal on reopen", () => {
+    vi.useFakeTimers();
+    try {
+      render(<DocseraHeader {...baseProps} currentUser={{ userDisplayName: "Priya Writer", userName: "pwriter" }} />);
+      const trigger = screen.getByRole("button", { name: "Current user: Priya Writer" });
+      fireEvent.click(trigger);
+      const menu = screen.getByRole("menu", { name: "Account menu" });
+      expect(menu).toHaveAttribute("data-docsera-dropdown-motion", "enter");
+      fireEvent.click(trigger);
+      expect(trigger).toHaveAttribute("aria-expanded", "false");
+      expect(menu).toHaveAttribute("inert");
+      expect(menu).toHaveAttribute("aria-hidden", "true");
+      fireEvent.click(trigger);
+      act(() => vi.advanceTimersByTime(130));
+      expect(menu).toBeInTheDocument();
+      expect(menu).not.toHaveAttribute("inert");
+      fireEvent.click(trigger);
+      act(() => vi.advanceTimersByTime(130));
+      expect(menu).not.toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("switches header menus while the previous surface exits", () => {
+    vi.useFakeTimers();
+    try {
+      render(<DocseraHeader {...baseProps} showWorkspaceSwitcher currentUser={{ userDisplayName: "Priya Writer", userName: "pwriter" }} />);
+      fireEvent.click(screen.getByRole("button", { name: "Workspace switcher: Docs" }));
+      const recent = screen.getByRole("menu", { name: "Recent workspaces" });
+      fireEvent.click(screen.getByRole("button", { name: "Current user: Priya Writer" }));
+      expect(recent).toHaveAttribute("inert");
+      expect(screen.getByRole("menu", { name: "Account menu" })).toHaveAttribute("data-docsera-dropdown-motion", "enter");
+      act(() => vi.advanceTimersByTime(130));
+      expect(recent).not.toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("removes the account menu immediately with reduced motion", () => {
+    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: true }));
+    render(<DocseraHeader {...baseProps} currentUser={{ userDisplayName: "Priya Writer", userName: "pwriter" }} />);
+    const trigger = screen.getByRole("button", { name: "Current user: Priya Writer" });
+    fireEvent.click(trigger);
+    const menu = screen.getByRole("menu", { name: "Account menu" });
+    fireEvent.click(trigger);
+    expect(menu).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
   });
 
   it("opens an accessible account menu with session identity and native Sign out", () => {
@@ -571,6 +618,25 @@ describe("DocseraHeader publishing changes", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /^Overview/ }));
     expect(onOpenPendingPage).toHaveBeenCalledWith("page-001");
     expect(screen.queryByRole("dialog", { name: "Changes Center" })).not.toBeInTheDocument();
+  });
+
+  it("retains Changes Center coordinates while inert and removes it after exit", () => {
+    vi.useFakeTimers();
+    try {
+      render(<DocseraHeader {...baseProps} onDiscardAllPendingChanges={vi.fn()} onPublishPendingChanges={vi.fn()} pendingChanges={pending([{ attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" }, category: "Modified", firstPendingSequence: 1, lastChangedOn: "2026-07-18 00:00:00", navigable: true, pageSysId: "page-001", title: "Overview" }])} />);
+      const trigger = screen.getByRole("button", { name: "Open Changes Center" });
+      fireEvent.click(trigger);
+      const dialog = screen.getByRole("dialog", { name: "Changes Center" });
+      const position = dialog.style.cssText;
+      expect(dialog).toHaveAttribute("data-docsera-dropdown-motion", "enter");
+      fireEvent.pointerDown(document.body);
+      expect(dialog).toHaveAttribute("inert");
+      expect(dialog).toHaveAttribute("aria-hidden", "true");
+      fireEvent.scroll(window);
+      expect(dialog.style.cssText).toBe(position);
+      act(() => vi.advanceTimersByTime(130));
+      expect(dialog).not.toBeInTheDocument();
+    } finally { vi.useRealTimers(); }
   });
 
   it("portals the Changes Center to the document body as a top-level shell surface", () => {

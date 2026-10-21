@@ -8,6 +8,7 @@ export type RecentWorkspaceItem = Pick<WorkspaceViewRecord, "icon" | "name" | "s
 };
 
 type RecentWorkspacesMenuProps = {
+  open?: boolean;
   currentWorkspaceSlug?: string;
   items: RecentWorkspaceItem[];
   loadUploadedIcon?: WorkspaceUploadedIconLoader;
@@ -16,6 +17,7 @@ type RecentWorkspacesMenuProps = {
 };
 
 export function RecentWorkspacesMenu({
+  open = true,
   currentWorkspaceSlug = "",
   items,
   loadUploadedIcon,
@@ -23,7 +25,7 @@ export function RecentWorkspacesMenu({
   onOpenWorkspace
 }: RecentWorkspacesMenuProps) {
   return (
-    <div className="docsera-header__menu" role="menu" aria-label="Recent workspaces">
+    <div className="docsera-header__menu" role="menu" aria-label="Recent workspaces" data-docsera-dropdown-motion={open ? "enter" : "exit"} {...(!open ? { inert: "" } : {})} aria-hidden={!open || undefined}>
       <div className="docsera-header__menu-heading">Recent workspaces</div>
       {items.length > 0 ? (
         <div className="docsera-header__menu-list">

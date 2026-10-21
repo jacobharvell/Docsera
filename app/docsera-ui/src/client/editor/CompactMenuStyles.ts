@@ -142,3 +142,26 @@ export const COMPACT_MENU_STYLES = `
     font-weight: 600;
   }
 `;
+
+export const EDITOR_DROPDOWN_MOTION_STYLES = `
+  @keyframes docsera-editor-dropdown-enter {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes docsera-editor-dropdown-fade-enter {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes docsera-editor-dropdown-shift-enter {
+    from { transform: translateY(-4px); }
+    to { transform: translateY(0); }
+  }
+  .docsera-editor-dropdown--enter { animation: docsera-editor-dropdown-enter 130ms ease-out; }
+  .docsera-editor-dropdown--fade-enter { animation: docsera-editor-dropdown-fade-enter 130ms ease-out; }
+  .docsera-editor-dropdown--shift-enter { animation: docsera-editor-dropdown-shift-enter 130ms ease-out; }
+  @media (prefers-reduced-motion: reduce) {
+    .docsera-editor-dropdown--enter,
+    .docsera-editor-dropdown--fade-enter,
+    .docsera-editor-dropdown--shift-enter { animation: none; }
+  }
+`;
