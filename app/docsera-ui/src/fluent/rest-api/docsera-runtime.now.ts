@@ -36,6 +36,7 @@ import { process as acquireWorkspaceEditLease } from "../../server/api/docsera-r
 import { process as resumeWorkspaceEditLease } from "../../server/api/docsera-runtime-workspace-edit-lease-resume";
 import { process as renewWorkspaceEditLease } from "../../server/api/docsera-runtime-workspace-edit-lease-renew";
 import { process as releaseWorkspaceEditLease } from "../../server/api/docsera-runtime-workspace-edit-lease-release";
+import { process as endPreviousWorkspaceEditSession } from "../../server/api/docsera-runtime-workspace-edit-lease-end-previous-session";
 import { process as statusWorkspaceEditLease } from "../../server/api/docsera-runtime-workspace-edit-lease-status";
 import { process } from "../../server/api/docsera-runtime-ping";
 
@@ -165,6 +166,9 @@ RestApi({
     },
     {
       $id: Now.ID["docsera-runtime-workspace-edit-lease-release-post"], name: "workspace_edit_lease_release", path: "/workspaces/edit-lease/release", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Release the exclusive workspace authoring lease.", script: releaseWorkspaceEditLease
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-edit-lease-end-previous-session-post"], name: "workspace_edit_lease_end_previous_session", path: "/workspaces/edit-lease/end-previous-session", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "End the current user?s observed workspace editing session.", script: endPreviousWorkspaceEditSession
     },
     {
       $id: Now.ID["docsera-runtime-workspace-edit-lease-status-post"], name: "workspace_edit_lease_status", path: "/workspaces/edit-lease/status", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Report the current workspace authoring lease status.", script: statusWorkspaceEditLease

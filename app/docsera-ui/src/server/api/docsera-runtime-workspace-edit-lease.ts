@@ -5,7 +5,7 @@ import type { WorkspaceMutationAuthority } from "../workspaces/serviceNowWorkspa
 
 type RequestLike = { body?: unknown; data?: unknown };
 type ResponseLike = { setBody(payload: unknown): void; setStatus?(status: number): void };
-type Action = "acquire" | "resume" | "renew" | "release" | "status";
+type Action = "acquire" | "resume" | "renew" | "release" | "status" | "end-previous-session";
 type WorkspaceLeaseHeld = Extract<WorkspaceEditLeaseResult, { kind: "held" }>;
 function bodyOf(request: RequestLike): Record<string, unknown> {
   const raw = request?.body ?? request?.data;
@@ -28,7 +28,7 @@ function send(action: Action, result: WorkspaceEditLeaseResult, response: Respon
     return;
   }
   if (result.kind === "released" || result.kind === "unlocked") { response.setStatus?.(200); response.setBody({ result: { state: result.kind } }); return; }
-  if (result.kind === "locked") { response.setStatus?.(409); response.setBody({ error: { code: "workspace_locked", retryable: false, message: buildWorkspaceLockedMessage(result.currentHolder), holderDisplayName: result.currentHolder.displayName, sameUserDifferentSession: result.currentHolder.sameUserDifferentSession } }); return; }
+  if (result.kind === "locked") { response.setStatus?.(409); response.setBody({ error: { code: "workspace_locked", retryable: false, message: buildWorkspaceLockedMessage(result.currentHolder), holderDisplayName: result.currentHolder.displayName, ...(!result.currentHolder.sameUserDifferentSession && result.currentHolder.holderUserSysId ? { holderUserSysId: result.currentHolder.holderUserSysId } : {}), sameUserDifferentSession: result.currentHolder.sameUserDifferentSession, ...(result.currentHolder.sameUserDifferentSession && result.currentHolder.observedLeaseId ? { observedLeaseId: result.currentHolder.observedLeaseId } : {}) } }); return; }
   if (result.kind === "lost") { response.setStatus?.(409); response.setBody({ error: { code: "workspace_lease_lost", retryable: false, message: result.errorMessage, holderDisplayName: result.currentHolder?.displayName ?? null, sameUserDifferentSession: result.currentHolder?.sameUserDifferentSession ?? false } }); return; }
   response.setStatus?.(result.status); response.setBody({ error: { code: result.status === 403 ? "forbidden" : result.status === 404 ? "not_found" : result.status === 500 ? "persistence_transient" : result.status === 409 ? "workspace_foundation_invalid" : "invalid", retryable: result.retryable, message: result.errorMessage } });
 }
@@ -37,8 +37,8 @@ export function createWorkspaceEditLeaseProcessor(action: Action) {
     const body = bodyOf(request);
     try {
       const service = createServiceNowWorkspaceEditLeaseService();
-      const input = { workspaceSlug: cleanText(body.workspaceSlug), workspaceSysId: cleanText(body.workspaceSysId), leaseToken: cleanText(body.leaseToken) };
-      const result = action === "acquire" ? await service.acquire(input) : action === "resume" ? await service.resume(input) : action === "renew" ? await service.renew(input) : action === "release" ? await service.release(input) : await service.status(input);
+      const input = { workspaceSlug: cleanText(body.workspaceSlug), workspaceSysId: cleanText(body.workspaceSysId), leaseToken: cleanText(body.leaseToken), observedLeaseId: cleanText(body.observedLeaseId) };
+      const result = action === "end-previous-session" ? await service.endPreviousSession(input) : action === "acquire" ? await service.acquire(input) : action === "resume" ? await service.resume(input) : action === "renew" ? await service.renew(input) : action === "release" ? await service.release(input) : await service.status(input);
       send(action, result as WorkspaceEditLeaseResult, response);
     } catch (error) {
       gs.error(`[Docsera workspace edit lease ${action}] ${cleanText(error instanceof Error ? error.message : error) || "Unknown failure"}`);

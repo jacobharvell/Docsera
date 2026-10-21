@@ -12,7 +12,7 @@ import {
 type Awaitable<T> = T | Promise<T>;
 type Capability = { canAdminWorkspace: boolean; canEditWorkspace: boolean };
 type User = { displayName: string | null; sysId: string };
-type Reference = { workspaceSlug?: string; workspaceSysId?: string; leaseToken?: string };
+type Reference = { workspaceSlug?: string; workspaceSysId?: string; leaseToken?: string; observedLeaseId?: string };
 type ActiveWorkspaceGenerationResult =
   | { kind: "ready"; generation: WorkspaceLeaseGeneration }
   | { kind: "failed"; errorMessage: string; retryable: boolean; status: 409 | 500 };
@@ -104,7 +104,18 @@ export function createWorkspaceEditLeaseService(dependencies: Dependencies) {
     if (!matches(existing, resolved.currentUser.sysId, digest) || expired(existing, dependencies.currentTimestamp())) return { kind: "lost", currentHolder: buildWorkspaceLeaseHolder(existing, resolved.currentUser.sysId), errorMessage: "This workspace edit session has already ended." };
     return await dependencies.releaseExactLease({ leaseSysId: cleanText(existing?.sysId), workspaceKey: key, holderUserSysId: resolved.currentUser.sysId, verifierDigest: digest }) ? { kind: "released" } : { kind: "lost", currentHolder: buildWorkspaceLeaseHolder(await dependencies.loadLeaseByWorkspaceKey(key), resolved.currentUser.sysId), errorMessage: "This workspace edit session has already ended." };
   }
+  async function endPreviousSession(input: Reference): Promise<WorkspaceEditLeaseResult> {
+    const resolved = await context(input); if ("error" in resolved) return failed(resolved);
+    const observedId = cleanText(input.observedLeaseId);
+    if (!observedId) return { kind: "failed", errorMessage: "The observed editing session is required.", retryable: false, status: 400 };
+    const key = cleanText(resolved.workspace.sysId);
+    const lease = await dependencies.loadLeaseByWorkspaceKey(key);
+    if (!lease || cleanText(lease.sysId) !== observedId || cleanText(lease.holderUserSysId) !== cleanText(resolved.currentUser.sysId)) return { kind: "lost", currentHolder: null, errorMessage: "The previous editing session has changed or ended. Try Edit again." };
+    return await dependencies.releaseExactLease({ leaseSysId: observedId, workspaceKey: key, holderUserSysId: resolved.currentUser.sysId, verifierDigest: cleanText(lease.verifierDigest) })
+      ? { kind: "released" } : { kind: "lost", currentHolder: null, errorMessage: "The previous editing session has changed or ended. Try Edit again." };
+  }
   return {
+    endPreviousSession,
     acquire,
     validateHeld,
     renew,

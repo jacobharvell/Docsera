@@ -370,7 +370,7 @@ type WorkspaceLeaseState =
   | { state: "idle" | "acquiring" | "uncertain" | "recovery_required" | "recovering" }
   | { state: "transient_failure"; message: string }
   | ({ state: "held" } & WorkspaceEditLeaseHeld)
-  | { state: "blocked"; failure: "locked" | "lost" | "forbidden" | "transient" | "terminal"; holderDisplayName: string | null; message: string; sameUserDifferentSession: boolean };
+  | { state: "blocked"; failure: "locked" | "lost" | "forbidden" | "transient" | "terminal"; holderDisplayName: string | null; holderUserSysId?: string; message: string; sameUserDifferentSession: boolean; observedLeaseId?: string; releaseFailure?: boolean };
 type WorkspaceLeaseBinding = WorkspaceEditLeaseHeld & { bindingId: string; workspaceSlug: string; workspaceSysId: string };
 
 function workspaceLeaseStorageKey(workspaceSysId: string): string { return `${DOCSERA_WORKSPACE_LEASE_STORAGE_PREFIX}${cleanText(workspaceSysId)}`; }
@@ -573,18 +573,20 @@ function isCurrentDocumentReloadNavigation(): boolean {
   return false;
 }
 
-function createWorkspaceLeaseHolderNotice(result: { holderDisplayName: string | null; sameUserDifferentSession: boolean }, failure: "locked" | "lost"): WorkspaceLeaseState {
+function createWorkspaceLeaseHolderNotice(result: { holderDisplayName: string | null; holderUserSysId?: string; sameUserDifferentSession: boolean; observedLeaseId?: string }, failure: "locked" | "lost"): WorkspaceLeaseState {
   const holderDisplayName = cleanText(result.holderDisplayName) || null;
   const sameUserDifferentSession = Boolean(result.sameUserDifferentSession);
   return {
     state: "blocked",
     failure,
     holderDisplayName,
+    holderUserSysId: failure === "locked" && !sameUserDifferentSession ? result.holderUserSysId : undefined,
     sameUserDifferentSession,
+    observedLeaseId: failure === "locked" && sameUserDifferentSession ? result.observedLeaseId : undefined,
     message: sameUserDifferentSession
       ? "This workspace is already being edited in another tab or window for your account."
       : holderDisplayName
-        ? `This workspace is currently being edited by ${holderDisplayName}.`
+        ? `This workspace is currently being edited by: ${holderDisplayName}`
         : "This workspace is currently being edited by another user."
   };
 }
@@ -1289,6 +1291,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const [editAccessLost, setEditAccessLost] = useState(false);
   const [recoveryVersion, setRecoveryVersion] = useState(0);
   const [shellNotice, setShellNotice] = useState<ShellNoticeState | null>(null);
+  const [leaseAcquireNonce, setLeaseAcquireNonce] = useState(0);
+  const [endingPreviousSession, setEndingPreviousSession] = useState(false);
+  const endingPreviousSessionRef = useRef(false);
+  const leaseRecoveryContextRef = useRef("");
   const [workspaceLeaseState, setWorkspaceLeaseState] = useState<WorkspaceLeaseState>({ state: "idle" });
   const [editorRetryNonce, setEditorRetryNonce] = useState(0);
   const [workspacePagesRetryNonce, setWorkspacePagesRetryNonce] = useState(0);
@@ -2134,6 +2140,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const currentWorkspaceSlug = route.mode === "workspace" ? route.workspaceSlug : "";
   const currentWorkspaceSettingsIntent = route.mode === "workspace" ? route.settingsIntent : false;
   const requestedWorkspaceMode = route.mode === "workspace" ? route.workspaceMode : "live";
+  leaseRecoveryContextRef.current = `${route.mode}:${requestedWorkspaceMode}:${currentWorkspaceSlug}`;
   const currentWorkspacePageSlug = route.mode === "workspace" ? route.pageSlug : "";
   const currentWorkspaceLegacyPageId = route.mode === "workspace" ? route.legacyPageId : "";
   const loadedWorkspaceSlug = workspaceState.status === "success" ? workspaceState.data.slug : "";
@@ -3557,7 +3564,31 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         workspaceSysId
       });
     };
-  }, [currentWorkspaceSlug, hasAuthoringCapability, requestedWorkspaceMode, route.mode, serviceNowClient, workspaceState]);
+  }, [currentWorkspaceSlug, hasAuthoringCapability, requestedWorkspaceMode, route.mode, serviceNowClient, workspaceState, leaseAcquireNonce]);
+
+  async function endPreviousSession() {
+    const state = workspaceLeaseStateRef.current;
+    if (endingPreviousSessionRef.current || state.state !== "blocked" || state.failure !== "locked" || !state.sameUserDifferentSession || !state.observedLeaseId || workspaceState.status !== "success") return;
+    const workspace = workspaceState.data;
+    const operationGeneration = workspaceLeaseOperationGenerationRef.current;
+    const recoveryContext = leaseRecoveryContextRef.current;
+    const end = serviceNowClientRef.current.endPreviousWorkspaceEditSession;
+    if (!end) { setWorkspaceLeaseState({ ...createWorkspaceLeaseFailureNotice({ failure: "terminal", errorMessage: "Ending the previous session is unavailable." }), releaseFailure: true }); return; }
+    endingPreviousSessionRef.current = true;
+    setEndingPreviousSession(true);
+    try {
+      const result = await end({ workspaceSlug: workspace.slug, workspaceSysId: cleanText(workspace.sysId), observedLeaseId: state.observedLeaseId });
+      if (workspaceLeaseOperationGenerationRef.current !== operationGeneration || leaseRecoveryContextRef.current !== recoveryContext) return;
+      if (result.state === "released") {
+        setWorkspaceLeaseState({ state: "idle" });
+        if (requestedWorkspaceMode === "edit") setLeaseAcquireNonce((value) => value + 1);
+        else changeWorkspaceMode("edit");
+      }
+      else setWorkspaceLeaseState({ ...createWorkspaceLeaseFailureNotice({ failure: result.state === "failed" ? result.failure : "terminal", errorMessage: result.errorMessage }), releaseFailure: true });
+    } catch {
+      if (workspaceLeaseOperationGenerationRef.current === operationGeneration && leaseRecoveryContextRef.current === recoveryContext) setWorkspaceLeaseState({ ...createWorkspaceLeaseFailureNotice({ failure: "transient", errorMessage: "Could not end the previous editing session. Please try Edit again." }), releaseFailure: true });
+    } finally { endingPreviousSessionRef.current = false; setEndingPreviousSession(false); }
+  }
 
   useEffect(() => {
     if (workspaceLeaseState.state !== "held") return;
@@ -3942,7 +3973,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       return;
     }
 
-    if (requestedWorkspaceMode !== "edit" || activeWorkspaceMode === "edit" || workspaceEditLeasePending) {
+    if (requestedWorkspaceMode !== "edit" || activeWorkspaceMode === "edit" || workspaceEditLeasePending || (workspaceLeaseState.state === "blocked" && ((workspaceLeaseState.failure === "locked" && workspaceLeaseState.sameUserDifferentSession && workspaceLeaseState.observedLeaseId) || workspaceLeaseState.releaseFailure))) {
       return;
     }
 
@@ -3953,10 +3984,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           true,
           "deliberate_edit_exit"
         );
-  }, [activeWorkspaceMode, currentWorkspaceSettingsIntent, currentWorkspaceSlug, requestedWorkspaceMode, route.mode, workspaceEditLeasePending, workspaceState]);
+  }, [activeWorkspaceMode, currentWorkspaceSettingsIntent, currentWorkspaceSlug, requestedWorkspaceMode, route.mode, workspaceEditLeasePending, workspaceState, workspaceLeaseState]);
 
   useEffect(() => {
-    if (route.mode !== "workspace" || workspaceEditLeasePending || !workspacePagesLoaded) {
+    if (route.mode !== "workspace" || workspaceEditLeasePending || !workspacePagesLoaded || (requestedWorkspaceMode === "edit" && workspaceLeaseState.state === "blocked" && ((workspaceLeaseState.failure === "locked" && workspaceLeaseState.sameUserDifferentSession && workspaceLeaseState.observedLeaseId) || workspaceLeaseState.releaseFailure))) {
       return;
     }
 
@@ -4012,6 +4043,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     requestedWorkspaceMode,
     route.mode,
     workspaceEditLeasePending,
+    workspaceLeaseState,
     workspacePagesLoaded
   ]);
 
@@ -7721,6 +7753,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               createPageDisabledReason={createPageDisabledReason}
               canEditPageBody={hasAuthoringCapability && !editAccessLost && !workspaceCommandBlocksCurrentWorkspaceWrites}
               accessLossMessage={workspaceLeaseState.state === "blocked" ? workspaceLeaseState.message : undefined}
+              leaseConflict={workspaceLeaseState.state === "blocked" && workspaceLeaseState.failure === "locked"}
+              leaseHolder={workspaceLeaseState.state === "blocked" && workspaceLeaseState.failure === "locked" && !workspaceLeaseState.sameUserDifferentSession ? { displayName: workspaceLeaseState.holderDisplayName, userSysId: workspaceLeaseState.holderUserSysId } : undefined}
+              onEndPreviousSession={workspaceLeaseState.state === "blocked" && workspaceLeaseState.failure === "locked" && workspaceLeaseState.sameUserDifferentSession && workspaceLeaseState.observedLeaseId ? endPreviousSession : undefined}
+              onRetryEdit={workspaceLeaseState.state === "blocked" && workspaceLeaseState.releaseFailure ? () => { setWorkspaceLeaseState({ state: "idle" }); setLeaseAcquireNonce((value) => value + 1); } : undefined}
+              endingPreviousSession={endingPreviousSession}
               canManagePageSettings={canManagePageSettings}
               collapsedPageIds={currentModeUiState.collapsedPageIds}
               currentWorkspaceSlug={workspaceState.status === "success" ? workspaceState.data.slug : currentWorkspaceSlug}

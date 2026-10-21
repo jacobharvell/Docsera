@@ -31,6 +31,11 @@ type WorkspaceShellProps = {
   loadMedia?: (input: { mediaId: string; signal?: AbortSignal }) => Promise<Blob | null>;
   editAccessLost: boolean;
   accessLossMessage?: string;
+  leaseConflict?: boolean;
+  leaseHolder?: { displayName: string | null; userSysId?: string };
+  onEndPreviousSession?: () => void;
+  onRetryEdit?: () => void;
+  endingPreviousSession?: boolean;
   editorFailure: PageEditorHostFailure | null;
   authoringSurface?: WorkspaceAuthoringSurface;
   markdownSourceEditable?: boolean;
@@ -177,6 +182,11 @@ export function WorkspaceShell({
   loadMedia,
   editAccessLost,
   accessLossMessage,
+  leaseConflict,
+  leaseHolder,
+  onEndPreviousSession,
+  onRetryEdit,
+  endingPreviousSession,
   editorFailure,
   authoringSurface = "visual",
   markdownSourceEditable = true,
@@ -455,6 +465,11 @@ export function WorkspaceShell({
           canEditPageBody={canEditPageBody}
           canManagePageSettings={canManagePageSettings}
           accessLossMessage={accessLossMessage}
+          leaseConflict={leaseConflict}
+          leaseHolder={leaseHolder}
+          onEndPreviousSession={onEndPreviousSession}
+          onRetryEdit={onRetryEdit}
+          endingPreviousSession={endingPreviousSession}
           editorInitialSavedEnvelope={editorInitialSavedEnvelope}
           authoringSurface={authoringSurface}
           markdownSourceEditable={markdownSourceEditable}

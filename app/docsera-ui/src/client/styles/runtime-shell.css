@@ -6562,3 +6562,13 @@ html[data-docsera-theme="dark"] .docsera-main__callout-icon {
   margin-bottom: 8px;
   font-size: 12px;
 }
+
+.docsera-main__holder-link {
+  color: var(--docsera-document-link-color);
+  text-decoration: underline;
+  text-decoration-thickness: var(--docsera-document-link-decoration-thickness);
+  text-underline-offset: var(--docsera-document-link-underline-offset);
+}
+.docsera-main__holder-link:hover {
+  text-decoration-thickness: var(--docsera-document-link-hover-decoration-thickness);
+}

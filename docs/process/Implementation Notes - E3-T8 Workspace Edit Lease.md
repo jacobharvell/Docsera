@@ -166,3 +166,15 @@
 - Delete and publish intent are not restored.
 - E3-T9 change-entry mutations, pending-changes APIs, Publish/Discard workflow, and the Changes-panel UI remain out of scope.
 - Legacy page-lock server routes, metadata, cleanup, and direct tests remain present for deferred retirement, but no active client lifecycle or mutation authority depends on them.
+
+### Ending an observed session
+
+A same-account lock may include the observed lease record ID. The end-previous-session operation checks the authenticated user's current workspace Edit entitlement, reloads the lease, verifies its record ID and holder, and passes the server-loaded digest to the existing exact-release adapter. A missing or changed record is recoverable and does not authorize releasing its replacement. The client then uses ordinary acquisition and binding; the old token no longer validates. The existing adapter's read and delete are not represented as an atomic transaction.
+
+
+### Same-account recovery presentation
+
+A same-account lease conflict exposes recovery even when no page is selected. An unsuccessful release remains visible on the requested Edit route until the user retries Edit (a fresh ordinary acquisition) or returns to Live; page-route canonicalization waits during this recovery.
+
+
+Cross-account locked responses carry the holder user sys_id from the server lease record for the recovery card. The client links a named holder to the core user record only when the ID is a valid ServiceNow sys_id; otherwise it shows plain text. Same-account conflicts retain the observed lease ID for takeover and do not expose a profile link.

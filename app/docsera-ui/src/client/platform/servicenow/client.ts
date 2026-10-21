@@ -228,7 +228,7 @@ function resolvePagePublishPath(pageCollectionPath: string): string {
   return `${normalizedPath}/publish`;
 }
 
-function resolveWorkspaceEditLeasePath(pageCollectionPath: string, action: "acquire" | "resume" | "renew" | "release" | "status"): string {
+function resolveWorkspaceEditLeasePath(pageCollectionPath: string, action: "acquire" | "resume" | "renew" | "release" | "status" | "end-previous-session"): string {
   const normalizedPath = cleanText(pageCollectionPath).replace(/\/pages$/i, "").replace(/\/+$/g, "");
   return `${normalizedPath}/workspaces/edit-lease/${action}`;
 }
@@ -878,7 +878,8 @@ function normalizeWorkspaceLeaseLockedResult(candidate: unknown): WorkspaceEditL
   return {
     state: "locked",
     holderDisplayName: cleanText(result.holderDisplayName) || null,
-    sameUserDifferentSession: Boolean(result.sameUserDifferentSession)
+    sameUserDifferentSession: Boolean(result.sameUserDifferentSession),
+    ...(result.sameUserDifferentSession && cleanText(result.observedLeaseId) ? { observedLeaseId: cleanText(result.observedLeaseId) } : {})
   };
 }
 
@@ -1120,7 +1121,7 @@ function normalizeWorkspaceDiscardPageFailedResult(body: unknown, fallback: stri
   };
 }
 
-function isWorkspaceEditLeaseStateAllowed(action: "acquire" | "resume" | "renew" | "release" | "status", state: string): boolean {
+function isWorkspaceEditLeaseStateAllowed(action: "acquire" | "resume" | "renew" | "release" | "status" | "end-previous-session", state: string): boolean {
   switch (action) {
     case "acquire":
       return state === "held" || state === "locked" || state === "failed";
@@ -1128,6 +1129,7 @@ function isWorkspaceEditLeaseStateAllowed(action: "acquire" | "resume" | "renew"
     case "renew":
       return state === "held" || state === "lost" || state === "failed";
     case "release":
+    case "end-previous-session":
       return state === "released" || state === "lost" || state === "failed";
     case "status":
       return state === "held" || state === "unlocked" || state === "locked" || state === "failed";
@@ -2187,8 +2189,8 @@ async function resolvePageMoveResult(path: string, input: PageMoveInput): Promis
 
 async function resolveWorkspaceEditLeaseResult(
   path: string,
-  input: WorkspaceEditLeaseReferenceInput,
-  action: "acquire" | "resume" | "renew" | "release" | "status"
+  input: WorkspaceEditLeaseReferenceInput & { observedLeaseId?: string },
+  action: "acquire" | "resume" | "renew" | "release" | "status" | "end-previous-session"
 ): Promise<WorkspaceEditLeaseAcquireResult | WorkspaceEditLeaseRenewResult | WorkspaceEditLeaseReleaseResult | WorkspaceEditLeaseStatusResult> {
   const correlationId = createClientCorrelationId();
   const startedAt = new Date().toISOString();
@@ -2224,7 +2226,7 @@ async function resolveWorkspaceEditLeaseResult(
     return result;
   };
   try {
-    const response = await requestJson<unknown>(path, { method: "POST", body: JSON.stringify({ workspaceSlug: cleanText(input.workspaceSlug), workspaceSysId: cleanText(input.workspaceSysId), ...(cleanText(input.leaseToken) ? { leaseToken: cleanText(input.leaseToken) } : {}) }), headers: { "Content-Type": "application/json" }, keepalive: action === "release" });
+    const response = await requestJson<unknown>(path, { method: "POST", body: JSON.stringify({ workspaceSlug: cleanText(input.workspaceSlug), workspaceSysId: cleanText(input.workspaceSysId), ...(cleanText(input.leaseToken) ? { leaseToken: cleanText(input.leaseToken) } : {}), ...(cleanText(input.observedLeaseId) ? { observedLeaseId: cleanText(input.observedLeaseId) } : {}) }), headers: { "Content-Type": "application/json" }, keepalive: action === "release" });
     const result = unwrapServiceNowEnvelope(response.body);
     const error = isPlainObject(result) && isPlainObject(result.error) ? result.error : null;
     const resultState = isPlainObject(result) ? cleanText(result.state) : "";
@@ -2246,7 +2248,7 @@ async function resolveWorkspaceEditLeaseResult(
       if (resultState === "failed") return finish(response.status, normalizeWorkspaceLeaseFailedResult(result));
       return finish(response.status, normalizeWorkspaceLeaseFailedResult(result));
     }
-    if (response.status === 409 && error && cleanText(error.code) === "workspace_locked") return finish(response.status, { state: "locked", holderDisplayName: cleanText(error.holderDisplayName) || null, sameUserDifferentSession: Boolean(error.sameUserDifferentSession) } satisfies WorkspaceEditLeaseLocked);
+    if (response.status === 409 && error && cleanText(error.code) === "workspace_locked") return finish(response.status, { state: "locked", holderDisplayName: cleanText(error.holderDisplayName) || null, ...(!error.sameUserDifferentSession && cleanText(error.holderUserSysId) ? { holderUserSysId: cleanText(error.holderUserSysId) } : {}), sameUserDifferentSession: Boolean(error.sameUserDifferentSession), ...(error.sameUserDifferentSession && cleanText(error.observedLeaseId) ? { observedLeaseId: cleanText(error.observedLeaseId) } : {}) } satisfies WorkspaceEditLeaseLocked);
     if (response.status === 409 && error && cleanText(error.code) === "workspace_lease_lost") {
       return finish(response.status, {
         state: "lost",
@@ -2455,6 +2457,7 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
   const workspaceEditLeaseResumePath = resolveWorkspaceEditLeasePath(pageCollectionPath, "resume");
   const workspaceEditLeaseRenewPath = resolveWorkspaceEditLeasePath(pageCollectionPath, "renew");
   const workspaceEditLeaseReleasePath = resolveWorkspaceEditLeasePath(pageCollectionPath, "release");
+  const workspaceEditLeaseEndPreviousPath = resolveWorkspaceEditLeasePath(pageCollectionPath, "end-previous-session");
   const workspaceEditLeaseStatusPath = resolveWorkspaceEditLeasePath(pageCollectionPath, "status");
   const workspacePendingChangesPath = resolveWorkspacePendingChangesPath(pageCollectionPath);
   const workspaceDiscardAllPath = resolveWorkspaceDiscardAllPath(collectionPath);
@@ -2768,6 +2771,7 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
     async acquireWorkspaceEditLease(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspaceEditLeaseAcquireResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseAcquirePath, input, "acquire") as Promise<WorkspaceEditLeaseAcquireResult>; },
     async resumeWorkspaceEditLease(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspaceEditLeaseRenewResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseResumePath, input, "resume") as Promise<WorkspaceEditLeaseRenewResult>; },
     async renewWorkspaceEditLease(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspaceEditLeaseRenewResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseRenewPath, input, "renew") as Promise<WorkspaceEditLeaseRenewResult>; },
+    async endPreviousWorkspaceEditSession(input: WorkspaceEditLeaseReferenceInput & { observedLeaseId: string }): Promise<WorkspaceEditLeaseReleaseResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseEndPreviousPath, input, "end-previous-session") as Promise<WorkspaceEditLeaseReleaseResult>; },
     async releaseWorkspaceEditLease(input: WorkspaceEditLeaseReferenceInput & { keepalive?: boolean }): Promise<WorkspaceEditLeaseReleaseResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseReleasePath, input, "release") as Promise<WorkspaceEditLeaseReleaseResult>; },
     async getWorkspaceEditLeaseStatus(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspaceEditLeaseStatusResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseStatusPath, input, "status") as Promise<WorkspaceEditLeaseStatusResult>; },
     async getWorkspacePendingChanges(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspacePendingChangesResult> { return resolveWorkspacePendingChangesResult(workspacePendingChangesPath, input); },

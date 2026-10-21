@@ -13,7 +13,7 @@ export type WorkspaceEditLeaseRecord = {
   workspaceSysId: string;
 };
 
-export type WorkspaceLeaseHolder = { displayName: string | null; sameUserDifferentSession: boolean };
+export type WorkspaceLeaseHolder = { displayName: string | null; sameUserDifferentSession: boolean; holderUserSysId?: string; observedLeaseId?: string };
 export type WorkspaceLeaseGeneration = {
   changeSetId: string;
   changeSetRevision: number;
@@ -28,9 +28,10 @@ export type WorkspaceEditLeaseResult =
   | { kind: "failed"; errorMessage: string; retryable: boolean; status: 400 | 403 | 404 | 409 | 500 };
 
 export function cleanText(value: unknown): string { return typeof value === "string" ? value.trim() : ""; }
-export function buildWorkspaceLeaseHolder(lease: Pick<WorkspaceEditLeaseRecord, "holderDisplayName" | "holderUserSysId"> | null, currentUserSysId: string): WorkspaceLeaseHolder | null {
+export function buildWorkspaceLeaseHolder(lease: Pick<WorkspaceEditLeaseRecord, "holderDisplayName" | "holderUserSysId" | "sysId"> | null, currentUserSysId: string): WorkspaceLeaseHolder | null {
   if (!lease) return null;
-  return { displayName: cleanText(lease.holderDisplayName) || null, sameUserDifferentSession: cleanText(lease.holderUserSysId) === cleanText(currentUserSysId) };
+  const sameUserDifferentSession = cleanText(lease.holderUserSysId) === cleanText(currentUserSysId);
+  return { displayName: cleanText(lease.holderDisplayName) || null, sameUserDifferentSession, ...(!sameUserDifferentSession && cleanText(lease.holderUserSysId) ? { holderUserSysId: cleanText(lease.holderUserSysId) } : {}), ...(sameUserDifferentSession && cleanText(lease.sysId) ? { observedLeaseId: cleanText(lease.sysId) } : {}) };
 }
 export function buildWorkspaceLockedMessage(holder: WorkspaceLeaseHolder | null): string {
   if (holder?.sameUserDifferentSession) return "This workspace is already being edited in another tab or window for your account.";

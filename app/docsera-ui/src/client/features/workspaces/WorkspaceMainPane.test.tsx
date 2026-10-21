@@ -167,6 +167,24 @@ function createEmptyWorkspaceProps(
   };
 }
 
+describe("empty workspace session recovery", () => {
+  it("shows recovery controls without a selected page", () => {
+    const end = vi.fn();
+    render(<WorkspaceMainPane {...createEmptyWorkspaceProps({ workspaceMode: "live", editAccessLost: true, leaseConflict: true, onEndPreviousSession: end })} />);
+    fireEvent.click(screen.getByRole("button", { name: "End previous session" }));
+    expect(end).toHaveBeenCalledOnce();
+    expect(screen.queryByText("No published pages")).not.toBeInTheDocument();
+  });
+
+  it("preserves normal empty views without a conflict", () => {
+    const view = render(<WorkspaceMainPane {...createEmptyWorkspaceProps({ workspaceMode: "live" })} />);
+    expect(screen.getByText("No published pages")).toBeInTheDocument();
+    view.rerender(<WorkspaceMainPane {...createEmptyWorkspaceProps()} />);
+    expect(screen.getByText("No pages yet")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "New page" })).toBeInTheDocument();
+  });
+});
+
 function mockReducedMotion(matches: boolean): () => void {
   const originalMatchMedia = window.matchMedia;
   Object.defineProperty(window, "matchMedia", {

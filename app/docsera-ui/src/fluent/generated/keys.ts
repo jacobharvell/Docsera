@@ -287,6 +287,10 @@ declare global {
                         table: 'sys_ws_operation'
                         id: 'd9b512c471e84df9af57ae21b4db3414'
                     }
+                    'docsera-runtime-workspace-edit-lease-end-previous-session-post': {
+                        table: 'sys_ws_operation'
+                        id: '9cce1539896846b09583eaf9f1e116eb'
+                    }
                     'docsera-runtime-workspace-edit-lease-release-post': {
                         table: 'sys_ws_operation'
                         id: 'abf52c7cd4094770960c81a515336b67'
@@ -456,6 +460,10 @@ declare global {
                     'src_server_api_docsera-runtime-workspace-edit-lease-acquire_ts': {
                         table: 'sys_module'
                         id: '59e85952305f4bb2b7176d43b85b5dbf'
+                    }
+                    'src_server_api_docsera-runtime-workspace-edit-lease-end-previous-session_ts': {
+                        table: 'sys_module'
+                        id: '96f746b211fc453b9b32f1029d478038'
                     }
                     'src_server_api_docsera-runtime-workspace-edit-lease-release_ts': {
                         table: 'sys_module'

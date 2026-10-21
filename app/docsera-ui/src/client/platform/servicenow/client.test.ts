@@ -1846,6 +1846,19 @@ describe("service now client page creation", () => {
     });
   });
 
+  it("preserves only a same-account observed lease ID and submits it to end the session", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse(409, { error: { code: "workspace_locked", sameUserDifferentSession: true, observedLeaseId: "lease-1" } })).mockResolvedValueOnce(createJsonResponse(409, { error: { code: "workspace_locked", sameUserDifferentSession: false, observedLeaseId: "other-id", holderUserSysId: "user-1" } })).mockResolvedValueOnce(createJsonResponse(200, { result: { state: "released" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createServiceNowClient(createRuntime());
+    expect(await client.acquireWorkspaceEditLease?.({ workspaceSlug: "product-docs" })).toMatchObject({ state: "locked", observedLeaseId: "lease-1" });
+    const otherLock = await client.acquireWorkspaceEditLease?.({ workspaceSlug: "product-docs" });
+    expect(otherLock).not.toHaveProperty("observedLeaseId");
+    expect(otherLock).toMatchObject({ holderUserSysId: "user-1" });
+    expect(await client.endPreviousWorkspaceEditSession?.({ workspaceSlug: "product-docs", observedLeaseId: "lease-1" })).toEqual({ state: "released" });
+    expect(fetchMock.mock.calls[2][0]).toContain("/workspaces/edit-lease/end-previous-session");
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({ observedLeaseId: "lease-1" });
+  });
+
   it("normalizes workspace lease status without exposing the plaintext token", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse(200, {
       result: {

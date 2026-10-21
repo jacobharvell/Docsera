@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const { service } = vi.hoisted(() => ({
   service: {
     acquire: vi.fn(),
+    endPreviousSession: vi.fn(),
     release: vi.fn(),
     renew: vi.fn(),
     resume: vi.fn(),
@@ -34,10 +35,27 @@ function responseRecorder() {
 describe("workspace edit lease route", () => {
   beforeEach(() => {
     service.acquire.mockReset();
+    service.endPreviousSession.mockReset();
     service.release.mockReset();
     service.renew.mockReset();
     service.resume.mockReset();
     service.status.mockReset();
+  });
+
+  it("exposes the observed ID only for the current holder and routes the end request", async () => {
+    const response = responseRecorder();
+    service.acquire.mockResolvedValue({ kind: "locked", currentHolder: { displayName: "Editor", sameUserDifferentSession: true, observedLeaseId: "lease-1", holderUserSysId: "private" } });
+    await createWorkspaceEditLeaseProcessor("acquire")({ body: { workspaceSlug: "product-docs" } }, response);
+    expect(response.body).toMatchObject({ error: { observedLeaseId: "lease-1" } });
+    expect((response.body as { error: Record<string, unknown> }).error.holderUserSysId).toBeUndefined();
+    service.acquire.mockResolvedValue({ kind: "locked", currentHolder: { displayName: "Other", sameUserDifferentSession: false, observedLeaseId: "secret-id", holderUserSysId: "user-1" } });
+    await createWorkspaceEditLeaseProcessor("acquire")({ body: { workspaceSlug: "product-docs" } }, response);
+    expect((response.body as { error: Record<string, unknown> }).error.observedLeaseId).toBeUndefined();
+    expect((response.body as { error: Record<string, unknown> }).error.holderUserSysId).toBe("user-1");
+    service.endPreviousSession.mockResolvedValue({ kind: "released" });
+    await createWorkspaceEditLeaseProcessor("end-previous-session")({ body: { workspaceSlug: "product-docs", observedLeaseId: "lease-1" } }, response);
+    expect(service.endPreviousSession).toHaveBeenCalledWith(expect.objectContaining({ workspaceSlug: "product-docs", observedLeaseId: "lease-1" }));
+    expect(response.body).toEqual({ result: { state: "released" } });
   });
 
   it("returns the generation pair with held acquire responses", async () => {

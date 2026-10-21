@@ -540,6 +540,73 @@ describe("App workspace shell integration", () => {
     expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
   });
 
+  it.each([true, false])("shows the other editor profile in recovery with selected page: %s", async (selected) => {
+    const acquireWorkspaceEditLease = vi.fn().mockResolvedValue({ state: "locked", holderDisplayName: "System Administrator", holderUserSysId: "6816f79cc0a8016401c5a33be04be441", sameUserDifferentSession: false });
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) => createPageListResult(mode === "edit" ? "edit" : "live", "product-docs", selected ? [createPageRecord()] : []));
+    renderApp(selected ? "/?workspace=product-docs&mode=edit&page=overview" : "/?workspace=product-docs&mode=edit", { acquireWorkspaceEditLease, listPages });
+    expect(await screen.findByRole("heading", { name: "Editing session already active" })).toBeInTheDocument();
+    expect(screen.queryByText("Access lost")).not.toBeInTheDocument();
+    const link = screen.getByRole("link", { name: "System Administrator" });
+    expect(link).toHaveAttribute("href", "/nav_to.do?uri=sys_user.do%3Fsys_id%3D6816f79cc0a8016401c5a33be04be441");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(screen.getByRole("button", { name: "Return to Live" })).toHaveClass("docsera-modal__secondary");
+  });
+
+  it.each([undefined, "invalid"])("renders a safe holder name without a valid ID: %s", async (holderUserSysId) => {
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease: vi.fn().mockResolvedValue({ state: "locked", holderDisplayName: "System Administrator", holderUserSysId, sameUserDifferentSession: false }) });
+    expect(await screen.findByText("This workspace is currently being edited by: System Administrator")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "System Administrator" })).not.toBeInTheDocument();
+  });
+
+  it("ends an observed same-account session once and reacquires editing", async () => {
+    const release = createDeferred<{ state: "released" }>();
+    const endPreviousWorkspaceEditSession = vi.fn(() => release.promise);
+    const acquireWorkspaceEditLease = vi.fn().mockResolvedValueOnce({ state: "locked", holderDisplayName: "Editor", sameUserDifferentSession: true, observedLeaseId: "lease-1" }).mockResolvedValue({ state: "held", leaseToken: "new-token", heartbeatIntervalMs: 60000, staleAfterMs: 300000, changeSetId: "change-set-001", changeSetRevision: 9 });
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease, endPreviousWorkspaceEditSession });
+    const button = await screen.findByRole("button", { name: "End previous session" });
+    expect(screen.getByRole("heading", { name: "Editing session already active" })).toBeInTheDocument();
+    expect(screen.queryByText("Access lost")).not.toBeInTheDocument();
+    expect(button).toHaveClass("docsera-modal__primary");
+    fireEvent.click(button); fireEvent.click(button);
+    expect(endPreviousWorkspaceEditSession).toHaveBeenCalledTimes(1);
+    expect(button).toBeDisabled();
+    await act(async () => { release.resolve({ state: "released" }); });
+    await waitFor(() => expect(acquireWorkspaceEditLease).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeInTheDocument());
+  });
+
+  it("recovers a same-account session when there are no published pages", async () => {
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+    const acquireWorkspaceEditLease = vi.fn().mockResolvedValueOnce({ state: "locked", holderDisplayName: "Editor", sameUserDifferentSession: true, observedLeaseId: "lease-1" }).mockResolvedValue({ state: "held", leaseToken: "new-token", heartbeatIntervalMs: 60000, staleAfterMs: 300000, changeSetId: "change-set-001", changeSetRevision: 9 });
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) => createPageListResult(mode === "edit" ? "edit" : "live", "product-docs", []));
+    renderApp("/?workspace=product-docs&mode=edit", { acquireWorkspaceEditLease, listPages, endPreviousWorkspaceEditSession: vi.fn().mockResolvedValue({ state: "released" }) });
+    fireEvent.click(await screen.findByRole("button", { name: "End previous session" }));
+    await waitFor(() => expect(acquireWorkspaceEditLease).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("No pages yet")).toBeInTheDocument();
+  });
+
+  it("shows release failure and allows returning to Live", async () => {
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+    const acquireWorkspaceEditLease = vi.fn().mockResolvedValue({ state: "locked", holderDisplayName: "Editor", sameUserDifferentSession: true, observedLeaseId: "lease-1" });
+    const endPreviousWorkspaceEditSession = vi.fn().mockResolvedValue({ state: "lost", errorMessage: "The session changed.", holderDisplayName: null, sameUserDifferentSession: false });
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease, endPreviousWorkspaceEditSession });
+    fireEvent.click(await screen.findByRole("button", { name: "End previous session" }));
+    expect(await screen.findByText("The session changed.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "End previous session" })).not.toBeInTheDocument();
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(screen.getByText("The session changed.")).toBeInTheDocument();
+    expect(window.location.search).toContain("mode=edit");
+    fireEvent.click(screen.getByRole("button", { name: "Retry Edit" }));
+    expect(await screen.findByRole("button", { name: "End previous session" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "End previous session" }));
+    expect(await screen.findByText("The session changed.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Return to Live" }));
+    await waitFor(() => expect(window.location.search).not.toContain("mode=edit"));
+  });
+
   it("animates direct refresh into Edit once after the lease and editor become ready", async () => {
     editorHostMockState.readyDelayMs = 25;
     const lease = createDeferred<Awaited<ReturnType<NonNullable<ServiceNowClient["acquireWorkspaceEditLease"]>>>>();

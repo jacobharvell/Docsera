@@ -18,7 +18,7 @@ function createHarness() {
     evaluateWorkspaceCapabilities: () => ({ canAdminWorkspace: false, canEditWorkspace: allowed }),
     getCurrentUser: () => currentUser,
     isLeaseExpired: ({ currentTimestamp, lastSeenAt, staleAfterMs }) => new Date(`${currentTimestamp}Z`).getTime() - new Date(`${lastSeenAt}Z`).getTime() > staleAfterMs,
-    insertLease: (next) => { if (lease) return "conflict"; lease = { ...next, sysId: "lease-1" }; return "created"; },
+    insertLease: (next) => { if (lease) return "conflict"; lease = { ...next, sysId: `lease-${sequence}` }; return "created"; },
     deleteExactExpiredLease: ({ currentTimestamp, expectedLastSeenAt, expectedLeaseSysId, workspaceKey }) => {
       if (new Date(`${currentTimestamp}Z`).getTime() - new Date(`${expectedLastSeenAt}Z`).getTime() <= 300000) return false;
       if (simulateDeleteMiss && lease && lease.sysId === expectedLeaseSysId) {
@@ -65,6 +65,29 @@ describe("workspace edit lease service", () => {
     expect((await service.release({ workspaceSlug: "product-docs", leaseToken: "wrong" })).kind).toBe("lost");
     expect((await service.release({ workspaceSlug: "product-docs", leaseToken: acquired.leaseToken })).kind).toBe("released");
     expect((await service.acquire({ workspaceSlug: "product-docs" })).kind).toBe("held");
+  });
+
+  it("ends only the owner?s observed session and invalidates its credential", async () => {
+    const { service, setUser, setAllowed, getLease } = createHarness();
+    const old = await service.acquire({ workspaceSlug: "product-docs" });
+    if (old.kind !== "held") throw new Error("expected lease");
+    expect(await service.acquire({ workspaceSlug: "product-docs" })).toMatchObject({ kind: "locked", currentHolder: { observedLeaseId: "lease-1", sameUserDifferentSession: true } });
+    setUser({ displayName: "Other", sysId: "user-2" });
+    const other = await service.acquire({ workspaceSlug: "product-docs" });
+    expect(other).toMatchObject({ kind: "locked", currentHolder: { sameUserDifferentSession: false } });
+    if (other.kind === "locked") { expect(other.currentHolder.observedLeaseId).toBeUndefined(); expect(other.currentHolder.holderUserSysId).toBe("user-1"); }
+    expect((await service.endPreviousSession({ workspaceSlug: "product-docs", observedLeaseId: "lease-1" })).kind).toBe("lost");
+    setUser({ displayName: "Editor One", sysId: "user-1" });
+    setAllowed(false);
+    expect(await service.endPreviousSession({ workspaceSlug: "product-docs", observedLeaseId: "lease-1" })).toMatchObject({ kind: "failed", status: 403 });
+    setAllowed(true);
+    expect(await service.endPreviousSession({ workspaceSlug: "product-docs" })).toMatchObject({ kind: "failed", status: 400 });
+    expect((await service.endPreviousSession({ workspaceSlug: "product-docs", observedLeaseId: "lease-1" })).kind).toBe("released");
+    expect((await service.validateHeld({ workspaceSlug: "product-docs", leaseToken: old.leaseToken })).kind).toBe("lost");
+    expect((await service.renew({ workspaceSlug: "product-docs", leaseToken: old.leaseToken })).kind).toBe("lost");
+    expect((await service.acquire({ workspaceSlug: "product-docs" })).kind).toBe("held");
+    expect((await service.endPreviousSession({ workspaceSlug: "product-docs", observedLeaseId: "lease-1" })).kind).toBe("lost");
+    expect(getLease()?.sysId).toBe("lease-2");
   });
 
   it("requires authoring authorization and prevents a revoked holder from renewing", async () => {

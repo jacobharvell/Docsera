@@ -35,6 +35,11 @@ type WorkspaceMainPaneProps = {
   canManagePageSettings: boolean;
   editAccessLost: boolean;
   accessLossMessage?: string;
+  leaseConflict?: boolean;
+  leaseHolder?: { displayName: string | null; userSysId?: string };
+  onEndPreviousSession?: () => void;
+  onRetryEdit?: () => void;
+  endingPreviousSession?: boolean;
   pageTitleActive: boolean;
   pageTitleSaveError?: string;
   pageTitleValidationError?: string;
@@ -275,6 +280,11 @@ export function WorkspaceMainPane({
   canManagePageSettings,
   editAccessLost,
   accessLossMessage,
+  leaseConflict,
+  leaseHolder,
+  onEndPreviousSession,
+  onRetryEdit,
+  endingPreviousSession,
   pageTitleActive,
   pageTitleSaveError,
   pageTitleValidationError,
@@ -380,6 +390,32 @@ export function WorkspaceMainPane({
     );
   }
 
+  const holderName = leaseHolder?.displayName?.trim();
+  const holderId = leaseHolder?.userSysId?.trim();
+  const holderUrl = holderName && holderId && /^[0-9a-f]{32}$/i.test(holderId) ? `/nav_to.do?uri=sys_user.do%3Fsys_id%3D${holderId}` : null;
+  const accessLossCard = (
+    <section className="docsera-main__access-loss" role="alert">
+      {!leaseConflict ? <p className="docsera-main__eyebrow">Access lost</p> : null}
+      <h2 className="docsera-main__recovery-title">{leaseConflict ? "Editing session already active" : "Authoring access is no longer available"}</h2>
+      <p className="docsera-main__lede">{holderUrl ? <>This workspace is currently being edited by: <a className="docsera-main__holder-link" href={holderUrl} target="_blank" rel="noopener noreferrer">{holderName}</a></> : accessLossMessage || "Further draft actions are disabled for this session. Return to Live to reload the published workspace view."}</p>
+      <div className="docsera-main__recovery-actions">
+        {onEndPreviousSession ? <button type="button" className="docsera-modal__primary" disabled={endingPreviousSession} onClick={onEndPreviousSession}>End previous session</button> : null}
+        {onRetryEdit ? <button type="button" className="docsera-modal__primary" onClick={onRetryEdit}>Retry Edit</button> : null}
+        <button type="button" className="docsera-modal__secondary" onClick={onReturnToLive}>Return to Live</button>
+      </div>
+    </section>
+  );
+
+  if (!page && editAccessLost) {
+    return (
+      <main className="docsera-main" aria-label="Editing session recovery">
+        <article className="docsera-main__surface docsera-main__surface--empty">
+          {accessLossCard}
+        </article>
+      </main>
+    );
+  }
+
   if (!page) {
     const isEditMode = workspaceMode === "edit";
 
@@ -461,16 +497,7 @@ export function WorkspaceMainPane({
         ) : null}
 
         {editAccessLost ? (
-          <section className="docsera-main__access-loss" role="alert">
-            <p className="docsera-main__eyebrow">Access lost</p>
-            <h2 className="docsera-main__recovery-title">Authoring access is no longer available</h2>
-            <p className="docsera-main__lede">
-              {accessLossMessage || "Further draft actions are disabled for this session. Return to Live to reload the published workspace view."}
-            </p>
-            <button type="button" className="docsera-main__secondary-action" onClick={onReturnToLive}>
-              Return to Live
-            </button>
-          </section>
+          accessLossCard
         ) : workspaceMode === "live" ? (
           showBodyPendingPlaceholder ? (
             <section className="docsera-main__pending" aria-label="Loading page content" role="status">
