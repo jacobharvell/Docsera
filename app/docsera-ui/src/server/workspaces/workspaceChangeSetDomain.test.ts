@@ -80,3 +80,65 @@ describe("workspace change-set foundation", () => {
   it("fails cross-workspace snapshots during selector switching", () => { const staged = readyStage(); staged.snapshotSets[1].workspaceId = "other"; expect(() => switchSelectors(staged, token(), { commandId: "publish-1", kind: "publish", successorChangeSetId: "set-2", snapshotSetId: "snap-2" })).toThrow("exact active command"); });
   it("backfill validates both selected targets, recovers only valid partial selectors, and otherwise fails closed", () => { const complete = backfillWorkspaceFoundation(null, { workspaceId: "ws", snapshotSetId: "snap", changeSetId: "set", legacyPublishedPages: [page("root")] }); if (complete.kind !== "ready") throw new Error("expected init"); expect(backfillWorkspaceFoundation(complete.state, { workspaceId: "ws", snapshotSetId: "snap", changeSetId: "set", legacyPublishedPages: [] })).toMatchObject({ kind: "ready", recovered: false }); for (const mutate of [(s: typeof complete.state) => { s.selectors.publishedSnapshotSetId = "missing"; }, (s: typeof complete.state) => { s.selectors.activeChangeSetId = "missing"; }, (s: typeof complete.state) => { s.snapshotSets[0].workspaceId = "other"; }, (s: typeof complete.state) => { s.snapshotSets[0].readiness = "staging"; }, (s: typeof complete.state) => { s.changeSets[0].state = "staged"; }]) { const state = structuredClone(complete.state); mutate(state); expect(backfillWorkspaceFoundation(state, { workspaceId: "ws", snapshotSetId: "different", changeSetId: "different", legacyPublishedPages: [] }).kind).toBe("recovery_required"); } for (const selector of ["publishedSnapshotSetId", "activeChangeSetId"] as const) { const partial = structuredClone(complete.state); partial.selectors[selector] = null; expect(backfillWorkspaceFoundation(partial, { workspaceId: "ws", snapshotSetId: "snap", changeSetId: "set", legacyPublishedPages: [] })).toMatchObject({ kind: "ready", recovered: true }); } });
 });
+
+describe("pendingEntries indexed derivation", () => {
+  it("preserves categories, first matches, ordering, removal attribution and generation metadata", () => {
+    const state = initializeWorkspaceChangeSet({ workspaceId: "ws", initialSnapshotSetId: "snap-1", initialChangeSetId: "set-1", pages: [page("modified"), page("moved"), page("both"), page("removed"), page("clean"), page("added")] });
+    state.draftPages = [
+      { pageId: "modified", hasPublishedIdentity: true, title: "changed" },
+      { pageId: "modified", hasPublishedIdentity: true },
+      { pageId: "moved", hasPublishedIdentity: true, siblingOrder: "z" },
+      { pageId: "both", hasPublishedIdentity: true, title: "changed", siblingOrder: "z" },
+      { pageId: "clean", hasPublishedIdentity: true },
+      { pageId: "added", hasPublishedIdentity: false },
+    ];
+    const entry = (pageId: string, firstPendingSequence: number, lastChangedBy = pageId, changeSetId = "set-1") => ({ pageId, changeSetId, firstPendingSequence, firstPendingOn: "first", lastChangedOn: "entry-time", lastChangedBy });
+    state.entries = [entry("modified", 2), entry("moved", 2), entry("both", 1), entry("clean", 3), entry("added", 4), entry("modified", 99, "duplicate"), entry("removed", 0, "retired", "old"), entry("missing", 5)];
+    state.removalBatches = [
+      { id: "retired", changeSetId: "set-1", rootPageId: "moved", members: [{ pageId: "moved", firstPendingSequence: 0 }], state: "retired", removedOn: "old", removedBy: "old" },
+      { id: "active", changeSetId: "set-1", rootPageId: "removed", members: [{ pageId: "removed", firstPendingSequence: 5 }, { pageId: "added", firstPendingSequence: 6 }], state: "active", removedOn: "removal-time", removedBy: "remover" },
+    ];
+    const before = structuredClone(state);
+    expect(pendingEntries(state)).toEqual([
+      { pageId: "both", category: "Modified · Moved", firstPendingSequence: 1, lastChangedOn: "entry-time", lastChangedBy: "both" },
+      { pageId: "modified", category: "Modified", firstPendingSequence: 2, lastChangedOn: "entry-time", lastChangedBy: "modified" },
+      { pageId: "moved", category: "Moved", firstPendingSequence: 2, lastChangedOn: "entry-time", lastChangedBy: "moved" },
+      { pageId: "added", category: "Added", firstPendingSequence: 4, lastChangedOn: "removal-time", lastChangedBy: "remover" },
+      { pageId: "removed", category: "Removed", firstPendingSequence: 5, lastChangedOn: "removal-time", lastChangedBy: "remover" },
+    ]);
+    expect(state).toEqual(before);
+  });
+
+  it("rejects malformed active membership while ignoring retired or other-generation batches", () => {
+    for (const members of [[], [{ pageId: "child", firstPendingSequence: 1 }], [{ pageId: "root", firstPendingSequence: 1 }, { pageId: "root", firstPendingSequence: 2 }], [{ pageId: "root", firstPendingSequence: 1 }, { pageId: "ghost", firstPendingSequence: 2 }]]) {
+      const state = initial();
+      state.removalBatches.push({ id: "bad", changeSetId: "set-1", rootPageId: "root", members, state: "active", removedOn: "t", removedBy: "u" });
+      expect(() => pendingEntries(state)).toThrow("selected published identities");
+      state.removalBatches[0].state = "retired";
+      expect(pendingEntries(state)).toEqual([]);
+      state.removalBatches[0].state = "active";
+      state.removalBatches[0].changeSetId = "old";
+      expect(pendingEntries(state)).toEqual([]);
+    }
+    const state = initial();
+    state.draftPages = [{ pageId: "root", hasPublishedIdentity: true, title: "" }];
+    state.entries = [{ changeSetId: "set-1", pageId: "root", firstPendingSequence: 1, firstPendingOn: "t", lastChangedOn: "t", lastChangedBy: "u" }];
+    expect(() => pendingEntries(state)).toThrow("incomplete");
+    state.selectors.publishedSnapshotSetId = "missing";
+    expect(() => pendingEntries(state)).toThrow("selected ready snapshot");
+  });
+
+  it("does not perform per-row linear find searches for 1,000 pending pages", () => {
+    const pages = Array.from({ length: 1000 }, (_, i) => page(`p-${i}`));
+    const state = initializeWorkspaceChangeSet({ workspaceId: "ws", initialSnapshotSetId: "snap-1", initialChangeSetId: "set-1", pages });
+    state.draftPages = pages.map(({ pageId }) => ({ pageId, hasPublishedIdentity: true, title: "changed" }));
+    state.entries = pages.map(({ pageId }, i) => ({ changeSetId: "set-1", pageId, firstPendingSequence: i + 1, firstPendingOn: "t", lastChangedOn: "t", lastChangedBy: "u" }));
+    const counts = [0, 0, 0];
+    for (const [index, array] of [state.snapshotSets[0].pages, state.draftPages, state.entries].entries()) {
+      const original = array.find;
+      Object.defineProperty(array, "find", { value: function (predicate: (value: never, index: number, array: never[]) => unknown) { return original.call(this, (value: never, position: number, items: never[]) => { counts[index]++; return predicate(value, position, items); }); }, configurable: true });
+    }
+    expect(pendingEntries(state)).toHaveLength(1000);
+    expect(counts).toEqual([0, 0, 0]);
+  });
+});

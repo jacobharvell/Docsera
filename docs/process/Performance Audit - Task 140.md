@@ -60,3 +60,13 @@ Use the same PDI, browser, account, viewport, zoom and network conditions; use n
 6. Measure launcher with varying accessible and total workspace counts; access dialog with varying group sizes; workspace and page settings open/save. Record network calls and latency, and compare search with and without a term. Ask for instance-side query/transaction breakdown only through established diagnostics if available; browser durations alone cannot identify database versus server computation.
 
 These measurements can reorder the candidates. No live acceptance, deployment, full suite, or wall-clock threshold was performed in this documentation audit. The Obsidian plan remains unchanged.
+
+## Task 141 implementation result
+
+Pending-response title resolution now builds one request-local Edit projection when at least one non-Removed entry needs it, and indexes Edit titles, selected published titles and page-record fallbacks by page ID. Empty and Removed-only responses build no Edit projection. `pendingEntries` and attribution processing remain unchanged. A persistence regression counts actual projection calls for 1,000 published pages and 1,000 modified entries: 1,000 calls before, one after; the corresponding base-page materializations fall from 1,000,000 to 1,000. These are deterministic processing counts, not observed endpoint or user-facing latency. No PDI/browser timing was measured for this change.
+
+## Task 142 implementation result
+
+Pending derivation builds operation-local first-match indexes for selected snapshot pages, drafts and active-generation entries, and reuses validated active removal membership. Category comparisons are shared with the single-page derivation; removal attribution retains the last matching active batch. No persistent state or response contract changes.
+
+For the audit's same ordered 1,000-page, 1,000-modified-entry workload, snapshot, draft and entry `find` predicate calls during pending derivation each fall from 500,500 to zero. The indexed path visits 1,000 records in each of those three collections to build its maps (plus the existing 1,000-page removal-validation set construction), then performs keyed lookups per pending identity. The regression instruments the three actual `find` methods; counts are deterministic work evidence, not timing or endpoint latency. Removal membership validation and sorting remain, and no live measurement or deployment was performed.

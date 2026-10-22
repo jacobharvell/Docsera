@@ -2542,19 +2542,20 @@ function readAttribution(userSysId: string) {
   return buildAttribution(abbreviatedDisplayName, displayValue.value);
 }
 
-function titleForPendingRow(state: WorkspaceChangeSetState, pageRecords: PageRecord[], row: ReturnType<typeof pendingEntries>[number]): string {
+function titleForPendingRow(
+  row: ReturnType<typeof pendingEntries>[number],
+  editTitles: Map<string, string>,
+  publishedTitles: Map<string, string>,
+  pageRecords: Map<string, PageRecord>
+): string {
   const safeFallback = "Untitled page";
   if (row.category === "Removed") {
-    const published = state.snapshotSets
-      .find((snapshot) => snapshot.id === state.selectors.publishedSnapshotSetId && snapshot.workspaceId === state.selectors.workspaceId)
-      ?.pages.find((page) => page.pageId === row.pageId);
-    return cleanText(published?.title) || safeFallback;
+    return cleanText(publishedTitles.get(row.pageId)) || safeFallback;
   }
-  const editPage = projectEdit(state).find((page) => page.pageId === row.pageId);
-  if (editPage) {
-    return cleanText(editPage.title) || safeFallback;
+  if (editTitles.has(row.pageId)) {
+    return cleanText(editTitles.get(row.pageId)) || safeFallback;
   }
-  const page = pageRecords.find((candidate) => cleanText(candidate.sysId) === row.pageId);
+  const page = pageRecords.get(row.pageId);
   return cleanText(page?.draftTitle || page?.publishedTitle) || safeFallback;
 }
 
@@ -4752,7 +4753,26 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
           };
         }
         const authority = nextAuthority(loaded.state);
-        const rows = pendingEntries(loaded.state).map((entry) => {
+        const entries = pendingEntries(loaded.state);
+        const editTitles = new Map<string, string>();
+        if (entries.some((entry) => entry.category !== "Removed")) {
+          for (const page of projectEdit(loaded.state)) {
+            if (!editTitles.has(page.pageId)) editTitles.set(page.pageId, page.title);
+          }
+        }
+        const publishedTitles = new Map<string, string>();
+        const published = loaded.state.snapshotSets.find((snapshot) =>
+          snapshot.id === loaded.state.selectors.publishedSnapshotSetId && snapshot.workspaceId === loaded.state.selectors.workspaceId
+        );
+        for (const page of published?.pages ?? []) {
+          if (!publishedTitles.has(page.pageId)) publishedTitles.set(page.pageId, page.title);
+        }
+        const pageRecords = new Map<string, PageRecord>();
+        for (const page of loaded.pageRecords) {
+          const pageId = cleanText(page.sysId);
+          if (!pageRecords.has(pageId)) pageRecords.set(pageId, page);
+        }
+        const rows = entries.map((entry) => {
           const category = normalizePendingCategory(entry.category);
           if (!category) {
             throw new Error("Workspace pending category is invalid.");
@@ -4764,7 +4784,7 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
             lastChangedOn: entry.lastChangedOn,
             navigable: category !== "Removed",
             pageSysId: entry.pageId,
-            title: titleForPendingRow(loaded.state, loaded.pageRecords, entry)
+            title: titleForPendingRow(entry, editTitles, publishedTitles, pageRecords)
           };
         });
 

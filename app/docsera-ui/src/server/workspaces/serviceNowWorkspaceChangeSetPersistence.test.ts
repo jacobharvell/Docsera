@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import * as changeSetDomain from "./workspaceChangeSetDomain.ts";
 import * as serverDocument from "../pages/serverEditorDocument.ts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCanonicalImageDocseraDocumentEnvelope } from "../../shared/editor/imageFixtures.ts";
@@ -2090,6 +2091,77 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     expect(getRows(changeEntryTable)[0]?.fields.first_pending_sequence).toBe(2);
   });
 
+  it("builds one pending title projection for 1,000 modified pages", () => {
+    const pages = Array.from({ length: 1000 }, (_, index) => createSeedPage({
+      pageId: `page-${index}`,
+      draftTitle: `Draft ${index}`,
+      publishedTitle: `Published ${index}`,
+      siblingOrder: String(index)
+    }));
+    seedWorkspaceFoundation({ pages });
+    for (let index = 0; index < pages.length; index++) {
+      glideMock.insertRow(changeEntryTable, `entry-${index}`, {
+        change_set: "change-set-001", page: pages[index].pageId,
+        first_pending_sequence: index + 1, last_changed_on: "2026-07-18 00:00:00", last_changed_by: ""
+      });
+    }
+    const projection = vi.spyOn(changeSetDomain, "projectEdit");
+    try {
+      const pending = expectSucceeded(createService().pendingChanges(workspaceRef())).pending;
+      expect(pending.affectedPageCount).toBe(1000);
+      expect(pending.rows.map((row) => row.title)).toEqual(pages.map((page) => page.draftTitle));
+      expect(projection).toHaveBeenCalledTimes(1);
+    } finally { projection.mockRestore(); }
+  });
+
+  it("skips the pending title projection for empty and removed-only responses", () => {
+    seedWorkspaceFoundation();
+    const service = createService();
+    const projection = vi.spyOn(changeSetDomain, "projectEdit");
+    try {
+      expect(expectSucceeded(service.pendingChanges(workspaceRef())).pending.rows).toEqual([]);
+      expect(projection).not.toHaveBeenCalled();
+      expectSucceeded(service.deletePage({ authority: { changeSetId: "change-set-001", changeSetRevision: 0 }, pageSysId: "page-001", workspace: workspaceRef() }));
+      projection.mockClear();
+      expect(expectSucceeded(service.pendingChanges(workspaceRef())).pending.rows).toEqual([
+        expect.objectContaining({ category: "Removed", title: "Snapshot title", navigable: false })
+      ]);
+      expect(projection).not.toHaveBeenCalled();
+    } finally { projection.mockRestore(); }
+  });
+
+  it("returns ordered mixed pending titles from their authoritative projections", () => {
+    const scenario = seedDiscardRecoveryScenario();
+    const pending = expectSucceeded(scenario.service.pendingChanges(scenario.workspace)).pending;
+    expect(pending.changeSetRevision).toBe(4);
+    expect(pending.rows.map((row) => [row.category, row.title, row.firstPendingSequence, row.navigable])).toEqual([
+      ["Modified", "Overview Renamed", 1, true],
+      ["Added", "New Guide", 2, true],
+      ["Modified \u00b7 Moved", "Child", 3, true],
+      ["Removed", "Deprecated", 4, false]
+    ]);
+  });
+
+  it("uses the untitled fallback for a removed page with a missing published title", () => {
+    seedWorkspaceFoundation();
+    const service = createService();
+    expectSucceeded(service.deletePage({ authority: { changeSetId: "change-set-001", changeSetRevision: 0 }, pageSysId: "page-001", workspace: workspaceRef() }));
+    const snapshot = getRows(pageSnapshotTable)[0];
+    glideMock.updateRow(pageSnapshotTable, snapshot.sysId, { ...snapshot.fields, title: "" });
+    expect(expectSucceeded(service.pendingChanges(workspaceRef())).pending.rows[0].title).toBe("Untitled page");
+  });
+
+  it("preserves invalid Edit projection failures in pending responses", () => {
+    seedWorkspaceFoundation();
+    glideMock.insertRow(changeEntryTable, "entry-001", {
+      change_set: "change-set-001", page: "page-001", first_pending_sequence: 1,
+      last_changed_on: "2026-07-18 00:00:00", last_changed_by: ""
+    });
+    glideMock.updateRow(pageTable, "page-001", { ...getRows(pageTable)[0].fields, parent_page: "missing-parent" });
+    const result = createService().pendingChanges(workspaceRef());
+    expect(result).toMatchObject({ kind: "failed", status: 500 });
+  });
+
   it("returns authoritative pending titles, counts, generation pair, and privacy-safe attribution", () => {
     seedWorkspaceFoundation({
       pages: [
@@ -3853,7 +3925,7 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
       siblingOrder: "3",
       workspace: workspaceRef()
     }));
-    expect(pendingRows(service)).toEqual([expect.objectContaining({ category: "Moved", pageSysId: "page-child" })]);
+    expect(pendingRows(service)).toEqual([expect.objectContaining({ category: "Moved", pageSysId: "page-child", title: "Child" })]);
     expect(getRows(changeEntryTable).map((row) => row.fields.page)).toEqual(["page-child"]);
 
     const modifiedMoved = expectSucceeded(service.savePageSettings({
