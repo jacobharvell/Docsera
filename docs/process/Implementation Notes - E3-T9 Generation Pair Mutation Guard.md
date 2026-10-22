@@ -262,3 +262,7 @@ Regression coverage added or updated in this slice covers:
 - Publish/discard lifecycle flows are still deferred, so active pending entries accumulate until a later workflow slice provides resolution paths.
 - Page movement persistence has not been converted into change-entry/removal-batch semantics in this slice.
 - Claim recovery is intentionally narrow and centered on the generation-scoped claim row; it is not a general-purpose transaction log.
+
+## Fresh page insertion materialization
+
+A newly acquired create claim that inserts its page reuses the initially validated workspace projection after re-reading the workspace selectors and active change-set lifecycle, revision, sequence, and recovery fields. The added draft is converted with the same sparse-overlay rules as a full load. Changed authority or selectors fall back to fresh materialization; resumed claims, pre-existing page rows, and interrupted phases always retain the full recovery path. Claim ownership and durable write ordering are unchanged.

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import * as serverDocument from "../pages/serverEditorDocument.ts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCanonicalImageDocseraDocumentEnvelope } from "../../shared/editor/imageFixtures.ts";
 
@@ -9,6 +10,7 @@ type TableRow = {
 
 const glideMock = vi.hoisted(() => {
   const tables = new Map<string, TableRow[]>();
+  const iterations = new Map<string, number>();
   const fieldReadAccess = new Map<string, boolean>();
   const deleteHooks = new Map<string, (row: TableRow) => boolean>();
   const insertHooks = new Map<string, (row: TableRow) => void>();
@@ -103,6 +105,7 @@ const glideMock = vi.hoisted(() => {
       if (nextIndex >= this.queryResults.length) {
         return false;
       }
+      iterations.set(this.tableName, (iterations.get(this.tableName) ?? 0) + 1);
       this.queryIndex = nextIndex;
       this.currentRow = this.queryResults[nextIndex] ?? null;
       return Boolean(this.currentRow);
@@ -235,6 +238,8 @@ const glideMock = vi.hoisted(() => {
       getUserID: () => "user-1",
       error: vi.fn()
     },
+    iterationCount(tableName: string) { return iterations.get(tableName) ?? 0; },
+    clearIterations() { iterations.clear(); },
     getRows(tableName: string) {
       return (tables.get(tableName) ?? []).map((row) => ({ sysId: row.sysId, fields: { ...row.fields } }));
     },
@@ -280,6 +285,7 @@ const glideMock = vi.hoisted(() => {
     },
     reset() {
       tables.clear();
+      iterations.clear();
       fieldReadAccess.clear();
       deleteHooks.clear();
       insertHooks.clear();
@@ -891,6 +897,74 @@ function expectSucceeded<T extends { kind: string }>(result: T): Extract<T, { ki
 
 beforeEach(() => {
   glideMock.reset();
+});
+
+describe("page creation record scaling", () => {
+  it("does not map projected documents during creation while listing still maps them", () => {
+    const document = createDocument("unique projected content");
+    seedWorkspaceFoundation({ pages: [createSeedPage({ pageId: "page-001", publishedContentJson: document })] });
+    const parse = vi.spyOn(serverDocument, "parseServerDocument");
+    const service = createService();
+    expectSucceeded(service.createPage({ authority: { changeSetId: "change-set-001", changeSetRevision: 0 }, parentPageSysId: null, title: "New", workspace: workspaceRef() }));
+    const creationCalls = parse.mock.calls.filter(([value]) => JSON.stringify(value).includes("unique projected content")).length;
+    parse.mockClear();
+    expectSucceeded(service.listPages(workspaceRef(), "edit"));
+    const listingCalls = parse.mock.calls.filter(([value]) => JSON.stringify(value).includes("unique projected content")).length;
+    expect(creationCalls).toBe(3);
+    expect(listingCalls).toBe(4);
+    parse.mockRestore();
+  });
+
+  it("allocates from effective additions and removals and rejects removed parents", () => {
+    seedWorkspaceFoundation({ pages: [
+      createSeedPage({ pageId: "root", publishedTitle: "Guide", publishedSlug: "guide", siblingOrder: "4" }),
+      createSeedPage({ pageId: "removed", publishedTitle: "Removed", publishedSlug: "removed", siblingOrder: "9" })
+    ] });
+    const service = createService();
+    const removed = expectSucceeded(service.deletePage({ authority: { changeSetId: "change-set-001", changeSetRevision: 0 }, pageSysId: "removed", workspace: workspaceRef() }));
+    const first = expectSucceeded(service.createPage({ authority: removed.authority, parentPageSysId: null, title: "Guide", workspace: workspaceRef() }));
+    expect(first.result.page).toMatchObject({ draftSlug: "guide-1", siblingOrder: 5 });
+    const second = expectSucceeded(service.createPage({ authority: first.authority, parentPageSysId: first.result.page.sysId!, title: "Guide", workspace: workspaceRef() }));
+    expect(second.result.page).toMatchObject({ draftSlug: "guide-2", siblingOrder: 1, parentPageSysId: first.result.page.sysId });
+    const invalid = service.createPage({ authority: second.authority, parentPageSysId: "removed", title: "Invalid", workspace: workspaceRef() });
+    expect(invalid).toMatchObject({ kind: "failed", status: 400 });
+  });
+
+  it("rechecks generation after insertion before recording a pending entry", () => {
+    seedWorkspaceFoundation();
+    const service = createService({ afterDurablePhase(phase) {
+      if (phase === "mutation_page_persisted") {
+        const row = changeSetRow()!;
+        glideMock.updateRow(changeSetTable, row.sysId, { ...row.fields, change_set_revision: 2 });
+      }
+    } });
+    const result = service.createPage({ authority: { changeSetId: "change-set-001", changeSetRevision: 0 }, title: "New", workspace: workspaceRef() });
+    expect(result).toMatchObject({ kind: "failed", status: 409 });
+    expect(getRows(changeEntryTable)).toHaveLength(0);
+    expect(changeSetRow()?.fields.change_set_revision).toBe(2);
+  });
+
+  it.each([10, 1000])("loads initialized root-heavy and nested workspaces linearly at %i pages", (size) => {
+    for (const nested of [false, true]) {
+      glideMock.reset();
+      const pages = Array.from({ length: size }, (_, index) => createSeedPage({
+        pageId: `scale-${index}`,
+        parentPageId: nested && index > 0 ? "scale-0" : null,
+        siblingOrder: String(index + 1)
+      }));
+      seedWorkspaceFoundation({ pages });
+      glideMock.clearIterations();
+      const result = expectSucceeded(createService().createPage({
+        authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+        parentPageSysId: nested ? "scale-0" : null,
+        title: "New page",
+        workspace: workspaceRef()
+      }));
+      expect(result.result.page.parentPageSysId ?? null).toBe(nested ? "scale-0" : null);
+      expect(glideMock.iterationCount(pageTable)).toBe(size);
+      expect(glideMock.iterationCount(pageSnapshotTable)).toBe(size);
+    }
+  });
 });
 
 describe("serviceNowWorkspaceChangeSetPersistence", () => {

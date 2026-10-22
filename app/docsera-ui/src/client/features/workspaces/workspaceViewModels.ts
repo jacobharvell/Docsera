@@ -49,8 +49,8 @@ function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function resolvePageContentState(page: WorkspacePageRecord): Pick<WorkspacePageView, "contentEnvelope" | "contentError" | "contentState" | "tocItems"> {
-  if (page.draftContentJson === null || page.draftContentJson === undefined || page.draftContentJson === "") {
+export function resolvePageContentState(content: unknown): Pick<WorkspacePageView, "contentEnvelope" | "contentError" | "contentState" | "tocItems"> {
+  if (content === null || content === undefined || content === "") {
     return {
       contentEnvelope: null,
       contentError: "The current page content is unavailable.",
@@ -59,7 +59,7 @@ function resolvePageContentState(page: WorkspacePageRecord): Pick<WorkspacePageV
     };
   }
 
-  const parsed = parseDocseraDocument(page.draftContentJson);
+  const parsed = parseDocseraDocument(content);
   if (!parsed.ok) {
     return {
       contentEnvelope: null,
@@ -90,12 +90,15 @@ export function buildWorkspaceShellViewModel(workspace: WorkspaceViewRecord): Wo
   };
 }
 
-export function buildWorkspacePageView(page: WorkspacePageRecord, mode: WorkspaceMode): WorkspacePageView {
+export function buildWorkspacePageView(
+  page: WorkspacePageRecord,
+  mode: WorkspaceMode,
+  contentState = resolvePageContentState(page.draftContentJson)
+): WorkspacePageView {
   const sysId = cleanText(page.sysId) || `${cleanText(page.workspaceSysId)}:${cleanText(page.draftSlug)}`;
   const title = cleanText(page.draftTitle) || "Untitled page";
   const slug = cleanText(page.draftSlug);
   const isDraftOnly = page.publicationState === "draft";
-  const contentState = resolvePageContentState(page);
 
   return {
     ...contentState,
@@ -125,7 +128,9 @@ export function buildWorkspacePageTree(pages: WorkspacePageRecord[], mode: Works
   const roots: TreeNode[] = [];
 
   pages.forEach((page, index) => {
-    const viewPage = buildWorkspacePageView(page, mode);
+    const viewPage = buildWorkspacePageView(page, mode, {
+      contentEnvelope: null, contentError: "", contentState: "missing", tocItems: []
+    });
     const key = viewPage.sysId || `${cleanText(page.workspaceSysId)}:${cleanText(page.draftSlug)}:${index}`;
     nodesByKey.set(key, {
       children: [],

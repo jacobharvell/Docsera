@@ -6,6 +6,56 @@ const initial = () => initializeWorkspaceChangeSet({ workspaceId: "ws", initialS
 const token = (revision = 0, id = "set-1") => ({ expectedChangeSetId: id, expectedChangeSetRevision: revision });
 const readyStage = (state = initial(), id = "snap-2", commandId = "publish-1") => completeSnapshotStaging(stageSnapshotSet(state, { snapshotSetId: id, commandId }), id);
 
+describe("recordPendingChange immutable updates", () => {
+  it("allocates the first sequence and shares unaffected state even for a large snapshot", () => {
+    const state = initial();
+    state.snapshotSets[0].pages.push(...Array.from({ length: 5000 }, (_, i) => page(`large-${i}`)));
+    state.draftPages = [{ pageId: "root", hasPublishedIdentity: true, title: "edited" }];
+    const before = structuredClone(state);
+    const result = recordPendingChange(state, token(), { pageId: "root", actorId: "author", changedOn: "t1" });
+    if (result.kind !== "applied") throw new Error("expected change");
+    expect(state).toEqual(before);
+    expect(result.state).not.toBe(state);
+    expect(result.state.changeSets).not.toBe(state.changeSets);
+    expect(result.state.changeSets[0]).not.toBe(state.changeSets[0]);
+    expect(result.state.entries).not.toBe(state.entries);
+    expect(result.state.entries[0]).toEqual({ changeSetId: "set-1", pageId: "root", firstPendingSequence: 1, firstPendingOn: "t1", lastChangedOn: "t1", lastChangedBy: "author" });
+    expect(result.state.changeSets[0]).toMatchObject({ revision: 1, nextPendingSequence: 2 });
+    expect(result.token).toEqual({ changeSetId: "set-1", changeSetRevision: 1 });
+    expect(result.state.selectors).toBe(state.selectors);
+    expect(result.state.snapshotSets).toBe(state.snapshotSets);
+    expect(result.state.snapshotSets[0].pages).toBe(state.snapshotSets[0].pages);
+    expect(result.state.snapshotSets[0].pages[4999]).toBe(state.snapshotSets[0].pages[4999]);
+    expect(result.state.draftPages).toBe(state.draftPages);
+    expect(result.state.removalBatches).toBe(state.removalBatches);
+    expect(result.state.commands).toBe(state.commands);
+    expect(pendingEntries(result.state)[0].category).toBe("Modified");
+  });
+
+  it("copies only the updated entry, retaining its sequence and first attribution", () => {
+    const state = initial();
+    state.draftPages = [{ pageId: "root", hasPublishedIdentity: true, title: "edited" }, { ...page("added"), hasPublishedIdentity: false }];
+    const first = recordPendingChange(state, token(), { pageId: "root", actorId: "first", changedOn: "t1" });
+    if (first.kind !== "applied") throw new Error("expected change");
+    const second = recordPendingChange(first.state, token(1), { pageId: "added", actorId: "creator", changedOn: "t2" });
+    if (second.kind !== "applied") throw new Error("expected change");
+    const before = structuredClone(second.state);
+    const updated = recordPendingChange(second.state, token(2), { pageId: "root", actorId: "editor", changedOn: "t3" });
+    if (updated.kind !== "applied") throw new Error("expected change");
+    expect(second.state).toEqual(before);
+    expect(updated.state.changeSets[0]).not.toBe(second.state.changeSets[0]);
+    expect(updated.state.entries).not.toBe(second.state.entries);
+    expect(updated.state.entries[0]).not.toBe(second.state.entries[0]);
+    expect(updated.state.entries[1]).toBe(second.state.entries[1]);
+    expect(updated.state.entries[0]).toMatchObject({ firstPendingSequence: 1, firstPendingOn: "t1", lastChangedOn: "t3", lastChangedBy: "editor" });
+    expect(updated.state.changeSets[0]).toMatchObject({ revision: 3, nextPendingSequence: 3 });
+    expect(pendingEntries(updated.state).map((entry) => entry.category)).toEqual(["Modified", "Added"]);
+    const stale = recordPendingChange(second.state, token(1), { pageId: "root", actorId: "stale", changedOn: "t4" });
+    expect(stale).toEqual({ kind: "stale", current: { changeSetId: "set-1", changeSetRevision: 2 } });
+    expect(second.state).toEqual(before);
+  });
+});
+
 describe("workspace change-set foundation", () => {
   it("stages a string-rank projection and binds readiness to the exact source generation", () => { const staged = stageSnapshotSet(initial(), { snapshotSetId: "snap-2", commandId: "publish-1" }); expect(staged.snapshotSets[1]).toMatchObject({ readiness: "staging", sourceChangeSetId: "set-1", sourceChangeSetRevision: 0, commandKind: "publish" }); const ready = completeSnapshotStaging(staged, "snap-2"); expect(ready.snapshotSets[1].pages.map((item) => item.siblingOrder)).toEqual(["a", "b", "c"]); });
   it("rejects a stale staged publish after a persisted change, without selector change, then permits restaging", () => { const staged = readyStage(); const changed = recordPendingChange(staged, token(), { pageId: "root", actorId: "u", changedOn: "t" }); if (changed.kind !== "applied") throw new Error("expected change"); expect(() => switchSelectors(changed.state, token(1), { commandId: "publish-1", kind: "publish", successorChangeSetId: "set-2", snapshotSetId: "snap-2" })).toThrow("exact active command"); expect(changed.state.selectors).toMatchObject({ activeChangeSetId: "set-1", publishedSnapshotSetId: "snap-1" }); const restaged = readyStage(changed.state, "snap-3", "publish-2"); expect(switchSelectors(restaged, token(1), { commandId: "publish-2", kind: "publish", successorChangeSetId: "set-2", snapshotSetId: "snap-3" }).kind).toBe("switched"); });

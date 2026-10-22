@@ -166,7 +166,7 @@ describe("App page settings integration", () => {
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
 
     await waitFor(() => expect(savePageSettings).toHaveBeenCalledTimes(1));
-    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by: Priya Writer");
     await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
@@ -215,7 +215,7 @@ describe("App page settings integration", () => {
     fireEvent.blur(titleInput);
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by: Priya Writer");
     await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
@@ -270,7 +270,7 @@ describe("App page settings integration", () => {
     fireEvent.blur(titleInput);
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by: Priya Writer");
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
     expect(await screen.findByText("Your earlier Page Settings changes could not be restored because the shared page settings changed.")).toBeInTheDocument();
@@ -327,7 +327,7 @@ describe("App page settings integration", () => {
     fireEvent.blur(slugInput);
     fireEvent.click(within(pageSettingsPanel).getByRole("button", { name: "Close page settings" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by: Priya Writer");
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
     expect(await screen.findByText("Your earlier Page Settings changes could not be restored because the shared page settings changed.")).toBeInTheDocument();

@@ -1054,7 +1054,7 @@ function updateWorkspaceSelectors(
   return reloaded;
 }
 
-function ensureWorkspaceFoundation(workspace: WorkspaceRecord, pages: PageRecord[], dependencies: WorkspaceChangeSetPersistenceDependencies): WorkspaceRecord {
+function ensureWorkspaceFoundation(workspace: WorkspaceRecord, pages: PageRecord[], dependencies: WorkspaceChangeSetPersistenceDependencies, selectedSnapshotCache: { pages?: SnapshotPage[] }): WorkspaceRecord {
   const workspaceSysId = cleanText(workspace.sysId);
   if (!workspaceSysId) {
     throw new Error("Workspace could not be found.");
@@ -1067,6 +1067,7 @@ function ensureWorkspaceFoundation(workspace: WorkspaceRecord, pages: PageRecord
     if (!selectedChangeSetSysId || !selectedSnapshotSysId || !selectedChangeSet || !selectedSnapshot || selectedSnapshot.readiness !== "ready") {
       throw new Error("Workspace foundation is invalid.");
     }
+    selectedSnapshotCache.pages = selectedSnapshot.pages;
     return workspace;
   }
   const snapshotKey = foundationKey(workspaceSysId, "snapshot");
@@ -1307,10 +1308,11 @@ function loadWorkspaceState(
   state: WorkspaceChangeSetState;
   workspace: WorkspaceRecord;
 } {
-  const foundationPageRecords = mode === "live" && cleanText(workspaceInput.pendingChangeSetSysId) && cleanText(workspaceInput.publishedSnapshotSetSysId)
+  const foundationPageRecords = cleanText(workspaceInput.pendingChangeSetSysId) && cleanText(workspaceInput.publishedSnapshotSetSysId)
     ? []
     : listWorkspacePageRecords(cleanText(workspaceInput.sysId), "foundation");
-  const workspace = ensureWorkspaceFoundation(workspaceInput, foundationPageRecords, dependencies);
+  const selectedSnapshotCache: { pages?: SnapshotPage[] } = {};
+  const workspace = ensureWorkspaceFoundation(workspaceInput, foundationPageRecords, dependencies, selectedSnapshotCache);
   const workspaceSysId = cleanText(workspace.sysId);
   const activeChangeSetSysId = cleanText(workspace.pendingChangeSetSysId);
   const selectedSnapshotSysId = cleanText(workspace.publishedSnapshotSetSysId);
@@ -1337,7 +1339,7 @@ function loadWorkspaceState(
   }
 
   const pageRecords = listWorkspacePageRecords(workspaceSysId, mode === "live" ? "live" : "edit");
-  const snapshotPages = loadSnapshotPages(selectedSnapshotSysId);
+  const snapshotPages = selectedSnapshotCache.pages ?? loadSnapshotPages(selectedSnapshotSysId);
 
   const entries = new GlideRecord(DOCSERA_WORKSPACE_CHANGE_ENTRY_TABLE);
   entries.addQuery("change_set", activeChangeSetSysId);
@@ -1856,7 +1858,12 @@ function orderProjectionPages(pages: SnapshotPage[]): SnapshotPage[] {
   const childrenByParent = new Map<string, SnapshotPage[]>();
   for (const page of pages) {
     const parentKey = cleanText(page.parentPageId);
-    childrenByParent.set(parentKey, [...(childrenByParent.get(parentKey) ?? []), page]);
+    const siblings = childrenByParent.get(parentKey);
+    if (siblings) {
+      siblings.push(page);
+    } else {
+      childrenByParent.set(parentKey, [page]);
+    }
   }
 
   const sortSiblings = (siblings: SnapshotPage[]) =>
@@ -3133,12 +3140,10 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
         claim = acquired.claim;
         const executorKey = acquired.executorKey;
         let activePage = loadPageRecordBySysId(claim.targetPageSysId ?? "");
+        let newlyInserted = false;
         if (claim.phase === "claimed") {
-          const editProjection = this.listPages(loaded.workspace, "edit");
-          if (editProjection.kind !== "succeeded") {
-            return editProjection;
-          }
-          if (parentId && !editProjection.pages.some((projectionPage) => cleanText(projectionPage.sysId) === parentId)) {
+          const editPages = projectEdit(loaded.state);
+          if (parentId && !editPages.some((page) => cleanText(page.pageId) === parentId)) {
             return { kind: "failed", errorMessage: "A valid parent page is required.", status: 400 };
           }
           claim = requireClaimOwner(claim, executorKey);
@@ -3149,8 +3154,14 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
               parentPageSysId: parentId || null,
               parentPageWorkspaceSysId: cleanText(loaded.workspace.sysId),
               active: true
-            }, editProjection.pages as unknown as Parameters<typeof createPageDraft>[1]);
+            }, editPages.map((page) => ({
+              workspaceSysId: cleanText(loaded.workspace.sysId),
+              parentPageSysId: page.parentPageId ?? undefined,
+              siblingOrder: normalizeSiblingOrder(page.siblingOrder),
+              slug: page.slug
+            })));
             activePage = insertPageRecord(draft, claim.targetPageSysId ?? "");
+            newlyInserted = !acquired.recovered;
             claim = persistClaimProgress(dependencies, claim, {
               appliedOn: dependencies.currentTimestamp(),
               phase: "page_persisted"
@@ -3167,7 +3178,27 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
             }, executorKey);
           }
         }
-        const recovered = loadWorkspaceState(input.workspace, dependencies);
+        // Only a newly acquired claim that inserted its own page can reuse the
+        // validated projection. Resumed claims retain the full recovery load.
+        const currentWorkspace = newlyInserted ? loadWorkspaceBySysId(cleanText(loaded.workspace.sysId)) : null;
+        const currentChangeSet = currentWorkspace
+          ? loadFoundationChangeSet(cleanText(currentWorkspace.sysId), cleanText(currentWorkspace.pendingChangeSetSysId))
+          : null;
+        const initialChangeSet = loaded.state.changeSets[0];
+        const unchanged = currentWorkspace && currentChangeSet &&
+          cleanText(currentWorkspace.pendingChangeSetSysId) === loaded.state.selectors.activeChangeSetId &&
+          cleanText(currentWorkspace.publishedSnapshotSetSysId) === loaded.state.selectors.publishedSnapshotSetId &&
+          (currentWorkspace.workspaceStateRevision ?? 0) === loaded.state.selectors.workspaceStateRevision &&
+          currentChangeSet.revision === initialChangeSet.revision &&
+          currentChangeSet.nextPendingSequence === initialChangeSet.nextPendingSequence &&
+          currentChangeSet.recoveryState === loaded.activeChangeSet.recoveryState &&
+          currentChangeSet.commandCorrelationId === loaded.activeChangeSet.commandCorrelationId;
+        const recovered = unchanged && activePage
+          ? { ...loaded, state: { ...loaded.state, draftPages: [
+              ...loaded.state.draftPages,
+              ...buildDraftPages([activePage], [], new Set([cleanText(activePage.sysId)]))
+            ] } }
+          : loadWorkspaceState(currentWorkspace ?? input.workspace, dependencies);
         let resultAuthority = claim.resultAuthority;
         const recoveredAuthority = nextAuthority(recovered.state);
         const preparedAuthority = preparedResultAuthority(claim);

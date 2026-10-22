@@ -1516,7 +1516,7 @@ describe("App editor-host session boundary", () => {
 
   it.each([
     {
-      expectedAlert: "This workspace is currently being edited by Priya Writer.",
+      expectedAlert: "This workspace is currently being edited by: Priya Writer",
       recoveryResult: {
         holderDisplayName: "Priya Writer",
         sameUserDifferentSession: false,
@@ -1599,7 +1599,7 @@ describe("App editor-host session boundary", () => {
       await latestHostControl?.status?.flush?.();
     });
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by: Priya Writer");
     await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview", mode: null }));
     expect(savePageBody).toHaveBeenCalledTimes(1);
 
@@ -1662,7 +1662,7 @@ describe("App editor-host session boundary", () => {
       await latestHostControl?.status?.flush?.();
     });
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by: Priya Writer");
     await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
@@ -1718,7 +1718,7 @@ describe("App editor-host session boundary", () => {
       await latestHostControl?.status?.flush?.();
     });
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by: Priya Writer");
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     expect(await screen.findByText("Your unsaved changes were restored. Review them before saving.")).toBeInTheDocument();
 
@@ -1770,7 +1770,7 @@ describe("App editor-host session boundary", () => {
     fireEvent.blur(titleInput);
     fireEvent.click(within(panel).getByRole("button", { name: "Close page settings" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by: Priya Writer");
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 
     await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
@@ -1809,7 +1809,7 @@ describe("App editor-host session boundary", () => {
     fireEvent.change(titleInput, { target: { value: "Nested draft" } });
     fireEvent.keyDown(titleInput, { key: "Enter" });
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by: Priya Writer");
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 
     await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
@@ -1861,7 +1861,7 @@ describe("App editor-host session boundary", () => {
     fireEvent.blur(titleInput);
     fireEvent.click(within(panel).getByRole("button", { name: "Close page settings" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by: Priya Writer");
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 
     await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
@@ -1940,7 +1940,7 @@ describe("App editor-host session boundary", () => {
       await latestHostControl?.status?.flush?.();
     });
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by: Priya Writer");
     await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
@@ -1990,9 +1990,9 @@ describe("App editor-host session boundary", () => {
       await latestHostControl?.status?.flush?.();
     });
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by: Priya Writer");
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by Priya Writer.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by: Priya Writer");
     await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", page: "overview" }));
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));

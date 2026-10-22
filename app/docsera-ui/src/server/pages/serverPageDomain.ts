@@ -71,6 +71,7 @@ export type PageSlugReservation =
       workspaceSysId?: string;
       workspace?: string;
       parentPageSysId?: string;
+      siblingOrder?: number;
     };
 
 export const PAGE_PUBLICATION_STATES = Object.freeze({

@@ -40,3 +40,7 @@ Accepted product requirements live in the Obsidian vault; see `docs/process/Requ
 - Body/editor persistence is documented separately in `Implementation Notes - Page Body Draft Persistence and Save Foundation.md`.
 - The live tree projection keeps the current shell/view-model shape, but the underlying tree now comes from ServiceNow page records rather than the seeded demo tree.
 
+
+## Client page projections
+
+The navigation tree is built from page metadata without parsing document bodies or extracting outlines. The selected page is projected separately from the presented page record, so title and slug previews remain visible. Its content state and outline are memoized by the selected content value; changes to other records or selected-page metadata do not alone reprocess that content. Missing and invalid content remain selected-page states, and editor recovery continues to overlay the selected projection.

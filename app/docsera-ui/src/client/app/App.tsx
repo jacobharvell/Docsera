@@ -31,6 +31,8 @@ import {
 } from "./authoringRecovery";
 import {
   buildWorkspacePageTree,
+  buildWorkspacePageView,
+  resolvePageContentState,
   buildWorkspaceShellViewModel,
   type WorkspacePageOutlineItem,
   type WorkspacePageView
@@ -1142,26 +1144,6 @@ function findWorkspacePageRecordBySysId(pages: WorkspacePageRecord[], pageSysId:
   }
 
   return pages.find((page) => cleanText(page.sysId) === normalizedPageSysId) ?? null;
-}
-
-function findWorkspacePageViewBySysId(pages: WorkspacePageView[], pageSysId: string): WorkspacePageView | null {
-  const normalizedPageSysId = cleanText(pageSysId);
-  if (!normalizedPageSysId) {
-    return null;
-  }
-
-  for (const page of pages) {
-    if (cleanText(page.sysId) === normalizedPageSysId) {
-      return page;
-    }
-
-    const childMatch = page.children ? findWorkspacePageViewBySysId(page.children, normalizedPageSysId) : null;
-    if (childMatch) {
-      return childMatch;
-    }
-  }
-
-  return null;
 }
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -2587,9 +2569,15 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
   const renderedEditorSession = editorSessionState.token;
   const editorSessionKey = editorSessionState.sessionKey;
+  const presentedSelectedPage = findWorkspacePageRecordBySysId(presentedWorkspacePages, cleanText(selectedWorkspacePage?.sysId));
+  const selectedContent = presentedSelectedPage?.draftContentJson;
+  const selectedContentState = useMemo(
+    () => resolvePageContentState(selectedContent),
+    [selectedContent]
+  );
   const selectedPageView = useMemo(
-    () => findWorkspacePageViewBySysId(treePages, cleanText(selectedWorkspacePage?.sysId)),
-    [selectedWorkspacePage?.sysId, treePages]
+    () => presentedSelectedPage ? buildWorkspacePageView(presentedSelectedPage, activeWorkspaceMode, selectedContentState) : null,
+    [activeWorkspaceMode, presentedSelectedPage, selectedContentState]
   );
   const workspaceRecoveryIdentity = useMemo(
     () => (workspaceState.status === "success" ? { workspaceSlug: workspaceState.data.slug, workspaceSysId: cleanText(workspaceState.data.sysId) } : null),
