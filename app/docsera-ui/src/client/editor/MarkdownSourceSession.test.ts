@@ -224,6 +224,59 @@ describe("MarkdownSourceSession", () => {
     result.session.destroy();
   });
 
+  it("marks each independent failure and associates tooltips through corrections", async () => {
+    const mount = document.createElement("div");
+    document.body.append(mount);
+    const result = createMarkdownSourceSession({ mount, title: "Overview", envelope: createCanonicalDocseraDocumentEnvelope() });
+    if (!result.ok) throw new Error("session creation failed");
+    const { session } = result;
+    const source = "---\ntitle: \"Test\"\n---\n\n::docsera-unknown\n\n::docsera-image";
+    await act(async () => { session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: source } }); });
+    const snapshot = session.getSnapshot();
+    expect(snapshot.kind).toBe("invalid");
+    if (snapshot.kind !== "invalid") throw new Error("expected invalid source");
+    expect(snapshot.diagnostics).toHaveLength(2);
+    expect(mount.querySelectorAll(".docsera-markdown-source-error-marker")).toHaveLength(2);
+    for (const diagnostic of snapshot.diagnostics) {
+      const tooltip = markdownSourceErrorTooltip(session.view, diagnostic.range!.from);
+      expect(tooltip?.create().dom.textContent).toContain(diagnostic.message);
+    }
+    await act(async () => { session.view.dispatch({ changes: { from: source.indexOf("::docsera-unknown"), to: source.indexOf("::docsera-unknown") + "::docsera-unknown".length, insert: "fixed" } }); });
+    expect(session.getSnapshot()).toMatchObject({ kind: "invalid", diagnostics: [expect.objectContaining({ reason: "invalid-directive" })] });
+    expect(mount.querySelectorAll(".docsera-markdown-source-error-marker")).toHaveLength(1);
+    const remaining = session.getSnapshot();
+    if (remaining.kind !== "invalid") throw new Error("expected invalid source");
+    expect(markdownSourceErrorTooltip(session.view, remaining.diagnostics[0].range!.from)?.create().dom.textContent).toContain(remaining.diagnostics[0].message);
+    session.destroy();
+  });
+
+  it("shows the most specific nested diagnostic and retains the others after a correction", async () => {
+    const mount = document.createElement("div");
+    document.body.append(mount);
+    const result = createMarkdownSourceSession({ mount, title: "Overview", envelope: createCanonicalDocseraDocumentEnvelope() });
+    if (!result.ok) throw new Error("session creation failed");
+    const { session } = result;
+    const source = ["---", "title: \"Test\"", "---", "", ':::docsera-callout{type="bad"}', "::docsera-unknown", "", "::docsera-image", ":::"].join("\n");
+    await act(async () => { session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: source } }); });
+    const snapshot = session.getSnapshot();
+    if (snapshot.kind !== "invalid") throw new Error("expected invalid source");
+    expect(snapshot.diagnostics).toHaveLength(3);
+    expect(mount.querySelectorAll(".docsera-markdown-source-error-marker")).toHaveLength(3);
+    for (const diagnostic of snapshot.diagnostics) {
+      expect(markdownSourceErrorTooltip(session.view, diagnostic.range!.from)?.create().dom.textContent).toContain(diagnostic.message);
+    }
+    const child = "::docsera-unknown";
+    await act(async () => { session.view.dispatch({ changes: { from: source.indexOf(child), to: source.indexOf(child) + child.length, insert: "fixed" } }); });
+    const remaining = session.getSnapshot();
+    if (remaining.kind !== "invalid") throw new Error("expected invalid source");
+    expect(remaining.diagnostics.map((item) => item.message)).toEqual([snapshot.diagnostics[0].message, snapshot.diagnostics[2].message]);
+    expect(mount.querySelectorAll(".docsera-markdown-source-error-marker")).toHaveLength(2);
+    for (const diagnostic of remaining.diagnostics) {
+      expect(markdownSourceErrorTooltip(session.view, diagnostic.range!.from)?.create().dom.textContent).toContain(diagnostic.message);
+    }
+    session.destroy();
+  });
+
   it("lets mouse interaction focus the editable CodeMirror content surface", () => {
     const mount = document.createElement("div");
     document.body.append(mount);
@@ -511,7 +564,7 @@ describe("MarkdownSourceSession", () => {
       });
     });
 
-    expect(session.getSnapshot()).toEqual({
+    expect(session.getSnapshot()).toMatchObject({
       kind: "invalid",
       isClean: false,
       text: invalidSource,
@@ -627,7 +680,8 @@ it("decorates malformed frontmatter delimiters and clears the decoration after c
   const valid = session.view.state.doc.toString();
   for (const invalid of [valid.replace(/^---/, "--"), valid.replace(/\n---\n/, "\n--\n")]) {
     act(() => session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: invalid } }));
-    expect(mount.querySelector(".docsera-markdown-source-error")?.textContent).toBe("--");
+    expect(mount.querySelectorAll(".docsera-markdown-source-error-marker")).toHaveLength(1);
+    expect(markdownSourceErrorTooltip(session.view, 0)?.end).toBe(invalid.lastIndexOf("---") + 3 > 3 && invalid.startsWith("--\n") ? invalid.lastIndexOf("---") + 3 : invalid.indexOf("\n--\n") + 3);
     act(() => session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: valid } }));
     expect(mount.querySelector(".docsera-markdown-source-error")).toBeNull();
   }
@@ -649,6 +703,7 @@ it("exposes only the current ranged converter error to the hover tooltip", () =>
   const range = snapshot.failure.range;
   const tooltip = markdownSourceErrorTooltip(view, range.from);
   expect(tooltip?.above).toBe(true);
+  expect(tooltip?.create().offset).toEqual({ x: 0, y: 12 });
   const tooltipDom = tooltip?.create().dom;
   expect(tooltipDom?.querySelector(".docsera-markdown-source-error-badge")).toHaveTextContent("Error");
   expect(tooltipDom?.querySelector(".docsera-markdown-source-error-icon")).toHaveAttribute("aria-hidden", "true");
@@ -677,5 +732,51 @@ it("renders logical line numbers and locates a parsed malformed directive withou
   act(() => session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: prefix + '```\n:docsera-callout\n```' } }));
   expect(session.getSnapshot().kind).toBe("valid");
   expect(mount.querySelector(".docsera-markdown-source-error")).toBeNull();
+  session.destroy();
+});
+
+
+it("decorates frontmatter errors independently and accepts a corrected title", () => {
+  const mount = document.createElement("div");
+  document.body.append(mount);
+  const snapshots: MarkdownSourceSessionSnapshot[] = [];
+  const result = createMarkdownSourceSession({ mount, title: "Overview", envelope: createCanonicalDocseraDocumentEnvelope(), onStateChange: (snapshot) => snapshots.push(snapshot) });
+  if (!result.ok) throw new Error("session failed");
+  const { session } = result;
+  for (const [field, token] of [['titl: "Name"', 'titl'], ['title: "Name"\nextra: value', 'extra'], ['title: Name"', 'Name"'], ['title: "Name', '"'], ['title: Name', 'Name']]) {
+    const source = `---\n${field}\n---\n\n::docsera-unknown\n\n::docsera-image`;
+    act(() => session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: source } }));
+    expect(latestSnapshot(snapshots).kind).toBe("invalid");
+    const tooltip = markdownSourceErrorTooltip(session.view, 0)?.create().dom;
+    expect(tooltip).toHaveTextContent("Malformed frontmatter");
+    expect(tooltip).toHaveTextContent("Use the following format:");
+    expect(tooltip?.querySelector("pre")?.textContent).toBe('---\ntitle: "your page title"\n---');
+    expect(markdownSourceErrorTooltip(session.view, 0)?.end).toBe(source.indexOf("\n---\n") + 4);
+    expect(mount.querySelectorAll(".docsera-markdown-source-error-marker")).toHaveLength(3);
+    const corrected = source.replace(field, 'title: "Updated"');
+    act(() => session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: corrected } }));
+    expect(mount.querySelectorAll(".docsera-markdown-source-error-marker")).toHaveLength(2);
+    const valid = corrected.replace("::docsera-unknown", "text").replace("::docsera-image", "text");
+    act(() => session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: valid } }));
+    expect(latestSnapshot(snapshots)).toMatchObject({ kind: "valid", title: "Updated" });
+    expect(mount.querySelector(".docsera-markdown-source-error")).toBeNull();
+  }
+  session.destroy();
+});
+
+it("keeps body markers when a malformed opening and metadata are corrected independently", () => {
+  const mount = document.createElement("div");
+  document.body.append(mount);
+  const result = createMarkdownSourceSession({ mount, title: "Overview", envelope: createCanonicalDocseraDocumentEnvelope(), onStateChange: () => {} });
+  if (!result.ok) throw new Error("session failed");
+  const { session } = result;
+  const source = '--\ntitl: "untitled-page\n---\n\n::docsera-unknown\n\n::docsera-image';
+  for (const candidate of [source, source.replace('--\n', '---\n'), source.replace('titl:', 'title:'), source.replace('untitled-page', 'untitled-page"')]) {
+    act(() => session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: candidate } }));
+    expect(mount.querySelectorAll(".docsera-markdown-source-error-marker")).toHaveLength(3);
+    const tooltip = markdownSourceErrorTooltip(session.view, 0);
+    expect(tooltip?.end).toBe(candidate.indexOf('\n---\n') + 4);
+    expect(tooltip?.create().dom).toHaveTextContent("Malformed frontmatter");
+  }
   session.destroy();
 });

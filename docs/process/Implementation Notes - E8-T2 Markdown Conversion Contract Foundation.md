@@ -14,7 +14,7 @@ This note records the repository-side Markdown conversion boundary added for E8-
 
 - CommonMark/GFM parsing uses `mdast-util-from-markdown` with `micromark-extension-gfm` and `mdast-util-gfm`.
 - Docsera structural directives use `micromark-extension-directive` and `mdast-util-directive`.
-- YAML frontmatter validation uses `yaml`.
+- YAML frontmatter validation uses `yaml`. Exactly one `title` field is supported, and its value must be a double-quoted YAML string that also passes authoritative page-title validation. Strict validation retains its individual failure details; Source diagnostics aggregate invalid frontmatter over its identifiable block.
 - Directive leaf serialization for escaping-sensitive image attributes uses `mdast-util-directive`'s Markdown serializer rather than a repo-local string escaper.
 - Directive attribute serialization now uses the `mdast-util-directive` serializer for string values across the shared converter so Accordion and ordered-list/container directive ids keep quote, ampersand, and escaped control-character content parseable without broadening the canonical document boundary.
 - Deterministic Docsera block serialization remains repo-owned so the contract can choose the exact lossless form for empty structures, ordered-list wrappers, Accordions, Columns, and rich tables.

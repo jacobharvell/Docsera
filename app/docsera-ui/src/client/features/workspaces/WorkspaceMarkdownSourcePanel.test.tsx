@@ -14,6 +14,7 @@ type Snapshot =
       text: string;
       isClean: boolean;
       failure: { message: string; range?: { from: number; to: number } };
+      diagnostics: { message: string; range?: { from: number; to: number } }[];
     }
   | {
       kind: "valid";
@@ -122,23 +123,26 @@ describe("WorkspaceMarkdownSourcePanel", () => {
     const discard = vi.fn();
     const { rerender } = render(<WorkspaceMarkdownSourcePanel authoringSurface="markdown" canonicalEnvelope={createEmptyDocseraDocumentEnvelope()} canonicalTitle="Overview" discardNonce={0} editable pageSysId="one" visible onDiscardInvalidDraft={discard} />);
     await waitForSourceSessionCreation();
-    act(() => lastStateChange?.({ kind: "invalid", text: "plain", isClean: false, failure: { message: "Opening delimiter requires ---" } }));
+    act(() => lastStateChange?.({ kind: "invalid", text: "plain", isClean: false, failure: { message: "Opening delimiter requires ---" }, diagnostics: [{ message: "Opening delimiter requires ---" }] }));
     const message = screen.getByText("This page contains markdown that the editor cannot parse. Fix it or discard changes using the button below");
     const recovery = message.parentElement!;
     expect(recovery.querySelector("details, summary")).toBeNull();
     expect(screen.getByText("Opening delimiter requires ---")).toBeVisible();
     expect(screen.getByRole("button", { name: "Discard invalid draft" }).parentElement).toBe(recovery);
-    act(() => lastStateChange?.({ kind: "invalid", text: "first\n<bad>", isClean: false, failure: { message: "Unsupported HTML", range: { from: 6, to: 11 } } }));
+    act(() => lastStateChange?.({ kind: "invalid", text: "first\n<bad>", isClean: false, failure: { message: "Unsupported HTML", range: { from: 6, to: 11 } }, diagnostics: [{ message: "Unsupported HTML", range: { from: 6, to: 11 } }, { message: "Second error", range: { from: 0, to: 5 } }] }));
     const explanation = screen.getByText("Unsupported HTML");
     expect(explanation).toHaveClass("docsera-main__source-diagnostic-accessible");
     explanation.focus();
     expect(explanation).toHaveFocus();
+    const secondExplanation = screen.getByText("Second error");
+    secondExplanation.focus();
+    expect(secondExplanation).toHaveFocus();
     expect(screen.queryByRole("button", { name: /Go to line/ })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Discard invalid draft" }));
     expect(discard).toHaveBeenCalled();
     act(() => lastStateChange?.({ kind: "valid", text: "valid", isClean: true, title: "Overview", envelope: createEmptyDocseraDocumentEnvelope(), normalizedMarkdown: "valid" }));
     expect(screen.queryByText("This page contains markdown that the editor cannot parse. Fix it or discard changes using the button below")).not.toBeInTheDocument();
-    act(() => lastStateChange?.({ kind: "invalid", text: "--", isClean: false, failure: { message: "Old error" } }));
+    act(() => lastStateChange?.({ kind: "invalid", text: "--", isClean: false, failure: { message: "Old error" }, diagnostics: [{ message: "Old error" }] }));
     rerender(<WorkspaceMarkdownSourcePanel authoringSurface="markdown" canonicalEnvelope={createEmptyDocseraDocumentEnvelope()} canonicalTitle="Overview" discardNonce={0} editable pageSysId="two" visible />);
     expect(screen.queryByText("Old error")).not.toBeInTheDocument();
   });
@@ -334,7 +338,7 @@ describe("WorkspaceMarkdownSourcePanel", () => {
         kind: "invalid",
         text: "---\ntitle: \"Broken\"\n---\n# Broken\n",
         isClean: false,
-        failure: { message: "Invalid markdown source" }
+        failure: { message: "Invalid markdown source" }, diagnostics: [{ message: "Invalid markdown source" }]
       });
     });
 

@@ -6854,7 +6854,6 @@ html[data-docsera-theme="dark"] .docsera-markdown-source-error {
   border: 1px solid var(--docsera-border);
   border-radius: 6px;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
-  margin-block: 8px;
   background: var(--docsera-surface);
   color: var(--docsera-text);
 }
@@ -6952,4 +6951,16 @@ html[data-docsera-theme="dark"] .docsera-markdown-source-error-marker::before { 
 html[data-docsera-theme="dark"] .docsera-markdown-source-error-badge {
   background: #542b30;
   color: #ffb4b4;
+}
+
+.docsera-markdown-source-tooltip-instruction {
+  display: block;
+  margin-top: 0.35rem;
+}
+.docsera-markdown-source-tooltip-example {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.15);
+  white-space: pre;
 }

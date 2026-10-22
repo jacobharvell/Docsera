@@ -1,4 +1,5 @@
 import {
+  collectDocseraMarkdownDiagnostics,
   parseDocseraMarkdownDocument,
   serializeDocseraMarkdownDocument
 } from "./markdown";
@@ -1379,11 +1380,11 @@ describe("Docsera Markdown conversion contract", () => {
 
 describe("Markdown source diagnostic ranges", () => {
   it.each([
-    ["---\ntitle: ''\n---\n", "''", "invalid-title"],
+    ['---\ntitle: ""\n---\n', '""', "invalid-title"],
     ["---\ntitle: a\ntitle: b\n---\n", "t", "invalid-frontmatter"],
-    ["---\ntitle: Test\n---\n`<bad>` then <bad>", "<bad>", "unsupported-html"],
-    ["---\ntitle: Test\n---\n`::docsera-unknown`\n\n::docsera-unknown", "::docsera-unknown", "unknown-directive"],
-    ["---\ntitle: Test\n---\n`::docsera-image`\n\n::docsera-image", "::docsera-image", "invalid-directive"]
+    ["---\ntitle: \"Test\"\n---\n`<bad>` then <bad>", "<bad>", "unsupported-html"],
+    ["---\ntitle: \"Test\"\n---\n`::docsera-unknown`\n\n::docsera-unknown", "::docsera-unknown", "unknown-directive"],
+    ["---\ntitle: \"Test\"\n---\n`::docsera-image`\n\n::docsera-image", "::docsera-image", "invalid-directive"]
   ])("locates the actual failure for %s", (source, token, reason) => {
     const result = parseDocseraMarkdownDocument(source);
     expect(result.ok).toBe(false);
@@ -1395,15 +1396,15 @@ describe("Markdown source diagnostic ranges", () => {
   });
 
   it("explains required frontmatter delimiters and accepts ordinary punctuation", () => {
-    expect(parseDocseraMarkdownDocument('--\ntitle: Test\n---\n')).toMatchObject({ ok: false, message: expect.stringContaining('opening delimiter: ---') });
-    expect(parseDocseraMarkdownDocument('---\ntitle: Test\n')).toMatchObject({ ok: false, message: expect.stringContaining('closing delimiter: ---') });
+    expect(parseDocseraMarkdownDocument('--\ntitle: \"Test\"\n---\n')).toMatchObject({ ok: false, message: expect.stringContaining('opening delimiter: ---') });
+    expect(parseDocseraMarkdownDocument('---\ntitle: \"Test\"\n')).toMatchObject({ ok: false, message: expect.stringContaining('closing delimiter: ---') });
     expect(parseDocseraMarkdownDocument(createMarkdownDocumentSource("Test", "~*7$?."))).toMatchObject({ ok: true });
   });
 
   it.each([
-    ["--\ntitle: Test\n---\n", "--"],
-    ["---\ntitle: Test\n--\nBody text", "--"],
-    ["---\r\ntitle: Test\r\n----\r\n", "----"]
+    ["--\ntitle: \"Test\"\n---\n", "--"],
+    ["---\ntitle: \"Test\"\n--\nBody text", "--"],
+    ["---\r\ntitle: \"Test\"\r\n----\r\n", "----"]
   ])("locates a malformed delimiter in %s", (source, delimiter) => {
     const result = parseDocseraMarkdownDocument(source);
     expect(result.ok).toBe(false);
@@ -1412,13 +1413,100 @@ describe("Markdown source diagnostic ranges", () => {
 
   it("does not invent a location for missing frontmatter", () => {
     expect(parseDocseraMarkdownDocument("plain text")).not.toHaveProperty("range");
-    expect(parseDocseraMarkdownDocument("---\ntitle: Test\nbody text")).not.toHaveProperty("range");
+    expect(parseDocseraMarkdownDocument("---\ntitle: \"Test\"\nbody text")).not.toHaveProperty("range");
   });
 
   it("uses original document offsets with CRLF", () => {
-    const source = "---\r\ntitle: Test\r\n---\r\ntext <bad>";
+    const source = "---\r\ntitle: \"Test\"\r\n---\r\ntext <bad>";
     const result = parseDocseraMarkdownDocument(source);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(source.slice(result.range!.from, result.range!.to)).toBe("<bad>");
+  });
+});
+
+
+describe("independent source diagnostics", () => {
+  it("collects ordered, deduplicated sibling failures with original CRLF offsets and preserves strict failure", () => {
+    const source = ["---", "title: \"Test\"", "---", ...Array.from({ length: 80 }, (_, i) => `Paragraph ${i}\n`), "::docsera-unknown", "", "::docsera-image"].join("\r\n");
+    const diagnostics = collectDocseraMarkdownDiagnostics(source);
+    expect(diagnostics).toHaveLength(2);
+    expect(diagnostics.map((item) => item.range?.from)).toEqual([source.indexOf("::docsera-unknown"), source.indexOf("::docsera-image")]);
+    expect(parseDocseraMarkdownDocument(source)).toEqual(diagnostics[0]);
+    const corrected = source.replace("::docsera-unknown", "ordinary text");
+    expect(collectDocseraMarkdownDiagnostics(corrected)).toHaveLength(1);
+    expect(parseDocseraMarkdownDocument(corrected).ok).toBe(false);
+  });
+
+  it("collects nested siblings and parent attribute failures without repeating propagated errors", () => {
+    const source = ["---", "title: \"Test\"", "---", "", ':::docsera-callout{type="bad"}', "::docsera-unknown", "", "::docsera-image", ":::"].join("\r\n");
+    const diagnostics = collectDocseraMarkdownDiagnostics(source);
+    expect(diagnostics.map((item) => item.range?.from)).toEqual([source.indexOf(":::docsera-callout"), source.indexOf("::docsera-unknown"), source.indexOf("::docsera-image")]);
+    const validParent = source.replace('type="bad"', 'type="info"');
+    expect(collectDocseraMarkdownDiagnostics(validParent).map((item) => item.range?.from)).toEqual([validParent.indexOf("::docsera-unknown"), validParent.indexOf("::docsera-image")]);
+  });
+
+  it("collects body failures only when invalid frontmatter has an unambiguous boundary", () => {
+    const source = "---\ntitle: \"Test\"\nextra: value\n---\n\n::docsera-image";
+    const diagnostics = collectDocseraMarkdownDiagnostics(source);
+    expect(diagnostics).toHaveLength(2);
+    expect(diagnostics.map((item) => item.reason)).toEqual(["invalid-frontmatter", "invalid-directive"]);
+    expect(parseDocseraMarkdownDocument(source).ok).toBe(false);
+    for (const ambiguous of ["---\ntitle: \"Test\"\nbody\n\n::docsera-image", "---\ntitle: \"Test\"\n--\n---\n\n::docsera-image", "--\ntitl: value\n--\n---\n\n::docsera-image", "--\ntitl: value\nbody\n---\n\n::docsera-image", "--\ntitl: value\n\n::docsera-image"]) {
+      expect(collectDocseraMarkdownDiagnostics(ambiguous)).toMatchObject([{ reason: "invalid-frontmatter", message: "Malformed frontmatter" }]);
+    }
+  });
+
+  it("recovers body diagnostics through independently malformed opening and metadata", () => {
+    const block = '--\r\ntitl: "untitled-page\r\nextra: value\r\n---';
+    const source = `${block}\r\n\r\n::docsera-unknown\r\n\r\n::docsera-image`;
+    for (const candidate of [source, source.replace('--\r\n', '---\r\n'), source.replace('titl:', 'title:'), source.replace('untitled-page', 'untitled-page"')]) {
+      const diagnostics = collectDocseraMarkdownDiagnostics(candidate);
+      expect(diagnostics.map((item) => item.reason)).toEqual(["invalid-frontmatter", "unknown-directive", "invalid-directive"]);
+      expect(candidate.slice(diagnostics[0].range!.from, diagnostics[0].range!.to)).toBe(candidate.slice(0, candidate.indexOf('\r\n\r\n')));
+      expect(diagnostics.slice(1).map((item) => item.range?.from)).toEqual([candidate.indexOf('::docsera-unknown'), candidate.indexOf('::docsera-image')]);
+    }
+  });
+
+  it.each([["--", "---"], ["---", "--"], ["---", "----"]])("recovers body diagnostics with malformed delimiters %s and %s", (opening, closing) => {
+    const source = [opening, "title: \"Test\"", closing, "", "::docsera-unknown", "", "::docsera-image"].join("\r\n");
+    const diagnostics = collectDocseraMarkdownDiagnostics(source);
+    expect(diagnostics).toHaveLength(3);
+    expect(diagnostics.map((item) => item.range?.from)).toEqual([0, source.indexOf("::docsera-unknown"), source.indexOf("::docsera-image")]);
+    expect(source.slice(diagnostics[0].range!.from, diagnostics[0].range!.to)).toBe([opening, 'title: "Test"', closing].join("\r\n"));
+    expect(parseDocseraMarkdownDocument(source.replace("::docsera-unknown", "text").replace("::docsera-image", "text")).ok).toBe(false);
+    expect(parseDocseraMarkdownDocument(["---", "title: \"Test\"", "---", "", "text"].join("\r\n")).ok).toBe(true);
+  });
+
+  it("retains frontmatter and unlocated failures and accepts literal directive text", () => {
+    const invalid = "missing frontmatter\n\n::docsera-unknown";
+    expect(collectDocseraMarkdownDiagnostics(invalid)).toMatchObject([{ reason: "invalid-frontmatter", message: "Malformed frontmatter" }]);
+    const literal = "---\ntitle: \"Test\"\n---\n\n:::ordinary\n\n\\:\\:docsera-unknown\n\n```\n::docsera-unknown\n```";
+    expect(collectDocseraMarkdownDiagnostics(literal)).toEqual([]);
+  });
+});
+
+
+describe("frontmatter field and quotation diagnostics", () => {
+  it.each([
+    ['titl: "Name"', 'titl'],
+    ['title: "Name"\nextra: value', 'extra'],
+    ['title: Name"', 'Name"'],
+    ['title: "Name', '"'],
+    ['title: Name', 'Name'],
+    ["title: 'Name'", "'Name'"],
+    ['titl: "Name\nextra: value', 'titl']
+  ])("locates invalid frontmatter %s", (field, token) => {
+    const source = `---\r\n${field}\r\n---\r\n\r\n::docsera-unknown\r\n\r\n::docsera-image`;
+    const diagnostics = collectDocseraMarkdownDiagnostics(source);
+    expect(diagnostics).toHaveLength(3);
+    const first = diagnostics[0];
+    expect(source.slice(first.range!.from, first.range!.to)).toBe(`---\r\n${field}\r\n---`);
+    expect(first.message).toBe("Malformed frontmatter");
+    expect(diagnostics.slice(1).map((item) => item.reason)).toEqual(["unknown-directive", "invalid-directive"]);
+    expect(collectDocseraMarkdownDiagnostics(source.replace("::docsera-unknown", "text")).map((item) => item.reason)).toEqual(["invalid-frontmatter", "invalid-directive"]);
+    const fixed = source.replace(field, 'title: "New \\\"quoted\\\" title"');
+    expect(collectDocseraMarkdownDiagnostics(fixed)).toHaveLength(2);
+    const valid = fixed.replace("::docsera-unknown", "text").replace("::docsera-image", "text");
+    expect(parseDocseraMarkdownDocument(valid)).toMatchObject({ ok: true, title: 'New "quoted" title' });
   });
 });

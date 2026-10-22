@@ -11,6 +11,7 @@ import type {
   SerializeDocseraMarkdownResult
 } from "../../shared/editor/markdown";
 import {
+  collectDocseraMarkdownDiagnostics,
   parseDocseraMarkdownDocument,
   serializeDocseraMarkdownDocument
 } from "../../shared/editor/markdown";
@@ -22,6 +23,7 @@ type MarkdownSourceSessionSnapshot =
       kind: "invalid";
       text: string;
       failure: DocseraMarkdownConversionFailure;
+      diagnostics: DocseraMarkdownConversionFailure[];
     }
   | {
       envelope: DocseraDocumentEnvelope;
@@ -58,7 +60,8 @@ function createSnapshot(text: string, cleanText: string): MarkdownSourceSessionS
       kind: "invalid",
       text,
       isClean: text === cleanText,
-      failure: parsed
+      failure: parsed,
+      diagnostics: collectDocseraMarkdownDiagnostics(text, parsed)
     };
   }
 
@@ -166,7 +169,7 @@ class DiagnosticMarker extends WidgetType {
   }
 }
 
-function docseraSourceDecorations(view: EditorView) {
+function docseraSourceDecorations(view: EditorView, diagnostics: DocseraMarkdownConversionFailure[]) {
   const decorations: Range<Decoration>[] = [];
   let leadingFrontmatter = true;
   let frontmatterDelimiterCount = 0;
@@ -239,35 +242,37 @@ function docseraSourceDecorations(view: EditorView) {
     }
   }
 
-  const parsed = parseDocseraMarkdownDocument(view.state.doc.toString());
-  if (!parsed.ok && parsed.range && parsed.range.from >= 0 && parsed.range.to > parsed.range.from && parsed.range.to <= view.state.doc.length) {
-    decorations.push(Decoration.widget({ widget: new DiagnosticMarker(), side: -1 }).range(parsed.range.from));
-    decorations.push(sourceMark("docsera-markdown-source-error").range(parsed.range.from, parsed.range.to));
+  for (const diagnostic of diagnostics) {
+    const range = diagnostic.range;
+    if (range && range.from >= 0 && range.to > range.from && range.to <= view.state.doc.length) {
+      decorations.push(Decoration.widget({ widget: new DiagnosticMarker(), side: -1 }).range(range.from));
+      decorations.push(sourceMark("docsera-markdown-source-error").range(range.from, range.to));
+    }
   }
   return Decoration.set(decorations, true);
 }
 
 const docseraSourceHighlighting = ViewPlugin.fromClass(class {
   decorations: ReturnType<typeof docseraSourceDecorations>;
-  diagnostic: DocseraMarkdownConversionFailure | null;
+  diagnostics: DocseraMarkdownConversionFailure[];
 
   constructor(view: EditorView) {
-    this.decorations = docseraSourceDecorations(view);
-    const parsed = parseDocseraMarkdownDocument(view.state.doc.toString());
-    this.diagnostic = parsed.ok ? null : parsed;
+    this.diagnostics = collectDocseraMarkdownDiagnostics(view.state.doc.toString());
+    this.decorations = docseraSourceDecorations(view, this.diagnostics);
   }
 
   update(update: ViewUpdate) {
-    if (update.docChanged || update.viewportChanged) this.decorations = docseraSourceDecorations(update.view);
-    if (update.docChanged) {
-      const parsed = parseDocseraMarkdownDocument(update.state.doc.toString());
-      this.diagnostic = parsed.ok ? null : parsed;
-    }
+    if (update.docChanged) this.diagnostics = collectDocseraMarkdownDiagnostics(update.state.doc.toString());
+    if (update.docChanged || update.viewportChanged) this.decorations = docseraSourceDecorations(update.view, this.diagnostics);
   }
 }, { decorations: (value) => value.decorations });
 
 export function markdownSourceErrorTooltip(view: EditorView, position: number) {
-  const diagnostic = view.plugin(docseraSourceHighlighting)?.diagnostic;
+  const diagnostic = view.plugin(docseraSourceHighlighting)?.diagnostics.reduce<DocseraMarkdownConversionFailure | undefined>((best, item) => {
+    const range = item.range;
+    if (!range || range.from < 0 || range.to > view.state.doc.length || position < range.from || position >= range.to) return best;
+    return !best?.range || range.to - range.from < best.range.to - best.range.from ? item : best;
+  }, undefined);
   const range = diagnostic?.range;
   if (!diagnostic || !range || range.from < 0 || range.to <= range.from || range.to > view.state.doc.length || position < range.from || position >= range.to) return null;
   return {
@@ -288,7 +293,16 @@ export function markdownSourceErrorTooltip(view: EditorView, position: number) {
       const message = view.dom.ownerDocument.createElement("span");
       message.textContent = diagnostic.message;
       dom.append(badge, message);
-      return { dom };
+      if (diagnostic.reason === "invalid-frontmatter") {
+        const instruction = view.dom.ownerDocument.createElement("span");
+        instruction.className = "docsera-markdown-source-tooltip-instruction";
+        instruction.textContent = "Use the following format:";
+        const example = view.dom.ownerDocument.createElement("pre");
+        example.className = "docsera-markdown-source-tooltip-example";
+        example.textContent = '---\ntitle: "your page title"\n---';
+        dom.append(instruction, example);
+      }
+      return { dom, offset: { x: 0, y: 12 } };
     }
   };
 }

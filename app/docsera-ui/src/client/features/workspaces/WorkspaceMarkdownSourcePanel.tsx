@@ -443,7 +443,7 @@ export function WorkspaceMarkdownSourcePanel({
       {invalidSnapshot ? (
         <div className="docsera-main__source-invalid">
           <p>This page contains markdown that the editor cannot parse. Fix it or discard changes using the button below</p>
-          <p tabIndex={invalidSnapshot.failure.range ? 0 : undefined} className={invalidSnapshot.failure.range ? "docsera-main__source-diagnostic-accessible" : "docsera-main__source-diagnostic"}>{statusMessage}</p>
+          {invalidSnapshot.diagnostics.map((diagnostic, index) => <p key={index} tabIndex={diagnostic.range ? 0 : undefined} className={diagnostic.range ? "docsera-main__source-diagnostic-accessible" : "docsera-main__source-diagnostic"}>{diagnostic.message}</p>)}
           <button type="button" className="docsera-destructive-action docsera-main__source-discard" onClick={onDiscardInvalidDraft ?? (() => undefined)}>
             Discard invalid draft
           </button>

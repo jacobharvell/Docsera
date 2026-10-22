@@ -5,7 +5,7 @@ import { toMarkdown } from "mdast-util-to-markdown";
 import type { Root as MdastRoot } from "mdast";
 import { directive } from "micromark-extension-directive";
 import { gfm } from "micromark-extension-gfm";
-import { parseDocument as parseYamlDocument } from "yaml";
+import { isMap, isScalar, parseDocument as parseYamlDocument } from "yaml";
 import { validatePageSettingsTitle } from "../pages/domain";
 import {
   DOCSERA_DOCUMENT_SCHEMA_VERSION,
@@ -161,6 +161,14 @@ function parseFrontmatter(markdown: string): { title: string; body: string; body
   if (yamlDocument.errors.length > 0) {
     const [from, to] = yamlDocument.errors[0].pos;
     const failure = createFailure("invalid-frontmatter", "Markdown frontmatter is malformed.");
+    // An unterminated quoted scalar can place the parser error beyond the input.
+    // Its source node still identifies the actual opening quote.
+    if (yamlDocument.errors[0].code === "MISSING_CHAR" && isMap(yamlDocument.contents)) {
+      const title = yamlDocument.contents.items.find((pair) => isScalar(pair.key) && pair.key.value === "title")?.value;
+      if (isScalar(title) && title.type === "QUOTE_DOUBLE" && title.range && frontmatter[title.range[0]] === '"') {
+        return { ...failure, range: { from: title.range[0] + 4, to: title.range[0] + 5 } };
+      }
+    }
     return from >= 0 && to > from && to <= frontmatter.length ? { ...failure, range: { from: from + 4, to: to + 4 } } : failure;
   }
 
@@ -171,7 +179,19 @@ function parseFrontmatter(markdown: string): { title: string; body: string; body
 
   const keys = Object.keys(rawValue);
   if (keys.length !== 1 || keys[0] !== "title") {
-    return createFailure("invalid-frontmatter", "Markdown frontmatter may contain only the title field.");
+    const failure = createFailure("invalid-frontmatter", "Markdown frontmatter may contain only the title field.");
+    const unsupported = isMap(yamlDocument.contents)
+      ? yamlDocument.contents.items.find((pair) => !isScalar(pair.key) || pair.key.value !== "title")?.key
+      : undefined;
+    const range = unsupported && "range" in unsupported ? unsupported.range : undefined;
+    return range && range[1] > range[0] ? { ...failure, range: { from: range[0] + 4, to: range[1] + 4 } } : failure;
+  }
+
+  const titleNode = yamlDocument.get("title", true);
+  if (!isScalar(titleNode) || titleNode.type !== "QUOTE_DOUBLE") {
+    const failure = createFailure("invalid-title", "Markdown title must be a double-quoted YAML string.");
+    const range = isScalar(titleNode) ? titleNode.range : undefined;
+    return range && range[1] > range[0] ? { ...failure, range: { from: range[0] + 4, to: range[1] + 4 } } : failure;
   }
 
   const titleValidation = validatePageSettingsTitle(rawValue.title);
@@ -1810,33 +1830,25 @@ export function serializeDocseraMarkdownDocument(title: unknown, envelope: unkno
   }
 }
 
-export function parseDocseraMarkdownDocument(markdown: unknown): ParseDocseraMarkdownResult {
-  if (typeof markdown !== "string") {
-    return createFailure("invalid-markdown", "Markdown source must be a string.");
-  }
-
-  const frontmatter = parseFrontmatter(markdown);
-  const originalRange = (failure: DocseraMarkdownConversionFailure, offset = 0): DocseraMarkdownConversionFailure => {
-    if (!failure.range) return failure;
-    const normalized = normalizeMarkdownInput(markdown);
-    const from = failure.range.from + offset;
-    const to = failure.range.to + offset;
-    if (from < 0 || to <= from || to > normalized.length) return { ...failure, range: undefined };
-    const originalOffset = (position: number) => {
-      let original = 0;
-      for (let index = 0; index < position; index++, original++) {
-        if (markdown[original] === "\r" && markdown[original + 1] === "\n") original++;
-      }
-      return original;
-    };
-    return { ...failure, range: { from: originalOffset(from), to: originalOffset(to) } };
+function originalMarkdownRange(markdown: string, failure: DocseraMarkdownConversionFailure, offset = 0): DocseraMarkdownConversionFailure {
+  if (!failure.range) return failure;
+  const normalized = normalizeMarkdownInput(markdown);
+  const from = failure.range.from + offset;
+  const to = failure.range.to + offset;
+  if (from < 0 || to <= from || to > normalized.length) return { ...failure, range: undefined };
+  const originalOffset = (position: number) => {
+    let original = 0;
+    for (let index = 0; index < position; index++, original++) {
+      if (markdown[original] === "\r" && markdown[original + 1] === "\n") original++;
+    }
+    return original;
   };
-  if (isFailure(frontmatter)) {
-    return originalRange(frontmatter);
-  }
+  return { ...failure, range: { from: originalOffset(from), to: originalOffset(to) } };
+}
 
+function parseMarkdownBody(source: string): { ast: MdastRoot; body: string; insertedOffsets: number[] } | DocseraMarkdownConversionFailure {
   let ast: MdastRoot;
-  let body = frontmatter.body;
+  let body = source;
   const insertedOffsets: number[] = [];
   try {
     // An unclosed unknown container consumes following blocks in the AST. Escape
@@ -1875,11 +1887,27 @@ export function parseDocseraMarkdownDocument(markdown: unknown): ParseDocseraMar
     return createFailure("invalid-markdown", "Markdown source did not produce a valid document AST.");
   }
 
+  return { ast, body, insertedOffsets };
+}
+
+export function parseDocseraMarkdownDocument(markdown: unknown): ParseDocseraMarkdownResult {
+  if (typeof markdown !== "string") {
+    return createFailure("invalid-markdown", "Markdown source must be a string.");
+  }
+
+  const frontmatter = parseFrontmatter(markdown);
+  if (isFailure(frontmatter)) {
+    return originalMarkdownRange(markdown, frontmatter);
+  }
+
+  const parsedBody = parseMarkdownBody(frontmatter.body);
+  if (isFailure(parsedBody)) return parsedBody;
+  const { ast, body, insertedOffsets } = parsedBody;
   const blocks = parseFlow(ast.children, body);
   if (isFailure(blocks)) {
     const range = blocks.range;
     const sourceOffset = (offset: number) => offset - insertedOffsets.filter((position) => position < offset).length;
-    return originalRange(range ? { ...blocks, range: { from: sourceOffset(range.from), to: sourceOffset(range.to) } } : blocks, frontmatter.bodyOffset);
+    return originalMarkdownRange(markdown, range ? { ...blocks, range: { from: sourceOffset(range.from), to: sourceOffset(range.to) } } : blocks, frontmatter.bodyOffset);
   }
 
   const envelope = toCanonicalEnvelope(blocks);
@@ -1898,6 +1926,72 @@ export function parseDocseraMarkdownDocument(markdown: unknown): ParseDocseraMar
     envelope: normalized.envelope,
     markdown: normalized.markdown
   };
+}
+
+export function collectDocseraMarkdownDiagnostics(markdown: unknown, strictResult?: ParseDocseraMarkdownResult): DocseraMarkdownConversionFailure[] {
+  const strict = strictResult ?? parseDocseraMarkdownDocument(markdown);
+  if (strict.ok) return [];
+  if (typeof markdown !== "string") return [strict];
+  const frontmatter = parseFrontmatter(markdown);
+  const normalized = normalizeMarkdownInput(markdown);
+  const closingOffset = normalized.startsWith("---\n") ? normalized.indexOf("\n---\n", 4) : -1;
+  const malformedOpening = /^(?!---\n)-{2,} *\n(?:[ \t]*[A-Za-z_][\w.-]*:[^\n]*\n)+---(?:\n|$)/.exec(normalized);
+  const malformedClosing = /^---\ntitle:[^\n]*\n(?!---(?:\n|$))-{2,} *(?:\n|$)/.exec(normalized);
+  // A delimiter-like line before the closing delimiter makes the intended boundary ambiguous.
+  const invalidFrontmatter = isFailure(frontmatter);
+  const ambiguous = invalidFrontmatter && !malformedOpening && (closingOffset < 0 ? !malformedClosing : /^-{2,} *$/m.test(normalized.slice(4, closingOffset)));
+  const boundary = malformedOpening?.[0].length ?? (closingOffset < 0 ? malformedClosing?.[0].length : closingOffset + 5);
+  const frontmatterEnd = boundary === undefined ? (normalized.startsWith("---\n") ? normalized.length : (normalized.indexOf("\n") + 1 || normalized.length)) : boundary - (normalized[boundary - 1] === "\n" ? 1 : 0);
+  const combined = invalidFrontmatter ? originalMarkdownRange(markdown, {
+    ...frontmatter,
+    reason: "invalid-frontmatter",
+    message: "Malformed frontmatter",
+    range: (/^-{2,}/.test(normalized) && frontmatterEnd > 0) ? { from: 0, to: frontmatterEnd } : undefined
+  }) : undefined;
+  if (ambiguous) return [combined!];
+  const bodyOffset = invalidFrontmatter ? boundary! : frontmatter.bodyOffset;
+  const parsedBody = parseMarkdownBody(invalidFrontmatter ? normalized.slice(bodyOffset) : frontmatter.body);
+  if (isFailure(parsedBody)) return combined ? [combined] : [strict];
+  const { ast, body, insertedOffsets } = parsedBody;
+  const diagnostics: DocseraMarkdownConversionFailure[] = [];
+  const sourceOffset = (offset: number) => offset - insertedOffsets.filter((position) => position < offset).length;
+  const add = (failure: DocseraMarkdownConversionFailure) => {
+    const range = failure.range;
+    diagnostics.push(originalMarkdownRange(markdown, range ? { ...failure, range: { from: sourceOffset(range.from), to: sourceOffset(range.to) } } : failure, bodyOffset));
+  };
+  const inspect = (node: unknown): DocseraMarkdownConversionFailure[] => {
+    if (!isRecord(node)) return [];
+    const result = parseFlow([node], body);
+    if (!isFailure(result)) return [];
+    const children: unknown[] = [];
+    if (node.type === "list") {
+      for (const item of Array.isArray(node.children) ? node.children : []) {
+        if (isRecord(item) && item.type === "listItem" && Array.isArray(item.children)) children.push(...item.children);
+      }
+    } else if (node.type === "blockquote" || (node.type === "containerDirective" && typeof node.name === "string" && DOCSERA_DIRECTIVE_NAMES.has(node.name))) {
+      children.push(...(Array.isArray(node.children) ? node.children.filter((child) => !isDirectiveLabelParagraph(child)) : []));
+    } else if (node.type === "table") {
+      for (const row of Array.isArray(node.children) ? node.children : []) {
+        if (!isRecord(row) || !Array.isArray(row.children)) continue;
+        for (const cell of row.children) {
+          if (!isRecord(cell)) continue;
+          const failure = parsePhrasing(cell.children as unknown[] | undefined);
+          if (isFailure(failure)) children.push({ type: "__diagnostic", failure });
+        }
+      }
+    }
+    const nested = children.flatMap((child) => isRecord(child) && child.type === "__diagnostic" ? [child.failure as DocseraMarkdownConversionFailure] : inspect(child));
+    const same = (a: DocseraMarkdownConversionFailure, b: DocseraMarkdownConversionFailure) =>
+      a.reason === b.reason && a.message === b.message && a.range?.from === b.range?.from && a.range?.to === b.range?.to;
+    return [...(nested.some((child) => same(result, child)) ? [] : [result]), ...nested];
+  };
+  for (const node of ast.children) for (const failure of inspect(node)) add(failure);
+  diagnostics.push(combined ?? strict);
+  const unique = new Map<string, DocseraMarkdownConversionFailure>();
+  for (const diagnostic of diagnostics) {
+    unique.set(JSON.stringify([diagnostic.reason, diagnostic.message, diagnostic.range?.from, diagnostic.range?.to]), diagnostic);
+  }
+  return [...unique.values()].sort((a, b) => (a.range?.from ?? Infinity) - (b.range?.from ?? Infinity));
 }
 
 export function normalizeDocseraMarkdownDocument(markdown: unknown): ParseDocseraMarkdownResult {
