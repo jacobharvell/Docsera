@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { createEmptyDocseraDocumentEnvelope } from "../../../shared/editor/document";
 import { WorkspaceMarkdownSourcePanel } from "./WorkspaceMarkdownSourcePanel";
@@ -13,7 +13,7 @@ type Snapshot =
       kind: "invalid";
       text: string;
       isClean: boolean;
-      failure: { message: string };
+      failure: { message: string; range?: { from: number; to: number } };
     }
   | {
       kind: "valid";
@@ -32,6 +32,8 @@ const createMarkdownSourceSessionMock = vi.fn();
 const setEditableMock = vi.fn();
 const replaceFromCanonicalMock = vi.fn();
 const destroyMock = vi.fn();
+const dispatchMock = vi.fn();
+const focusMock = vi.fn();
 
 function createEnvelopeWithParagraph(text: string): DocseraDocumentEnvelope {
   const envelope = createEmptyDocseraDocumentEnvelope();
@@ -91,7 +93,7 @@ vi.mock("../../editor/MarkdownSourceSession", () => {
             listener(currentSnapshot);
             return () => undefined;
           },
-          view: {} as never
+          view: { dispatch: dispatchMock, focus: focusMock } as never
         }
       };
     }
@@ -106,6 +108,8 @@ describe("WorkspaceMarkdownSourcePanel", () => {
     setEditableMock.mockClear();
     replaceFromCanonicalMock.mockClear();
     destroyMock.mockClear();
+    dispatchMock.mockClear();
+    focusMock.mockClear();
   });
 
   async function waitForSourceSessionCreation(): Promise<void> {
@@ -113,6 +117,31 @@ describe("WorkspaceMarkdownSourcePanel", () => {
       expect(createMarkdownSourceSessionMock).toHaveBeenCalledTimes(1);
     });
   }
+
+  it("shows recovery instructions and accessible explanations and discards the draft", async () => {
+    const discard = vi.fn();
+    const { rerender } = render(<WorkspaceMarkdownSourcePanel authoringSurface="markdown" canonicalEnvelope={createEmptyDocseraDocumentEnvelope()} canonicalTitle="Overview" discardNonce={0} editable pageSysId="one" visible onDiscardInvalidDraft={discard} />);
+    await waitForSourceSessionCreation();
+    act(() => lastStateChange?.({ kind: "invalid", text: "plain", isClean: false, failure: { message: "Opening delimiter requires ---" } }));
+    const message = screen.getByText("This page contains markdown that the editor cannot parse. Fix it or discard changes using the button below");
+    const recovery = message.parentElement!;
+    expect(recovery.querySelector("details, summary")).toBeNull();
+    expect(screen.getByText("Opening delimiter requires ---")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Discard invalid draft" }).parentElement).toBe(recovery);
+    act(() => lastStateChange?.({ kind: "invalid", text: "first\n<bad>", isClean: false, failure: { message: "Unsupported HTML", range: { from: 6, to: 11 } } }));
+    const explanation = screen.getByText("Unsupported HTML");
+    expect(explanation).toHaveClass("docsera-main__source-diagnostic-accessible");
+    explanation.focus();
+    expect(explanation).toHaveFocus();
+    expect(screen.queryByRole("button", { name: /Go to line/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Discard invalid draft" }));
+    expect(discard).toHaveBeenCalled();
+    act(() => lastStateChange?.({ kind: "valid", text: "valid", isClean: true, title: "Overview", envelope: createEmptyDocseraDocumentEnvelope(), normalizedMarkdown: "valid" }));
+    expect(screen.queryByText("This page contains markdown that the editor cannot parse. Fix it or discard changes using the button below")).not.toBeInTheDocument();
+    act(() => lastStateChange?.({ kind: "invalid", text: "--", isClean: false, failure: { message: "Old error" } }));
+    rerender(<WorkspaceMarkdownSourcePanel authoringSurface="markdown" canonicalEnvelope={createEmptyDocseraDocumentEnvelope()} canonicalTitle="Overview" discardNonce={0} editable pageSysId="two" visible />);
+    expect(screen.queryByText("Old error")).not.toBeInTheDocument();
+  });
 
   it("uses a subtle source-editor focus treatment without a perimeter ring", () => {
     const nodeProcess = new Function("return process")() as {
@@ -329,7 +358,7 @@ describe("WorkspaceMarkdownSourcePanel", () => {
     });
 
     expect(replaceFromCanonicalMock).not.toHaveBeenCalled();
-    expect(screen.getAllByRole("heading", { name: "Invalid source" })).not.toHaveLength(0);
+    expect(screen.getAllByText("This page contains markdown that the editor cannot parse. Fix it or discard changes using the button below")).not.toHaveLength(0);
   });
 
   it("marks the source unavailable when the body handoff cannot be applied", async () => {

@@ -5,6 +5,7 @@ import { act, fireEvent } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
   createMarkdownSourceSession,
+  markdownSourceErrorTooltip,
   redoMarkdownSourceSession,
   undoMarkdownSourceSession,
   type MarkdownSourceSessionSnapshot
@@ -517,7 +518,8 @@ describe("MarkdownSourceSession", () => {
       failure: {
         ok: false,
         reason: "unsupported-html",
-        message: "Inline HTML color tags must provide exactly data-docsera-text-color."
+        message: "Inline HTML color tags must provide exactly data-docsera-text-color.",
+        range: { from: invalidSource.indexOf("<span>"), to: invalidSource.indexOf("<span>") + 6 }
       }
     });
     result.session.destroy();
@@ -587,4 +589,93 @@ describe("MarkdownSourceSession", () => {
     expect(secondResult.session.view.state.doc.toString()).toContain("Second body");
     secondResult.session.destroy();
   });
+});
+
+
+it("updates diagnostic decoration through edits, history and canonical replacement", () => {
+  const mount = document.createElement("div");
+  document.body.append(mount);
+  const result = createMarkdownSourceSession({ mount, title: "Overview", envelope: createCanonicalDocseraDocumentEnvelope() });
+  if (!result.ok) throw new Error("session failed");
+  const { session } = result;
+  const valid = session.view.state.doc.toString();
+  const invalid = valid + "\n<bad>";
+  act(() => session.view.dispatch({ changes: { from: 0, to: valid.length, insert: invalid } }));
+  expect(session.view.state.doc.toString()).toBe(invalid);
+  expect(mount.querySelector(".docsera-markdown-source-error")?.textContent).toBe("<bad>");
+  expect(session.view.posAtDOM(mount.querySelector(".docsera-markdown-source-error-marker")!)).toBe(invalid.indexOf("<bad>"));
+  act(() => undoMarkdownSourceSession({ state: session.view.state, dispatch: session.view.dispatch.bind(session.view) }));
+  expect(mount.querySelector(".docsera-markdown-source-error")).toBeNull();
+  act(() => redoMarkdownSourceSession({ state: session.view.state, dispatch: session.view.dispatch.bind(session.view) }));
+  expect(mount.querySelector(".docsera-markdown-source-error")?.textContent).toBe("<bad>");
+  act(() => session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: "plain text" } }));
+  expect(mount.querySelector(".docsera-markdown-source-error")).toBeNull();
+  expect(mount.querySelector(".docsera-markdown-source-error-marker")).toBeNull();
+  act(() => { session.replaceFromCanonical({ title: "New", envelope: createCanonicalDocseraDocumentEnvelope() }); });
+  expect(mount.querySelector(".docsera-markdown-source-error")).toBeNull();
+  session.destroy();
+  expect(mount.querySelector(".docsera-markdown-source-error")).toBeNull();
+});
+
+
+it("decorates malformed frontmatter delimiters and clears the decoration after correction", () => {
+  const mount = document.createElement("div");
+  document.body.append(mount);
+  const result = createMarkdownSourceSession({ mount, title: "Overview", envelope: createCanonicalDocseraDocumentEnvelope() });
+  if (!result.ok) throw new Error("session failed");
+  const { session } = result;
+  const valid = session.view.state.doc.toString();
+  for (const invalid of [valid.replace(/^---/, "--"), valid.replace(/\n---\n/, "\n--\n")]) {
+    act(() => session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: invalid } }));
+    expect(mount.querySelector(".docsera-markdown-source-error")?.textContent).toBe("--");
+    act(() => session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: valid } }));
+    expect(mount.querySelector(".docsera-markdown-source-error")).toBeNull();
+  }
+  session.destroy();
+});
+
+
+it("exposes only the current ranged converter error to the hover tooltip", () => {
+  const mount = document.createElement("div");
+  document.body.append(mount);
+  const result = createMarkdownSourceSession({ mount, title: "Overview", envelope: createCanonicalDocseraDocumentEnvelope() });
+  expect(result.ok).toBe(true);
+  if (!result.ok) return;
+  const { view } = result.session;
+  view.dispatch({ changes: { from: view.state.doc.length, insert: "\n<bad>" } });
+  const snapshot = result.session.getSnapshot();
+  expect(snapshot.kind).toBe("invalid");
+  if (snapshot.kind !== "invalid" || !snapshot.failure.range) throw new Error("Expected ranged failure");
+  const range = snapshot.failure.range;
+  const tooltip = markdownSourceErrorTooltip(view, range.from);
+  expect(tooltip?.above).toBe(true);
+  const tooltipDom = tooltip?.create().dom;
+  expect(tooltipDom?.querySelector(".docsera-markdown-source-error-badge")).toHaveTextContent("Error");
+  expect(tooltipDom?.querySelector(".docsera-markdown-source-error-icon")).toHaveAttribute("aria-hidden", "true");
+  expect(tooltipDom?.querySelector(".docsera-markdown-source-error-icon")).toHaveTextContent("×");
+  expect(tooltipDom).toHaveTextContent(snapshot.failure.message);
+  expect(markdownSourceErrorTooltip(view, range.to)).toBeNull();
+  view.dispatch({ changes: { from: range.from, to: range.to, insert: "fixed" } });
+  expect(markdownSourceErrorTooltip(view, range.from)).toBeNull();
+  result.session.replaceFromCanonical({ title: "New", envelope: createCanonicalDocseraDocumentEnvelope() });
+  expect(markdownSourceErrorTooltip(view, 0)).toBeNull();
+  result.session.destroy();
+});
+
+
+it("renders logical line numbers and locates a parsed malformed directive without marking literal code", () => {
+  const mount = document.createElement("div");
+  document.body.append(mount);
+  const result = createMarkdownSourceSession({ mount, title: "Overview", envelope: createCanonicalDocseraDocumentEnvelope() });
+  if (!result.ok) throw new Error("session failed");
+  const { session } = result;
+  const prefix = '---\ntitle: "Overview"\n---\n';
+  const invalid = prefix + ':docsera-callout';
+  act(() => session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: invalid } }));
+  expect(mount.querySelectorAll(".cm-lineNumbers .cm-gutterElement").length).toBeGreaterThanOrEqual(4);
+  expect(mount.querySelector(".docsera-markdown-source-error")?.textContent).toContain(":docsera-callout");
+  act(() => session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: prefix + '```\n:docsera-callout\n```' } }));
+  expect(session.getSnapshot().kind).toBe("valid");
+  expect(mount.querySelector(".docsera-markdown-source-error")).toBeNull();
+  session.destroy();
 });

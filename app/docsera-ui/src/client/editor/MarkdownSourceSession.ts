@@ -2,7 +2,7 @@ import { defaultKeymap, history, historyKeymap, indentWithTab, redo, undo } from
 import { HighlightStyle, syntaxHighlighting, syntaxTree } from "@codemirror/language";
 import { Compartment, EditorState, type Range } from "@codemirror/state";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
-import { Decoration, EditorView, ViewPlugin, keymap, type ViewUpdate } from "@codemirror/view";
+import { Decoration, EditorView, ViewPlugin, WidgetType, hoverTooltip, keymap, lineNumbers, type ViewUpdate } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import type { SyntaxNode } from "@lezer/common";
 import type {
@@ -157,6 +157,15 @@ function decorateDirectiveAttributes(text: string, offset: number, add: (from: n
  * decorations cover Docsera's serialized envelope, whose directives are not part
  * of CodeMirror's GFM grammar, without changing the editable source text.
  */
+class DiagnosticMarker extends WidgetType {
+  toDOM(view: EditorView) {
+    const marker = view.dom.ownerDocument.createElement("span");
+    marker.className = "docsera-markdown-source-error-marker";
+    marker.setAttribute("aria-hidden", "true");
+    return marker;
+  }
+}
+
 function docseraSourceDecorations(view: EditorView) {
   const decorations: Range<Decoration>[] = [];
   let leadingFrontmatter = true;
@@ -230,20 +239,59 @@ function docseraSourceDecorations(view: EditorView) {
     }
   }
 
+  const parsed = parseDocseraMarkdownDocument(view.state.doc.toString());
+  if (!parsed.ok && parsed.range && parsed.range.from >= 0 && parsed.range.to > parsed.range.from && parsed.range.to <= view.state.doc.length) {
+    decorations.push(Decoration.widget({ widget: new DiagnosticMarker(), side: -1 }).range(parsed.range.from));
+    decorations.push(sourceMark("docsera-markdown-source-error").range(parsed.range.from, parsed.range.to));
+  }
   return Decoration.set(decorations, true);
 }
 
 const docseraSourceHighlighting = ViewPlugin.fromClass(class {
   decorations: ReturnType<typeof docseraSourceDecorations>;
+  diagnostic: DocseraMarkdownConversionFailure | null;
 
   constructor(view: EditorView) {
     this.decorations = docseraSourceDecorations(view);
+    const parsed = parseDocseraMarkdownDocument(view.state.doc.toString());
+    this.diagnostic = parsed.ok ? null : parsed;
   }
 
   update(update: ViewUpdate) {
     if (update.docChanged || update.viewportChanged) this.decorations = docseraSourceDecorations(update.view);
+    if (update.docChanged) {
+      const parsed = parseDocseraMarkdownDocument(update.state.doc.toString());
+      this.diagnostic = parsed.ok ? null : parsed;
+    }
   }
 }, { decorations: (value) => value.decorations });
+
+export function markdownSourceErrorTooltip(view: EditorView, position: number) {
+  const diagnostic = view.plugin(docseraSourceHighlighting)?.diagnostic;
+  const range = diagnostic?.range;
+  if (!diagnostic || !range || range.from < 0 || range.to <= range.from || range.to > view.state.doc.length || position < range.from || position >= range.to) return null;
+  return {
+    pos: range.from,
+    end: range.to,
+    above: true,
+    create() {
+      const dom = view.dom.ownerDocument.createElement("div");
+      dom.className = "docsera-markdown-source-tooltip";
+      dom.setAttribute("role", "tooltip");
+      const badge = view.dom.ownerDocument.createElement("span");
+      badge.className = "docsera-markdown-source-error-badge";
+      const icon = view.dom.ownerDocument.createElement("span");
+      icon.className = "docsera-markdown-source-error-icon";
+      icon.setAttribute("aria-hidden", "true");
+      icon.textContent = "×";
+      badge.append(icon, "Error");
+      const message = view.dom.ownerDocument.createElement("span");
+      message.textContent = diagnostic.message;
+      dom.append(badge, message);
+      return { dom };
+    }
+  };
+}
 
 function createEditorState(text: string, onDocChanged: () => void, editableCompartment: Compartment, editable: boolean): EditorState {
   return EditorState.create({
@@ -251,9 +299,11 @@ function createEditorState(text: string, onDocChanged: () => void, editableCompa
     extensions: [
       EditorState.allowMultipleSelections.of(false),
       EditorView.lineWrapping,
+      lineNumbers(),
       markdown({ base: markdownLanguage }),
       syntaxHighlighting(markdownSourceHighlightStyle),
       docseraSourceHighlighting,
+      hoverTooltip(markdownSourceErrorTooltip, { hideOnChange: true }),
       history(),
       editableCompartment.of(EditorView.editable.of(editable)),
       keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),

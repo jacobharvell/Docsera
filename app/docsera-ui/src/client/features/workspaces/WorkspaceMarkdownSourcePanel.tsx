@@ -57,10 +57,9 @@ function SourceError({
 }) {
   return (
     <section className="docsera-main__source-error" role={role}>
-      <p className="docsera-main__eyebrow">Markdown source</p>
-      <h2 className="docsera-main__recovery-title">{title}</h2>
-      <p className="docsera-main__lede">{message}</p>
-      <button type="button" className="docsera-main__empty-action" onClick={onDiscard}>
+      <h2>{title}</h2>
+      <span>{message}</span>
+      <button type="button" className="docsera-destructive-action docsera-main__source-discard" onClick={onDiscard}>
         {discardLabel}
       </button>
     </section>
@@ -98,6 +97,7 @@ export function WorkspaceMarkdownSourcePanel({
   const sessionLoadRequestIdRef = useRef(0);
   const sessionLoadPromiseRef = useRef<Promise<void> | null>(null);
   const [sessionError, setSessionError] = useState("");
+  const [invalidSnapshot, setInvalidSnapshot] = useState<Extract<MarkdownSourceSessionSnapshot, { kind: "invalid" }> | null>(null);
   const callbacksRef = useRef({
     onBodyChange,
     onDiscardComplete,
@@ -171,6 +171,7 @@ export function WorkspaceMarkdownSourcePanel({
     invalidatePendingSessionLoad();
     setSessionError("");
     snapshotRef.current = null;
+    setInvalidSnapshot(null);
     sourceUnavailableRef.current = false;
     callbacksRef.current.onReadyStateChange?.(false);
     sessionRef.current?.destroy();
@@ -202,6 +203,7 @@ export function WorkspaceMarkdownSourcePanel({
               pageSysId: currentPageSysId
             } = callbacksRef.current;
             snapshotRef.current = snapshot;
+            setInvalidSnapshot(snapshot.kind === "invalid" ? snapshot : null);
 
             if (snapshot.kind === "invalid") {
               sourceUnavailableRef.current = false;
@@ -428,7 +430,6 @@ export function WorkspaceMarkdownSourcePanel({
     callbacksRef.current.onInvalidChange?.({ errorMessage: "", isUnavailable: false, isInvalid: false, pageSysId: callbacksRef.current.pageSysId });
   }, [canonicalEnvelope, canonicalTitle, visible]);
 
-  const invalidSnapshot = snapshotRef.current?.kind === "invalid" ? snapshotRef.current : null;
   const statusMessage = invalidSnapshot?.failure.message || sessionError;
 
   return (
@@ -439,15 +440,14 @@ export function WorkspaceMarkdownSourcePanel({
       data-docsera-markdown-source="true"
       data-docsera-markdown-surface={authoringSurface}
     >
-      <div className="docsera-main__source-editor" ref={mountRef} />
       {invalidSnapshot ? (
-        <SourceError
-          discardLabel="Discard invalid draft"
-          message={statusMessage}
-          role="alert"
-          title="Invalid source"
-          onDiscard={onDiscardInvalidDraft ?? (() => undefined)}
-        />
+        <div className="docsera-main__source-invalid">
+          <p>This page contains markdown that the editor cannot parse. Fix it or discard changes using the button below</p>
+          <p tabIndex={invalidSnapshot.failure.range ? 0 : undefined} className={invalidSnapshot.failure.range ? "docsera-main__source-diagnostic-accessible" : "docsera-main__source-diagnostic"}>{statusMessage}</p>
+          <button type="button" className="docsera-destructive-action docsera-main__source-discard" onClick={onDiscardInvalidDraft ?? (() => undefined)}>
+            Discard invalid draft
+          </button>
+        </div>
       ) : sourceUnavailableRef.current ? (
         <SourceError
           discardLabel="Discard retained draft"
@@ -457,6 +457,7 @@ export function WorkspaceMarkdownSourcePanel({
           onDiscard={onDiscardInvalidDraft ?? (() => undefined)}
         />
       ) : null}
+      <div className="docsera-main__source-editor" ref={mountRef} />
     </section>
   );
 }

@@ -52,6 +52,7 @@ export type DocseraMarkdownConversionFailure = {
   ok: false;
   reason: DocseraMarkdownConversionFailureReason;
   message: string;
+  range?: { from: number; to: number };
 };
 
 export type SerializeDocseraMarkdownResult =
@@ -106,6 +107,14 @@ function createFailure(
   return { ok: false, reason, message };
 }
 
+function withNodeRange(failure: DocseraMarkdownConversionFailure, node: unknown): DocseraMarkdownConversionFailure {
+  if (failure.range || !isRecord(node) || !isRecord(node.position) || !isRecord(node.position.start) || !isRecord(node.position.end)) return failure;
+  const from = node.position.start.offset;
+  const to = node.position.end.offset;
+  return typeof from === "number" && typeof to === "number" && Number.isInteger(from) && Number.isInteger(to) && from >= 0 && to > from
+    ? { ...failure, range: { from, to } } : failure;
+}
+
 function isFailure<T>(value: T | DocseraMarkdownConversionFailure): value is DocseraMarkdownConversionFailure {
   return isRecord(value) && value.ok === false;
 }
@@ -122,16 +131,23 @@ function serializeFrontmatterTitle(title: string): string {
   return `---\ntitle: ${JSON.stringify(title)}\n---\n`;
 }
 
-function parseFrontmatter(markdown: string): { title: string; body: string } | DocseraMarkdownConversionFailure {
+function parseFrontmatter(markdown: string): { title: string; body: string; bodyOffset: number } | DocseraMarkdownConversionFailure {
   const normalizedMarkdown = normalizeMarkdownInput(markdown);
 
   if (!normalizedMarkdown.startsWith("---\n")) {
-    return createFailure("invalid-frontmatter", "Markdown must begin with YAML frontmatter.");
+    const failure = createFailure("invalid-frontmatter", "Markdown must begin with a YAML frontmatter opening delimiter: --- on its own line.");
+    const firstLine = normalizedMarkdown.split("\n", 1)[0];
+    return /^-{2,} *$/.test(firstLine) ? { ...failure, range: { from: 0, to: firstLine.trimEnd().length } } : failure;
   }
 
   const closingOffset = normalizedMarkdown.indexOf("\n---\n", 4);
   if (closingOffset < 0) {
-    return createFailure("invalid-frontmatter", "Markdown frontmatter must end with a closing delimiter.");
+    const failure = createFailure("invalid-frontmatter", "Markdown frontmatter must end with a closing delimiter: --- on its own line.");
+    // The delimiter-like line immediately after the sole title field identifies the expected boundary.
+    const candidate = /^title:[^\n]*\n(-{2,}) *(?:\n|$)/.exec(normalizedMarkdown.slice(4));
+    if (!candidate) return failure;
+    const from = 4 + candidate[0].indexOf("\n") + 1;
+    return { ...failure, range: { from, to: from + candidate[1].length } };
   }
 
   const frontmatter = normalizedMarkdown.slice(4, closingOffset);
@@ -143,7 +159,9 @@ function parseFrontmatter(markdown: string): { title: string; body: string } | D
   });
 
   if (yamlDocument.errors.length > 0) {
-    return createFailure("invalid-frontmatter", "Markdown frontmatter is malformed.");
+    const [from, to] = yamlDocument.errors[0].pos;
+    const failure = createFailure("invalid-frontmatter", "Markdown frontmatter is malformed.");
+    return from >= 0 && to > from && to <= frontmatter.length ? { ...failure, range: { from: from + 4, to: to + 4 } } : failure;
   }
 
   const rawValue = yamlDocument.toJS();
@@ -158,10 +176,15 @@ function parseFrontmatter(markdown: string): { title: string; body: string } | D
 
   const titleValidation = validatePageSettingsTitle(rawValue.title);
   if (!titleValidation.valid) {
-    return createFailure("invalid-title", titleValidation.error);
+    const value = yamlDocument.get("title", true);
+    const range = value && typeof value === "object" && "range" in value ? value.range : undefined;
+    const failure = createFailure("invalid-title", titleValidation.error);
+    return Array.isArray(range) && typeof range[0] === "number" && typeof range[1] === "number" && range[1] > range[0]
+      ? { ...failure, range: { from: range[0] + 4, to: range[1] + 4 } } : failure;
   }
 
   return {
+    bodyOffset: closingOffset + 5,
     title: titleValidation.normalizedValue,
     body
   };
@@ -680,7 +703,7 @@ function serializeBlockNode(node: unknown, orderedDepth = 0): string {
         : (() => {
         const rendered = serializeInlineContent(node.content);
         const htmlSafeRendered = rendered.startsWith("<") ? ` ${rendered}` : rendered;
-        return /^:{2,}docsera-/.test(htmlSafeRendered) ? `\\${htmlSafeRendered}` : htmlSafeRendered;
+        return /^(?::{3,}|::docsera-)/.test(htmlSafeRendered) ? `\\${htmlSafeRendered}` : htmlSafeRendered;
       })();
       return isDocseraNonDefaultTextAlignment(attrs.textAlign)
         ? createContainerDirective(
@@ -995,6 +1018,7 @@ function parsePhrasing(nodes: unknown[] | undefined): CanonicalNode[] | DocseraM
       throw createFailure("invalid-markdown", "Markdown contains unsupported inline content.");
     }
 
+    try {
     switch (node.type) {
       case "text":
         appendText(String(node.value ?? ""), activeMarks);
@@ -1125,6 +1149,9 @@ function parsePhrasing(nodes: unknown[] | undefined): CanonicalNode[] | DocseraM
         throw createFailure("invalid-markdown", "Markdown contains an unsupported text directive.");
       default:
         throw createFailure("invalid-markdown", `Markdown contains unsupported inline node type: ${node.type}`);
+    }
+    } catch (error) {
+      throw isFailure(error) ? withNodeRange(error, node) : error;
     }
   };
 
@@ -1301,6 +1328,7 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
       return createFailure("invalid-markdown", "Markdown contains unsupported block content.");
     }
 
+    const nodeFailure = (reason: DocseraMarkdownConversionFailureReason, message: string) => withNodeRange(createFailure(reason, message), node);
     switch (node.type) {
       case "paragraph": {
         const inline = parsePhrasing(node.children as unknown[] | undefined);
@@ -1344,13 +1372,13 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
         const checkedFlags = items.map((item) => (isRecord(item) && typeof item.checked === "boolean" ? item.checked : null));
         const isTaskList = checkedFlags.some((checked) => checked !== null);
         if (isTaskList && checkedFlags.some((checked) => checked === null)) {
-          return createFailure("invalid-markdown", "Markdown list structure is malformed.");
+          return nodeFailure("invalid-markdown", "Markdown list structure is malformed.");
         }
         const content: CanonicalNode[] = [];
 
         for (const item of items) {
           if (!isRecord(item) || item.type !== "listItem") {
-            return createFailure("invalid-markdown", "Markdown list structure is malformed.");
+            return nodeFailure("invalid-markdown", "Markdown list structure is malformed.");
           }
 
           const parsedChildren = parseFlow(item.children as unknown[] | undefined, sourceText);
@@ -1430,7 +1458,7 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
               cellAlignment !== "center" &&
               cellAlignment !== "right"
             ) {
-              return createFailure("invalid-markdown", "GFM table alignment is malformed.");
+              return nodeFailure("invalid-markdown", "GFM table alignment is malformed.");
             }
             parsedCells.push({
               type: rowIndex === 0 ? "tableHeader" : "tableCell",
@@ -1457,18 +1485,26 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
         break;
       }
       case "leafDirective": {
+        if (typeof node.name === "string" && !node.name.startsWith("docsera-")) {
+          const literal = getNodeSourceSlice(node, sourceText);
+          if (literal === null) {
+            return nodeFailure("invalid-markdown", "Markdown contains unsupported block content.");
+          }
+          result.push({ type: "paragraph", content: [{ type: "text", text: literal }] });
+          break;
+        }
         if (typeof node.name !== "string" || !DOCSERA_DIRECTIVE_NAMES.has(node.name)) {
-          return createFailure("unknown-directive", "Markdown contains an unknown Docsera directive.");
+          return nodeFailure("unknown-directive", "Markdown contains an unknown Docsera directive.");
         }
 
         if (Array.isArray(node.children) && node.children.length > 0) {
-          return createFailure("invalid-directive", `${node.name} does not allow child content.`);
+          return nodeFailure("invalid-directive", `${node.name} does not allow child content.`);
         }
 
         if (node.name === "docsera-empty-document") {
           const attrs = parseDirectiveAttributes(node, []);
           if (isFailure(attrs)) {
-            return attrs;
+            return withNodeRange(attrs, node);
           }
           result.push({ type: "docsera-empty-document-sentinel" });
           break;
@@ -1477,7 +1513,7 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
         if (node.name === "docsera-empty-paragraph") {
           const attrs = parseDirectiveAttributes(node, []);
           if (isFailure(attrs)) {
-            return attrs;
+            return withNodeRange(attrs, node);
           }
           result.push({ type: "paragraph" });
           break;
@@ -1488,14 +1524,14 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
           const allowedKeys = ["align", "alt", "caption", "dark-media-id", "frame", "media-id", "width-pct"];
           const keys = Object.keys(rawAttrs).sort();
           if (keys.some((key) => !allowedKeys.includes(key))) {
-            return createFailure("invalid-directive", "docsera-image contains unsupported attributes.");
+            return nodeFailure("invalid-directive", "docsera-image contains unsupported attributes.");
           }
           const requiredKeys = ["align", "alt", "caption", "frame", "media-id", "width-pct"];
           if (requiredKeys.some((key) => !Object.prototype.hasOwnProperty.call(rawAttrs, key))) {
-            return createFailure("invalid-directive", "docsera-image is missing required attributes.");
+            return nodeFailure("invalid-directive", "docsera-image is missing required attributes.");
           }
           if (rawAttrs.frame !== "true" && rawAttrs.frame !== "false") {
-            return createFailure("invalid-directive", "docsera-image frame must be true or false.");
+            return nodeFailure("invalid-directive", "docsera-image frame must be true or false.");
           }
           const widthPct = Number(rawAttrs["width-pct"]);
           const imageAttrs = {
@@ -1510,7 +1546,7 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
             widthPct
           };
           if (!Number.isFinite(widthPct) || !Number.isInteger(widthPct) || !validateDocseraImageAttrs(imageAttrs)) {
-            return createFailure("invalid-directive", "docsera-image attribute values are invalid.");
+            return nodeFailure("invalid-directive", "docsera-image attribute values are invalid.");
           }
           result.push({
             type: "image",
@@ -1519,27 +1555,27 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
           break;
         }
 
-        return createFailure("invalid-directive", `${node.name} is not a supported leaf directive.`);
+        return nodeFailure("invalid-directive", `${node.name} is not a supported leaf directive.`);
       }
       case "containerDirective": {
         if (typeof node.name !== "string" || !DOCSERA_DIRECTIVE_NAMES.has(node.name)) {
-          return createFailure("unknown-directive", "Markdown contains an unknown Docsera directive.");
+          return nodeFailure("unknown-directive", "Markdown contains an unknown Docsera directive.");
         }
 
         if (node.name === "docsera-text-align") {
           const attrs = parseDirectiveAttributes(node, ["align"]);
           if (isFailure(attrs)) {
-            return attrs;
+            return withNodeRange(attrs, node);
           }
           if (!isDocseraTextAlignment(attrs.align)) {
-            return createFailure("invalid-directive", "docsera-text-align align must be left, center, or right.");
+            return nodeFailure("invalid-directive", "docsera-text-align align must be left, center, or right.");
           }
           const content = parseDirectiveBody(node, false, sourceText);
           if (isFailure(content)) {
             return content;
           }
           if (content.length !== 1 || (content[0].type !== "paragraph" && content[0].type !== "heading")) {
-            return createFailure("invalid-directive", "docsera-text-align must wrap exactly one paragraph or heading.");
+            return nodeFailure("invalid-directive", "docsera-text-align must wrap exactly one paragraph or heading.");
           }
           const alignedNode = cloneJson(content[0]);
           const alignedAttrs = isRecord(alignedNode.attrs) ? alignedNode.attrs : {};
@@ -1554,25 +1590,25 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
         if (node.name === "docsera-ordered-list") {
           const attrs = parseDirectiveAttributes(node, ["start", "type"]);
           if (isFailure(attrs)) {
-            return attrs;
+            return withNodeRange(attrs, node);
           }
           const start = Number(attrs.start);
           if (!Number.isInteger(start) || start < 1) {
-            return createFailure("invalid-directive", "Docsera ordered list start must be a positive integer.");
+            return nodeFailure("invalid-directive", "Docsera ordered list start must be a positive integer.");
           }
           if (!DOCSERA_ALLOWED_ORDERED_LIST_TYPES.has(attrs.type ?? "")) {
-            return createFailure("invalid-directive", "Docsera ordered list type is unsupported.");
+            return nodeFailure("invalid-directive", "Docsera ordered list type is unsupported.");
           }
           const content = parseDirectiveBody(node, false, sourceText);
           if (isFailure(content)) {
             return content;
           }
           if (content.length !== 1 || content[0].type !== "orderedList") {
-            return createFailure("invalid-directive", "Docsera ordered list must wrap exactly one ordered list.");
+            return nodeFailure("invalid-directive", "Docsera ordered list must wrap exactly one ordered list.");
           }
           const listNode = cloneJson(content[0]);
           if (Number((listNode.attrs as RecordValue).start ?? 1) !== start) {
-            return createFailure("invalid-directive", "Docsera ordered list wrapper start must match the enclosed Markdown list start.");
+            return nodeFailure("invalid-directive", "Docsera ordered list wrapper start must match the enclosed Markdown list start.");
           }
           (listNode.attrs as RecordValue).start = start;
           (listNode.attrs as RecordValue).type = attrs.type;
@@ -1583,7 +1619,7 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
         if (node.name === "docsera-accordion") {
           const attrs = parseDirectiveAttributes(node, ["accordion-id"]);
           if (isFailure(attrs)) {
-            return attrs;
+            return withNodeRange(attrs, node);
           }
           const items = parseDirectiveBody(node, false, sourceText);
           if (isFailure(items)) {
@@ -1600,11 +1636,11 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
         if (node.name === "docsera-accordion-item") {
           const attrs = parseDirectiveAttributes(node, ["item-id"]);
           if (isFailure(attrs)) {
-            return attrs;
+            return withNodeRange(attrs, node);
           }
           const label = parseDirectiveLabel(node);
           if (isFailure(label)) {
-            return label;
+            return withNodeRange(label, node);
           }
           const body = parseDirectiveBody(node, true, sourceText);
           if (isFailure(body)) {
@@ -1624,7 +1660,7 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
         if (node.name === "docsera-columns") {
           const attrs = parseDirectiveAttributes(node, []);
           if (isFailure(attrs)) {
-            return attrs;
+            return withNodeRange(attrs, node);
           }
           const columns = parseDirectiveBody(node, false, sourceText);
           if (isFailure(columns)) {
@@ -1640,7 +1676,7 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
         if (node.name === "docsera-column") {
           const attrs = parseDirectiveAttributes(node, []);
           if (isFailure(attrs)) {
-            return attrs;
+            return withNodeRange(attrs, node);
           }
           const content = parseDirectiveBody(node, false, sourceText);
           if (isFailure(content)) {
@@ -1656,7 +1692,7 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
         if (node.name === "docsera-callout") {
           const attrs = parseCalloutDirectiveAttributes(node);
           if (isFailure(attrs)) {
-            return attrs;
+            return withNodeRange(attrs, node);
           }
           const content = parseDirectiveBody(node, false, sourceText);
           if (isFailure(content)) {
@@ -1673,7 +1709,7 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
         if (node.name === "docsera-table") {
           const attrs = parseDirectiveAttributes(node, []);
           if (isFailure(attrs)) {
-            return attrs;
+            return withNodeRange(attrs, node);
           }
           const rows = parseDirectiveBody(node, false, sourceText);
           if (isFailure(rows)) {
@@ -1689,7 +1725,7 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
         if (node.name === "docsera-table-row") {
           const attrs = parseDirectiveAttributes(node, []);
           if (isFailure(attrs)) {
-            return attrs;
+            return withNodeRange(attrs, node);
           }
           const cells = parseDirectiveBody(node, false, sourceText);
           if (isFailure(cells)) {
@@ -1705,18 +1741,18 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
         if (node.name === "docsera-table-header" || node.name === "docsera-table-cell") {
           const cell = parseTableCellLike(node, node.name === "docsera-table-header" ? "tableHeader" : "tableCell", sourceText);
           if (isFailure(cell)) {
-            return cell;
+            return withNodeRange(cell, node);
           }
           result.push(cell);
           break;
         }
 
-        return createFailure("invalid-directive", `${node.name} is not supported in this position.`);
+        return nodeFailure("invalid-directive", `${node.name} is not supported in this position.`);
       }
       case "html":
-        return createFailure("unsupported-html", "Block HTML is not supported by the Docsera Markdown contract.");
+        return nodeFailure("unsupported-html", "Block HTML is not supported by the Docsera Markdown contract.");
       default:
-        return createFailure("invalid-markdown", `Markdown contains unsupported block node type: ${node.type}`);
+        return nodeFailure("invalid-markdown", `Markdown contains unsupported block node type: ${node.type}`);
     }
   }
 
@@ -1780,13 +1816,55 @@ export function parseDocseraMarkdownDocument(markdown: unknown): ParseDocseraMar
   }
 
   const frontmatter = parseFrontmatter(markdown);
+  const originalRange = (failure: DocseraMarkdownConversionFailure, offset = 0): DocseraMarkdownConversionFailure => {
+    if (!failure.range) return failure;
+    const normalized = normalizeMarkdownInput(markdown);
+    const from = failure.range.from + offset;
+    const to = failure.range.to + offset;
+    if (from < 0 || to <= from || to > normalized.length) return { ...failure, range: undefined };
+    const originalOffset = (position: number) => {
+      let original = 0;
+      for (let index = 0; index < position; index++, original++) {
+        if (markdown[original] === "\r" && markdown[original + 1] === "\n") original++;
+      }
+      return original;
+    };
+    return { ...failure, range: { from: originalOffset(from), to: originalOffset(to) } };
+  };
   if (isFailure(frontmatter)) {
-    return frontmatter;
+    return originalRange(frontmatter);
   }
 
   let ast: MdastRoot;
+  let body = frontmatter.body;
+  const insertedOffsets: number[] = [];
   try {
-    ast = parseMarkdownAst(frontmatter.body);
+    // An unclosed unknown container consumes following blocks in the AST. Escape
+    // only its opener and reparse so ordinary Markdown determines boundaries.
+    while (true) {
+      ast = parseMarkdownAst(body);
+      const findUnknownContainer = (nodes: unknown[]): number | undefined => {
+        for (const node of nodes) {
+          if (!isRecord(node)) continue;
+          if (node.type === "containerDirective" && typeof node.name === "string" && !node.name.startsWith("docsera-")) {
+            const position = isRecord(node.position) && isRecord(node.position.start) ? node.position.start.offset : undefined;
+            if (typeof position === "number") return position;
+          }
+          if (Array.isArray(node.children)) {
+            const position = findUnknownContainer(node.children);
+            if (position !== undefined) return position;
+          }
+        }
+        return undefined;
+      };
+      const position = findUnknownContainer(ast.children);
+      if (position === undefined) break;
+      body = `${body.slice(0, position)}\\${body.slice(position)}`;
+      for (let index = 0; index < insertedOffsets.length; index++) {
+        if (insertedOffsets[index] >= position) insertedOffsets[index]++;
+      }
+      insertedOffsets.push(position);
+    }
   } catch (error) {
     return createFailure(
       "invalid-markdown",
@@ -1797,9 +1875,11 @@ export function parseDocseraMarkdownDocument(markdown: unknown): ParseDocseraMar
     return createFailure("invalid-markdown", "Markdown source did not produce a valid document AST.");
   }
 
-  const blocks = parseFlow(ast.children, frontmatter.body);
+  const blocks = parseFlow(ast.children, body);
   if (isFailure(blocks)) {
-    return blocks;
+    const range = blocks.range;
+    const sourceOffset = (offset: number) => offset - insertedOffsets.filter((position) => position < offset).length;
+    return originalRange(range ? { ...blocks, range: { from: sourceOffset(range.from), to: sourceOffset(range.to) } } : blocks, frontmatter.bodyOffset);
   }
 
   const envelope = toCanonicalEnvelope(blocks);

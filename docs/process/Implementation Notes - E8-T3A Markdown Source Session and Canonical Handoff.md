@@ -43,3 +43,10 @@ It describes implementation boundaries only. Accepted product behavior remains a
 
 - E8-T3A does not expose the `[Visual | Markdown]` workspace control.
 - E8-T3B still needs to wire workspace-level authoring-surface state, title synchronization, invalid-source navigation behavior, and same-workspace page/session orchestration across the visible UI.
+
+
+### Source diagnostics
+
+Conversion failures may include a half-open `range` (`from`, `to`) in UTF-16 offsets into the complete authored Markdown string. Ranges come from YAML or Markdown parser positions or an unambiguous malformed delimiter line, and are omitted when a reliable non-empty location is unavailable. Newline normalization is translated back to authored offsets. The Source session decorates the current range without changing text or selection and recomputes it on document changes; replacing or destroying a session removes its decorations. Failure messages and invalid-draft recovery remain authoritative even without a range.
+
+The Source editor displays CodeMirror line numbers, including one number per logical source line when text wraps. A ranged failure provides a zero-width triangular marker at the diagnostic start and a hover tooltip positioned above first, with an Error badge and the converter message. The compact recovery area provides fixed instructions and a separate discard button; its converter explanation remains accessible to keyboard and screen-reader users, and is visible for unlocated failures. Locations continue to come only from converter-provided ranges; literal text is not inferred to be malformed. Document changes dismiss open tooltips; canonical replacement and session teardown remove them with the editor state.

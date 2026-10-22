@@ -54,7 +54,7 @@ Accepted product behavior remains authoritative in `Requirements/40 Editor.md`.
 
 ## Invalid Source Guard
 
-- Invalid markdown keeps the exact source text in the source editor.
+- Invalid markdown keeps the exact source text in the source editor. A compact invalid-state disclosure provides keyboard access to the converter message; reliable ranges retain their decoration and hover explanation, and the editor displays line numbers. Unlocated failures do not invent a position. Diagnostics clear on valid snapshots and session replacement.
 - Invalid markdown and valid-but-unapplied source are distinct states. Invalid markdown uses the invalid recovery surface; unavailable-but-valid source uses the unavailable recovery surface while preserving the retained source.
 - Invalid markdown blocks the normal workspace navigation, surface switching, and publish paths until the draft is corrected or explicitly discarded.
 - Discarding an invalid markdown draft returns the workspace to the visual surface and advances the source-session discard nonce so the source editor can rebuild from the canonical envelope.

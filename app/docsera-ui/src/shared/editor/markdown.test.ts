@@ -805,6 +805,9 @@ describe("Docsera Markdown conversion contract", () => {
     createBoldLinkEnvelope(),
     createLinkBoldEnvelope(),
     createDirectiveLookingProseEnvelope("::docsera-empty-document"),
+    createDirectiveLookingProseEnvelope("::unknown"),
+    createDirectiveLookingProseEnvelope(":::unknown"),
+    createDirectiveLookingProseEnvelope("::hello"),
     createDirectiveLookingProseEnvelope("::docsera-column"),
     createDirectiveLookingProseEnvelope(":::docsera-table-cell"),
     createNestedColumnsInAccordionEnvelope(),
@@ -1164,6 +1167,43 @@ describe("Docsera Markdown conversion contract", () => {
     });
   });
 
+  it.each(["::unknown", "::hello", "::unknown[label]{key=\"value\"}"])(
+    "preserves non-Docsera leaf directive source as literal text: %s",
+    (text) => {
+      const parsed = parseDocseraMarkdownDocument(createMarkdownDocumentSource("Literal", `${text}\n`));
+      expect(parsed.ok).toBe(true);
+      if (!parsed.ok) return;
+      expect(parsed.envelope).toEqual(createDirectiveLookingProseEnvelope(text));
+      const reparsed = parseDocseraMarkdownDocument(parsed.markdown);
+      expect(reparsed).toEqual(parsed);
+    }
+  );
+
+  it("preserves unknown container-looking text and subsequent paragraphs", () => {
+    const source = createMarkdownDocumentSource("Literal", ":::unknown\n\nNext paragraph\n");
+    const parsed = parseDocseraMarkdownDocument(source);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.envelope.document).toEqual({
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: ":::unknown" }] },
+        { type: "paragraph", content: [{ type: "text", text: "Next paragraph" }] }
+      ]
+    });
+    expect(parseDocseraMarkdownDocument(parsed.markdown)).toEqual(parsed);
+    const serialized = serializeDocseraMarkdownDocument("Literal", parsed.envelope);
+    expect(serialized.ok && serialized.markdown).toContain("\\:::unknown");
+  });
+
+  it("still rejects unknown Docsera directives after literal container-looking text", () => {
+    const source = createMarkdownDocumentSource("Literal", ":::unknown\n\n:::docsera-unknown\n");
+    const start = source.indexOf(":::docsera-unknown");
+    expect(parseDocseraMarkdownDocument(source)).toMatchObject({
+      ok: false, reason: "unknown-directive", range: { from: start, to: source.length }
+    });
+  });
+
   it("fails atomically on malformed frontmatter, unsupported HTML, and malformed Docsera directives", () => {
     expect(parseDocseraMarkdownDocument("title: nope\n")).toMatchObject({
       ok: false,
@@ -1333,5 +1373,52 @@ describe("Docsera Markdown conversion contract", () => {
     ]) {
       expect(parseDocseraMarkdownDocument(createMarkdownDocumentSource("Bad callout", body)).ok).toBe(false);
     }
+  });
+});
+
+
+describe("Markdown source diagnostic ranges", () => {
+  it.each([
+    ["---\ntitle: ''\n---\n", "''", "invalid-title"],
+    ["---\ntitle: a\ntitle: b\n---\n", "t", "invalid-frontmatter"],
+    ["---\ntitle: Test\n---\n`<bad>` then <bad>", "<bad>", "unsupported-html"],
+    ["---\ntitle: Test\n---\n`::docsera-unknown`\n\n::docsera-unknown", "::docsera-unknown", "unknown-directive"],
+    ["---\ntitle: Test\n---\n`::docsera-image`\n\n::docsera-image", "::docsera-image", "invalid-directive"]
+  ])("locates the actual failure for %s", (source, token, reason) => {
+    const result = parseDocseraMarkdownDocument(source);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toBe(reason);
+    expect(result.range).toBeDefined();
+    expect(source.slice(result.range!.from, result.range!.to)).toContain(token);
+    expect(result.range!.from).toBe(token === "t" ? source.lastIndexOf("title:") : source.lastIndexOf(token));
+  });
+
+  it("explains required frontmatter delimiters and accepts ordinary punctuation", () => {
+    expect(parseDocseraMarkdownDocument('--\ntitle: Test\n---\n')).toMatchObject({ ok: false, message: expect.stringContaining('opening delimiter: ---') });
+    expect(parseDocseraMarkdownDocument('---\ntitle: Test\n')).toMatchObject({ ok: false, message: expect.stringContaining('closing delimiter: ---') });
+    expect(parseDocseraMarkdownDocument(createMarkdownDocumentSource("Test", "~*7$?."))).toMatchObject({ ok: true });
+  });
+
+  it.each([
+    ["--\ntitle: Test\n---\n", "--"],
+    ["---\ntitle: Test\n--\nBody text", "--"],
+    ["---\r\ntitle: Test\r\n----\r\n", "----"]
+  ])("locates a malformed delimiter in %s", (source, delimiter) => {
+    const result = parseDocseraMarkdownDocument(source);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(source.slice(result.range!.from, result.range!.to)).toBe(delimiter);
+  });
+
+  it("does not invent a location for missing frontmatter", () => {
+    expect(parseDocseraMarkdownDocument("plain text")).not.toHaveProperty("range");
+    expect(parseDocseraMarkdownDocument("---\ntitle: Test\nbody text")).not.toHaveProperty("range");
+  });
+
+  it("uses original document offsets with CRLF", () => {
+    const source = "---\r\ntitle: Test\r\n---\r\ntext <bad>";
+    const result = parseDocseraMarkdownDocument(source);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(source.slice(result.range!.from, result.range!.to)).toBe("<bad>");
   });
 });
