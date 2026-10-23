@@ -1473,6 +1473,35 @@ function nextAuthority(state: WorkspaceChangeSetState): WorkspaceMutationAuthori
   };
 }
 
+type WorkspaceStateReuseBaseline = {
+  activeChangeSet: { commandCorrelationId: string; recoveryState: string; revision: number; sysId: string };
+  state: WorkspaceChangeSetState;
+  workspace: WorkspaceRecord;
+};
+
+function loadFreshWorkspaceForStateReuse(
+  loaded: WorkspaceStateReuseBaseline,
+  eligible: boolean
+): { unchanged: boolean; workspace: WorkspaceRecord | null } {
+  const workspace = eligible ? loadWorkspaceBySysId(cleanText(loaded.workspace.sysId)) : null;
+  const changeSet = workspace
+    ? loadFoundationChangeSet(cleanText(workspace.sysId), cleanText(workspace.pendingChangeSetSysId))
+    : null;
+  const initialChangeSet = loaded.state.changeSets[0];
+  const unchanged = Boolean(
+    workspace &&
+      changeSet &&
+      cleanText(workspace.pendingChangeSetSysId) === loaded.state.selectors.activeChangeSetId &&
+      cleanText(workspace.publishedSnapshotSetSysId) === loaded.state.selectors.publishedSnapshotSetId &&
+      (workspace.workspaceStateRevision ?? 0) === loaded.state.selectors.workspaceStateRevision &&
+      changeSet.revision === initialChangeSet.revision &&
+      changeSet.nextPendingSequence === initialChangeSet.nextPendingSequence &&
+      changeSet.recoveryState === loaded.activeChangeSet.recoveryState &&
+      changeSet.commandCorrelationId === loaded.activeChangeSet.commandCorrelationId
+  );
+  return { unchanged, workspace };
+}
+
 function staleFailure(current: WorkspaceMutationAuthority): WorkspaceMutationFailure {
   return {
     kind: "failed",
@@ -2793,25 +2822,13 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
         }
         // Reuse only the projection validated by this newly acquired mutation.
         // Resumed and already-applied claims must reconstruct recovery state fully.
-        const currentWorkspace = newlyPersisted ? loadWorkspaceBySysId(cleanText(loaded.workspace.sysId)) : null;
-        const currentChangeSet = currentWorkspace
-          ? loadFoundationChangeSet(cleanText(currentWorkspace.sysId), cleanText(currentWorkspace.pendingChangeSetSysId))
-          : null;
-        const initialChangeSet = loaded.state.changeSets[0];
-        const unchanged = currentWorkspace && currentChangeSet &&
-          cleanText(currentWorkspace.pendingChangeSetSysId) === loaded.state.selectors.activeChangeSetId &&
-          cleanText(currentWorkspace.publishedSnapshotSetSysId) === loaded.state.selectors.publishedSnapshotSetId &&
-          (currentWorkspace.workspaceStateRevision ?? 0) === loaded.state.selectors.workspaceStateRevision &&
-          currentChangeSet.revision === initialChangeSet.revision &&
-          currentChangeSet.nextPendingSequence === initialChangeSet.nextPendingSequence &&
-          currentChangeSet.recoveryState === loaded.activeChangeSet.recoveryState &&
-          currentChangeSet.commandCorrelationId === loaded.activeChangeSet.commandCorrelationId;
-        const recovered = unchanged
+        const reuse = loadFreshWorkspaceForStateReuse(loaded, newlyPersisted);
+        const recovered = reuse.unchanged
           ? { ...loaded, state: { ...loaded.state, draftPages: [
               ...loaded.state.draftPages.filter((draft) => draft.pageId !== pageId),
               ...buildDraftPages([activePage], loaded.state.snapshotSets[0].pages, new Set([pageId]))
             ] } }
-          : loadWorkspaceState(currentWorkspace ?? input.workspace, dependencies);
+          : loadWorkspaceState(reuse.workspace ?? input.workspace, dependencies);
         let resultAuthority = claim.resultAuthority;
         const recoveredAuthority = nextAuthority(recovered.state);
         const preparedAuthority = preparedResultAuthority(claim);
@@ -3018,25 +3035,13 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
           }
         }
         // Only a newly persisted, newly acquired mutation can reuse the validated projection.
-        const currentWorkspace = newlyPersisted ? loadWorkspaceBySysId(cleanText(loaded.workspace.sysId)) : null;
-        const currentChangeSet = currentWorkspace
-          ? loadFoundationChangeSet(cleanText(currentWorkspace.sysId), cleanText(currentWorkspace.pendingChangeSetSysId))
-          : null;
-        const initialChangeSet = loaded.state.changeSets[0];
-        const unchanged = currentWorkspace && currentChangeSet &&
-          cleanText(currentWorkspace.pendingChangeSetSysId) === loaded.state.selectors.activeChangeSetId &&
-          cleanText(currentWorkspace.publishedSnapshotSetSysId) === loaded.state.selectors.publishedSnapshotSetId &&
-          (currentWorkspace.workspaceStateRevision ?? 0) === loaded.state.selectors.workspaceStateRevision &&
-          currentChangeSet.revision === initialChangeSet.revision &&
-          currentChangeSet.nextPendingSequence === initialChangeSet.nextPendingSequence &&
-          currentChangeSet.recoveryState === loaded.activeChangeSet.recoveryState &&
-          currentChangeSet.commandCorrelationId === loaded.activeChangeSet.commandCorrelationId;
-        const recovered = unchanged
+        const reuse = loadFreshWorkspaceForStateReuse(loaded, newlyPersisted);
+        const recovered = reuse.unchanged
           ? { ...loaded, state: { ...loaded.state, draftPages: [
               ...loaded.state.draftPages.filter((draft) => draft.pageId !== pageId),
               ...buildDraftPages([activePage], loaded.state.snapshotSets[0].pages, new Set([pageId]))
             ] } }
-          : loadWorkspaceState(currentWorkspace ?? input.workspace, dependencies);
+          : loadWorkspaceState(reuse.workspace ?? input.workspace, dependencies);
         let resultAuthority = claim.resultAuthority;
         const recoveredAuthority = nextAuthority(recovered.state);
         const preparedAuthority = preparedResultAuthority(claim);
@@ -3243,25 +3248,13 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
         }
         // Only a newly acquired claim that inserted its own page can reuse the
         // validated projection. Resumed claims retain the full recovery load.
-        const currentWorkspace = newlyInserted ? loadWorkspaceBySysId(cleanText(loaded.workspace.sysId)) : null;
-        const currentChangeSet = currentWorkspace
-          ? loadFoundationChangeSet(cleanText(currentWorkspace.sysId), cleanText(currentWorkspace.pendingChangeSetSysId))
-          : null;
-        const initialChangeSet = loaded.state.changeSets[0];
-        const unchanged = currentWorkspace && currentChangeSet &&
-          cleanText(currentWorkspace.pendingChangeSetSysId) === loaded.state.selectors.activeChangeSetId &&
-          cleanText(currentWorkspace.publishedSnapshotSetSysId) === loaded.state.selectors.publishedSnapshotSetId &&
-          (currentWorkspace.workspaceStateRevision ?? 0) === loaded.state.selectors.workspaceStateRevision &&
-          currentChangeSet.revision === initialChangeSet.revision &&
-          currentChangeSet.nextPendingSequence === initialChangeSet.nextPendingSequence &&
-          currentChangeSet.recoveryState === loaded.activeChangeSet.recoveryState &&
-          currentChangeSet.commandCorrelationId === loaded.activeChangeSet.commandCorrelationId;
-        const recovered = unchanged && activePage
+        const reuse = loadFreshWorkspaceForStateReuse(loaded, newlyInserted);
+        const recovered = reuse.unchanged && activePage
           ? { ...loaded, state: { ...loaded.state, draftPages: [
               ...loaded.state.draftPages,
               ...buildDraftPages([activePage], [], new Set([cleanText(activePage.sysId)]))
             ] } }
-          : loadWorkspaceState(currentWorkspace ?? input.workspace, dependencies);
+          : loadWorkspaceState(reuse.workspace ?? input.workspace, dependencies);
         let resultAuthority = claim.resultAuthority;
         const recoveredAuthority = nextAuthority(recovered.state);
         const preparedAuthority = preparedResultAuthority(claim);
