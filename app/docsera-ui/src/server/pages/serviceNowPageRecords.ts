@@ -1,5 +1,4 @@
 import type { PageRecord as ServerPageRecord } from "./serverPageDomain.ts";
-import { parseServerDocument } from "./serverEditorDocument.ts";
 import { normalizePageRecord, normalizeServiceNowBoolean, normalizeSiblingOrder } from "./serverPageDomain.ts";
 
 function cleanText(value: unknown): string {
@@ -30,7 +29,7 @@ function parseOptionalPersistedContentJson(value: unknown): unknown | null {
     return null;
   }
 
-  return parseServerDocument(text);
+  return text;
 }
 
 export function mapPageRecord(record: {

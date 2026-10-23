@@ -559,7 +559,7 @@ describe("DocseraHeader publishing changes", () => {
         pendingChanges={pending([
           {
             attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
-            category: "Modified",
+            category: "Modified · Moved",
             firstPendingSequence: 1,
             lastChangedOn: "2026-07-18 00:00:00",
             navigable: true,
@@ -594,7 +594,7 @@ describe("DocseraHeader publishing changes", () => {
     expect(within(listItems[1]).getByRole("button", { name: "Undo changes to Archived API" })).toBeDisabled();
     expect(within(dialog).getByText("Overview")).toBeInTheDocument();
     expect(within(dialog).getByText("P. Writer")).toHaveAttribute("aria-label", "Last changed by Priya Writer");
-    expect(within(dialog).getByText("Modified")).toBeInTheDocument();
+    expect(within(dialog).getByText("Modified · Moved")).toBeInTheDocument();
     expect(within(dialog).getByText("Archived API")).toBeInTheDocument();
     expect(within(dialog).getByText("Removed")).toBeInTheDocument();
     expect(within(dialog).queryByText(/^Undo$/)).toBeNull();
@@ -605,7 +605,7 @@ describe("DocseraHeader publishing changes", () => {
     expect(overviewUndoButton.parentElement).toHaveClass("docsera-changes-center__row-action");
     expect(listItems[0]!.querySelector(".docsera-changes-center__row-action .docsera-changes-center__row-undo")).toBe(overviewUndoButton);
     expect(listItems[0]!.querySelector(".docsera-changes-center__row-action .docsera-changes-center__row-undo-icon")).toBeInTheDocument();
-    expect(listItems[0]!.querySelector(".docsera-changes-center__row-action .docsera-changes-center__row-category")).toHaveTextContent("Modified");
+    expect(listItems[0]!.querySelector(".docsera-changes-center__row-action .docsera-changes-center__row-category")).toHaveTextContent("Modified · Moved");
     const discardButton = within(dialog).getByRole("button", { name: "Discard all" });
     expect(discardButton).toBeEnabled();
     expect(discardButton).toHaveClass("docsera-changes-center__header-action");

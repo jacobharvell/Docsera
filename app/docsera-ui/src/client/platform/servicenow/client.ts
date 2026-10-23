@@ -909,7 +909,7 @@ function normalizeWorkspaceLeaseFailedResult(candidate: unknown): WorkspaceEditL
 
 function normalizePendingChangeCategory(value: unknown): WorkspacePendingChangeCategory | null {
   const category = cleanText(value);
-  return category === "Added" || category === "Modified" || category === "Moved" || category === "Modified Ã‚Â· Moved" || category === "Removed"
+  return category === "Added" || category === "Modified" || category === "Moved" || category === "Modified · Moved" || category === "Removed"
     ? category
     : null;
 }

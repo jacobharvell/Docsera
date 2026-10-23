@@ -70,3 +70,28 @@ Pending-response title resolution now builds one request-local Edit projection w
 Pending derivation builds operation-local first-match indexes for selected snapshot pages, drafts and active-generation entries, and reuses validated active removal membership. Category comparisons are shared with the single-page derivation; removal attribution retains the last matching active batch. No persistent state or response contract changes.
 
 For the audit's same ordered 1,000-page, 1,000-modified-entry workload, snapshot, draft and entry `find` predicate calls during pending derivation each fall from 500,500 to zero. The indexed path visits 1,000 records in each of those three collections to build its maps (plus the existing 1,000-page removal-validation set construction), then performs keyed lookups per pending identity. The regression instruments the three actual `find` methods; counts are deterministic work evidence, not timing or endpoint latency. Removal membership validation and sorting remain, and no live measurement or deployment was performed.
+
+
+## Task 143 implementation result
+
+Pending attribution now reuses privacy-safe results within each response. In the persistence regression's nine-row fixture, seven nonempty author IDs represent three distinct users, including a missing user: actual `sys_user` gets fall from seven before to three after. With nine rows sharing one author, the updated implementation performs one get; with nine empty author IDs it performs zero. The earlier per-row implementation implies nine and zero respectively. These are mock record-operation counts, not latency measurements. A subsequent response repeats the three lookups and reflects changed names and record access. No deployment or live measurement was performed.
+
+## Task 144 implementation result
+
+Navigation now derives subtree filter matches and selected-descendant flags in one postorder traversal of the complete page hierarchy, memoized by the hierarchy, filter and selected page. Each page is visited once per derivation; row visibility and expansion use keyed lookups instead of recursively searching each subtree. An instrumented two-page regression observes two slug reads on initial filtering and still two after drag start triggers a local rerender. Previously, root visibility and row checks repeated recursive matching; exact counts depended on short-circuiting, depth and expansion. This evidence is operation-based, not a latency measurement. Tree flattening and drag geometry remain separate work. No deployment or live measurement was performed.
+
+## Task 145 implementation result
+
+Live workspace loads no longer derive retained draft-page IDs or look up the active generation's mutation claim; that processing remains in Edit mode, including its empty-retention fallback. The persistence regression observes zero claim gets for a normal Live load and for a Live load with pending entries and a removal batch, versus one for an Edit load. The previous unconditional path performed one claim get in each case. The fixture verifies the published projection and ordering remain intact while draft changes are pending; the existing persistence tests cover recovery and invalid state. These are mock operation counts, not latency measurements. No deployment or live measurement was performed.
+
+## Task 146 implementation result
+
+Edit-state loading skips draft-versus-published comparison for published pages outside the retained set. It still validates the selected snapshot at the same point as before, after the parent and sibling-order short circuits; retained pages use the original comparison and projection. In a regression fixture with 100 unchanged, unretained published pages, instrumented calls to `hasPageDraftDifferencesFromPublished` fell from 100 on the prior implementation to zero. Snapshot validation and other projection work remain. These counts are deterministic operation evidence, not latency measurements. No deployment or live measurement was performed.
+
+## Task 147 implementation result
+
+Page-record mapping passes nonblank published JSON to the existing record normalizer for validation and canonicalization. An instrumented mapping with one draft and one published legacy document now calls `parseServerDocument` once for each; previously it called it once for the draft and twice for the published document. The draft still reaches the normalizer as parsed JSON, while published content reaches the same validator as stored text. This is a deterministic operation count, not a latency measurement; snapshot processing remains unchanged. No deployment or live measurement was performed.
+
+## Task 148 implementation result
+
+Body save reuses the initially validated canonical document in stable key order. The focused persistence regression observes one parse of the incoming document and zero parses of its stable payload string during a successful save; the previous implementation performed one of each. Other persistence and projection parsing remains. Legacy and canonical inputs, image and table fixtures retain the prior persisted JSON and mutation payload, including nested attribute key order. These are deterministic operation counts, not latency measurements. No deployment or live measurement was performed.

@@ -343,6 +343,28 @@ describe("service now client page creation", () => {
     }
   });
 
+  it("normalizes all canonical pending categories and rejects unknown categories", async () => {
+    const categories = ["Added", "Modified", "Moved", "Modified · Moved", "Removed"];
+    const rows = categories.map((category, index) => ({
+      attribution: { accessibleLabel: `Last changed by User ${index}`, displayName: `U. ${index}`, fullDisplayName: `User ${index}` },
+      category,
+      firstPendingSequence: index + 1,
+      lastChangedOn: `2026-07-18 00:0${index}:00`,
+      navigable: category !== "Removed",
+      pageSysId: `page-00${index}`,
+      title: `Page ${index}`
+    }));
+    const payload = { affectedPageCount: 5, ...workspaceAuthority, rows, workspaceSysId: "workspace-001" };
+    const fetchMock = vi.fn().mockResolvedValueOnce(createJsonResponse(200, { result: payload }))
+      .mockResolvedValueOnce(createJsonResponse(200, { result: { ...payload, rows: [{ ...rows[0], category: "Unknown" }] } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = createServiceNowClient(createRuntime());
+    const input = { workspaceSlug: "product-docs", workspaceSysId: "workspace-001", workspaceLeaseToken: "workspace-lease-token" };
+
+    expect(await client.getWorkspacePendingChanges!(input)).toEqual({ ...payload, state: "succeeded" });
+    expect(await client.getWorkspacePendingChanges!(input)).toMatchObject({ state: "failed", errorMessage: "Unable to load pending changes. Please try again." });
+  });
+
   it("posts workspace publish commands with exact authority and normalizes successor state", async () => {
     const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
       expect(String(path)).toBe("/api/x_82900_docsera/docsera_runtime/workspaces/publish");

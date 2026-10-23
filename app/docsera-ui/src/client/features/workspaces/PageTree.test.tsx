@@ -78,8 +78,8 @@ function page(overrides: Partial<WorkspacePageView> & Pick<WorkspacePageView, "i
   };
 }
 
-function renderTree(pages: WorkspacePageView[], overrides: Partial<Parameters<typeof PageTree>[0]> = {}) {
-  return render(
+function treeElement(pages: WorkspacePageView[], overrides: Partial<Parameters<typeof PageTree>[0]> = {}) {
+  return (
     <PageTree
       canCreatePage={false}
       canManagePageSettings
@@ -108,6 +108,10 @@ function renderTree(pages: WorkspacePageView[], overrides: Partial<Parameters<ty
       {...overrides}
     />
   );
+}
+
+function renderTree(pages: WorkspacePageView[], overrides: Partial<Parameters<typeof PageTree>[0]> = {}) {
+  return render(treeElement(pages, overrides));
 }
 
 function renderTreeWithCollapsedState(
@@ -1105,6 +1109,59 @@ describe("PageTree row interaction", () => {
     expect(cssSource).not.toMatch(
       /\.docsera-page-tree__context-menu-item(?::hover|:focus-visible)[^{]*\{[^}]*color:\s*var\(--docsera-text\)/s
     );
+  });
+});
+
+describe("PageTree derived hierarchy", () => {
+  it("searches collapsed six-level branches by title and slug, and restores the unfiltered tree", () => {
+    const deep = page({ id: "six", title: "Needle", slug: "special-path" });
+    const chain = [5, 4, 3, 2, 1].reduce((child, level) => page({ id: `level-${level}`, title: `Level ${level}`, children: [child] }), deep);
+    const pages = [chain, page({ id: "other", title: "Other" })];
+    const collapsedPageIds = ["level-1", "level-2", "level-3", "level-4", "level-5"];
+    const view = renderTree(pages, { collapsedPageIds, filterText: "nEeDlE", selectedPageId: "other" });
+    expect(screen.getByText("Needle")).toBeInTheDocument();
+    expect(screen.queryByText("Other")).not.toBeInTheDocument();
+    view.rerender(treeElement(pages, { collapsedPageIds, filterText: "SPECIAL-PATH" }));
+    expect(screen.getByText("Needle")).toBeInTheDocument();
+    view.rerender(treeElement(pages, { collapsedPageIds, filterText: "absent" }));
+    expect(screen.queryByText("Level 1")).not.toBeInTheDocument();
+    view.rerender(treeElement(pages, { collapsedPageIds, filterText: "level 1" }));
+    expect(screen.getByText("Level 1")).toBeInTheDocument();
+    expect(screen.queryByText("Level 2")).not.toBeInTheDocument();
+    view.rerender(treeElement(pages, { collapsedPageIds }));
+    expect(screen.getByText("Other")).toBeInTheDocument();
+    expect(screen.queryByText("Level 2")).not.toBeInTheDocument();
+  });
+
+  it("updates ancestor expansion and highlighting for selection and newly added pages", () => {
+    const child = page({ id: "child", title: "Child" });
+    const parent = page({ id: "parent", title: "Parent", children: [child] });
+    const pages = [parent, page({ id: "root", title: "Root" })];
+    const collapsedPageIds = ["parent"];
+    const view = renderTree(pages, { collapsedPageIds, selectedPageId: "root" });
+    expect(screen.queryByText("Child")).not.toBeInTheDocument();
+    view.rerender(treeElement(pages, { collapsedPageIds, selectedPageId: "child", pageSettingsOpenPageId: "child" }));
+    expect(screen.getByText("Child").closest(".docsera-page-tree__row")).toHaveClass("docsera-page-tree__row--selected");
+    const newChild = page({ id: "new-child", title: "New child" });
+    const updated = [{ ...parent, children: [child, newChild] }, ...pages.slice(1), page({ id: "new-root", title: "New root" })];
+    view.rerender(treeElement(updated, { collapsedPageIds, selectedPageId: "new-child" }));
+    expect(screen.getByText("New child").closest(".docsera-page-tree__row")).toHaveClass("docsera-page-tree__row--selected");
+    view.rerender(treeElement(updated, { collapsedPageIds, selectedPageId: "new-root" }));
+    expect(screen.getByText("New root").closest(".docsera-page-tree__row")).toHaveClass("docsera-page-tree__row--selected");
+    expect(screen.queryByText("New child")).not.toBeInTheDocument();
+  });
+
+  it("does not revisit page titles when drag interaction changes local state", () => {
+    const pages = [page({ id: "parent", title: "Parent", children: [page({ id: "child", title: "Child" })] })];
+    let reads = 0;
+    for (const item of [pages[0]!, pages[0]!.children![0]!]) {
+      const title = item.title;
+      Object.defineProperty(item, "slug", { get() { reads++; return `match-${title.toLowerCase()}`; } });
+    }
+    renderTree(pages, { filterText: "match", onMovePage: vi.fn() });
+    expect(reads).toBe(2);
+    fireEvent.dragStart(screen.getByText("Parent").closest(".docsera-page-tree__row")!, { dataTransfer: { setData: vi.fn(), effectAllowed: "" } });
+    expect(reads).toBe(2);
   });
 });
 

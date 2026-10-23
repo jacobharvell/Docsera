@@ -1,8 +1,10 @@
 import { createHash } from "node:crypto";
 import * as changeSetDomain from "./workspaceChangeSetDomain.ts";
 import * as serverDocument from "../pages/serverEditorDocument.ts";
+import * as pageDomain from "../pages/serverPageDomain.ts";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createCanonicalImageDocseraDocumentEnvelope } from "../../shared/editor/imageFixtures.ts";
+import { createNestedTableDocseraDocumentEnvelope, createStandardTableDocseraDocumentEnvelope } from "../../shared/editor/documentFixtures.ts";
 
 type TableRow = {
   sysId: string;
@@ -12,6 +14,7 @@ type TableRow = {
 const glideMock = vi.hoisted(() => {
   const tables = new Map<string, TableRow[]>();
   const iterations = new Map<string, number>();
+  const gets = new Map<string, number>();
   const fieldReadAccess = new Map<string, boolean>();
   const deleteHooks = new Map<string, (row: TableRow) => boolean>();
   const insertHooks = new Map<string, (row: TableRow) => void>();
@@ -72,6 +75,7 @@ const glideMock = vi.hoisted(() => {
     }
 
     get(fieldOrSysId: string, value?: unknown) {
+      gets.set(this.tableName, (gets.get(this.tableName) ?? 0) + 1);
       const row =
         value === undefined
           ? (tables.get(this.tableName)?.find((candidate) => candidate.sysId === cleanText(fieldOrSysId)) ?? null)
@@ -239,6 +243,8 @@ const glideMock = vi.hoisted(() => {
       getUserID: () => "user-1",
       error: vi.fn()
     },
+    getCount(tableName: string) { return gets.get(tableName) ?? 0; },
+    clearGets() { gets.clear(); },
     iterationCount(tableName: string) { return iterations.get(tableName) ?? 0; },
     clearIterations() { iterations.clear(); },
     getRows(tableName: string) {
@@ -287,6 +293,7 @@ const glideMock = vi.hoisted(() => {
     reset() {
       tables.clear();
       iterations.clear();
+      gets.clear();
       fieldReadAccess.clear();
       deleteHooks.clear();
       insertHooks.clear();
@@ -900,6 +907,108 @@ beforeEach(() => {
   glideMock.reset();
 });
 
+describe("body save canonical document reuse", () => {
+  it.each([
+    ["legacy", createDocument("Reuse body")],
+    ["canonical", createDocumentEnvelope("Reuse body")],
+    ["image", createCanonicalImageDocseraDocumentEnvelope()],
+    ["table", createStandardTableDocseraDocumentEnvelope()],
+    ["nested table", createNestedTableDocseraDocumentEnvelope()]
+  ])("preserves %s documents and mutation identity without reparsing the payload", (_label, inputDocument) => {
+    seedWorkspaceFoundation();
+    const canonical = serverDocument.parseServerDocument(inputDocument);
+    const sort = (value: unknown): unknown => Array.isArray(value) ? value.map(sort) : value && typeof value === "object"
+      ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, entry]) => [key, sort(entry)]))
+      : value;
+    const stableDocument = JSON.stringify(sort(canonical));
+    const reparsed = serverDocument.parseServerDocument(stableDocument);
+    expect(reparsed).toEqual(canonical);
+    const payload = { kind: "body", pageSysId: "page-001", draftContentJson: stableDocument, expectedRevision: 0 };
+    const stablePayload = JSON.stringify(sort(payload));
+    const parse = vi.spyOn(serverDocument, "parseServerDocument");
+    const input = { authority: { changeSetId: "change-set-001", changeSetRevision: 0 }, draftContentJson: inputDocument,
+      expectedRevision: 0, pageSysId: "page-001", workspace: workspaceRef() };
+    const service = createService();
+    const saved = expectSucceeded(service.savePageBody(input));
+    expect(parse.mock.calls.filter(([value]) => value === inputDocument)).toHaveLength(1);
+    expect(parse.mock.calls.filter(([value]) => value === stableDocument)).toHaveLength(0);
+    parse.mockRestore();
+    expect(pageRow("page-001")?.fields).toMatchObject({ draft_content_json: JSON.stringify(reparsed),
+      draft_body_text: serverDocument.extractPlainTextFromServerDocument(reparsed) || "", draft_revision: 1 });
+    expect(claimRow("change-set-001:0")?.fields).toMatchObject({ mutation_payload_json: stablePayload,
+      mutation_key: createHash("sha256").update(`body\nchange-set-001:0\n${stablePayload}`).digest("hex").toUpperCase() });
+    expectSucceeded(service.savePageBody(input));
+    expect(pageRow("page-001")?.fields.draft_revision).toBe(1);
+    expect(service.savePageBody({ ...input, draftContentJson: createDocument("conflict") })).toMatchObject({ kind: "failed", code: "stale_generation" });
+    expect(saved.result.page.draftRevision).toBe(1);
+  });
+
+  it("rejects invalid documents before durable writes", () => {
+    seedWorkspaceFoundation();
+    const before = [getRows(pageTable), getRows(mutationClaimTable), getRows(changeSetTable), getRows(changeEntryTable)];
+    expect(createService().savePageBody({ authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      draftContentJson: "{invalid", expectedRevision: 0, pageSysId: "page-001", workspace: workspaceRef() }).kind).toBe("failed");
+    expect([getRows(pageTable), getRows(mutationClaimTable), getRows(changeSetTable), getRows(changeEntryTable)]).toEqual(before);
+  });
+});
+
+describe("unretained published draft comparisons", () => {
+  it("skips content comparisons for 100 unchanged unretained pages", () => {
+    const pages = Array.from({ length: 100 }, (_, index) => {
+      const title = `Page ${index}`;
+      const document = createDocument(`Content ${index}`);
+      return createSeedPage({ pageId: `page-${index}`, draftTitle: title, publishedTitle: title,
+        draftSlug: `page-${index}`, publishedSlug: `page-${index}`, draftContentJson: document, publishedContentJson: document });
+    });
+    seedWorkspaceFoundation({ pages });
+    const compare = vi.spyOn(pageDomain, "hasPageDraftDifferencesFromPublished");
+    const result = expectSucceeded(createService().listPages(workspaceRef(), "edit"));
+    expect(result.pages).toHaveLength(100);
+    expect(compare).toHaveBeenCalledTimes(0);
+    compare.mockRestore();
+  });
+
+  it.each([
+    ["malformed JSON", "{not-json", "not valid JSON"],
+    ["unsupported schema", JSON.stringify({ schemaVersion: 999, document: createDocument("bad") }), "unsupported document schema version"]
+  ])("still rejects %s in an unretained selected snapshot", (_label, contentJson, message) => {
+    seedWorkspaceFoundation();
+    const row = getRows(pageSnapshotTable)[0];
+    glideMock.updateRow(pageSnapshotTable, row.sysId, { ...row.fields, content_json: contentJson });
+    const result = createService().listPages(workspaceRef(), "edit");
+    expect(result).toMatchObject({ kind: "failed", status: 409, errorMessage: expect.stringContaining(message) });
+  });
+
+  it("retains the metadata short circuit for an unretained invalid snapshot", () => {
+    seedWorkspaceFoundation();
+    const row = getRows(pageSnapshotTable)[0];
+    glideMock.updateRow(pageSnapshotTable, row.sysId, { ...row.fields, sibling_order: "2", content_json: "{not-json" });
+    // The later projection may validate the selected snapshot; observe that the
+    // draft-comparison path itself does not parse it before that projection.
+    const parse = vi.spyOn(serverDocument, "parseServerDocument");
+    createService().listPages(workspaceRef(), "edit");
+    expect(parse.mock.calls.filter(([value]) => value === "{not-json").length).toBe(1);
+    parse.mockRestore();
+  });
+
+  it("retains changed drafts when an empty retention set has a nonzero revision", () => {
+    seedWorkspaceFoundation();
+    const row = getRows(changeSetTable)[0];
+    glideMock.updateRow(changeSetTable, row.sysId, { ...row.fields, change_set_revision: 1 });
+    const result = expectSucceeded(createService().listPages(workspaceRef(), "edit"));
+    expect(result.pages[0]).toMatchObject({ sysId: "page-001", draftTitle: "Draft title" });
+  });
+
+  it("rejects legacy published identity without a selected snapshot", () => {
+    seedWorkspaceFoundation();
+    const row = getRows(pageSnapshotTable)[0];
+    glideMock.updateRow(pageSnapshotTable, row.sysId, { ...row.fields, page: "other-page" });
+    expect(createService().listPages(workspaceRef(), "edit")).toMatchObject({
+      kind: "failed", status: 409, errorMessage: expect.stringContaining("Legacy draft overlay references unpublished page")
+    });
+  });
+});
+
 describe("page creation record scaling", () => {
   it("does not map projected documents during creation while listing still maps them", () => {
     const document = createDocument("unique projected content");
@@ -911,8 +1020,8 @@ describe("page creation record scaling", () => {
     parse.mockClear();
     expectSucceeded(service.listPages(workspaceRef(), "edit"));
     const listingCalls = parse.mock.calls.filter(([value]) => JSON.stringify(value).includes("unique projected content")).length;
-    expect(creationCalls).toBe(3);
-    expect(listingCalls).toBe(4);
+    expect(creationCalls).toBe(2);
+    expect(listingCalls).toBe(3);
     parse.mockRestore();
   });
 
@@ -1237,11 +1346,15 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
       .filter((row) => row.fields.snapshot_set === seeded.selectedSnapshotSetId)
       .map((row) => ({ sysId: row.sysId, fields: { ...row.fields } }));
 
+    glideMock.clearGets();
     const live = expectSucceeded(service.listPages(seeded.workspace, "live"));
+    expect(glideMock.getCount(mutationClaimTable)).toBe(0);
     expect(live.pages.map((page) => page.draftTitle)).toEqual(["Selected Root", "Selected Child", "Selected Sibling"]);
     expectActiveSelectors(seeded.selectedChangeSetId, seeded.selectedSnapshotSetId);
 
+    glideMock.clearGets();
     const edit = expectSucceeded(service.listPages(seeded.workspace, "edit"));
+    expect(glideMock.getCount(mutationClaimTable)).toBe(1);
     expect(edit.pages.map((page) => page.draftTitle)).toEqual(["Draft Root", "Draft Child", "Draft Sibling"]);
     expectActiveSelectors(seeded.selectedChangeSetId, seeded.selectedSnapshotSetId);
 
@@ -1278,7 +1391,14 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     }));
     expectActiveSelectors(seeded.selectedChangeSetId, seeded.selectedSnapshotSetId);
 
+    expect(getRows(changeEntryTable).length).toBeGreaterThan(0);
+    expect(getRows(removalBatchTable).length).toBeGreaterThan(0);
+    glideMock.clearGets();
     const liveAfter = expectSucceeded(service.listPages(seeded.workspace, "live"));
+    expect(glideMock.getCount(mutationClaimTable)).toBe(0);
+    expect(liveAfter.pages.map(({ draftRevision, ...page }) => page)).toEqual(
+      live.pages.map(({ draftRevision, ...page }) => page)
+    );
     expect(liveAfter.pages.map((page) => page.draftTitle)).toEqual(["Selected Root", "Selected Child", "Selected Sibling"]);
     expectActiveSelectors(seeded.selectedChangeSetId, seeded.selectedSnapshotSetId);
     expect(getRows(workspaceTable)[0]?.fields.pending_change_set).not.toBe(seeded.seedChangeSetId);
@@ -1288,6 +1408,18 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
       .filter((row) => row.fields.snapshot_set === seeded.selectedSnapshotSetId)
       .map((row) => ({ sysId: row.sysId, fields: { ...row.fields } }));
     expect(snapshotRowsAfter).toEqual(snapshotRowsBefore);
+  });
+
+  it("preserves Edit and Live content when loading published page records", () => {
+    const seeded = seedValidNonSeedSelectors();
+    const service = createService();
+    const edit = expectSucceeded(service.listPages(seeded.workspace, "edit"));
+    const live = expectSucceeded(service.listPages(seeded.workspace, "live"));
+    const editRoot = edit.pages.find((page) => page.sysId === "page-001");
+    const liveRoot = live.pages.find((page) => page.sysId === "page-001");
+    expect(editRoot).toMatchObject({ draftTitle: "Draft Root", draftBodyText: "Draft root body" });
+    expect(liveRoot).toMatchObject({ draftTitle: "Selected Root", draftBodyText: "Selected root body" });
+    expect(editRoot?.draftContentJson).not.toEqual(liveRoot?.draftContentJson);
   });
 
   it("does not rewrite a ready selected snapshot or Live projection from page published fields", () => {
@@ -2160,6 +2292,52 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     glideMock.updateRow(pageTable, "page-001", { ...getRows(pageTable)[0].fields, parent_page: "missing-parent" });
     const result = createService().pendingChanges(workspaceRef());
     expect(result).toMatchObject({ kind: "failed", status: 500 });
+  });
+
+  it("resolves each pending author once per response and reevaluates user data and access", () => {
+    const authors = ["user-1", "user-1", "user-1", "user-2", "user-2", "missing", "missing", "", ""];
+    seedWorkspaceFoundation({ pages: authors.map((_, index) => createSeedPage({
+      pageId: `attribution-${index}`, draftTitle: `Draft ${index}`, publishedTitle: `Published ${index}`,
+      siblingOrder: String(index + 1)
+    })) });
+    authors.forEach((author, index) => glideMock.insertRow(changeEntryTable, `attribution-entry-${index}`, {
+      change_set: "change-set-001", page: `attribution-${index}`,
+      generation_page_key: `change-set-001:attribution-${index}`,
+      first_pending_sequence: index + 1, first_pending_on: "2026-07-18 00:00:00",
+      last_changed_on: "2026-07-18 00:00:00", last_changed_by: author
+    }));
+    glideMock.insertRow("sys_user", "user-1", { first_name: "Priya", last_name: "Writer", name: "Priya Writer", user_name: "pwriter", email: "priya@example.com" });
+    glideMock.insertRow("sys_user", "user-2", { first_name: "Sam", last_name: "Editor", name: "Sam Editor", user_name: "seditor", email: "sam@example.com" });
+    const service = createService();
+    glideMock.clearGets();
+    const first = expectSucceeded(service.pendingChanges(workspaceRef())).pending;
+    expect(first.rows).toHaveLength(authors.length);
+    expect(glideMock.getCount("sys_user")).toBe(3);
+    expect(first.rows.map((row) => row.attribution.displayName)).toEqual([
+      "P. Writer", "P. Writer", "P. Writer", "S. Editor", "S. Editor", "Unknown user", "Unknown user", "Unknown user", "Unknown user"
+    ]);
+    glideMock.updateRow("sys_user", "user-1", { first_name: "New", last_name: "Name", name: "New Name", user_name: "pwriter", email: "priya@example.com" });
+    glideMock.setRecordReadable("sys_user", "user-2", false);
+    glideMock.clearGets();
+    const second = expectSucceeded(service.pendingChanges(workspaceRef())).pending;
+    expect(glideMock.getCount("sys_user")).toBe(3);
+    expect(second.rows.map((row) => row.attribution.displayName)).toEqual([
+      "N. Name", "N. Name", "N. Name", "Unknown user", "Unknown user", "Unknown user", "Unknown user", "Unknown user", "Unknown user"
+    ]);
+    expect(JSON.stringify(second)).not.toContain("pwriter");
+    expect(JSON.stringify(second)).not.toContain("priya@example.com");
+    for (const entry of getRows(changeEntryTable)) {
+      glideMock.updateRow(changeEntryTable, entry.sysId, { ...entry.fields, last_changed_by: "user-1" });
+    }
+    glideMock.clearGets();
+    expect(expectSucceeded(service.pendingChanges(workspaceRef())).pending.rows).toHaveLength(authors.length);
+    expect(glideMock.getCount("sys_user")).toBe(1);
+    for (const entry of getRows(changeEntryTable)) {
+      glideMock.updateRow(changeEntryTable, entry.sysId, { ...entry.fields, last_changed_by: "" });
+    }
+    glideMock.clearGets();
+    expect(expectSucceeded(service.pendingChanges(workspaceRef())).pending.rows).toHaveLength(authors.length);
+    expect(glideMock.getCount("sys_user")).toBe(0);
   });
 
   it("returns authoritative pending titles, counts, generation pair, and privacy-safe attribution", () => {

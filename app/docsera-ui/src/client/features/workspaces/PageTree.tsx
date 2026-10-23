@@ -64,6 +64,7 @@ type PageTreeProps = {
 type PageTreeNodeProps = Omit<PageTreeProps, "collapsedPageIds" | "dragSurfaceRef" | "treeViewportRef"> & {
   collapsedPageIds: ReadonlySet<string>;
   depth: number;
+  derived: ReadonlyMap<WorkspacePageView, TreeDerivedState>;
   draggedPageId: string;
   dropPreview: PageTreeDropPreviewState | null;
   inlineCreateState: InlinePageCreateState | null;
@@ -132,21 +133,29 @@ function ChevronIcon({ expanded }: { expanded: boolean }) {
   );
 }
 
-function matchesTreeFilter(page: WorkspacePageView, filterText: string): boolean {
-  if (!filterText) {
-    return true;
+type TreeDerivedState = {
+  matches: boolean;
+  matchingDescendant: boolean;
+  selectedDescendant: boolean;
+};
+
+function deriveTreeState(pages: WorkspacePageView[], filterText: string, selectedPageId: string) {
+  const result = new Map<WorkspacePageView, TreeDerivedState>();
+  const filter = filterText.toLowerCase();
+  function visit(page: WorkspacePageView): boolean {
+    let matchingDescendant = false;
+    let selectedDescendant = false;
+    for (const child of page.children ?? []) {
+      const childContainsSelection = visit(child);
+      matchingDescendant = result.get(child)!.matches || matchingDescendant;
+      selectedDescendant = childContainsSelection || selectedDescendant;
+    }
+    const matches = !filter || page.title.toLowerCase().includes(filter) || page.slug.toLowerCase().includes(filter) || matchingDescendant;
+    result.set(page, { matches, matchingDescendant, selectedDescendant });
+    return page.id === selectedPageId || selectedDescendant;
   }
-
-  const normalizedFilter = filterText.toLowerCase();
-  if (page.title.toLowerCase().includes(normalizedFilter) || page.slug.toLowerCase().includes(normalizedFilter)) {
-    return true;
-  }
-
-  return page.children ? page.children.some((child) => matchesTreeFilter(child, filterText)) : false;
-}
-
-function pageHasSelectedDescendant(page: WorkspacePageView, selectedPageId: string): boolean {
-  return page.children ? page.children.some((child) => child.id === selectedPageId || pageHasSelectedDescendant(child, selectedPageId)) : false;
+  for (const page of pages) visit(page);
+  return result;
 }
 
 function flattenPages(pages: WorkspacePageView[]): WorkspacePageView[] {
@@ -589,6 +598,7 @@ function PageTreeNode({
   canManagePageSettings,
   collapsedPageIds,
   depth,
+  derived,
   draggedPageId,
   dropPreview,
   filterText,
@@ -619,7 +629,8 @@ function PageTreeNode({
   pageSettingsOpenPageId,
   selectedPageId
 }: PageTreeNodeProps) {
-  if (!matchesTreeFilter(page, filterText)) {
+  const treeState = derived.get(page)!;
+  if (!treeState.matches) {
     return null;
   }
 
@@ -633,9 +644,9 @@ function PageTreeNode({
   const mustStayExpanded =
     hasChildren &&
     (
-      pageHasSelectedDescendant(page, selectedPageId) ||
+      treeState.selectedDescendant ||
       isInlineCreateParent ||
-      Boolean(filterText && page.children?.some((child) => matchesTreeFilter(child, filterText)))
+      Boolean(filterText && treeState.matchingDescendant)
     );
   const isExpanded = hasChildren ? !collapsedPageIds.has(page.id) || mustStayExpanded : false;
   const showChildCreateButton = canCreatePage && hasChildren;
@@ -837,6 +848,7 @@ function PageTreeNode({
               canManagePageSettings={canManagePageSettings}
               collapsedPageIds={collapsedPageIds}
               depth={depth + 1}
+              derived={derived}
               dropPreview={dropPreview}
               filterText={filterText}
               inlineCreateState={inlineCreateState}
@@ -933,7 +945,8 @@ export function PageTree({
   const menuRef = useRef<HTMLDivElement>(null);
   const draggedPageIdRef = useRef("");
   const effectiveCollapsedPageIds = useMemo(() => new Set(collapsedPageIds), [collapsedPageIds]);
-  const visiblePages = useMemo(() => pages.filter((page) => matchesTreeFilter(page, filterText)), [filterText, pages]);
+  const derived = useMemo(() => deriveTreeState(pages, filterText, selectedPageId), [pages, filterText, selectedPageId]);
+  const visiblePages = useMemo(() => pages.filter((page) => derived.get(page)!.matches), [pages, derived]);
   const firstVisibleRootPageId = visiblePages[0]?.id ?? null;
   const lastVisibleRootPageId = visiblePages[visiblePages.length - 1]?.id ?? null;
   const flatPages = useMemo(() => flattenPages(pages), [pages]);
@@ -1339,6 +1352,7 @@ export function PageTree({
             canManagePageSettings={canManagePageSettings}
             collapsedPageIds={effectiveCollapsedPageIds.size > 0 ? effectiveCollapsedPageIds : localCollapsedPageIds}
             depth={0}
+            derived={derived}
             draggedPageId={draggedPageId}
             dropPreview={dropPreview}
             filterText={filterText}

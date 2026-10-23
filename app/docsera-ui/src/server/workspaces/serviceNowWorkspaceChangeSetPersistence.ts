@@ -1260,6 +1260,15 @@ function buildDraftPages(pageRecords: PageRecord[], snapshotPages: SnapshotPage[
       throw new Error(`Legacy draft overlay references unpublished page ${pageId}.`);
     }
     if (hasPublishedIdentity) {
+      if (!retainedPageIds.has(pageId)) {
+        // The old comparison parsed the snapshot only after these metadata checks.
+        // Keep that validation boundary even though its comparison result is discarded.
+        if (page.parentPageSysId === selectedSnapshot.parentPageId &&
+            String(page.siblingOrder) === selectedSnapshot.siblingOrder) {
+          parseServerDocument(selectedSnapshot.contentJson ?? createEmptyServerDocumentEnvelope());
+        }
+        continue;
+      }
       const changed = page.parentPageSysId !== selectedSnapshot.parentPageId ||
         String(page.siblingOrder) !== selectedSnapshot.siblingOrder ||
         hasPageDraftDifferencesFromPublished({
@@ -1274,9 +1283,6 @@ function buildDraftPages(pageRecords: PageRecord[], snapshotPages: SnapshotPage[
         publishedBodyText: selectedSnapshot?.bodyText ?? null
       });
       if (!changed) {
-        continue;
-      }
-      if (!retainedPageIds.has(pageId)) {
         continue;
       }
     }
@@ -1392,18 +1398,22 @@ function loadWorkspaceState(
     });
   }
 
-  const retainedPageIds = new Set<string>([
-    ...entryResults.map((entry) => cleanText(entry.pageId)),
-    ...removalBatches.flatMap((batch) => batch.members.map((member) => cleanText(member.pageId))),
-    ...retainedDraftPageIdsForClaim(loadMutationClaimByGeneration(buildMutationGenerationKey({
-      changeSetId: activeChangeSetSysId,
-      changeSetRevision: revision
-    }))).values()
-  ].filter(Boolean));
-  if (mode === "edit" && retainedPageIds.size === 0 && revision > 0) {
-    for (const page of pageRecords) {
-      retainedPageIds.add(cleanText(page.sysId));
+  let draftPages: DraftPage[] = [];
+  if (mode === "edit") {
+    const retainedPageIds = new Set<string>([
+      ...entryResults.map((entry) => cleanText(entry.pageId)),
+      ...removalBatches.flatMap((batch) => batch.members.map((member) => cleanText(member.pageId))),
+      ...retainedDraftPageIdsForClaim(loadMutationClaimByGeneration(buildMutationGenerationKey({
+        changeSetId: activeChangeSetSysId,
+        changeSetRevision: revision
+      }))).values()
+    ].filter(Boolean));
+    if (retainedPageIds.size === 0 && revision > 0) {
+      for (const page of pageRecords) {
+        retainedPageIds.add(cleanText(page.sysId));
+      }
     }
+    draftPages = buildDraftPages(pageRecords, snapshotPages, retainedPageIds);
   }
 
   const state: WorkspaceChangeSetState = {
@@ -1426,7 +1436,7 @@ function loadWorkspaceState(
       readiness: "ready",
       pages: snapshotPages
     }],
-    draftPages: mode === "edit" ? buildDraftPages(pageRecords, snapshotPages, retainedPageIds) : [],
+    draftPages,
     entries: entryResults,
     removalBatches,
     commands: []
@@ -2682,7 +2692,10 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
         }
         const pageId = cleanText(page.sysId);
         const generationKey = buildMutationGenerationKey(input.authority);
-        const canonicalDocument = stableSerialize(parseServerDocument(input.draftContentJson));
+        const validatedDocument = parseServerDocument(input.draftContentJson);
+        // Retain the stable payload's key order for the later persistence serializer.
+        const desiredDocument = sortForSerialization(validatedDocument) as typeof validatedDocument;
+        const canonicalDocument = JSON.stringify(desiredDocument);
         const existingClaim = loadMutationClaimByGeneration(generationKey);
         if (
           existingClaim &&
@@ -2734,7 +2747,6 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
         }
         claim = acquired.claim;
         const executorKey = acquired.executorKey;
-        const desiredDocument = parseServerDocument(canonicalDocument);
         const desiredBodyText = extractPlainTextFromServerDocument(desiredDocument) || null;
         let activePage = loadPageRecordBySysId(pageId);
         if (!activePage) {
@@ -4772,13 +4784,20 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
           const pageId = cleanText(page.sysId);
           if (!pageRecords.has(pageId)) pageRecords.set(pageId, page);
         }
+        const attributions = new Map<string, ReturnType<typeof readAttribution>>();
         const rows = entries.map((entry) => {
           const category = normalizePendingCategory(entry.category);
           if (!category) {
             throw new Error("Workspace pending category is invalid.");
           }
+          const authorId = cleanText(entry.lastChangedBy);
+          let attribution = attributions.get(authorId);
+          if (!attribution) {
+            attribution = readAttribution(authorId);
+            attributions.set(authorId, attribution);
+          }
           return {
-            attribution: readAttribution(entry.lastChangedBy),
+            attribution,
             category,
             firstPendingSequence: entry.firstPendingSequence,
             lastChangedOn: entry.lastChangedOn,

@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import * as serverDocument from "./serverEditorDocument";
 import { mapPageRecord } from "./serviceNowPageRecords";
 import { createEmptyDocseraDocumentEnvelope, parseDocseraDocumentOrThrow } from "../../shared/editor/document";
 import {
@@ -87,6 +88,31 @@ function createRecord({
 }
 
 describe("page record mapping", () => {
+  it("canonicalizes each published and draft document once through the normalizer", () => {
+    const draft = createLegacyDocseraDocument("Draft");
+    const published = createLegacyDocseraDocument("Published");
+    const parse = vi.spyOn(serverDocument, "parseServerDocument");
+    try {
+      const page = mapPageRecord(createRecord({
+        activeValue: true,
+        draftContentJson: JSON.stringify(draft),
+        publishedContentJson: JSON.stringify(published),
+        publishedAt: "2026-07-15 09:30:00",
+        publishedBy: "user-123",
+        publishedByDisplayValue: "Priya Writer"
+      }));
+      expect(parse.mock.calls).toEqual([[draft], [JSON.stringify(published)]]);
+      expect(page).toMatchObject({
+        draftContentJson: { schemaVersion: 1, document: draft },
+        publishedContentJson: { schemaVersion: 1, document: published },
+        publishedAt: "2026-07-15 09:30:00",
+        publishedBySysId: "user-123",
+        publishedByDisplayName: "Priya Writer"
+      });
+    } finally {
+      parse.mockRestore();
+    }
+  });
   it("preserves persisted rank zero as numeric zero", () => {
     const page = mapPageRecord(createRecord({ activeValue: true, siblingOrder: "0" }));
 
@@ -227,6 +253,7 @@ describe("page record mapping", () => {
   it.each([
     ["unsupported schema", JSON.stringify({ schemaVersion: 999, document: { type: "doc", content: [] } })],
     ["invalid envelope", JSON.stringify({ document: { type: "doc", content: [] } })],
+    ["invalid envelope", "null"],
     ["invalid document", JSON.stringify({ schemaVersion: 1, document: { type: "doc", content: {} } })]
   ])("rejects %s published content", (_label, publishedContentJson) => {
     expect(() =>

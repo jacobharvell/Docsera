@@ -373,7 +373,7 @@ export type WorkspaceEditLeaseAcquireResult = WorkspaceEditLeaseHeld | Workspace
 export type WorkspaceEditLeaseRenewResult = WorkspaceEditLeaseHeld | WorkspaceEditLeaseLost | WorkspaceEditLeaseFailed;
 export type WorkspaceEditLeaseReleaseResult = WorkspaceEditLeaseReleased | WorkspaceEditLeaseLost | WorkspaceEditLeaseFailed;
 export type WorkspaceEditLeaseStatusResult = WorkspaceEditLeaseStatusHeld | WorkspaceEditLeaseLocked | WorkspaceEditLeaseUnlocked | WorkspaceEditLeaseFailed;
-export type WorkspacePendingChangeCategory = "Added" | "Modified" | "Moved" | "Modified Ã‚Â· Moved" | "Removed";
+export type WorkspacePendingChangeCategory = "Added" | "Modified" | "Moved" | "Modified · Moved" | "Removed";
 export type WorkspacePendingChangeRow = {
   attribution: {
     accessibleLabel: string;
