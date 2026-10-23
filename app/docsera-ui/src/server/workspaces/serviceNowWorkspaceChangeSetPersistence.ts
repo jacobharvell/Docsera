@@ -1347,55 +1347,62 @@ function loadWorkspaceState(
   const pageRecords = listWorkspacePageRecords(workspaceSysId, mode === "live" ? "live" : "edit");
   const snapshotPages = selectedSnapshotCache.pages ?? loadSnapshotPages(selectedSnapshotSysId);
 
-  const entries = new GlideRecord(DOCSERA_WORKSPACE_CHANGE_ENTRY_TABLE);
-  entries.addQuery("change_set", activeChangeSetSysId);
-  entries.query();
   const entryResults: WorkspaceChangeSetState["entries"] = [];
-  while (entries.next()) {
-    const firstPendingSequence = safeInteger(entries.getValue("first_pending_sequence"));
-    if (firstPendingSequence === null) {
-      throw new Error("Workspace foundation is invalid.");
-    }
-    entryResults.push({
-      changeSetId: activeChangeSetSysId,
-      pageId: cleanText(entries.getValue("page")),
-      firstPendingSequence,
-      firstPendingOn: cleanText(entries.getValue("first_pending_on")),
-      lastChangedOn: cleanText(entries.getValue("last_changed_on")),
-      lastChangedBy: cleanText(entries.getValue("last_changed_by"))
-    });
-  }
-
-  const removalRows = new GlideRecord(DOCSERA_WORKSPACE_REMOVAL_BATCH_TABLE);
-  removalRows.addQuery("change_set", activeChangeSetSysId);
-  removalRows.query();
   const removalBatches: WorkspaceChangeSetState["removalBatches"] = [];
-  while (removalRows.next()) {
-    const batchSysId = cleanText(removalRows.getUniqueValue());
-    const batchKey = cleanText(removalRows.getValue("batch_key"));
-    const memberRows = new GlideRecord(DOCSERA_WORKSPACE_REMOVAL_MEMBER_TABLE);
-    memberRows.addQuery("removal_batch", batchSysId);
-    memberRows.query();
-    const members: WorkspaceChangeSetState["removalBatches"][number]["members"] = [];
-    while (memberRows.next()) {
-      const firstPendingSequence = safeInteger(memberRows.getValue("first_pending_sequence"));
+  if (mode === "edit") {
+    const entries = new GlideRecord(DOCSERA_WORKSPACE_CHANGE_ENTRY_TABLE);
+    entries.addQuery("change_set", activeChangeSetSysId);
+    entries.query();
+    while (entries.next()) {
+      const firstPendingSequence = safeInteger(entries.getValue("first_pending_sequence"));
       if (firstPendingSequence === null) {
         throw new Error("Workspace foundation is invalid.");
       }
-      members.push({
-        pageId: cleanText(memberRows.getValue("page")),
-        firstPendingSequence
+      entryResults.push({
+        changeSetId: activeChangeSetSysId,
+        pageId: cleanText(entries.getValue("page")),
+        firstPendingSequence,
+        firstPendingOn: cleanText(entries.getValue("first_pending_on")),
+        lastChangedOn: cleanText(entries.getValue("last_changed_on")),
+        lastChangedBy: cleanText(entries.getValue("last_changed_by"))
       });
     }
-    removalBatches.push({
-      id: batchKey,
-      changeSetId: activeChangeSetSysId,
-      rootPageId: cleanText(removalRows.getValue("root_page")),
-      members,
-      state: cleanText(removalRows.getValue("lifecycle_state")) === "retired" ? "retired" : "active",
-      removedOn: cleanText(removalRows.getValue("removed_on")),
-      removedBy: cleanText(removalRows.getValue("removed_by"))
-    });
+
+    const removalRows = new GlideRecord(DOCSERA_WORKSPACE_REMOVAL_BATCH_TABLE);
+    removalRows.addQuery("change_set", activeChangeSetSysId);
+    removalRows.query();
+    const batchesBySysId = new Map<string, WorkspaceChangeSetState["removalBatches"][number]>();
+    while (removalRows.next()) {
+      const batchSysId = cleanText(removalRows.getUniqueValue());
+      const batch = {
+        id: cleanText(removalRows.getValue("batch_key")),
+        changeSetId: activeChangeSetSysId,
+        rootPageId: cleanText(removalRows.getValue("root_page")),
+        members: [] as WorkspaceChangeSetState["removalBatches"][number]["members"],
+        state: (cleanText(removalRows.getValue("lifecycle_state")) === "retired" ? "retired" : "active") as "retired" | "active",
+        removedOn: cleanText(removalRows.getValue("removed_on")),
+        removedBy: cleanText(removalRows.getValue("removed_by"))
+      };
+      removalBatches.push(batch);
+      batchesBySysId.set(batchSysId, batch);
+    }
+    const batchIds = Array.from(batchesBySysId.keys());
+    const memberQueryBatchSize = 100;
+    for (let offset = 0; offset < batchIds.length; offset += memberQueryBatchSize) {
+      const memberRows = new GlideRecord(DOCSERA_WORKSPACE_REMOVAL_MEMBER_TABLE);
+      memberRows.addQuery("removal_batch", "IN", batchIds.slice(offset, offset + memberQueryBatchSize).join(","));
+      memberRows.query();
+      while (memberRows.next()) {
+        const firstPendingSequence = safeInteger(memberRows.getValue("first_pending_sequence"));
+        if (firstPendingSequence === null) {
+          throw new Error("Workspace foundation is invalid.");
+        }
+        batchesBySysId.get(cleanText(memberRows.getValue("removal_batch")))?.members.push({
+          pageId: cleanText(memberRows.getValue("page")),
+          firstPendingSequence
+        });
+      }
+    }
   }
 
   let draftPages: DraftPage[] = [];

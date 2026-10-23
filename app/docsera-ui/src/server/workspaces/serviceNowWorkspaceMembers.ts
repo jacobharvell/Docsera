@@ -56,6 +56,7 @@ export type WorkspaceMembershipDependencies = {
   };
   hasDocseraAdminAccess: () => boolean;
   listGroupMembers: (groupSysId: string, accessLevel: WorkspaceMembershipAccessLevel) => WorkspaceMember[];
+  listWorkspaceGroupMembers?: (adminGroupSysId: string, editorGroupSysId: string) => { adminMembers: WorkspaceMember[]; editorMembers: WorkspaceMember[] };
   searchActiveUsers: (term: string, excludedUserSysIds: string[], limit: number) => WorkspaceMemberUserSearchResult[];
   loadWorkspaceBySlug: (workspaceSlug: string) => WorkspaceRecord | null;
   loadWorkspaceBySysId: (workspaceSysId: string) => WorkspaceRecord | null;
@@ -142,46 +143,66 @@ function loadWorkspaceBySlug(workspaceSlug: string): WorkspaceRecord | null {
   return mapWorkspaceRecord(record);
 }
 
-function readUserRecord(userSysId: string): WorkspaceMember | null {
-  const user = new GlideRecord("sys_user");
-  if (!user.get("sys_id", userSysId)) {
-    return null;
-  }
+const USER_LOOKUP_BATCH_SIZE = 100;
 
-  return {
-    userSysId,
-    userName: cleanText(user.getValue("user_name")),
-    displayName: cleanText(user.getDisplayValue("name")) || cleanText(user.getValue("name")) || cleanText(user.getValue("user_name")),
-    email: cleanText(user.getValue("email")),
-    active: normalizeBoolean(user.getValue("active")),
-    accessLevel: "editor"
-  };
-}
-
-function listGroupMembers(groupSysId: string, accessLevel: WorkspaceMembershipAccessLevel): WorkspaceMember[] {
-  const cleanGroupSysId = cleanText(groupSysId);
-  if (!cleanGroupSysId) {
-    return [];
-  }
+function readGroupMembers(groups: Array<{ groupSysId: string; accessLevel: WorkspaceMembershipAccessLevel }>): WorkspaceMember[][] {
+  const validGroups = groups.map((group) => ({ ...group, groupSysId: cleanText(group.groupSysId) }));
+  const groupIds = [...new Set(validGroups.map((group) => group.groupSysId).filter(Boolean))];
+  if (!groupIds.length) return groups.map(() => []);
 
   const memberships = new GlideRecord("sys_user_grmember");
-  memberships.addQuery("group", cleanGroupSysId);
+  if (groups.length === 1) memberships.addQuery("group", groupIds[0]);
+  else memberships.addQuery("group", "IN", groupIds.join(","));
   memberships.query();
 
-  const members: WorkspaceMember[] = [];
+  const userIdsByGroup: string[][] = groups.map(() => []);
   while (memberships.next()) {
+    const groupSysId = cleanText(memberships.getValue("group"));
     const userSysId = cleanText(memberships.getValue("user"));
-    if (!userSysId) {
-      continue;
-    }
+    if (!userSysId) continue;
+    validGroups.forEach((group, index) => {
+      if (group.groupSysId && group.groupSysId === groupSysId) userIdsByGroup[index].push(userSysId);
+    });
+  }
 
-    const member = readUserRecord(userSysId);
-    if (member) {
-      members.push({ ...member, accessLevel });
+  const uniqueIds = [...new Set(userIdsByGroup.flat())];
+  const usersById = new Map<string, Omit<WorkspaceMember, "accessLevel">>();
+  for (let offset = 0; offset < uniqueIds.length; offset += USER_LOOKUP_BATCH_SIZE) {
+    const users = new GlideRecord("sys_user");
+    users.addQuery("sys_id", "IN", uniqueIds.slice(offset, offset + USER_LOOKUP_BATCH_SIZE).join(","));
+    users.query();
+    while (users.next()) {
+      const userSysId = cleanText(users.getValue("sys_id"));
+      usersById.set(userSysId, {
+        userSysId,
+        userName: cleanText(users.getValue("user_name")),
+        displayName: cleanText(users.getDisplayValue("name")) || cleanText(users.getValue("name")) || cleanText(users.getValue("user_name")),
+        email: cleanText(users.getValue("email")),
+        active: normalizeBoolean(users.getValue("active"))
+      });
     }
   }
 
-  return members;
+  return userIdsByGroup.map((userIds, index) => {
+    const members: WorkspaceMember[] = [];
+    for (const userSysId of userIds) {
+      const user = usersById.get(userSysId);
+      if (user) members.push({ ...user, accessLevel: validGroups[index].accessLevel });
+    }
+    return members;
+  });
+}
+
+export function listGroupMembers(groupSysId: string, accessLevel: WorkspaceMembershipAccessLevel): WorkspaceMember[] {
+  return readGroupMembers([{ groupSysId, accessLevel }])[0];
+}
+
+export function listWorkspaceGroupMembers(adminGroupSysId: string, editorGroupSysId: string) {
+  const [adminMembers, editorMembers] = readGroupMembers([
+    { groupSysId: adminGroupSysId, accessLevel: "admin" },
+    { groupSysId: editorGroupSysId, accessLevel: "editor" }
+  ]);
+  return { adminMembers, editorMembers };
 }
 
 export function searchActiveUsers(term: string, excludedUserSysIds: string[], limit: number): WorkspaceMemberUserSearchResult[] {
@@ -263,6 +284,10 @@ function listWorkspaceMembers(
   workspace: WorkspaceRecord,
   dependencies: WorkspaceMembershipDependencies
 ): WorkspaceMember[] {
+  if (dependencies.listWorkspaceGroupMembers) {
+    const { adminMembers, editorMembers } = dependencies.listWorkspaceGroupMembers(workspace.adminGroupSysId, workspace.editorGroupSysId);
+    return mergeMembers(adminMembers, editorMembers);
+  }
   return mergeMembers(
     dependencies.listGroupMembers(workspace.adminGroupSysId, "admin"),
     dependencies.listGroupMembers(workspace.editorGroupSysId, "editor")
@@ -559,6 +584,7 @@ export function createServiceNowWorkspaceMembershipService() {
       status: "active"
     }).canAdminWorkspace,
     listGroupMembers,
+    listWorkspaceGroupMembers,
     loadWorkspaceBySlug,
     loadWorkspaceBySysId,
     createMutationCommand: createMembershipMutationCommand,

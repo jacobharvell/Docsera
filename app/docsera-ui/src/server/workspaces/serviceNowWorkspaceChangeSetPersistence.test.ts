@@ -15,6 +15,8 @@ const glideMock = vi.hoisted(() => {
   const tables = new Map<string, TableRow[]>();
   const iterations = new Map<string, number>();
   const gets = new Map<string, number>();
+  const queries = new Map<string, number>();
+  const queryConditions = new Map<string, Array<Array<{ fieldName: string; value: unknown; operator?: string }>>>();
   const fieldReadAccess = new Map<string, boolean>();
   const deleteHooks = new Map<string, (row: TableRow) => boolean>();
   const insertHooks = new Map<string, (row: TableRow) => void>();
@@ -57,7 +59,7 @@ const glideMock = vi.hoisted(() => {
   class MockGlideRecord {
     private readonly tableName: string;
     private currentRow: TableRow | null = null;
-    private pendingQueries: Array<{ fieldName: string; value: unknown }> = [];
+    private pendingQueries: Array<{ fieldName: string; value: unknown; operator?: string }> = [];
     private queryResults: TableRow[] = [];
     private queryIndex = -1;
     private limit: number | null = null;
@@ -88,8 +90,10 @@ const glideMock = vi.hoisted(() => {
       return Boolean(row);
     }
 
-    addQuery(fieldName: string, value: unknown) {
-      this.pendingQueries.push({ fieldName, value });
+    addQuery(fieldName: string, valueOrOperator: unknown, operand?: unknown) {
+      this.pendingQueries.push(operand === undefined
+        ? { fieldName, value: valueOrOperator }
+        : { fieldName, operator: String(valueOrOperator), value: operand });
     }
 
     setLimit(limit: number) {
@@ -97,8 +101,12 @@ const glideMock = vi.hoisted(() => {
     }
 
     query() {
+      queries.set(this.tableName, (queries.get(this.tableName) ?? 0) + 1);
+      queryConditions.set(this.tableName, [...(queryConditions.get(this.tableName) ?? []), [...this.pendingQueries]]);
       const rows = tables.get(this.tableName) ?? [];
-      const filtered = rows.filter((row) => this.pendingQueries.every(({ fieldName, value }) => matchField(row.fields[fieldName], value)));
+      const filtered = rows.filter((row) => this.pendingQueries.every(({ fieldName, value, operator }) => operator === "IN"
+        ? String(value).split(",").some((candidate) => matchField(row.fields[fieldName], candidate))
+        : matchField(row.fields[fieldName], value)));
       this.queryResults = (this.limit ? filtered.slice(0, this.limit) : filtered).map(cloneRow);
       this.queryIndex = -1;
       this.currentRow = null;
@@ -245,6 +253,9 @@ const glideMock = vi.hoisted(() => {
     },
     getCount(tableName: string) { return gets.get(tableName) ?? 0; },
     clearGets() { gets.clear(); },
+    queryCount(tableName: string) { return queries.get(tableName) ?? 0; },
+    clearQueries() { queries.clear(); queryConditions.clear(); },
+    queryConditions(tableName: string) { return queryConditions.get(tableName) ?? []; },
     iterationCount(tableName: string) { return iterations.get(tableName) ?? 0; },
     clearIterations() { iterations.clear(); },
     getRows(tableName: string) {
@@ -294,6 +305,8 @@ const glideMock = vi.hoisted(() => {
       tables.clear();
       iterations.clear();
       gets.clear();
+      queries.clear();
+      queryConditions.clear();
       fieldReadAccess.clear();
       deleteHooks.clear();
       insertHooks.clear();
@@ -1337,6 +1350,88 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     expect(claims[0]?.fields.mutation_key).not.toBe(claims[1]?.fields.mutation_key);
     expect(String(claims[0]?.fields.mutation_payload_json)).toContain("A".repeat(256));
     expect(String(claims[1]?.fields.mutation_payload_json)).toContain("A".repeat(256));
+  });
+
+  it("loads pending collections only for Edit projections", () => {
+    const seeded = seedValidNonSeedSelectors();
+    const service = createService();
+    const counts = () => [changeEntryTable, removalBatchTable, removalMemberTable].map(glideMock.queryCount);
+
+    glideMock.clearQueries();
+    const live = expectSucceeded(service.listPages(seeded.workspace, "live"));
+    expect(counts()).toEqual([0, 0, 0]);
+    expect(live.pages.map((page) => [page.sysId, page.draftTitle, page.parentPageSysId])).toEqual([
+      ["page-001", "Selected Root", null],
+      ["page-002", "Selected Child", "page-001"],
+      ["page-003", "Selected Sibling", null]
+    ]);
+
+    glideMock.insertRow(changeEntryTable, "entry-1", {
+      change_set: seeded.selectedChangeSetId, page: "page-001", first_pending_sequence: 1
+    });
+    for (const [index, state] of ["active", "retired", "active"].entries()) {
+      const id = `batch-${index}`;
+      glideMock.insertRow(removalBatchTable, id, {
+        change_set: seeded.selectedChangeSetId, batch_key: id, root_page: "page-002", lifecycle_state: state
+      });
+      glideMock.insertRow(removalMemberTable, `member-${index}`, {
+        removal_batch: id, page: "page-002", first_pending_sequence: 2
+      });
+    }
+    glideMock.clearQueries();
+    expect(expectSucceeded(service.listPages(seeded.workspace, "live")).pages).toEqual(live.pages);
+    expect(counts()).toEqual([0, 0, 0]);
+
+    glideMock.clearQueries();
+    const edit = expectSucceeded(service.listPages(seeded.workspace, "edit"));
+    expect(counts()).toEqual([1, 1, 1]);
+    expect(edit.state.entries).toHaveLength(1);
+    expect(edit.state.removalBatches.map((batch) => [batch.state, batch.members.length])).toEqual([
+      ["active", 1], ["retired", 1], ["active", 1]
+    ]);
+  });
+
+  it("bounds removal-member queries and associates interleaved rows while retaining empty retired batches", () => {
+    const seeded = seedValidNonSeedSelectors();
+    const service = createService();
+    glideMock.clearQueries();
+    expectSucceeded(service.listPages(seeded.workspace, "edit"));
+    expect(glideMock.queryCount(removalMemberTable)).toBe(0);
+    for (let index = 0; index < 101; index++) {
+      glideMock.insertRow(removalBatchTable, `batch-${index}`, {
+        change_set: seeded.selectedChangeSetId, batch_key: `key-${index}`, root_page: "page-001", lifecycle_state: "retired"
+      });
+    }
+    for (const [batch, page, sequence] of [[100, "page-003", 3], [0, "page-001", 1], [100, "page-002", 2]] as const) {
+      glideMock.insertRow(removalMemberTable, `member-${batch}-${page}`, {
+        removal_batch: `batch-${batch}`, page, first_pending_sequence: sequence
+      });
+    }
+    glideMock.clearQueries();
+    const edit = expectSucceeded(service.listPages(seeded.workspace, "edit"));
+    expect(glideMock.queryCount(removalMemberTable)).toBe(2);
+    expect(glideMock.queryConditions(removalMemberTable).map((conditions) => String(conditions[0]?.value).split(",").length)).toEqual([100, 1]);
+    expect(edit.state.removalBatches.map((batch) => batch.id)).toEqual(Array.from({ length: 101 }, (_, index) => `key-${index}`));
+    expect(edit.state.removalBatches[0]?.members).toEqual([{ pageId: "page-001", firstPendingSequence: 1 }]);
+    expect(edit.state.removalBatches[1]?.members).toEqual([]);
+    expect(edit.state.removalBatches[100]?.members).toEqual([
+      { pageId: "page-003", firstPendingSequence: 3 }, { pageId: "page-002", firstPendingSequence: 2 }
+    ]);
+  });
+
+  it.each(["duplicate", "missing-root", "invalid-sequence"])("preserves invalid removal validation: %s", (invalid) => {
+    const seeded = seedValidNonSeedSelectors();
+    glideMock.insertRow(removalBatchTable, "batch-invalid", {
+      change_set: seeded.selectedChangeSetId, batch_key: "invalid", root_page: "page-001", lifecycle_state: "active"
+    });
+    glideMock.insertRow(removalMemberTable, "member-invalid", {
+      removal_batch: "batch-invalid", page: invalid === "missing-root" ? "page-002" : "page-001",
+      first_pending_sequence: invalid === "invalid-sequence" ? "invalid" : 1
+    });
+    if (invalid === "duplicate") glideMock.insertRow(removalMemberTable, "member-duplicate", {
+      removal_batch: "batch-invalid", page: "page-001", first_pending_sequence: 2
+    });
+    expect(createService().listPages(seeded.workspace, "edit").kind).toBe("failed");
   });
 
   it("preserves valid selected successor selectors and selected snapshot rows through ordinary listing and every mutation type", () => {

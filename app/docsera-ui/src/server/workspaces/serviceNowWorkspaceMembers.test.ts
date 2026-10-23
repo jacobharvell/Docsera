@@ -4,6 +4,7 @@ import type { WorkspaceRecord } from "./serverWorkspaceDomain.ts";
 const glideMock = vi.hoisted(() => {
   type Row = Record<string, unknown>;
   const rowsByTable = new Map<string, Row[]>();
+  const operations: Array<{ table: string; filters: unknown }> = [];
 
   class FakeCondition {
     constructor(private readonly group: Array<{ field: string; operator: string; value: unknown }>) {}
@@ -43,6 +44,7 @@ const glideMock = vi.hoisted(() => {
     }
 
     query() {
+      operations.push({ table: this.tableName, filters: this.filters });
       const rows = [...(rowsByTable.get(this.tableName) ?? [])]
         .filter((row) => this.filters.every((group) => group.some((condition) => matchesCondition(row, condition))))
         .sort((a, b) => String(a[this.orderedBy] ?? "").localeCompare(String(b[this.orderedBy] ?? "")));
@@ -85,11 +87,12 @@ const glideMock = vi.hoisted(() => {
   function matchesCondition(row: Row, condition: { field: string; operator: string; value: unknown }) {
     const value = row[condition.field];
     if (condition.operator === "CONTAINS") return String(value ?? "").toLowerCase().includes(String(condition.value ?? "").toLowerCase());
+    if (condition.operator === "IN") return String(condition.value ?? "").split(",").includes(String(value ?? ""));
     if (condition.operator === "NOT IN") return !String(condition.value ?? "").split(",").includes(String(value ?? ""));
     return value === condition.value;
   }
 
-  return { FakeGlideRecord, rowsByTable };
+  return { FakeGlideRecord, rowsByTable, operations };
 });
 
 vi.mock("@servicenow/glide", () => ({
@@ -104,6 +107,8 @@ import {
   createMembershipMutationCommand,
   createWorkspaceMembershipService,
   searchActiveUsers,
+  listGroupMembers,
+  listWorkspaceGroupMembers,
   type WorkspaceMember
 } from "./serviceNowWorkspaceMembers.ts";
 
@@ -201,6 +206,106 @@ describe("workspace membership service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     glideMock.rowsByTable.clear();
+    glideMock.operations.length = 0;
+  });
+
+  it("combines group reads and batches distinct users across both groups", () => {
+    const ids = Array.from({ length: 50 }, (_, i) => `user-${i}`);
+    glideMock.rowsByTable.set("sys_user_grmember", ids.map((user, i) => ({ group: i < 25 ? "admin-group" : "editor-group", user })));
+    glideMock.rowsByTable.set("sys_user", [...ids].reverse().map((sys_id) => ({ sys_id, name: sys_id, active: true })));
+    const { dependencies } = service();
+    const membershipService = createWorkspaceMembershipService({ ...dependencies, listWorkspaceGroupMembers });
+    expect(membershipService.listMembers({ workspaceSysId: "workspace-1" })).toMatchObject({ kind: "succeeded", members: expect.arrayContaining([expect.objectContaining({ userSysId: "user-0", accessLevel: "admin" }), expect.objectContaining({ userSysId: "user-25", accessLevel: "editor" })]) });
+    expect(glideMock.operations.filter((op) => op.table === "sys_user_grmember")).toHaveLength(1);
+    expect(glideMock.operations.filter((op) => op.table === "sys_user")).toHaveLength(1);
+    expect(glideMock.operations[0].filters).toEqual([[{ field: "group", operator: "IN", value: "admin-group,editor-group" }]]);
+  });
+
+  it("skips user reads for empty combined groups and batches 101 unique users", () => {
+    expect(listWorkspaceGroupMembers("admin-group", "editor-group")).toEqual({ adminMembers: [], editorMembers: [] });
+    expect(glideMock.operations.filter((op) => op.table === "sys_user")).toHaveLength(0);
+    glideMock.operations.length = 0;
+    const ids = Array.from({ length: 101 }, (_, i) => `user-${i}`);
+    glideMock.rowsByTable.set("sys_user_grmember", ids.map((user, i) => ({ group: i < 50 ? "admin-group" : "editor-group", user })));
+    glideMock.rowsByTable.set("sys_user", ids.map((sys_id) => ({ sys_id, active: true })));
+    const result = listWorkspaceGroupMembers("admin-group", "editor-group");
+    expect(result.adminMembers).toHaveLength(50);
+    expect(result.editorMembers).toHaveLength(51);
+    expect(glideMock.operations.filter((op) => op.table === "sys_user_grmember")).toHaveLength(1);
+    expect(glideMock.operations.filter((op) => op.table === "sys_user").map((op) => (op.filters as Array<Array<{value: string}>>)[0][0].value.split(",").length)).toEqual([100, 1]);
+  });
+
+  it("verifies mutation against fresh production reads after the command", () => {
+    glideMock.rowsByTable.set("sys_user_grmember", [{ group: "editor-group", user: "target" }]);
+    glideMock.rowsByTable.set("sys_user", [{ sys_id: "target", name: "Target", active: true }]);
+    const { dependencies } = service();
+    const createMutationCommand = vi.fn(() => {
+      glideMock.rowsByTable.set("sys_user_grmember", [{ group: "admin-group", user: "target" }]);
+      return "command";
+    });
+    const membershipService = createWorkspaceMembershipService({ ...dependencies, listGroupMembers, listWorkspaceGroupMembers, createMutationCommand });
+    expect(membershipService.listMembers({ workspaceSysId: "workspace-1" })).toMatchObject({ members: [{ userSysId: "target", accessLevel: "editor" }] });
+    glideMock.operations.length = 0;
+    expect(membershipService.setMemberAccess({ workspaceSysId: "workspace-1", userSysId: "target", accessLevel: "admin" })).toMatchObject({ kind: "succeeded", member: { userSysId: "target", accessLevel: "admin" } });
+    expect(glideMock.operations.filter((op) => op.table === "sys_user_grmember")).toHaveLength(3);
+  });
+
+  it("batches 50 users in one query and restores membership order", () => {
+    const ids = Array.from({ length: 50 }, (_, i) => `user-${i}`);
+    glideMock.rowsByTable.set("sys_user_grmember", ids.map((user) => ({ group: "admin-group", user })));
+    glideMock.rowsByTable.set("sys_user", [...ids].reverse().map((sys_id) => ({ sys_id, name: sys_id, active: true })));
+    expect(listGroupMembers("admin-group", "admin").map((entry) => entry.userSysId)).toEqual(ids);
+    expect(glideMock.operations.filter((op) => op.table === "sys_user")).toHaveLength(1);
+    expect(glideMock.operations.filter((op) => op.table === "sys_user_grmember")).toHaveLength(1);
+  });
+
+  it("skips empty groups and bounds queries for more than one batch", () => {
+    expect(listGroupMembers("admin-group", "admin")).toEqual([]);
+    expect(glideMock.operations.filter((op) => op.table === "sys_user")).toHaveLength(0);
+    const ids = Array.from({ length: 101 }, (_, i) => `user-${i}`);
+    glideMock.rowsByTable.set("sys_user_grmember", ids.map((user) => ({ group: "admin-group", user })));
+    glideMock.rowsByTable.set("sys_user", ids.map((sys_id) => ({ sys_id, active: true })));
+    expect(listGroupMembers("admin-group", "admin")).toHaveLength(101);
+    const queries = glideMock.operations.filter((op) => op.table === "sys_user");
+    expect(queries).toHaveLength(2);
+    expect(queries.map((op) => (op.filters as Array<Array<{value: string}>>)[0][0].value.split(",").length)).toEqual([100, 1]);
+  });
+
+  it("preserves duplicates, missing users, inactive users and merged search exclusions", () => {
+    glideMock.rowsByTable.set("sys_user_grmember", [
+      { group: "admin-group", user: "same" }, { group: "admin-group", user: "missing" },
+      { group: "admin-group", user: "same" }, { group: "editor-group", user: "inactive" },
+      { group: "editor-group", user: "same" }
+    ]);
+    glideMock.rowsByTable.set("sys_user", [
+      { sys_id: "inactive", user_name: "fallback", name: "", active: false },
+      { sys_id: "same", user_name: "same", name: "Same", active: true },
+      { sys_id: "eligible", user_name: "eligible", name: "Eligible", active: true }
+    ]);
+    const groups = listWorkspaceGroupMembers("admin-group", "editor-group");
+    expect(groups.adminMembers.map((entry) => entry.userSysId)).toEqual(["same", "same"]);
+    expect(groups.editorMembers.map((entry) => entry.userSysId)).toEqual(["inactive", "same"]);
+    const { dependencies } = service();
+    const membershipService = createWorkspaceMembershipService({ ...dependencies, listGroupMembers, listWorkspaceGroupMembers, searchActiveUsers });
+    expect(membershipService.listMembers({ workspaceSysId: "workspace-1" })).toMatchObject({ members: [
+      { userSysId: "inactive", displayName: "fallback", active: false, accessLevel: "editor" },
+      { userSysId: "same", accessLevel: "admin" }
+    ] });
+    expect(membershipService.searchUsers({ workspaceSysId: "workspace-1" })).toMatchObject({ users: [{ userSysId: "eligible" }] });
+    expect(membershipService.removeMemberAccess({ workspaceSysId: "workspace-1", userSysId: "same" })).toMatchObject({ kind: "failed" });
+  });
+
+  it("protects the last active admin using production membership reads", () => {
+    glideMock.rowsByTable.set("sys_user_grmember", [
+      { group: "admin-group", user: "active-admin" }, { group: "admin-group", user: "inactive-admin" }
+    ]);
+    glideMock.rowsByTable.set("sys_user", [
+      { sys_id: "active-admin", active: true }, { sys_id: "inactive-admin", active: false }
+    ]);
+    const { dependencies } = service();
+    const membershipService = createWorkspaceMembershipService({ ...dependencies, listGroupMembers });
+    expect(membershipService.removeMemberAccess({ workspaceSysId: "workspace-1", userSysId: "active-admin" })).toMatchObject({ kind: "forbidden" });
+    expect(dependencies.createMutationCommand).not.toHaveBeenCalled();
   });
 
   it("lists workspace members from native Admin and Editor groups with Admin winning duplicates", () => {

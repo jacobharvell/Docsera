@@ -95,3 +95,22 @@ Page-record mapping passes nonblank published JSON to the existing record normal
 ## Task 148 implementation result
 
 Body save reuses the initially validated canonical document in stable key order. The focused persistence regression observes one parse of the incoming document and zero parses of its stable payload string during a successful save; the previous implementation performed one of each. Other persistence and projection parsing remains. Legacy and canonical inputs, image and table fixtures retain the prior persisted JSON and mutation payload, including nested attribute key order. These are deterministic operation counts, not latency measurements. No deployment or live measurement was performed.
+
+
+## Task 150 implementation result
+
+Workspace group enumeration collects membership IDs and queries users in batches of at most 100 unique IDs, then maps results in membership-row order. In the production-adapter mock regression, a group of 50 distinct valid members performs one membership query and one user query, instead of the previous one membership query and 50 individual user gets. Empty groups perform no user queries; 101 distinct IDs require two user queries. These are deterministic mock database-operation counts, not elapsed-time or endpoint measurements. Groups are still queried separately and repeated service operations still perform fresh queries; no deployment or live measurement was performed.
+
+
+### Task 151 ? combined workspace membership reads
+
+The production membership adapter regression records one `sys_user_grmember` query and one `sys_user` query for 25 distinct Admin and 25 distinct Editor members, compared with two membership queries and two user queries after Task 150. Empty memberships issue no user query; 101 combined unique users require two user queries, bounded at 100 IDs each. Group classification, per-group row order, duplicate handling and Admin precedence remain intact. Mutation safeguards and post-command verification perform fresh reads. These are deterministic mock database-operation counts, not measured latency; no deployment or live measurement was performed.
+
+
+## Task 152 implementation result
+
+Live page listing skips pending-entry and removal-batch queries and their per-batch member queries; Edit and authoritative mutation loads retain them. In the production-adapter mock, Live performs zero queries against each of these three tables both with no pending data and with one pending entry and three active/retired removal batches. Edit with that populated fixture performs one entry query, one batch query, and three member queries. Previously Live issued the same one, one, and three queries for the populated fixture (and one entry and one batch query for the empty fixture). Selected snapshot content and hierarchy remain the Live source. These are deterministic mock database-query counts, not elapsed-time measurements. No deployment or live measurement was performed.
+
+## Task 153 implementation result
+
+Edit loading retains the active generation's removal-batch query and retrieves member rows in `IN` queries of at most 100 actual batch record IDs. Instrumented GlideRecord queries show zero member queries for zero batches, one for three active/retired batches (previously three), and two for 101 batches (previously 101). Interleaved members retain their batch association and empty retired batches remain in state. Live still issues no removal-member query. These are deterministic mock database-query counts, not latency measurements. No deployment or live measurement was performed.
