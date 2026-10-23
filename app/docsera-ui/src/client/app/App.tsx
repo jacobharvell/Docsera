@@ -1282,6 +1282,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const leaseRecoveryContextRef = useRef("");
   const [workspaceLeaseState, setWorkspaceLeaseState] = useState<WorkspaceLeaseState>({ state: "idle" });
   const [editorRetryNonce, setEditorRetryNonce] = useState(0);
+  const [editorAuthoritativeRebindNonce, setEditorAuthoritativeRebindNonce] = useState(0);
   const [workspacePagesRetryNonce, setWorkspacePagesRetryNonce] = useState(0);
   const [editorTransitionState, setEditorTransitionState] = useState<EditorTransitionState>({ isDirty: false, isSaving: false, status: "Saved" });
   const markdownSourceTitleInvalidRef = useRef(false);
@@ -1800,6 +1801,34 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
   }
 
+  function clearPageBodyRecoverySnapshot(pageSysId: string): void {
+    const pageIdentity = getPageRecoveryIdentity(pageSysId);
+    if (!pageIdentity) {
+      return;
+    }
+
+    const snapshot = authoringRecoveryRef.current.readBody(pageIdentity);
+    if (!snapshot) {
+      return;
+    }
+
+    const restoredSessionKey =
+      restoredBodyCaptureRef.current &&
+      restoredBodyCaptureRef.current.captureGeneration === snapshot.captureGeneration &&
+      restoredBodyCaptureRef.current.pageSysId === pageIdentity.pageSysId
+        ? restoredBodyCaptureRef.current.sessionKey
+        : "";
+    if (clearRestoredBodyCapture({
+      captureGeneration: snapshot.captureGeneration,
+      pageSysId: pageIdentity.pageSysId,
+      sessionKey: restoredSessionKey,
+      workspaceSlug: pageIdentity.workspaceSlug,
+      workspaceSysId: pageIdentity.workspaceSysId
+    })) {
+      bumpRecoveryVersion();
+    }
+  }
+
   function clearEditorCapabilities(): void {
     editorApplyCanonicalEnvelopeRef.current = null;
     editorFlushRef.current = null;
@@ -1819,6 +1848,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     markdownSourceRetryIssuedRef.current = false;
     clearEditorCapabilities();
     setEditorFailure(null);
+    setEditorAuthoritativeRebindNonce((current) => current + 1);
     setEditorSessionState({
       sessionKey: "",
       token: null
@@ -2498,7 +2528,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const selectedWorkspacePageId = cleanText(selectedWorkspacePage?.sysId) || currentModeUiState.selectedPageSysId;
   const desiredEditorSessionSeed =
     route.mode === "workspace" && activeWorkspaceMode === "edit" && selectedWorkspacePageId
-      ? `${currentWorkspaceSlug}:${selectedWorkspacePageId}:${editorRetryNonce}`
+      ? `${currentWorkspaceSlug}:${selectedWorkspacePageId}:${editorRetryNonce}:${editorAuthoritativeRebindNonce}`
       : "";
 
   useLayoutEffect(() => {
@@ -7432,6 +7462,27 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         changeSetRevision: result.changeSetRevision,
         workspaceStateRevision: result.workspaceStateRevision
       }, "mutation");
+      const selectedPageIdBeforeDiscard = cleanText(selectedWorkspacePageId);
+      const selectedPageBeforeDiscard = findWorkspacePageBySysId(currentWorkspacePages, selectedPageIdBeforeDiscard);
+      const selectedPageAfterDiscard = findWorkspacePageBySysId(result.pages, selectedPageIdBeforeDiscard);
+      const selectedPageDocumentChanged = Boolean(
+        selectedPageBeforeDiscard &&
+        selectedPageAfterDiscard &&
+        (
+          selectedPageBeforeDiscard.draftRevision !== selectedPageAfterDiscard.draftRevision ||
+          JSON.stringify(selectedPageBeforeDiscard.draftContentJson) !== JSON.stringify(selectedPageAfterDiscard.draftContentJson)
+        )
+      );
+      if (selectedPageDocumentChanged) {
+        invalidateEditorSessionForAuthoritativeRebind();
+      }
+      clearWorkspaceRecoveryState({ workspaceSlug, workspaceSysId });
+      discardInvalidMarkdownSourceDraft({ resetSurface: false });
+      if (pageSettingsStateRef.current.open && selectedPageAfterDiscard && pageSettingsStateRef.current.pageSysId === selectedPageIdBeforeDiscard) {
+        const nextState = createPageSettingsStateFromPage(selectedPageAfterDiscard);
+        pageSettingsStateRef.current = nextState;
+        setPageSettingsState(nextState);
+      }
       setWorkspacePagesState({
         data: result.pages,
         mode: "edit",
@@ -7584,7 +7635,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       const restoredUndoTargetPage = findWorkspacePageBySysId(result.pages, normalizedPageSysId);
       const selectedUndoTargetWasReplaced =
         Boolean(restoredUndoTargetPage) && selectedPageIdBeforeDiscard === normalizedPageSysId;
+      clearPageBodyRecoverySnapshot(normalizedPageSysId);
       if (selectedUndoTargetWasReplaced || selectedPageIsDiscardedAddedDescendant) {
+        discardInvalidMarkdownSourceDraft({ resetSurface: false });
         invalidateEditorSessionForAuthoritativeRebind();
       }
       clearPageOutlineOverrides(

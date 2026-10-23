@@ -15,8 +15,12 @@ const glideMock = vi.hoisted(() => {
   const tables = new Map<string, TableRow[]>();
   const iterations = new Map<string, number>();
   const gets = new Map<string, number>();
+  const inserts = new Map<string, number>();
   const queries = new Map<string, number>();
+  const updates = new Map<string, number>();
+  const deletes = new Map<string, number>();
   const queryConditions = new Map<string, Array<Array<{ fieldName: string; value: unknown; operator?: string }>>>();
+  const queryHooks = new Map<string, (conditions: Array<{ fieldName: string; value: unknown; operator?: string }>) => void>();
   const fieldReadAccess = new Map<string, boolean>();
   const deleteHooks = new Map<string, (row: TableRow) => boolean>();
   const insertHooks = new Map<string, (row: TableRow) => void>();
@@ -103,6 +107,7 @@ const glideMock = vi.hoisted(() => {
     query() {
       queries.set(this.tableName, (queries.get(this.tableName) ?? 0) + 1);
       queryConditions.set(this.tableName, [...(queryConditions.get(this.tableName) ?? []), [...this.pendingQueries]]);
+      queryHooks.get(this.tableName)?.([...this.pendingQueries]);
       const rows = tables.get(this.tableName) ?? [];
       const filtered = rows.filter((row) => this.pendingQueries.every(({ fieldName, value, operator }) => operator === "IN"
         ? String(value).split(",").some((candidate) => matchField(row.fields[fieldName], candidate))
@@ -189,6 +194,7 @@ const glideMock = vi.hoisted(() => {
       nextSysId += 1;
       this.currentRow.sysId = sysId;
       tables.get(this.tableName)?.push(this.currentRow);
+      inserts.set(this.tableName, (inserts.get(this.tableName) ?? 0) + 1);
       this.newGuidValue = "";
       return sysId;
     }
@@ -208,6 +214,7 @@ const glideMock = vi.hoisted(() => {
       if (row) {
         row.fields = { ...this.currentRow.fields };
       }
+      updates.set(this.tableName, (updates.get(this.tableName) ?? 0) + 1);
       return this.currentRow.sysId;
     }
 
@@ -225,6 +232,7 @@ const glideMock = vi.hoisted(() => {
       }
       rows.splice(index, 1);
       this.currentRow = null;
+      deletes.set(this.tableName, (deletes.get(this.tableName) ?? 0) + 1);
       return true;
     }
   }
@@ -253,9 +261,20 @@ const glideMock = vi.hoisted(() => {
     },
     getCount(tableName: string) { return gets.get(tableName) ?? 0; },
     clearGets() { gets.clear(); },
+    insertCount(tableName: string) { return inserts.get(tableName) ?? 0; },
+    updateCount(tableName: string) { return updates.get(tableName) ?? 0; },
+    deleteCount(tableName: string) { return deletes.get(tableName) ?? 0; },
+    clearOperations() { inserts.clear(); updates.clear(); deletes.clear(); },
     queryCount(tableName: string) { return queries.get(tableName) ?? 0; },
     clearQueries() { queries.clear(); queryConditions.clear(); },
     queryConditions(tableName: string) { return queryConditions.get(tableName) ?? []; },
+    setQueryHook(tableName: string, hook: ((conditions: Array<{ fieldName: string; value: unknown; operator?: string }>) => void) | null) {
+      if (!hook) {
+        queryHooks.delete(tableName);
+        return;
+      }
+      queryHooks.set(tableName, hook);
+    },
     iterationCount(tableName: string) { return iterations.get(tableName) ?? 0; },
     clearIterations() { iterations.clear(); },
     getRows(tableName: string) {
@@ -301,12 +320,24 @@ const glideMock = vi.hoisted(() => {
       }
       row.fields = { ...fields };
     },
+    removeRow(tableName: string, sysId: string) {
+      const rows = tables.get(tableName) ?? [];
+      const index = rows.findIndex((row) => row.sysId === sysId);
+      if (index < 0) {
+        throw new Error(`Missing ${tableName}:${sysId}`);
+      }
+      rows.splice(index, 1);
+    },
     reset() {
       tables.clear();
       iterations.clear();
       gets.clear();
+      inserts.clear();
       queries.clear();
+      updates.clear();
+      deletes.clear();
       queryConditions.clear();
+      queryHooks.clear();
       fieldReadAccess.clear();
       deleteHooks.clear();
       insertHooks.clear();
@@ -3877,6 +3908,92 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     expect(new Set(getRows(removalMemberTable).map((row) => row.fields.batch_page_key))).toHaveLength(2);
   });
 
+  it("reconciles a 100-member removal batch in one member query while retaining, repairing, and isolating members", () => {
+    const removedPages = Array.from({ length: 100 }, (_, index) => createSeedPage({
+      pageId: `removed-${index.toString().padStart(3, "0")}`,
+      parentPageId: index === 0 ? null : "removed-000",
+      siblingOrder: index === 0 ? "1" : String(index)
+    }));
+    seedWorkspaceFoundation({ pages: [
+      ...removedPages,
+      createSeedPage({ pageId: "unrelated", siblingOrder: "2" })
+    ] });
+    const service = createService();
+    glideMock.clearQueries();
+    const deleted = expectSucceeded(service.deletePage({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "removed-000",
+      workspace: workspaceRef()
+    }));
+    const batch = getRows(removalBatchTable)[0]!;
+    const membersBefore = getRows(removalMemberTable);
+    expect(membersBefore).toHaveLength(100);
+    expect(glideMock.queryConditions(removalMemberTable).filter((conditions) =>
+      conditions.length === 1 && conditions[0]?.fieldName === "removal_batch" && !conditions[0]?.operator
+    )).toEqual([[{ fieldName: "removal_batch", value: batch.sysId }]]);
+
+    const unchangedMember = membersBefore.find((row) => row.fields.page === "removed-003")!;
+    const changedMember = membersBefore.find((row) => row.fields.page === "removed-001")!;
+    const missingMember = membersBefore.find((row) => row.fields.page === "removed-002")!;
+    let injected = false;
+    glideMock.setQueryHook(removalMemberTable, (conditions) => {
+      if (injected || conditions.length !== 1 || conditions[0]?.fieldName !== "removal_batch" || conditions[0]?.operator) {
+        return;
+      }
+      injected = true;
+      glideMock.updateRow(removalMemberTable, changedMember.sysId, {
+        ...changedMember.fields,
+        first_pending_sequence: 999
+      });
+      glideMock.removeRow(removalMemberTable, missingMember.sysId);
+      glideMock.insertRow(removalMemberTable, "obsolete-member", {
+        removal_batch: batch.sysId,
+        page: "obsolete",
+        batch_page_key: `${batch.fields.batch_key}:obsolete`,
+        first_pending_sequence: 999
+      });
+    });
+    glideMock.clearQueries();
+    glideMock.clearOperations();
+    const discarded = expectSucceeded(service.discardPage({
+      authority: deleted.authority,
+      pageSysId: "removed-000",
+      workspace: workspaceRef()
+    }));
+    glideMock.setQueryHook(removalMemberTable, null);
+
+    const reconciliationQueries = glideMock.queryConditions(removalMemberTable).filter((conditions) =>
+      conditions.length === 1 && conditions[0]?.fieldName === "removal_batch" && !conditions[0]?.operator
+    );
+    expect(reconciliationQueries).toEqual([
+      [{ fieldName: "removal_batch", value: batch.sysId }],
+      [{ fieldName: "removal_batch", value: batch.sysId }]
+    ]);
+    expect(glideMock.insertCount(removalMemberTable)).toBe(1);
+    expect(glideMock.updateCount(removalMemberTable)).toBe(1);
+    expect(glideMock.deleteCount(removalMemberTable)).toBe(1);
+    const membersAfter = getRows(removalMemberTable);
+    expect(membersAfter).toHaveLength(100);
+    expect(membersAfter.find((row) => row.fields.page === "removed-003")?.sysId).toBe(unchangedMember.sysId);
+    expect(membersAfter.find((row) => row.fields.page === "removed-001")?.sysId).toBe(changedMember.sysId);
+    expect(membersAfter.find((row) => row.fields.page === "removed-001")?.fields.first_pending_sequence).toBe(changedMember.fields.first_pending_sequence);
+    expect(membersAfter.find((row) => row.fields.page === "removed-002")?.fields.batch_page_key).toBe(`${batch.fields.batch_key}:removed-002`);
+    expect(membersAfter.some((row) => row.fields.page === "obsolete")).toBe(false);
+    expect(getRows(removalBatchTable)).toEqual([expect.objectContaining({
+      sysId: batch.sysId,
+      fields: expect.objectContaining({ lifecycle_state: "retired" })
+    })]);
+    expect(discarded.result.pendingChanges.rows).toEqual([]);
+    expect(getRows(removalMemberTable).every((row) => row.fields.removal_batch === batch.sysId)).toBe(true);
+
+    const reconciledMemberIds = membersAfter.map((row) => row.sysId).sort();
+    glideMock.clearOperations();
+    expectSucceeded(service.deletePage({ authority: discarded.authority, pageSysId: "unrelated", workspace: workspaceRef() }));
+    expect(getRows(removalMemberTable).filter((row) => row.fields.removal_batch === batch.sysId).map((row) => row.sysId).sort()).toEqual(reconciledMemberIds);
+    expect(glideMock.updateCount(removalMemberTable)).toBe(0);
+    expect(glideMock.deleteCount(removalMemberTable)).toBe(0);
+  });
+
   it("fails closed when a body claim cannot persist change_set_advancing before the row advance, then recovers once", () => {
     seedWorkspaceFoundation();
     const input = {
@@ -3998,6 +4115,64 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     expect(new Set(getRows(removalMemberTable).map((row) => row.fields.batch_page_key))).toHaveLength(2);
     expect(getRows(mutationClaimTable)).toHaveLength(1);
     expect(claimRow("change-set-001:0")?.fields.execution_phase).toBe("finalized");
+  });
+
+  it.each([
+    ["the first member insert", 1, 0],
+    ["a later member insert", 2, 1]
+  ])("reconciles a claimed removal batch after %s fails", (_boundary, failedInsert, persistedMembers) => {
+    seedWorkspaceFoundation({
+      pages: [
+        createSeedPage({ pageId: "page-001", draftTitle: "Root Draft", publishedTitle: "Root" }),
+        createSeedPage({ pageId: "page-002", parentPageId: "page-001", draftTitle: "Child Draft", publishedTitle: "Child" }),
+        createSeedPage({ pageId: "page-003", siblingOrder: "2", draftTitle: "Sibling Draft", publishedTitle: "Sibling" })
+      ]
+    });
+    const input = {
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-001",
+      workspace: workspaceRef()
+    };
+    let memberInsertAttempts = 0;
+    glideMock.setInsertHook(removalMemberTable, () => {
+      memberInsertAttempts += 1;
+      if (memberInsertAttempts === failedInsert) {
+        throw new Error("Injected removal member insert failure");
+      }
+    });
+
+    expect(createService().deletePage(input).kind).toBe("failed");
+    expect(getRows(removalBatchTable)).toHaveLength(1);
+    expect(getRows(removalMemberTable)).toHaveLength(persistedMembers);
+    expect(claimRow("change-set-001:0")?.fields.execution_phase).toBe("claimed");
+    expect(changeSetRow()?.fields.change_set_revision).toBe(0);
+
+    glideMock.setInsertHook(removalMemberTable, null);
+    const service = createService({ currentTimestamp: () => "2026-07-18 00:01:00" });
+    const recovered = expectSucceeded(service.deletePage(input));
+    expect(recovered.authority).toEqual({ changeSetId: "change-set-001", changeSetRevision: 1 });
+    expect(getRows(removalMemberTable).map((row) => [row.fields.page, row.fields.first_pending_sequence]).sort()).toEqual([
+      ["page-001", 1],
+      ["page-002", 2]
+    ]);
+    expect(new Set(getRows(removalMemberTable).map((row) => row.fields.batch_page_key))).toEqual(new Set([
+      "change-set-001:0:page-001:page-001",
+      "change-set-001:0:page-001:page-002"
+    ]));
+    expect(expectSucceeded(service.listPages(workspaceRef(), "edit")).pages.map((page) => page.sysId)).toEqual(["page-003"]);
+    expect(pendingRows(service).map((row) => [row.pageSysId, row.category, row.firstPendingSequence]).sort()).toEqual([
+      ["page-001", "Removed", 1],
+      ["page-002", "Removed", 2]
+    ]);
+    expect(changeSetRow()?.fields.change_set_revision).toBe(1);
+    expect(changeSetRow()?.fields.next_pending_sequence).toBe(3);
+
+    glideMock.clearOperations();
+    expectSucceeded(service.deletePage(input));
+    expect(glideMock.insertCount(removalMemberTable)).toBe(0);
+    expect(glideMock.updateCount(removalMemberTable)).toBe(0);
+    expect(glideMock.deleteCount(removalMemberTable)).toBe(0);
+    expect(getRows(removalMemberTable)).toHaveLength(2);
   });
 
   it("persists a page move only in Edit projection, records one moved entry, and advances once", () => {
@@ -4446,6 +4621,85 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
       publishedSlug: liveBefore.pages[0]?.publishedSlug,
       publishedTitle: liveBefore.pages[0]?.publishedTitle,
       sysId: "page-001"
+    });
+  });
+
+  it.each(["Modified", "Added", "Removed"] as const)("eliminates the claimed-phase selected-snapshot query for a %s undo", (category) => {
+    const pages = Array.from({ length: 100 }, (_, index) => createSeedPage({
+      pageId: `scale-${index.toString().padStart(3, "0")}`,
+      parentPageId: index === 0 ? null : "scale-000",
+      siblingOrder: String(index + 1)
+    }));
+    seedWorkspaceFoundation({ pages });
+    const service = createService();
+    let authority = { changeSetId: "change-set-001", changeSetRevision: 0 };
+    let pageSysId = "scale-000";
+    if (category === "Modified") {
+      authority = expectSucceeded(service.savePageBody({
+        authority,
+        draftContentJson: createDocument("Changed scale body"),
+        expectedRevision: 0,
+        pageSysId,
+        workspace: workspaceRef()
+      })).authority;
+    } else if (category === "Added") {
+      const created = expectSucceeded(service.createPage({
+        authority,
+        parentPageSysId: null,
+        title: "Added scale page",
+        workspace: workspaceRef()
+      }));
+      authority = created.authority;
+      pageSysId = created.result.page.sysId;
+    } else {
+      authority = expectSucceeded(service.deletePage({
+        authority,
+        pageSysId,
+        workspace: workspaceRef()
+      })).authority;
+    }
+
+    glideMock.clearQueries();
+    glideMock.clearIterations();
+    expectSucceeded(service.discardPage({ authority, pageSysId, workspace: workspaceRef() }));
+
+    // Task 157's claimed phase made one extra complete selected-snapshot read:
+    // five queries / 500 snapshot rows for this 100-page fixture. The four
+    // remaining reads are the initial load plus authoritative recovery/result loads.
+    expect(glideMock.queryCount(pageSnapshotTable)).toBe(4);
+    expect(glideMock.iterationCount(pageSnapshotTable)).toBe(400);
+  });
+
+  it("restores Modified · Moved fields from the selected successor snapshot, not page published fields or the seed snapshot", () => {
+    const seeded = seedValidNonSeedSelectors();
+    const service = createService();
+    const moved = expectSucceeded(service.movePage({
+      authority: seeded.authority,
+      pageSysId: "page-002",
+      parentPageSysId: null,
+      siblingOrder: "9",
+      workspace: seeded.workspace
+    }));
+    const modifiedMoved = expectSucceeded(service.savePageSettings({
+      authority: moved.authority,
+      pageSysId: "page-002",
+      slug: "changed-child",
+      title: "Changed child",
+      workspace: seeded.workspace
+    }));
+
+    const discarded = expectSucceeded(service.discardPage({
+      authority: modifiedMoved.authority,
+      pageSysId: "page-002",
+      workspace: seeded.workspace
+    }));
+
+    expect(discarded.result.pages.find((page) => page.sysId === "page-002")).toMatchObject({
+      draftBodyText: "Selected child body",
+      draftSlug: "selected-child",
+      draftTitle: "Selected Child",
+      parentPageSysId: "page-001",
+      siblingOrder: 1
     });
   });
 

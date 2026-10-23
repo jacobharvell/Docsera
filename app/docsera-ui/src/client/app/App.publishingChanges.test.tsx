@@ -3,6 +3,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import { useEffect, useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import type { PageEditorRecoverySnapshot } from "../editor/PageEditorHost";
 import {
   createDeferred,
   createBreadcrumbPages,
@@ -28,7 +29,12 @@ let lastMarkdownSourcePanelProps: {
   onInvalidChange?: (state: { errorMessage: string; isInvalid: boolean; isUnavailable: boolean; pageSysId: string }) => void;
   visible?: boolean;
 } | null = null;
-let mockEditorHostMounts: Array<{ pageSysId: string; sessionKey: string }> = [];
+let mockEditorRecoverySnapshot: PageEditorRecoverySnapshot | null = null;
+let mockEditorHostMounts: Array<{
+  initialEnvelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope>;
+  pageSysId: string;
+  sessionKey: string;
+}> = [];
 let mockEditorHostHandles = new Map<string, {
   applyCanonicalEnvelope?: (envelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope>) => {
     kind: "applied" | "unchanged";
@@ -36,6 +42,8 @@ let mockEditorHostHandles = new Map<string, {
   };
   flush?: () => Promise<boolean>;
   getCanonicalEnvelope?: () => ReturnType<typeof createEmptyDocseraDocumentEnvelope> | null;
+  getRecoverySnapshot?: () => PageEditorRecoverySnapshot | null;
+  initialEnvelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope>;
   onOutlineChange?: (outline: Array<{ depth: number; id: string; text: string }>) => void;
   onSaveDraft?: (input: {
     draftContentJson: ReturnType<typeof createEmptyDocseraDocumentEnvelope>;
@@ -50,6 +58,7 @@ let mockEditorHostHandles = new Map<string, {
     };
     flush?: () => Promise<boolean>;
     getCanonicalEnvelope?: () => ReturnType<typeof createEmptyDocseraDocumentEnvelope> | null;
+    getRecoverySnapshot?: () => PageEditorRecoverySnapshot | null;
     isDirty: boolean;
     isSaving: boolean;
     status?: string;
@@ -103,6 +112,7 @@ async function openPageSettingsFor(pageTitle: string) {
 vi.mock("../editor/PageEditorHost", () => ({
   PageEditorHost: function MockPageEditorHost({
     canEdit,
+    initialEnvelope,
     onError,
     onOutlineChange,
     onReadyStateChange,
@@ -112,6 +122,7 @@ vi.mock("../editor/PageEditorHost", () => ({
     onStatusChange
   }: {
     canEdit: boolean;
+    initialEnvelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope>;
     onError?: (failure: null) => void;
     onOutlineChange?: (outline: Array<{ depth: number; id: string; text: string }>) => void;
     onReadyStateChange?: (ready: boolean) => void;
@@ -130,6 +141,7 @@ vi.mock("../editor/PageEditorHost", () => ({
       };
       flush?: () => Promise<boolean>;
       getCanonicalEnvelope?: () => ReturnType<typeof createEmptyDocseraDocumentEnvelope> | null;
+      getRecoverySnapshot?: () => PageEditorRecoverySnapshot | null;
       isDirty: boolean;
       isSaving: boolean;
       status?: string;
@@ -140,17 +152,20 @@ vi.mock("../editor/PageEditorHost", () => ({
     useEffect(() => {
       const flush = async () => true;
       const getCanonicalEnvelope = () => createEmptyDocseraDocumentEnvelope();
+      const getRecoverySnapshot = () => mockEditorRecoverySnapshot;
       const applyCanonicalEnvelope = (envelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope>) => ({
         kind: "applied" as const,
         nextEnvelope: envelope
       });
       const normalizedPageSysId = pageSysId ?? "";
       const normalizedSessionKey = sessionKey ?? "";
-      mockEditorHostMounts.push({ pageSysId: normalizedPageSysId, sessionKey: normalizedSessionKey });
+      mockEditorHostMounts.push({ initialEnvelope, pageSysId: normalizedPageSysId, sessionKey: normalizedSessionKey });
       mockEditorHostHandles.set(normalizedSessionKey, {
         applyCanonicalEnvelope,
         flush,
         getCanonicalEnvelope,
+        getRecoverySnapshot,
+        initialEnvelope,
         onOutlineChange,
         onSaveDraft,
         onStatusChange,
@@ -164,6 +179,7 @@ vi.mock("../editor/PageEditorHost", () => ({
           applyCanonicalEnvelope,
           flush,
           getCanonicalEnvelope,
+          getRecoverySnapshot,
           isDirty: false,
           isSaving: false,
           status: "Saved"
@@ -212,6 +228,7 @@ afterEach(() => {
   deferHostReady = false;
   hostReadyResolvers = [];
   lastMarkdownSourcePanelProps = null;
+  mockEditorRecoverySnapshot = null;
   mockEditorHostMounts = [];
   mockEditorHostHandles = new Map();
   window.localStorage.clear();
@@ -1157,6 +1174,190 @@ describe("App publishing changes integration", () => {
       });
     });
     expect(savePageBody).not.toHaveBeenCalled();
+  }, 15000);
+
+  it("replaces an unchanged-identity selected editor after undo and clears its loading placeholder when ready", async () => {
+    const draftEnvelope = {
+      ...createEmptyDocseraDocumentEnvelope(),
+      document: { content: [{ content: [{ text: "Draft body", type: "text" }], type: "paragraph" }], type: "doc" }
+    };
+    const restoredEnvelope = {
+      ...createEmptyDocseraDocumentEnvelope(),
+      document: { content: [{ content: [{ text: "Restored body", type: "text" }], type: "paragraph" }], type: "doc" }
+    };
+    const initialPage = createPageRecord({
+      draftContentJson: draftEnvelope,
+      draftRevision: 3,
+      draftTitle: "Overview Draft",
+      publicationState: "published_with_unpublished_changes"
+    });
+    const restoredPage = createPageRecord({
+      draftContentJson: restoredEnvelope,
+      draftRevision: 3,
+      draftTitle: "Overview Restored",
+      publicationState: "published"
+    });
+    const discardPageWorkspace = vi.fn(async () => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 8,
+      discardedPageSysId: "page-001",
+      pages: [restoredPage],
+      pendingChanges: { ...createPendingChangesResult([]), changeSetRevision: 8 },
+      state: "succeeded" as const,
+      workspaceStateRevision: 5
+    }));
+
+    renderApp(App, "/?workspace=product-docs&mode=edit&page=overview", {
+      discardPageWorkspace,
+      getWorkspacePendingChanges: vi.fn(async () => createPendingChangesResult([{
+        attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+        category: "Modified", firstPendingSequence: 1, lastChangedOn: "2026-07-27 09:00:00", navigable: true, pageSysId: "page-001", title: "Overview Draft"
+      }])),
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) => createPageListResult(mode === "edit" ? "edit" : "live", [initialPage]))
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    const initialSessionKey = latestMockEditorHost().sessionKey;
+    deferHostReady = true;
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo changes to Overview Draft" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo changes" }));
+
+    expect(await screen.findByRole("heading", { name: "Overview Restored" })).toBeInTheDocument();
+    expect(latestMockEditorHost().sessionKey).not.toBe(initialSessionKey);
+    expect(latestMockEditorHost().initialEnvelope).toEqual(restoredEnvelope);
+    expect(hostReadyResolvers).toHaveLength(1);
+
+    await act(async () => resolveDeferredHostReady());
+    await waitFor(() => expect(document.querySelector("[data-docsera-editor-placeholder='true']")).toBeNull());
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
+  }, 15000);
+
+  it("rebinds the selected editor to Discard All's authoritative document without changing its route", async () => {
+    const draftEnvelope = {
+      ...createEmptyDocseraDocumentEnvelope(),
+      document: { content: [{ content: [{ text: "Draft body", type: "text" }], type: "paragraph" }], type: "doc" }
+    };
+    const restoredEnvelope = {
+      ...createEmptyDocseraDocumentEnvelope(),
+      document: { content: [{ content: [{ text: "Published body", type: "text" }], type: "paragraph" }], type: "doc" }
+    };
+    const initialPage = createPageRecord({ draftContentJson: draftEnvelope, draftRevision: 3, publicationState: "published_with_unpublished_changes" });
+    const restoredPage = createPageRecord({ draftContentJson: restoredEnvelope, draftRevision: 3, publicationState: "published" });
+    const discardAllWorkspace = vi.fn(async () => ({
+      changeSetId: "change-set-successor",
+      changeSetRevision: 0,
+      pages: [restoredPage],
+      pendingChanges: { ...createPendingChangesResult([]), changeSetId: "change-set-successor", changeSetRevision: 0 },
+      state: "succeeded" as const,
+      workspaceStateRevision: 5
+    }));
+
+    renderApp(App, "/?workspace=product-docs&mode=edit&page=overview", {
+      discardAllWorkspace,
+      getWorkspacePendingChanges: vi.fn(async () => createPendingChangesResult([{
+        attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+        category: "Modified", firstPendingSequence: 1, lastChangedOn: "2026-07-27 09:00:00", navigable: true, pageSysId: "page-001", title: "Overview"
+      }])),
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) => createPageListResult(mode === "edit" ? "edit" : "live", [initialPage]))
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    const initialSessionKey = latestMockEditorHost().sessionKey;
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: "Changes Center" })).getByRole("button", { name: "Discard all" }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "Discard all changes" })).getByRole("button", { name: "Discard all" }));
+
+    await waitFor(() => expect(discardAllWorkspace).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(latestMockEditorHost().sessionKey).not.toBe(initialSessionKey));
+    expect(latestMockEditorHost().initialEnvelope).toEqual(restoredEnvelope);
+    expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
+  }, 15000);
+
+  it("uses the authoritative unchanged-revision document after Undo clears selected body recovery", async () => {
+    const recoveryEnvelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope> = {
+      ...createEmptyDocseraDocumentEnvelope(),
+      document: { content: [{ content: [{ text: "Recovered local body", type: "text" }], type: "paragraph" }], type: "doc" }
+    };
+    const authoritativeEnvelope: ReturnType<typeof createEmptyDocseraDocumentEnvelope> = {
+      ...createEmptyDocseraDocumentEnvelope(),
+      document: { content: [{ content: [{ text: "Authoritative body", type: "text" }], type: "paragraph" }], type: "doc" }
+    };
+    const initialPage = createPageRecord({
+      draftContentJson: createEmptyDocseraDocumentEnvelope(),
+      draftRevision: 3,
+      publicationState: "published_with_unpublished_changes"
+    });
+    const restoredPage = createPageRecord({
+      draftContentJson: authoritativeEnvelope,
+      draftRevision: 3,
+      publicationState: "published"
+    });
+    const acquireWorkspaceEditLease = vi
+      .fn()
+      .mockResolvedValueOnce(heldLease("workspace-lease-token"))
+      .mockResolvedValueOnce({
+        holderDisplayName: "Priya Writer",
+        sameUserDifferentSession: false,
+        state: "locked" as const
+      })
+      .mockResolvedValueOnce(heldLease("replacement-lease-token"));
+    const savePageBody = vi.fn(async (): Promise<PageBodySaveResult> => ({
+      code: "lock_lost",
+      errorMessage: "Workspace lease lost.",
+      state: "failed"
+    }));
+    const discardPageWorkspace = vi.fn(async () => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 8,
+      discardedPageSysId: "page-001",
+      pages: [restoredPage],
+      pendingChanges: { ...createPendingChangesResult([]), changeSetRevision: 8 },
+      state: "succeeded" as const,
+      workspaceStateRevision: 5
+    }));
+
+    renderApp(App, "/?workspace=product-docs&mode=edit&page=overview", {
+      acquireWorkspaceEditLease,
+      discardPageWorkspace,
+      getWorkspacePendingChanges: vi.fn(async () => createPendingChangesResult([{
+        attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+        category: "Modified", firstPendingSequence: 1, lastChangedOn: "2026-07-27 09:00:00", navigable: true, pageSysId: "page-001", title: "Overview"
+      }])),
+      listPages: vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) => createPageListResult(mode === "edit" ? "edit" : "live", [initialPage])),
+      savePageBody
+    });
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    const initialHost = latestMockEditorHost();
+    mockEditorRecoverySnapshot = {
+      envelope: recoveryEnvelope,
+      isDirty: true,
+      pageSysId: "page-001",
+      savedRevision: 3,
+      sessionKey: initialHost.sessionKey
+    };
+    await act(async () => {
+      await initialHost.onSaveDraft?.({
+        draftContentJson: recoveryEnvelope,
+        expectedRevision: 3,
+        pageSysId: "page-001"
+      });
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This workspace is currently being edited by: Priya Writer");
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
+    await waitFor(() => expect(latestMockEditorHost().initialEnvelope).toEqual(recoveryEnvelope));
+    const recoverySessionKey = latestMockEditorHost().sessionKey;
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo changes to Overview" }));
+    fireEvent.click(screen.getByRole("button", { name: "Undo changes" }));
+
+    await waitFor(() => expect(discardPageWorkspace).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(latestMockEditorHost().sessionKey).not.toBe(recoverySessionKey));
+    expect(latestMockEditorHost().initialEnvelope).toEqual(authoritativeEnvelope);
   }, 15000);
 
   it("does not remount the selected editor when individual undo targets another page", async () => {

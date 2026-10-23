@@ -1699,36 +1699,45 @@ function replaceRemovalBatches(state: WorkspaceChangeSetState) {
     if (!batchSysId) {
       throw new Error("Workspace removal batch could not be persisted.");
     }
-    const expectedMemberIds = new Set(batch.members.map((member) => member.pageId));
-    for (const member of batch.members) {
-      const memberRow = new GlideRecord(DOCSERA_WORKSPACE_REMOVAL_MEMBER_TABLE);
-      memberRow.addQuery("removal_batch", batchSysId);
-      memberRow.addQuery("page", member.pageId);
-      memberRow.setLimit(1);
-      memberRow.query();
-      const memberExists = memberRow.next();
-      const needsMemberUpdate =
-        !memberExists ||
-        cleanText(memberRow.getValue("removal_batch")) !== batchSysId ||
-        cleanText(memberRow.getValue("page")) !== cleanText(member.pageId) ||
-        safeInteger(memberRow.getValue("first_pending_sequence")) !== member.firstPendingSequence;
-      if (!memberExists) {
-        memberRow.initialize();
+    const existingMembers = new GlideRecord(DOCSERA_WORKSPACE_REMOVAL_MEMBER_TABLE);
+    existingMembers.addQuery("removal_batch", batchSysId);
+    existingMembers.query();
+    const expectedMembersByPageId = new Map(batch.members.map((member) => [member.pageId, member]));
+    while (existingMembers.next()) {
+      const pageId = cleanText(existingMembers.getValue("page"));
+      const member = expectedMembersByPageId.get(pageId);
+      if (!member) {
+        if (!existingMembers.deleteRecord()) {
+          throw new Error("Workspace removal batch member could not be removed.");
+        }
+        continue;
       }
+      const batchPageKey = `${batch.id}:${member.pageId}`;
+      const needsMemberUpdate =
+        cleanText(existingMembers.getValue("removal_batch")) !== batchSysId ||
+        cleanText(existingMembers.getValue("page")) !== cleanText(member.pageId) ||
+        cleanText(existingMembers.getValue("batch_page_key")) !== batchPageKey ||
+        safeInteger(existingMembers.getValue("first_pending_sequence")) !== member.firstPendingSequence;
+      if (needsMemberUpdate) {
+        existingMembers.setValue("removal_batch", batchSysId);
+        existingMembers.setValue("page", member.pageId);
+        existingMembers.setValue("batch_page_key", batchPageKey);
+        existingMembers.setValue("first_pending_sequence", member.firstPendingSequence);
+        if (!existingMembers.update()) {
+          throw new Error("Workspace removal batch member could not be persisted.");
+        }
+      }
+      expectedMembersByPageId.delete(member.pageId);
+    }
+    for (const member of expectedMembersByPageId.values()) {
+      const memberRow = new GlideRecord(DOCSERA_WORKSPACE_REMOVAL_MEMBER_TABLE);
+      memberRow.initialize();
       memberRow.setValue("removal_batch", batchSysId);
       memberRow.setValue("page", member.pageId);
       memberRow.setValue("batch_page_key", `${batch.id}:${member.pageId}`);
       memberRow.setValue("first_pending_sequence", member.firstPendingSequence);
-      if (!(!memberExists ? memberRow.insert() : needsMemberUpdate ? memberRow.update() : memberRow.getUniqueValue())) {
+      if (!memberRow.insert()) {
         throw new Error("Workspace removal batch member could not be persisted.");
-      }
-    }
-    const staleMembers = new GlideRecord(DOCSERA_WORKSPACE_REMOVAL_MEMBER_TABLE);
-    staleMembers.addQuery("removal_batch", batchSysId);
-    staleMembers.query();
-    while (staleMembers.next()) {
-      if (!expectedMemberIds.has(cleanText(staleMembers.getValue("page")))) {
-        staleMembers.deleteRecord();
       }
     }
   }
@@ -2646,6 +2655,51 @@ function advanceRecoveredRemovalState(state: WorkspaceChangeSetState, batchKey: 
   return next;
 }
 
+function reconstructClaimedRemovalBatch(
+  state: WorkspaceChangeSetState,
+  claim: WorkspaceMutationClaimRecord
+): WorkspaceChangeSetState {
+  if (claim.payload.kind !== "delete" || !claim.targetRemovalBatchKey) {
+    throw new Error("Recovered removal claim is invalid.");
+  }
+  const existingBatch = state.removalBatches.find((batch) => batch.id === claim.targetRemovalBatchKey);
+  const activeChangeSet = state.changeSets.find((changeSet) => changeSet.id === state.selectors.activeChangeSetId && changeSet.state === "active");
+  if (!existingBatch || !activeChangeSet || existingBatch.changeSetId !== activeChangeSet.id) {
+    throw new Error("Recovered removal batch is invalid.");
+  }
+
+  // Re-run the domain allocation against the pre-removal state. The claim is the
+  // authority for the original subtree; the extant batch row only supplies its
+  // durable identity and timestamps after an interrupted member write.
+  const withoutExistingBatch: WorkspaceChangeSetState = {
+    ...state,
+    removalBatches: state.removalBatches.filter((batch) => batch.id !== existingBatch.id)
+  };
+  const reconstructed = createRemovalBatch(withoutExistingBatch, {
+    expectedChangeSetId: claim.changeSetId,
+    expectedChangeSetRevision: mutationGenerationRevision(claim.generationKey)
+  }, {
+    batchId: existingBatch.id,
+    rootPageId: claim.payload.rootPageId,
+    memberPageIds: claim.payload.memberPageIds,
+    actorId: existingBatch.removedBy,
+    changedOn: existingBatch.removedOn
+  });
+  if (reconstructed.kind !== "applied") {
+    throw new Error("Recovered removal membership is invalid.");
+  }
+  const intendedBatch = reconstructed.state.removalBatches.find((batch) => batch.id === existingBatch.id);
+  if (!intendedBatch) {
+    throw new Error("Recovered removal membership is invalid.");
+  }
+  return {
+    ...state,
+    removalBatches: state.removalBatches.map((batch) => batch.id === existingBatch.id
+      ? { ...batch, members: intendedBatch.members }
+      : batch)
+  };
+}
+
 function advanceRecoveredAddedDraftRemovalState(state: WorkspaceChangeSetState, memberPageIds: string[]): WorkspaceChangeSetState {
   const removedIds = new Set(memberPageIds.map((pageId) => cleanText(pageId)).filter(Boolean));
   const next: WorkspaceChangeSetState = {
@@ -3505,6 +3559,8 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
               pageSysId: pageId
             });
           } else {
+            const reconciled = reconstructClaimedRemovalBatch(loaded.state, claim);
+            replaceRemovalBatches(reconciled);
             claim = persistClaimProgress(dependencies, claim, {
               appliedOn: claim.appliedOn ?? dependencies.currentTimestamp(),
               phase: "removal_persisted"
@@ -3991,8 +4047,12 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
             return { kind: "failed", code: "invalid", errorMessage: prepared.reason, status: 400 };
           }
           claim = requireClaimOwner(claim, executorKey);
-          const workspaceSnapshotPages = loadSnapshotPages(cleanText(loaded.workspace.publishedSnapshotSetSysId));
-          const snapshotPage = workspaceSnapshotPages.find((candidate) => candidate.pageId === pageId) ?? null;
+          const selectedSnapshot = loaded.state.snapshotSets.find((candidate) =>
+            candidate.id === loaded.state.selectors.publishedSnapshotSetId &&
+            candidate.workspaceId === loaded.state.selectors.workspaceId &&
+            candidate.readiness === "ready"
+          );
+          const snapshotPage = selectedSnapshot?.pages.find((candidate) => candidate.pageId === pageId) ?? null;
           if (currentPayload.category === "Added") {
             deleteDraftPageRecords(currentPayload.affectedPageIds);
             claim = persistClaimProgress(dependencies, claim, {
