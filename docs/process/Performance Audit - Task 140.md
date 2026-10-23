@@ -114,3 +114,11 @@ Live page listing skips pending-entry and removal-batch queries and their per-ba
 ## Task 153 implementation result
 
 Edit loading retains the active generation's removal-batch query and retrieves member rows in `IN` queries of at most 100 actual batch record IDs. Instrumented GlideRecord queries show zero member queries for zero batches, one for three active/retired batches (previously three), and two for 101 batches (previously 101). Interleaved members retain their batch association and empty retired batches remain in state. Live still issues no removal-member query. These are deterministic mock database-query counts, not latency measurements. No deployment or live measurement was performed.
+
+## Task 154 implementation result
+
+In the production-adapter mock, a newly acquired body save in a 100-page initialized workspace iterates 100 page records and 100 selected snapshot records, for both root-heavy and nested fixtures. The prior second complete load iterated each collection twice (200 records each). A changed change-set revision forces the full reload. These are deterministic mock record-iteration counts, not elapsed-time measurements; no deployment or live measurement was performed. Resumed and recovered mutations retain the full load.
+
+## Task 155 implementation result
+
+In the production-adapter mock, a newly acquired settings save in a 100-page workspace iterates 100 page records and 100 selected snapshot records in both root-heavy and nested fixtures, compared with 200 each before reuse. Selector or change-set revision changes force a complete reload; no-op and recovered saves retain it. These are deterministic mock record-iteration counts, not measured elapsed time. No deployment or live measurement was performed.

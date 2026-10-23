@@ -2759,6 +2759,7 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
         if (!activePage) {
           return { kind: "failed", errorMessage: "Page could not be found.", status: 404 };
         }
+        let newlyPersisted = false;
         if (claim.phase === "claimed") {
           claim = requireClaimOwner(claim, executorKey);
           const activeRevision = safeInteger(activePage.draftRevision) ?? 0;
@@ -2777,6 +2778,7 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
               draftRevision: activeRevision + 1
             };
             updateDraftPageRecord(activePage);
+            newlyPersisted = !acquired.recovered;
             claim = persistClaimProgress(dependencies, claim, {
               appliedOn: dependencies.currentTimestamp(),
               phase: "page_persisted"
@@ -2789,7 +2791,27 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
             }, executorKey);
           }
         }
-        const recovered = loadWorkspaceState(input.workspace, dependencies);
+        // Reuse only the projection validated by this newly acquired mutation.
+        // Resumed and already-applied claims must reconstruct recovery state fully.
+        const currentWorkspace = newlyPersisted ? loadWorkspaceBySysId(cleanText(loaded.workspace.sysId)) : null;
+        const currentChangeSet = currentWorkspace
+          ? loadFoundationChangeSet(cleanText(currentWorkspace.sysId), cleanText(currentWorkspace.pendingChangeSetSysId))
+          : null;
+        const initialChangeSet = loaded.state.changeSets[0];
+        const unchanged = currentWorkspace && currentChangeSet &&
+          cleanText(currentWorkspace.pendingChangeSetSysId) === loaded.state.selectors.activeChangeSetId &&
+          cleanText(currentWorkspace.publishedSnapshotSetSysId) === loaded.state.selectors.publishedSnapshotSetId &&
+          (currentWorkspace.workspaceStateRevision ?? 0) === loaded.state.selectors.workspaceStateRevision &&
+          currentChangeSet.revision === initialChangeSet.revision &&
+          currentChangeSet.nextPendingSequence === initialChangeSet.nextPendingSequence &&
+          currentChangeSet.recoveryState === loaded.activeChangeSet.recoveryState &&
+          currentChangeSet.commandCorrelationId === loaded.activeChangeSet.commandCorrelationId;
+        const recovered = unchanged
+          ? { ...loaded, state: { ...loaded.state, draftPages: [
+              ...loaded.state.draftPages.filter((draft) => draft.pageId !== pageId),
+              ...buildDraftPages([activePage], loaded.state.snapshotSets[0].pages, new Set([pageId]))
+            ] } }
+          : loadWorkspaceState(currentWorkspace ?? input.workspace, dependencies);
         let resultAuthority = claim.resultAuthority;
         const recoveredAuthority = nextAuthority(recovered.state);
         const preparedAuthority = preparedResultAuthority(claim);
@@ -2968,6 +2990,7 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
         if (!activePage) {
           return { kind: "failed", errorMessage: "Page could not be found.", status: 404 };
         }
+        let newlyPersisted = false;
         if (claim.phase === "claimed") {
           claim = requireClaimOwner(claim, executorKey);
           if (
@@ -2981,6 +3004,7 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
               draftSlugNormalized: desiredSlug
             };
             updateDraftPageRecord(activePage);
+            newlyPersisted = !acquired.recovered;
             claim = persistClaimProgress(dependencies, claim, {
               appliedOn: dependencies.currentTimestamp(),
               phase: "page_persisted"
@@ -2993,7 +3017,26 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
             }, executorKey);
           }
         }
-        const recovered = loadWorkspaceState(input.workspace, dependencies);
+        // Only a newly persisted, newly acquired mutation can reuse the validated projection.
+        const currentWorkspace = newlyPersisted ? loadWorkspaceBySysId(cleanText(loaded.workspace.sysId)) : null;
+        const currentChangeSet = currentWorkspace
+          ? loadFoundationChangeSet(cleanText(currentWorkspace.sysId), cleanText(currentWorkspace.pendingChangeSetSysId))
+          : null;
+        const initialChangeSet = loaded.state.changeSets[0];
+        const unchanged = currentWorkspace && currentChangeSet &&
+          cleanText(currentWorkspace.pendingChangeSetSysId) === loaded.state.selectors.activeChangeSetId &&
+          cleanText(currentWorkspace.publishedSnapshotSetSysId) === loaded.state.selectors.publishedSnapshotSetId &&
+          (currentWorkspace.workspaceStateRevision ?? 0) === loaded.state.selectors.workspaceStateRevision &&
+          currentChangeSet.revision === initialChangeSet.revision &&
+          currentChangeSet.nextPendingSequence === initialChangeSet.nextPendingSequence &&
+          currentChangeSet.recoveryState === loaded.activeChangeSet.recoveryState &&
+          currentChangeSet.commandCorrelationId === loaded.activeChangeSet.commandCorrelationId;
+        const recovered = unchanged
+          ? { ...loaded, state: { ...loaded.state, draftPages: [
+              ...loaded.state.draftPages.filter((draft) => draft.pageId !== pageId),
+              ...buildDraftPages([activePage], loaded.state.snapshotSets[0].pages, new Set([pageId]))
+            ] } }
+          : loadWorkspaceState(currentWorkspace ?? input.workspace, dependencies);
         let resultAuthority = claim.resultAuthority;
         const recoveredAuthority = nextAuthority(recovered.state);
         const preparedAuthority = preparedResultAuthority(claim);
