@@ -23,8 +23,20 @@ export type PageEditorCanonicalHandoffResult =
   | { kind: "unchanged"; nextEnvelope: DocseraDocumentEnvelope }
   | { kind: "unavailable" };
 
+export type PageEditorRecoveredDraftReconciliationResult =
+  | { kind: "saved" }
+  | { kind: "preserved_local_changes" }
+  | { kind: "preserved_conflict" }
+  | { kind: "unavailable" };
+
 export type PageEditorStatusState = Readonly<{
   applyCanonicalEnvelope?: (envelope: DocseraDocumentEnvelope) => PageEditorCanonicalHandoffResult;
+  discardLocalEdits?: (input: { envelope: DocseraDocumentEnvelope; revision: number }) => boolean;
+  reconcileRecoveredDraft?: (input: {
+    envelope: DocseraDocumentEnvelope;
+    revision: number;
+    preserveConflictUnlessTrusted?: boolean;
+  }) => PageEditorRecoveredDraftReconciliationResult;
   flush?: () => Promise<boolean>;
   getCanonicalEnvelope?: () => DocseraDocumentEnvelope | null;
   getRecoverySnapshot?: () => PageEditorRecoverySnapshot | null;

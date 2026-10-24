@@ -82,6 +82,12 @@ Network interruption, an explicitly classified transient persistence result, and
 
 Conflicts, forbidden or access-loss results, validation failures, document-capacity failures, malformed success or persistence results, invariant or configuration failures, known non-transient HTTP 500 responses, and all other unsupported HTTP statuses are terminal. They do not schedule an automatic retry. The page-save API returns sanitized stable codes and a retryable classification while logging internal exceptions only on the server. All failures preserve the local TipTap document, `Changes not saved`, unload or destructive-navigation protection, and published-field isolation. Timers are cancelled on teardown, access loss, page-session replacement, and leaving Edit mode. The runtime ignores completion after disposal, while the App session token prevents stale callbacks from updating a later page.
 
+## Failure presentation and local discard
+
+The Edit header owns the actionable autosave-failure presentation. After bounded automatic retries are exhausted, or after a terminal save result, the failed cloud icon opens a compact popover containing only `Failed to save changes.`, `Retry`, and `Discard edits`. The icon remains keyboard-accessible and reopens the popover; successful save, successful local discard, or editor-session teardown removes it. Retry reuses the existing authoritative stale-generation recovery path before asking the active runtime to flush again. Automatic retries retain the saving indicator so the failure popover does not flash for each scheduled attempt.
+
+`Discard edits` is deliberately local: it first reloads the current page's active Edit projection, verifies the session, mutation context, and lease are still current, and only then supplies that draft envelope and revision to the mounted editor runtime. The runtime refuses the replacement while a body save is in flight, cancels pending local timers only after a valid authoritative envelope is accepted, and resets its local saved baseline without issuing a workspace discard or pending-change undo. If authoritative content cannot be established, the local document and failure affordance remain intact. Autosave failure feedback is not rendered in page content, navigation, or the Changes Center.
+
 ## Explicit non-goals
 
 This implementation note does not claim:

@@ -1560,4 +1560,57 @@ describe("App publishing changes integration", () => {
     expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: null });
     expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeNull();
   }, 15000);
+
+  it.each([
+    { action: "publish", expectedMessage: "Changes were updated before publishing. Try again." },
+    { action: "discard_all", expectedMessage: "Changes were updated before they could be discarded. Try again." },
+    { action: "discard_page", expectedMessage: "Changes were updated before this page could be undone. Try again." }
+  ] as const)("presents a concise stale-generation error when $action cannot complete", async ({ action, expectedMessage }) => {
+    const pendingChanges = createPendingChangesResult([
+      {
+        attribution: { accessibleLabel: "Last changed by Priya Writer", displayName: "P. Writer", fullDisplayName: "Priya Writer" },
+        category: "Modified",
+        firstPendingSequence: 1,
+        lastChangedOn: "2026-10-24 00:00:00",
+        navigable: true,
+        pageSysId: "page-001",
+        title: "Overview"
+      }
+    ]);
+    const staleGenerationFailure = {
+      code: "conflict" as const,
+      currentChangeSetId: "change-set-002",
+      currentChangeSetRevision: 8,
+      errorMessage: "The active draft generation changed. Reload before saving again.",
+      state: "failed" as const
+    };
+    const clientOverrides: Partial<ServiceNowClient> = {
+      getWorkspacePendingChanges: vi.fn(async () => pendingChanges)
+    };
+    if (action === "publish") {
+      clientOverrides.publishWorkspace = vi.fn(async () => staleGenerationFailure);
+    } else if (action === "discard_all") {
+      clientOverrides.discardAllWorkspace = vi.fn(async () => staleGenerationFailure);
+    } else {
+      clientOverrides.discardPageWorkspace = vi.fn(async () => staleGenerationFailure);
+    }
+
+    renderApp(App, "/?workspace=product-docs&mode=edit&page=overview", clientOverrides);
+
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
+    const changesCenter = screen.getByRole("dialog", { name: "Changes Center" });
+    if (action === "publish") {
+      fireEvent.click(within(changesCenter).getByRole("button", { name: "Publish" }));
+    } else if (action === "discard_all") {
+      fireEvent.click(within(changesCenter).getByRole("button", { name: "Discard all" }));
+      fireEvent.click(within(await screen.findByRole("dialog", { name: "Discard all changes" })).getByRole("button", { name: "Discard all" }));
+    } else {
+      fireEvent.click(within(changesCenter).getByRole("button", { name: "Undo changes to Overview" }));
+      fireEvent.click(within(await screen.findByRole("dialog", { name: "Undo page changes" })).getByRole("button", { name: "Undo changes" }));
+    }
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(expectedMessage);
+    expect(screen.queryByText(staleGenerationFailure.errorMessage)).toBeNull();
+  }, 15000);
 });

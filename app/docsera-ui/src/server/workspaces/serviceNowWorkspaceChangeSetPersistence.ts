@@ -215,6 +215,12 @@ export type WorkspaceMutationSuccess<T> = {
 };
 
 export type WorkspaceBodySaveResult = WorkspaceMutationSuccess<{ page: PageRecord }> | WorkspaceMutationFailure;
+export type WorkspaceBodySaveRecoveryResult =
+  | { kind: "already_resolved"; authority: WorkspaceMutationAuthority }
+  | { kind: "executor_active"; authority: WorkspaceMutationAuthority }
+  | { kind: "recovered"; authority: WorkspaceMutationAuthority }
+  | { kind: "unsupported"; authority: WorkspaceMutationAuthority }
+  | { kind: "failed"; authority: WorkspaceMutationAuthority; status: 409 | 500 };
 export type WorkspaceSettingsSaveResult = WorkspaceMutationSuccess<{ page: PageRecord }> | WorkspaceMutationFailure;
 export type WorkspaceCreateResult = WorkspaceMutationSuccess<{ page: PageRecord }> | WorkspaceMutationFailure;
 export type WorkspaceDeleteResult = WorkspaceMutationSuccess<{ deletedPageSysId: string; nextPageSysId: string }> | WorkspaceMutationFailure;
@@ -1909,6 +1915,17 @@ function pageFromProjectionPage(page: SnapshotPage, existing: PageRecord | undef
   };
 }
 
+function indexPageRecordsByIdFirstMatch(pageRecords: PageRecord[]): Map<string, PageRecord> {
+  const recordsById = new Map<string, PageRecord>();
+  for (const pageRecord of pageRecords) {
+    const pageId = cleanText(pageRecord.sysId);
+    if (!recordsById.has(pageId)) {
+      recordsById.set(pageId, pageRecord);
+    }
+  }
+  return recordsById;
+}
+
 function orderProjectionPages(pages: SnapshotPage[]): SnapshotPage[] {
   const childrenByParent = new Map<string, SnapshotPage[]>();
   for (const page of pages) {
@@ -2407,17 +2424,31 @@ function clearDiscardedPendingRows(changeSetId: string) {
   const batches = new GlideRecord(DOCSERA_WORKSPACE_REMOVAL_BATCH_TABLE);
   batches.addQuery("change_set", changeSetId);
   batches.query();
+  const batchSysIds: string[] = [];
   while (batches.next()) {
     const batchSysId = cleanText(batches.getUniqueValue());
+    if (batchSysId) {
+      batchSysIds.push(batchSysId);
+    }
+  }
+
+  const memberQueryBatchSize = 100;
+  for (let offset = 0; offset < batchSysIds.length; offset += memberQueryBatchSize) {
     const members = new GlideRecord(DOCSERA_WORKSPACE_REMOVAL_MEMBER_TABLE);
-    members.addQuery("removal_batch", batchSysId);
+    members.addQuery("removal_batch", "IN", batchSysIds.slice(offset, offset + memberQueryBatchSize).join(","));
     members.query();
     while (members.next()) {
       if (!members.deleteRecord()) {
         throw new Error("Workspace discard-all could not clear removal members.");
       }
     }
-    if (!batches.deleteRecord()) {
+  }
+
+  const batchesToDelete = new GlideRecord(DOCSERA_WORKSPACE_REMOVAL_BATCH_TABLE);
+  batchesToDelete.addQuery("change_set", changeSetId);
+  batchesToDelete.query();
+  while (batchesToDelete.next()) {
+    if (!batchesToDelete.deleteRecord()) {
       throw new Error("Workspace discard-all could not clear removal batches.");
     }
   }
@@ -2982,6 +3013,59 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
           errorMessage: cleanText(error instanceof Error ? error.message : error) || "Something went wrong while saving the page body. Please try again.",
           status: 500
         };
+      }
+    },
+
+    /**
+     * Recover only the active generation's expired body-save claim.  The
+     * caller supplies no generation, owner, page, or document authority:
+     * those values are reconstructed from the durable claim before entering
+     * the normal body-save replay path.
+     */
+    recoverAbandonedBodySave(workspace: WorkspaceRecord): WorkspaceBodySaveRecoveryResult {
+      try {
+        const loaded = loadWorkspaceState(workspace, dependencies);
+        const authority = nextAuthority(loaded.state);
+        const claim = loadMutationClaimByGeneration(buildMutationGenerationKey(authority));
+        if (!claim || claim.workspaceId !== cleanText(loaded.workspace.sysId)) {
+          return { kind: "already_resolved", authority };
+        }
+        if (claim.state === "finalized" || claim.phase === "finalized") {
+          return { kind: "already_resolved", authority: claim.resultAuthority ?? authority };
+        }
+        if (claim.kind !== "body" || claim.payload.kind !== "body") {
+          return { kind: "unsupported", authority };
+        }
+        if (!claimOwnerExpired(claim, dependencies.currentTimestamp())) {
+          return { kind: "executor_active", authority };
+        }
+        const resumed = this.savePageBody({
+          authority: {
+            changeSetId: claim.changeSetId,
+            changeSetRevision: mutationGenerationRevision(claim.generationKey)
+          },
+          draftContentJson: claim.payload.draftContentJson,
+          expectedRevision: claim.payload.expectedRevision,
+          pageSysId: claim.payload.pageSysId,
+          workspace: loaded.workspace
+        });
+        if (resumed.kind === "succeeded") {
+          return { kind: "recovered", authority: resumed.authority };
+        }
+        if (resumed.kind === "failed" && resumed.status === 409 && resumed.errorMessage === "This draft mutation is already in progress. Retry after the current request finishes.") {
+          return { kind: "executor_active", authority: resumed.currentChangeSetId && typeof resumed.currentChangeSetRevision === "number"
+            ? { changeSetId: resumed.currentChangeSetId, changeSetRevision: resumed.currentChangeSetRevision }
+            : authority };
+        }
+        return { kind: "failed", authority, status: resumed.kind === "failed" && resumed.status === 409 ? 409 : 500 };
+      } catch {
+        // Claim payloads and document contents are deliberately never exposed.
+        try {
+          const reloaded = loadWorkspaceState(workspace, dependencies);
+          return { kind: "failed", authority: nextAuthority(reloaded.state), status: 500 };
+        } catch {
+          return { kind: "failed", authority: { changeSetId: "", changeSetRevision: 0 }, status: 500 };
+        }
       }
     },
 
@@ -3772,6 +3856,7 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
         }
         claim = acquired.claim;
         const executorKey = acquired.executorKey;
+        let newlyPersisted = false;
         if (claim.phase === "claimed") {
           const candidate = prospective;
           if (candidate.kind === "stale") {
@@ -3801,6 +3886,7 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
           } else {
             claim = requireClaimOwner(claim, executorKey);
             updateDraftPageHierarchy(pageId, parentId, siblingOrder);
+            newlyPersisted = !acquired.recovered;
             claim = persistClaimProgress(dependencies, claim, {
               appliedOn: dependencies.currentTimestamp(),
               phase: "page_persisted"
@@ -3808,7 +3894,31 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
             triggerDurablePhase(dependencies, "mutation_page_persisted", { generationKey, kind: "move", pageSysId: pageId });
           }
         }
-        const recovered = loadWorkspaceState(input.workspace, dependencies);
+        // Reuse only the projection validated by this newly acquired hierarchy
+        // write. Resumed and already-applied claims must reconstruct recovery
+        // state fully. The moved overlay uses the hierarchy just persisted while
+        // retaining every other field from the initial authoritative record.
+        const reuse = loadFreshWorkspaceForStateReuse(loaded, newlyPersisted);
+        const movedPageRecord = reuse.unchanged
+          ? indexPageRecordsByIdFirstMatch(loaded.pageRecords).get(pageId)
+          : undefined;
+        const recovered = reuse.unchanged && movedPageRecord
+          ? {
+              ...loaded,
+              pageRecords: loaded.pageRecords.map((page) => cleanText(page.sysId) === pageId
+                ? { ...page, parentPageSysId: parentId, siblingOrder: normalizeSiblingOrder(siblingOrder) }
+                : page),
+              state: {
+                ...loaded.state,
+                draftPages: [
+                  ...loaded.state.draftPages.filter((draft) => draft.pageId !== pageId),
+                  ...buildDraftPages([
+                    { ...movedPageRecord, parentPageSysId: parentId, siblingOrder: normalizeSiblingOrder(siblingOrder) }
+                  ], loaded.state.snapshotSets[0].pages, new Set([pageId]))
+                ]
+              }
+            }
+          : loadWorkspaceState(reuse.workspace ?? input.workspace, dependencies);
         let resultAuthority = claim.resultAuthority;
         const recoveredAuthority = nextAuthority(recovered.state);
         const preparedAuthority = preparedResultAuthority(claim);
@@ -3868,8 +3978,9 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
             phase: "entry_persisted"
           }, executorKey);
           triggerDurablePhase(dependencies, "mutation_entry_persisted", { generationKey, kind: "move", pageSysId: pageId });
+          const recoveredPageRecordsById = indexPageRecordsByIdFirstMatch(recovered.pageRecords);
           const projected = orderProjectionPages(projectEdit(changed.state)).map((page) =>
-            pageFromProjectionPage(page, recovered.pageRecords.find((record) => cleanText(record.sysId) === page.pageId), cleanText(recovered.workspace.sysId), "edit")
+            pageFromProjectionPage(page, recoveredPageRecordsById.get(page.pageId), cleanText(recovered.workspace.sysId), "edit")
           );
           const persistedResult = { pages: projected };
           const persistedResultJson = stableSerialize(persistedResult);
@@ -4330,7 +4441,16 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
         ) {
           return staleFailure(nextAuthority(loaded.state));
         }
-        const publishedPages = loadSnapshotPages(selectedSnapshotSetSysId);
+        // loadWorkspaceState has already selected and validated this ready snapshot.
+        // Reuse it so the claimed phase neither rereads the complete snapshot table
+        // nor risks substituting another snapshot for the active selector.
+        const selectedSnapshot = loaded.state.snapshotSets.find((snapshot) =>
+          snapshot.id === selectedSnapshotSetSysId && snapshot.readiness === "ready"
+        );
+        if (!selectedSnapshot) {
+          throw new Error("Workspace foundation is invalid.");
+        }
+        const publishedPages = selectedSnapshot.pages;
         if (!existingClaim) {
           if (originalAffectedPageCount === 0) {
             return { kind: "failed", code: "invalid", errorMessage: "There are no pending changes to discard.", status: 400 };
@@ -4413,9 +4533,18 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
           if (validatedSwitch.kind === "stale") {
             return staleFailure(validatedSwitch.current);
           }
+          // Match Array.find's existing first-match semantics while avoiding one
+          // complete page-record scan for every published projection page.
+          const preparedPageRecordsBySysId = new Map<string, PageRecord>();
+          for (const record of loaded.pageRecords) {
+            const pageSysId = cleanText(record.sysId);
+            if (pageSysId && !preparedPageRecordsBySysId.has(pageSysId)) {
+              preparedPageRecordsBySysId.set(pageSysId, record);
+            }
+          }
           const preparedResult = {
             pages: orderProjectionPages(publishedPages).map((page) =>
-              pageFromProjectionPage(page, loaded.pageRecords.find((record) => cleanText(record.sysId) === page.pageId), workspaceSysId, "live")
+              pageFromProjectionPage(page, preparedPageRecordsBySysId.get(page.pageId), workspaceSysId, "live")
             ),
             pendingChanges: {
               affectedPageCount: 0,

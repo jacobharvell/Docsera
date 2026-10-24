@@ -78,6 +78,8 @@ type DocseraHeaderProps = {
   pendingChangesRefreshing?: boolean;
   pendingChangesErrorMessage?: string;
   saveStatus?: CurrentPageSaveStatus;
+  onRetryCurrentPageSave?: () => void;
+  onDiscardCurrentPageEdits?: () => void;
   onDismissPendingChangesPublishToast?: () => void;
   onOpenPendingPage?: (pageSysId: string) => void;
   onDiscardAllPendingChanges?: () => void;
@@ -173,7 +175,16 @@ function SavingCloudSyncIcon() {
   );
 }
 
-function CurrentPageSaveStatusIndicator({ status }: { status: CurrentPageSaveStatus }) {
+function CurrentPageSaveStatusIndicator({
+  status,
+  onRetry,
+  onDiscard
+}: {
+  status: CurrentPageSaveStatus;
+  onRetry?: () => void;
+  onDiscard?: () => void;
+}) {
+  const [failedSavePopoverOpen, setFailedSavePopoverOpen] = useState(false);
   const label =
     status === "Unsaved"
       ? "Current page has unsaved changes"
@@ -191,6 +202,40 @@ function CurrentPageSaveStatusIndicator({ status }: { status: CurrentPageSaveSta
         : status === "Changes not saved"
           ? "failed"
           : "saved";
+
+  useEffect(() => {
+    setFailedSavePopoverOpen(status === "Changes not saved");
+  }, [status]);
+
+  if (status === "Changes not saved") {
+    return (
+      <span className="docsera-header__save-status-anchor">
+        <DocseraCompactTooltip label={label}>
+          <button
+            type="button"
+            className={`docsera-header__save-status docsera-header__save-status--${statusClass} docsera-header__save-status-trigger`}
+            aria-expanded={failedSavePopoverOpen}
+            aria-haspopup="dialog"
+            aria-label={label}
+            onClick={() => setFailedSavePopoverOpen((open) => !open)}
+          >
+            <span className="docsera-header__save-status-icon-slot" aria-hidden="true">
+              <DocseraIcon className="docsera-header__save-status-icon" icon={docseraIcons.cloudAlert} size={20} strokeWidth={2} />
+            </span>
+          </button>
+        </DocseraCompactTooltip>
+        {failedSavePopoverOpen ? (
+          <span className="docsera-header__save-failure-popover" role="dialog" aria-label="Save failed">
+            <span>Failed to save changes.</span>
+            <span className="docsera-header__save-failure-actions">
+              <button type="button" onClick={onRetry}>Retry</button>
+              <button type="button" className="docsera-header__save-failure-discard" onClick={onDiscard}>Discard edits</button>
+            </span>
+          </span>
+        ) : null}
+      </span>
+    );
+  }
 
   return (
     <DocseraCompactTooltip label={label}>
@@ -211,8 +256,6 @@ function CurrentPageSaveStatusIndicator({ status }: { status: CurrentPageSaveSta
               icon={
                 status === "Unsaved"
                   ? docseraIcons.cloudOff
-                  : status === "Changes not saved"
-                    ? docseraIcons.cloudAlert
                     : docseraIcons.cloudCheck
               }
               size={20}
@@ -270,11 +313,13 @@ export function DocseraHeader({
   onOpenWorkspaceSettings,
   onReleaseWorkspaceSettingsPreviewObjectUrl,
   onDismissPendingChangesPublishToast,
+  onDiscardCurrentPageEdits,
   onOpenPendingPage,
   onDiscardAllPendingChanges,
   onSelectBreadcrumb,
   onToggleSidebar,
   onRetryPendingChanges,
+  onRetryCurrentPageSave,
   pendingChanges = null,
   pendingChangesDiscardAllAffectedPageCount,
   pendingChangesDiscardAllErrorMessage = "",
@@ -828,7 +873,11 @@ export function DocseraHeader({
             >
               {showCurrentPageSaveStatus ? (
                 <>
-                  <CurrentPageSaveStatusIndicator status={saveStatus as CurrentPageSaveStatus} />
+                  <CurrentPageSaveStatusIndicator
+                    status={saveStatus as CurrentPageSaveStatus}
+                    onDiscard={onDiscardCurrentPageEdits}
+                    onRetry={onRetryCurrentPageSave}
+                  />
                   <span className="docsera-header__publish-divider" aria-hidden="true" />
                 </>
               ) : (
@@ -931,7 +980,7 @@ export function DocseraHeader({
                         ) : (
                           <div className="docsera-changes-center__list" role="list" aria-label="Pending pages">
                             {pendingRows.map((row) => {
-                              const rowReadinessBlocked = Boolean(pendingChangesReadinessMessage) && pendingChangesUndoBlockedPageSysId === row.pageSysId;
+                              const rowReadinessBlocked = Boolean(pendingChangesUndoBlockedPageSysId) && pendingChangesUndoBlockedPageSysId === row.pageSysId;
                               const canUndoRow =
                                 Boolean(onDiscardPendingPage) &&
                                 !pendingChangesPublishing &&

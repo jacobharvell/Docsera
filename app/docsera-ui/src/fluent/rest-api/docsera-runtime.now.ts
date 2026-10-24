@@ -9,7 +9,7 @@ import { process as publishPage } from "../../server/api/docsera-runtime-page-pu
 import { process as movePage } from "../../server/api/docsera-runtime-page-move";
 import { process as releasePageEditLock } from "../../server/api/docsera-runtime-page-lock-release";
 import { process as pageEditLockStatus } from "../../server/api/docsera-runtime-page-lock-status";
-import { process as savePage } from "../../server/api/docsera-runtime-page-save";
+import { process as savePage, processBodySaveRecovery as recoverWorkspaceBodySave } from "../../server/api/docsera-runtime-page-save";
 import { process as savePageSettings } from "../../server/api/docsera-runtime-page-settings-save";
 import { process as createWorkspace } from "../../server/api/docsera-runtime-create-workspace";
 import { process as listPages } from "../../server/api/docsera-runtime-pages";
@@ -145,6 +145,9 @@ RestApi({
     },
     {
       $id: Now.ID["docsera-runtime-workspace-pending-changes-post"], name: "workspace_pending_changes", path: "/workspaces/pending-changes", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Read the active workspace pending changes through the held Edit lease.", script: workspacePendingChanges
+    },
+    {
+      $id: Now.ID["docsera-runtime-workspace-body-save-recovery-post"], name: "workspace_body_save_recovery", path: "/workspaces/recover-body-save", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Recover an expired unfinished body save using only its server-owned mutation claim.", script: recoverWorkspaceBodySave
     },
     {
       $id: Now.ID["docsera-runtime-workspace-publish-post"], name: "workspace_publish", path: "/workspaces/publish", method: "POST", consumes: "application/json", produces: "application/json", shortDescription: "Publish the complete workspace pending change set through the held Edit lease.", script: workspacePublish

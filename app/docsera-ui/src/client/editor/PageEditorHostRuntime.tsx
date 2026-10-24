@@ -114,7 +114,7 @@ import {
 import { BLOCK_SELECTOR_STYLES } from "./BlockSelectorStyles";
 import TableControlsOverlay from "./TableControlsOverlay";
 import type { EditorMediaAdapter, EditorMediaReference } from "./contracts";
-import type { PageEditorCanonicalHandoffResult } from "./PageEditorHost";
+import type { PageEditorCanonicalHandoffResult, PageEditorRecoveredDraftReconciliationResult } from "./PageEditorHost";
 
 type PageEditorHostRuntimeProps = {
   canEdit: boolean;
@@ -134,6 +134,12 @@ type PageEditorHostRuntimeProps = {
   onEditorReady?: (editor: Editor) => void;
   onStatusChange: (state: {
     applyCanonicalEnvelope?: (envelope: DocseraDocumentEnvelope) => PageEditorCanonicalHandoffResult;
+    discardLocalEdits?: (input: { envelope: DocseraDocumentEnvelope; revision: number }) => boolean;
+    reconcileRecoveredDraft?: (input: {
+      envelope: DocseraDocumentEnvelope;
+      revision: number;
+      preserveConflictUnlessTrusted?: boolean;
+    }) => PageEditorRecoveredDraftReconciliationResult;
     flush?: () => Promise<boolean>;
     getCanonicalEnvelope?: () => DocseraDocumentEnvelope | null;
     getRecoverySnapshot?: () => {
@@ -3802,6 +3808,7 @@ export function PageEditorHostRuntime({
   const retryTimerRef = useRef<number | null>(null);
   const retryAttemptRef = useRef(0);
   const saveGenerationRef = useRef(0);
+  const reconciliationVersionRef = useRef(0);
   const currentDocumentKeyRef = useRef(initialDocumentKey);
   const savedDocumentKeyRef = useRef(savedDocumentKey);
   const savedRevisionRef = useRef(initialRevision);
@@ -5936,6 +5943,78 @@ export function PageEditorHostRuntime({
           return { kind: "unavailable" };
         }
       },
+      discardLocalEdits: ({ envelope, revision }) => {
+        const runtimeEditor = editorRef.current;
+        if (
+          !runtimeEditor ||
+          runtimeEditor.isDestroyed ||
+          disposedRef.current ||
+          !editableRef.current ||
+          saveInFlightRef.current ||
+          !Number.isSafeInteger(revision) ||
+          revision < 0
+        ) {
+          return false;
+        }
+
+        try {
+          const replacement = replaceEditorDocument(runtimeEditor, envelope);
+          if (replacement.kind === "unavailable") {
+            return false;
+          }
+          const savedDocumentKey = serializeDocument(replacement.nextEnvelope.document);
+          currentDocumentKeyRef.current = savedDocumentKey;
+          savedDocumentKeyRef.current = savedDocumentKey;
+          savedRevisionRef.current = revision;
+          setSavedDocumentKey(savedDocumentKey);
+          setSavedRevision(revision);
+          setErrorMessage("");
+          retryAttemptRef.current = 0;
+          cancelPendingTimers();
+          setStatus("saved");
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      reconcileRecoveredDraft: ({ envelope, revision, preserveConflictUnlessTrusted = false }) => {
+        const runtimeEditor = editorRef.current;
+        if (!runtimeEditor || runtimeEditor.isDestroyed || disposedRef.current || !editableRef.current || !Number.isSafeInteger(revision) || revision < 0) {
+          return { kind: "unavailable" };
+        }
+
+        try {
+          const recoveredDocumentKey = serializeDocument(parseDocseraDocumentOrThrow(envelope).document);
+          const localDocumentKey = currentDocumentKeyRef.current;
+          const savedDocumentKey = savedDocumentKeyRef.current;
+          const matchesKnownSavedBaseline = recoveredDocumentKey === savedDocumentKey;
+          const matchesCurrentDocument = recoveredDocumentKey === localDocumentKey;
+          if (preserveConflictUnlessTrusted && !matchesKnownSavedBaseline && !matchesCurrentDocument) {
+            setStatus("conflict");
+            return { kind: "preserved_conflict" };
+          }
+          const preservesLocalChanges = !matchesCurrentDocument;
+          if (saveInFlightRef.current) {
+            reconciliationVersionRef.current += 1;
+          }
+          savedDocumentKeyRef.current = recoveredDocumentKey;
+          savedRevisionRef.current = revision;
+          setSavedDocumentKey(recoveredDocumentKey);
+          setSavedRevision(revision);
+          setErrorMessage("");
+          retryAttemptRef.current = 0;
+          if (retryTimerRef.current !== null) {
+            window.clearTimeout(retryTimerRef.current);
+            retryTimerRef.current = null;
+          }
+          const reconciledStatus = preservesLocalChanges ? "dirty" : "saved";
+          statusRef.current = reconciledStatus;
+          setStatus(reconciledStatus);
+          return { kind: preservesLocalChanges ? "preserved_local_changes" : "saved" };
+        } catch {
+          return { kind: "unavailable" };
+        }
+      },
       flush: flushLatest,
       getCanonicalEnvelope: () => {
         const runtimeEditor = editorRef.current;
@@ -6509,15 +6588,16 @@ export function PageEditorHostRuntime({
     }, AUTOSAVE_IDLE_MS);
   }
 
-  function scheduleRetry() {
-    if (retryTimerRef.current !== null || statusRef.current === "conflict" || disposedRef.current) return;
+  function scheduleRetry(): boolean {
+    if (retryTimerRef.current !== null || statusRef.current === "conflict" || disposedRef.current) return false;
     const delay = getAutosaveRetryDelay(retryAttemptRef.current);
-    if (delay === null) return;
+    if (delay === null) return false;
     retryAttemptRef.current += 1;
     retryTimerRef.current = window.setTimeout(() => {
       retryTimerRef.current = null;
       void flushLatest();
     }, delay);
+    return true;
   }
 
   function cancelPendingTimers() {
@@ -6587,6 +6667,7 @@ export function PageEditorHostRuntime({
     setErrorMessage("");
     const saveGeneration = saveGenerationRef.current + 1;
     saveGenerationRef.current = saveGeneration;
+    const reconciliationVersion = reconciliationVersionRef.current;
     saveInFlightRef.current = true;
     try {
       const saveInput: {
@@ -6615,19 +6696,22 @@ export function PageEditorHostRuntime({
       });
       const result = await onSaveDraft(saveInput);
 
+      if (reconciliationVersionRef.current !== reconciliationVersion) {
+        return currentDocumentKeyRef.current === savedDocumentKeyRef.current;
+      }
+
       if (disposedRef.current || saveGenerationRef.current !== saveGeneration) {
         return false;
       }
 
       if (result.state === "failed") {
         const isConflict = result.code === "conflict";
-        setStatus(isConflict ? "conflict" : "failed");
-        setErrorMessage(result.errorMessage || (isConflict ? "This page has a newer saved draft. Reload before saving again." : SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE));
+        const retryScheduled = !isConflict && result.retryable && scheduleRetry();
+        setStatus(isConflict ? "conflict" : retryScheduled ? "saving" : "failed");
+        setErrorMessage(retryScheduled ? "" : result.errorMessage || (isConflict ? "This page has a newer saved draft. Reload before saving again." : SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE));
 
         if (result.code === "forbidden") {
           onAccessLost();
-        } else if (!isConflict && result.retryable) {
-          scheduleRetry();
         }
 
         return false;
@@ -6645,13 +6729,17 @@ export function PageEditorHostRuntime({
       setStatus(isClean ? "saved" : "dirty");
       return true;
     } catch {
+      if (reconciliationVersionRef.current !== reconciliationVersion) {
+        return currentDocumentKeyRef.current === savedDocumentKeyRef.current;
+      }
+
       if (disposedRef.current || saveGenerationRef.current !== saveGeneration) {
         return false;
       }
 
-      setStatus("failed");
-      setErrorMessage(SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE);
-      scheduleRetry();
+      const retryScheduled = scheduleRetry();
+      setStatus(retryScheduled ? "saving" : "failed");
+      setErrorMessage(retryScheduled ? "" : SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE);
       return false;
     } finally {
       if (saveGenerationRef.current === saveGeneration) {

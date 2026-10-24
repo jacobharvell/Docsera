@@ -28,6 +28,7 @@ import type {
   WorkspaceEditLeaseLocked,
   WorkspaceEditLeaseLost,
   WorkspaceEditLeaseReferenceInput,
+  WorkspaceBodySaveRecoveryResult,
   WorkspaceEditLeaseReleaseResult,
   WorkspaceEditLeaseRenewResult,
   WorkspaceEditLeaseStatusResult,
@@ -236,6 +237,11 @@ function resolveWorkspaceEditLeasePath(pageCollectionPath: string, action: "acqu
 function resolveWorkspacePendingChangesPath(pageCollectionPath: string): string {
   const normalizedPath = cleanText(pageCollectionPath).replace(/\/pages$/i, "").replace(/\/+$/g, "");
   return `${normalizedPath}/workspaces/pending-changes`;
+}
+
+function resolveWorkspaceBodySaveRecoveryPath(pageCollectionPath: string): string {
+  const normalizedPath = cleanText(pageCollectionPath).replace(/\/pages$/i, "").replace(/\/+$/g, "");
+  return `${normalizedPath}/workspaces/recover-body-save`;
 }
 
 function resolveWorkspacePublishPath(workspaceCollectionPath: string): string {
@@ -2326,6 +2332,25 @@ async function resolveWorkspacePendingChangesResult(path: string, input: Workspa
   }
 }
 
+async function resolveWorkspaceBodySaveRecoveryResult(path: string, input: WorkspaceEditLeaseReferenceInput): Promise<WorkspaceBodySaveRecoveryResult> {
+  try {
+    const response = await requestJson<unknown>(path, { method: "POST", body: JSON.stringify({ workspaceSlug: cleanText(input.workspaceSlug), workspaceSysId: cleanText(input.workspaceSysId), workspaceLeaseToken: cleanText(input.leaseToken) }), headers: { "Content-Type": "application/json" } });
+    const result = unwrapServiceNowEnvelope(response.body);
+    if (response.status === 200 && isPlainObject(result)) {
+      const outcome = cleanText(result.outcome);
+      const changeSetId = cleanText(result.changeSetId);
+      const changeSetRevision = readSafeInteger(result.changeSetRevision);
+      if ((outcome === "recovered" || outcome === "already_resolved") && changeSetId && changeSetRevision !== null) return { state: outcome, changeSetId, changeSetRevision };
+    }
+    const error = isPlainObject(result) && isPlainObject(result.error) ? result.error : {};
+    const code = cleanText(error.code);
+    if (code === "executor_active" || code === "unsupported_mutation" || code === "recovery_failed") return { state: code, code, errorMessage: cleanText(error.message) || "The unfinished body save could not be recovered." };
+    return { state: "failed", code: response.status === 403 ? "forbidden" : code === "workspace_lease_lost" ? "lock_lost" : code === "invalid" ? "invalid" : "transient", errorMessage: extractErrorMessage(response.body, "The unfinished body save could not be recovered.") };
+  } catch {
+    return { state: "failed", code: "transient", errorMessage: "The unfinished body save could not be recovered. Please try again." };
+  }
+}
+
 async function resolveWorkspacePublishResult(path: string, input: WorkspacePublishInput): Promise<WorkspacePublishResult> {
   const authority = resolveMutationAuthority(input);
   const payload = {
@@ -2460,6 +2485,7 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
   const workspaceEditLeaseEndPreviousPath = resolveWorkspaceEditLeasePath(pageCollectionPath, "end-previous-session");
   const workspaceEditLeaseStatusPath = resolveWorkspaceEditLeasePath(pageCollectionPath, "status");
   const workspacePendingChangesPath = resolveWorkspacePendingChangesPath(pageCollectionPath);
+  const workspaceBodySaveRecoveryPath = resolveWorkspaceBodySaveRecoveryPath(pageCollectionPath);
   const workspaceDiscardAllPath = resolveWorkspaceDiscardAllPath(collectionPath);
   const workspaceDiscardPagePath = resolveWorkspaceDiscardPagePath(collectionPath);
   const workspacePublishPath = resolveWorkspacePublishPath(collectionPath);
@@ -2775,6 +2801,7 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
     async releaseWorkspaceEditLease(input: WorkspaceEditLeaseReferenceInput & { keepalive?: boolean }): Promise<WorkspaceEditLeaseReleaseResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseReleasePath, input, "release") as Promise<WorkspaceEditLeaseReleaseResult>; },
     async getWorkspaceEditLeaseStatus(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspaceEditLeaseStatusResult> { return resolveWorkspaceEditLeaseResult(workspaceEditLeaseStatusPath, input, "status") as Promise<WorkspaceEditLeaseStatusResult>; },
     async getWorkspacePendingChanges(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspacePendingChangesResult> { return resolveWorkspacePendingChangesResult(workspacePendingChangesPath, input); },
+    async recoverWorkspaceBodySave(input: WorkspaceEditLeaseReferenceInput): Promise<WorkspaceBodySaveRecoveryResult> { return resolveWorkspaceBodySaveRecoveryResult(workspaceBodySaveRecoveryPath, input); },
     async discardPageWorkspace(input: WorkspaceDiscardPageInput): Promise<WorkspaceDiscardPageResult> { return resolveWorkspaceDiscardPageResult(workspaceDiscardPagePath, input); },
     async discardAllWorkspace(input: WorkspaceDiscardAllInput): Promise<WorkspaceDiscardAllResult> { return resolveWorkspaceDiscardAllResult(workspaceDiscardAllPath, input); },
     async publishWorkspace(input: WorkspacePublishInput): Promise<WorkspacePublishResult> { return resolveWorkspacePublishResult(workspacePublishPath, input); },

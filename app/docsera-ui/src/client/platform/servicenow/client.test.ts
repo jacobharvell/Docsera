@@ -39,6 +39,20 @@ function createBinaryResponse(status: number, blob: Blob) {
 }
 
 describe("service now client workspace media", () => {
+  it("sends only the workspace reference and held lease token for body-save recovery", async () => {
+    const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(path)).toBe("/api/x_82900_docsera/docsera_runtime/workspaces/recover-body-save");
+      expect(JSON.parse(String(init?.body))).toEqual({ workspaceSlug: "product-docs", workspaceSysId: "workspace-001", workspaceLeaseToken: "workspace-lease-token" });
+      return createJsonResponse(200, { result: { outcome: "recovered", changeSetId: "change-set-002", changeSetRevision: 10 } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(createServiceNowClient(createRuntime()).recoverWorkspaceBodySave!({ workspaceSlug: "product-docs", workspaceSysId: "workspace-001", leaseToken: "workspace-lease-token" })).resolves.toEqual({ state: "recovered", changeSetId: "change-set-002", changeSetRevision: 10 });
+  });
+
+  it("normalizes active recovery executors without retrying", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => createJsonResponse(409, { error: { code: "executor_active", message: "The original body-save executor is still active." } })));
+    await expect(createServiceNowClient(createRuntime()).recoverWorkspaceBodySave!({ workspaceSlug: "product-docs", leaseToken: "workspace-lease-token" })).resolves.toEqual({ state: "executor_active", code: "executor_active", errorMessage: "The original body-save executor is still active." });
+  });
   it("distinguishes committed workspace deletion cleanup failures from preflight failures", async () => {
     const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
       expect(String(path)).toBe("/api/x_82900_docsera/docsera_runtime/workspaces/delete");

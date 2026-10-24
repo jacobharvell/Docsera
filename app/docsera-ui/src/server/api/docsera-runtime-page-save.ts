@@ -181,3 +181,46 @@ export async function process(request: RequestLike, response: ResponseLike) {
     });
   }
 }
+
+/** Recovery deliberately shares this established runtime module so its
+ * deployment boundary remains the same as the body-save replay it invokes. */
+export async function processBodySaveRecovery(request: RequestLike, response: ResponseLike) {
+  const body = readRequestBody(request);
+  try {
+    const lease = await verifyWorkspaceEditLease(body);
+    if (sendWorkspaceLeaseMutationFailure(lease, response) || lease.kind !== "held") return;
+    if (!cleanText(body.workspaceSlug) && !cleanText(body.workspaceSysId)) {
+      response.setStatus?.(400);
+      response.setBody({ error: { code: "invalid", retryable: false, message: "A workspace reference is required." } });
+      return;
+    }
+    const workspace = loadWorkspace(body);
+    if (!workspace) {
+      response.setStatus?.(404);
+      response.setBody({ error: { code: "invalid", retryable: false, message: "Workspace could not be found." } });
+      return;
+    }
+    const result = createServiceNowWorkspaceChangeSetPersistenceService().recoverAbandonedBodySave(workspace);
+    if (result.kind === "failed") {
+      response.setStatus?.(result.status);
+      response.setBody({ error: { code: "recovery_failed", retryable: false, message: "The unfinished body save could not be recovered. Further action is required." } });
+      return;
+    }
+    if (result.kind === "executor_active") {
+      response.setStatus?.(409);
+      response.setBody({ error: { code: "executor_active", retryable: false, message: "The original body-save executor is still active." } });
+      return;
+    }
+    if (result.kind === "unsupported") {
+      response.setStatus?.(409);
+      response.setBody({ error: { code: "unsupported_mutation", retryable: false, message: "The unfinished mutation cannot be recovered by this operation." } });
+      return;
+    }
+    response.setStatus?.(200);
+    response.setBody({ result: { outcome: result.kind, changeSetId: result.authority.changeSetId, changeSetRevision: result.authority.changeSetRevision } });
+  } catch (error) {
+    gs.error(`[Docsera body-save recovery] ${cleanText(error instanceof Error ? error.message : error) || "Unknown failure"}`);
+    response.setStatus?.(500);
+    response.setBody({ error: { code: "recovery_failed", retryable: false, message: "The unfinished body save could not be recovered. Further action is required." } });
+  }
+}

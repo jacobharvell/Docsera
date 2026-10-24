@@ -1044,6 +1044,92 @@ describe("PageEditorHostRuntime", () => {
     expect(runtime.onSaveDraft).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    { expectedStatus: "Saved", name: "matching recovered content", recoveredText: "Alpha Beta", remainsDirty: false },
+    { expectedStatus: "Unsaved", name: "divergent local content", recoveredText: "Server draft", remainsDirty: true }
+  ])("keeps $name authoritative when an in-flight conflict settles after recovery", async ({ expectedStatus, recoveredText, remainsDirty }) => {
+    const initialEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Alpha" }] }]
+    });
+    const recoveredEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: recoveredText }] }]
+    });
+    let resolveFirstSave: ((value: PageBodySaveResult) => void) | null = null;
+    const firstSave = new Promise<PageBodySaveResult>((resolve) => { resolveFirstSave = resolve; });
+    const onSaveDraft = vi.fn()
+      .mockImplementationOnce(async () => firstSave)
+      .mockResolvedValueOnce({ page: createSuccessPage(6), state: "succeeded" });
+    const runtime = renderRuntime({ initialEnvelope, onSaveDraft });
+    const editor = await waitFor(() => {
+      expect(runtime.editorReady[0]).toBeDefined();
+      return runtime.editorReady[0]!;
+    });
+
+    await act(async () => { editor.commands.focus("end"); editor.commands.insertContent(" Beta"); });
+    const saveStatus = runtime.onStatusChange.mock.lastCall?.[0] as PageEditorStatusState;
+    const flush = saveStatus.flush?.();
+    await waitFor(() => expect(onSaveDraft).toHaveBeenCalledTimes(1));
+    expect(onSaveDraft.mock.calls[0]?.[0]).toEqual(expect.objectContaining({ expectedRevision: 0 }));
+
+    const reconcilingStatus = runtime.onStatusChange.mock.lastCall?.[0] as PageEditorStatusState;
+    expect(reconcilingStatus.reconcileRecoveredDraft?.({ envelope: recoveredEnvelope, revision: 5 })).toEqual({
+      kind: remainsDirty ? "preserved_local_changes" : "saved"
+    });
+    await act(async () => { resolveFirstSave?.({ code: "conflict", errorMessage: "Stale generation", state: "failed" }); await flush; });
+
+    await waitFor(() => expect(runtime.onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({
+      isDirty: remainsDirty,
+      status: expectedStatus
+    })));
+    expect(editor.getJSON()).toEqual(createEnvelopeFromDocument({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Alpha Beta" }] }]
+    }).document);
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+
+    if (remainsDirty) {
+      const recoveredStatus = runtime.onStatusChange.mock.lastCall?.[0] as PageEditorStatusState;
+      await act(async () => { await recoveredStatus.flush?.(); });
+      expect(onSaveDraft).toHaveBeenLastCalledWith(expect.objectContaining({ expectedRevision: 5 }));
+    }
+  });
+
+  it("allows an immediate explicit flush after recovered reconciliation updates the saved revision", async () => {
+    const initialEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Alpha" }] }]
+    });
+    const recoveredEnvelope = createEnvelopeFromDocument({
+      type: "doc",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Server baseline" }] }]
+    });
+    const onSaveDraft = vi.fn()
+      .mockResolvedValueOnce({ code: "conflict", errorMessage: "Stale generation", state: "failed" })
+      .mockResolvedValueOnce({ page: createSuccessPage(6), state: "succeeded" });
+    const runtime = renderRuntime({ initialEnvelope, onSaveDraft });
+    const editor = await waitFor(() => {
+      expect(runtime.editorReady[0]).toBeDefined();
+      return runtime.editorReady[0]!;
+    });
+
+    await act(async () => { editor.commands.focus("end"); editor.commands.insertContent(" Beta"); });
+    const failedStatus = runtime.onStatusChange.mock.lastCall?.[0] as PageEditorStatusState;
+    await act(async () => { await failedStatus.flush?.(); });
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
+
+    const recoveredStatus = runtime.onStatusChange.mock.lastCall?.[0] as PageEditorStatusState;
+    expect(recoveredStatus.reconcileRecoveredDraft?.({ envelope: recoveredEnvelope, revision: 5 })).toEqual({
+      kind: "preserved_local_changes"
+    });
+
+    await recoveredStatus.flush?.();
+
+    expect(onSaveDraft).toHaveBeenCalledTimes(2);
+    expect(onSaveDraft).toHaveBeenLastCalledWith(expect.objectContaining({ expectedRevision: 5 }));
+  });
+
   it("does not let a source-derived canonical replacement become a visual undo step", async () => {
     const initialEnvelope = createEnvelopeFromDocument({
       type: "doc",
@@ -2090,7 +2176,7 @@ describe("PageEditorHostRuntime", () => {
 
     await runAutosave();
 
-    await waitFor(() => expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Changes not saved" })));
+    await waitFor(() => expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saving…" })));
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
 
     expect(editor.getJSON()).toMatchObject({
@@ -2102,6 +2188,32 @@ describe("PageEditorHostRuntime", () => {
     await waitFor(() => expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Saved" })));
 
     expect(onSaveDraft).toHaveBeenCalledTimes(2);
+  });
+
+  it("discards failed local edits only after an authoritative draft is supplied", async () => {
+    const onSaveDraft = vi.fn(async (): Promise<PageBodySaveResult> => ({
+      state: "failed",
+      code: "failed",
+      retryable: false,
+      errorMessage: "Save failed."
+    }));
+    const { editorReady, onStatusChange } = renderRuntime({ onSaveDraft });
+
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    await act(async () => {
+      editorReady[0].commands.insertContent("Local failed edit");
+    });
+    await runAutosave();
+    await waitFor(() => expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ status: "Changes not saved" })));
+
+    const discard = onStatusChange.mock.calls[onStatusChange.mock.calls.length - 1]?.[0].discardLocalEdits as
+      | ((input: { envelope: ReturnType<typeof createEnvelopeFromDocument>; revision: number }) => boolean)
+      | undefined;
+    expect(discard?.({ envelope: createEnvelopeFromDocument({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Authoritative draft" }] }] }), revision: 4 })).toBe(true);
+
+    await waitFor(() => expect(onStatusChange).toHaveBeenLastCalledWith(expect.objectContaining({ isDirty: false, status: "Saved" })));
+    expect(editorReady[0].getText()).toBe("Authoritative draft");
+    expect(onSaveDraft).toHaveBeenCalledTimes(1);
   });
 
   it("stops after four automatic retries, preserves content, and lets a new edit reset the sequence", async () => {

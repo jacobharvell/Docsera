@@ -271,6 +271,10 @@ declare global {
                         table: 'sys_ws_operation'
                         id: 'a054642614c6403a92e30682e1de4aec'
                     }
+                    'docsera-runtime-workspace-body-save-recovery-post': {
+                        table: 'sys_ws_operation'
+                        id: '68826c6afc684603aec33fa402788804'
+                    }
                     'docsera-runtime-workspace-delete-post': {
                         table: 'sys_ws_operation'
                         id: '9b0b4ee86ce5427fa96b353dba7b22b9'

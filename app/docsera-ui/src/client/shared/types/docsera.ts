@@ -360,6 +360,10 @@ export type WorkspaceEditLeaseReferenceInput = {
   workspaceSysId?: string;
   leaseToken?: string;
 };
+export type WorkspaceBodySaveRecoveryInput = WorkspaceEditLeaseReferenceInput;
+export type WorkspaceBodySaveRecoveryResult =
+  | { state: "recovered" | "already_resolved"; changeSetId: string; changeSetRevision: number }
+  | { state: "executor_active" | "unsupported_mutation" | "recovery_failed" | "failed"; code?: "executor_active" | "unsupported_mutation" | "recovery_failed" | "forbidden" | "lock_lost" | "invalid" | "transient"; errorMessage: string };
 export type WorkspaceEditLeaseGeneration = { changeSetId: string; changeSetRevision: number; workspaceStateRevision?: number };
 export type WorkspaceEditLeaseHeld = WorkspaceEditLeaseGeneration & { state: "held"; leaseToken: string; heartbeatIntervalMs: number; staleAfterMs: number };
 export type WorkspaceEditLeaseStatusHeld = WorkspaceEditLeaseGeneration & { state: "held"; heartbeatIntervalMs: number; staleAfterMs: number };
@@ -682,6 +686,7 @@ export type ServiceNowClient = {
   releaseWorkspaceEditLease?: (input: WorkspaceEditLeaseReferenceInput & { keepalive?: boolean }) => Promise<WorkspaceEditLeaseReleaseResult>;
   getWorkspaceEditLeaseStatus?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspaceEditLeaseStatusResult>;
   getWorkspacePendingChanges?: (input: WorkspaceEditLeaseReferenceInput) => Promise<WorkspacePendingChangesResult>;
+  recoverWorkspaceBodySave?: (input: WorkspaceBodySaveRecoveryInput) => Promise<WorkspaceBodySaveRecoveryResult>;
   discardPageWorkspace?: (input: WorkspaceDiscardPageInput) => Promise<WorkspaceDiscardPageResult>;
   discardAllWorkspace?: (input: WorkspaceDiscardAllInput) => Promise<WorkspaceDiscardAllResult>;
   publishWorkspace?: (input: WorkspacePublishInput) => Promise<WorkspacePublishResult>;

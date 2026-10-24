@@ -1272,12 +1272,6 @@ describe("DocseraHeader publishing changes", () => {
         statusClass: "docsera-header__save-status--saved",
         iconSelector: ".lucide-cloud-check"
       },
-      {
-        label: "Current page changes could not be saved",
-        saveStatus: "Changes not saved" as const,
-        statusClass: "docsera-header__save-status--failed",
-        iconSelector: ".lucide-cloud-alert"
-      }
     ];
 
     const { container, rerender } = render(
@@ -1285,13 +1279,12 @@ describe("DocseraHeader publishing changes", () => {
     );
 
     const publish = within(container).getByRole("button", { name: "No pending changes to publish" });
-    const indicator = within(container).getByRole("status", { name: states[0].label });
-
     for (const [index, state] of states.entries()) {
       if (index > 0) {
         rerender(<DocseraHeader {...baseProps} onPublishPendingChanges={vi.fn()} pendingChanges={pending([])} saveStatus={state.saveStatus} />);
       }
 
+      const indicator = within(container).getByRole("status", { name: state.label });
       expect(indicator).toHaveTextContent(state.label);
       expect(indicator).toHaveAttribute("aria-label", state.label);
       expect(indicator).not.toHaveAttribute("title");
@@ -1318,6 +1311,7 @@ describe("DocseraHeader publishing changes", () => {
       }
     }
 
+    const indicator = within(container).getByRole("status", { name: states[states.length - 1].label });
     fireEvent.focus(indicator);
     rerender(<DocseraHeader {...baseProps} onPublishPendingChanges={vi.fn()} pendingChanges={pending([])} saveStatus="Unsaved" />);
     expect(screen.getByRole("tooltip")).toHaveTextContent(states[0].label);
@@ -1332,6 +1326,40 @@ describe("DocseraHeader publishing changes", () => {
 
     expect(container.querySelector(".docsera-header__publish-divider")).toBeInTheDocument();
     expect(publish).toHaveTextContent("Publish");
+  });
+
+  it("opens one compact actionable popover for a failed save and closes it after saving succeeds", () => {
+    const onRetryCurrentPageSave = vi.fn();
+    const onDiscardCurrentPageEdits = vi.fn();
+    const { rerender } = render(
+      <DocseraHeader
+        {...baseProps}
+        onDiscardCurrentPageEdits={onDiscardCurrentPageEdits}
+        onRetryCurrentPageSave={onRetryCurrentPageSave}
+        onPublishPendingChanges={vi.fn()}
+        pendingChanges={pending([])}
+        saveStatus="Changes not saved"
+      />
+    );
+
+    const trigger = screen.getByRole("button", { name: "Current page changes could not be saved" });
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("dialog", { name: "Save failed" })).toHaveTextContent("Failed to save changes.");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Discard edits" })).toHaveClass("docsera-header__save-failure-discard");
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard edits" }));
+    expect(onRetryCurrentPageSave).toHaveBeenCalledTimes(1);
+    expect(onDiscardCurrentPageEdits).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(trigger);
+    expect(screen.queryByRole("dialog", { name: "Save failed" })).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    expect(screen.getByRole("dialog", { name: "Save failed" })).toBeInTheDocument();
+
+    rerender(<DocseraHeader {...baseProps} onPublishPendingChanges={vi.fn()} pendingChanges={pending([])} saveStatus="Saved" />);
+    expect(screen.queryByRole("dialog", { name: "Save failed" })).not.toBeInTheDocument();
   });
 
   it("reserves the live save-status geometry without exposing an accessible status", () => {

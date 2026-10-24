@@ -5,7 +5,9 @@ import path from "node:path";
 import os from "node:os";
 import { describe, expect, it } from "vitest";
 import {
+  isNodeNativeTestFile,
   isSupportedSuiteName,
+  nodeNativeTestFiles,
   supportedSuiteNamePattern,
   testSuites,
   validateSuiteManifest
@@ -34,6 +36,13 @@ async function removeDir(dir) {
 }
 
 describe("test suite manifest", () => {
+  it("excludes Node-native tests while retaining strict Vitest discovery", () => {
+    expect(nodeNativeTestFiles).toContain("scripts/verify-sdk-module-keys.test.mjs");
+    expect(isNodeNativeTestFile("scripts/verify-sdk-module-keys.test.mjs")).toBe(true);
+    expect(isNodeNativeTestFile("scripts\\verify-sdk-module-keys.test.mjs")).toBe(true);
+    expect(isNodeNativeTestFile("scripts/test-suite-manifest.test.mjs")).toBe(false);
+  });
+
   it("accepts a complete manifest with a stable supported naming contract", async () => {
     const rootDir = await createTempRoot("docsera-manifest-valid-");
     const discoveredFiles = [...new Set(testSuites.flatMap((suite) => suite.files))];

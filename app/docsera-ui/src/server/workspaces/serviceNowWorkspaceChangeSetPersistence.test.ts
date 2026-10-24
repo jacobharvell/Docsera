@@ -939,6 +939,18 @@ function seedDiscardRecoveryScenario() {
   };
 }
 
+function addDiscardRemovalBatches(count: number, changeSetId = "change-set-001") {
+  for (let index = 0; index < count; index++) {
+    const batchId = `discard-cleanup-batch-${index}`;
+    glideMock.insertRow(removalBatchTable, batchId, {
+      batch_key: batchId,
+      change_set: changeSetId,
+      lifecycle_state: "retired",
+      root_page: "page-001"
+    });
+  }
+}
+
 function expectSucceeded<T extends { kind: string }>(result: T): Extract<T, { kind: "succeeded" }> {
   if (result.kind !== "succeeded") {
     throw new Error(`Expected success, received ${JSON.stringify(result)}.`);
@@ -2052,6 +2064,72 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
       }
     });
   }
+
+  for (const phase of ["mutation_page_persisted", "mutation_entry_persisted", "mutation_change_set_persisted"] satisfies FailurePhase[]) {
+    it(`recovers the abandoned ${phase} body claim without original request input`, () => {
+      seedWorkspaceFoundation();
+      let now = "2026-07-18 00:00:00";
+      const original = {
+        authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+        draftContentJson: createDocument(`Recovered ${phase}`), expectedRevision: 0,
+        pageSysId: "page-001", workspace: workspaceRef()
+      };
+      expect(createService({ currentTimestamp: () => now, failPhase: phase }).savePageBody(original).kind).toBe("failed");
+      now = "2026-07-18 00:01:00";
+
+      const recovery = createService({ currentTimestamp: () => now });
+      expect(recovery.recoverAbandonedBodySave(workspaceRef())).toEqual({
+        kind: phase === "mutation_change_set_persisted" ? "already_resolved" : "recovered",
+        authority: { changeSetId: "change-set-001", changeSetRevision: 1 }
+      });
+      expect(pageRow("page-001")?.fields.draft_revision).toBe(1);
+      expect(getRows(changeEntryTable)).toHaveLength(1);
+      expect(changeSetRow()?.fields.change_set_revision).toBe(1);
+      expect(recovery.recoverAbandonedBodySave(workspaceRef())).toEqual({
+        kind: "already_resolved", authority: { changeSetId: "change-set-001", changeSetRevision: 1 }
+      });
+    });
+  }
+
+  it("does not take over a live body executor and safely identifies unsupported active claims", () => {
+    seedWorkspaceFoundation();
+    const body = {
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      draftContentJson: createDocument("Live executor"), expectedRevision: 0,
+      pageSysId: "page-001", workspace: workspaceRef()
+    };
+    expect(createService({ failPhase: "mutation_claim_created" }).savePageBody(body).kind).toBe("failed");
+    expect(createService().recoverAbandonedBodySave(workspaceRef())).toEqual({
+      kind: "executor_active", authority: { changeSetId: "change-set-001", changeSetRevision: 0 }
+    });
+    const claim = claimRow("change-set-001:0");
+    if (!claim) throw new Error("Expected claim");
+    glideMock.updateRow(mutationClaimTable, claim.sysId, {
+      ...claim.fields,
+      mutation_kind: "create",
+      mutation_payload_json: JSON.stringify({ kind: "create", parentPageSysId: null, title: "No recovery" })
+    });
+    expect(createService({ currentTimestamp: () => "2026-07-18 00:01:00" }).recoverAbandonedBodySave(workspaceRef())).toEqual({
+      kind: "unsupported", authority: { changeSetId: "change-set-001", changeSetRevision: 0 }
+    });
+  });
+
+  it("lets concurrent recovery requests finalize an expired body claim exactly once", () => {
+    seedWorkspaceFoundation();
+    const original = {
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      draftContentJson: createDocument("Concurrent recovery"), expectedRevision: 0,
+      pageSysId: "page-001", workspace: workspaceRef()
+    };
+    expect(createService({ currentTimestamp: () => "2026-07-18 00:00:00", failPhase: "mutation_page_persisted" }).savePageBody(original).kind).toBe("failed");
+    const first = createService({ currentTimestamp: () => "2026-07-18 00:01:00" }).recoverAbandonedBodySave(workspaceRef());
+    const second = createService({ currentTimestamp: () => "2026-07-18 00:01:00" }).recoverAbandonedBodySave(workspaceRef());
+    expect(first).toEqual({ kind: "recovered", authority: { changeSetId: "change-set-001", changeSetRevision: 1 } });
+    expect(second).toEqual({ kind: "already_resolved", authority: { changeSetId: "change-set-001", changeSetRevision: 1 } });
+    expect(pageRow("page-001")?.fields.draft_revision).toBe(1);
+    expect(getRows(changeEntryTable)).toHaveLength(1);
+    expect(changeSetRow()?.fields.change_set_revision).toBe(1);
+  });
 
   it("stops the former delete executor before another durable write when ownership changes after removal persistence", () => {
     seedWorkspaceFoundation({
@@ -3672,7 +3750,110 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
 
       expect(recovered.result.pendingChanges.rows).toEqual([]);
       expect(changeSetRow(recovered.authority.changeSetId)?.fields.recovery_state).toBe("none");
+      expect(getRows(removalMemberTable)).toEqual([]);
+      expect(getRows(removalBatchTable)).toEqual([]);
     }
+  });
+
+  it("skips removal-member cleanup queries when Discard All has no removal batches", () => {
+    seedWorkspaceFoundation();
+    const authority = expectSucceeded(createService().savePageSettings({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-001",
+      slug: "discard-no-removals",
+      title: "Discard no removals",
+      workspace: workspaceRef()
+    })).authority;
+    const service = createService({ afterDurablePhase(phase) {
+      if (phase === "discard_selector_switched") {
+        glideMock.clearOperations();
+        glideMock.clearQueries();
+      }
+    } });
+
+    expectSucceeded(service.discardAllWorkspace({
+      authority,
+      commandId: "discard-no-removal-batches-001",
+      workspace: workspaceRef()
+    }));
+
+    expect(glideMock.queryCount(removalMemberTable)).toBe(0);
+    expect(glideMock.deleteCount(removalMemberTable)).toBe(0);
+    expect(glideMock.deleteCount(removalBatchTable)).toBe(0);
+  });
+
+  it("retrieves several discarded removal batches through one cleanup member query", () => {
+    const scenario = seedDiscardRecoveryScenario();
+    addDiscardRemovalBatches(2);
+    const service = createService({ afterDurablePhase(phase) {
+      if (phase === "discard_selector_switched") {
+        glideMock.clearOperations();
+        glideMock.clearQueries();
+      }
+    } });
+
+    expectSucceeded(service.discardAllWorkspace({
+      authority: scenario.authority,
+      commandId: "discard-several-removal-batches-001",
+      workspace: scenario.workspace
+    }));
+
+    expect(glideMock.queryCount(removalMemberTable)).toBe(1);
+    expect(String(glideMock.queryConditions(removalMemberTable)[0]?.[0]?.value).split(",")).toHaveLength(3);
+    expect(glideMock.deleteCount(removalMemberTable)).toBe(1);
+    expect(glideMock.deleteCount(removalBatchTable)).toBe(3);
+  });
+
+  it("clears mixed removal batches through bounded member queries without touching another change set", () => {
+    const scenario = seedDiscardRecoveryScenario();
+    addDiscardRemovalBatches(100);
+    glideMock.insertRow(removalBatchTable, "unrelated-discard-batch", {
+      batch_key: "unrelated-discard-batch",
+      change_set: "change-set-unrelated",
+      lifecycle_state: "retired",
+      root_page: "unrelated-page"
+    });
+    glideMock.insertRow(removalMemberTable, "unrelated-discard-member", {
+      batch_page_key: "unrelated-discard-batch:unrelated-page",
+      first_pending_sequence: 1,
+      page: "unrelated-page",
+      removal_batch: "unrelated-discard-batch"
+    });
+    const service = createService({ afterDurablePhase(phase) {
+      if (phase === "discard_selector_switched") {
+        glideMock.clearOperations();
+        glideMock.clearQueries();
+      }
+    } });
+
+    const discarded = expectSucceeded(service.discardAllWorkspace({
+      authority: scenario.authority,
+      commandId: "discard-batched-removal-cleanup-001",
+      workspace: scenario.workspace
+    }));
+
+    const cleanupQueries = glideMock.queryConditions(removalMemberTable);
+    expect(glideMock.queryCount(removalMemberTable)).toBe(2);
+    expect(cleanupQueries.map((conditions) => String(conditions[0]?.value).split(",").length)).toEqual([100, 1]);
+    expect(cleanupQueries.flatMap((conditions) => String(conditions[0]?.value).split(","))).not.toContain("unrelated-discard-batch");
+    expect(glideMock.deleteCount(removalMemberTable)).toBe(1);
+    expect(glideMock.deleteCount(removalBatchTable)).toBe(101);
+    expect(getRows(removalBatchTable)).toEqual([expect.objectContaining({ sysId: "unrelated-discard-batch" })]);
+    expect(getRows(removalMemberTable)).toEqual([expect.objectContaining({ sysId: "unrelated-discard-member" })]);
+
+    const memberDeletes = glideMock.deleteCount(removalMemberTable);
+    const batchDeletes = glideMock.deleteCount(removalBatchTable);
+    const cleanupQueryCount = glideMock.queryCount(removalMemberTable);
+    const replayed = expectSucceeded(service.discardAllWorkspace({
+      authority: scenario.authority,
+      commandId: "discard-batched-removal-cleanup-001",
+      workspace: currentWorkspaceRef()
+    }));
+
+    expect(replayed.result).toEqual(discarded.result);
+    expect(glideMock.deleteCount(removalMemberTable)).toBe(memberDeletes);
+    expect(glideMock.deleteCount(removalBatchTable)).toBe(batchDeletes);
+    expect(glideMock.queryCount(removalMemberTable)).toBe(cleanupQueryCount);
   });
 
   it("resolves pending attribution through record and field read access without leaking identifiers", () => {
@@ -4251,6 +4432,129 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     ]);
   });
 
+  it.each([false, true])("reuses the authoritative state in a 100-page %s hierarchy while returning the complete moved projection", (nested) => {
+    const pageId = (index: number) => `scale-${index.toString().padStart(3, "0")}`;
+    const pages = Array.from({ length: 100 }, (_, index) => {
+      const title = `Scale ${index}`;
+      return createSeedPage({
+        pageId: pageId(index),
+        draftBodyText: `${title} draft body`,
+        draftContentJson: createDocument(`${title} draft body`),
+        draftSlug: `scale-${index}`,
+        draftTitle: title,
+        parentPageId: nested && index >= 50 ? pageId(index - 50) : null,
+        publishedBodyText: `${title} published body`,
+        publishedContentJson: createDocument(`${title} published body`),
+        publishedSlug: `published-scale-${index}`,
+        publishedTitle: `Published ${title}`,
+        siblingOrder: String(nested && index >= 50 ? 1 : index + 1)
+      });
+    });
+    seedWorkspaceFoundation({ pages });
+    glideMock.clearIterations();
+    glideMock.clearQueries();
+    let recoveredPageRecordSearches = 0;
+    const originalFind = Array.prototype.find;
+    const find = vi.spyOn(Array.prototype, "find").mockImplementation(function (predicate, thisArg) {
+      // Mock GlideRecord also uses Array.find() for table operations. Count only
+      // searches over the recovered page-record array used to build this projection.
+      if (this.length === 100 && this.every((value) =>
+        typeof value === "object" && value !== null && "workspaceSysId" in value
+      )) {
+        recoveredPageRecordSearches += 1;
+      }
+      return originalFind.call(this, predicate, thisArg);
+    });
+    try {
+      const service = createService();
+      const moved = expectSucceeded(service.movePage({
+        authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+        pageSysId: pageId(25),
+        parentPageSysId: nested ? pageId(0) : null,
+        siblingOrder: "2",
+        workspace: workspaceRef()
+      }));
+
+      expect(moved.result.pages).toHaveLength(100);
+      expect(moved.result.pages.map((page) => page.sysId)).toEqual([
+        ...(nested
+          ? [pageId(0), pageId(50), pageId(25), pageId(75),
+            ...Array.from({ length: 24 }, (_, index) => [pageId(index + 1), pageId(index + 51)]).flat(),
+            ...Array.from({ length: 24 }, (_, index) => [pageId(index + 26), pageId(index + 76)]).flat()]
+          : [pageId(0), pageId(1), pageId(25),
+            ...Array.from({ length: 23 }, (_, index) => pageId(index + 2)),
+            ...Array.from({ length: 24 }, (_, index) => pageId(index + 26)),
+            ...Array.from({ length: 50 }, (_, index) => pageId(index + 50))])
+      ]);
+      for (const page of moved.result.pages) {
+        const pageIndex = Number(page.sysId?.slice(-3));
+        const movedPage = pageIndex === 25;
+        const effectiveTitle = movedPage ? `Scale ${pageIndex}` : `Published Scale ${pageIndex}`;
+        const effectiveSlug = movedPage ? `scale-${pageIndex}` : `published-scale-${pageIndex}`;
+        const effectiveBody = movedPage ? `Scale ${pageIndex} draft body` : `Scale ${pageIndex} published body`;
+        expect(page).toMatchObject({
+          sysId: pageId(pageIndex),
+          parentPageSysId: pageIndex === 25 ? (nested ? pageId(0) : null) : nested && pageIndex >= 50 ? pageId(pageIndex - 50) : null,
+          siblingOrder: pageIndex === 25 ? 2 : nested && pageIndex >= 50 ? 1 : pageIndex + 1,
+          draftTitle: effectiveTitle,
+          draftSlug: effectiveSlug,
+          draftBodyText: effectiveBody,
+          publishedTitle: effectiveTitle,
+          publishedSlug: effectiveSlug,
+          publishedBodyText: effectiveBody,
+          publicationState: "published"
+        });
+        expect(page.draftContentJson).toEqual(createDocumentEnvelope(effectiveBody));
+        expect(page.publishedContentJson).toEqual(createDocumentEnvelope(effectiveBody));
+      }
+      expect(glideMock.queryCount(pageTable)).toBe(1);
+      expect(glideMock.queryCount(pageSnapshotTable)).toBe(1);
+      expect(glideMock.iterationCount(pageTable)).toBe(100);
+      expect(glideMock.iterationCount(pageSnapshotTable)).toBe(100);
+      // Restoring the former per-projection lookup would search this recovered
+      // 100-record array once per projected page, making this assertion fail.
+      expect(recoveredPageRecordSearches).toBe(0);
+      expect(pendingRows(service)).toEqual([expect.objectContaining({ pageSysId: pageId(25) })]);
+      expect(getRows(changeEntryTable).map((row) => row.fields.page)).toEqual([pageId(25)]);
+
+      const replay = expectSucceeded(service.movePage({
+        authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+        pageSysId: pageId(25),
+        parentPageSysId: nested ? pageId(0) : null,
+        siblingOrder: "2",
+        workspace: workspaceRef()
+      }));
+      expect(replay).toEqual(moved);
+    } finally {
+      find.mockRestore();
+    }
+  });
+
+  it.each(["workspace selector", "change-set metadata"])("falls back to a complete load when %s changes after move persistence", (changed) => {
+    seedWorkspaceFoundation({ pages: [
+      createSeedPage({ pageId: "page-001", publishedTitle: "First" }),
+      createSeedPage({ pageId: "page-002", publishedTitle: "Second", siblingOrder: "2" })
+    ] });
+    glideMock.clearIterations();
+    const service = createService({ afterDurablePhase(phase) {
+      if (phase !== "mutation_page_persisted") {
+        return;
+      }
+      const table = changed === "workspace selector" ? workspaceTable : changeSetTable;
+      const row = getRows(table)[0];
+      glideMock.updateRow(table, row.sysId, {
+        ...row.fields,
+        ...(changed === "workspace selector" ? { workspace_state_revision: 1 } : { change_set_revision: 2 })
+      });
+    } });
+
+    service.movePage({ authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "page-002", parentPageSysId: null, siblingOrder: "0", workspace: workspaceRef() });
+
+    expect(glideMock.iterationCount(pageTable)).toBe(4);
+    expect(glideMock.iterationCount(pageSnapshotTable)).toBe(4);
+  });
+
   it("rejects invalid movement without page-row or revision changes", () => {
     seedWorkspaceFoundation({
       pages: [
@@ -4668,6 +4972,84 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     // remaining reads are the initial load plus authoritative recovery/result loads.
     expect(glideMock.queryCount(pageSnapshotTable)).toBe(4);
     expect(glideMock.iterationCount(pageSnapshotTable)).toBe(400);
+  });
+
+  it("reuses the selected snapshot and indexes prepared Discard All records once for a 100-page hierarchy", () => {
+    const pages = Array.from({ length: 100 }, (_, index) => createSeedPage({
+      pageId: `discard-scale-${index.toString().padStart(3, "0")}`,
+      parentPageId: index === 0 ? null : index < 90 ? "discard-scale-000" : "discard-scale-090",
+      siblingOrder: String(index === 0 ? 1 : index < 90 ? index : index - 89)
+    }));
+    seedWorkspaceFoundation({ pages });
+    const service = createService();
+    const changed = expectSucceeded(service.savePageSettings({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: "discard-scale-000",
+      slug: "changed-root",
+      title: "Changed root",
+      workspace: workspaceRef()
+    }));
+
+    glideMock.clearQueries();
+    glideMock.clearIterations();
+    const discarded = expectSucceeded(service.discardAllWorkspace({
+      authority: changed.authority,
+      commandId: "discard-scale-001",
+      workspace: workspaceRef()
+    }));
+
+    // The accepted baseline made one extra complete selected-snapshot read:
+    // two queries / 200 row iterations. The one remaining read is the initial
+    // state load; result preparation uses that already validated snapshot.
+    expect(glideMock.queryCount(pageSnapshotTable)).toBe(1);
+    expect(glideMock.iterationCount(pageSnapshotTable)).toBe(100);
+    expect(discarded.result.pages).toHaveLength(100);
+    expect(discarded.result.pages.find((page) => page.sysId === "discard-scale-000")).toMatchObject({
+      active: true,
+      draftTitle: "discard-scale-000",
+      parentPageSysId: null,
+      siblingOrder: 1
+    });
+    expect(discarded.result.pages.find((page) => page.sysId === "discard-scale-089")).toMatchObject({
+      parentPageSysId: "discard-scale-000",
+      siblingOrder: 89
+    });
+    expect(discarded.result.pages.find((page) => page.sysId === "discard-scale-099")).toMatchObject({
+      draftBodyText: "discard-scale-099 published body",
+      parentPageSysId: "discard-scale-090",
+      siblingOrder: 10
+    });
+  });
+
+  it("restores Discard All from the selected successor snapshot instead of seed or stale draft fields", () => {
+    const seeded = seedValidNonSeedSelectors();
+    const service = createService();
+    const changed = expectSucceeded(service.savePageSettings({
+      authority: seeded.authority,
+      pageSysId: "page-002",
+      slug: "changed-child",
+      title: "Changed child",
+      workspace: seeded.workspace
+    }));
+
+    const discarded = expectSucceeded(service.discardAllWorkspace({
+      authority: changed.authority,
+      commandId: "discard-successor-snapshot-001",
+      workspace: seeded.workspace
+    }));
+
+    expect(discarded.result.pages.find((page) => page.sysId === "page-002")).toMatchObject({
+      active: true,
+      draftBodyText: "Selected child body",
+      draftSlug: "selected-child",
+      draftTitle: "Selected Child",
+      parentPageSysId: "page-001",
+      publicationState: "published",
+      publishedBodyText: "Selected child body",
+      publishedSlug: "selected-child",
+      publishedTitle: "Selected Child",
+      siblingOrder: 1
+    });
   });
 
   it("restores Modified · Moved fields from the selected successor snapshot, not page published fields or the seed snapshot", () => {

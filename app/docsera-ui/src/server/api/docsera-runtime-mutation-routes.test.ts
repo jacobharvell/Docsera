@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
     movePage: vi.fn(),
     pendingChanges: vi.fn(),
     publishWorkspace: vi.fn(),
+    recoverAbandonedBodySave: vi.fn(),
     savePageBody: vi.fn(),
     savePageSettings: vi.fn()
   },
@@ -69,7 +70,7 @@ vi.mock("@servicenow/glide", () => ({
 import { process as processCreatePage } from "./docsera-runtime-create-page.ts";
 import { process as processMovePage } from "./docsera-runtime-page-move.ts";
 import { process as processPendingChanges } from "./docsera-runtime-workspace-pending-changes.ts";
-import { process as processSavePageBody } from "./docsera-runtime-page-save.ts";
+import { process as processSavePageBody, processBodySaveRecovery } from "./docsera-runtime-page-save.ts";
 import { process as processWorkspaceDiscardAll } from "./docsera-runtime-workspace-discard-all.ts";
 import { process as processWorkspaceDiscardPage } from "./docsera-runtime-workspace-discard-page.ts";
 import { process as processWorkspacePublish } from "./docsera-runtime-workspace-publish.ts";
@@ -101,6 +102,7 @@ describe("docsera runtime mutation routes", () => {
     mocks.persistence.movePage.mockReset();
     mocks.persistence.pendingChanges.mockReset();
     mocks.persistence.publishWorkspace.mockReset();
+    mocks.persistence.recoverAbandonedBodySave.mockReset();
     mocks.persistence.savePageBody.mockReset();
     mocks.persistence.savePageSettings.mockReset();
     mocks.glide.gs.error.mockReset();
@@ -328,6 +330,48 @@ describe("docsera runtime mutation routes", () => {
         message: "This workspace edit session was replaced by another editor."
       }
     });
+  });
+
+  it("recovers an expired body claim through the held lease without accepting client mutation authority", async () => {
+    mocks.lease.verifyWorkspaceEditLease.mockResolvedValue({ kind: "held", leaseToken: "workspace-lease-token", heartbeatIntervalMs: 60_000, staleAfterMs: 300_000, changeSetId: "change-set-001", changeSetRevision: 4 });
+    mocks.persistence.recoverAbandonedBodySave.mockReturnValue({ kind: "recovered", authority: { changeSetId: "change-set-001", changeSetRevision: 5 } });
+    const response = responseRecorder();
+
+    await processBodySaveRecovery({ body: {
+      workspaceSysId: "workspace-001", workspaceLeaseToken: "workspace-lease-token",
+      expectedChangeSetId: "attacker-controlled", expectedChangeSetRevision: 999,
+      pageSysId: "attacker-controlled", draftContentJson: { secret: "must-not-be-used" }
+    } }, response);
+
+    expect(mocks.persistence.recoverAbandonedBodySave).toHaveBeenCalledWith(mocks.workspaceRecord);
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ result: { outcome: "recovered", changeSetId: "change-set-001", changeSetRevision: 5 } });
+  });
+
+  it("maps body-save recovery outcomes without exposing claim payloads", async () => {
+    mocks.lease.verifyWorkspaceEditLease.mockResolvedValue({ kind: "held", leaseToken: "workspace-lease-token", heartbeatIntervalMs: 60_000, staleAfterMs: 300_000, changeSetId: "change-set-001", changeSetRevision: 4 });
+    mocks.persistence.recoverAbandonedBodySave.mockReturnValue({ kind: "executor_active", authority: { changeSetId: "change-set-001", changeSetRevision: 4 } });
+    const active = responseRecorder();
+    await processBodySaveRecovery({ body: { workspaceSysId: "workspace-001", workspaceLeaseToken: "workspace-lease-token" } }, active);
+    expect(active.body).toEqual({ error: { code: "executor_active", retryable: false, message: "The original body-save executor is still active." } });
+
+    mocks.persistence.recoverAbandonedBodySave.mockReturnValue({ kind: "unsupported", authority: { changeSetId: "change-set-001", changeSetRevision: 4 } });
+    const unsupported = responseRecorder();
+    await processBodySaveRecovery({ body: { workspaceSysId: "workspace-001", workspaceLeaseToken: "workspace-lease-token" } }, unsupported);
+    expect(unsupported.body).toEqual({ error: { code: "unsupported_mutation", retryable: false, message: "The unfinished mutation cannot be recovered by this operation." } });
+  });
+
+  it("requires the established Edit lease before body-save recovery", async () => {
+    mocks.lease.verifyWorkspaceEditLease.mockResolvedValue({ kind: "lost", errorMessage: "This workspace edit session was replaced by another editor.", currentHolder: null });
+    mocks.lease.sendWorkspaceLeaseMutationFailure.mockImplementation((_result, response) => {
+      response.setStatus?.(409);
+      response.setBody({ error: { code: "workspace_lease_lost", retryable: false, message: "This workspace edit session was replaced by another editor." } });
+      return true;
+    });
+    const response = responseRecorder();
+    await processBodySaveRecovery({ body: { workspaceSysId: "workspace-001", workspaceLeaseToken: "wrong" } }, response);
+    expect(mocks.persistence.recoverAbandonedBodySave).not.toHaveBeenCalled();
+    expect(response.status).toBe(409);
   });
 
   it("passes the caller's claimed generation pair to workspace discard-page persistence and returns refreshed state", async () => {

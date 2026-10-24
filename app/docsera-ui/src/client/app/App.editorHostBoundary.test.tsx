@@ -166,6 +166,7 @@ vi.mock("../editor/PageEditorHost", () => {
     const savedTextRef = useRef(savedText);
     const revisionRef = useRef(props.initialRevision);
     const deferredFlushRef = useRef<DeferredFlush | null>(null);
+    const terminalConflictRef = useRef(false);
     const controlRef = useRef<MockHostControl | null>(null);
 
     propsRef.current = props;
@@ -188,6 +189,7 @@ vi.mock("../editor/PageEditorHost", () => {
           ]),
         emitStatus: (state) => propsRef.current.onStatusChange(state),
         makeDirty: () => {
+          terminalConflictRef.current = false;
           setLastFailure(false);
           setText("Draft change");
         },
@@ -235,6 +237,9 @@ vi.mock("../editor/PageEditorHost", () => {
     }
 
     async function flushDocument() {
+      if (terminalConflictRef.current) {
+        return false;
+      }
       const commitDraft = async () => {
         const result = await propsRef.current.onSaveDraft({
           draftContentJson: createEnvelopeForMockText(textRef.current),
@@ -335,6 +340,34 @@ vi.mock("../editor/PageEditorHost", () => {
 
       const nextStatus: MockHostStatus = {
         applyCanonicalEnvelope,
+        discardLocalEdits: ({ envelope, revision }) => {
+          const savedText = applyMockEnvelopeText(envelope);
+          revisionRef.current = revision;
+          savedSnapshots.set(props.pageSysId, savedText);
+          savedTextRef.current = savedText;
+          textRef.current = savedText;
+          setSavedText(savedText);
+          setText(savedText);
+          setLastFailure(false);
+          return true;
+        },
+        reconcileRecoveredDraft: ({ envelope, revision, preserveConflictUnlessTrusted = false }) => {
+          const recoveredText = applyMockEnvelopeText(envelope);
+          const matchesKnownSavedBaseline = recoveredText === savedTextRef.current;
+          const matchesCurrentDocument = recoveredText === textRef.current;
+          if (preserveConflictUnlessTrusted && !matchesKnownSavedBaseline && !matchesCurrentDocument) {
+            terminalConflictRef.current = true;
+            setLastFailure(true);
+            return { kind: "preserved_conflict" as const };
+          }
+          terminalConflictRef.current = false;
+          revisionRef.current = revision;
+          savedSnapshots.set(props.pageSysId, recoveredText);
+          savedTextRef.current = recoveredText;
+          setSavedText(recoveredText);
+          setLastFailure(false);
+          return { kind: textRef.current === recoveredText ? "saved" as const : "preserved_local_changes" as const };
+        },
         flush: flushDocument,
         getCanonicalEnvelope: () => createEnvelopeForMockText(textRef.current),
         getRecoverySnapshot: () => ({
@@ -574,6 +607,11 @@ function createClient(overrides: Partial<ServiceNowClient> = {}): ServiceNowClie
       state: "held" as const
     })),
     releaseWorkspaceEditLease: vi.fn(async () => ({ state: "released" as const })),
+    recoverWorkspaceBodySave: vi.fn(async () => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 8,
+      state: "already_resolved" as const
+    })),
     getPageEditLockStatus: vi.fn(async () => ({
       state: "unlocked" as const
     })),
@@ -983,6 +1021,46 @@ describe("App editor-host session boundary", () => {
     });
   });
 
+  it("preserves an in-flight body save across guarded navigation and installs its authority before the guarded flush", async () => {
+    const firstSave = createDeferred<PageBodySaveResult>();
+    const savePageBody = vi
+      .fn()
+      .mockImplementationOnce(() => firstSave.promise)
+      .mockResolvedValueOnce({
+        changeSetId: "change-set-001",
+        changeSetRevision: 9,
+        page: createPageRecord({ draftRevision: 2 }),
+        state: "succeeded" as const
+      });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { savePageBody });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await waitForHostControl();
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    const autosave = latestHostControl?.status?.flush?.();
+    await waitFor(() => expect(savePageBody).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "Child Draft" }));
+    await act(async () => {
+      firstSave.resolve({
+        changeSetId: "change-set-001",
+        changeSetRevision: 8,
+        page: createPageRecord({ draftRevision: 1 }),
+        state: "succeeded"
+      });
+      await autosave;
+    });
+
+    expect(await screen.findByRole("heading", { name: "Child Draft" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
+    expect(savePageBody).toHaveBeenCalledTimes(2);
+    expect(savePageBody.mock.calls.map(([input]) => input.workspaceAuthority)).toEqual([
+      expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 7 }),
+      expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 8 })
+    ]);
+  });
+
   it("opens leave dialog after a failed flush", async () => {
     renderApp("/?workspace=product-docs&mode=edit&page=overview");
 
@@ -996,6 +1074,42 @@ describe("App editor-host session boundary", () => {
 
     expect(await screen.findByRole("dialog", { name: "Unsaved changes" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+  });
+
+  it("keeps the editor session saveable after a failed guarded flush and Stay", async () => {
+    const savePageBody = vi
+      .fn()
+      .mockResolvedValueOnce({
+        errorMessage: "Save failed.",
+        state: "failed" as const
+      })
+      .mockResolvedValueOnce({
+        changeSetId: "change-set-001",
+        changeSetRevision: 8,
+        page: createPageRecord({ draftRevision: 1 }),
+        state: "succeeded" as const
+      });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { savePageBody });
+
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await waitForHostControl();
+    const sessionKey = latestHostControl?.sessionKey;
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    fireEvent.click(screen.getByRole("button", { name: "Live" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Unsaved changes" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Stay and continue editing" }));
+    expect(screen.getByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    expect(latestHostControl?.sessionKey).toBe(sessionKey);
+
+    await act(async () => {
+      await latestHostControl?.status?.flush?.();
+    });
+
+    await waitFor(() => expect(savePageBody).toHaveBeenCalledTimes(2));
+    expect(await screen.findByRole("status", { name: "Current page changes saved" })).toBeInTheDocument();
+    expect(latestHostControl?.sessionKey).toBe(sessionKey);
   });
 
   it("commits Edit to Live after a successful flush without opening leave dialog", async () => {
@@ -1414,6 +1528,235 @@ describe("App editor-host session boundary", () => {
     expect(await screen.findByRole("status", { name: "Current page changes saved" })).toBeInTheDocument();
     expect(latestHostControl?.status?.isDirty).toBe(false);
     expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" });
+  });
+
+  it("keeps failed-save recovery inside the header popover after executor expiry", async () => {
+    const recoveredEnvelope = createEnvelopeForMockText("Draft change");
+    let editLoadCount = 0;
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }): Promise<PageListResult> => {
+      if (mode !== "edit") return createPageListResult("live", [createPageRecord()]);
+      editLoadCount += 1;
+      return createPageListResult("edit", [
+        createPageRecord({
+          draftContentJson: editLoadCount === 1 ? createEmptyDocseraDocumentEnvelope() : recoveredEnvelope,
+          draftRevision: editLoadCount === 1 ? 0 : 1
+        })
+      ]);
+    });
+    const savePageBody = vi.fn(async (): Promise<PageBodySaveResult> => ({
+      code: "conflict",
+      currentChangeSetId: "change-set-001",
+      currentChangeSetRevision: 8,
+      errorMessage: "The active draft generation changed. Reload before saving again.",
+      state: "failed"
+    }));
+    const recoverWorkspaceBodySave = vi
+      .fn()
+      .mockResolvedValueOnce({ code: "executor_active", errorMessage: "The original body-save executor is still active.", state: "executor_active" as const })
+      .mockResolvedValueOnce({ changeSetId: "change-set-001", changeSetRevision: 8, state: "recovered" as const });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { listPages, recoverWorkspaceBodySave, savePageBody });
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await waitForHostControl();
+
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    await act(async () => { await latestHostControl?.status?.flush?.(); });
+    expect(await screen.findByRole("button", { name: "Current page changes could not be saved" })).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Save failed" })).toHaveTextContent("Failed to save changes.");
+    expect(screen.getByText("Status Changes not saved")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(recoverWorkspaceBodySave).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(savePageBody).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("dialog", { name: "Save failed" })).toBeInTheDocument();
+  });
+
+  it("keeps autosave recovery messaging out of navigation and Changes Center while preserving command restrictions", async () => {
+    const savePageBody = vi.fn(async (): Promise<PageBodySaveResult> => ({
+      code: "conflict",
+      currentChangeSetId: "change-set-001",
+      currentChangeSetRevision: 8,
+      errorMessage: "The active draft generation changed. Reload before saving again.",
+      state: "failed"
+    }));
+    const recoverWorkspaceBodySave = vi.fn(async () => ({
+      code: "executor_active" as const,
+      errorMessage: "The original body-save executor is still active.",
+      state: "executor_active" as const
+    }));
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { recoverWorkspaceBodySave, savePageBody });
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await waitForHostControl();
+
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    await act(async () => { await latestHostControl?.status?.flush?.(); });
+    expect(await screen.findByRole("button", { name: "Current page changes could not be saved" })).toBeInTheDocument();
+    expect(screen.queryByText("The original body-save executor is still active.")).toBeNull();
+    expect(screen.queryByText("Reloading the latest draft projection. Saving is temporarily unavailable.")).toBeNull();
+
+    const createPage = screen.getByRole("button", { name: "New page" });
+    expect(createPage).toBeDisabled();
+    expect(createPage).not.toHaveAttribute("aria-describedby", "docsera-create-page-reason");
+
+    expect(screen.queryByText(/Current page is changes not saved/i)).toBeNull();
+  });
+
+  it("does not let local discard clear the recovery affordance while server recovery remains unresolved", async () => {
+    const savePageBody = vi.fn(async (): Promise<PageBodySaveResult> => ({
+      code: "conflict",
+      currentChangeSetId: "change-set-001",
+      currentChangeSetRevision: 8,
+      errorMessage: "The active draft generation changed. Reload before saving again.",
+      state: "failed"
+    }));
+    const recoverWorkspaceBodySave = vi.fn(async () => ({
+      code: "executor_active" as const,
+      errorMessage: "The original body-save executor is still active.",
+      state: "executor_active" as const
+    }));
+    const { serviceNowClient } = renderApp("/?workspace=product-docs&mode=edit&page=overview", { recoverWorkspaceBodySave, savePageBody });
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await waitForHostControl();
+
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    await act(async () => { await latestHostControl?.status?.flush?.(); });
+    const saveFailure = await screen.findByRole("button", { name: "Current page changes could not be saved" });
+    expect(screen.getByRole("dialog", { name: "Save failed" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Discard edits" }));
+
+    await waitFor(() => expect(recoverWorkspaceBodySave).toHaveBeenCalledTimes(2));
+    expect(serviceNowClient.listPages).toHaveBeenCalledTimes(1);
+    expect(screen.getByText(/Text.*Draft change/)).toBeInTheDocument();
+    expect(saveFailure).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Save failed" })).toBeInTheDocument();
+  });
+
+  it("discards only the current local edits after stale recovery establishes an authoritative draft", async () => {
+    const authoritativeEnvelope = createEnvelopeForMockText("Authoritative draft");
+    let editLoadCount = 0;
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }): Promise<PageListResult> => {
+      if (mode !== "edit") return createPageListResult("live", [createPageRecord()]);
+      editLoadCount += 1;
+      return createPageListResult("edit", [createPageRecord({
+        draftContentJson: editLoadCount === 1 ? createEmptyDocseraDocumentEnvelope() : authoritativeEnvelope,
+        draftRevision: editLoadCount === 1 ? 0 : 1
+      })]);
+    });
+    const savePageBody = vi.fn(async (): Promise<PageBodySaveResult> => ({
+      code: "conflict",
+      currentChangeSetId: "change-set-001",
+      currentChangeSetRevision: 8,
+      errorMessage: "The active draft generation changed. Reload before saving again.",
+      state: "failed"
+    }));
+    const recoverWorkspaceBodySave = vi
+      .fn()
+      .mockResolvedValueOnce({ code: "executor_active", errorMessage: "The original body-save executor is still active.", state: "executor_active" as const })
+      .mockResolvedValueOnce({ changeSetId: "change-set-001", changeSetRevision: 8, state: "recovered" as const });
+    const discardAllWorkspace = vi.fn();
+    const discardPageWorkspace = vi.fn();
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", {
+      discardAllWorkspace,
+      discardPageWorkspace,
+      listPages,
+      recoverWorkspaceBodySave,
+      savePageBody
+    });
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await waitForHostControl();
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    await act(async () => { await latestHostControl?.status?.flush?.(); });
+    expect(await screen.findByRole("button", { name: "Discard edits" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Discard edits" }));
+
+    await waitFor(() => expect(recoverWorkspaceBodySave).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(listPages).toHaveBeenCalledTimes(3));
+    expect(screen.getByText(/Text.*Authoritative draft/)).toBeInTheDocument();
+    expect(await screen.findByText("Status Saved")).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Save failed" })).toBeNull();
+    expect(savePageBody).toHaveBeenCalledTimes(1);
+    expect(discardAllWorkspace).not.toHaveBeenCalled();
+    expect(discardPageWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("reconciles an already-resolved save against its trusted baseline before the user Retry saves once with current authority", async () => {
+    const baselineEnvelope = createEmptyDocseraDocumentEnvelope();
+    let editLoadCount = 0;
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }): Promise<PageListResult> => {
+      if (mode !== "edit") return createPageListResult("live", [createPageRecord()]);
+      editLoadCount += 1;
+      return createPageListResult("edit", [createPageRecord({ draftContentJson: baselineEnvelope, draftRevision: editLoadCount === 1 ? 0 : 1 })]);
+    });
+    const savePageBody = vi.fn()
+      .mockResolvedValueOnce({
+        code: "conflict",
+        currentChangeSetId: "change-set-001",
+        currentChangeSetRevision: 8,
+        errorMessage: "The active draft generation changed. Reload before saving again.",
+        state: "failed"
+      } satisfies PageBodySaveResult)
+      .mockResolvedValueOnce({
+        changeSetId: "change-set-001",
+        changeSetRevision: 9,
+        page: createPageRecord({ draftRevision: 2 }),
+        state: "succeeded"
+      } satisfies PageBodySaveResult);
+    const recoverWorkspaceBodySave = vi.fn()
+      .mockResolvedValueOnce({ code: "executor_active", errorMessage: "The original body-save executor is still active.", state: "executor_active" as const })
+      .mockResolvedValueOnce({ changeSetId: "change-set-001", changeSetRevision: 8, state: "already_resolved" as const });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { listPages, recoverWorkspaceBodySave, savePageBody });
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await waitForHostControl();
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    await act(async () => { await latestHostControl?.status?.flush?.(); });
+    expect(await screen.findByRole("button", { name: "Retry" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(savePageBody).toHaveBeenCalledTimes(2));
+    expect(savePageBody.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      expectedRevision: 1,
+      workspaceAuthority: expect.objectContaining({ changeSetId: "change-set-001", changeSetRevision: 8 })
+    }));
+    expect(await screen.findByRole("status", { name: "Current page changes saved" })).toBeInTheDocument();
+  });
+
+  it("keeps divergent already-resolved server content conflicted without issuing a replacement save", async () => {
+    let editLoadCount = 0;
+    const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }): Promise<PageListResult> => {
+      if (mode !== "edit") return createPageListResult("live", [createPageRecord()]);
+      editLoadCount += 1;
+      return createPageListResult("edit", [createPageRecord({
+        draftContentJson: editLoadCount === 1 ? createEmptyDocseraDocumentEnvelope() : createEnvelopeForMockText("Server draft"),
+        draftRevision: editLoadCount === 1 ? 0 : 1
+      })]);
+    });
+    const savePageBody = vi.fn(async (): Promise<PageBodySaveResult> => ({
+      code: "conflict",
+      currentChangeSetId: "change-set-001",
+      currentChangeSetRevision: 8,
+      errorMessage: "The active draft generation changed. Reload before saving again.",
+      state: "failed"
+    }));
+    const recoverWorkspaceBodySave = vi.fn()
+      .mockResolvedValueOnce({ code: "executor_active", errorMessage: "The original body-save executor is still active.", state: "executor_active" as const })
+      .mockResolvedValueOnce({ changeSetId: "change-set-001", changeSetRevision: 8, state: "already_resolved" as const });
+
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { listPages, recoverWorkspaceBodySave, savePageBody });
+    expect(await screen.findByRole("heading", { name: "Overview Draft" })).toBeInTheDocument();
+    await waitForHostControl();
+    fireEvent.click(screen.getByRole("button", { name: "Make dirty" }));
+    await act(async () => { await latestHostControl?.status?.flush?.(); });
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(recoverWorkspaceBodySave).toHaveBeenCalledTimes(2));
+    expect(savePageBody).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole("dialog", { name: "Save failed" })).toBeInTheDocument();
+    expect(latestHostControl?.status?.isDirty).toBe(true);
   });
 
   it("blocks repeat body persistence until a stale-generation refresh installs the refreshed workspace authority", async () => {

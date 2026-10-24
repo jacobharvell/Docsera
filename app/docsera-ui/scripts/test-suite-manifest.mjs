@@ -4,6 +4,9 @@ import { fileURLToPath } from "node:url";
 
 export const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 export const supportedSuiteNamePattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const nodeNativeTestFiles = new Set([
+  "scripts/verify-sdk-module-keys.test.mjs"
+]);
 
 export const testSuites = [
   {
@@ -214,6 +217,7 @@ export const testSuites = [
       "scripts/verify-sdk-runtime.test.mjs",
       "scripts/verify-standalone-layout.test.mjs",
       "scripts/workspace-verifier-runtime-sequence.test.mjs",
+      "src/client/features/workspaces/ScrollbarPresentation.test.ts",
       "src/client/bootstrap.test.tsx",
       "src/client/diagnostics.test.ts",
       "src/client/main.test.ts",
@@ -232,6 +236,10 @@ export const testSuites = [
 
 function isVitestFile(fileName) {
   return /\.(?:test|spec)\.[^.]+$/i.test(fileName);
+}
+
+export function isNodeNativeTestFile(filePath) {
+  return nodeNativeTestFiles.has(filePath.replaceAll("\\", "/"));
 }
 
 export function isSupportedSuiteName(name) {
@@ -257,7 +265,10 @@ export function discoverVitestFiles(rootDir = packageRoot) {
       }
 
       if (entry.isFile() && isVitestFile(entry.name)) {
-        discovered.push(toRelativePath(join(currentDir, entry.name)));
+        const relativePath = toRelativePath(join(currentDir, entry.name));
+        if (!isNodeNativeTestFile(relativePath)) {
+          discovered.push(relativePath);
+        }
       }
     }
   }
