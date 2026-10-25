@@ -272,6 +272,9 @@ export type WorkspaceDiscardPageResult = WorkspaceMutationSuccess<{
   pendingChanges: WorkspacePendingChangesReadModel;
   workspaceStateRevision: number;
 }> | WorkspaceMutationFailure;
+type WorkspaceDiscardPageFreshStateResult =
+  | WorkspaceMutationFailure
+  | { kind: "succeeded"; result: Extract<WorkspaceDiscardPageResult, { kind: "succeeded" }>["result"] };
 export type WorkspacePendingChangesResult =
   | { kind: "succeeded"; pending: WorkspacePendingChangesReadModel }
   | {
@@ -1310,16 +1313,18 @@ function buildDraftPages(pageRecords: PageRecord[], snapshotPages: SnapshotPage[
   return results;
 }
 
-function loadWorkspaceState(
-  workspaceInput: WorkspaceRecord,
-  dependencies: WorkspaceChangeSetPersistenceDependencies,
-  mode: "edit" | "live" = "edit"
-): {
+type LoadedWorkspaceState = {
   activeChangeSet: { commandCorrelationId: string; recoveryState: string; revision: number; sysId: string };
   pageRecords: PageRecord[];
   state: WorkspaceChangeSetState;
   workspace: WorkspaceRecord;
-} {
+};
+
+function loadWorkspaceState(
+  workspaceInput: WorkspaceRecord,
+  dependencies: WorkspaceChangeSetPersistenceDependencies,
+  mode: "edit" | "live" = "edit"
+): LoadedWorkspaceState {
   const foundationPageRecords = cleanText(workspaceInput.pendingChangeSetSysId) && cleanText(workspaceInput.publishedSnapshotSetSysId)
     ? []
     : listWorkspacePageRecords(cleanText(workspaceInput.sysId), "foundation");
@@ -1959,6 +1964,20 @@ function orderProjectionPages(pages: SnapshotPage[]): SnapshotPage[] {
   };
   appendBranch("");
   return ordered.length === pages.length ? ordered : [...pages].sort((left, right) => normalizeSiblingOrder(left.siblingOrder) - normalizeSiblingOrder(right.siblingOrder));
+}
+
+function projectLoadedWorkspaceState(loaded: LoadedWorkspaceState, mode: "edit" | "live"): WorkspaceProjectionSuccess {
+  const recordMap = new Map(loaded.pageRecords.map((page) => [cleanText(page.sysId), page]));
+  const projected = orderProjectionPages(mode === "live" ? projectLive(loaded.state) : projectEdit(loaded.state)).map((page) =>
+    pageFromProjectionPage(page, recordMap.get(page.pageId), cleanText(loaded.workspace.sysId), mode)
+  );
+  return {
+    kind: "succeeded",
+    mode,
+    pages: projected,
+    state: loaded.state,
+    workspace: loaded.workspace
+  };
 }
 
 function refreshEntriesForPage(state: WorkspaceChangeSetState, pageId: string) {
@@ -2763,21 +2782,122 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
     ...createDefaultDependencies(),
     ...overrides
   };
+  const pendingChangesFromLoadedState = (loaded: LoadedWorkspaceState): WorkspacePendingChangesResult => {
+    try {
+      const recovery = readActiveDiscardRecovery(loaded);
+      if (recovery) {
+        return {
+          kind: "failed",
+          affectedPageCount: recovery.affectedPageCount,
+          code: "recovery_required",
+          currentChangeSetId: recovery.successorAuthority.changeSetId,
+          currentChangeSetRevision: recovery.successorAuthority.changeSetRevision,
+          errorMessage: discardRecoveryRequiredMessage(),
+          recoveryCommandId: recovery.recoveryCommandId,
+          status: 409
+        };
+      }
+      const authority = nextAuthority(loaded.state);
+      const entries = pendingEntries(loaded.state);
+      const editTitles = new Map<string, string>();
+      if (entries.some((entry) => entry.category !== "Removed")) {
+        for (const page of projectEdit(loaded.state)) {
+          if (!editTitles.has(page.pageId)) editTitles.set(page.pageId, page.title);
+        }
+      }
+      const publishedTitles = new Map<string, string>();
+      const published = loaded.state.snapshotSets.find((snapshot) =>
+        snapshot.id === loaded.state.selectors.publishedSnapshotSetId && snapshot.workspaceId === loaded.state.selectors.workspaceId
+      );
+      for (const page of published?.pages ?? []) {
+        if (!publishedTitles.has(page.pageId)) publishedTitles.set(page.pageId, page.title);
+      }
+      const pageRecords = new Map<string, PageRecord>();
+      for (const page of loaded.pageRecords) {
+        const pageId = cleanText(page.sysId);
+        if (!pageRecords.has(pageId)) pageRecords.set(pageId, page);
+      }
+      const attributions = new Map<string, ReturnType<typeof readAttribution>>();
+      const rows = entries.map((entry) => {
+        const category = normalizePendingCategory(entry.category);
+        if (!category) {
+          throw new Error("Workspace pending category is invalid.");
+        }
+        const authorId = cleanText(entry.lastChangedBy);
+        let attribution = attributions.get(authorId);
+        if (!attribution) {
+          attribution = readAttribution(authorId);
+          attributions.set(authorId, attribution);
+        }
+        return {
+          attribution,
+          category,
+          firstPendingSequence: entry.firstPendingSequence,
+          lastChangedOn: entry.lastChangedOn,
+          navigable: category !== "Removed",
+          pageSysId: entry.pageId,
+          title: titleForPendingRow(entry, editTitles, publishedTitles, pageRecords)
+        };
+      });
+
+      return {
+        kind: "succeeded",
+        pending: {
+          affectedPageCount: rows.length,
+          changeSetId: authority.changeSetId,
+          changeSetRevision: authority.changeSetRevision,
+          rows,
+          workspaceSysId: cleanText(loaded.workspace.sysId)
+        }
+      };
+    } catch (error) {
+      return {
+        kind: "failed",
+        errorMessage: cleanText(error instanceof Error ? error.message : error) || "Unable to load pending changes. Please try again.",
+        status: 500
+      };
+    }
+  };
+  const discardPageResultFromFreshState = (workspace: WorkspaceRecord, pageId: string): WorkspaceDiscardPageFreshStateResult => {
+    let loaded: LoadedWorkspaceState;
+    let pages: WorkspaceProjectionSuccess;
+    try {
+      loaded = loadWorkspaceState(loadWorkspaceBySysId(cleanText(workspace.sysId)) ?? workspace, dependencies);
+      pages = projectLoadedWorkspaceState(loaded, "edit");
+    } catch (error) {
+      return {
+        kind: "failed" as const,
+        errorMessage: cleanText(error instanceof Error ? error.message : error) || "Unable to load pages.",
+        status: 409
+      };
+    }
+    const pending = pendingChangesFromLoadedState(loaded);
+    if (pending.kind !== "succeeded") {
+      return {
+        kind: "failed" as const,
+        code: pending.code === "recovery_required" ? "recovery_required" : undefined,
+        currentChangeSetId: pending.currentChangeSetId,
+        currentChangeSetRevision: pending.currentChangeSetRevision,
+        errorMessage: pending.errorMessage,
+        recoveryCommandId: pending.recoveryCommandId,
+        status: pending.status
+      };
+    }
+    return {
+      kind: "succeeded" as const,
+      result: {
+        discardedPageSysId: pageId,
+        pages: pages.pages,
+        pendingChanges: pending.pending,
+        workspaceStateRevision: typeof loaded.workspace.workspaceStateRevision === "number" ? loaded.workspace.workspaceStateRevision : 0
+      }
+    };
+  };
   return {
     listPages(workspace: WorkspaceRecord, mode: "edit" | "live"): WorkspaceProjectionResult {
       try {
         const loaded = loadWorkspaceState(workspace, dependencies, mode);
-        const recordMap = new Map(loaded.pageRecords.map((page) => [cleanText(page.sysId), page]));
-        const projected = orderProjectionPages(mode === "live" ? projectLive(loaded.state) : projectEdit(loaded.state)).map((page) =>
-          pageFromProjectionPage(page, recordMap.get(page.pageId), cleanText(loaded.workspace.sysId), mode)
-        );
-        return {
-          kind: "succeeded",
-          mode,
-          pages: projected,
-          state: loaded.state,
-          workspace: loaded.workspace
-        };
+        return projectLoadedWorkspaceState(loaded, mode);
       } catch (error) {
         return {
           kind: "failed",
@@ -3527,9 +3647,15 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
           memberPageIds = [...existingClaim.payload.memberPageIds];
           nextPageSysId = cleanText(existingClaim.targetNextPageSysId);
         } else {
-          const editProjection = this.listPages(loaded.workspace, "edit");
-          if (editProjection.kind !== "succeeded") {
-            return editProjection;
+          let editProjection: WorkspaceProjectionSuccess;
+          try {
+            editProjection = projectLoadedWorkspaceState(loaded, "edit");
+          } catch (error) {
+            return {
+              kind: "failed",
+              errorMessage: cleanText(error instanceof Error ? error.message : error) || "Unable to load pages.",
+              status: 409
+            };
           }
           memberPageIds = collectPageSubtreeSysIds(editProjection.pages, pageId);
           if (!memberPageIds.length) {
@@ -3807,9 +3933,15 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
             return { kind: "failed", code: "invalid", errorMessage: prospective.reason, status: 400 };
           }
           if (prospective.kind === "noop") {
-            const pages = this.listPages(loaded.workspace, "edit");
-            if (pages.kind !== "succeeded") {
-              return pages;
+            let pages: WorkspaceProjectionSuccess;
+            try {
+              pages = projectLoadedWorkspaceState(loaded, "edit");
+            } catch (error) {
+              return {
+                kind: "failed",
+                errorMessage: cleanText(error instanceof Error ? error.message : error) || "Unable to load pages.",
+                status: 409
+              };
             }
             return {
               kind: "succeeded",
@@ -4261,29 +4393,11 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
             phase: "entry_persisted"
           }, executorKey);
           triggerDurablePhase(dependencies, "mutation_entry_persisted", { generationKey, kind: "discard_page", pageSysId: pageId });
-          const refreshedWorkspace = loadWorkspaceBySysId(cleanText(input.workspace.sysId)) ?? input.workspace;
-          const refreshedPages = this.listPages(refreshedWorkspace, "edit");
-          if (refreshedPages.kind !== "succeeded") {
-            return refreshedPages;
+          const refreshed = discardPageResultFromFreshState(input.workspace, pageId);
+          if (refreshed.kind !== "succeeded") {
+            return refreshed;
           }
-          const refreshedPending = this.pendingChanges(refreshedWorkspace);
-          if (refreshedPending.kind !== "succeeded") {
-            return {
-              kind: "failed",
-              code: refreshedPending.code === "recovery_required" ? "recovery_required" : undefined,
-              currentChangeSetId: refreshedPending.currentChangeSetId,
-              currentChangeSetRevision: refreshedPending.currentChangeSetRevision,
-              errorMessage: refreshedPending.errorMessage,
-              recoveryCommandId: refreshedPending.recoveryCommandId,
-              status: refreshedPending.status
-            };
-          }
-          const persistedResult = {
-            discardedPageSysId: pageId,
-            pages: refreshedPages.pages,
-            pendingChanges: refreshedPending.pending,
-            workspaceStateRevision: typeof refreshedWorkspace.workspaceStateRevision === "number" ? refreshedWorkspace.workspaceStateRevision : 0
-          };
+          const persistedResult = refreshed.result;
           const persistedResultJson = stableSerialize(persistedResult);
           claim = persistClaimProgress(dependencies, claim, {
             appliedOn: changedOn,
@@ -4313,32 +4427,11 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
         }
         if (claim.phase === "change_set_persisted" && resultAuthority) {
           if (!claim.resultJson) {
-            const refreshedWorkspace = loadWorkspaceBySysId(cleanText(input.workspace.sysId)) ?? input.workspace;
-            const refreshedPages = this.listPages(refreshedWorkspace, "edit");
-            if (refreshedPages.kind !== "succeeded") {
-              return refreshedPages;
+            const refreshed = discardPageResultFromFreshState(input.workspace, pageId);
+            if (refreshed.kind !== "succeeded") {
+              return refreshed;
             }
-            const refreshedPending = this.pendingChanges(refreshedWorkspace);
-            if (refreshedPending.kind !== "succeeded") {
-              return {
-                kind: "failed",
-                code: refreshedPending.code === "recovery_required" ? "recovery_required" : undefined,
-                currentChangeSetId: refreshedPending.currentChangeSetId,
-                currentChangeSetRevision: refreshedPending.currentChangeSetRevision,
-                errorMessage: refreshedPending.errorMessage,
-                recoveryCommandId: refreshedPending.recoveryCommandId,
-                status: refreshedPending.status
-              };
-            }
-            claim = {
-              ...claim,
-              resultJson: stableSerialize({
-                discardedPageSysId: pageId,
-                pages: refreshedPages.pages,
-                pendingChanges: refreshedPending.pending,
-                workspaceStateRevision: typeof refreshedWorkspace.workspaceStateRevision === "number" ? refreshedWorkspace.workspaceStateRevision : 0
-              })
-            };
+            claim = { ...claim, resultJson: stableSerialize(refreshed.result) };
           }
           claim = persistClaimProgress(dependencies, claim, {
             appliedOn: claim.appliedOn ?? dependencies.currentTimestamp(),
@@ -4983,72 +5076,7 @@ export function createServiceNowWorkspaceChangeSetPersistenceService(
     pendingChanges(workspace: WorkspaceRecord): WorkspacePendingChangesResult {
       try {
         const loaded = loadWorkspaceState(workspace, dependencies);
-        const recovery = readActiveDiscardRecovery(loaded);
-        if (recovery) {
-          return {
-            kind: "failed",
-            affectedPageCount: recovery.affectedPageCount,
-            code: "recovery_required",
-            currentChangeSetId: recovery.successorAuthority.changeSetId,
-            currentChangeSetRevision: recovery.successorAuthority.changeSetRevision,
-            errorMessage: discardRecoveryRequiredMessage(),
-            recoveryCommandId: recovery.recoveryCommandId,
-            status: 409
-          };
-        }
-        const authority = nextAuthority(loaded.state);
-        const entries = pendingEntries(loaded.state);
-        const editTitles = new Map<string, string>();
-        if (entries.some((entry) => entry.category !== "Removed")) {
-          for (const page of projectEdit(loaded.state)) {
-            if (!editTitles.has(page.pageId)) editTitles.set(page.pageId, page.title);
-          }
-        }
-        const publishedTitles = new Map<string, string>();
-        const published = loaded.state.snapshotSets.find((snapshot) =>
-          snapshot.id === loaded.state.selectors.publishedSnapshotSetId && snapshot.workspaceId === loaded.state.selectors.workspaceId
-        );
-        for (const page of published?.pages ?? []) {
-          if (!publishedTitles.has(page.pageId)) publishedTitles.set(page.pageId, page.title);
-        }
-        const pageRecords = new Map<string, PageRecord>();
-        for (const page of loaded.pageRecords) {
-          const pageId = cleanText(page.sysId);
-          if (!pageRecords.has(pageId)) pageRecords.set(pageId, page);
-        }
-        const attributions = new Map<string, ReturnType<typeof readAttribution>>();
-        const rows = entries.map((entry) => {
-          const category = normalizePendingCategory(entry.category);
-          if (!category) {
-            throw new Error("Workspace pending category is invalid.");
-          }
-          const authorId = cleanText(entry.lastChangedBy);
-          let attribution = attributions.get(authorId);
-          if (!attribution) {
-            attribution = readAttribution(authorId);
-            attributions.set(authorId, attribution);
-          }
-          return {
-            attribution,
-            category,
-            firstPendingSequence: entry.firstPendingSequence,
-            lastChangedOn: entry.lastChangedOn,
-            navigable: category !== "Removed",
-            pageSysId: entry.pageId,
-            title: titleForPendingRow(entry, editTitles, publishedTitles, pageRecords)
-          };
-        });
-
-        return {
-          kind: "succeeded",
-          pending: {
-            affectedPageCount: rows.length,
-            changeSetId: authority.changeSetId,
-            changeSetRevision: authority.changeSetRevision,
-            rows,
-            workspaceSysId: cleanText(loaded.workspace.sysId)
-          }
-        };
+        return pendingChangesFromLoadedState(loaded);
       } catch (error) {
         return {
           kind: "failed",

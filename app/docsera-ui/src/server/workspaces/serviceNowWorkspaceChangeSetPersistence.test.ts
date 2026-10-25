@@ -1430,6 +1430,50 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     }));
   });
 
+  it.each(["published subtree", "Added draft-only page"] as const)("reuses the initial Edit projection for a %s delete", (kind) => {
+    const pages = [
+      ...Array.from({ length: 99 }, (_, index) => createSeedPage({
+        pageId: `delete-scale-${index.toString().padStart(3, "0")}`,
+        parentPageId: index === 0 ? null : "delete-scale-000",
+        siblingOrder: String(index + 1)
+      })),
+      createSeedPage({ pageId: "delete-scale-sibling", siblingOrder: "2" })
+    ];
+    seedWorkspaceFoundation({ pages });
+    const service = createService();
+    let authority = { changeSetId: "change-set-001", changeSetRevision: 0 };
+    let pageSysId = "delete-scale-000";
+
+    if (kind === "Added draft-only page") {
+      const created = expectSucceeded(service.createPage({
+        authority,
+        parentPageSysId: null,
+        title: "Added delete scale page",
+        workspace: workspaceRef()
+      }));
+      authority = created.authority;
+      pageSysId = created.result.page.sysId ?? "";
+    }
+
+    glideMock.clearQueries();
+    glideMock.clearIterations();
+    const deleted = expectSucceeded(service.deletePage({ authority, pageSysId, workspace: workspaceRef() }));
+
+    // The former normal path loaded the full workspace three times: initial
+    // validation, listPages() claim preparation, and authoritative recovery.
+    // Claim preparation now projects the validated initial load, retaining the
+    // recovery read as the second full workspace load.
+    // The Added row is deleted before recovery, so its two full reads contain
+    // 101 then 100 page records.
+    const expectedPageRecordIterations = kind === "published subtree" ? 200 : 201;
+    expect(glideMock.queryCount(pageTable)).toBe(2);
+    expect(glideMock.iterationCount(pageTable)).toBe(expectedPageRecordIterations);
+    expect(glideMock.queryCount(pageSnapshotTable)).toBe(2);
+    expect(glideMock.iterationCount(pageSnapshotTable)).toBe(200);
+    expect(deleted.result.nextPageSysId).toBe("delete-scale-sibling");
+    expect(deleted.result.deletedPageSysId).toBe(pageSysId);
+  });
+
   it("returns a stale-generation failure when a different mutation kind wins the same generation-pair insert race", () => {
     seedWorkspaceFoundation();
     let seeded = false;
@@ -4577,6 +4621,49 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     expect(getRows(mutationClaimTable)).toHaveLength(0);
   });
 
+  it("reuses the initial Edit projection for a fresh no-op move in a 100-page hierarchy", () => {
+    const pageId = (index: number) => `noop-scale-${index.toString().padStart(3, "0")}`;
+    const pages = Array.from({ length: 100 }, (_, index) => {
+      const title = `No-op scale ${index}`;
+      return createSeedPage({
+        pageId: pageId(index),
+        draftBodyText: `${title} draft body`,
+        draftContentJson: createDocument(`${title} draft body`),
+        draftSlug: `noop-scale-${index}`,
+        draftTitle: title,
+        parentPageId: index >= 50 ? pageId(index - 50) : null,
+        publishedBodyText: `${title} published body`,
+        publishedContentJson: createDocument(`${title} published body`),
+        publishedSlug: `published-noop-scale-${index}`,
+        publishedTitle: `Published ${title}`,
+        siblingOrder: String(index >= 50 ? 1 : index + 1)
+      });
+    });
+    seedWorkspaceFoundation({ pages });
+    const service = createService();
+    const expected = expectSucceeded(service.listPages(workspaceRef(), "edit"));
+
+    glideMock.clearIterations();
+    glideMock.clearQueries();
+    const noop = expectSucceeded(service.movePage({
+      authority: { changeSetId: "change-set-001", changeSetRevision: 0 },
+      pageSysId: pageId(75),
+      parentPageSysId: pageId(25),
+      siblingOrder: "1",
+      workspace: workspaceRef()
+    }));
+
+    expect(noop.authority).toEqual({ changeSetId: "change-set-001", changeSetRevision: 0 });
+    expect(noop.result.pages).toEqual(expected.pages);
+    expect(glideMock.queryCount(pageTable)).toBe(1);
+    expect(glideMock.queryCount(pageSnapshotTable)).toBe(1);
+    expect(glideMock.iterationCount(pageTable)).toBe(100);
+    expect(glideMock.iterationCount(pageSnapshotTable)).toBe(100);
+    expect(getRows(mutationClaimTable)).toHaveLength(0);
+    expect(getRows(changeEntryTable)).toHaveLength(0);
+    expect(changeSetRow()?.fields.change_set_revision).toBe(0);
+  });
+
   it("returns invalid and no-op movement before claiming the generation and leaves same-authority mutations unblocked", () => {
     const bodyDocument = createDocumentEnvelope("Unblocked same authority body");
     seedWorkspaceFoundation({
@@ -4928,7 +5015,7 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
     });
   });
 
-  it.each(["Modified", "Added", "Removed"] as const)("eliminates the claimed-phase selected-snapshot query for a %s undo", (category) => {
+  it.each(["Modified", "Added", "Removed"] as const)("shares one fresh response state after a %s undo", (category) => {
     const pages = Array.from({ length: 100 }, (_, index) => createSeedPage({
       pageId: `scale-${index.toString().padStart(3, "0")}`,
       parentPageId: index === 0 ? null : "scale-000",
@@ -4965,13 +5052,18 @@ describe("serviceNowWorkspaceChangeSetPersistence", () => {
 
     glideMock.clearQueries();
     glideMock.clearIterations();
-    expectSucceeded(service.discardPage({ authority, pageSysId, workspace: workspaceRef() }));
+    const discarded = expectSucceeded(service.discardPage({ authority, pageSysId, workspace: workspaceRef() }));
 
-    // Task 157's claimed phase made one extra complete selected-snapshot read:
-    // five queries / 500 snapshot rows for this 100-page fixture. The four
-    // remaining reads are the initial load plus authoritative recovery/result loads.
-    expect(glideMock.queryCount(pageSnapshotTable)).toBe(4);
-    expect(glideMock.iterationCount(pageSnapshotTable)).toBe(400);
+    // Task 158 retained the required initial and post-mutation recovery reads,
+    // then loaded once for pages and once for pending rows (four complete
+    // snapshot reads). Task 168 shares one fresh response state for those
+    // projections, leaving three complete reads.
+    expect(glideMock.queryCount(pageSnapshotTable)).toBe(3);
+    expect(glideMock.iterationCount(pageSnapshotTable)).toBe(300);
+    expect(glideMock.queryCount(pageTable)).toBe(3);
+    expect(glideMock.iterationCount(pageTable)).toBe(category === "Added" ? 301 : 300);
+    expect(discarded.result.pendingChanges.rows).toEqual([]);
+    expect(discarded.result.pages).toHaveLength(100);
   });
 
   it("reuses the selected snapshot and indexes prepared Discard All records once for a 100-page hierarchy", () => {

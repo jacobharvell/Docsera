@@ -2,6 +2,7 @@ import { GlideRecord } from "@servicenow/glide";
 import {
   buildWorkspaceListItem,
   buildWorkspaceListResult,
+  filterWorkspacesByName,
   type WorkspaceCapabilityResult,
   type WorkspaceListItem,
   type WorkspaceListQuery,
@@ -69,7 +70,8 @@ export function createServiceNowWorkspaceCatalogService() {
 
     async listWorkspaces(query: WorkspaceListQuery = {}): Promise<WorkspaceListResult> {
       const workspaces = queryActiveWorkspaces();
-      const capabilitiesBySlug = createCapabilityMap(workspaces);
+      const nameMatchedWorkspaces = filterWorkspacesByName(workspaces, query.searchText ?? "");
+      const capabilitiesBySlug = createCapabilityMap(nameMatchedWorkspaces);
       return buildWorkspaceListResult(workspaces, capabilitiesBySlug, query, canCurrentUserCreateWorkspaces());
     }
   };
