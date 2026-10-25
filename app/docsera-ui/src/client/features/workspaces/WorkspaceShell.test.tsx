@@ -95,13 +95,16 @@ function renderShell(overrides: Partial<Parameters<typeof WorkspaceShell>[0]> = 
 }
 
 describe("WorkspaceShell", () => {
-  it("keeps narrow desktop navigation above the main pane without changing its targets or stacked layout", () => {
+  it("keeps the navigation resizer above the main pane at every side-by-side width without changing scrollbar or stacked-layout behavior", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;
       getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
     };
     const css = nodeProcess.getBuiltinModule("fs").readFileSync(`${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`, "utf8").replace(/\r\n/g, "\n");
-    expect(css).toMatch(/@media \(min-width: 921px\) and \(max-width: 1180px\)\s*\{\s*\.docsera-workspace__nav-frame\s*\{[^}]*z-index:\s*1;/);
+    expect(css).toMatch(/\.docsera-workspace__nav-frame\s*\{[^}]*position:\s*sticky;[^}]*z-index:\s*1;/);
+    expect(css).not.toMatch(/@media \(min-width: 921px\) and \(max-width: 1180px\)\s*\{\s*\.docsera-workspace__nav-frame/);
+    expect(css).toMatch(/@media \(max-width: 1180px\)\s*\{[\s\S]*?\.docsera-workspace[\s\S]*?grid-template-columns:\s*var\(--docsera-workspace-nav-track-width\) minmax\(0, 1fr\);/);
+    expect(css).toMatch(/@media \(max-width: 920px\)\s*\{[\s\S]*?\.docsera-workspace,[\s\S]*?\.docsera-workspace--sidebar-collapsed\s*\{\s*grid-template-columns:\s*1fr;/);
     expect(css).toMatch(/\.docsera-workspace__nav-resizer\s*\{[^}]*right:\s*-6px;[^}]*width:\s*var\(--docsera-workspace-nav-resizer-width\)/);
     expect(css).toMatch(/\.docsera-sidebar__tree\s*\{[^}]*margin-right:\s*-9px;[^}]*overflow-y:\s*auto;/);
     expect(css).toMatch(/@media \(max-width: 920px\)[\s\S]*?\.docsera-workspace__nav-resizer\s*\{\s*display:\s*none;/);

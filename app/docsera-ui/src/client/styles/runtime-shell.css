@@ -4487,6 +4487,12 @@ html[data-docsera-theme="dark"] .docsera-shell {
 
 .docsera-workspace__nav-frame {
   position: sticky;
+  /*
+   * The resizer extends into the adjacent main-pane grid track. Keep the
+   * frame above that sibling at every side-by-side width so the extension
+   * remains visible and owns its pointer target in both reader and editor.
+   */
+  z-index: 1;
   top: 0;
   align-self: start;
   height: calc(100dvh - var(--docsera-header-height));
@@ -6598,13 +6604,6 @@ html[data-docsera-theme="dark"] .docsera-main__callout-icon {
 
   .docsera-workspace__aside {
     display: none;
-  }
-}
-
-@media (min-width: 921px) and (max-width: 1180px) {
-  .docsera-workspace__nav-frame {
-    /* Keep the tree scrollbar and resizer above the adjacent main pane. */
-    z-index: 1;
   }
 }
 
