@@ -86,6 +86,86 @@ describe("DocseraHeader workspace shell", () => {
     expect(liveRender.container.querySelector(".docsera-header")).not.toHaveClass("docsera-header--launcher");
   });
 
+  it("fades retained edit controls without leaving them interactive in Live mode", () => {
+    const openSettings = vi.fn();
+    const { rerender } = render(
+      <DocseraHeader
+        {...baseProps}
+        authoringSurface="visual"
+        onAuthoringSurfaceChange={vi.fn()}
+        onOpenWorkspaceSettings={openSettings}
+        saveStatus="Saved"
+        showWorkspaceSettings
+      />
+    );
+
+    const surface = screen.getByRole("group", { name: "Authoring surface" });
+    const publishPanel = document.querySelector(".docsera-header__publish-panel");
+    const settings = screen.getByRole("button", { name: "Workspace settings" });
+    const settingsControl = settings.closest<HTMLElement>(".docsera-header__contextual-control");
+    expect(settingsControl).not.toBeNull();
+    expect(surface).not.toHaveAttribute("inert");
+    expect(publishPanel).not.toHaveAttribute("inert");
+    expect(settings).toBeEnabled();
+
+    rerender(
+      <DocseraHeader
+        {...baseProps}
+        authoringSurface="visual"
+        onAuthoringSurfaceChange={vi.fn()}
+        onOpenWorkspaceSettings={openSettings}
+        saveStatus="Saved"
+        showWorkspaceMode="live"
+      />
+    );
+
+    expect(surface).toHaveAttribute("inert");
+    expect(surface).toHaveAttribute("aria-hidden", "true");
+    expect(publishPanel).toHaveAttribute("inert");
+    expect(publishPanel).toHaveAttribute("aria-hidden", "true");
+    expect(settings).toBeDisabled();
+    expect(settingsControl).toHaveAttribute("inert");
+    fireEvent.click(settings);
+    expect(openSettings).not.toHaveBeenCalled();
+  });
+
+  it("computes retained Settings opacity for both workspace modes", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(`${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`, "utf8");
+    const style = document.createElement("style");
+    style.textContent = source;
+    document.head.append(style);
+    const { rerender } = render(
+      <DocseraHeader {...baseProps} onOpenWorkspaceSettings={vi.fn()} showWorkspaceSettings />
+    );
+    const settings = screen.getByRole("button", { name: "Workspace settings" });
+    const settingsControl = settings.closest<HTMLElement>(".docsera-header__contextual-control");
+    expect(settingsControl).not.toBeNull();
+
+    try {
+      expect(getComputedStyle(settingsControl!).opacity).toBe("1");
+
+      rerender(<DocseraHeader {...baseProps} onOpenWorkspaceSettings={vi.fn()} showWorkspaceMode="live" />);
+      expect(getComputedStyle(settingsControl!).opacity).toBe("0");
+    } finally {
+      style.remove();
+    }
+  });
+
+  it("keeps contextual-control transitions scoped away from mode and account controls under reduced motion", () => {
+    const nodeProcess = new Function("return process")() as { cwd: () => string; getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string } };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(`${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`, "utf8");
+    expect(source).toContain("opacity 180ms ease");
+    expect(source).toContain("animation: docsera-contextual-control-enter 260ms ease-out both;");
+    expect(source).toContain(".docsera-header__contextual-control");
+    expect(source).toContain(".docsera-main__editor-history-controls-mount[data-docsera-contextual-control-presentation=\"pending\"]");
+    expect(source).toContain(".docsera-main__editor-history-controls-mount[data-docsera-contextual-control-presentation=\"enter\"]");
+    expect(source).toContain("animation: none;");
+  });
+
   it("keeps the header navigation track aligned to a non-default workspace navigation width", () => {
     const { container, rerender } = render(
       <DocseraHeader

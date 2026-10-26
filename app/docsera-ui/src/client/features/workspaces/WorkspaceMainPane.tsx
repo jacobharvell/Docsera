@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { Editor } from "@tiptap/core";
 import {
   PageEditorHost,
   type PageEditorCanonicalHandoffResult,
@@ -14,6 +15,8 @@ import type { WorkspaceMediaLoader } from "../../shared/types/docsera";
 import type { WorkspacePageView } from "./workspaceViewModels";
 import type { WorkspaceAuthoringSurface } from "./workspaceAuthoringSurface";
 import { WorkspaceMarkdownSourcePanel } from "./WorkspaceMarkdownSourcePanel";
+import { EditorHistoryControls } from "../../editor/EditorHistoryControls";
+import { EmojiPickerControls } from "../../editor/EmojiPickerControls";
 import { useContentRevealState, type ContentRevealIntent } from "./contentReveal";
 
 type WorkspaceMainPaneProps = {
@@ -325,6 +328,7 @@ export function WorkspaceMainPane({
   contentRevealIntent = null
 }: WorkspaceMainPaneProps) {
   const [editorHistoryControlsMount, setEditorHistoryControlsMount] = useState<HTMLDivElement | null>(null);
+  const [editorCommandTarget, setEditorCommandTarget] = useState<{ editor: Editor | null; sessionKey: string } | null>(null);
   const [markdownSourceReady, setMarkdownSourceReady] = useState(false);
   const showBodyPending = bodyState === "loading";
   const showBodyPendingPlaceholder = showBodyPending && showPendingState;
@@ -358,6 +362,28 @@ export function WorkspaceMainPane({
   const contentRevealState = useContentRevealState(displayedSurface, destinationReady, workspaceIdentity, contentRevealIntent);
   const markdownSourceRevealPending = authoringSurface === "markdown" && showMarkdownSource && !markdownSourceReady;
   const contentRevealPending = contentRevealState === "pending" || markdownSourceRevealPending;
+  const workspaceVisualRevealPresentation =
+    workspaceMode === "edit" &&
+    authoringSurface === "visual" &&
+    contentRevealIntent?.destination === "visual" &&
+    (contentRevealIntent.scope ?? "workspace") === "workspace" &&
+    (contentRevealState === "pending" || contentRevealState === "enter")
+      ? contentRevealState
+      : "idle";
+  const commandEditor =
+    workspaceMode === "edit" &&
+    authoringSurface === "visual" &&
+    !editAccessLost &&
+    !showEditorRecovery &&
+    editorCommandTarget?.sessionKey === sessionKey
+      ? editorCommandTarget.editor
+      : null;
+  const commandControlsEditable = Boolean(commandEditor && canEditPageBody && !editAccessLost);
+  const showEditorCommandControls =
+    workspaceMode === "edit" &&
+    authoringSurface === "visual" &&
+    !showEditorRecovery &&
+    !editAccessLost;
 
   useEffect(() => {
     if (!showMarkdownSource) {
@@ -459,12 +485,18 @@ export function WorkspaceMainPane({
 
   return (
     <main className="docsera-main" {...mainLabelProps}>
-      {workspaceMode === "edit" && authoringSurface === "visual" ? (
+      {showEditorCommandControls ? (
         <div
           ref={setEditorHistoryControlsMount}
           className="docsera-main__editor-history-controls-mount"
           data-docsera-editor-history-controls-mount="true"
-        />
+          data-docsera-contextual-control-presentation={workspaceVisualRevealPresentation === "idle" ? undefined : workspaceVisualRevealPresentation}
+        >
+          <div className="docsera-editor-command-controls">
+            <EditorHistoryControls canEdit={commandControlsEditable} editor={commandEditor} ownerDocument={editorHistoryControlsMount?.ownerDocument ?? document} />
+            <EmojiPickerControls canEdit={commandControlsEditable} editor={commandEditor} ownerDocument={editorHistoryControlsMount?.ownerDocument ?? document} />
+          </div>
+        </div>
       ) : null}
       {editorPlaceholderVisible ? (
         <section className="docsera-main__surface docsera-main__pending-overlay" aria-label="Loading editor" role="status">
@@ -572,6 +604,7 @@ export function WorkspaceMainPane({
                   onError={onEditorFailureChange}
                   onOutlineChange={(outline) => onOutlineChange(page.sysId, outline)}
                   onReadyStateChange={onEditorReadyStateChange}
+                  onEditorCommandTargetChange={setEditorCommandTarget}
                   onSaveDraft={onSavePageDraft}
                   onStatusChange={onStatusChange}
                   historyControlsMount={editorHistoryControlsMount}

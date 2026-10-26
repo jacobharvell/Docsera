@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from "react";
+import type { Editor } from "@tiptap/core";
 import type { DocseraDocumentEnvelope } from "../../shared/editor/document";
 import type { PageBodySaveResult } from "../shared/types/docsera";
 import type { EditorOutlineItem } from "./documentOutline";
@@ -54,6 +55,7 @@ type PageEditorHostProps = {
   onAccessLost: () => void;
   onError: (failure: PageEditorHostFailure | null) => void;
   onReadyStateChange?: (ready: boolean) => void;
+  onEditorCommandTargetChange?: (target: { editor: Editor | null; sessionKey: string }) => void;
   onOutlineChange: (outline: EditorOutlineItem[]) => void;
   onSaveDraft: (input: {
     draftContentJson: DocseraDocumentEnvelope;
@@ -97,6 +99,20 @@ export function PageEditorHost(props: PageEditorHostProps) {
   const runtimeModuleRef = useRef<RuntimeModule | null>(null);
   const latestPropsRef = useRef(props);
   const runtimeSessionKey = useMemo(() => props.sessionKey, [props.sessionKey]);
+  const publishCommandTarget = useMemo(() => {
+    let hasPublished = false;
+    let publishedEditor: Editor | null = null;
+
+    return (editor: Editor | null) => {
+      if (hasPublished && publishedEditor === editor) {
+        return;
+      }
+
+      hasPublished = true;
+      publishedEditor = editor;
+      latestPropsRef.current.onEditorCommandTargetChange?.({ editor, sessionKey: runtimeSessionKey });
+    };
+  }, [runtimeSessionKey]);
 
   latestPropsRef.current = props;
 
@@ -111,6 +127,7 @@ export function PageEditorHost(props: PageEditorHostProps) {
       onEditorReady: () => {
         currentProps.onReadyStateChange?.(true);
       },
+      onEditorCommandTargetChange: publishCommandTarget,
       onOutlineChange: currentProps.onOutlineChange,
       onRuntimeError: () => {
         currentProps.onReadyStateChange?.(false);
@@ -145,6 +162,7 @@ export function PageEditorHost(props: PageEditorHostProps) {
     const entry = { overlayRoot, runtimeRoot };
     runtimeRef.current = entry;
     props.onReadyStateChange?.(false);
+    publishCommandTarget(null);
     props.onError(null);
 
     void import("./PageEditorHostRuntime")
@@ -181,6 +199,7 @@ export function PageEditorHost(props: PageEditorHostProps) {
         runtimeRef.current = null;
       }
       props.onReadyStateChange?.(false);
+      publishCommandTarget(null);
       queueMicrotask(() => {
         runtimeHandle?.destroy();
         detachOwnedNode(runtimeRoot);

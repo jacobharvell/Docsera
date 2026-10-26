@@ -671,8 +671,7 @@ function PageTreeNode({
       isDropAfterTarget
   );
   const itemStyle = {
-    "--docsera-page-tree-action-count": String(actionCount),
-    "--docsera-page-tree-drop-start": `${depth * 16}px`
+    "--docsera-page-tree-action-count": String(actionCount)
   } as CSSProperties;
   function handleRowClick() {
     onSelectPage(page.id);
@@ -731,6 +730,10 @@ function PageTreeNode({
             ? (event) => {
               event.dataTransfer.effectAllowed = "move";
               event.dataTransfer.setData("text/plain", page.id);
+              if (typeof event.dataTransfer.setDragImage === "function") {
+                const rowRect = event.currentTarget.getBoundingClientRect();
+                event.dataTransfer.setDragImage(event.currentTarget, event.clientX - rowRect.left, rowRect.height / 2);
+              }
               onDragStart(page.id);
             }
             : undefined

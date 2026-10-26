@@ -732,6 +732,13 @@ it("renders logical line numbers and locates a parsed malformed directive withou
   act(() => session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: prefix + '```\n:docsera-callout\n```' } }));
   expect(session.getSnapshot().kind).toBe("valid");
   expect(mount.querySelector(".docsera-markdown-source-error")).toBeNull();
+
+  const longWrappedLine = "A deliberately long Markdown source line that should remain one logical line while the editor wraps its display across the available width.";
+  const twelveLogicalLines = Array.from({ length: 12 }, (_, index) => index === 5 ? longWrappedLine : `line ${index + 1}`).join("\n");
+  act(() => session.view.dispatch({ changes: { from: 0, to: session.view.state.doc.length, insert: twelveLogicalLines } }));
+  const lineNumbers = [...mount.querySelectorAll(".cm-lineNumbers .cm-gutterElement")].map((element) => element.textContent?.trim());
+  expect(lineNumbers).toContain("12");
+  expect(lineNumbers).toHaveLength(12);
   session.destroy();
 });
 

@@ -511,23 +511,28 @@ describe("DocseraHeader publishing changes", () => {
     expect(surfaceToggleHiddenBlock).toContain("pointer-events: none;");
     expect(modeToggleBlock).toContain("box-sizing: border-box;");
     expect(surfaceToggleBlock).toContain("box-sizing: border-box;");
+    expect(modeToggleBlock).not.toContain("padding:");
+    expect(surfaceToggleBlock).not.toContain("padding:");
     expect(modeToggleBlock).not.toContain("gap:");
     expect(surfaceToggleBlock).not.toContain("gap:");
     expect(indicatorBlock).toContain("position: absolute;");
-    expect(indicatorBlock).toContain("inset-block: 2px;");
-    expect(indicatorBlock).toContain("left: 2px;");
-    expect(indicatorBlock).toContain("width: calc((100% - 4px) / 2);");
-    expect(indicatorBlock).toContain("border-radius: 4px;");
+    expect(indicatorBlock).toContain("inset-block: 0;");
+    expect(indicatorBlock).toContain("left: 0;");
+    expect(indicatorBlock).toContain("width: 50%;");
+    expect(indicatorBlock).toContain("border-radius: 5px 0 0 5px;");
     expect(indicatorBlock).toContain("background: var(--docsera-primary);");
     expect(indicatorBlock).not.toContain("box-shadow:");
     expect(indicatorBlock).toContain("transition: transform 0.16s ease;");
     expect(indicatorSecondPositionBlock).toContain("transform: translateX(100%);");
-    expect(modeSegmentBlock).toContain("border-radius: 4px;");
+    expect(indicatorSecondPositionBlock).toContain("border-radius: 0 5px 5px 0;");
+    expect(modeSegmentBlock).toContain("border-radius: 0;");
     expect(modeSegmentBlock).toContain("position: relative;");
     expect(modeSegmentBlock).toContain("z-index: 1;");
     expect(modeSegmentBlock).toContain("display: inline-flex;");
     expect(modeSegmentBlock).toContain("align-items: center;");
     expect(modeSegmentBlock).toContain("justify-content: center;");
+    expect(modeSegmentBlock).toContain("flex: 1 1 50%;");
+    expect(modeSegmentBlock).toContain("min-width: 60px;");
     expect(modeSegmentBlock).toContain("transition: color 0.16s ease;");
     expect(activeSegmentBlock).toContain("color: #ffffff;");
     expect(activeSegmentBlock).not.toContain("background:");
@@ -535,7 +540,7 @@ describe("DocseraHeader publishing changes", () => {
     expect(source).toMatch(
       /\.docsera-header__mode-segment--active:hover,\r?\n\.docsera-header__surface-segment--active:hover \{\s*color: #ffffff;\s*\}/
     );
-    expect(surfaceSegmentBlock).toContain("min-width: 32px;");
+    expect(surfaceSegmentBlock).toContain("min-width: 34px;");
     expect(surfaceSegmentBlock).toContain("padding: 6px;");
     expect(publishPanelBlock).toContain("display: inline-flex;");
     expect(publishPanelHiddenBlock).toContain("visibility: hidden;");

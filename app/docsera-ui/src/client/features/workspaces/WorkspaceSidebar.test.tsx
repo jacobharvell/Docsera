@@ -128,8 +128,7 @@ function dispatchDragEvent(
 function renderSidebar(overrides: Partial<Parameters<typeof WorkspaceSidebar>[0]> = {}) {
   const onMovePage = vi.fn();
   const onSelectPage = vi.fn();
-
-  render(
+  const sidebar = (nextOverrides: Partial<Parameters<typeof WorkspaceSidebar>[0]> = {}) => (
     <WorkspaceSidebar
       canCreatePage={false}
       canManagePageSettings
@@ -163,11 +162,15 @@ function renderSidebar(overrides: Partial<Parameters<typeof WorkspaceSidebar>[0]
       showPendingState={false}
       treeFilter=""
       onTreeFilterChange={vi.fn()}
-      {...overrides}
+      {...nextOverrides}
     />
   );
 
+  const view = render(sidebar(overrides));
+
   return {
+    view,
+    rerender: (nextOverrides: Partial<Parameters<typeof WorkspaceSidebar>[0]> = {}) => view.rerender(sidebar({ ...overrides, ...nextOverrides })),
     onMovePage,
     onSelectPage
   };
@@ -234,6 +237,78 @@ function treeNewPageButton() {
 }
 
 describe("WorkspaceSidebar page tree drag surface", () => {
+  it("keeps the search mounted while reserving and releasing the inaccessible New page slot on mode changes", () => {
+    const onTreeFilterChange = vi.fn();
+    const onShowCreatePage = vi.fn();
+    const props = {
+      canCreatePage: true,
+      onShowCreatePage,
+      onTreeFilterChange,
+      pages: [page({ id: "getting-started", title: "Getting Started" })],
+      showCreatePageControl: false,
+      treeFilter: "getting"
+    };
+    const { rerender } = renderSidebar(props);
+    const initialSearch = searchInput();
+    initialSearch.focus();
+
+    const searchRow = initialSearch.closest(".docsera-sidebar__search-row");
+    const createPageSlot = document.querySelector(".docsera-sidebar__create-page-slot");
+    const newPageButton = document.querySelector<HTMLButtonElement>(".docsera-sidebar__icon-button[aria-label='New page']");
+    expect(searchRow).toHaveAttribute("data-docsera-create-page-control", "hidden");
+    expect(createPageSlot).toHaveAttribute("aria-hidden", "true");
+    expect(newPageButton).toBeDisabled();
+    expect(newPageButton).toHaveAttribute("tabindex", "-1");
+    expect(initialSearch).toHaveFocus();
+    expect(initialSearch).toHaveValue("getting");
+
+    rerender({ ...props, showCreatePageControl: true });
+    expect(searchInput()).toBe(initialSearch);
+    expect(searchInput()).toHaveFocus();
+    expect(searchRow).toHaveAttribute("data-docsera-create-page-control", "visible");
+    expect(createPageSlot).not.toHaveAttribute("aria-hidden");
+    expect(newPageButton).not.toBeDisabled();
+    expect(newPageButton).not.toHaveAttribute("tabindex");
+    fireEvent.click(sidebarNewPageButton());
+    expect(onShowCreatePage).toHaveBeenCalledTimes(1);
+
+    rerender({ ...props, showCreatePageControl: true, treeFilter: "getting started" });
+    expect(searchInput()).toBe(initialSearch);
+    expect(searchRow).toHaveAttribute("data-docsera-create-page-control", "visible");
+
+    rerender({ ...props, showCreatePageControl: false });
+    expect(searchInput()).toBe(initialSearch);
+    expect(searchInput()).toHaveFocus();
+    expect(searchRow).toHaveAttribute("data-docsera-create-page-control", "hidden");
+    expect(createPageSlot).toHaveAttribute("aria-hidden", "true");
+    expect(newPageButton).toBeDisabled();
+    fireEvent.click(newPageButton!);
+    expect(onShowCreatePage).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses a clipped, reduced-motion-safe grid slot so search contracts from its right edge without overflow", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    ).replace(/\r\n/g, "\n");
+    const searchRowBlock = source.match(/\.docsera-sidebar__search-row \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const visibleSearchRowBlock = source.match(/\.docsera-sidebar__search-row\[data-docsera-create-page-control="visible"\] \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const createSlotBlock = source.match(/\.docsera-sidebar__create-page-slot \{([\s\S]*?)\n\}/)?.[1] ?? "";
+
+    expect(searchRowBlock).toContain("grid-template-columns: minmax(0, 1fr) 0;");
+    expect(searchRowBlock).toContain("transition: grid-template-columns 180ms ease, column-gap 180ms ease;");
+    expect(visibleSearchRowBlock).toContain("grid-template-columns: minmax(0, 1fr) 32px;");
+    expect(visibleSearchRowBlock).toContain("column-gap: 8px;");
+    expect(createSlotBlock).toContain("overflow: hidden;");
+    expect(createSlotBlock).toContain("pointer-events: none;");
+    expect(createSlotBlock).toContain("transition: opacity 180ms ease;");
+    expect(source).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.docsera-sidebar__search-row,\s*\.docsera-sidebar__create-page-slot \{\s*transition: none;/);
+  });
+
   it("uses shared tooltips for compact navigation controls", async () => {
     renderSidebar({
       canCreatePage: true,

@@ -1165,7 +1165,122 @@ describe("PageTree derived hierarchy", () => {
   });
 });
 
+describe("PageTree spacing", () => {
+  it("uses one-pixel vertical gaps for sibling rows and expanded child lists without changing indentation", () => {
+    const cwd = new Function("return process.cwd()")() as string;
+    const cssSource = readFileSync(join(cwd, "src/client/styles/runtime-shell.css"), "utf8").replace(/\r\n/g, "\n");
+
+    expect(cssSource).toContain(".docsera-page-tree__item + .docsera-page-tree__item {\n  margin-top: 1px;\n}");
+    expect(cssSource).toContain(".docsera-page-tree__children {\n  list-style: none;\n  margin: 1px 0 0 4px;\n  padding: 0 0 0 8px;");
+  });
+});
+
+describe("PageTree chevron presentation", () => {
+  it("uses a 16px chevron or leaf spacer with a 6px title gap while retaining the 32px title start, icon geometry, and row hover or focus feedback", () => {
+    renderTree([
+      page({ id: "parent", title: "Parent", children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })] })
+    ], {
+      inlineRenamePageId: "child",
+      inlineRenameValue: "Child"
+    });
+
+    expect(screen.getByText("Parent").closest(".docsera-page-tree__row-main")).toContainElement(
+      document.querySelector(".docsera-page-tree__chevron")!
+    );
+    expect(screen.getByRole("textbox", { name: "Rename Child" }).closest(".docsera-page-tree__row-main")).toContainElement(
+      document.querySelector(".docsera-page-tree__chevron-spacer")!
+    );
+
+    const cwd = new Function("return process.cwd()")() as string;
+    const cssSource = readFileSync(join(cwd, "src/client/styles/runtime-shell.css"), "utf8").replace(/\r\n/g, "\n");
+
+    expect(cssSource).toContain("--docsera-page-tree-button-padding-inline-start: 10px;");
+    expect(cssSource).toContain("--docsera-page-tree-chevron-width: 16px;");
+    expect(cssSource).toContain("--docsera-page-tree-chevron-title-gap: 6px;");
+    expect(cssSource).toContain(".docsera-page-tree__row-main {\n  display: flex;\n  align-items: center;\n  gap: var(--docsera-page-tree-chevron-title-gap);");
+    expect(cssSource).toContain(".docsera-page-tree__chevron {\n  color: color-mix(in srgb, var(--docsera-text-soft) 60%, transparent);\n  transition: color 0.16s ease;\n}");
+    expect(cssSource).toContain(".docsera-page-tree__row:hover .docsera-page-tree__chevron,\n.docsera-page-tree__row:focus-within .docsera-page-tree__chevron,\n.docsera-page-tree__row--menu-open .docsera-page-tree__chevron {\n  color: var(--docsera-text-soft);\n}");
+    expect(cssSource).not.toContain(".docsera-page-tree__chevron {\n  color: currentColor;");
+    expect(cssSource).toContain(".docsera-page-tree__chevron,\n.docsera-page-tree__chevron-spacer {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  flex: 0 0 auto;\n  width: var(--docsera-page-tree-chevron-width);\n  height: 20px;\n}");
+    expect(cssSource).toContain(".docsera-page-tree__chevron-icon {\n  transition: transform 0.16s ease;\n}");
+    expect(cssSource).toContain(".docsera-page-tree__chevron-icon--expanded {\n  transform: rotate(90deg);\n}");
+  });
+});
+
 describe("PageTree drag destination indicators", () => {
+  it("anchors root, nested, and deep insertion lines to the shared title layout instead of accumulating depth offsets", () => {
+    const deep = page({ id: "deep", parentPageSysId: "nested", title: "Deep" });
+    const nested = page({ id: "nested", parentPageSysId: "child", title: "Nested", children: [deep] });
+    const child = page({ id: "child", parentPageSysId: "root", title: "Child", children: [nested] });
+    const root = page({ id: "root", title: "Root", children: [child] });
+
+    renderTree([root], { onMovePage: vi.fn() });
+
+    for (const title of ["Root", "Child", "Nested", "Deep"]) {
+      const pageItem = item(title);
+      expect(pageItem).toContainElement(screen.getByText(title));
+      expect(pageItem.style.getPropertyValue("--docsera-page-tree-drop-start")).toBe("");
+    }
+
+    const cwd = new Function("return process.cwd()")() as string;
+    const cssSource = readFileSync(join(cwd, "src/client/styles/runtime-shell.css"), "utf8").replace(/\r\n/g, "\n");
+    expect(cssSource).toContain("--docsera-page-tree-title-start: calc(\n    var(--docsera-page-tree-button-padding-inline-start) + var(--docsera-page-tree-chevron-width) + var(--docsera-page-tree-chevron-title-gap)\n  );");
+    expect(cssSource).toContain(".docsera-page-tree__drop-edge-line {\n  position: absolute;\n  left: var(--docsera-page-tree-title-start);");
+    expect(cssSource).toContain(".docsera-page-tree__drop-indicator {\n  position: absolute;\n  left: var(--docsera-page-tree-title-start);");
+    expect(cssSource).not.toContain("--docsera-page-tree-drop-start");
+  });
+
+  it("centers the drag image vertically while preserving each nested-row horizontal pickup offset", () => {
+    renderTree(
+      [
+        page({
+          id: "parent",
+          title: "Parent",
+          children: [page({ id: "nested", parentPageSysId: "parent", title: "Nested" })]
+        })
+      ],
+      { onMovePage: vi.fn() }
+    );
+
+    const nestedRow = row("Nested");
+    setRect(nestedRow, 120, 160, 48, 170);
+    const pickupPositions = [
+      { clientX: 64, clientY: 122, horizontalOffset: 16 },
+      { clientX: 125, clientY: 140, horizontalOffset: 77 },
+      { clientX: 190, clientY: 158, horizontalOffset: 142 }
+    ];
+
+    for (const { clientX, clientY, horizontalOffset } of pickupPositions) {
+      const transfer = dataTransfer();
+      dispatchDragEvent(nestedRow, "dragstart", { clientX, clientY, dataTransfer: transfer });
+
+      expect(transfer.setDragImage).toHaveBeenLastCalledWith(nestedRow, horizontalOffset, 20);
+      expect(transfer.effectAllowed).toBe("move");
+      expect(transfer.setData).toHaveBeenLastCalledWith("text/plain", "nested");
+    }
+
+    expect(nestedRow).toHaveClass("docsera-page-tree__row--dragging");
+  });
+
+  it("keeps the native drag payload when setDragImage is unavailable", () => {
+    renderTree([page({ id: "source", title: "Source" })], { onMovePage: vi.fn() });
+
+    const sourceRow = row("Source");
+    setRect(sourceRow, 80, 112, 24, 180);
+    const transfer = {
+      dropEffect: "move",
+      effectAllowed: "",
+      getData: vi.fn(() => ""),
+      setData: vi.fn()
+    } as unknown as DataTransfer;
+
+    dispatchDragEvent(sourceRow, "dragstart", { clientX: 72, clientY: 82, dataTransfer: transfer });
+
+    expect(transfer.effectAllowed).toBe("move");
+    expect(transfer.setData).toHaveBeenCalledWith("text/plain", "source");
+    expect(sourceRow).toHaveClass("docsera-page-tree__row--dragging");
+  });
+
   it("renders no spacer drop-zone items and keeps movable and non-movable trees compact", () => {
     const pages = [
       page({ id: "source", title: "Source", siblingOrder: 1 }),
@@ -2081,17 +2196,17 @@ function treeList(): HTMLElement {
   return element;
 }
 
-function setRect(element: HTMLElement, top: number, bottom: number) {
+function setRect(element: HTMLElement, top: number, bottom: number, left = 0, width = 200) {
   Object.defineProperty(element, "getBoundingClientRect", {
     configurable: true,
     value: () => ({
       bottom,
       height: bottom - top,
-      left: 0,
-      right: 200,
+      left,
+      right: left + width,
       top,
-      width: 200,
-      x: 0,
+      width,
+      x: left,
       y: top,
       toJSON: () => ({})
     })
@@ -2103,7 +2218,8 @@ function dataTransfer(): DataTransfer {
     dropEffect: "move",
     effectAllowed: "move",
     getData: vi.fn(() => ""),
-    setData: vi.fn()
+    setData: vi.fn(),
+    setDragImage: vi.fn()
   } as unknown as DataTransfer;
 }
 
@@ -2129,13 +2245,18 @@ type InvalidDragAcceptanceCase = {
 
 function dispatchDragEvent(
   target: Element,
-  type: "dragover" | "drop",
-  init: { clientY?: number; dataTransfer?: DataTransfer } = {}
+  type: "dragstart" | "dragover" | "drop",
+  init: { clientX?: number; clientY?: number; dataTransfer?: DataTransfer } = {}
 ) {
   const event = new Event(type, { bubbles: true, cancelable: true }) as Event & {
+    clientX?: number;
     clientY?: number;
     dataTransfer?: DataTransfer;
   };
+
+  if (typeof init.clientX === "number") {
+    Object.defineProperty(event, "clientX", { configurable: true, value: init.clientX });
+  }
 
   if (typeof init.clientY === "number") {
     Object.defineProperty(event, "clientY", { configurable: true, value: init.clientY });

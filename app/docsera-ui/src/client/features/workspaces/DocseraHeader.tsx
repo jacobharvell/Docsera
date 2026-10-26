@@ -834,6 +834,7 @@ export function DocseraHeader({
                 role="group"
                 aria-label="Authoring surface"
                 aria-hidden={showAuthoringSurfaceToggleControl ? undefined : "true"}
+                {...(!showAuthoringSurfaceToggleControl ? { inert: "" } : {})}
               >
                 <span className="docsera-header__segmented-indicator" aria-hidden="true" />
                 <DocseraCompactTooltip label="Visual">
@@ -870,6 +871,7 @@ export function DocseraHeader({
               className={`docsera-header__publish-panel${showPublishControl ? "" : " docsera-header__publish-panel--hidden"}`}
               ref={publishPanelRef}
               aria-hidden={showPublishControl ? undefined : "true"}
+              {...(!showPublishControl ? { inert: "" } : {})}
             >
               {showCurrentPageSaveStatus ? (
                 <>
@@ -1090,21 +1092,25 @@ export function DocseraHeader({
             </div>
           ) : null}
           <div className="docsera-header__action-slot docsera-header__action-slot--settings">
-            {showWorkspaceSettings && onOpenWorkspaceSettings ? (
-              <DocseraCompactTooltip label="Workspace settings">
-                <button
-                  type="button"
-                  className="docsera-header__ghost-button"
-                  aria-label="Workspace settings"
-                  disabled={workspaceControlsLocked}
-                  onClick={onOpenWorkspaceSettings}
-                >
-                  <GearIcon />
-                </button>
-              </DocseraCompactTooltip>
-            ) : (
-              <span className="docsera-header__action-slot-placeholder" aria-hidden="true" />
-            )}
+            {onOpenWorkspaceSettings ? (
+              <span
+                className={`docsera-header__contextual-control${showWorkspaceSettings ? "" : " docsera-header__contextual-control--hidden"}`}
+                aria-hidden={showWorkspaceSettings ? undefined : "true"}
+                {...(!showWorkspaceSettings ? { inert: "" } : {})}
+              >
+                <DocseraCompactTooltip label="Workspace settings">
+                  <button
+                    type="button"
+                    className="docsera-header__ghost-button"
+                    aria-label="Workspace settings"
+                    disabled={workspaceControlsLocked || !showWorkspaceSettings}
+                    onClick={onOpenWorkspaceSettings}
+                  >
+                    <GearIcon />
+                  </button>
+                </DocseraCompactTooltip>
+              </span>
+            ) : <span className="docsera-header__action-slot-placeholder" aria-hidden="true" />}
           </div>
           <DocseraCompactTooltip label="Toggle theme">
             <button

@@ -132,6 +132,7 @@ type PageEditorHostRuntimeProps = {
     readLatestDraftContentJson?: () => DocseraDocumentEnvelope | null;
   }) => Promise<PageBodySaveResult>;
   onEditorReady?: (editor: Editor) => void;
+  onEditorCommandTargetChange?: (editor: Editor | null) => void;
   onStatusChange: (state: {
     applyCanonicalEnvelope?: (envelope: DocseraDocumentEnvelope) => PageEditorCanonicalHandoffResult;
     discardLocalEdits?: (input: { envelope: DocseraDocumentEnvelope; revision: number }) => boolean;
@@ -3278,6 +3279,7 @@ export function PageEditorHostRuntime({
   onOutlineChange,
   onSaveDraft,
   onEditorReady,
+  onEditorCommandTargetChange,
   onStatusChange,
   mediaAdapter,
   historyControlsMount,
@@ -6134,6 +6136,12 @@ export function PageEditorHostRuntime({
   const historyControlsEditor = editor && !editor.isDestroyed ? editor : null;
 
   useEffect(() => {
+    if (!historyControlsMount) return;
+    onEditorCommandTargetChange?.(isInteractionActive && isEditable ? historyControlsEditor : null);
+    return () => onEditorCommandTargetChange?.(null);
+  }, [historyControlsEditor, historyControlsMount, isEditable, isInteractionActive, onEditorCommandTargetChange]);
+
+  useEffect(() => {
     if (!editor || !isInteractionActive) {
       clearGutterRangeGesture({ clearSelection: true, reason: "access-loss" });
       return;
@@ -8142,22 +8150,12 @@ export function PageEditorHostRuntime({
         }}
       >
         <EditorContent editor={editor} />
-        {isInteractionActive && historyControlsEditor
-          ? historyControlsMount
-            ? createPortal(
-                <div className="docsera-editor-command-controls">
-                  <EditorHistoryControls canEdit={isEditable} editor={historyControlsEditor} ownerDocument={historyControlsMount.ownerDocument} />
-                  <EmojiPickerControls canEdit={isEditable} editor={historyControlsEditor} ownerDocument={historyControlsMount.ownerDocument} />
-                </div>,
-                historyControlsMount
-              )
-            : (
-                <div className="docsera-editor-command-controls">
-                  <EditorHistoryControls canEdit={isEditable} editor={historyControlsEditor} ownerDocument={overlayOwnerDocument} />
-                  <EmojiPickerControls canEdit={isEditable} editor={historyControlsEditor} ownerDocument={overlayOwnerDocument} />
-                </div>
-              )
-          : null}
+        {isInteractionActive && historyControlsEditor && !historyControlsMount ? (
+          <div className="docsera-editor-command-controls">
+            <EditorHistoryControls canEdit={isEditable} editor={historyControlsEditor} ownerDocument={overlayOwnerDocument} />
+            <EmojiPickerControls canEdit={isEditable} editor={historyControlsEditor} ownerDocument={overlayOwnerDocument} />
+          </div>
+        ) : null}
         {createPortal(
           <div
             className={`docsera-editor-floating-layer ${overlayThemeClass}${blockDragState ? " docsera-editor-floating-layer--block-dragging" : ""}`}

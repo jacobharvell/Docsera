@@ -96,6 +96,7 @@ export function WorkspaceMarkdownSourcePanel({
   const lastHandoffRetryNonceRef = useRef(handoffRetryNonce);
   const sessionLoadRequestIdRef = useRef(0);
   const sessionLoadPromiseRef = useRef<Promise<void> | null>(null);
+  const gutterResizeObserverRef = useRef<ResizeObserver | null>(null);
   const [sessionError, setSessionError] = useState("");
   const [invalidSnapshot, setInvalidSnapshot] = useState<Extract<MarkdownSourceSessionSnapshot, { kind: "invalid" }> | null>(null);
   const callbacksRef = useRef({
@@ -169,6 +170,8 @@ export function WorkspaceMarkdownSourcePanel({
 
   function resetSessionState(): void {
     invalidatePendingSessionLoad();
+    gutterResizeObserverRef.current?.disconnect();
+    gutterResizeObserverRef.current = null;
     setSessionError("");
     snapshotRef.current = null;
     setInvalidSnapshot(null);
@@ -176,6 +179,29 @@ export function WorkspaceMarkdownSourcePanel({
     callbacksRef.current.onReadyStateChange?.(false);
     sessionRef.current?.destroy();
     sessionRef.current = null;
+  }
+
+  function observeGutterWidth(mount: HTMLDivElement): void {
+    gutterResizeObserverRef.current?.disconnect();
+    gutterResizeObserverRef.current = null;
+
+    const gutter = mount.querySelector<HTMLElement>(".cm-gutters");
+    if (!gutter) {
+      return;
+    }
+
+    const updateGutterWidth = (): void => {
+      mount.style.setProperty("--docsera-markdown-source-gutter-inline-size", `${gutter.getBoundingClientRect().width}px`);
+    };
+
+    updateGutterWidth();
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const observer = new ResizeObserver(updateGutterWidth);
+    observer.observe(gutter);
+    gutterResizeObserverRef.current = observer;
   }
 
   function startSessionLoadIfNeeded(): void {
@@ -265,6 +291,7 @@ export function WorkspaceMarkdownSourcePanel({
         }
 
         sessionRef.current = result.session;
+        observeGutterWidth(mountRef.current);
         projectedCanonicalKeyRef.current = currentCanonicalKeyRef.current;
         callbacksRef.current.onReadyStateChange?.(true);
       } catch {

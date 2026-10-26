@@ -68,12 +68,14 @@ export function EmojiPickerControls({ canEdit, editor, ownerDocument }: EmojiPic
   const searchRef = useRef<HTMLInputElement | null>(null);
   const choiceRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const sessionEditorRef = useRef(editor);
+  const editorSessionChanged = sessionEditorRef.current !== editor;
   const pickerId = useId();
   const filteredChoices = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     if (!normalizedQuery) return EMOJI_CHOICES;
     return EMOJI_CHOICES.filter((choice) => `${choice.label} ${choice.searchTerms}`.toLowerCase().includes(normalizedQuery));
   }, [query]);
+  const pickerOpen = isOpen && !editorSessionChanged && isUsableEditor(editor, canEdit);
 
   const restoreEditorFocus = () => {
     const runtimeEditor = editor;
@@ -124,9 +126,9 @@ export function EmojiPickerControls({ canEdit, editor, ownerDocument }: EmojiPic
   };
 
   useEffect(() => {
-    if (!isOpen) return;
+    if (!pickerOpen) return;
     searchRef.current?.focus();
-  }, [isOpen]);
+  }, [pickerOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -146,7 +148,7 @@ export function EmojiPickerControls({ canEdit, editor, ownerDocument }: EmojiPic
       ownerDocument.removeEventListener("pointerdown", handlePointerDown, true);
       ownerDocument.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [isOpen, ownerDocument]);
+  }, [ownerDocument, pickerOpen]);
 
   useEffect(() => {
     if (!isOpen || isUsableEditor(editor, canEdit)) return;
@@ -166,17 +168,17 @@ export function EmojiPickerControls({ canEdit, editor, ownerDocument }: EmojiPic
           type="button"
           className="docsera-emoji-picker-controls__trigger"
           aria-label="Insert emoji"
-          aria-expanded={isOpen}
-          aria-controls={isOpen ? pickerId : undefined}
+          aria-expanded={pickerOpen}
+          aria-controls={pickerOpen ? pickerId : undefined}
           disabled={!isUsableEditor(editor, canEdit)}
           onPointerDown={(event) => event.preventDefault()}
           onMouseDown={(event) => event.preventDefault()}
-          onClick={() => (isOpen ? closePicker() : openPicker())}
+          onClick={() => (pickerOpen ? closePicker() : openPicker())}
         >
           <SmilePlus size={15} strokeWidth={2.2} aria-hidden="true" focusable="false" />
         </button>
       </DocseraCompactTooltip>
-      {isOpen ? (
+      {pickerOpen ? (
         <div id={pickerId} className="docsera-emoji-picker docsera-editor-dropdown--enter" role="dialog" aria-label="Emoji picker">
           <label className="docsera-emoji-picker__search-label" htmlFor={`${pickerId}-search`}>Search emoji</label>
           <input
@@ -240,9 +242,9 @@ export function EmojiPickerControls({ canEdit, editor, ownerDocument }: EmojiPic
         .docsera-emoji-picker-controls { position: relative; display: inline-flex; pointer-events: auto; }
         .docsera-emoji-picker-controls__trigger { width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 5px; padding: 0; color: var(--docsera-text-soft); background: transparent; cursor: pointer; }
         .docsera-emoji-picker-controls__trigger svg { width: 15px; height: 15px; flex: 0 0 auto; }
-        .docsera-emoji-picker-controls__trigger:hover, .docsera-emoji-picker-controls__trigger[aria-expanded="true"], .docsera-emoji-picker-controls__trigger:focus-visible { border-color: var(--docsera-border); background: var(--docsera-surface-muted); color: var(--docsera-primary); outline: none; }
-        .docsera-emoji-picker-controls__trigger:focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--docsera-primary) 22%, transparent); }
-        .docsera-emoji-picker-controls__trigger:disabled { opacity: .55; cursor: not-allowed; }
+        .docsera-emoji-picker-controls__trigger:not(:disabled):hover, .docsera-emoji-picker-controls__trigger:not(:disabled)[aria-expanded="true"], .docsera-emoji-picker-controls__trigger:not(:disabled):focus-visible { border-color: var(--docsera-border); background: var(--docsera-surface-muted); color: var(--docsera-primary); outline: none; }
+        .docsera-emoji-picker-controls__trigger:not(:disabled):focus-visible { box-shadow: 0 0 0 2px color-mix(in srgb, var(--docsera-primary) 22%, transparent); }
+        .docsera-emoji-picker-controls__trigger:disabled { cursor: not-allowed; }
         .docsera-emoji-picker { position: absolute; z-index: 8; top: calc(100% + 6px); right: 0; width: 252px; padding: 10px; border: 1px solid var(--docsera-border); border-radius: 8px; color: var(--docsera-text); background: var(--docsera-surface); box-shadow: 0 12px 28px color-mix(in srgb, #000 18%, transparent); }
         .docsera-emoji-picker__search-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
         .docsera-emoji-picker__search { width: 100%; box-sizing: border-box; border: 1px solid var(--docsera-border); border-radius: 5px; padding: 6px 8px; color: inherit; background: var(--docsera-surface-muted); font: inherit; font-size: 13px; }

@@ -81,19 +81,25 @@ describe("PageEditorHostRuntime history controls", () => {
     expect(onSaveDraft.mock.calls[0]?.[0].draftContentJson.document).toEqual(editor.getJSON());
   });
 
-  it("portals history controls into the workspace main presentation mount when provided", async () => {
+  it("leaves an external workspace command mount to its persistent presentation owner", async () => {
     const historyControlsMount = document.createElement("div");
     historyControlsMount.dataset.docseraEditorHistoryControlsMount = "true";
     document.body.append(historyControlsMount);
 
+    const onEditorCommandTargetChange = vi.fn();
     const runtime = renderRuntime({
       historyControlsMount,
-      interactionActive: true
+      interactionActive: true,
+      onEditorCommandTargetChange
     });
-    await waitForEditor(runtime);
+    const editor = await waitForEditor(runtime);
 
-    const toolbar = screen.getByRole("toolbar", { name: "Editor history" });
-    expect(historyControlsMount).toContainElement(toolbar);
+    expect(historyControlsMount).toBeEmptyDOMElement();
+    expect(screen.queryByRole("toolbar", { name: "Editor history" })).not.toBeInTheDocument();
+    await waitFor(() => expect(onEditorCommandTargetChange).toHaveBeenLastCalledWith(editor));
+
+    runtime.unmount();
+    expect(onEditorCommandTargetChange).toHaveBeenLastCalledWith(null);
   });
 
   it("keeps the workspace history-control mount sticky without taking layout width and offsets only the rendered controls", () => {
@@ -111,6 +117,14 @@ describe("PageEditorHostRuntime history controls", () => {
       runtimeShellSource.match(
         /\.docsera-main__editor-history-controls-mount\s*>\s*\.docsera-editor-command-controls\s*\{(?<body>[\s\S]*?)\n\}/
       )?.groups?.body ?? "";
+    const pendingPresentationRule =
+      runtimeShellSource.match(
+        /data-docsera-contextual-control-presentation="pending"\]\s*>\s*\.docsera-editor-command-controls\s*\{(?<body>[\s\S]*?)\n\}/
+      )?.groups?.body ?? "";
+    const enterPresentationRule =
+      runtimeShellSource.match(
+        /data-docsera-contextual-control-presentation="enter"\]\s*>\s*\.docsera-editor-command-controls\s*\{(?<body>[\s\S]*?)\n\}/
+      )?.groups?.body ?? "";
 
     expect(mountRule).toContain("position: sticky;");
     expect(mountRule).toContain("top: 8px;");
@@ -120,6 +134,8 @@ describe("PageEditorHostRuntime history controls", () => {
     expect(mountRule).toContain("height: 0;");
     expect(mountRule).not.toContain("position: absolute;");
     expect(controlsOffsetRule).toContain("transform: translate(-8px, 8px);");
+    expect(pendingPresentationRule).toContain("opacity: 0;");
+    expect(enterPresentationRule).toContain("animation: docsera-contextual-control-enter 260ms ease-out both;");
   });
 
   it("does not render controls when the visual interaction surface is inactive or read-only", async () => {

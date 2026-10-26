@@ -95,7 +95,10 @@ export function WorkspaceSidebar({
 
   return (
     <aside ref={sidebarRef} className="docsera-sidebar" aria-label="Workspace navigation" aria-busy={showLoadingState}>
-      <div className="docsera-sidebar__search-row">
+      <div
+        className="docsera-sidebar__search-row"
+        data-docsera-create-page-control={showCreatePageControl ? "visible" : "hidden"}
+      >
         <label className="docsera-sidebar__search" htmlFor="docsera-page-filter">
           <span className="docsera-sidebar__search-icon">
             <SearchIcon />
@@ -111,7 +114,7 @@ export function WorkspaceSidebar({
             onChange={(event) => onTreeFilterChange(event.target.value)}
           />
         </label>
-        {showCreatePageControl ? (
+        <div className="docsera-sidebar__create-page-slot" aria-hidden={showCreatePageControl ? undefined : true}>
           <DocseraCompactTooltip label="New page">
             <button
               type="button"
@@ -119,13 +122,14 @@ export function WorkspaceSidebar({
               aria-label="New page"
               aria-describedby={createPageReasonId}
               onClick={onShowCreatePage}
-              disabled={isCreatingPage || showLoadingState || !canCreatePage}
+              disabled={!showCreatePageControl || isCreatingPage || showLoadingState || !canCreatePage}
+              tabIndex={showCreatePageControl ? undefined : -1}
               title={createPageDisabledReason || undefined}
             >
               <PlusIcon />
             </button>
           </DocseraCompactTooltip>
-        ) : null}
+        </div>
       </div>
       {createPageDisabledReason ? (
         <p id={createPageReasonId} className="docsera-sidebar__status-note" role="note">

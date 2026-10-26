@@ -69,6 +69,35 @@ describe("EmojiPickerControls", () => {
     }
   });
 
+  it("keeps the trigger and icon visually stable through a temporarily unavailable editor session", () => {
+    const firstEditor = createEditor();
+    const secondEditor = createEditor("<p>Second</p>");
+    const view = renderControls(firstEditor);
+    const trigger = screen.getByRole("button", { name: "Insert emoji" });
+    const icon = trigger.querySelector("svg");
+    const styles = document.querySelector(".docsera-emoji-picker-controls style")?.textContent ?? "";
+
+    expect(icon).not.toBeNull();
+    expect(styles).not.toContain(".docsera-emoji-picker-controls__trigger:disabled { opacity:");
+    expect(styles).toContain(".docsera-emoji-picker-controls__trigger:not(:disabled):hover");
+    expect(styles).toContain(".docsera-emoji-picker-controls__trigger:not(:disabled):focus-visible");
+
+    view.rerender(<EmojiPickerControls canEdit={true} editor={null} ownerDocument={document} />);
+
+    expect(screen.getByRole("button", { name: "Insert emoji" })).toBe(trigger);
+    expect(trigger.querySelector("svg")).toBe(icon);
+    expect(trigger).toBeDisabled();
+    expect(trigger).toHaveStyle({ opacity: "" });
+    fireEvent.click(trigger);
+    expect(firstEditor.getText()).toBe("Hello world");
+
+    view.rerender(<EmojiPickerControls canEdit={true} editor={secondEditor} ownerDocument={document} />);
+
+    expect(screen.getByRole("button", { name: "Insert emoji" })).toBe(trigger);
+    expect(trigger.querySelector("svg")).toBe(icon);
+    expect(secondEditor.getText()).toBe("Second");
+  });
+
   it("inserts a Unicode emoji at the captured caret and keeps it as normal text", async () => {
     const editor = createEditor();
     renderControls(editor);
@@ -174,6 +203,18 @@ describe("EmojiPickerControls", () => {
 
     expect(screen.queryByRole("dialog", { name: "Emoji picker" })).not.toBeInTheDocument();
     expect(secondEditor.getText()).toBe("Second");
+  });
+
+  it("hides an open picker synchronously while its command target is unavailable", () => {
+    const editor = createEditor();
+    const view = renderControls(editor);
+    openPicker();
+
+    view.rerender(<EmojiPickerControls canEdit={true} editor={null} ownerDocument={document} />);
+
+    expect(screen.queryByRole("dialog", { name: "Emoji picker" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Insert emoji" })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: "Insert emoji" })).toBeDisabled();
   });
 
   it("does not open when Edit access is unavailable", () => {

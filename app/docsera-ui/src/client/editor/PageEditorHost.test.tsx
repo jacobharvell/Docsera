@@ -3,6 +3,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
 import { PageEditorHost } from "./PageEditorHost";
 import { createEmptyDocseraDocumentEnvelope } from "../../shared/editor/document";
 import type { PageBodySaveResult } from "../shared/types/docsera";
@@ -11,6 +12,7 @@ let crashOnRender = false;
 let crashOnLoad = false;
 let mountRuntimeCallCount = 0;
 let updateRuntimeCallCount = 0;
+const runtimeEditor = { id: "runtime-editor" } as never;
 vi.spyOn(console, "error").mockImplementation(() => {});
 
 afterEach(() => {
@@ -32,12 +34,14 @@ vi.mock("./PageEditorHostRuntime", async () => {
     }: {
       props: {
         onEditorReady?: () => void;
+        onEditorCommandTargetChange?: (editor: typeof runtimeEditor | null) => void;
         onRuntimeError?: () => void;
         overlayRoot: HTMLElement;
       };
       runtimeRoot: HTMLElement;
     }) => {
       mountRuntimeCallCount += 1;
+      let currentProps = props;
       if (crashOnRender) {
         props.onRuntimeError?.();
         return {
@@ -56,15 +60,23 @@ vi.mock("./PageEditorHostRuntime", async () => {
       runtimeRoot.replaceChildren(runtimeText);
       props.overlayRoot.replaceChildren(overlayButton);
       props.onEditorReady?.();
+      props.onEditorCommandTargetChange?.(runtimeEditor);
 
       return {
         destroy() {
+          currentProps.onEditorCommandTargetChange?.(null);
           runtimeRoot.replaceChildren();
           props.overlayRoot.replaceChildren();
         },
         update(nextProps: typeof props) {
           updateRuntimeCallCount += 1;
-          props = nextProps;
+          // Match the runtime command-target effect: a new callback identity
+          // revokes the old target and publishes the current editor again.
+          if (currentProps.onEditorCommandTargetChange !== nextProps.onEditorCommandTargetChange) {
+            currentProps.onEditorCommandTargetChange?.(null);
+            nextProps.onEditorCommandTargetChange?.(runtimeEditor);
+          }
+          currentProps = nextProps;
           runtimeRoot.replaceChildren(runtimeText);
           props.overlayRoot.replaceChildren(overlayButton);
           props.onEditorReady?.();
@@ -317,5 +329,78 @@ describe("PageEditorHost runtime containment", () => {
 
     expect(mountRuntimeCallCount).toBe(1);
     expect(updateRuntimeCallCount).toBeGreaterThan(0);
+  });
+
+  it("keeps command-target publication stable through connected parent rerenders", async () => {
+    const publications: Array<{ editor: typeof runtimeEditor | null; sessionKey: string }> = [];
+    let parentRenders = 0;
+
+    function ConnectedHost() {
+      const [, setTarget] = useState<{ editor: typeof runtimeEditor | null; sessionKey: string } | null>(null);
+      parentRenders += 1;
+      return (
+        <PageEditorHost
+          canEdit={true}
+          initialEnvelope={createEmptyDocseraDocumentEnvelope()}
+          initialRevision={parentRenders}
+          onAccessLost={vi.fn()}
+          onEditorCommandTargetChange={(target) => {
+            publications.push(target as { editor: typeof runtimeEditor | null; sessionKey: string });
+            setTarget(target as { editor: typeof runtimeEditor | null; sessionKey: string });
+          }}
+          onError={vi.fn()}
+          onOutlineChange={vi.fn()}
+          onSaveDraft={vi.fn()}
+          onStatusChange={vi.fn()}
+          pageSysId="page-001"
+          sessionKey="page-001:1"
+          theme="light"
+        />
+      );
+    }
+
+    render(<ConnectedHost />);
+
+    await waitFor(() => expect(publications).toEqual([
+      { editor: null, sessionKey: "page-001:1" },
+      { editor: runtimeEditor, sessionKey: "page-001:1" }
+    ]));
+    // React may schedule the initial null state handoff once even though its
+    // value is already null. The important boundary is that its resulting
+    // ordinary update does not repeat publication into an unbounded loop.
+    expect(parentRenders).toBeLessThanOrEqual(3);
+    expect(mountRuntimeCallCount).toBe(1);
+  });
+
+  it("revokes the prior session before publishing a replacement and ignores its late cleanup", async () => {
+    const publications: Array<{ editor: typeof runtimeEditor | null; sessionKey: string }> = [];
+    const onEditorCommandTargetChange = vi.fn((target) => publications.push(target));
+    const sharedProps = {
+      canEdit: true,
+      initialEnvelope: createEmptyDocseraDocumentEnvelope(),
+      initialRevision: 0,
+      onAccessLost: vi.fn(),
+      onEditorCommandTargetChange,
+      onError: vi.fn(),
+      onOutlineChange: vi.fn(),
+      onSaveDraft: vi.fn(),
+      onStatusChange: vi.fn(),
+      theme: "light" as const
+    };
+    const view = render(<PageEditorHost {...sharedProps} pageSysId="page-001" sessionKey="page-001:1" />);
+
+    await waitFor(() => expect(publications[publications.length - 1]).toEqual({ editor: runtimeEditor, sessionKey: "page-001:1" }));
+    await act(async () => {
+      view.rerender(<PageEditorHost {...sharedProps} pageSysId="page-002" sessionKey="page-002:1" />);
+      await Promise.resolve();
+    });
+
+    expect(publications).toEqual([
+      { editor: null, sessionKey: "page-001:1" },
+      { editor: runtimeEditor, sessionKey: "page-001:1" },
+      { editor: null, sessionKey: "page-001:1" },
+      { editor: null, sessionKey: "page-002:1" },
+      { editor: runtimeEditor, sessionKey: "page-002:1" }
+    ]);
   });
 });

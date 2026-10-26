@@ -2052,6 +2052,7 @@ declare global {
                     {
                         table: 'sys_ux_lib_asset'
                         id: '56a7d664df6a442ab56734faddecc0d1'
+                        deleted: true
                         key: {
                             name: 'x_82900_docsera/index'
                         }
@@ -4342,6 +4343,7 @@ declare global {
                     {
                         table: 'sys_ux_lib_asset'
                         id: 'e1482fed27b54655a9044745ba601ad6'
+                        deleted: true
                         key: {
                             name: 'x_82900_docsera/index.js.map'
                         }

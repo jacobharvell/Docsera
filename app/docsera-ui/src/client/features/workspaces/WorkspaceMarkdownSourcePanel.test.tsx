@@ -168,6 +168,28 @@ describe("WorkspaceMarkdownSourcePanel", () => {
     expect(scrollerBlock).toContain("outline: none;");
   });
 
+  it("keeps the editable source lane aligned through the native gutter's measured width", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+    const panel = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/features/workspaces/WorkspaceMarkdownSourcePanel.tsx`,
+      "utf8"
+    );
+
+    expect(panel).toContain('mount.style.setProperty("--docsera-markdown-source-gutter-inline-size", `${gutter.getBoundingClientRect().width}px`)');
+    expect(panel).toContain("const observer = new ResizeObserver(updateGutterWidth);");
+    expect(source).toMatch(/\.docsera-main__source-editor \{\s*--docsera-markdown-source-gutter-inline-size: 0px;\s*width: calc\(100% \+ var\(--docsera-markdown-source-gutter-inline-size\)\);\s*margin-inline-start: calc\(-1 \* var\(--docsera-markdown-source-gutter-inline-size\)\);\s*\}/s);
+    expect(source).toMatch(/\.docsera-main__source-editor \.cm-lineNumbers \.cm-gutterElement \{\s*padding-inline: 0\.5rem 1rem;\s*\}/s);
+    expect(source).toMatch(/\.docsera-main__source-editor \.cm-gutters,\s*\.docsera-main__source-editor \.cm-gutterElement \{[\s\S]*?font-family: inherit;[\s\S]*?font-size: inherit;[\s\S]*?line-height: inherit;/);
+  });
+
   it("uses the latest callbacks and editable state without recreating the source session", async () => {
     const firstTitleChange = vi.fn();
     const latestTitleChange = vi.fn();

@@ -185,6 +185,258 @@ describe("empty workspace session recovery", () => {
   });
 });
 
+describe("editor command-control presentation", () => {
+  it("keeps the visual command toolbar mounted and disabled while a destination page session replaces the prior session", () => {
+    const firstPage = createPageView();
+    const secondPage = {
+      ...createPageView(),
+      id: "page-002",
+      page: { ...createPageView().page, sysId: "page-002" },
+      sysId: "page-002",
+      title: "Second page"
+    };
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      page: firstPage,
+      pageTitleValue: firstPage.title
+    });
+
+    const view = render(<WorkspaceMainPane {...props} />);
+    const toolbar = screen.getByRole("toolbar", { name: "Editor history" });
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Insert emoji" })).toBeDisabled();
+
+    view.rerender(
+      <WorkspaceMainPane
+        {...props}
+        bodyState="loading"
+        page={secondPage}
+        pageTitleValue={secondPage.title}
+        sessionKey="page-002:1"
+      />
+    );
+
+    expect(screen.getByRole("toolbar", { name: "Editor history" })).toBe(toolbar);
+    expect(screen.getByRole("button", { name: "Undo" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Insert emoji" })).toBeDisabled();
+  });
+
+  it("hides the visual command toolbar during editor recovery and edit access loss", () => {
+    const page = createPageView();
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      page,
+      pageTitleValue: page.title
+    });
+    const view = render(<WorkspaceMainPane {...props} editorFailure={{ kind: "load_failed", message: "Editor failed" }} />);
+
+    expect(screen.queryByRole("toolbar", { name: "Editor history" })).not.toBeInTheDocument();
+
+    view.rerender(<WorkspaceMainPane {...props} editAccessLost />);
+
+    expect(screen.queryByRole("toolbar", { name: "Editor history" })).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Authoring access is no longer available");
+  });
+
+  it("hides the command toolbar outside Visual Edit", () => {
+    const page = createPageView();
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      page,
+      pageTitleValue: page.title
+    });
+    const view = render(<WorkspaceMainPane {...props} workspaceMode="live" />);
+
+    expect(screen.queryByRole("toolbar", { name: "Editor history" })).not.toBeInTheDocument();
+
+    view.rerender(<WorkspaceMainPane {...props} authoringSurface="markdown" />);
+
+    expect(screen.queryByRole("toolbar", { name: "Editor history" })).not.toBeInTheDocument();
+  });
+
+  it("keeps the Live-to-Edit toolbar hidden until readiness, then stable through its workspace reveal lifecycle", () => {
+    vi.useFakeTimers();
+    const restoreMotion = mockReducedMotion(false);
+    const page = createPageView();
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      page,
+      pageTitleValue: page.title,
+      workspaceMode: "live"
+    });
+    const liveToEditIntent = { destination: "visual" as const, key: 1, scope: "workspace" as const };
+    const view = render(<WorkspaceMainPane {...props} />);
+
+    view.rerender(
+      <WorkspaceMainPane
+        {...props}
+        bodyState="loading"
+        contentRevealIntent={liveToEditIntent}
+        workspaceMode="edit"
+      />
+    );
+    const toolbarMount = document.querySelector("[data-docsera-editor-history-controls-mount='true']");
+    const toolbar = screen.getByRole("toolbar", { name: "Editor history" });
+    expect(toolbarMount).toHaveAttribute("data-docsera-contextual-control-presentation", "pending");
+    expect(toolbar).toBeInTheDocument();
+
+    view.rerender(
+      <WorkspaceMainPane
+        {...props}
+        bodyState="loading"
+        contentRevealIntent={liveToEditIntent}
+        pageTitleValue="Overview updated"
+        workspaceMode="edit"
+      />
+    );
+    expect(document.querySelector("[data-docsera-editor-history-controls-mount='true']")).toBe(toolbarMount);
+    expect(screen.getByRole("toolbar", { name: "Editor history" })).toBe(toolbar);
+    expect(toolbarMount).toHaveAttribute("data-docsera-contextual-control-presentation", "pending");
+
+    view.rerender(<WorkspaceMainPane {...props} contentRevealIntent={liveToEditIntent} workspaceMode="edit" />);
+    expect(document.querySelector("[data-docsera-editor-history-controls-mount='true']")).toBe(toolbarMount);
+    expect(screen.getByRole("toolbar", { name: "Editor history" })).toBe(toolbar);
+    expect(toolbarMount).toHaveAttribute("data-docsera-contextual-control-presentation", "enter");
+
+    view.rerender(
+      <WorkspaceMainPane
+        {...props}
+        contentRevealIntent={liveToEditIntent}
+        pageTitleValue="Overview updated again"
+        workspaceMode="edit"
+      />
+    );
+    expect(toolbarMount).toHaveAttribute("data-docsera-contextual-control-presentation", "enter");
+
+    act(() => {
+      vi.advanceTimersByTime(399);
+    });
+    expect(toolbarMount).toHaveAttribute("data-docsera-contextual-control-presentation", "enter");
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(toolbarMount).not.toHaveAttribute("data-docsera-contextual-control-presentation");
+
+    const secondPage = {
+      ...createPageView(),
+      id: "page-002",
+      page: { ...createPageView().page, sysId: "page-002", draftTitle: "Install", publishedTitle: "Install" },
+      sysId: "page-002",
+      title: "Install"
+    } as WorkspacePageView;
+    view.rerender(
+      <WorkspaceMainPane
+        {...props}
+        contentRevealIntent={liveToEditIntent}
+        page={secondPage}
+        pageTitleValue={secondPage.title}
+        sessionKey="page-002:1"
+        workspaceMode="edit"
+      />
+    );
+    expect(document.querySelector("[data-docsera-editor-history-controls-mount='true']")).not.toHaveAttribute("data-docsera-contextual-control-presentation");
+
+    view.rerender(<WorkspaceMainPane {...props} workspaceMode="live" />);
+    expect(screen.queryByRole("toolbar", { name: "Editor history" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Insert emoji" })).not.toBeInTheDocument();
+
+    view.rerender(<WorkspaceMainPane {...props} workspaceMode="edit" />);
+    view.rerender(
+      <WorkspaceMainPane
+        {...props}
+        authoringSurface="markdown"
+        contentRevealIntent={{ destination: "markdown", key: 2, scope: "authoring-surface" }}
+        workspaceMode="edit"
+      />
+    );
+    view.rerender(
+      <WorkspaceMainPane
+        {...props}
+        authoringSurface="visual"
+        contentRevealIntent={{ destination: "visual", key: 3, scope: "authoring-surface" }}
+        workspaceMode="edit"
+      />
+    );
+    expect(document.querySelector("[data-docsera-editor-history-controls-mount='true']")).not.toHaveAttribute("data-docsera-contextual-control-presentation");
+
+    restoreMotion();
+  });
+
+  it("does not animate the toolbar entrance when reduced motion is requested", () => {
+    const restoreMotion = mockReducedMotion(true);
+    const page = createPageView();
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      page,
+      pageTitleValue: page.title,
+      workspaceMode: "live"
+    });
+    const view = render(<WorkspaceMainPane {...props} />);
+
+    view.rerender(
+      <WorkspaceMainPane
+        {...props}
+        contentRevealIntent={{ destination: "visual", key: 1, scope: "workspace" }}
+        workspaceMode="edit"
+      />
+    );
+
+    expect(document.querySelector("[data-docsera-editor-history-controls-mount='true']")).not.toHaveAttribute("data-docsera-contextual-control-presentation");
+    restoreMotion();
+  });
+
+  it("removes the command toolbar immediately on Edit-to-Live while commands are unavailable", () => {
+    const restoreMotion = mockReducedMotion(false);
+    const page = createPageView();
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      page,
+      pageTitleValue: page.title
+    });
+    const liveIntent = { destination: "live" as const, key: 1, scope: "workspace" as const };
+    const view = render(<WorkspaceMainPane {...props} />);
+
+    view.rerender(<WorkspaceMainPane {...props} contentRevealIntent={liveIntent} workspaceMode="live" />);
+
+    expect(document.querySelector(".docsera-main__editor-host")).toBeNull();
+    expect(document.querySelector("[data-docsera-editor-history-controls-mount='true']")).toBeNull();
+    expect(screen.queryByRole("toolbar", { name: "Editor history" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Redo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Insert emoji" })).not.toBeInTheDocument();
+
+    restoreMotion();
+  });
+
+  it("removes the command toolbar immediately on Edit-to-Live with reduced motion", () => {
+    const restoreMotion = mockReducedMotion(true);
+    const page = createPageView();
+    const props = createEmptyWorkspaceProps({
+      canEditPageBody: true,
+      canManagePageSettings: true,
+      page,
+      pageTitleValue: page.title
+    });
+    const liveIntent = { destination: "live" as const, key: 1, scope: "workspace" as const };
+    const view = render(<WorkspaceMainPane {...props} />);
+
+    view.rerender(<WorkspaceMainPane {...props} contentRevealIntent={liveIntent} workspaceMode="live" />);
+    expect(document.querySelector("[data-docsera-editor-history-controls-mount='true']")).toBeNull();
+    expect(screen.queryByRole("toolbar", { name: "Editor history" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Insert emoji" })).not.toBeInTheDocument();
+    restoreMotion();
+  });
+});
+
 function mockReducedMotion(matches: boolean): () => void {
   const originalMatchMedia = window.matchMedia;
   Object.defineProperty(window, "matchMedia", {
@@ -642,6 +894,9 @@ describe("WorkspaceMainPane", () => {
     const sidebarRow = document.createElement("button");
     sidebarRow.className = "docsera-page-tree__row";
     sidebarTree.append(sidebarRow);
+    const sidebarNewPage = document.createElement("button");
+    sidebarNewPage.className = "docsera-page-tree__new-page";
+    sidebarTree.append(sidebarNewPage);
     fixture.append(sidebarTree);
 
     const tocList = document.createElement("ol");
@@ -678,6 +933,12 @@ describe("WorkspaceMainPane", () => {
       expect(lastValue(matchingPropertyValues(sidebarRow, "animation"))).toBe(
         "docsera-content-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1)"
       );
+      expect(lastValue(matchingPropertyValues(sidebarNewPage, "animation"))).toBe(
+        "docsera-content-reveal 400ms cubic-bezier(0.22, 1, 0.36, 1)"
+      );
+      sidebarTree.dataset.docseraChromeRevealState = "pending";
+      expect(getComputedStyle(sidebarNewPage).opacity).toBe("0");
+      expect(getComputedStyle(sidebarNewPage).transform).toBe("translateY(16px)");
       expect(getComputedStyle(tocLink).transform).toBe("translateY(16px)");
       expect(source).toMatch(
         /@keyframes docsera-content-reveal\s*\{\s*from\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(16px\);\s*\}\s*to\s*\{\s*opacity:\s*1;\s*transform:\s*translateY\(0\);/s
@@ -686,10 +947,13 @@ describe("WorkspaceMainPane", () => {
         /@keyframes docsera-content-opacity-reveal\s*\{\s*from\s*\{\s*opacity:\s*0;\s*\}\s*to\s*\{\s*opacity:\s*1;\s*\}\s*\}/s
       );
       expect(source).toMatch(
-        /\.docsera-sidebar__tree\[data-docsera-chrome-reveal-state="enter"\] \.docsera-page-tree__row,\s*\.docsera-toc__list\[data-docsera-chrome-reveal-state="enter"\] \.docsera-toc__link\s*\{\s*animation:\s*docsera-content-reveal 400ms cubic-bezier\(0\.22, 1, 0\.36, 1\);/s
+        /\.docsera-sidebar__tree\[data-docsera-chrome-reveal-state="enter"\] \.docsera-page-tree__row,\s*\.docsera-sidebar__tree\[data-docsera-chrome-reveal-state="enter"\] \.docsera-page-tree__new-page,\s*\.docsera-toc__list\[data-docsera-chrome-reveal-state="enter"\] \.docsera-toc__link\s*\{\s*animation:\s*docsera-content-reveal 400ms cubic-bezier\(0\.22, 1, 0\.36, 1\);/s
       );
       expect(source).toMatch(
-        /\.docsera-sidebar__tree\[data-docsera-chrome-reveal-state="pending"\] \.docsera-page-tree__row,\s*\.docsera-toc__list\[data-docsera-chrome-reveal-state="pending"\] \.docsera-toc__link\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(16px\);/s
+        /\.docsera-sidebar__tree\[data-docsera-chrome-reveal-state="pending"\] \.docsera-page-tree__row,\s*\.docsera-sidebar__tree\[data-docsera-chrome-reveal-state="pending"\] \.docsera-page-tree__new-page,\s*\.docsera-toc__list\[data-docsera-chrome-reveal-state="pending"\] \.docsera-toc__link\s*\{\s*opacity:\s*0;\s*transform:\s*translateY\(16px\);/s
+      );
+      expect(source).toMatch(
+        /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.docsera-sidebar__tree\[data-docsera-chrome-reveal-state="enter"\] \.docsera-page-tree__row,\s*\.docsera-sidebar__tree\[data-docsera-chrome-reveal-state="enter"\] \.docsera-page-tree__new-page,\s*\.docsera-toc__list\[data-docsera-chrome-reveal-state="enter"\] \.docsera-toc__link\s*\{\s*animation:\s*none !important;/
       );
       expect(source).not.toContain("docsera-content-chrome-reveal");
       expect(source).not.toContain(".docsera-breadcrumbs[data-docsera-chrome-reveal-state");
@@ -699,6 +963,34 @@ describe("WorkspaceMainPane", () => {
       expect(source).not.toMatch(/animation-fill-mode:\s*(forwards|both)/);
     } finally {
       fixture.remove();
+      style.remove();
+    }
+  });
+
+  it("keeps short content-reveal surfaces at their natural flex height", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+    const style = document.createElement("style");
+    style.textContent = source;
+    document.head.append(style);
+    const main = document.createElement("main");
+    main.className = "docsera-main";
+    const surface = document.createElement("article");
+    surface.className = "docsera-main__surface docsera-main__content-reveal";
+    main.append(surface);
+    document.body.append(main);
+
+    try {
+      expect(getComputedStyle(main).display).toBe("flex");
+      expect(getComputedStyle(surface).alignSelf).toBe("flex-start");
+    } finally {
+      main.remove();
       style.remove();
     }
   });
