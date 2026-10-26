@@ -1,7 +1,7 @@
 /* @vitest-environment jsdom */
 
 import "@testing-library/jest-dom/vitest";
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Editor, JSONContent } from "@tiptap/core";
 import { CellSelection, findTable, moveTableColumn, moveTableRow, TableMap } from "@tiptap/pm/tables";
 import { closeHistory, undoDepth } from "@tiptap/pm/history";
@@ -12,6 +12,8 @@ import { parseDocseraDocumentOrThrow } from "../../shared/editor/document";
 import type { PageBodySaveResult } from "../shared/types/docsera";
 import { describe, expect, it, vi } from "vitest";
 import { getCommandQueryPresentationState, PageEditorHostRuntime } from "./PageEditorHostRuntime";
+import { PublishedDocumentReader } from "../features/workspaces/PublishedDocumentReader";
+import { writeTaskListProgress } from "../shared/taskListProgress";
 import type { EditorMediaAdapter, EditorMediaReference } from "./contracts";
 import {
   applyToolbarBlockTypeCommand,
@@ -4946,7 +4948,7 @@ describe("PageEditorHostRuntime", () => {
     expect(menu.querySelector(".docsera-block-action-menu__list")).toHaveClass("docsera-editor-dropdown--shift-enter");
     expect(submenu).toHaveClass("docsera-editor-dropdown--enter");
     expect(submenu).toHaveStyle({ left: "386px", top: "100px" });
-    expect(getMenuItemNames(submenu)).toEqual(["Text", "Heading 1", "Heading 2", "Heading 3", "Blockquote", "Bulleted List", "Numbered List"]);
+    expect(getMenuItemNames(submenu)).toEqual(["Text", "Heading 1", "Heading 2", "Heading 3", "Blockquote", "Bulleted List", "Numbered List", "Task List"]);
     expect(within(submenu).queryByText("Turn into")).toBeNull();
     expect(within(submenu).getByRole("menuitemradio", { name: "Text" })).toHaveAttribute("aria-checked", "true");
 
@@ -4975,6 +4977,56 @@ describe("PageEditorHostRuntime", () => {
     expect(resolveTopLevelBlockIndexFromPosition(editor, editor.state.selection.from)).toBe(0);
     expect(screen.queryByRole("menu", { name: "Turn into Text" })).toBeNull();
 
+    geometrySpy.mockRestore();
+  });
+
+  it.each([
+    ["Bulleted List", "bulletList"],
+    ["Numbered List", "orderedList"]
+  ])("converts every task-list item to %s through block actions", async (targetLabel, targetType) => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "taskList",
+          content: ["First", "Second", "Third"].map((text, index) => ({
+            type: "taskItem",
+            attrs: { checked: index === 0 },
+            content: [{ type: "paragraph", content: [{ type: "text", text, marks: index === 1 ? [{ type: "bold" }] : [] }] }]
+          }))
+        }
+      ]
+    };
+    const { editorReady } = renderRuntime({ initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument) });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 84)]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) throw new Error("Expected the editor surface to be available.");
+
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+    const handle = await screen.findByRole("button", { name: "Select block: Task list" });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
+
+    const menu = await screen.findByRole("menu", { name: "Block actions for Task list" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Turn into" }));
+    const submenu = await screen.findByRole("menu", { name: "Turn into Task list" });
+    fireEvent.click(within(submenu).getByRole("menuitemradio", { name: targetLabel }));
+
+    await waitFor(() => {
+      expect(editor.getJSON()).toMatchObject({
+        content: [{
+          type: targetType,
+          content: [
+            { content: [{ content: [{ text: "First" }] }] },
+            { content: [{ content: [{ text: "Second", marks: [{ type: "bold" }] }] }] },
+            { content: [{ content: [{ text: "Third" }] }] }
+          ]
+        }]
+      });
+    });
     geometrySpy.mockRestore();
   });
 
@@ -5731,6 +5783,13 @@ describe("PageEditorHostRuntime", () => {
     ["Bulleted List", { type: "doc", content: [{ type: "bulletList" }] }],
     ["Numbered List", { type: "doc", content: [{ type: "orderedList" }] }],
     [
+      "Task List",
+      {
+        type: "doc",
+        content: [{ type: "taskList", content: [{ type: "taskItem", attrs: { checked: false }, content: [{ type: "paragraph" }] }] }]
+      }
+    ],
+    [
       "Accordion",
       {
         type: "doc",
@@ -5785,9 +5844,112 @@ describe("PageEditorHostRuntime", () => {
 
     fireEvent.click(await screen.findByRole("option", { name: new RegExp(label, "i") }));
     expect(editor.getJSON()).toMatchObject(expected);
+    if (label === "Task List") {
+      expect(editor.state.selection.from).toBe(3);
+    }
     if (label === "Horizontal Rule") {
       expect(editor.getJSON().content?.[1]).toMatchObject(expected.content[1]);
     }
+  });
+
+  it("keeps task-list progress browser-local without changing canonical state, history, autosave, or status", async () => {
+    const initialDocument = {
+        type: "doc",
+        content: [
+          {
+            type: "taskList",
+            content: [
+              {
+                type: "taskItem",
+                attrs: { checked: false },
+                content: [{ type: "paragraph", content: [{ type: "text", text: "Review task" }] }]
+              }
+            ]
+          }
+        ]
+      } as DocseraTiptapDocument;
+    const { editorReady, onSaveDraft, onStatusChange } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initialDocument)
+    });
+
+    await waitFor(() => {
+      expect(editorReady[0]).toBeDefined();
+    });
+
+    const editor = editorReady[0];
+    const checkbox = editor.view.dom.querySelector('input[type="checkbox"]');
+    const taskItem = editor.view.dom.querySelector('li[data-type="taskItem"]');
+    expect(checkbox).toBeInstanceOf(HTMLInputElement);
+    expect(taskItem).toHaveAttribute("data-type", "taskItem");
+    expect(taskItem).toHaveAttribute("data-checked", "false");
+    expect(checkbox).not.toBeDisabled();
+    expect(checkbox).not.toBeChecked();
+    expect(checkbox).toHaveAccessibleName("Task item checkbox for Review task");
+
+    const before = editor.getJSON();
+    const statusCallCount = onStatusChange.mock.calls.length;
+    fireEvent.click(checkbox as HTMLInputElement);
+    expect(checkbox).toBeChecked();
+    expect(taskItem).toHaveAttribute("data-checked", "true");
+    expect(editor.getJSON()).toEqual(before);
+    expect(onSaveDraft).not.toHaveBeenCalled();
+    expect(onStatusChange).toHaveBeenCalledTimes(statusCallCount);
+
+    await act(async () => {
+      editor.commands.undo();
+    });
+    expect(editor.getJSON()).toEqual(before);
+    expect(checkbox).toBeChecked();
+
+    fireEvent.change(checkbox as HTMLInputElement, { target: { checked: false } });
+    expect(checkbox).not.toBeChecked();
+    expect(taskItem).toHaveAttribute("data-checked", "false");
+    expect(editor.getJSON()).toEqual(before);
+    expect(onSaveDraft).not.toHaveBeenCalled();
+    expect(onStatusChange).toHaveBeenCalledTimes(statusCallCount);
+  });
+
+  it("restores stored task-list progress immediately in Edit and across an Edit to Live to Edit transition", async () => {
+    const initialDocument = {
+      type: "doc",
+      content: [
+        {
+          type: "taskList",
+          content: [
+            {
+              type: "taskItem",
+              attrs: { checked: false },
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Restore task" }] }]
+            }
+          ]
+        }
+      ]
+    } as DocseraTiptapDocument;
+    const initialEnvelope = createEnvelopeFromDocument(initialDocument);
+    writeTaskListProgress("page-001", initialDocument, { 0: true });
+
+    const editView = renderRuntime({ initialEnvelope });
+    await waitFor(() => {
+      expect(editView.editorReady[0]).toBeDefined();
+    });
+
+    const initialCheckbox = editView.editorReady[0].view.dom.querySelector('input[type="checkbox"]');
+    const initialTaskItem = editView.editorReady[0].view.dom.querySelector('li[data-type="taskItem"]');
+    expect(initialCheckbox).toBeChecked();
+    expect(initialTaskItem).toHaveAttribute("data-type", "taskItem");
+    expect(initialTaskItem).toHaveAttribute("data-checked", "true");
+    editView.unmount();
+
+    const liveView = render(<PublishedDocumentReader envelope={initialEnvelope} pageIdentity="page-001" />);
+    expect(screen.getByRole("checkbox")).toBeChecked();
+    liveView.unmount();
+
+    const returnedEditView = renderRuntime({ initialEnvelope });
+    await waitFor(() => {
+      expect(returnedEditView.editorReady[0]).toBeDefined();
+    });
+    expect(returnedEditView.editorReady[0].view.dom.querySelector('input[type="checkbox"]')).toBeChecked();
+    expect(returnedEditView.editorReady[0].view.dom.querySelector('li[data-type="taskItem"]')).toHaveAttribute("data-checked", "true");
   });
 
   it("replaces the owner paragraph with a canonical accordion and leaves no ghost paragraph when inserted from Slash", async () => {
@@ -10509,6 +10671,125 @@ describe("PageEditorHostRuntime", () => {
     expectCanonicalDocument(editor, expected);
   });
 
+  it("converts every ordinary list item to an unchecked task item and preserves the text selection", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "bulletList",
+          content: ["First", "Second", "Third"].map((text, index) => ({
+            type: "listItem",
+            content: [{ type: "paragraph", content: [{ type: "text", text, marks: index === 1 ? [{ type: "italic" }] : [] }] }]
+          }))
+        }
+      ]
+    } as DocseraTiptapDocument;
+    const { editorReady } = renderRuntime({ initialEnvelope: createEnvelopeFromDocument(initial) });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+    let secondTextPos = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text === "Second") secondTextPos = pos;
+    });
+    await act(async () => editor.commands.setTextSelection({ from: secondTextPos + 1, to: secondTextPos + 5 }));
+    const selectionBefore = editor.state.selection;
+
+    const before = editor.getJSON();
+    expect(applyToolbarBlockTypeCommand(editor, "taskList")).toBe(true);
+    const converted = editor.getJSON();
+    expect(converted).toMatchObject({
+      content: [{
+        type: "taskList",
+        content: [
+          { attrs: { checked: false }, content: [{ content: [{ text: "First" }] }] },
+          { attrs: { checked: false }, content: [{ content: [{ text: "Second", marks: [{ type: "italic" }] }] }] },
+          { attrs: { checked: false }, content: [{ content: [{ text: "Third" }] }] }
+        ]
+      }]
+    });
+    expect(editor.state.selection).toBeInstanceOf(TextSelection);
+    expect(editor.state.selection.$from.parent.textContent).toBe("Second");
+    expect(editor.state.selection.anchor - editor.state.selection.$anchor.start()).toBe(selectionBefore.anchor - selectionBefore.$anchor.start());
+    expect(editor.state.selection.head - editor.state.selection.$head.start()).toBe(selectionBefore.head - selectionBefore.$head.start());
+    expect(editor.state.selection.from - editor.state.selection.$from.start()).toBe(1);
+    expect(editor.state.selection.to - editor.state.selection.$from.start()).toBe(5);
+
+    await act(async () => editor.commands.undo());
+    expect(editor.getJSON()).toEqual(before);
+    await act(async () => editor.commands.redo());
+    expect(editor.getJSON()).toEqual(converted);
+  });
+
+  it.each([
+    { target: "bulletedList", selection: { from: 5, to: 1 }, source: "taskList" },
+    { target: "numberedList", selection: { from: 5, to: 1 }, source: "taskList" },
+    { target: "taskList", selection: { from: 5, to: 1 }, source: "orderedList" }
+  ])("preserves $source selection anchor and head when converting to $target", async ({ source, target, selection }) => {
+    const listItemType = source === "taskList" ? "taskItem" : "listItem";
+    const initial = {
+      type: "doc",
+      content: [{
+        type: source,
+        ...(source === "orderedList" ? { attrs: { start: 1, type: null } } : {}),
+        content: ["First", "Second", "Third"].map((text) => ({
+          type: listItemType,
+          ...(source === "taskList" ? { attrs: { checked: false } } : {}),
+          content: [{ type: "paragraph", content: [{ type: "text", text }] }]
+        }))
+      }]
+    } as DocseraTiptapDocument;
+    const { editorReady } = renderRuntime({ initialEnvelope: createEnvelopeFromDocument(initial) });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+    let secondTextPos = 0;
+    editor.state.doc.descendants((node, pos) => {
+      if (node.isText && node.text === "Second") secondTextPos = pos;
+    });
+    await act(async () => editor.commands.setTextSelection({
+      from: secondTextPos + selection.from,
+      to: secondTextPos + selection.to
+    }));
+    const selectionBefore = editor.state.selection;
+
+    expect(applyToolbarBlockTypeCommand(editor, target as never)).toBe(true);
+
+    expect(editor.state.selection).toBeInstanceOf(TextSelection);
+    expect(editor.state.selection.$anchor.parent.textContent).toBe("Second");
+    expect(editor.state.selection.$head.parent.textContent).toBe("Second");
+    expect(editor.state.selection.anchor - editor.state.selection.$anchor.start()).toBe(selectionBefore.anchor - selectionBefore.$anchor.start());
+    expect(editor.state.selection.head - editor.state.selection.$head.start()).toBe(selectionBefore.head - selectionBefore.$head.start());
+  });
+
+  it("does not offer lossy non-list conversions for a compound list block", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        {
+          type: "bulletList",
+          content: [
+            { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "First" }] }] },
+            { type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "Second" }] }] }
+          ]
+        }
+      ]
+    };
+    const { editorReady } = renderRuntime({ initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument) });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+    const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 56)]);
+    const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+    if (!(surface instanceof HTMLElement)) throw new Error("Expected the editor surface to be available.");
+    await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+    const handle = await screen.findByRole("button", { name: "Select block: Bulleted List" });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
+    await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
+    const menu = await screen.findByRole("menu", { name: "Block actions for Bulleted List" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Turn into" }));
+    const submenu = await screen.findByRole("menu", { name: "Turn into Bulleted List" });
+    expect(getMenuItemNames(submenu)).toEqual(["Bulleted List", "Numbered List", "Task List"]);
+    geometrySpy.mockRestore();
+  });
+
   it.each([
     {
       label: "paragraph",
@@ -11503,7 +11784,7 @@ describe("PageEditorHostRuntime", () => {
     const blockMenu = await screen.findByRole("menu", { name: "Change to" });
     expect(blockTrigger).toHaveAttribute("aria-expanded", "true");
     expect(getIconPathData(blockTrigger)).not.toBe(closedChevronPath);
-    expect(getMenuItemNames(blockMenu)).toEqual(["Text", "Heading 1", "Heading 2", "Heading 3", "Blockquote", "Unordered List", "Numbered List"]);
+    expect(getMenuItemNames(blockMenu)).toEqual(["Text", "Heading 1", "Heading 2", "Heading 3", "Blockquote", "Unordered List", "Numbered List", "Task List"]);
     [
       ["Text", "lucide-pilcrow"],
       ["Heading 1", "lucide-heading-1"],
@@ -11511,7 +11792,8 @@ describe("PageEditorHostRuntime", () => {
       ["Heading 3", "lucide-heading-3"],
       ["Blockquote", "lucide-quote"],
       ["Unordered List", "lucide-list"],
-      ["Numbered List", "lucide-list-ordered"]
+      ["Numbered List", "lucide-list-ordered"],
+      ["Task List", "lucide-list-checks"]
     ].forEach(([label, iconClass]) => {
       const item = within(blockMenu).getByRole("menuitemradio", { name: label });
       expect(getCompactToolbarMenuIcon(item)).toHaveClass(iconClass);
@@ -11705,6 +11987,29 @@ describe("PageEditorHostRuntime", () => {
         content: [
           {
             type: "listItem",
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Alpha" }] }]
+          }
+        ]
+      }
+    },
+    {
+      initial: {
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            content: [{ type: "text", text: "Alpha" }]
+          }
+        ]
+      },
+      triggerLabel: "Text",
+      targetLabel: "Task List",
+      expectedNode: {
+        type: "taskList",
+        content: [
+          {
+            type: "taskItem",
+            attrs: { checked: false },
             content: [{ type: "paragraph", content: [{ type: "text", text: "Alpha" }] }]
           }
         ]

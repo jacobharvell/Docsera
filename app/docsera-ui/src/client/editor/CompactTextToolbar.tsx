@@ -4,9 +4,10 @@ import { useEditorState } from "@tiptap/react";
 import { createPortal, flushSync } from "react-dom";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent as ReactKeyboardEvent, ReactNode, RefObject } from "react";
-import { NodeSelection, TextSelection } from "@tiptap/pm/state";
+import { NodeSelection, Selection, TextSelection } from "@tiptap/pm/state";
+import type { Node as PMNode } from "@tiptap/pm/model";
 import { findWrapping, liftTarget } from "@tiptap/pm/transform";
-import { AlignCenter, AlignLeft, AlignRight, Bold, Code2, Copy, ExternalLink, Heading1, Heading2, Heading3, Italic, Link2, List, ListOrdered, Pilcrow, Quote, Strikethrough, Subscript, Superscript, Trash2, Underline } from "lucide-react";
+import { AlignCenter, AlignLeft, AlignRight, Bold, Code2, Copy, ExternalLink, Heading1, Heading2, Heading3, Italic, Link2, List, ListChecks, ListOrdered, Pilcrow, Quote, Strikethrough, Subscript, Superscript, Trash2, Underline } from "lucide-react";
 import { DocseraIcon } from "../shared/icons/DocseraIcon";
 import { docseraIcons } from "../shared/icons/docseraIcons";
 import { DOCSERA_PALETTE_KEYS, isDocseraPaletteKey, type DocseraPaletteKey } from "../../server/editor/colorContract";
@@ -21,7 +22,7 @@ import {
 } from "./DocseraTooltip";
 
 type ToolbarMenuId = "blockType" | "color" | "more";
-type ToolbarBlockTypeId = "text" | "heading1" | "heading2" | "heading3" | "blockquote" | "bulletedList" | "numberedList";
+type ToolbarBlockTypeId = "text" | "heading1" | "heading2" | "heading3" | "blockquote" | "bulletedList" | "numberedList" | "taskList";
 type ToolbarMoreItemId = "superscript" | "subscript";
 type ToolbarAlignmentChoice = "left" | "center" | "right";
 type TextColorChoice = "default" | DocseraPaletteKey;
@@ -88,7 +89,8 @@ const BLOCK_TYPE_MENU_ITEMS: Array<{ id: ToolbarBlockTypeId; label: string }> = 
   { id: "heading3", label: "Heading 3" },
   { id: "blockquote", label: "Blockquote" },
   { id: "bulletedList", label: "Unordered List" },
-  { id: "numberedList", label: "Numbered List" }
+  { id: "numberedList", label: "Numbered List" },
+  { id: "taskList", label: "Task List" }
 ];
 
 const ALIGNMENT_MENU_ITEMS: Array<{ id: ToolbarAlignmentChoice; label: string }> = [
@@ -409,6 +411,8 @@ export function getToolbarBlockTypeLabel(blockType: ToolbarBlockTypeId): string 
       return "Unordered List";
     case "numberedList":
       return "Numbered List";
+    case "taskList":
+      return "Task List";
     case "text":
     default:
       return "Text";
@@ -445,6 +449,10 @@ export function getToolbarBlockType(editor: Editor): ToolbarBlockTypeId {
     if (node.type.name === "orderedList") {
       return "numberedList";
     }
+
+    if (node.type.name === "taskList") {
+      return "taskList";
+    }
   }
 
   return "text";
@@ -475,12 +483,15 @@ export function applyToolbarBlockTypeCommand(editor: Editor, target: ToolbarBloc
       const headingType = schema.nodes.heading;
       const bulletListType = schema.nodes.bulletList;
       const orderedListType = schema.nodes.orderedList;
+      const taskListType = schema.nodes.taskList;
+      const listItemType = schema.nodes.listItem;
+      const taskItemType = schema.nodes.taskItem;
       const blockquoteType = schema.nodes.blockquote;
-      const currentIsList = current === "bulletedList" || current === "numberedList";
-      const targetIsList = target === "bulletedList" || target === "numberedList";
+      const currentIsList = current === "bulletedList" || current === "numberedList" || current === "taskList";
+      const targetIsList = target === "bulletedList" || target === "numberedList" || target === "taskList";
       const currentIsBlockquote = current === "blockquote";
       const targetIsBlockquote = target === "blockquote";
-      const targetListType = target === "bulletedList" ? bulletListType : orderedListType;
+      const targetListType = target === "bulletedList" ? bulletListType : target === "numberedList" ? orderedListType : taskListType;
       const targetAttrs = target === "heading1" ? { level: 1 } : target === "heading2" ? { level: 2 } : target === "heading3" ? { level: 3 } : {};
 
       function setTextblockTypeFromSelection(nodeType: typeof paragraphType | typeof headingType, attrs?: Record<string, unknown>) {
@@ -497,7 +508,7 @@ export function applyToolbarBlockTypeCommand(editor: Editor, target: ToolbarBloc
         ? (() => {
             for (let depth = selection.$from.depth; depth >= 0; depth -= 1) {
               const node = selection.$from.node(depth);
-              if (node.type === bulletListType || node.type === orderedListType) {
+              if (node.type === bulletListType || node.type === orderedListType || node.type === taskListType) {
                 return {
                   depth,
                   node,
@@ -538,7 +549,30 @@ export function applyToolbarBlockTypeCommand(editor: Editor, target: ToolbarBloc
 
       if (currentIsList && listNode) {
         if (targetIsList) {
-          tr.setNodeMarkup(listNode.pos, targetListType);
+          const targetItemType = target === "taskList" ? taskItemType : listItemType;
+          const targetItemAttrs = target === "taskList" ? { checked: false } : null;
+          // The replacement keeps the list's content tree intact, so text positions
+          // inside it are stable relative to the list start. Mapping those positions
+          // through replaceWith instead maps them through a deleted node.
+          const selectionOffsets = selection instanceof TextSelection
+            ? {
+                anchor: selection.anchor - listNode.pos,
+                head: selection.head - listNode.pos
+              }
+            : null;
+          const convertedItems: PMNode[] = [];
+          listNode.node.forEach((item) => {
+            convertedItems.push(targetItemType.create(targetItemAttrs, item.content));
+          });
+          tr.replaceWith(listNode.pos, listNode.pos + listNode.node.nodeSize, targetListType.create(null, convertedItems));
+          try {
+            if (!selectionOffsets) {
+              throw new Error("The replaced list did not contain a text selection.");
+            }
+            tr.setSelection(TextSelection.create(tr.doc, listNode.pos + selectionOffsets.anchor, listNode.pos + selectionOffsets.head));
+          } catch {
+            tr.setSelection(Selection.near(tr.doc.resolve(listNode.pos + 1), 1));
+          }
           applied = true;
           return true;
         }
@@ -1148,6 +1182,8 @@ function CompactToolbarBlockIcon({ id }: { id: ToolbarBlockTypeId }) {
       return <List size={16} strokeWidth={2} aria-hidden="true" focusable="false" />;
     case "numberedList":
       return <ListOrdered size={16} strokeWidth={2} aria-hidden="true" focusable="false" />;
+    case "taskList":
+      return <ListChecks size={16} strokeWidth={2} aria-hidden="true" focusable="false" />;
   }
 }
 

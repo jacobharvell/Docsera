@@ -82,6 +82,7 @@ import {
   subscribeDocseraImageDisplayState
 } from "../shared/editor/imageDisplayState";
 import { useTopLevelBlockDragSession } from "./useTopLevelBlockDragSession";
+import { getTaskListProgressStorageKey, readTaskListProgress, writeTaskListProgress } from "../shared/taskListProgress";
 import {
   AlignLeft,
   AlignCenter,
@@ -99,6 +100,7 @@ import {
   Heading3,
   GripVertical,
   List,
+  ListChecks,
   ListOrdered,
   Minus,
   Moon,
@@ -223,6 +225,21 @@ type PanelPointerClassification = {
 };
 
 type CommandSelectorPlacement = "above" | "below";
+
+function getTaskItemOrdinal(document: PMNode, position: number): number | null {
+  let ordinal = 0;
+  let found: number | null = null;
+  document.descendants((node, nodePosition) => {
+    if (node.type.name !== "taskItem") {
+      return;
+    }
+    if (nodePosition === position) {
+      found = ordinal;
+    }
+    ordinal += 1;
+  });
+  return found;
+}
 
 type CommandSelectorState =
   | {
@@ -946,12 +963,30 @@ function getTopLevelBlockSelectionOffset(
       return 4;
     case "bulletList":
     case "orderedList":
+    case "taskList":
       return 3;
     case "horizontalRule":
       return "continuation";
     default:
       return 1;
   }
+}
+
+function isTopLevelListBlock(
+  node: Editor["state"]["doc"]["content"]["content"][number]
+): boolean {
+  return node.type.name === "bulletList" || node.type.name === "orderedList" || node.type.name === "taskList";
+}
+
+function canSafelyConvertTopLevelListToNonList(
+  node: Editor["state"]["doc"]["content"]["content"][number]
+): boolean {
+  if (!isTopLevelListBlock(node) || node.childCount !== 1) {
+    return false;
+  }
+
+  const listItem = node.firstChild;
+  return listItem?.childCount === 1 && listItem.firstChild?.type.name === "paragraph";
 }
 
 function getTopLevelBlockInlineContent(
@@ -964,7 +999,7 @@ function getTopLevelBlockInlineContent(
     }
   }
 
-  if (node.type.name === "bulletList" || node.type.name === "orderedList") {
+  if (isTopLevelListBlock(node)) {
     const listItem = node.firstChild;
     const paragraph = listItem?.firstChild;
     if (paragraph?.type.name === "paragraph") {
@@ -2199,6 +2234,8 @@ function BlockCommandIcon({ id }: { id: EditorBlockCommandId }) {
       return <List size={16} strokeWidth={2} />;
     case "numberedList":
       return <ListOrdered size={16} strokeWidth={2} />;
+    case "taskList":
+      return <ListChecks size={16} strokeWidth={2} />;
     case "blockquote":
       return <Quote size={16} strokeWidth={2} />;
     case "accordion":
@@ -2327,7 +2364,8 @@ const TURN_INTO_EDITOR_BLOCK_COMMAND_IDS = [
   "heading3",
   "blockquote",
   "bulletedList",
-  "numberedList"
+  "numberedList",
+  "taskList"
  ] as const;
 
 type TurnIntoEditorBlockCommandId = (typeof TURN_INTO_EDITOR_BLOCK_COMMAND_IDS)[number];
@@ -2371,6 +2409,8 @@ function getTopLevelBlockCommandId(
       return "bulletedList";
     case "orderedList":
       return "numberedList";
+    case "taskList":
+      return "taskList";
     case "codeBlock":
       return "codeBlock";
     case "horizontalRule":
@@ -2403,6 +2443,8 @@ function getTopLevelBlockLabelFromNode(
       return "Bulleted List";
     case "orderedList":
       return "Numbered List";
+    case "taskList":
+      return "Task List";
     case "blockquote":
       return "Blockquote";
     case "columns2":
@@ -2426,6 +2468,12 @@ function getTurnIntoBlockCommandsForBlock(
 ): TurnIntoEditorBlockCommand[] {
   if (!getTurnIntoBlockCommandIdFromNode(node)) {
     return [];
+  }
+
+  if (isTopLevelListBlock(node) && !canSafelyConvertTopLevelListToNonList(node)) {
+    return TURN_INTO_EDITOR_BLOCK_COMMANDS.filter(
+      (command) => command.id === "bulletedList" || command.id === "numberedList" || command.id === "taskList"
+    );
   }
 
   return TURN_INTO_EDITOR_BLOCK_COMMANDS;
@@ -2471,6 +2519,28 @@ function createConvertedTopLevelBlockNode(
   sourceNode: Editor["state"]["doc"]["content"]["content"][number],
   targetCommandId: TurnIntoEditorBlockCommandId
 ): Editor["state"]["doc"]["content"]["content"][number] | null {
+  if (isTopLevelListBlock(sourceNode)) {
+    if (targetCommandId === "bulletedList" || targetCommandId === "numberedList" || targetCommandId === "taskList") {
+      const targetListType =
+        targetCommandId === "bulletedList"
+          ? editor.schema.nodes.bulletList
+          : targetCommandId === "numberedList"
+            ? editor.schema.nodes.orderedList
+            : editor.schema.nodes.taskList;
+      const targetItemType = targetCommandId === "taskList" ? editor.schema.nodes.taskItem : editor.schema.nodes.listItem;
+      const targetItemAttrs = targetCommandId === "taskList" ? { checked: false } : null;
+      const items: PMNode[] = [];
+      sourceNode.forEach((item) => {
+        items.push(targetItemType.create(targetItemAttrs, item.content));
+      });
+      return targetListType.create(null, items);
+    }
+
+    if (!canSafelyConvertTopLevelListToNonList(sourceNode)) {
+      return null;
+    }
+  }
+
   const inlineContent = getTopLevelBlockInlineContent(sourceNode);
 
   switch (targetCommandId) {
@@ -2493,6 +2563,11 @@ function createConvertedTopLevelBlockNode(
       return editor.schema.nodes.orderedList.create(
         null,
         editor.schema.nodes.listItem.create(null, editor.schema.nodes.paragraph.create(null, inlineContent))
+      );
+    case "taskList":
+      return editor.schema.nodes.taskList.create(
+        null,
+        editor.schema.nodes.taskItem.create({ checked: false }, editor.schema.nodes.paragraph.create(null, inlineContent))
       );
     default:
       return null;
@@ -3329,16 +3404,6 @@ export function PageEditorHostRuntime({
   const initialDocumentKey = useMemo(() => serializeDocument(validatedInitialEnvelope.document), [validatedInitialEnvelope]);
   const initialSavedDocumentKey = useMemo(() => serializeDocument(validatedInitialSavedEnvelope.document), [validatedInitialSavedEnvelope]);
   const initialSessionIsClean = initialDocumentKey === initialSavedDocumentKey;
-  const editorExtensions = useMemo(
-    () => [
-      ...createDocseraEditorExtensionsWithOptions({
-        loadMedia: mediaAdapter?.load
-      }),
-      createCommandQueryPresentationExtension(),
-      createBlockSelectionExtension()
-    ],
-    [mediaAdapter]
-  );
   const commandSelectorItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const imagePickerSessionRef = useRef<ImagePickerSessionState | null>(null);
   const imagePickerSessionCounterRef = useRef(0);
@@ -3360,6 +3425,49 @@ export function PageEditorHostRuntime({
   const imageAlignmentMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const imageAlignmentPickerMenuItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const structuredTableClipboardRef = useRef<StructuredTableClipboardPayload | null>(null);
+  const taskProgressStorageKeyRef = useRef("");
+  const taskProgressRef = useRef<Record<string, boolean>>({});
+  const getTaskProgress = useCallback((documentNode: PMNode, position: number) => {
+    const ordinal = getTaskItemOrdinal(documentNode, position);
+    if (ordinal === null) {
+      return false;
+    }
+    const document = documentNode.toJSON() as JSONContent;
+    const storageKey = getTaskListProgressStorageKey(pageSysId, document);
+    if (taskProgressStorageKeyRef.current !== storageKey) {
+      taskProgressStorageKeyRef.current = storageKey;
+      taskProgressRef.current = readTaskListProgress(pageSysId, document);
+    }
+    return taskProgressRef.current[String(ordinal)] === true;
+  }, [pageSysId]);
+  const setTaskProgress = useCallback((documentNode: PMNode, position: number, checked: boolean) => {
+    const ordinal = getTaskItemOrdinal(documentNode, position);
+    if (ordinal === null) {
+      return;
+    }
+    const document = documentNode.toJSON() as JSONContent;
+    const storageKey = getTaskListProgressStorageKey(pageSysId, document);
+    if (taskProgressStorageKeyRef.current !== storageKey) {
+      taskProgressStorageKeyRef.current = storageKey;
+      taskProgressRef.current = readTaskListProgress(pageSysId, document);
+    }
+    taskProgressRef.current = { ...taskProgressRef.current, [String(ordinal)]: checked };
+    writeTaskListProgress(pageSysId, document, taskProgressRef.current);
+  }, [pageSysId]);
+  const editorExtensions = useMemo(
+    () => [
+      ...createDocseraEditorExtensionsWithOptions({
+        loadMedia: mediaAdapter?.load,
+        taskItemProgress: {
+          getChecked: ({ document, position }) => getTaskProgress(document, position),
+          setChecked: ({ checked, document, position }) => setTaskProgress(document, position, checked)
+        }
+      }),
+      createCommandQueryPresentationExtension(),
+      createBlockSelectionExtension()
+    ],
+    [getTaskProgress, mediaAdapter, setTaskProgress]
+  );
   const editorCoreExtensionOptions = useMemo(
     () => ({
       tabindex: {
@@ -7228,6 +7336,36 @@ export function PageEditorHostRuntime({
         }
         .docsera-editor-runtime__surface .ProseMirror li + li {
           margin-top: var(--docsera-document-list-item-gap, 0.35rem);
+        }
+        .docsera-editor-runtime__surface .ProseMirror ul[data-type="taskList"] {
+          padding-left: 0;
+          list-style: none;
+        }
+        .docsera-editor-runtime__surface .ProseMirror li[data-type="taskItem"] {
+          display: grid !important;
+          grid-template-columns: auto minmax(0, 1fr);
+          align-items: flex-start;
+          gap: 0.5rem;
+        }
+        .docsera-editor-runtime__surface .ProseMirror li[data-type="taskItem"] > label {
+          display: block;
+          grid-column: 1;
+          margin-top: 0.25em;
+        }
+        .docsera-editor-runtime__surface .ProseMirror li[data-type="taskItem"] > label input[type="checkbox"] {
+          width: 1rem;
+          height: 1rem;
+          margin: 0;
+          accent-color: var(--docsera-primary) !important;
+          cursor: pointer;
+        }
+        .docsera-editor-runtime__surface .ProseMirror li[data-type="taskItem"] > div {
+          grid-column: 2;
+          min-width: 0;
+        }
+        .docsera-editor-runtime__surface .ProseMirror li[data-type="taskItem"][data-checked="true"] > div > p {
+          color: var(--docsera-editor-muted);
+          text-decoration: line-through;
         }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-runtime__block--selected {
           background: var(--docsera-editor-block-selection);

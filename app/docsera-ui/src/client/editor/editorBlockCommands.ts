@@ -9,6 +9,7 @@ export type EditorBlockCommandId =
   | "callout"
   | "bulletedList"
   | "numberedList"
+  | "taskList"
   | "accordion"
   | "columns2"
   | "columns3"
@@ -94,6 +95,19 @@ function createListNode(type: "bulletList" | "orderedList"): JSONContent {
     content: [
       {
         type: "listItem",
+        content: [createParagraphNode()]
+      }
+    ]
+  };
+}
+
+function createTaskListNode(): JSONContent {
+  return {
+    type: "taskList",
+    content: [
+      {
+        type: "taskItem",
+        attrs: { checked: false },
         content: [createParagraphNode()]
       }
     ]
@@ -278,6 +292,21 @@ export const EDITOR_BLOCK_COMMANDS: EditorBlockCommand[] = [
     slashSelectionOffset: 3,
     run: (editor) => {
       editor.chain().focus(undefined, { scrollIntoView: false }).toggleOrderedList().run();
+    }
+  },
+  {
+    category: "Basic Blocks",
+    id: "taskList",
+    label: "Task List",
+    description: "Create a checklist",
+    keywords: ["task", "tasks", "checklist", "todo", "to-do", "list"],
+    quickAdd: {
+      content: [createTaskListNode()],
+      selectionOffset: 3
+    },
+    slashSelectionOffset: 3,
+    run: (editor) => {
+      editor.chain().focus(undefined, { scrollIntoView: false }).toggleTaskList().run();
     }
   },
   {

@@ -16,6 +16,7 @@ import {
 import { isDocseraNonDefaultTextAlignment, isDocseraPaletteKey } from "../../../server/editor/colorContract";
 import type { WorkspaceMediaLoader } from "../../shared/types/docsera";
 import { DOCSERA_CALLOUT_ICON_NODES } from "../../../shared/editor/calloutIcons";
+import { readTaskListProgress, writeTaskListProgress } from "../../shared/taskListProgress";
 
 type PublishedDocumentReaderProps = {
   envelope: DocseraDocumentEnvelope;
@@ -43,6 +44,9 @@ type ReaderContext = {
     restoreFocusElement: HTMLElement | null;
     sourceElement: HTMLElement;
   }) => void;
+  nextTaskOrdinal: () => number;
+  onTaskChecked: (ordinal: number, checked: boolean) => void;
+  taskProgress: Record<string, boolean>;
   theme: "dark" | "light";
 };
 
@@ -587,16 +591,18 @@ function renderTaskItem(node: Record<string, unknown>, path: string, context: Re
     throw new Error("The published page content contains an invalid task state.");
   }
 
+  const ordinal = context.nextTaskOrdinal();
+  const checked = context.taskProgress[String(ordinal)] === true;
+
   return (
-    <li key={path} className="docsera-main__task-item" data-checked={attrs.checked ? "true" : "false"}>
+    <li key={path} className="docsera-main__task-item" data-checked={checked ? "true" : "false"}>
       <div className="docsera-main__task-row">
         <input
           className="docsera-main__task-checkbox"
           type="checkbox"
-          checked={attrs.checked}
-          disabled
-          readOnly
-          aria-label={attrs.checked ? "Checked task" : "Unchecked task"}
+          checked={checked}
+          onChange={(event) => context.onTaskChecked(ordinal, event.target.checked)}
+          aria-label={checked ? "Checked task" : "Unchecked task"}
         />
         <div className="docsera-main__task-content">{renderListItemChildren(node, path, context)}</div>
       </div>
@@ -886,11 +892,14 @@ function renderBlockNode(node: unknown, path: string, context: ReaderContext): R
 function PublishedDocumentReaderContent({
   envelope,
   loadMedia,
+  pageIdentity,
   theme = "light"
 }: PublishedDocumentReaderProps) {
   const [imageFullscreenSession, setImageFullscreenSession] = useState<ImageFullscreenViewerSession | null>(null);
   const [imageFullscreenOpen, setImageFullscreenOpen] = useState(false);
   const [accordionOpenItemIds, setAccordionOpenItemIds] = useState<Record<string, string | null>>({});
+  const canonicalDocument = envelope.document;
+  const [taskProgress, setTaskProgress] = useState<Record<string, boolean>>(() => readTaskListProgress(pageIdentity ?? "", canonicalDocument));
   const openImageFullscreen = useCallback<ReaderContext["openImageFullscreen"]>((input) => {
     setImageFullscreenOpen(true);
     setImageFullscreenSession(createImageFullscreenViewerSession(input));
@@ -923,12 +932,26 @@ function PublishedDocumentReaderContent({
     return <PublishedDocumentReaderUnavailable />;
   }
 
+  let taskOrdinal = 0;
   const context: ReaderContext = {
     accordionOpenItemIds,
     setAccordionOpenItemId,
     resolveHeadingAnchor: createCanonicalHeadingAnchorResolver(),
     loadMedia,
     openImageFullscreen,
+    nextTaskOrdinal: () => {
+      const ordinal = taskOrdinal;
+      taskOrdinal += 1;
+      return ordinal;
+    },
+    onTaskChecked: (ordinal, checked) => {
+      setTaskProgress((current) => {
+        const next = { ...current, [String(ordinal)]: checked };
+        writeTaskListProgress(pageIdentity ?? "", canonicalDocument, next);
+        return next;
+      });
+    },
+    taskProgress,
     theme
   };
 

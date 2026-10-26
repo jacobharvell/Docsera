@@ -246,6 +246,9 @@ describe("PublishedDocumentReader", () => {
     const listRule = getRuleBody(".docsera-main__list");
     const blockquoteRule = getRuleBody(".docsera-main__blockquote");
     const inlineCodeRule = getRuleBody(".docsera-main__inline-code");
+    const taskRowRule = getRuleBody(".docsera-main__task-row");
+    const taskCheckboxRule = getRuleBody(".docsera-main__task-checkbox");
+    const completedTaskRule = getRuleBody('.docsera-main__task-item[data-checked="true"] > .docsera-main__task-row > .docsera-main__task-content > .docsera-main__body');
 
     expect(source).toContain("--docsera-document-title-body-gap: 40px;");
     expect(source).toContain("--docsera-document-text-color: #16212f;");
@@ -274,6 +277,12 @@ describe("PublishedDocumentReader", () => {
     expect(source).not.toMatch(/\.docsera-main__body,\s*\.docsera-main__section-copy\s*{[^}]*color:/s);
     expect(bodyRule).not.toContain("color:");
     expect(listRule).not.toContain("color:");
+    expect(taskRowRule).toContain("display: grid;");
+    expect(taskRowRule).toContain("grid-template-columns: auto minmax(0, 1fr);");
+    expect(taskCheckboxRule).toContain("accent-color: var(--docsera-primary) !important;");
+    expect(taskCheckboxRule).toContain("cursor: pointer;");
+    expect(completedTaskRule).toContain("color: var(--docsera-text-soft);");
+    expect(completedTaskRule).toContain("text-decoration: line-through;");
     expect(inlineCodeRule).not.toContain("color:");
     expect(blockquoteRule).toContain("color: var(--docsera-document-blockquote-color);");
     expect(source).toContain("font-size: var(--docsera-document-body-font-size);");
@@ -326,8 +335,8 @@ describe("PublishedDocumentReader", () => {
 
     const checkboxes = within(reader).getAllByRole("checkbox") as HTMLInputElement[];
     expect(checkboxes).toHaveLength(3);
-    expect(checkboxes.filter((checkbox) => checkbox.checked)).toHaveLength(1);
-    expect(checkboxes.filter((checkbox) => !checkbox.checked)).toHaveLength(2);
+    expect(checkboxes.filter((checkbox) => checkbox.checked)).toHaveLength(0);
+    expect(checkboxes.filter((checkbox) => !checkbox.checked)).toHaveLength(3);
 
     const combinedLink = within(reader).getByRole("link", { name: "Combined" });
     expect(combinedLink).toHaveAttribute("href", "https://example.com/docs");
@@ -345,6 +354,25 @@ describe("PublishedDocumentReader", () => {
     expect(within(reader).getAllByRole("link")).toHaveLength(2);
 
     view.unmount();
+  });
+
+  it("keeps task-list progress local to a page and restores it without changing canonical content", () => {
+    const envelope = createSupportedE2DocseraDocumentEnvelope();
+    const before = JSON.stringify(envelope.document);
+    const view = renderReader(envelope, { pageIdentity: "task-progress-page-a" });
+    const reader = screen.getByLabelText("Published page content");
+    const checkbox = within(reader).getAllByRole("checkbox")[0] as HTMLInputElement;
+
+    expect(checkbox).not.toBeDisabled();
+    fireEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+    expect(JSON.stringify(envelope.document)).toBe(before);
+
+    view.rerender(<PublishedDocumentReader envelope={envelope} pageIdentity="task-progress-page-a" />);
+    expect((within(screen.getByLabelText("Published page content")).getAllByRole("checkbox")[0] as HTMLInputElement).checked).toBe(true);
+
+    view.rerender(<PublishedDocumentReader envelope={envelope} pageIdentity="task-progress-page-b" />);
+    expect((within(screen.getByLabelText("Published page content")).getAllByRole("checkbox")[0] as HTMLInputElement).checked).toBe(false);
   });
 
   it("renders accordions with single-open and zero-open disclosure behavior in the lightweight reader", async () => {

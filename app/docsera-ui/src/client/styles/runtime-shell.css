@@ -6307,14 +6307,19 @@ html[data-docsera-theme="dark"] .docsera-main__callout-icon {
   margin-top: 0.25rem;
   width: 1rem;
   height: 1rem;
-  accent-color: var(--docsera-primary);
-  pointer-events: none;
+  accent-color: var(--docsera-primary) !important;
+  cursor: pointer;
 }
 
 .docsera-main__task-content {
   display: grid;
   gap: 10px;
   min-width: 0;
+}
+
+.docsera-main__task-item[data-checked="true"] > .docsera-main__task-row > .docsera-main__task-content > .docsera-main__body {
+  color: var(--docsera-text-soft);
+  text-decoration: line-through;
 }
 
 .docsera-main__divider {

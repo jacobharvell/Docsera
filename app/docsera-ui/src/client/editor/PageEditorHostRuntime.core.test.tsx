@@ -168,6 +168,11 @@ describe("PageEditorHostRuntime", () => {
     expect(source).toContain("font-size: var(--docsera-document-h3-font-size, 1.25rem);");
     expect(source).toContain("padding-left: var(--docsera-document-list-padding-left, 1.5rem);");
     expect(source).toContain("margin-top: var(--docsera-document-list-item-gap, 0.35rem);");
+    expect(source).toMatch(/li\[data-type="taskItem"\]\s*\{\s*display: grid !important;\s*grid-template-columns: auto minmax\(0, 1fr\);/s);
+    expect(source).toContain('li[data-type="taskItem"] > label input[type="checkbox"] {');
+    expect(source).toContain("accent-color: var(--docsera-primary) !important;");
+    expect(source).toContain("cursor: pointer;");
+    expect(source).toMatch(/li\[data-type="taskItem"\]\[data-checked="true"\] > div > p\s*\{\s*color: var\(--docsera-editor-muted\);\s*text-decoration: line-through;/s);
     expect(source).toContain("border-left: 3px solid var(--docsera-document-blockquote-border-color");
     expect(source).toContain(".docsera-editor-floating__block-drag-preview blockquote {");
     expect(source.match(/border-left: 3px solid var\(--docsera-document-blockquote-border-color/g)).toHaveLength(2);

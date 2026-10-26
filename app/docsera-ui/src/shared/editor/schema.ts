@@ -417,7 +417,19 @@ function createUnavailableMediaView(attrs: DocseraImageAttrs): HTMLElement {
   return wrapper;
 }
 
-function createDocseraAccordionExtensions() {
+type TaskItemProgressInput = {
+  checked: boolean;
+  document: PMNode;
+  node: PMNode;
+  position: number;
+};
+
+type TaskItemProgressOptions = {
+  getChecked?: (input: TaskItemProgressInput) => boolean;
+  setChecked?: (input: TaskItemProgressInput) => void;
+};
+
+function createDocseraAccordionExtensions(taskItemProgress: TaskItemProgressOptions = {}) {
   const accordionRenderAttrs = {
     class: "docsera-editor-accordion"
   };
@@ -439,7 +451,69 @@ function createDocseraAccordionExtensions() {
   });
 
   const DocseraTaskItem = TaskItem.extend({
-    content: `paragraph ${DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT}*`
+    content: `paragraph ${DOCSERA_ACCORDION_NESTED_BLOCK_CONTENT}*`,
+    addNodeView() {
+      return ({ node, HTMLAttributes, getPos, editor }) => {
+        const listItem = document.createElement("li");
+        const checkboxWrapper = document.createElement("label");
+        const checkboxStyler = document.createElement("span");
+        const checkbox = document.createElement("input");
+        const content = document.createElement("div");
+
+        const position = () => (typeof getPos === "function" ? getPos() : undefined);
+        const resolveChecked = (currentNode: PMNode) => {
+          const currentPosition = position();
+          if (typeof currentPosition !== "number") {
+            return Boolean(currentNode.attrs.checked);
+          }
+          return taskItemProgress.getChecked?.({
+            checked: Boolean(currentNode.attrs.checked),
+            document: editor.state.doc,
+            node: currentNode,
+            position: currentPosition
+          }) ?? Boolean(currentNode.attrs.checked);
+        };
+        const applyChecked = (checked: boolean) => {
+          checkbox.checked = checked;
+          listItem.dataset.checked = String(checked);
+          checkbox.ariaLabel = `Task item checkbox for ${node.textContent || "empty task item"}`;
+        };
+
+        checkboxWrapper.contentEditable = "false";
+        checkbox.type = "checkbox";
+        checkbox.addEventListener("mousedown", (event) => event.preventDefault());
+        checkbox.addEventListener("change", (event) => {
+          const checked = (event.target as HTMLInputElement).checked;
+          const currentPosition = position();
+          if (typeof currentPosition !== "number") {
+            applyChecked(resolveChecked(node));
+            return;
+          }
+          taskItemProgress.setChecked?.({ checked, document: editor.state.doc, node, position: currentPosition });
+          applyChecked(checked);
+        });
+
+        Object.entries(this.options.HTMLAttributes).forEach(([key, value]) => listItem.setAttribute(key, String(value)));
+        Object.entries(HTMLAttributes).forEach(([key, value]) => listItem.setAttribute(key, String(value)));
+        listItem.dataset.type = "taskItem";
+        checkboxWrapper.append(checkbox, checkboxStyler);
+        listItem.append(checkboxWrapper, content);
+        applyChecked(resolveChecked(node));
+
+        return {
+          dom: listItem,
+          contentDOM: content,
+          update: (updatedNode) => {
+            if (updatedNode.type !== this.type) {
+              return false;
+            }
+            node = updatedNode;
+            applyChecked(resolveChecked(updatedNode));
+            return true;
+          }
+        };
+      };
+    }
   }).configure({
     nested: true
   });
@@ -2047,6 +2121,7 @@ export function createDocseraEditorExtensions(): Extensions {
 
 type CreateDocseraEditorExtensionsOptions = {
   loadMedia?: WorkspaceMediaLoader;
+  taskItemProgress?: TaskItemProgressOptions;
 };
 
 export function createDocseraEditorExtensionsWithOptions(options: CreateDocseraEditorExtensionsOptions = {}): Extensions {
@@ -2094,7 +2169,7 @@ export function createDocseraEditorExtensionsWithOptions(options: CreateDocseraE
     }),
     DocseraTextAlignJsonNormalization,
     createDocseraImageExtension(loadMedia),
-    ...createDocseraAccordionExtensions(),
+    ...createDocseraAccordionExtensions(options.taskItemProgress),
     ...createDocseraColumnsExtensions(),
     createDocseraCalloutExtension(),
     TaskList.configure({}),
