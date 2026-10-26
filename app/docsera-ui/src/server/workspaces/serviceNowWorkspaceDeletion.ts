@@ -4,7 +4,6 @@ import { evaluateCurrentUserWorkspaceCapabilities } from "./serviceNowWorkspaceC
 import { mapWorkspaceRecord } from "./serviceNowWorkspaceRecords.ts";
 
 const DOCSERA_PAGE_TABLE = "x_82900_docsera_page";
-const DOCSERA_PAGE_EDIT_LOCK_TABLE = "x_82900_docsera_page_edit_lock";
 const DOCSERA_WORKSPACE_CHANGE_SET_TABLE = "x_82900_docsera_workspace_change_set";
 const DOCSERA_WORKSPACE_CHANGE_ENTRY_TABLE = "x_82900_docsera_workspace_change_entry";
 const DOCSERA_WORKSPACE_EDIT_LEASE_TABLE = "x_82900_docsera_workspace_edit_lease";
@@ -29,7 +28,6 @@ export type WorkspaceDeletionDependencies = {
   commitWorkspaceInactiveTombstone: (workspace: WorkspaceRecord) => WorkspaceRecord | null;
   deleteAttachment: (attachmentSysId: string) => void;
   deleteChangeEntriesByChangeSet: (changeSetSysId: string) => void;
-  deleteEditLocksByPage: (pageSysId: string) => void;
   deleteIconAssetsByWorkspace: (workspaceSysId: string) => void;
   deleteMemberMutationCommandsByWorkspace: (workspaceSysId: string) => void;
   deleteMutationClaimsByWorkspace: (workspaceSysId: string) => void;
@@ -265,9 +263,6 @@ function verifyCleanupComplete(input: WorkspaceCleanupVerificationInput): boolea
   if (countRecordsByField(DOCSERA_PAGE_TABLE, "workspace", input.workspaceSysId) > 0) return false;
   if (countRecordsByField(DOCSERA_WORKSPACE_CHANGE_SET_TABLE, "workspace", input.workspaceSysId) > 0) return false;
   if (countRecordsByField(DOCSERA_WORKSPACE_SNAPSHOT_SET_TABLE, "workspace", input.workspaceSysId) > 0) return false;
-  for (const pageSysId of input.pageSysIds) {
-    if (countRecordsByField(DOCSERA_PAGE_EDIT_LOCK_TABLE, "page", pageSysId) > 0) return false;
-  }
   for (const changeSetSysId of input.changeSetSysIds) {
     if (countRecordsByField(DOCSERA_WORKSPACE_CHANGE_ENTRY_TABLE, "change_set", changeSetSysId) > 0) return false;
     if (countRecordsByField(DOCSERA_WORKSPACE_REMOVAL_BATCH_TABLE, "change_set", changeSetSysId) > 0) return false;
@@ -291,7 +286,6 @@ function createDefaultDependencies(): WorkspaceDeletionDependencies {
     commitWorkspaceInactiveTombstone,
     deleteAttachment: (attachmentSysId) => new GlideSysAttachment().deleteAttachment(cleanText(attachmentSysId)),
     deleteChangeEntriesByChangeSet: (changeSetSysId) => deleteRowsByConfiguredQuery(DOCSERA_WORKSPACE_CHANGE_ENTRY_TABLE, (rows) => addRequiredQuery(rows, "change_set", changeSetSysId)),
-    deleteEditLocksByPage: (pageSysId) => deleteRowsByConfiguredQuery(DOCSERA_PAGE_EDIT_LOCK_TABLE, (rows) => addRequiredQuery(rows, "page", pageSysId)),
     deleteIconAssetsByWorkspace: (workspaceSysId) => deleteRowsByConfiguredQuery(DOCSERA_WORKSPACE_ICON_ASSET_TABLE, (rows) => addRequiredQuery(rows, "workspace", workspaceSysId)),
     deleteMemberMutationCommandsByWorkspace: (workspaceSysId) => deleteRowsByConfiguredQuery(DOCSERA_WORKSPACE_MEMBER_MUTATION_COMMAND_TABLE, (rows) => addRequiredQuery(rows, "workspace", workspaceSysId)),
     deleteMutationClaimsByWorkspace: (workspaceSysId) => deleteRowsByConfiguredQuery(DOCSERA_WORKSPACE_MUTATION_CLAIM_TABLE, (rows) => addRequiredQuery(rows, "workspace", workspaceSysId)),
@@ -355,9 +349,6 @@ export function createWorkspaceDeletionService(dependencies: WorkspaceDeletionDe
           return { kind: "failed", errorMessage: "Workspace deletion could not be started. The workspace was not deleted.", status: 500 };
         }
 
-        for (const pageSysId of pageSysIds) {
-          dependencies.deleteEditLocksByPage(pageSysId);
-        }
         for (const attachmentSysId of workspaceAttachmentSysIds) {
           dependencies.deleteAttachment(attachmentSysId);
         }

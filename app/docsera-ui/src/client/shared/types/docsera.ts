@@ -254,12 +254,9 @@ export type PageBodySaveInput = {
   workspaceSysId?: string;
   pageSysId?: string;
   pageSlug?: string;
-  /** Workspace lease is the only persistence authority. Page-lock fields remain
-   * on the editor transport temporarily, but are never sent to mutations. */
+  /** Workspace lease is the only persistence authority for mutations. */
   workspaceLeaseToken?: string;
   workspaceAuthority?: WorkspaceEditLeaseGeneration;
-  /** @deprecated retained for editor-session compatibility; never sent as mutation authority. */
-  lockToken?: string;
   draftBodyText?: string;
   draftContentJson?: PageContentInput;
   expectedRevision?: number;
@@ -294,8 +291,6 @@ export type PagePublishInput = {
   pageSysId?: string;
   pageSlug?: string;
   workspaceLeaseToken?: string;
-  /** @deprecated retained for editor-session compatibility; never sent as mutation authority. */
-  lockToken?: string;
   expectedRevision?: number;
 };
 
@@ -550,54 +545,6 @@ export type PageMoveFailed = {
 
 export type PageMoveResult = PageMoveSucceeded | PageMoveFailed;
 
-export type PageEditLockReferenceInput = {
-  workspaceSlug?: string;
-  workspaceSysId?: string;
-  pageSysId?: string;
-  pageSlug?: string;
-  lockToken?: string;
-};
-
-export type PageEditLockHeld = {
-  heartbeatIntervalMs: number;
-  lockToken: string;
-  staleAfterMs: number;
-  state: "held";
-};
-
-export type PageEditLockUnlocked = {
-  state: "unlocked";
-};
-
-export type PageEditLockLocked = {
-  holderDisplayName: string | null;
-  sameUserDifferentSession: boolean;
-  state: "locked";
-};
-
-export type PageEditLockLost = {
-  errorMessage: string;
-  holderDisplayName: string | null;
-  sameUserDifferentSession: boolean;
-  state: "lost";
-};
-
-export type PageEditLockReleased = {
-  state: "released";
-};
-
-export type PageEditLockFailed = {
-  code?: "failed" | "forbidden" | "invalid" | "network" | "persistence_invariant" | "transient";
-  errorMessage: string;
-  retryable?: boolean;
-  state: "failed";
-};
-
-export type PageEditLockStatusResult = PageEditLockHeld | PageEditLockLocked | PageEditLockUnlocked | PageEditLockLost | PageEditLockFailed;
-export type PageEditLockAcquireResult = PageEditLockHeld | PageEditLockLocked | PageEditLockFailed;
-export type PageEditLockHeartbeatResult = PageEditLockHeld | PageEditLockLost | PageEditLockFailed;
-export type PageEditLockReleaseResult = PageEditLockReleased | PageEditLockLost | PageEditLockFailed;
-
 export type WorkspaceCreateSucceeded = {
   state: "succeeded";
   workspace: WorkspaceViewRecord;
@@ -690,10 +637,6 @@ export type ServiceNowClient = {
   discardPageWorkspace?: (input: WorkspaceDiscardPageInput) => Promise<WorkspaceDiscardPageResult>;
   discardAllWorkspace?: (input: WorkspaceDiscardAllInput) => Promise<WorkspaceDiscardAllResult>;
   publishWorkspace?: (input: WorkspacePublishInput) => Promise<WorkspacePublishResult>;
-  getPageEditLockStatus: (input: PageEditLockReferenceInput) => Promise<PageEditLockStatusResult>;
-  acquirePageEditLock: (input: PageEditLockReferenceInput) => Promise<PageEditLockAcquireResult>;
-  heartbeatPageEditLock: (input: PageEditLockReferenceInput) => Promise<PageEditLockHeartbeatResult>;
-  releasePageEditLock: (input: PageEditLockReferenceInput & { keepalive?: boolean }) => Promise<PageEditLockReleaseResult>;
   savePageBody: (input: PageBodySaveInput) => Promise<PageBodySaveResult>;
   publishPage: (input: PagePublishInput) => Promise<PagePublishResult>;
   savePageSettings: (input: PageSettingsSaveInput) => Promise<PageSettingsSaveResult>;

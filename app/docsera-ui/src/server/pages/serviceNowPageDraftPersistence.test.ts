@@ -504,7 +504,6 @@ describe("page body save service", () => {
 
   it("rejects users without authoring capability", async () => {
     const savePageDraft = vi.fn(async (page: PageRecord) => page);
-    const touchPageEditLock = vi.fn();
     const service = createPageBodySaveService({
       evaluateWorkspaceCapabilities: () => ({
         canAdminWorkspace: false,
@@ -516,11 +515,9 @@ describe("page body save service", () => {
       loadWorkspaceBySysId: async () => createWorkspace(),
       listWorkspacePages: async () => [createPage()],
       savePageDraft,
-      touchPageEditLock
     });
 
     const result = await service.savePageBody({
-      lockToken: "resume-token",
       workspaceSlug: "product-docs",
       pageSysId: "page-001",
       draftBodyText: "Updated draft body"
@@ -530,7 +527,6 @@ describe("page body save service", () => {
     if (result.kind === "forbidden") {
       expect(result.errorMessage).toContain("permission");
     }
-    expect(touchPageEditLock).not.toHaveBeenCalled();
     expect(savePageDraft).not.toHaveBeenCalled();
   });
 });

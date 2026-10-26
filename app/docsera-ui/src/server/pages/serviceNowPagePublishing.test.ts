@@ -390,35 +390,6 @@ describe("page publish service", () => {
     expect(publishPage).not.toHaveBeenCalled();
   });
 
-  it("does not use legacy page-lock authority in the publish persistence service", async () => {
-    const publishPage = vi.fn(async (page: PageRecord) => page);
-    const service = createPagePublishService({
-      currentTimestamp: () => "2026-07-15 09:45:00",
-      evaluateWorkspaceCapabilities: () => ({
-        canAdminWorkspace: false,
-        canEditWorkspace: true,
-        canManageWorkspaceMembers: false,
-        canViewWorkspace: true
-      }),
-      getCurrentUser: () => ({
-        displayName: "Priya Writer",
-        sysId: "user-123"
-      }),
-      loadWorkspaceBySlug: async () => createWorkspace(),
-      loadWorkspaceBySysId: async () => createWorkspace(),
-      listWorkspacePages: async () => [createPage()],
-      publishPage
-    });
-
-    const result = await service.publishPage({
-      workspaceSlug: "product-docs",
-      pageSysId: "page-001",
-      expectedRevision: 4
-    });
-
-    expect(result.kind).toBe("succeeded");
-    expect(publishPage).toHaveBeenCalledTimes(1);
-  });
 
   it("rejects unauthorized callers before publishing", async () => {
     const publishPage = vi.fn(async (page: PageRecord) => page);

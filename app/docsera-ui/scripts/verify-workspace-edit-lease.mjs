@@ -17,7 +17,6 @@ const defaults = {
   pagesPath: "/api/x_82900_docsera/docsera_runtime/pages",
   pagePublishPath: "/api/x_82900_docsera/docsera_runtime/pages/publish",
   pageDeleteActionPath: "/api/x_82900_docsera/docsera_runtime/pages/delete",
-  pageLockPath: "/api/x_82900_docsera/docsera_runtime/pages/edit-lock",
   workspaceTable: "x_82900_docsera_workspace",
   workspaceLeaseTable: "x_82900_docsera_workspace_edit_lease",
   workspaceChangeSetTable: "x_82900_docsera_workspace_change_set",
@@ -941,25 +940,6 @@ async function main() {
     });
     addCheck(checks, deleteWrongToken.status === 409, "wrong-token delete attempts are rejected", JSON.stringify(deleteWrongToken.payload));
 
-    const pageLockAcquire = await callRuntime(instanceUrl, ownerSession, `${defaults.pageLockPath}/acquire`, {
-      workspaceSlug: cleanup.workspaceSlug,
-      pageSysId
-    });
-    const pageLockToken = cleanText(runtimeResult(pageLockAcquire)?.lockToken);
-    const pageLockOnlySave = await callRuntime(instanceUrl, ownerSession, defaults.pagesPath, {
-      workspaceSlug: cleanup.workspaceSlug,
-      workspaceSysId: cleanup.workspaceSysId,
-      pageSysId,
-      pageSlug,
-      expectedChangeSetId: currentChangeSetId,
-      expectedChangeSetRevision: currentChangeSetRevision,
-      lockToken: pageLockToken,
-      expectedRevision: savedRevision,
-      draftBodyText: "page-lock token only",
-      draftContentJson: createDraftEnvelope("page-lock token only")
-    }, "PATCH");
-    addCheck(checks, pageLockAcquire.status === 200 && Boolean(pageLockToken), "legacy page-lock route remains available for comparison while workspace authority stays separate");
-    addCheck(checks, pageLockOnlySave.status === 400 && cleanText(runtimeError(pageLockOnlySave)?.code) === "workspace_lease_invalid", "no representative mutation accepts a page-lock token as workspace authority", JSON.stringify(pageLockOnlySave.payload));
 
     const oldLeaseRows = await inspectLeaseRows(instanceUrl, ownerSession, cleanup.workspaceSysId);
     const originalLeaseSysId = cleanText(oldLeaseRows[0]?.sys_id);

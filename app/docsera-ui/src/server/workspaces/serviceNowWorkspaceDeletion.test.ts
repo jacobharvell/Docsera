@@ -41,7 +41,6 @@ function dependencies(input: {
     commitWorkspaceInactiveTombstone: vi.fn((current) => workspace({ ...current, status: "inactive" })),
     deleteAttachment: vi.fn((attachmentSysId) => attachmentDeletes.push(attachmentSysId)),
     deleteChangeEntriesByChangeSet: vi.fn((value) => calls.push({ operation: "deleteChangeEntriesByChangeSet", value })),
-    deleteEditLocksByPage: vi.fn((value) => calls.push({ operation: "deleteEditLocksByPage", value })),
     deleteIconAssetsByWorkspace: vi.fn((value) => calls.push({ operation: "deleteIconAssetsByWorkspace", value })),
     deleteMemberMutationCommandsByWorkspace: vi.fn((value) => calls.push({ operation: "deleteMemberMutationCommandsByWorkspace", value })),
     deleteMutationClaimsByWorkspace: vi.fn((value) => calls.push({ operation: "deleteMutationClaimsByWorkspace", value })),
@@ -137,13 +136,10 @@ describe("workspace deletion service", () => {
       }
     });
     expect(deps.createGroupDeletionCommand).toHaveBeenCalledWith(expect.objectContaining({ sysId: "workspace-1" }));
-    expect(vi.mocked(deps.commitWorkspaceInactiveTombstone).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(deps.deleteEditLocksByPage).mock.invocationCallOrder[0]);
     expect(vi.mocked(deps.verifyCleanupComplete).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(deps.createGroupDeletionCommand).mock.invocationCallOrder[0]);
     expect(deps.listRemovalBatchSysIds).toHaveBeenCalledWith(["change-set-1", "change-set-2"]);
     expect(attachmentDeletes).toEqual(["workspace-media-1", "workspace-media-2", "icon-attachment-1"]);
     expect(calls).toEqual([
-      { operation: "deleteEditLocksByPage", value: "page-1" },
-      { operation: "deleteEditLocksByPage", value: "page-2" },
       { operation: "deleteMemberMutationCommandsByWorkspace", value: "workspace-1" },
       { operation: "deleteMutationClaimsByWorkspace", value: "workspace-1" },
       { operation: "deleteChangeEntriesByChangeSet", value: "change-set-1" },

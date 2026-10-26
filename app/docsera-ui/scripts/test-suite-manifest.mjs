@@ -171,7 +171,6 @@ export const testSuites = [
       "src/client/app/workspaceMutationQueue.test.ts",
       "src/client/features/workspaces/workspaceViewModels.invalid-projection.test.ts",
       "src/client/platform/servicenow/client.test.ts",
-      "src/fluent/scheduled-scripts/docsera-page-edit-lock-cleanup.test.ts",
       "src/fluent/tables/docsera-page-schema.test.ts",
       "src/fluent/tables/docsera-workspace-change-set-schema.test.ts",
       "src/server/api/docsera-runtime-mutation-routes.test.ts",
@@ -192,9 +191,7 @@ export const testSuites = [
     name: "access-security",
     description: "roles; permissions; authorization boundaries; access loss; role-sensitive behavior.",
     files: [
-      "src/fluent/tables/docsera-page-edit-lock-schema.test.ts",
       "src/server/api/docsera-runtime-workspace-edit-lease.test.ts",
-      "src/server/page-locks/pageEditLockService.test.ts",
       "src/server/pages/serviceNowPageCreation.access-security.test.ts",
       "src/server/workspaces/serviceNowWorkspaceSettings.test.ts",
       "src/server/workspaces/serviceNowWorkspaceCatalog.test.ts",

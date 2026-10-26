@@ -331,35 +331,9 @@ export function createClient(overrides: Partial<ServiceNowClient> = {}): Service
       state: "held" as const
     })),
     releaseWorkspaceEditLease: vi.fn(async () => ({ state: "released" as const })),
-    getPageEditLockStatus: vi.fn(async () => ({
-      state: "unlocked" as const
-    })),
-    acquirePageEditLock: vi.fn(async () => ({
-      code: "failed" as const,
-      errorMessage: "acquirePageEditLock should not be called in these tests",
-      retryable: false,
-      state: "failed" as const
-    })),
-    heartbeatPageEditLock: vi.fn(async () => ({
-      code: "failed" as const,
-      errorMessage: "heartbeatPageEditLock should not be called in these tests",
-      retryable: false,
-      state: "failed" as const
-    })),
-    releasePageEditLock: vi.fn(async () => ({
-      state: "released" as const
-    })),
-    savePageBody: vi.fn(async (): Promise<PageBodySaveResult> => ({
-      errorMessage: "savePageBody should not be called in these tests",
-      state: "failed"
-    })),
-    publishPage: vi.fn(async () => ({
-      errorMessage: "publishPage should not be called in these tests",
-      state: "failed" as const
-    })),
-    savePageSettings: vi.fn(async () => {
-      throw new Error("savePageSettings should not be called in these tests");
-    }),
+    savePageBody: vi.fn(async () => ({ code: "failed" as const, errorMessage: "savePageBody should not be called in these tests", retryable: false, state: "failed" as const })),
+    publishPage: vi.fn(async () => { throw new Error("publishPage should not be called in these tests"); }),
+    savePageSettings: vi.fn(async () => { throw new Error("savePageSettings should not be called in these tests"); }),
     deletePage: vi.fn(async () => {
       throw new Error("deletePage should not be called in these tests");
     }),

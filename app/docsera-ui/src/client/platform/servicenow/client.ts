@@ -14,14 +14,6 @@ import type {
   PagePublishInput,
   PagePublishResult,
   PagePublishSucceeded,
-  PageEditLockAcquireResult,
-  PageEditLockFailed,
-  PageEditLockHeartbeatResult,
-  PageEditLockHeld,
-  PageEditLockLocked,
-  PageEditLockReferenceInput,
-  PageEditLockReleaseResult,
-  PageEditLockStatusResult,
   WorkspaceEditLeaseAcquireResult,
   WorkspaceEditLeaseFailed,
   WorkspaceEditLeaseHeld,
@@ -217,11 +209,6 @@ function resolvePageDeleteActionPath(pageCollectionPath: string): string {
 function resolvePageMovePath(pageCollectionPath: string): string {
   const normalizedPath = cleanText(pageCollectionPath).replace(/\/+$/g, "");
   return `${normalizedPath}/move`;
-}
-
-function resolvePageEditLockPath(pageCollectionPath: string, action: "acquire" | "heartbeat" | "release" | "status"): string {
-  const normalizedPath = cleanText(pageCollectionPath).replace(/\/+$/g, "");
-  return `${normalizedPath}/edit-lock/${action}`;
 }
 
 function resolvePagePublishPath(pageCollectionPath: string): string {
@@ -1199,20 +1186,6 @@ function normalizePageBodySaveSucceededResult(body: unknown): PageBodySaveSuccee
   };
 }
 
-function normalizePageEditLockHeldResult(body: unknown): PageEditLockHeld {
-  const result = unwrapServiceNowEnvelope(body);
-  if (!isPlainObject(result)) {
-    throw new Error("Page edit lock payload was invalid.");
-  }
-
-  return {
-    heartbeatIntervalMs: Math.max(1, Number(result.heartbeatIntervalMs) || 30000),
-    lockToken: cleanText(result.lockToken),
-    staleAfterMs: Math.max(1, Number(result.staleAfterMs) || 180000),
-    state: "held"
-  };
-}
-
 function normalizePagePublishSucceededResult(body: unknown): PagePublishSucceeded {
   const result = unwrapServiceNowEnvelope(body);
   if (!isPlainObject(result) || !result.page) {
@@ -1222,65 +1195,6 @@ function normalizePagePublishSucceededResult(body: unknown): PagePublishSucceede
   return {
     state: "succeeded",
     page: normalizePageRecord(result.page)
-  };
-}
-
-function normalizePageEditLockLockedResult(body: unknown): PageEditLockLocked {
-  const result = unwrapServiceNowEnvelope(body);
-  if (!isPlainObject(result)) {
-    throw new Error("Page edit lock status payload was invalid.");
-  }
-
-  return {
-    holderDisplayName: cleanText(result.holderDisplayName) || null,
-    sameUserDifferentSession: Boolean(result.sameUserDifferentSession),
-    state: "locked"
-  };
-}
-
-function normalizePageEditLockFailedResult(
-  body: unknown,
-  fallback: string,
-  fallbackCode: PageEditLockFailed["code"],
-  fallbackRetryable: boolean
-): PageEditLockFailed {
-  const normalizedBody = unwrapServiceNowEnvelope(body);
-  const errorObject =
-    normalizedBody && typeof normalizedBody === "object" && "error" in normalizedBody
-      ? ((normalizedBody as Record<string, unknown>).error as Record<string, unknown> | undefined)
-      : undefined;
-  const errorCode = cleanText(errorObject?.code);
-  const normalizedCode: PageEditLockFailed["code"] =
-    errorCode === "forbidden"
-      ? "forbidden"
-      : errorCode === "persistence_transient"
-        ? "transient"
-        : errorCode === "persistence_invariant"
-          ? "persistence_invariant"
-          : errorCode === "invalid"
-            ? "invalid"
-            : fallbackCode;
-
-  return {
-    code: normalizedCode,
-    errorMessage: extractErrorMessage(body, fallback),
-    retryable: normalizedCode === "transient" ? true : fallbackRetryable,
-    state: "failed"
-  };
-}
-
-function normalizePageEditLockLostResult(body: unknown, fallback: string): Exclude<PageEditLockHeartbeatResult | PageEditLockReleaseResult, PageEditLockHeld | PageEditLockFailed | { state: "released" }> {
-  const normalizedBody = unwrapServiceNowEnvelope(body);
-  const errorObject =
-    normalizedBody && typeof normalizedBody === "object" && "error" in normalizedBody
-      ? ((normalizedBody as Record<string, unknown>).error as Record<string, unknown> | undefined)
-      : undefined;
-
-  return {
-    errorMessage: extractErrorMessage(body, fallback),
-    holderDisplayName: cleanText(errorObject?.holderDisplayName) || null,
-    sameUserDifferentSession: Boolean(errorObject?.sameUserDifferentSession),
-    state: "lost"
   };
 }
 
@@ -1796,293 +1710,6 @@ async function resolvePagePublishResult(path: string, input: PagePublishInput): 
   };
 }
 
-async function resolvePageEditLockStatusResult(path: string, input: PageEditLockReferenceInput): Promise<PageEditLockStatusResult> {
-  const payload = {
-    workspaceSlug: cleanText(input.workspaceSlug),
-    workspaceSysId: cleanText(input.workspaceSysId),
-    pageSysId: cleanText(input.pageSysId),
-    pageSlug: cleanText(input.pageSlug),
-    ...(cleanText(input.lockToken) ? { lockToken: cleanText(input.lockToken) } : {})
-  };
-
-  try {
-    const response = await requestJson<unknown>(path, {
-      method: "POST",
-      body: JSON.stringify(payload),
-      headers: {
-        "Content-Type": "application/json"
-      }
-    });
-
-    if (response.status === 200) {
-      const result = unwrapServiceNowEnvelope(response.body);
-      if (!isPlainObject(result) || !cleanText(result.state)) {
-        throw new Error("Page edit lock status payload was invalid.");
-      }
-
-      if (cleanText(result.state) === "held") {
-        return normalizePageEditLockHeldResult(response.body);
-      }
-
-      if (cleanText(result.state) === "locked") {
-        return normalizePageEditLockLockedResult(response.body);
-      }
-
-      return { state: "unlocked" };
-    }
-
-    if (response.status === 409) {
-      return normalizePageEditLockLostResult(
-        response.body,
-        "This edit session ended and unsaved changes were not saved."
-      );
-    }
-
-    if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 409 || response.status === 500) {
-      const fallbackCode: PageEditLockFailed["code"] =
-        response.status === 403 ? "forbidden" : response.status === 500 ? "persistence_invariant" : "invalid";
-      return normalizePageEditLockFailedResult(
-        response.body,
-        "Something went wrong while checking the edit session. Please try again.",
-        fallbackCode,
-        false
-      );
-    }
-
-    if ([408, 429, 502, 503, 504].includes(response.status)) {
-      return {
-        code: "transient",
-        errorMessage: "Something went wrong while checking the edit session. Please try again.",
-        retryable: true,
-        state: "failed"
-      };
-    }
-
-    return {
-      code: "failed",
-      errorMessage: "Something went wrong while checking the edit session. Please try again.",
-      retryable: false,
-      state: "failed"
-    };
-  } catch {
-    return {
-      code: "network",
-      errorMessage: "Something went wrong while checking the edit session. Please try again.",
-      retryable: true,
-      state: "failed"
-    };
-  }
-}
-
-async function resolvePageEditLockAcquireResult(path: string, input: PageEditLockReferenceInput): Promise<PageEditLockAcquireResult> {
-  const payload = {
-    workspaceSlug: cleanText(input.workspaceSlug),
-    workspaceSysId: cleanText(input.workspaceSysId),
-    pageSysId: cleanText(input.pageSysId),
-    pageSlug: cleanText(input.pageSlug),
-    ...(cleanText(input.lockToken) ? { lockToken: cleanText(input.lockToken) } : {})
-  };
-
-  try {
-    const response = await requestJson<unknown>(path, {
-      method: "POST",
-      body: JSON.stringify(payload),
-      headers: {
-        "Content-Type": "application/json"
-      }
-    });
-
-    if (response.status === 200) {
-      return normalizePageEditLockHeldResult(response.body);
-    }
-
-    if (response.status === 409) {
-      const normalizedBody = unwrapServiceNowEnvelope(response.body);
-      const errorObject =
-        normalizedBody && typeof normalizedBody === "object" && "error" in normalizedBody
-          ? ((normalizedBody as Record<string, unknown>).error as Record<string, unknown> | undefined)
-          : undefined;
-      if (cleanText(errorObject?.code) === "page_locked") {
-        return {
-          holderDisplayName: cleanText(errorObject?.holderDisplayName) || null,
-          sameUserDifferentSession: Boolean(errorObject?.sameUserDifferentSession),
-          state: "locked"
-        };
-      }
-    }
-
-    if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 500) {
-      const fallbackCode: PageEditLockFailed["code"] =
-        response.status === 403 ? "forbidden" : response.status === 500 ? "persistence_invariant" : "invalid";
-      return normalizePageEditLockFailedResult(
-        response.body,
-        "Something went wrong while starting the edit session. Please try again.",
-        fallbackCode,
-        false
-      );
-    }
-
-    if ([408, 429, 502, 503, 504].includes(response.status)) {
-      return {
-        code: "transient",
-        errorMessage: "Something went wrong while starting the edit session. Please try again.",
-        retryable: true,
-        state: "failed"
-      };
-    }
-
-    return {
-      code: "failed",
-      errorMessage: "Something went wrong while starting the edit session. Please try again.",
-      retryable: false,
-      state: "failed"
-    };
-  } catch {
-    return {
-      code: "network",
-      errorMessage: "Something went wrong while checking the edit session. Please try again.",
-      retryable: true,
-      state: "failed"
-    };
-  }
-}
-
-async function resolvePageEditLockHeartbeatResult(path: string, input: PageEditLockReferenceInput): Promise<PageEditLockHeartbeatResult> {
-  const payload = {
-    workspaceSlug: cleanText(input.workspaceSlug),
-    workspaceSysId: cleanText(input.workspaceSysId),
-    pageSysId: cleanText(input.pageSysId),
-    pageSlug: cleanText(input.pageSlug),
-    ...(cleanText(input.lockToken) ? { lockToken: cleanText(input.lockToken) } : {})
-  };
-
-  try {
-    const response = await requestJson<unknown>(path, {
-      method: "POST",
-      body: JSON.stringify(payload),
-      headers: {
-        "Content-Type": "application/json"
-      }
-    });
-
-    if (response.status === 200) {
-      return normalizePageEditLockHeldResult(response.body);
-    }
-
-    if (response.status === 409) {
-      return normalizePageEditLockLostResult(
-        response.body,
-        "This edit session ended and unsaved changes were not saved."
-      );
-    }
-
-    if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 500) {
-      const fallbackCode: PageEditLockFailed["code"] =
-        response.status === 403 ? "forbidden" : response.status === 500 ? "persistence_invariant" : "invalid";
-      return normalizePageEditLockFailedResult(
-        response.body,
-        "Something went wrong while refreshing the edit session. Please try again.",
-        fallbackCode,
-        false
-      );
-    }
-
-    if ([408, 429, 502, 503, 504].includes(response.status)) {
-      return {
-        code: "transient",
-        errorMessage: "Something went wrong while refreshing the edit session. Please try again.",
-        retryable: true,
-        state: "failed"
-      };
-    }
-
-    return {
-      code: "failed",
-      errorMessage: "Something went wrong while refreshing the edit session. Please try again.",
-      retryable: false,
-      state: "failed"
-    };
-  } catch {
-    return {
-      code: "network",
-      errorMessage: "Something went wrong while refreshing the edit session. Please try again.",
-      retryable: true,
-      state: "failed"
-    };
-  }
-}
-
-async function resolvePageEditLockReleaseResult(
-  path: string,
-  input: PageEditLockReferenceInput & { keepalive?: boolean }
-): Promise<PageEditLockReleaseResult> {
-  const payload = {
-    workspaceSlug: cleanText(input.workspaceSlug),
-    workspaceSysId: cleanText(input.workspaceSysId),
-    pageSysId: cleanText(input.pageSysId),
-    pageSlug: cleanText(input.pageSlug),
-    ...(cleanText(input.lockToken) ? { lockToken: cleanText(input.lockToken) } : {})
-  };
-
-  try {
-    const response = await requestJson<unknown>(path, {
-      method: "POST",
-      body: JSON.stringify(payload),
-      headers: {
-        "Content-Type": "application/json"
-      },
-      keepalive: Boolean(input.keepalive)
-    });
-
-    if (response.status === 200) {
-      return {
-        state: "released"
-      };
-    }
-
-    if (response.status === 409) {
-      return normalizePageEditLockLostResult(
-        response.body,
-        "This edit session has already ended."
-      );
-    }
-
-    if (response.status === 400 || response.status === 403 || response.status === 404 || response.status === 500) {
-      const fallbackCode: PageEditLockFailed["code"] =
-        response.status === 403 ? "forbidden" : response.status === 500 ? "persistence_invariant" : "invalid";
-      return normalizePageEditLockFailedResult(
-        response.body,
-        "Something went wrong while ending the edit session. Please try again.",
-        fallbackCode,
-        false
-      );
-    }
-
-    if ([408, 429, 502, 503, 504].includes(response.status)) {
-      return {
-        code: "transient",
-        errorMessage: "Something went wrong while ending the edit session. Please try again.",
-        retryable: true,
-        state: "failed"
-      };
-    }
-
-    return {
-      code: "failed",
-      errorMessage: "Something went wrong while ending the edit session. Please try again.",
-      retryable: false,
-      state: "failed"
-    };
-  } catch {
-    return {
-      code: "network",
-      errorMessage: "Something went wrong while ending the edit session. Please try again.",
-      retryable: true,
-      state: "failed"
-    };
-  }
-}
-
 async function resolvePageSettingsSaveResult(path: string, input: PageSettingsSaveInput): Promise<PageSettingsSaveResult> {
   const authority = resolveMutationAuthority(input);
   const payload = {
@@ -2474,10 +2101,6 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
   const pageDeleteActionPath = resolvePageDeleteActionPath(pageCollectionPath);
   const pageMovePath = resolvePageMovePath(pageCollectionPath);
   const pagePublishPath = resolvePagePublishPath(pageCollectionPath);
-  const pageEditLockStatusPath = resolvePageEditLockPath(pageCollectionPath, "status");
-  const pageEditLockAcquirePath = resolvePageEditLockPath(pageCollectionPath, "acquire");
-  const pageEditLockHeartbeatPath = resolvePageEditLockPath(pageCollectionPath, "heartbeat");
-  const pageEditLockReleasePath = resolvePageEditLockPath(pageCollectionPath, "release");
   const workspaceEditLeaseAcquirePath = resolveWorkspaceEditLeasePath(pageCollectionPath, "acquire");
   const workspaceEditLeaseResumePath = resolveWorkspaceEditLeasePath(pageCollectionPath, "resume");
   const workspaceEditLeaseRenewPath = resolveWorkspaceEditLeasePath(pageCollectionPath, "renew");
@@ -2805,22 +2428,6 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
     async discardPageWorkspace(input: WorkspaceDiscardPageInput): Promise<WorkspaceDiscardPageResult> { return resolveWorkspaceDiscardPageResult(workspaceDiscardPagePath, input); },
     async discardAllWorkspace(input: WorkspaceDiscardAllInput): Promise<WorkspaceDiscardAllResult> { return resolveWorkspaceDiscardAllResult(workspaceDiscardAllPath, input); },
     async publishWorkspace(input: WorkspacePublishInput): Promise<WorkspacePublishResult> { return resolveWorkspacePublishResult(workspacePublishPath, input); },
-
-    async getPageEditLockStatus(input: PageEditLockReferenceInput): Promise<PageEditLockStatusResult> {
-      return resolvePageEditLockStatusResult(pageEditLockStatusPath, input);
-    },
-
-    async acquirePageEditLock(input: PageEditLockReferenceInput): Promise<PageEditLockAcquireResult> {
-      return resolvePageEditLockAcquireResult(pageEditLockAcquirePath, input);
-    },
-
-    async heartbeatPageEditLock(input: PageEditLockReferenceInput): Promise<PageEditLockHeartbeatResult> {
-      return resolvePageEditLockHeartbeatResult(pageEditLockHeartbeatPath, input);
-    },
-
-    async releasePageEditLock(input: PageEditLockReferenceInput & { keepalive?: boolean }): Promise<PageEditLockReleaseResult> {
-      return resolvePageEditLockReleaseResult(pageEditLockReleasePath, input);
-    },
 
     async savePageBody(input: PageBodySaveInput): Promise<PageBodySaveResult> {
       return resolvePageBodySaveResult(pageCollectionPath, input);

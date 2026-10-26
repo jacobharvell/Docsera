@@ -340,35 +340,9 @@ function createClient(overrides: Partial<ServiceNowClient> = {}): ServiceNowClie
       state: "held" as const
     })),
     releaseWorkspaceEditLease: vi.fn(async () => ({ state: "released" as const })),
-    getPageEditLockStatus: vi.fn(async () => ({
-      state: "unlocked" as const
-    })),
-    acquirePageEditLock: vi.fn(async () => ({
-      code: "failed" as const,
-      errorMessage: "acquirePageEditLock should not be called in these tests",
-      retryable: false,
-      state: "failed" as const
-    })),
-    heartbeatPageEditLock: vi.fn(async () => ({
-      code: "failed" as const,
-      errorMessage: "heartbeatPageEditLock should not be called in these tests",
-      retryable: false,
-      state: "failed" as const
-    })),
-    releasePageEditLock: vi.fn(async () => ({
-      state: "released" as const
-    })),
-    savePageBody: vi.fn(async (): Promise<PageBodySaveResult> => ({
-      errorMessage: "savePageBody should not be called in these tests",
-      state: "failed"
-    })),
-    publishPage: vi.fn(async () => ({
-      errorMessage: "publishPage should not be called in these tests",
-      state: "failed" as const
-    })),
-    savePageSettings: vi.fn(async () => {
-      throw new Error("savePageSettings should not be called in these tests");
-    }),
+    savePageBody: vi.fn(async () => ({ code: "failed" as const, errorMessage: "savePageBody should not be called in these tests", retryable: false, state: "failed" as const })),
+    publishPage: vi.fn(async () => { throw new Error("publishPage should not be called in these tests"); }),
+    savePageSettings: vi.fn(async () => { throw new Error("savePageSettings should not be called in these tests"); }),
     deletePage: vi.fn(async () => {
       throw new Error("deletePage should not be called in these tests");
     }),
@@ -551,26 +525,10 @@ describe("App workspace state integration", () => {
       workspaceStateRevision: 3,
       state: "held" as const
     }));
-    const getPageEditLockStatus = vi.fn(async () => {
-      throw new Error("active client must not request page-lock status");
-    });
-    const acquirePageEditLock = vi.fn(async () => {
-      throw new Error("active client must not acquire a page lock");
-    });
-    const heartbeatPageEditLock = vi.fn(async () => {
-      throw new Error("active client must not heartbeat a page lock");
-    });
-    const releasePageEditLock = vi.fn(async () => {
-      throw new Error("active client must not release a page lock");
-    });
 
     renderApp("/?workspace=product-docs&page=overview", {
       acquireWorkspaceEditLease,
-      acquirePageEditLock,
-      getPageEditLockStatus,
-      heartbeatPageEditLock,
       listPages,
-      releasePageEditLock
     });
 
     await screen.findByRole("heading", { name: "Overview" });
@@ -589,10 +547,6 @@ describe("App workspace state integration", () => {
       expect(document.querySelector("[data-docsera-page-editor-host='true']")).not.toBeNull();
     });
     expect(acquireWorkspaceEditLease).toHaveBeenCalledWith(expect.objectContaining({ workspaceSysId: "workspace-001" }));
-    expect(getPageEditLockStatus).not.toHaveBeenCalled();
-    expect(acquirePageEditLock).not.toHaveBeenCalled();
-    expect(heartbeatPageEditLock).not.toHaveBeenCalled();
-    expect(releasePageEditLock).not.toHaveBeenCalled();
     expect(listPages).toHaveBeenLastCalledWith({
       mode: "edit",
       workspaceSlug: "product-docs"
