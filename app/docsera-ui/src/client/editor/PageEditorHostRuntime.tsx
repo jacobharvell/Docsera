@@ -2951,6 +2951,17 @@ function focusTopLevelCaretIntent(editor: Editor, blockIndex: number): boolean {
   return true;
 }
 
+function resolveTopLevelCaretIntentPosition(editor: Editor, blockIndex: number): number | null {
+  const blockRange = getTopLevelBlockRange(editor, blockIndex);
+  const node = getTopLevelBlockNodeFromDoc(editor.state.doc, blockIndex);
+  const selectionOffset = node ? getTopLevelCaretSelectionOffset(node) : null;
+  if (!blockRange || selectionOffset === null || editor.isDestroyed) {
+    return null;
+  }
+
+  return Math.min(blockRange.from + selectionOffset, Math.max(1, editor.state.doc.content.size));
+}
+
 function clampMarqueeRectToPanel(
   originX: number,
   originY: number,
@@ -3945,6 +3956,8 @@ export function PageEditorHostRuntime({
     startClientY: number;
   } | null>(null);
   const gutterRangeGestureCleanupRef = useRef<(() => void) | null>(null);
+  const caretStripTextGestureRef = useRef<{ anchor: number; hasMoved: boolean; pointerId: number } | null>(null);
+  const caretStripTextGestureCleanupRef = useRef<(() => void) | null>(null);
   const gutterRangeAutoScrollRef = useRef<ReturnType<typeof createEditorAutoScrollSession> | null>(null);
   const gutterRangeClickSuppressionReleaseTimerRef = useRef<number | null>(null);
   const suppressSurfaceClickUntilPointerUpRef = useRef(false);
@@ -3954,6 +3967,7 @@ export function PageEditorHostRuntime({
   const onOutlineChangeRef = useRef(onOutlineChange);
   const activeRangeMarqueeRectRef = useRef<DOMRect | null>(null);
   const clearGutterRangeGestureUnmountRef = useRef<((options?: { clearSelection?: boolean; reason?: string; releaseClickSuppression?: boolean }) => void) | null>(null);
+  const clearCaretStripTextGestureUnmountRef = useRef<(() => void) | null>(null);
   const clearSurfaceClickSuppressionReleaseTimerUnmountRef = useRef<(() => void) | null>(null);
   const clearTransientBlockSelectionUnmountRef = useRef<((reason?: string) => void) | null>(null);
   const isEditable = canEdit;
@@ -5396,6 +5410,13 @@ export function PageEditorHostRuntime({
     gutterRangeAutoScrollRef.current = null;
   }, []);
 
+  const clearCaretStripTextGesture = useCallback(() => {
+    const cleanup = caretStripTextGestureCleanupRef.current;
+    caretStripTextGestureCleanupRef.current = null;
+    caretStripTextGestureRef.current = null;
+    cleanup?.();
+  }, []);
+
   const clearGutterRangeGesture = useCallback(
     (options: { clearSelection?: boolean; reason?: string; releaseClickSuppression?: boolean } = {}) => {
       const { clearSelection = true, reason = "session-change", releaseClickSuppression = false } = options;
@@ -5431,12 +5452,141 @@ export function PageEditorHostRuntime({
   }, [clearGutterRangeGesture]);
 
   useEffect(() => {
+    clearCaretStripTextGestureUnmountRef.current = clearCaretStripTextGesture;
+  }, [clearCaretStripTextGesture]);
+
+  useEffect(() => {
     clearSurfaceClickSuppressionReleaseTimerUnmountRef.current = clearSurfaceClickSuppressionReleaseTimer;
   }, [clearSurfaceClickSuppressionReleaseTimer]);
 
   useEffect(() => {
     clearTransientBlockSelectionUnmountRef.current = clearTransientBlockSelection;
   }, [clearTransientBlockSelection]);
+
+  const startCaretStripTextGesture = useCallback(
+    (event: PointerEvent, blockIndex: number) => {
+      const runtimeEditor = editorRef.current;
+      const surfaceElement = surfaceRef.current;
+      if (!runtimeEditor || !surfaceElement || !focusTopLevelCaretIntent(runtimeEditor, blockIndex)) {
+        return false;
+      }
+
+      const anchor = resolveTopLevelCaretIntentPosition(runtimeEditor, blockIndex);
+      if (anchor === null) {
+        return false;
+      }
+
+      clearCaretStripTextGesture();
+      const ownerDocument = surfaceElement.ownerDocument;
+      const ownerWindow = ownerDocument.defaultView;
+      const applyTextSelectionPoint = (clientX: number, clientY: number) => {
+        const gesture = caretStripTextGestureRef.current;
+        if (!gesture || runtimeEditor.isDestroyed) {
+          return;
+        }
+
+        const resolved = runtimeEditor.view.posAtCoords({ left: clientX, top: clientY });
+        if (!resolved) {
+          return;
+        }
+
+        let transaction = runtimeEditor.state.tr.setMeta("addToHistory", false);
+        try {
+          transaction = transaction.setSelection(TextSelection.create(transaction.doc, gesture.anchor, resolved.pos));
+        } catch {
+          return;
+        }
+        if (!runtimeEditor.state.selection.eq(transaction.selection)) {
+          runtimeEditor.view.dispatch(transaction);
+        }
+      };
+      const cleanup = () => {
+        ownerDocument.removeEventListener("pointermove", handlePointerMove, true);
+        ownerDocument.removeEventListener("pointerup", handlePointerUp, true);
+        ownerDocument.removeEventListener("pointercancel", handlePointerCancel, true);
+        ownerDocument.removeEventListener("lostpointercapture", handleLostPointerCapture, true);
+        ownerWindow?.removeEventListener("pagehide", handleLifecycleEnd);
+        ownerWindow?.removeEventListener("blur", handleLifecycleEnd);
+        ownerDocument.removeEventListener("visibilitychange", handleVisibilityChange, true);
+      };
+      const handlePointerMove = (pointerEvent: PointerEvent) => {
+        const gesture = caretStripTextGestureRef.current;
+        if (!gesture || gesture.pointerId !== pointerEvent.pointerId) {
+          return;
+        }
+        if (pointerEvent.buttons === 0) {
+          clearCaretStripTextGesture();
+          return;
+        }
+        pointerEvent.preventDefault();
+        gesture.hasMoved = true;
+        applyTextSelectionPoint(pointerEvent.clientX, pointerEvent.clientY);
+      };
+      const handlePointerUp = (pointerEvent: PointerEvent) => {
+        const gesture = caretStripTextGestureRef.current;
+        if (!gesture || gesture.pointerId !== pointerEvent.pointerId) {
+          return;
+        }
+        pointerEvent.preventDefault();
+        if (gesture.hasMoved) {
+          applyTextSelectionPoint(pointerEvent.clientX, pointerEvent.clientY);
+        }
+        clearCaretStripTextGesture();
+      };
+      const handlePointerCancel = (pointerEvent: PointerEvent) => {
+        if (caretStripTextGestureRef.current?.pointerId === pointerEvent.pointerId) {
+          clearCaretStripTextGesture();
+        }
+      };
+      const handleLostPointerCapture = (pointerEvent: PointerEvent) => {
+        if (caretStripTextGestureRef.current?.pointerId === pointerEvent.pointerId) {
+          clearCaretStripTextGesture();
+        }
+      };
+      const handleLifecycleEnd = () => clearCaretStripTextGesture();
+      const handleVisibilityChange = () => {
+        if (ownerDocument.visibilityState === "hidden") {
+          clearCaretStripTextGesture();
+        }
+      };
+
+      caretStripTextGestureRef.current = { anchor, hasMoved: false, pointerId: event.pointerId };
+      caretStripTextGestureCleanupRef.current = cleanup;
+      ownerDocument.addEventListener("pointermove", handlePointerMove, true);
+      ownerDocument.addEventListener("pointerup", handlePointerUp, true);
+      ownerDocument.addEventListener("pointercancel", handlePointerCancel, true);
+      ownerDocument.addEventListener("lostpointercapture", handleLostPointerCapture, true);
+      ownerWindow?.addEventListener("pagehide", handleLifecycleEnd);
+      ownerWindow?.addEventListener("blur", handleLifecycleEnd);
+      ownerDocument.addEventListener("visibilitychange", handleVisibilityChange, true);
+      event.preventDefault();
+      return true;
+    },
+    [clearCaretStripTextGesture]
+  );
+
+  const isCaretStripTextSelectionPointerOrigin = useCallback(
+    (event: MouseEvent | PointerEvent) => {
+      const runtimeEditor = editorRef.current;
+      const surfaceElement = surfaceRef.current;
+      if (!runtimeEditor || runtimeEditor.isDestroyed || !surfaceElement) {
+        return false;
+      }
+
+      const pointerEvent = event as PointerEvent;
+      const target = resolvePointerEventTarget(pointerEvent);
+      if (
+        isPointerEventInsideElement(pointerEvent, overlayRoot) ||
+        isGutterControlTarget(target) ||
+        isInteractiveEditorOverlayTarget(target)
+      ) {
+        return false;
+      }
+
+      return resolvePanelPointerClassification(runtimeEditor, surfaceElement, event.clientX, event.clientY).zone === "caret-strip";
+    },
+    [overlayRoot]
+  );
 
   const startBlankGutterRangeGesture = useCallback(
     (event: PointerEvent, anchorBlockIndex: number, options: { endOfPageInsertionCandidate?: boolean } = {}) => {
@@ -6251,6 +6401,7 @@ export function PageEditorHostRuntime({
 
   useEffect(() => {
     if (!editor || !isInteractionActive) {
+      clearCaretStripTextGesture();
       clearGutterRangeGesture({ clearSelection: true, reason: "access-loss" });
       return;
     }
@@ -6269,10 +6420,11 @@ export function PageEditorHostRuntime({
     return () => {
       editor.off("transaction", handleTransaction);
     };
-  }, [clearGutterRangeGesture, clearTransientBlockSelection, editor, isInteractionActive]);
+  }, [clearCaretStripTextGesture, clearGutterRangeGesture, clearTransientBlockSelection, editor, isInteractionActive]);
 
   useEffect(() => {
     if (!editor || !isInteractionActive) {
+      clearCaretStripTextGesture();
       clearGutterRangeGesture({ clearSelection: true, reason: "access-loss" });
       return;
     }
@@ -6335,8 +6487,8 @@ export function PageEditorHostRuntime({
 
       if (resolvedZone === "caret-strip") {
         clearTransientBlockSelection("caret-strip-pointerdown");
-        if (classification.caretBlockIndex !== null && focusTopLevelCaretIntent(runtimeEditor, classification.caretBlockIndex)) {
-          event.preventDefault();
+        if (classification.caretBlockIndex !== null) {
+          startCaretStripTextGesture(event, classification.caretBlockIndex);
         }
         return;
       }
@@ -6354,16 +6506,19 @@ export function PageEditorHostRuntime({
     overlayOwnerDocument.addEventListener("pointerdown", handlePointerDown, true);
     return () => {
       overlayOwnerDocument.removeEventListener("pointerdown", handlePointerDown, true);
+      clearCaretStripTextGesture();
       clearGutterRangeGesture({ clearSelection: true, reason: "listener-disposal" });
     };
   }, [
+    clearCaretStripTextGesture,
     clearGutterRangeGesture,
     clearTransientBlockSelection,
     editor,
     isInteractionActive,
     overlayOwnerDocument,
     overlayRoot,
-    startBlankGutterRangeGesture
+    startBlankGutterRangeGesture,
+    startCaretStripTextGesture
   ]);
 
   useEffect(() => {
@@ -6372,6 +6527,7 @@ export function PageEditorHostRuntime({
       disposedRef.current = true;
       initializingRef.current = false;
       cancelPendingTimers();
+      clearCaretStripTextGestureUnmountRef.current?.();
       clearGutterRangeGestureUnmountRef.current?.({ clearSelection: true, reason: "runtime-teardown" });
       clearSurfaceClickSuppressionReleaseTimerUnmountRef.current?.();
       suppressSurfaceClickUntilPointerUpRef.current = false;
@@ -9011,6 +9167,7 @@ export function PageEditorHostRuntime({
               <CompactTextToolbar
                 canEdit={isEditable}
                 editor={mountedEditor}
+                isTextSelectionPointerOrigin={isCaretStripTextSelectionPointerOrigin}
                 ownerDocument={overlayOwnerDocument}
                 ownerWindow={overlayOwnerWindow}
                 overlayRoot={overlayRoot}

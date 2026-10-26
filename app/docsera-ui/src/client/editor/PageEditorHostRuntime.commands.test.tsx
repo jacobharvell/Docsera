@@ -10892,7 +10892,7 @@ describe("PageEditorHostRuntime", () => {
     expect(transactions.filter((transaction) => transaction.addToHistory !== false)).toHaveLength(0);
   });
 
-  it("keeps the toolbar mounted at the last settled position during resumed dragging and repositions only after idle and release", async () => {
+  it("hides the toolbar during resumed dragging and repositions after the next idle interval and release", async () => {
     const geometrySpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
       const className = typeof this.className === "string" ? this.className : "";
       if (className.includes("docsera-text-toolbar__menu")) {
@@ -10955,8 +10955,7 @@ describe("PageEditorHostRuntime", () => {
     expect(firstReveal).toHaveStyle({ left: initialLeft, top: initialTop });
 
     fireEvent.mouseMove(editor.view.dom, { clientX: 20, clientY: 20 });
-    expect(screen.getByRole("toolbar", { name: "Text formatting" })).toBe(firstReveal);
-    expect(screen.getByRole("toolbar", { name: "Text formatting" })).toHaveStyle({ left: initialLeft, top: initialTop });
+    expect(screen.queryByRole("toolbar", { name: "Text formatting" })).toBeNull();
 
     await selectText(editor, 7, 12);
     fireEvent.mouseMove(editor.view.dom, { clientX: 24, clientY: 24 });
@@ -10968,14 +10967,20 @@ describe("PageEditorHostRuntime", () => {
     expect(secondReveal.style.left).not.toBe(initialLeft);
 
     fireEvent.mouseMove(editor.view.dom, { clientX: 28, clientY: 28 });
-    expect(screen.getByRole("toolbar", { name: "Text formatting" })).toBe(secondReveal);
+    expect(screen.queryByRole("toolbar", { name: "Text formatting" })).toBeNull();
+
+    await act(async () => {
+      vi.advanceTimersByTime(90);
+    });
+    const resumedReveal = screen.getByRole("toolbar", { name: "Text formatting" });
+    expect(resumedReveal.style.left).toBe(secondReveal.style.left);
 
     fireEvent.mouseUp(editor.view.dom);
     await act(async () => {
       vi.advanceTimersByTime(0);
     });
     const finalReveal = screen.getByRole("toolbar", { name: "Text formatting" });
-    expect(finalReveal.style.left).toBe(secondReveal.style.left);
+    expect(finalReveal.style.left).toBe(resumedReveal.style.left);
 
     Object.defineProperty(document, "elementFromPoint", {
       configurable: true,

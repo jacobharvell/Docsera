@@ -1465,6 +1465,134 @@ describe("PageEditorHostRuntime gutter range selection", () => {
     }
   });
 
+  it("keeps the compact toolbar synchronized with a caret-strip text-selection drag without mutating content", async () => {
+    const initialEnvelope = createSelectionEnvelope();
+    const { editorReady, onSaveDraft } = renderRuntime({ initialEnvelope });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0]!;
+    const geometry = mockTopLevelBlockGeometry(editor, [
+      new DOMRect(132, 100, 620, 36),
+      new DOMRect(132, 148, 620, 36),
+      new DOMRect(132, 196, 620, 36),
+      new DOMRect(132, 244, 620, 36),
+      new DOMRect(132, 292, 620, 36),
+      new DOMRect(132, 340, 620, 36),
+      new DOMRect(132, 388, 620, 36)
+    ]);
+    const posAtCoords = vi.spyOn(editor.view, "posAtCoords").mockImplementation(({ top }) => {
+      return { inside: top < 148 ? 1 : 8, pos: top < 148 ? 4 : 10 };
+    });
+
+    try {
+      await runAutosave();
+      onSaveDraft.mockClear();
+      const before = editor.getJSON();
+      const undoDepthBefore = undoDepth(editor.state);
+      const surface = getEditorSurface(editor);
+      vi.useFakeTimers();
+
+      await dispatchOwnerPointerEvent(surface.ownerDocument, surface, "pointerdown", { clientX: 128, clientY: 116 }, {
+        button: 0,
+        buttons: 1,
+        pointerId: 182
+      });
+      await dispatchOwnerPointerEvent(surface.ownerDocument, surface.ownerDocument.body, "pointermove", { clientX: 180, clientY: 116 }, {
+        buttons: 1,
+        pointerId: 182
+      });
+      expect(editor.state.selection.from).toBe(1);
+      expect(editor.state.selection.to).toBe(4);
+      expect(screen.queryByRole("toolbar", { name: "Text formatting" })).toBeNull();
+
+      await act(async () => {
+        vi.advanceTimersByTime(90);
+      });
+      expect(screen.getByRole("toolbar", { name: "Text formatting" })).toBeInTheDocument();
+
+      await dispatchOwnerPointerEvent(surface.ownerDocument, surface.ownerDocument.body, "pointermove", { clientX: 180, clientY: 164 }, {
+        buttons: 1,
+        pointerId: 182
+      });
+      expect(editor.state.selection.from).toBe(1);
+      expect(editor.state.selection.to).toBe(10);
+      expect(screen.queryByRole("toolbar", { name: "Text formatting" })).toBeNull();
+
+      await act(async () => {
+        vi.advanceTimersByTime(90);
+      });
+      expect(screen.getByRole("toolbar", { name: "Text formatting" })).toBeInTheDocument();
+
+      await dispatchOwnerPointerEvent(surface.ownerDocument, surface.ownerDocument.body, "pointerup", { clientX: 180, clientY: 164 }, {
+        button: 0,
+        buttons: 0,
+        pointerId: 182
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(0);
+      });
+
+      expect(editor.state.selection.from).toBe(1);
+      expect(editor.state.selection.to).toBe(10);
+      expect(screen.getByRole("toolbar", { name: "Text formatting" })).toBeInTheDocument();
+      expect(getSelectedBlockElements(editor)).toHaveLength(0);
+      expect(editor.getJSON()).toEqual(before);
+      expect(undoDepth(editor.state)).toBe(undoDepthBefore);
+      vi.useRealTimers();
+      await runAutosave();
+      expect(onSaveDraft).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      posAtCoords.mockRestore();
+      geometry.mockRestore();
+    }
+  });
+
+  it("keeps the caret strip available at narrow geometry while excluding horizontal rules from text intent", async () => {
+    const initialEnvelope = createSelectionEnvelope();
+    const { editorReady } = renderRuntime({ initialEnvelope });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0]!;
+    const geometry = mockTopLevelBlockGeometry(editor, [
+      new DOMRect(117, 100, 520, 36),
+      new DOMRect(117, 148, 520, 36),
+      new DOMRect(117, 196, 520, 36),
+      new DOMRect(117, 244, 520, 36),
+      new DOMRect(117, 292, 520, 36),
+      new DOMRect(117, 340, 520, 36),
+      new DOMRect(117, 388, 520, 36)
+    ]);
+
+    try {
+      const surface = getEditorSurface(editor);
+      await dispatchOwnerPointerEvent(surface.ownerDocument, surface, "pointermove", { clientX: 113, clientY: 116 }, {
+        buttons: 0,
+        pointerId: 183
+      });
+      expect(surface.style.cursor).toBe("text");
+
+      await dispatchOwnerPointerEvent(surface.ownerDocument, surface, "pointerdown", { clientX: 113, clientY: 116 }, {
+        button: 0,
+        buttons: 1,
+        pointerId: 183
+      });
+      await dispatchOwnerPointerEvent(surface.ownerDocument, surface.ownerDocument.body, "pointerup", { clientX: 113, clientY: 116 }, {
+        button: 0,
+        buttons: 0,
+        pointerId: 183
+      });
+      expect(editor.state.selection.from).toBe(1);
+
+      await dispatchOwnerPointerEvent(surface.ownerDocument, surface, "pointermove", { clientX: 113, clientY: 356 }, {
+        buttons: 0,
+        pointerId: 184
+      });
+      expect(surface.style.cursor).toBe("");
+    } finally {
+      geometry.mockRestore();
+    }
+  });
+
   it("tracks expansion, contraction, and reversal around a fixed anchor while drifting horizontally across the gutter lane", async () => {
     const initialEnvelope = createSelectionEnvelope();
     const { editorReady } = renderRuntime({ initialEnvelope });

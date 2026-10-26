@@ -66,6 +66,7 @@ type ToolbarTooltipState = {
 export type CompactTextToolbarProps = {
   canEdit: boolean;
   editor: Editor | null;
+  isTextSelectionPointerOrigin?: (event: MouseEvent | PointerEvent) => boolean;
   ownerDocument: Document;
   ownerWindow: Window | null;
   overlayRoot: HTMLElement;
@@ -1429,7 +1430,14 @@ function LinkSurface({
   );
 }
 
-export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow, overlayRoot }: CompactTextToolbarProps) {
+export function CompactTextToolbar({
+  canEdit,
+  editor,
+  isTextSelectionPointerOrigin,
+  ownerDocument,
+  ownerWindow,
+  overlayRoot
+}: CompactTextToolbarProps) {
   const selectionSnapshot = useEditorState({
     editor,
     selector: ({ editor: snapshotEditor, transactionNumber }) =>
@@ -2064,7 +2072,8 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
         return;
       }
 
-      if (!isEventWithinEditor(event, editor.view.dom, ownerWindow)) {
+      const isEditorPointerOrigin = isEventWithinEditor(event, editor.view.dom, ownerWindow);
+      if (!isEditorPointerOrigin && !isTextSelectionPointerOrigin?.(event)) {
         return;
       }
 
@@ -2105,10 +2114,8 @@ export function CompactTextToolbar({ canEdit, editor, ownerDocument, ownerWindow
         pointerSessionRef.current.blankSpaceClickPos = null;
       }
 
-      if (!pointerSessionRef.current.hasSettledSelection) {
-        setPointerSelectionHidden(true);
-        setDisplaySelection(null);
-      }
+      setPointerSelectionHidden(true);
+      setDisplaySelection(null);
       clearIdleTimer();
       pointerSessionRef.current.idleTimer =
         ownerWindow?.setTimeout(() => {
