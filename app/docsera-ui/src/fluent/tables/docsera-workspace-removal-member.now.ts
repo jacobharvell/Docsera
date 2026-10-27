@@ -12,8 +12,8 @@ export const x_82900_docsera_workspace_removal_member = Table({
   schema: {
     removal_batch: ReferenceColumn({ label: "Removal batch", mandatory: true, referenceTable: "x_82900_docsera_workspace_removal_batch" }),
     page: ReferenceColumn({ label: "Page identity", mandatory: true, referenceTable: "x_82900_docsera_page" }),
-    batch_page_key: StringColumn({ label: "Batch page key", mandatory: true, maxLength: 80 })
-    ,first_pending_sequence: IntegerColumn({ label: "First pending sequence", mandatory: true, min: 1 })
+    batch_page_key: StringColumn({ label: "Batch page key", mandatory: true, maxLength: 80 }),
+    first_pending_sequence: IntegerColumn({ label: "First pending sequence", mandatory: true, min: 1 })
   },
   index: [{ name: "batch_page_key_unique", element: "batch_page_key", unique: true }]
 });

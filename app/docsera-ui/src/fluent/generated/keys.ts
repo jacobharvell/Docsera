@@ -14,6 +14,11 @@ declare global {
                         table: 'sys_module'
                         id: '035d3e11746f42faa56baf67d7f58279'
                     }
+                    'cto-3c-removal-member-m2m': {
+                        table: 'sys_m2m'
+                        id: '3b0bc87c6433409fb930186bb30449c6'
+                        deleted: true
+                    }
                     docsera_page_draft_parent_server_owned_write: {
                         table: 'sys_security_acl'
                         id: 'c063d6dd00ec434c91ec43443d575358'
@@ -33,6 +38,26 @@ declare global {
                     docsera_page_last_draft_changed_on_server_owned_write: {
                         table: 'sys_security_acl'
                         id: '9fc3cf4280f449f59b2e062e32479c00'
+                    }
+                    docsera_rm_member_create_deny: {
+                        table: 'sys_security_acl'
+                        id: '205a3ac89f304bdb9f124087a05ad295'
+                        deleted: true
+                    }
+                    docsera_rm_member_delete_deny: {
+                        table: 'sys_security_acl'
+                        id: 'c1e7e4aecee94a529f349405b662773d'
+                        deleted: true
+                    }
+                    docsera_rm_member_read_deny: {
+                        table: 'sys_security_acl'
+                        id: '263d2d4b7a024e44914c0fe529fbecc6'
+                        deleted: true
+                    }
+                    docsera_rm_member_write_deny: {
+                        table: 'sys_security_acl'
+                        id: '9cbe4ae17f3a44b2a3fbacd31d7cce33'
+                        deleted: true
                     }
                     docsera_workspace_change_entry_create_deny: {
                         table: 'sys_security_acl'
@@ -165,18 +190,22 @@ declare global {
                     docsera_workspace_removal_member_create_deny: {
                         table: 'sys_security_acl'
                         id: '0605b7ec27274052bca7a2d2b8bb1c90'
+                        deleted: false
                     }
                     docsera_workspace_removal_member_delete_deny: {
                         table: 'sys_security_acl'
                         id: 'ac25d4ff219d450fb9ddfc82aac603c0'
+                        deleted: false
                     }
                     docsera_workspace_removal_member_read_deny: {
                         table: 'sys_security_acl'
                         id: '2db50e05f8b34e14b16c3f318b6e0577'
+                        deleted: false
                     }
                     docsera_workspace_removal_member_write_deny: {
                         table: 'sys_security_acl'
                         id: 'fca815ff662245c8a9cb71176092c094'
+                        deleted: false
                     }
                     docsera_workspace_snapshot_set_create_deny: {
                         table: 'sys_security_acl'
@@ -653,6 +682,7 @@ declare global {
                     {
                         table: 'sys_documentation'
                         id: '036ab39330f142008a910d51a357c62f'
+                        deleted: false
                         key: {
                             name: 'x_82900_docsera_workspace_removal_member'
                             element: 'first_pending_sequence'
@@ -1021,6 +1051,16 @@ declare global {
                     },
                     {
                         table: 'sys_documentation'
+                        id: '17c75b0c8603403db0d61915ada83121'
+                        deleted: true
+                        key: {
+                            name: 'x_82900_docsera_rm_member'
+                            element: 'NULL'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
                         id: '17f71d6728a44ad386696569afff0330'
                         key: {
                             name: 'x_82900_docsera_workspace_mutation_claim'
@@ -1150,6 +1190,16 @@ declare global {
                     },
                     {
                         table: 'sys_documentation'
+                        id: '1f9919d52fdb4d4b82594c06e1479427'
+                        deleted: true
+                        key: {
+                            name: 'x_82900_docsera_rm_member'
+                            element: 'removal_batch'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
                         id: '215486706cd54d77a48993cddf64a672'
                         key: {
                             name: 'x_82900_docsera_workspace_page_snapshot'
@@ -1210,6 +1260,14 @@ declare global {
                         }
                     },
                     {
+                        table: 'ua_table_licensing_config'
+                        id: '25ef567377fe48209bccf9e4a6de9898'
+                        deleted: true
+                        key: {
+                            name: 'x_82900_docsera_rm_member'
+                        }
+                    },
+                    {
                         table: 'sys_dictionary'
                         id: '26c1da75893940e4b38dbfe0dc4cf769'
                         key: {
@@ -1222,6 +1280,14 @@ declare global {
                         id: '26ccebe3e9bb408eb15e62992b45dd5a'
                         key: {
                             name: 'x_82900_docsera_workspace_mutation_claim'
+                        }
+                    },
+                    {
+                        table: 'sys_db_object'
+                        id: '26fcb8d5f44249b6934e76583c62b20b'
+                        deleted: true
+                        key: {
+                            name: 'x_82900_docsera_rm_member'
                         }
                     },
                     {
@@ -1283,6 +1349,7 @@ declare global {
                     {
                         table: 'sys_db_object'
                         id: '2b3758c7073340a7baf7d830936e75d7'
+                        deleted: false
                         key: {
                             name: 'x_82900_docsera_workspace_removal_member'
                         }
@@ -1333,6 +1400,7 @@ declare global {
                     {
                         table: 'sys_documentation'
                         id: '2e48721bd94f4b69a9788d5803c60414'
+                        deleted: false
                         key: {
                             name: 'x_82900_docsera_workspace_removal_member'
                             element: 'page'
@@ -1969,6 +2037,7 @@ declare global {
                     {
                         table: 'sys_index'
                         id: '58556d0fa54f4e7d92f14e7529581cbd'
+                        deleted: false
                         key: {
                             logical_table_name: 'x_82900_docsera_workspace_removal_member'
                             col_name_string: 'batch_page_key'
@@ -1980,6 +2049,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_page'
                             element: 'draft_revision'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '590fd60154ea47a3b6a7738d4de394bf'
+                        deleted: true
+                        key: {
+                            name: 'x_82900_docsera_rm_member'
+                            element: 'removal_batch'
                         }
                     },
                     {
@@ -2027,6 +2105,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_snapshot_set'
                             element: 'snapshot_key'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '5e4e4c2d70fd412f9bbea7460cdec5eb'
+                        deleted: true
+                        key: {
+                            name: 'x_82900_docsera_rm_member'
+                            element: 'first_pending_sequence'
                         }
                     },
                     {
@@ -2079,6 +2166,15 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_member_mutation_command'
                             element: 'target_user'
+                        }
+                    },
+                    {
+                        table: 'sys_index'
+                        id: '62e49cb53ce74dac9ca1968c240fb7b6'
+                        deleted: true
+                        key: {
+                            logical_table_name: 'x_82900_docsera_rm_member'
+                            col_name_string: 'removal_batch,page'
                         }
                     },
                     {
@@ -2154,6 +2250,7 @@ declare global {
                     {
                         table: 'sys_dictionary'
                         id: '692c43a867f04acca3944135c43ac676'
+                        deleted: false
                         key: {
                             name: 'x_82900_docsera_workspace_removal_member'
                             element: 'first_pending_sequence'
@@ -2487,6 +2584,7 @@ declare global {
                     {
                         table: 'ua_table_licensing_config'
                         id: '7c2fc91592484bc4b42aa107e39f870e'
+                        deleted: false
                         key: {
                             name: 'x_82900_docsera_workspace_removal_member'
                         }
@@ -2519,6 +2617,7 @@ declare global {
                     {
                         table: 'sys_documentation'
                         id: '7d7aa13ae16b449e9226af2f1c5e23cf'
+                        deleted: false
                         key: {
                             name: 'x_82900_docsera_workspace_removal_member'
                             element: 'removal_batch'
@@ -2554,6 +2653,7 @@ declare global {
                     {
                         table: 'sys_documentation'
                         id: '7f952dbc1d314105bb0cef2fda556fd1'
+                        deleted: false
                         key: {
                             name: 'x_82900_docsera_workspace_removal_member'
                             element: 'batch_page_key'
@@ -2596,6 +2696,7 @@ declare global {
                     {
                         table: 'sys_dictionary'
                         id: '840d9a9dae9f46008217a8feaf4eb461'
+                        deleted: false
                         key: {
                             name: 'x_82900_docsera_workspace_removal_member'
                             element: 'removal_batch'
@@ -3138,6 +3239,7 @@ declare global {
                     {
                         table: 'sys_dictionary'
                         id: 'a70c2a86d8a44c0cabbc7407e0397516'
+                        deleted: false
                         key: {
                             name: 'x_82900_docsera_workspace_removal_member'
                             element: 'page'
@@ -3251,6 +3353,16 @@ declare global {
                         key: {
                             name: 'x_82900_docsera_workspace_member_mutation_command'
                             element: 'error_message'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'ab614b15ca7943bdbf5390f80abbbdb9'
+                        deleted: true
+                        key: {
+                            name: 'x_82900_docsera_rm_member'
+                            element: 'page'
+                            language: 'en'
                         }
                     },
                     {
@@ -3461,6 +3573,15 @@ declare global {
                         }
                     },
                     {
+                        table: 'sys_dictionary'
+                        id: 'ba886395a8d346c8b8a70ae3de066f33'
+                        deleted: true
+                        key: {
+                            name: 'x_82900_docsera_rm_member'
+                            element: 'page'
+                        }
+                    },
+                    {
                         table: 'sys_documentation'
                         id: 'baa2878159f3404fa75c3fcbd0a0f6a9'
                         key: {
@@ -3485,6 +3606,16 @@ declare global {
                             name: 'x_82900_docsera_workspace_mutation_claim'
                             element: 'execution_phase'
                             value: 'entry_persisted'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'bbe046933cbd40c0b4154149b80802b9'
+                        deleted: true
+                        key: {
+                            name: 'x_82900_docsera_rm_member'
+                            element: 'first_pending_sequence'
+                            language: 'en'
                         }
                     },
                     {
@@ -3623,6 +3754,15 @@ declare global {
                             name: 'x_82900_docsera_workspace_change_set'
                             element: 'recovery_state'
                             language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'c22b28448e0545e2872796cb03dd139f'
+                        deleted: true
+                        key: {
+                            name: 'x_82900_docsera_rm_member'
+                            element: 'NULL'
                         }
                     },
                     {
@@ -3863,6 +4003,7 @@ declare global {
                     {
                         table: 'sys_dictionary'
                         id: 'd1421798c8964d0b94834eab4e9dc369'
+                        deleted: false
                         key: {
                             name: 'x_82900_docsera_workspace_removal_member'
                             element: 'NULL'
@@ -4210,6 +4351,7 @@ declare global {
                     {
                         table: 'sys_dictionary'
                         id: 'e6896779c386464e855e4f12970ab23d'
+                        deleted: false
                         key: {
                             name: 'x_82900_docsera_workspace_removal_member'
                             element: 'batch_page_key'
@@ -4448,6 +4590,7 @@ declare global {
                     {
                         table: 'sys_documentation'
                         id: 'f4657fe3eb0c4436b1c69374bb9d9ed0'
+                        deleted: false
                         key: {
                             name: 'x_82900_docsera_workspace_removal_member'
                             element: 'NULL'

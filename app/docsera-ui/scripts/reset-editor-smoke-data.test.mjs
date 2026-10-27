@@ -9,8 +9,16 @@ import {
   planProofWorkspaceRecovery,
   shouldReleaseSmokeLease
 } from "./reset-editor-smoke-data.mjs";
+import { readFile } from "node:fs/promises";
+
+const resetScriptSource = await readFile("scripts/reset-editor-smoke-data.mjs", "utf8");
 
 describe("editor smoke reset lease handling", () => {
+  it("cleans production removal memberships from the ordinary custom table", () => {
+    expect(resetScriptSource).toContain('workspaceRemovalMemberTable: "x_82900_docsera_workspace_removal_member"');
+    expect(resetScriptSource).not.toContain('workspaceRemovalMemberTable: "x_82900_docsera_rm_member"');
+  });
+
   it("treats a held workspace lease as a destructive-reset block", () => {
     const result = planSmokeResetWorkspace(
       {
