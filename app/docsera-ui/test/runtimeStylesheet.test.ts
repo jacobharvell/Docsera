@@ -112,7 +112,7 @@ test("keeps Markdown source typography and semantic token colors readable in bot
   expect(css).toContain('src: url("__DOCSERA_PAPER_MONO_VARIABLE_WOFF2__") format("woff2");');
   expect(css).toContain("JetBrains+Mono:wght@500;700");
   expect(css).toContain('--docsera-document-mono-font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;');
-  expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor \.cm-content\s*{[^}]*font-family:\s*var\(--docsera-markdown-source-font-family\);[^}]*font-size:\s*14px;[^}]*font-weight:\s*400;[^}]*line-height:\s*1\.65;/s);
+  expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor\s*{[^}]*font-family:\s*var\(--docsera-markdown-source-font-family\);[^}]*font-size:\s*14px;[^}]*font-weight:\s*400;[^}]*line-height:\s*1\.65;/s);
   expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor \.docsera-markdown-source-token--heading\s*{[^}]*color:\s*var\(--docsera-document-text-color, var\(--docsera-text\)\) !important;[^}]*font-weight:\s*700;/s);
   expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor \.docsera-markdown-source-token--heading-marker,[\s\S]*?font-weight:\s*400;/s);
   expect(css).toMatch(/\.docsera-main__source-editor \.cm-editor \.docsera-markdown-source-token--strikethrough\s*{[^}]*text-decoration:\s*line-through;/s);
@@ -527,8 +527,9 @@ test("keeps left workspace navigation sticky with internally scrolling tree over
     /\.docsera-sidebar__search-row\s*{[^}]*flex:\s*0 0 auto;/s
   );
   expect(css).toMatch(
-    /\.docsera-sidebar__tree\s*{[^}]*flex:\s*1 1 auto;[^}]*min-height:\s*0;[^}]*margin-right:\s*-10px;[^}]*padding-right:\s*2px;[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;[^}]*scrollbar-width:\s*thin;[^}]*scrollbar-color:[^;}]+ transparent;/s
+    /\.docsera-sidebar__tree\s*{[^}]*flex:\s*1 1 auto;[^}]*min-height:\s*0;[^}]*margin-right:\s*-9px;[^}]*padding-right:\s*2px;[^}]*overflow-x:\s*hidden;[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;/s
   );
+  expect(css).toMatch(/@supports not selector\(::-webkit-scrollbar\)\s*{\s*\.docsera-sidebar__tree,\s*\.docsera-toc__list\s*{[^}]*scrollbar-width:\s*thin;[^}]*scrollbar-color:[^;}]+ transparent;/s);
   expect(css).toMatch(/\.docsera-sidebar__tree::-webkit-scrollbar\s*{\s*width:\s*8px;\s*}/s);
   expect(css).toMatch(/\.docsera-sidebar__tree::-webkit-scrollbar-thumb\s*{[^}]*border:\s*2px solid transparent;[^}]*border-radius:\s*999px;[^}]*background-clip:\s*content-box;/s);
   expect(css).toMatch(
@@ -883,13 +884,13 @@ test("keeps manage access Add Members visual states on defined theme tokens", ()
   expect(css).toMatch(/\.docsera-manage-access__filter-input\s*{[^}]*min-height:\s*40px;[^}]*padding:\s*8px 12px 8px 32px;/s);
   expect(css).toMatch(/\.docsera-manage-access__add-button\s*{[^}]*display:\s*inline-flex;[^}]*gap:\s*7px;/s);
   expect(css).toMatch(
-    /\.docsera-manage-access__member-headings\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 164px;[^}]*text-transform:\s*uppercase;/s
+    /\.docsera-manage-access__member-headings\s*{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 140px;[^}]*text-transform:\s*uppercase;/s
   );
   expect(css).toMatch(
     /\.docsera-manage-access__list\s*{[^}]*border:\s*1px solid var\(--docsera-border-soft\);[^}]*border-radius:\s*12px;[^}]*overflow:\s*clip;/s
   );
   expect(css).toMatch(
-    /\.docsera-manage-access__member\s*{[^}]*grid-template-columns:\s*40px minmax\(0, 1fr\) 174px;[^}]*min-height:\s*60px;/s
+    /\.docsera-manage-access__member\s*{[^}]*grid-template-columns:\s*40px minmax\(0, 1fr\) 130px;[^}]*min-height:\s*60px;/s
   );
   expect(css).toMatch(
     /\.docsera-manage-access__member-name\s*{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s
