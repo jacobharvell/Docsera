@@ -22,6 +22,7 @@ export const x_82900_docsera_workspace_icon_asset = Table({
       default: "staged",
       choices: {
         staged: "Staged",
+        cleaning: "Cleaning",
         claimed: "Claimed",
         invalid: "Invalid"
       }

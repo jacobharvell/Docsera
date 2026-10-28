@@ -23,6 +23,7 @@ export type WorkspaceSettingsDependencies = {
   claimWorkspaceSettingsIcon?: (assetKey: string, workspaceSysId: string) => WorkspaceIconClaimResult;
   restoreWorkspaceIconClaim?: (assetSysId: string, input?: { provisionRequestSysId?: string; workspaceSysId?: string }) => void;
   retireClaimedWorkspaceIcon?: (assetKey: string, workspaceSysId: string) => void;
+  retireObsoleteClaimedWorkspaceIcons?: (workspaceSysId: string) => void;
   saveWorkspaceSettings: (workspace: WorkspaceRecord) => Awaitable<WorkspaceRecord | null>;
 };
 
@@ -206,7 +207,13 @@ export function createWorkspaceSettingsService(dependencies: WorkspaceSettingsDe
         };
       }
 
-      if (
+      if (dependencies.retireObsoleteClaimedWorkspaceIcons) {
+        try {
+          dependencies.retireObsoleteClaimedWorkspaceIcons(savedWorkspace.sysId);
+        } catch {
+          // Cleanup is best-effort after the authoritative workspace save.
+        }
+      } else if (
         dependencies.retireClaimedWorkspaceIcon &&
         currentWorkspace.icon.type === "uploaded" &&
         cleanText(currentWorkspace.icon.key) &&
@@ -236,6 +243,7 @@ export function createServiceNowWorkspaceSettingsService() {
     loadWorkspaceBySysId,
     restoreWorkspaceIconClaim: iconService.restoreWorkspaceIconClaim,
     retireClaimedWorkspaceIcon: iconService.retireClaimedWorkspaceIcon,
+    retireObsoleteClaimedWorkspaceIcons: iconService.retireObsoleteClaimedWorkspaceIcons,
     saveWorkspaceSettings: saveWorkspaceSettingsRecord
   });
 }

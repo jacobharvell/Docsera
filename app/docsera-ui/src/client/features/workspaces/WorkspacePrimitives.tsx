@@ -30,6 +30,8 @@ function isLocalObjectUrl(value: string): boolean {
 
 export type WorkspaceUploadedIconLoader = (input: { assetPath: string; signal?: AbortSignal }) => Promise<Blob | null>;
 
+const uploadedIconBlobCache = new WeakMap<WorkspaceUploadedIconLoader, Map<string, Blob>>();
+
 export function WorkspaceIconBadge({
   loadUploadedIcon,
   onReleaseOwnedExternalObjectUrl,
@@ -47,18 +49,22 @@ export function WorkspaceIconBadge({
   const monogram = source.charAt(0).toUpperCase();
   const builtInIcon = workspace.icon?.type === "builtin" ? findBuiltInWorkspaceIcon(workspace.icon.key) : null;
   const uploadedIconPath = workspace.icon?.type === "uploaded" ? cleanText(workspace.icon.assetPath) : "";
-  const [uploadedImageSrc, setUploadedImageSrc] = useState(uploadedIconPath && (!loadUploadedIcon || isLocalObjectUrl(uploadedIconPath)) ? uploadedIconPath : "");
+  const [uploadedImage, setUploadedImage] = useState(() => ({
+    path: uploadedIconPath && (!loadUploadedIcon || isLocalObjectUrl(uploadedIconPath)) ? uploadedIconPath : "",
+    ready: false,
+    src: uploadedIconPath && (!loadUploadedIcon || isLocalObjectUrl(uploadedIconPath)) ? uploadedIconPath : ""
+  }));
   const [uploadedImageFailed, setUploadedImageFailed] = useState(false);
-  const uploadedImageSrcRef = useRef(uploadedImageSrc);
+  const uploadedImageSrcRef = useRef(uploadedImage.src);
   const internallyCreatedObjectUrlRef = useRef("");
   const ownedExternalObjectUrlRef = useRef(ownedExternalObjectUrl);
   const releaseOwnedExternalObjectUrlRef = useRef(onReleaseOwnedExternalObjectUrl);
   const defaultIcon = builtInIcon?.glyph === "docsera-workspace";
   const GlyphIcon = builtInIcon && !defaultIcon ? builtInGlyphIcons[builtInIcon.glyph] : null;
 
-  function setTrackedUploadedImageSrc(value: string) {
-    uploadedImageSrcRef.current = value;
-    setUploadedImageSrc(value);
+  function setTrackedUploadedImage(value: { path: string; ready?: boolean; src: string }) {
+    uploadedImageSrcRef.current = value.src;
+    setUploadedImage({ path: value.path, ready: value.ready ?? false, src: value.src });
   }
 
   function releaseOwnedExternalObjectUrl(objectUrl: string) {
@@ -88,7 +94,7 @@ export function WorkspaceIconBadge({
 
     if (!uploadedIconPath) {
       releaseTrackedLocalObjectUrl(uploadedImageSrcRef.current);
-      setTrackedUploadedImageSrc("");
+      setTrackedUploadedImage({ path: "", src: "" });
       return;
     }
 
@@ -96,33 +102,47 @@ export function WorkspaceIconBadge({
       if (uploadedImageSrcRef.current !== uploadedIconPath) {
         releaseTrackedLocalObjectUrl(uploadedImageSrcRef.current);
       }
-      setTrackedUploadedImageSrc(uploadedIconPath);
+      setTrackedUploadedImage({ path: uploadedIconPath, src: uploadedIconPath });
       return;
+    }
+
+    if (uploadedImageSrcRef.current && isLocalObjectUrl(uploadedImageSrcRef.current) && releaseOwnedExternalObjectUrl(uploadedImageSrcRef.current)) {
+      setTrackedUploadedImage({ path: "", src: "" });
     }
 
     const controller = new AbortController();
     let active = true;
     let objectUrl = "";
 
-    loadUploadedIcon({ assetPath: uploadedIconPath, signal: controller.signal }).then((blob) => {
+    const cachedBlob = uploadedIconBlobCache.get(loadUploadedIcon)?.get(uploadedIconPath);
+    const blobPromise = cachedBlob
+      ? Promise.resolve(cachedBlob)
+      : loadUploadedIcon({ assetPath: uploadedIconPath, signal: controller.signal });
+
+    blobPromise.then((blob) => {
       if (!active) {
         return;
       }
       if (!blob) {
         if (uploadedImageSrcRef.current && isLocalObjectUrl(uploadedImageSrcRef.current) && releaseOwnedExternalObjectUrl(uploadedImageSrcRef.current)) {
-          setTrackedUploadedImageSrc("");
+          setTrackedUploadedImage({ path: "", src: "" });
         }
         setUploadedImageFailed(true);
         return;
       }
+      if (!cachedBlob) {
+        const cache = uploadedIconBlobCache.get(loadUploadedIcon) ?? new Map<string, Blob>();
+        cache.set(uploadedIconPath, blob);
+        uploadedIconBlobCache.set(loadUploadedIcon, cache);
+      }
       objectUrl = URL.createObjectURL(blob);
       internallyCreatedObjectUrlRef.current = objectUrl;
       releaseTrackedLocalObjectUrl(uploadedImageSrcRef.current);
-      setTrackedUploadedImageSrc(objectUrl);
+      setTrackedUploadedImage({ path: uploadedIconPath, src: objectUrl });
     }).catch(() => {
       if (active) {
         if (uploadedImageSrcRef.current && isLocalObjectUrl(uploadedImageSrcRef.current) && releaseOwnedExternalObjectUrl(uploadedImageSrcRef.current)) {
-          setTrackedUploadedImageSrc("");
+          setTrackedUploadedImage({ path: "", src: "" });
         }
         setUploadedImageFailed(true);
       }
@@ -147,11 +167,16 @@ export function WorkspaceIconBadge({
     };
   }, []);
 
-  const showUploadedIcon = uploadedIconPath && uploadedImageSrc && !uploadedImageFailed;
+  const localUploadedImage = uploadedIconPath && isLocalObjectUrl(uploadedIconPath)
+    ? { path: uploadedIconPath, ready: true, src: uploadedIconPath }
+    : null;
+  const displayedUploadedImage = localUploadedImage ?? uploadedImage;
+  const showUploadedIcon = Boolean(uploadedIconPath && displayedUploadedImage.path === uploadedIconPath && displayedUploadedImage.src && !uploadedImageFailed);
+  const showEmptyUploadedSlot = Boolean(uploadedIconPath && !showUploadedIcon);
 
   return (
     <span
-      className={`docsera-workspace-icon-badge${builtInIcon ? " docsera-workspace-icon-badge--builtin" : ""}${defaultIcon ? " docsera-workspace-icon-badge--artwork" : ""}${showUploadedIcon ? " docsera-workspace-icon-badge--uploaded" : ""}${className ? ` ${className}` : ""}`}
+      className={`docsera-workspace-icon-badge${builtInIcon ? " docsera-workspace-icon-badge--builtin" : ""}${defaultIcon ? " docsera-workspace-icon-badge--artwork" : ""}${showUploadedIcon || showEmptyUploadedSlot ? " docsera-workspace-icon-badge--uploaded" : ""}${showUploadedIcon && displayedUploadedImage.ready ? " docsera-workspace-icon-badge--uploaded-ready" : ""}${className ? ` ${className}` : ""}`}
       aria-hidden="true"
     >
       {defaultIcon ? (
@@ -165,18 +190,22 @@ export function WorkspaceIconBadge({
       ) : showUploadedIcon ? (
         <img
           className="docsera-workspace-icon-badge__uploaded-image"
-          src={uploadedImageSrc}
+          src={displayedUploadedImage.src}
           alt=""
           aria-hidden="true"
           draggable={false}
+          onLoad={() => {
+            setUploadedImage((current) => current.path === uploadedIconPath && current.src === displayedUploadedImage.src ? { ...current, ready: true } : current);
+          }}
           onError={() => {
-            if (uploadedImageSrcRef.current && isLocalObjectUrl(uploadedImageSrcRef.current) && releaseOwnedExternalObjectUrl(uploadedImageSrcRef.current)) {
-              setTrackedUploadedImageSrc("");
+            if (uploadedImageSrcRef.current && isLocalObjectUrl(uploadedImageSrcRef.current)) {
+              releaseTrackedLocalObjectUrl(uploadedImageSrcRef.current);
+              setTrackedUploadedImage({ path: "", src: "" });
             }
             setUploadedImageFailed(true);
           }}
         />
-      ) : GlyphIcon ? (
+      ) : uploadedIconPath ? null : GlyphIcon ? (
         <DocseraIcon className="docsera-workspace-icon-badge__glyph" icon={GlyphIcon} />
       ) : (
         monogram

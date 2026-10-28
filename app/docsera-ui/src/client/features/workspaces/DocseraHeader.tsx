@@ -279,7 +279,7 @@ function HeaderIdentityIcon({
   onReleaseWorkspaceSettingsPreviewObjectUrl?: (objectUrl: string) => void;
 }) {
   if (identity.kind === "workspace-loading") {
-    return <span className="docsera-header__workspace-icon docsera-header__workspace-icon--loading" aria-hidden="true" />;
+    return <span className="docsera-header__workspace-icon docsera-header__workspace-icon--empty" aria-hidden="true" />;
   }
 
   if (identity.kind === "docsera") {

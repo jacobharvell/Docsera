@@ -110,7 +110,9 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
   const [uploadingIcon, setUploadingIcon] = useState(false);
   const [uploadError, setUploadError] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const uploadButtonRef = useRef<HTMLButtonElement | null>(null);
   const deleteDialogRef = useRef<HTMLDivElement | null>(null);
+  const uploadErrorDialogRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLElement | null>(null);
   const transferredPreviewUrlRef = useRef("");
   const uploadSequenceRef = useRef(0);
@@ -159,6 +161,11 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
     if (!open) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (uploadError) {
+          event.preventDefault();
+          dismissUploadError();
+          return;
+        }
         if (deleteDialogOpen) {
           event.preventDefault();
           requestCloseDeleteDialog();
@@ -169,7 +176,7 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [canonicalDraft, deleteDialogOpen, deletePending, draft, onCancel, open, pending, uploadingIcon]);
+  }, [canonicalDraft, deleteDialogOpen, deletePending, draft, onCancel, open, pending, uploadError, uploadingIcon]);
 
   useEffect(() => {
     if (!open) return;
@@ -177,7 +184,16 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
     const handlePointerDown = (event: PointerEvent) => {
       const panel = panelRef.current;
       const deleteDialog = deleteDialogRef.current;
+      const uploadErrorDialog = uploadErrorDialogRef.current;
       const target = event.target;
+      if (uploadError) {
+        const path = event.composedPath();
+        if (uploadErrorDialog && path.includes(uploadErrorDialog)) {
+          return;
+        }
+        dismissUploadError();
+        return;
+      }
       if (deleteDialogOpen) {
         const path = event.composedPath();
         if (deleteDialog && path.includes(deleteDialog)) {
@@ -191,7 +207,13 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
     };
     ownerDocument.addEventListener("pointerdown", handlePointerDown, true);
     return () => ownerDocument.removeEventListener("pointerdown", handlePointerDown, true);
-  }, [canonicalDraft, deleteDialogOpen, draft, onCancel, open, pending, uploadingIcon]);
+  }, [canonicalDraft, deleteDialogOpen, draft, onCancel, open, pending, uploadError, uploadingIcon]);
+
+  useEffect(() => {
+    if (!uploadError) return;
+    const frame = requestAnimationFrame(() => uploadErrorDialogRef.current?.querySelector<HTMLButtonElement>("button")?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [uploadError]);
 
   useEffect(() => {
     if (!open || !workspace || !draft) {
@@ -283,6 +305,11 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
   function requestCloseDeleteDialog() {
     if (deletePending) return;
     setDeleteDialogOpen(false);
+  }
+
+  function dismissUploadError() {
+    setUploadError("");
+    requestAnimationFrame(() => uploadButtonRef.current?.focus());
   }
 
   async function handleIconFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -396,15 +423,11 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
             </div>
             <div className="docsera-workspace-icon-picker__upload-row">
               <input ref={fileInputRef} className="docsera-workspace-icon-picker__file-input" type="file" accept="image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" aria-label="Upload custom workspace icon" onChange={handleIconFileChange} disabled={pending || uploadingIcon} />
-              <button type="button" className="docsera-workspace-icon-picker__upload-button" aria-label="Upload custom workspace icon" disabled={pending || uploadingIcon} onClick={() => fileInputRef.current?.click()}>
-                Upload custom Icon
+              <button ref={uploadButtonRef} type="button" className="docsera-workspace-icon-picker__upload-button" aria-label="Upload custom workspace icon" disabled={pending || uploadingIcon} onClick={() => fileInputRef.current?.click()}>
+                {uploadingIcon ? "Uploading..." : "Upload custom Icon"}
               </button>
               <span className="docsera-workspace-icon-picker__constraints">Square, 128x128 min, 1 MB max. PNG, JPG or WebP.</span>
             </div>
-            <div className="docsera-workspace-icon-picker__status" role="status" aria-live="polite">
-              {uploadingIcon ? "Uploading workspace icon..." : draft.uploadedIcon ? "Custom image uploaded." : ""}
-            </div>
-            {uploadError ? <span className="docsera-workspace-settings-overlay__field-error" role="alert">{uploadError}</span> : null}
           </fieldset>
           <section className="docsera-workspace-settings-overlay__section" aria-labelledby="docsera-workspace-settings-preferences-title">
             <h3 id="docsera-workspace-settings-preferences-title" className="docsera-workspace-settings-overlay__section-title">PREFERENCES</h3>
@@ -481,6 +504,24 @@ export function WorkspaceSettingsOverlay({ deleteErrorMessage = "", deletePendin
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {uploadError ? (
+        <div ref={uploadErrorDialogRef} className="docsera-modal" role="presentation" onClick={dismissUploadError}>
+          <div className="docsera-modal__panel docsera-page-settings__delete-panel" role="dialog" aria-modal="true" aria-labelledby="docsera-workspace-icon-upload-error-title" onClick={(event) => event.stopPropagation()}>
+            <div className="docsera-modal__form">
+              <div className="docsera-modal__header">
+                <h2 id="docsera-workspace-icon-upload-error-title" className="docsera-modal__title">Unable to upload icon</h2>
+                <DocseraCompactTooltip label="Close upload error dialog">
+                  <button type="button" className="docsera-modal__close" onClick={dismissUploadError} aria-label="Close upload error dialog">
+                    <DocseraIcon icon={docseraIcons.close} />
+                  </button>
+                </DocseraCompactTooltip>
+              </div>
+              <div className="docsera-modal__body"><p className="docsera-modal__copy">{uploadError}</p></div>
+              <div className="docsera-modal__footer"><div className="docsera-modal__actions"><button type="button" className="docsera-modal__primary" onClick={dismissUploadError}>OK</button></div></div>
             </div>
           </div>
         </div>

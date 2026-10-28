@@ -13,7 +13,7 @@ export type WorkspaceIconAssetRecord = WorkspaceIconImageMetadata & {
   fileName: string;
   requestedBy: string;
   sizeBytes: number;
-  state: "staged" | "claimed" | "invalid";
+  state: "staged" | "cleaning" | "claimed" | "invalid";
   sysId: string;
   workspaceSysId: string;
   provisionRequestSysId: string;
@@ -26,6 +26,14 @@ export type WorkspaceIconAttachmentRecord = {
   sizeBytes: number;
   tableName: string;
   tableSysId: string;
+};
+
+export type WorkspaceIconProvisionRequestRecord = {
+  iconKey: string;
+  iconType: "builtin" | "uploaded";
+  state: "requested" | "processing" | "succeeded" | "failed";
+  sysId: string;
+  workspaceSysId: string;
 };
 
 type WorkspaceIconFailure = {
@@ -82,6 +90,8 @@ export type WorkspaceIconServiceDependencies = {
   getAttachmentContentStream: (attachmentSysId: string) => unknown;
   getCurrentUserSysId: () => string;
   loadAssetByKey: (assetKey: string) => WorkspaceIconAssetRecord | null;
+  loadClaimedAssetsByWorkspace: (workspaceSysId: string) => WorkspaceIconAssetRecord[];
+  loadProvisionRequestBySysId: (provisionRequestSysId: string) => WorkspaceIconProvisionRequestRecord | null;
   loadWorkspaceBySysId: (workspaceSysId: string) => WorkspaceRecord | null;
   markAssetInvalid: (assetSysId: string) => void;
   restoreAssetToStaged: (assetSysId: string, input?: { provisionRequestSysId?: string; workspaceSysId?: string }) => void;
@@ -90,8 +100,9 @@ export type WorkspaceIconServiceDependencies = {
   setAssetWorkspace: (assetSysId: string, input: { provisionRequestSysId: string; workspaceSysId: string }) => boolean;
   tryClaimSettingsAsset: (assetSysId: string, workspaceSysId: string) => boolean;
   tryClaimAsset: (assetSysId: string, provisionRequestSysId: string) => boolean;
-  tryDeleteStagedSettingsAsset: (assetSysId: string, workspaceSysId: string, requestedBy: string) => string | null;
-  tryRetireClaimedAsset: (assetSysId: string, workspaceSysId: string) => string | null;
+  tryBeginStagedSettingsAssetCleanup: (assetSysId: string, workspaceSysId: string, requestedBy: string) => boolean;
+  tryFinalizeAssetCleanup: (assetSysId: string, attachmentSysId: string) => boolean;
+  tryRetireClaimedAsset: (assetSysId: string, workspaceSysId: string, attachmentSysId: string) => boolean;
   writeAttachmentToAsset: (input: { assetSysId: string; contentType: WorkspaceIconImageMetadata["contentType"]; dataStream: unknown; fileName: string }) => string | null;
 };
 
@@ -101,7 +112,7 @@ function cleanText(value: unknown): string {
 
 function normalizeState(value: unknown): WorkspaceIconAssetRecord["state"] {
   const state = cleanText(value);
-  return state === "claimed" || state === "invalid" ? state : "staged";
+  return state === "claimed" || state === "cleaning" || state === "invalid" ? state : "staged";
 }
 
 function safeInteger(value: unknown): number | null {
@@ -219,6 +230,34 @@ function createDefaultDependencies(): WorkspaceIconServiceDependencies {
       record.query();
       return record.next() ? mapAsset(record) : null;
     },
+    loadClaimedAssetsByWorkspace(workspaceSysId) {
+      const record = new GlideRecord(DOCSERA_WORKSPACE_ICON_ASSET_TABLE);
+      record.addQuery("state", "claimed");
+      record.addQuery("workspace", cleanText(workspaceSysId));
+      record.orderBy("sys_created_on");
+      record.setLimit(10);
+      record.query();
+      const assets: WorkspaceIconAssetRecord[] = [];
+      while (record.next()) {
+        assets.push(mapAsset(record));
+      }
+      return assets;
+    },
+    loadProvisionRequestBySysId(provisionRequestSysId) {
+      const record = new GlideRecord("x_82900_docsera_workspace_provision_request");
+      if (!record.get("sys_id", cleanText(provisionRequestSysId))) {
+        return null;
+      }
+      const state = cleanText(record.getValue("state"));
+      const iconType = cleanText(record.getValue("icon_type"));
+      return {
+        iconKey: cleanText(record.getValue("icon_key")),
+        iconType: iconType === "uploaded" ? "uploaded" : "builtin",
+        state: state === "processing" || state === "succeeded" || state === "failed" ? state : "requested",
+        sysId: cleanText(record.getUniqueValue()),
+        workspaceSysId: cleanText(record.getValue("workspace"))
+      };
+    },
     loadWorkspaceBySysId(workspaceSysId) {
       const record = new GlideRecord(DOCSERA_WORKSPACE_TABLE);
       if (!record.get("sys_id", cleanText(workspaceSysId))) {
@@ -331,7 +370,7 @@ function createDefaultDependencies(): WorkspaceIconServiceDependencies {
         cleanText(verified.getValue("workspace")) === targetWorkspaceSysId
       );
     },
-    tryDeleteStagedSettingsAsset(assetSysId, workspaceSysId, requestedBy) {
+    tryBeginStagedSettingsAssetCleanup(assetSysId, workspaceSysId, requestedBy) {
       const sysId = cleanText(assetSysId);
       const targetWorkspaceSysId = cleanText(workspaceSysId);
       const userSysId = cleanText(requestedBy);
@@ -341,30 +380,32 @@ function createDefaultDependencies(): WorkspaceIconServiceDependencies {
       record.addQuery("workspace", targetWorkspaceSysId);
       record.addQuery("requested_by", userSysId);
       record.addQuery("provision_request", "");
+      record.setValue("state", "cleaning");
+      record.updateMultiple();
+      const verified = new GlideRecord(DOCSERA_WORKSPACE_ICON_ASSET_TABLE);
+      return verified.get("sys_id", sysId) && cleanText(verified.getValue("state")) === "cleaning" && cleanText(verified.getValue("workspace")) === targetWorkspaceSysId && cleanText(verified.getValue("requested_by")) === userSysId && cleanText(verified.getValue("provision_request")) === "";
+    },
+    tryFinalizeAssetCleanup(assetSysId, attachmentSysId) {
+      const record = new GlideRecord(DOCSERA_WORKSPACE_ICON_ASSET_TABLE);
+      record.addQuery("sys_id", cleanText(assetSysId));
+      record.addQuery("state", "cleaning");
+      record.addQuery("attachment", cleanText(attachmentSysId));
       record.setLimit(1);
       record.query();
-      if (!record.next()) {
-        return null;
-      }
-      const attachmentSysId = cleanText(record.getValue("attachment"));
-      record.deleteRecord();
-      return attachmentSysId;
+      return record.next() ? Boolean(record.deleteRecord()) : false;
     },
-    tryRetireClaimedAsset(assetSysId, workspaceSysId) {
+    tryRetireClaimedAsset(assetSysId, workspaceSysId, attachmentSysId) {
       const sysId = cleanText(assetSysId);
       const targetWorkspaceSysId = cleanText(workspaceSysId);
+      const targetAttachmentSysId = cleanText(attachmentSysId);
       const record = new GlideRecord(DOCSERA_WORKSPACE_ICON_ASSET_TABLE);
       record.addQuery("sys_id", sysId);
       record.addQuery("state", "claimed");
       record.addQuery("workspace", targetWorkspaceSysId);
+      record.addQuery("attachment", targetAttachmentSysId);
       record.setLimit(1);
       record.query();
-      if (!record.next()) {
-        return null;
-      }
-      const attachmentSysId = cleanText(record.getValue("attachment"));
-      record.deleteRecord();
-      return attachmentSysId;
+      return record.next() ? Boolean(record.deleteRecord()) : false;
     },
     writeAttachmentToAsset(input) {
       const asset = new GlideRecord(DOCSERA_WORKSPACE_ICON_ASSET_TABLE);
@@ -377,11 +418,66 @@ function createDefaultDependencies(): WorkspaceIconServiceDependencies {
 }
 
 export function createWorkspaceIconService(dependencies: WorkspaceIconServiceDependencies) {
+  function hasCompletedMatchingProvisioningClaim(asset: WorkspaceIconAssetRecord, workspaceSysId: string): boolean {
+    if (!asset.provisionRequestSysId) {
+      return true;
+    }
+    const request = dependencies.loadProvisionRequestBySysId(asset.provisionRequestSysId);
+    return Boolean(
+      request &&
+        request.sysId === asset.provisionRequestSysId &&
+        request.state === "succeeded" &&
+        request.workspaceSysId === workspaceSysId &&
+        request.iconType === "uploaded" &&
+        request.iconKey === asset.assetKey
+    );
+  }
+
+  function retireVerifiedClaimedWorkspaceIcon(asset: WorkspaceIconAssetRecord, workspaceSysId: string): void {
+    const targetWorkspaceSysId = cleanText(workspaceSysId);
+    if (
+      !targetWorkspaceSysId ||
+      asset.state !== "claimed" ||
+      asset.workspaceSysId !== targetWorkspaceSysId ||
+      !asset.sysId ||
+      !asset.attachmentSysId ||
+      !hasCompletedMatchingProvisioningClaim(asset, targetWorkspaceSysId)
+    ) {
+      return;
+    }
+
+    const workspace = dependencies.loadWorkspaceBySysId(targetWorkspaceSysId);
+    if (!workspace || cleanText(workspace.sysId) !== targetWorkspaceSysId || (workspace.icon.type === "uploaded" && cleanText(workspace.icon.key) === asset.assetKey)) {
+      return;
+    }
+
+    const attachment = dependencies.getAttachmentBySysId(asset.attachmentSysId);
+    if (attachment) {
+      if (attachment.mediaId !== asset.attachmentSysId || attachment.tableName !== DOCSERA_WORKSPACE_ICON_ASSET_TABLE || attachment.tableSysId !== asset.sysId) {
+        return;
+      }
+      dependencies.deleteAttachment(asset.attachmentSysId);
+      if (dependencies.getAttachmentBySysId(asset.attachmentSysId)) {
+        return;
+      }
+    }
+
+    dependencies.tryRetireClaimedAsset(asset.sysId, targetWorkspaceSysId, asset.attachmentSysId);
+  }
+
   function cleanupFailedUpload(assetSysId: string, attachmentSysId?: string): void {
     if (attachmentSysId) {
       dependencies.deleteAttachment(attachmentSysId);
     }
     dependencies.deleteAsset(assetSysId);
+  }
+
+  function finishCleaningAsset(asset: WorkspaceIconAssetRecord): void {
+    if (asset.state !== "cleaning" || !asset.sysId || !asset.attachmentSysId) return;
+    const attachment = dependencies.getAttachmentBySysId(asset.attachmentSysId);
+    if (attachment && (attachment.mediaId !== asset.attachmentSysId || attachment.tableName !== DOCSERA_WORKSPACE_ICON_ASSET_TABLE || attachment.tableSysId !== asset.sysId)) return;
+    if (attachment) dependencies.deleteAttachment(asset.attachmentSysId);
+    if (!dependencies.getAttachmentBySysId(asset.attachmentSysId)) dependencies.tryFinalizeAssetCleanup(asset.sysId, asset.attachmentSysId);
   }
 
   function validateClaimableAsset(assetKey: string, options: { workspaceSysId?: string } = {}): WorkspaceIconAssetRecord | WorkspaceIconFailure {
@@ -569,21 +665,29 @@ export function createWorkspaceIconService(dependencies: WorkspaceIconServiceDep
       if (!asset || asset.state !== "staged" || asset.workspaceSysId !== targetWorkspaceSysId || asset.requestedBy !== currentUserSysId || asset.provisionRequestSysId) {
         return;
       }
-      const attachmentSysId = dependencies.tryDeleteStagedSettingsAsset(asset.sysId, targetWorkspaceSysId, currentUserSysId);
-      if (attachmentSysId) {
-        dependencies.deleteAttachment(attachmentSysId);
-      }
+      if (!dependencies.tryBeginStagedSettingsAssetCleanup(asset.sysId, targetWorkspaceSysId, currentUserSysId)) return;
+      const cleaning = dependencies.loadAssetByKey(asset.assetKey);
+      if (cleaning) finishCleaningAsset(cleaning);
     },
 
     retireClaimedWorkspaceIcon(assetKey: string, workspaceSysId: string): void {
       const asset = dependencies.loadAssetByKey(assetKey);
+      if (asset) {
+        retireVerifiedClaimedWorkspaceIcon(asset, workspaceSysId);
+      }
+    },
+
+    retireObsoleteClaimedWorkspaceIcons(workspaceSysId: string): void {
       const targetWorkspaceSysId = cleanText(workspaceSysId);
-      if (!asset || asset.state !== "claimed" || asset.workspaceSysId !== targetWorkspaceSysId) {
+      if (!targetWorkspaceSysId) {
         return;
       }
-      const attachmentSysId = dependencies.tryRetireClaimedAsset(asset.sysId, targetWorkspaceSysId);
-      if (attachmentSysId) {
-        dependencies.deleteAttachment(attachmentSysId);
+      for (const asset of dependencies.loadClaimedAssetsByWorkspace(targetWorkspaceSysId)) {
+        try {
+          retireVerifiedClaimedWorkspaceIcon(asset, targetWorkspaceSysId);
+        } catch {
+          // Keep this asset durable for a later bounded cleanup retry.
+        }
       }
     },
 

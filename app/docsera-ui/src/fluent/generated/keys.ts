@@ -389,6 +389,10 @@ declare global {
                         table: 'sysauto_script'
                         id: 'b243fba1b5f7443192a4aaf93f25186c'
                     }
+                    'docsera-workspace-icon-cleanup': {
+                        table: 'sysauto_script'
+                        id: 'fed21c6fa56e463881c2522d13b0c5ed'
+                    }
                     package_json: {
                         table: 'sys_module'
                         id: '59eb37ac11e3463591b83e545fd64cc4'
@@ -578,6 +582,10 @@ declare global {
                     'src_server_scheduled-scripts_docsera-workspace-edit-lease-cleanup_js': {
                         table: 'sys_module'
                         id: '1e31c75ebf0f4905897c7d24d582c0bb'
+                    }
+                    'src_server_scheduled-scripts_docsera-workspace-icon-cleanup_js': {
+                        table: 'sys_module'
+                        id: '6b27647ae1504c24b92b6caefb8695e6'
                     }
                     'src_server_workspace-leases_serverWorkspaceEditLeaseDomain_ts': {
                         table: 'sys_module'
@@ -1134,6 +1142,15 @@ declare global {
                             name: 'x_82900_docsera_workspace_mutation_claim'
                             element: 'mutation_state'
                             value: 'finalized'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '1bd5116dad4544759de4c4ea312e828f'
+                        key: {
+                            name: 'x_82900_docsera_workspace_icon_asset'
+                            element: 'state'
+                            value: 'cleaning'
                         }
                     },
                     {

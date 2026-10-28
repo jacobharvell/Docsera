@@ -767,7 +767,8 @@ describe("WorkspaceSettingsOverlay", () => {
       target: { files: [new File(["image"], "custom.png", { type: "image/png" })] }
     });
 
-    expect(await screen.findByText("Custom image uploaded.")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: /current uploaded icon, selected/ })).toBeInTheDocument());
+    expect(screen.queryByText("Custom image uploaded.")).not.toBeInTheDocument();
     expect(uploadIcon).toHaveBeenCalledWith({ file: expect.any(File), workspaceSysId: "workspace-001" });
     expect(screen.getByRole("button", { name: "Upload custom workspace icon" })).toBeInTheDocument();
     expect(screen.getByText("Upload custom Icon")).toBeInTheDocument();
@@ -777,6 +778,31 @@ describe("WorkspaceSettingsOverlay", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Documentation" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Documentation, selected" })).toHaveAttribute("aria-pressed", "true"));
+  });
+
+  it("shows invalid icon uploads in a dismissible modal without losing the settings draft", async () => {
+    render(
+      <WorkspaceSettingsOverlay
+        onCancel={vi.fn()}
+        onSubmit={vi.fn()}
+        onUploadIcon={vi.fn()}
+        open
+        pending={false}
+        workspace={createWorkspace()}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("Workspace name"), { target: { value: "Draft name" } });
+    fireEvent.change(screen.getByLabelText("Upload custom workspace icon", { selector: "input" }), {
+      target: { files: [new File(["not an image"], "icon.svg", { type: "image/svg+xml" })] }
+    });
+
+    const dialog = await screen.findByRole("dialog", { name: "Unable to upload icon" });
+    expect(dialog).toHaveTextContent("Use a PNG, JPG, or WebP image.");
+    fireEvent.click(within(dialog).getByRole("button", { name: "OK" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Unable to upload icon" })).not.toBeInTheDocument());
+    expect(screen.getByLabelText("Workspace name")).toHaveValue("Draft name");
+    expect(screen.getByRole("complementary", { name: "Workspace Settings" })).toBeInTheDocument();
   });
 
   it("scopes the larger settings icon grid and left-aligned settings actions to Workspace Settings", () => {

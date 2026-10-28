@@ -75,6 +75,24 @@ describe("DocseraHeader workspace shell", () => {
     expect(container.querySelector(".docsera-header__profile")).toBeInTheDocument();
   });
 
+  it("keeps the workspace icon slot empty while workspace identity is unresolved", () => {
+    const { container } = render(
+      <DocseraHeader
+        {...baseProps}
+        identity={{ kind: "workspace-loading" }}
+      />
+    );
+
+    const workspaceButton = screen.getByRole("button", { name: "Loading workspace" });
+    const iconSlot = workspaceButton.querySelector(".docsera-header__workspace-icon");
+
+    expect(iconSlot).toHaveClass("docsera-header__workspace-icon--empty");
+    expect(iconSlot).not.toHaveClass("docsera-header__workspace-icon--loading");
+    expect(iconSlot).toBeEmptyDOMElement();
+    expect(iconSlot?.querySelector("img, svg")).not.toBeInTheDocument();
+    expect(container.querySelector(".docsera-header__workspace-name-skeleton")).toBeInTheDocument();
+  });
+
   it("shows the leading action-cluster divider in edit and hides only its paint in live", () => {
     const editRender = render(<DocseraHeader {...baseProps} showWorkspaceMode="edit" />);
     expect(editRender.container.querySelector(".docsera-header")).not.toHaveClass("docsera-header--live");

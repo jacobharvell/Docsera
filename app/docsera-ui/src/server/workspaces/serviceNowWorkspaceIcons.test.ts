@@ -36,14 +36,17 @@ function staged(overrides: Partial<WorkspaceIconAssetRecord> = {}): WorkspaceIco
 
 function dependencies(overrides: Partial<WorkspaceIconServiceDependencies> = {}) {
   let asset = staged();
+  let attachmentPresent = true;
   const deps: WorkspaceIconServiceDependencies = {
     canCreateWorkspaces: vi.fn(() => true),
     createAsset: vi.fn(() => "asset-1"),
     deleteAsset: vi.fn(),
-    deleteAttachment: vi.fn(),
+    deleteAttachment: vi.fn(() => {
+      attachmentPresent = false;
+    }),
     evaluateWorkspaceCapabilities: vi.fn(() => ({ canAdminWorkspace: true, canViewWorkspace: true })),
     getAttachmentBySysId: vi.fn((attachmentSysId: string) =>
-      attachmentSysId === "att-1"
+      attachmentSysId === "att-1" && attachmentPresent
         ? { contentType: "image/png", fileName: "icon.png", mediaId: "att-1", sizeBytes: validPng.length, tableName: DOCSERA_WORKSPACE_ICON_ASSET_TABLE, tableSysId: "asset-1" }
         : null
     ),
@@ -51,6 +54,8 @@ function dependencies(overrides: Partial<WorkspaceIconServiceDependencies> = {})
     getAttachmentContentStream: vi.fn(() => "stream"),
     getCurrentUserSysId: vi.fn(() => "user-1"),
     loadAssetByKey: vi.fn(() => asset),
+    loadClaimedAssetsByWorkspace: vi.fn(() => (asset.state === "claimed" && asset.workspaceSysId === "workspace-1" ? [asset] : [])),
+    loadProvisionRequestBySysId: vi.fn(() => null),
     loadWorkspaceBySysId: vi.fn(() => ({
       adminGroupSysId: "admin",
       creatorUserSysId: "user-1",
@@ -78,12 +83,16 @@ function dependencies(overrides: Partial<WorkspaceIconServiceDependencies> = {})
       return true;
     }),
     tryClaimAsset: vi.fn(() => true),
-    tryDeleteStagedSettingsAsset: vi.fn(() => "att-1"),
-    tryRetireClaimedAsset: vi.fn(() => "att-1"),
+    tryBeginStagedSettingsAssetCleanup: vi.fn((_assetSysId, workspaceSysId) => {
+      asset = { ...asset, state: "cleaning", workspaceSysId };
+      return true;
+    }),
+    tryFinalizeAssetCleanup: vi.fn(() => true),
+    tryRetireClaimedAsset: vi.fn(() => true),
     writeAttachmentToAsset: vi.fn(() => "att-1"),
     ...overrides
   };
-  return { deps, setAsset: (next: WorkspaceIconAssetRecord) => (asset = next) };
+  return { deps, setAsset: (next: WorkspaceIconAssetRecord) => (asset = next), setAttachmentPresent: (next: boolean) => (attachmentPresent = next) };
 }
 
 describe("workspace icon service", () => {
@@ -191,6 +200,13 @@ describe("workspace icon service", () => {
     expect(deps.tryClaimAsset).toHaveBeenCalledWith("asset-1", "request-1");
   });
 
+  it("does not allow a durable cleanup claim to be reused as a workspace claim", () => {
+    const { deps, setAsset } = dependencies();
+    setAsset(staged({ state: "cleaning" }));
+    expect(createWorkspaceIconService(deps).claimWorkspaceIcon("wsi_asset", "request-1")).toMatchObject({ kind: "failed", status: 400 });
+    expect(deps.tryClaimAsset).not.toHaveBeenCalled();
+  });
+
   it("claims settings-staged assets only for the exact target workspace without provisioning request writes", () => {
     const { deps, setAsset } = dependencies();
     setAsset(staged({ workspaceSysId: "workspace-1" }));
@@ -222,21 +238,128 @@ describe("workspace icon service", () => {
     const service = createWorkspaceIconService(deps);
     setAsset(staged({ workspaceSysId: "workspace-1" }));
     service.cleanupStagedWorkspaceSettingsIcon("wsi_asset", "workspace-1");
-    expect(deps.tryDeleteStagedSettingsAsset).toHaveBeenCalledWith("asset-1", "workspace-1", "user-1");
+    expect(deps.tryBeginStagedSettingsAssetCleanup).toHaveBeenCalledWith("asset-1", "workspace-1", "user-1");
     expect(deps.deleteAttachment).toHaveBeenCalledWith("att-1");
+    expect(deps.tryFinalizeAssetCleanup).toHaveBeenCalledWith("asset-1", "att-1");
 
-    vi.mocked(deps.tryDeleteStagedSettingsAsset).mockClear();
+    vi.mocked(deps.tryBeginStagedSettingsAssetCleanup).mockClear();
     setAsset(staged({ requestedBy: "other", workspaceSysId: "workspace-1" }));
     service.cleanupStagedWorkspaceSettingsIcon("wsi_asset", "workspace-1");
-    expect(deps.tryDeleteStagedSettingsAsset).not.toHaveBeenCalled();
+    expect(deps.tryBeginStagedSettingsAssetCleanup).not.toHaveBeenCalled();
   });
 
-  it("retires old claimed uploaded icons through target-workspace guarded deletion", () => {
-    const { deps, setAsset } = dependencies();
+  it("retires old claimed uploaded icons only after attachment absence is verified", () => {
+    const { deps, setAsset } = dependencies({
+      loadWorkspaceBySysId: vi.fn(() => ({
+        adminGroupSysId: "admin", creatorUserSysId: "user-1", editorGroupSysId: "editor", icon: { type: "builtin", key: "docsera-workspace", label: "Docsera workspace icon" }, layout: { pageWidth: "readable", tocVisible: true }, name: "Docs", shortDescription: null, slug: "docs", status: "active", sysId: "workspace-1"
+      }))
+    });
     setAsset(staged({ state: "claimed", workspaceSysId: "workspace-1" }));
     createWorkspaceIconService(deps).retireClaimedWorkspaceIcon("wsi_asset", "workspace-1");
-    expect(deps.tryRetireClaimedAsset).toHaveBeenCalledWith("asset-1", "workspace-1");
     expect(deps.deleteAttachment).toHaveBeenCalledWith("att-1");
+    expect(deps.tryRetireClaimedAsset).toHaveBeenCalledWith("asset-1", "workspace-1", "att-1");
+  });
+
+  it("keeps the asset for retry when attachment deletion throws or remains present", () => {
+    const replacementWorkspace = { adminGroupSysId: "admin", creatorUserSysId: "user-1", editorGroupSysId: "editor", icon: { type: "builtin" as const, key: "docsera-workspace", label: "Docsera workspace icon" }, layout: { pageWidth: "readable" as const, tocVisible: true }, name: "Docs", shortDescription: null, slug: "docs", status: "active" as const, sysId: "workspace-1" };
+    const failedDelete = dependencies({ deleteAttachment: vi.fn(() => { throw new Error("interrupted"); }), loadWorkspaceBySysId: vi.fn(() => replacementWorkspace) });
+    failedDelete.setAsset(staged({ state: "claimed", workspaceSysId: "workspace-1" }));
+    expect(() => createWorkspaceIconService(failedDelete.deps).retireClaimedWorkspaceIcon("wsi_asset", "workspace-1")).toThrow("interrupted");
+    expect(failedDelete.deps.tryRetireClaimedAsset).not.toHaveBeenCalled();
+
+    const unverifiedDelete = dependencies({ deleteAttachment: vi.fn(), loadWorkspaceBySysId: vi.fn(() => replacementWorkspace) });
+    unverifiedDelete.setAsset(staged({ state: "claimed", workspaceSysId: "workspace-1" }));
+    createWorkspaceIconService(unverifiedDelete.deps).retireClaimedWorkspaceIcon("wsi_asset", "workspace-1");
+    expect(unverifiedDelete.deps.tryRetireClaimedAsset).not.toHaveBeenCalled();
+  });
+
+  it("retires a completed creation-stage uploaded icon after Settings replaces or removes it", () => {
+    for (const replacementIcon of [
+      { type: "builtin" as const, key: "docsera-workspace", label: "Docsera workspace icon" },
+      { type: "uploaded" as const, key: "wsi_replacement", label: "replacement.png", assetPath: "/icons/file?assetKey=wsi_replacement" }
+    ]) {
+      const replacementWorkspace = { adminGroupSysId: "admin", creatorUserSysId: "user-1", editorGroupSysId: "editor", icon: replacementIcon, layout: { pageWidth: "readable" as const, tocVisible: true }, name: "Docs", shortDescription: null, slug: "docs", status: "active" as const, sysId: "workspace-1" };
+      const { deps, setAsset } = dependencies({
+        loadProvisionRequestBySysId: vi.fn(() => ({ iconKey: "wsi_asset", iconType: "uploaded", state: "succeeded", sysId: "request-1", workspaceSysId: "workspace-1" })),
+        loadWorkspaceBySysId: vi.fn(() => replacementWorkspace)
+      });
+      setAsset(staged({ state: "claimed", workspaceSysId: "workspace-1", provisionRequestSysId: "request-1" }));
+
+      createWorkspaceIconService(deps).retireClaimedWorkspaceIcon("wsi_asset", "workspace-1");
+
+      expect(deps.loadProvisionRequestBySysId).toHaveBeenCalledWith("request-1");
+      expect(deps.deleteAttachment).toHaveBeenCalledWith("att-1");
+      expect(deps.tryRetireClaimedAsset).toHaveBeenCalledWith("asset-1", "workspace-1", "att-1");
+    }
+  });
+
+  it("retries an already-absent attachment and does not retire active, wrong-workspace, invalid, or unfinished/mismatched provisioning claims", () => {
+    const replacementWorkspace = { adminGroupSysId: "admin", creatorUserSysId: "user-1", editorGroupSysId: "editor", icon: { type: "builtin" as const, key: "docsera-workspace", label: "Docsera workspace icon" }, layout: { pageWidth: "readable" as const, tocVisible: true }, name: "Docs", shortDescription: null, slug: "docs", status: "active" as const, sysId: "workspace-1" };
+    const absent = dependencies({ loadWorkspaceBySysId: vi.fn(() => replacementWorkspace) });
+    absent.setAsset(staged({ state: "claimed", workspaceSysId: "workspace-1" }));
+    absent.setAttachmentPresent(false);
+    const service = createWorkspaceIconService(absent.deps);
+    service.retireObsoleteClaimedWorkspaceIcons("workspace-1");
+    service.retireObsoleteClaimedWorkspaceIcons("workspace-1");
+    expect(absent.deps.deleteAttachment).not.toHaveBeenCalled();
+    expect(absent.deps.tryRetireClaimedAsset).toHaveBeenCalledTimes(2);
+
+    const activeIcon = dependencies();
+    activeIcon.setAsset(staged({ state: "claimed", workspaceSysId: "workspace-1" }));
+    createWorkspaceIconService(activeIcon.deps).retireClaimedWorkspaceIcon("wsi_asset", "workspace-1");
+    expect(activeIcon.deps.deleteAttachment).not.toHaveBeenCalled();
+
+    const protectedAsset = dependencies({ loadWorkspaceBySysId: vi.fn(() => replacementWorkspace) });
+    protectedAsset.setAsset(staged({ state: "claimed", workspaceSysId: "workspace-2" }));
+    createWorkspaceIconService(protectedAsset.deps).retireClaimedWorkspaceIcon("wsi_asset", "workspace-1");
+    expect(protectedAsset.deps.deleteAttachment).not.toHaveBeenCalled();
+    for (const request of [
+      { iconKey: "wsi_asset", iconType: "uploaded" as const, state: "requested" as const, sysId: "request-1", workspaceSysId: "workspace-1" },
+      { iconKey: "wsi_asset", iconType: "uploaded" as const, state: "processing" as const, sysId: "request-1", workspaceSysId: "workspace-1" },
+      { iconKey: "wsi_asset", iconType: "uploaded" as const, state: "failed" as const, sysId: "request-1", workspaceSysId: "workspace-1" },
+      { iconKey: "wsi_asset", iconType: "uploaded" as const, state: "succeeded" as const, sysId: "request-2", workspaceSysId: "workspace-1" },
+      { iconKey: "wsi_asset", iconType: "uploaded" as const, state: "succeeded" as const, sysId: "request-1", workspaceSysId: "workspace-2" },
+      { iconKey: "wsi_asset", iconType: "builtin" as const, state: "succeeded" as const, sysId: "request-1", workspaceSysId: "workspace-1" },
+      { iconKey: "other-icon", iconType: "uploaded" as const, state: "succeeded" as const, sysId: "request-1", workspaceSysId: "workspace-1" }
+    ]) {
+      vi.mocked(protectedAsset.deps.loadProvisionRequestBySysId).mockReturnValue(request);
+      protectedAsset.setAsset(staged({ state: "claimed", workspaceSysId: "workspace-1", provisionRequestSysId: "request-1" }));
+      createWorkspaceIconService(protectedAsset.deps).retireClaimedWorkspaceIcon("wsi_asset", "workspace-1");
+    }
+    expect(protectedAsset.deps.deleteAttachment).not.toHaveBeenCalled();
+
+    const invalidAssociation = dependencies({
+      getAttachmentBySysId: vi.fn(() => ({ contentType: "image/png", fileName: "icon.png", mediaId: "att-1", sizeBytes: validPng.length, tableName: DOCSERA_WORKSPACE_ICON_ASSET_TABLE, tableSysId: "other-asset" })),
+      loadWorkspaceBySysId: vi.fn(() => replacementWorkspace)
+    });
+    invalidAssociation.setAsset(staged({ state: "claimed", workspaceSysId: "workspace-1" }));
+    createWorkspaceIconService(invalidAssociation.deps).retireClaimedWorkspaceIcon("wsi_asset", "workspace-1");
+    expect(invalidAssociation.deps.deleteAttachment).not.toHaveBeenCalled();
+  });
+
+  it("continues the bounded obsolete-icon scan after one attachment deletion fails", () => {
+    const replacementWorkspace = { adminGroupSysId: "admin", creatorUserSysId: "user-1", editorGroupSysId: "editor", icon: { type: "builtin" as const, key: "docsera-workspace", label: "Docsera workspace icon" }, layout: { pageWidth: "readable" as const, tocVisible: true }, name: "Docs", shortDescription: null, slug: "docs", status: "active" as const, sysId: "workspace-1" };
+    const first = staged({ assetKey: "wsi_failed", attachmentSysId: "att-failed", sysId: "asset-failed", state: "claimed", workspaceSysId: "workspace-1" });
+    const second = staged({ assetKey: "wsi_retired", attachmentSysId: "att-retired", sysId: "asset-retired", state: "claimed", workspaceSysId: "workspace-1" });
+    const attachments = new Set(["att-failed", "att-retired"]);
+    const { deps } = dependencies({
+      deleteAttachment: vi.fn((attachmentSysId: string) => {
+        if (attachmentSysId === "att-failed") {
+          throw new Error("interrupted");
+        }
+        attachments.delete(attachmentSysId);
+      }),
+      getAttachmentBySysId: vi.fn((attachmentSysId: string) => attachments.has(attachmentSysId) ? { contentType: "image/png", fileName: "icon.png", mediaId: attachmentSysId, sizeBytes: validPng.length, tableName: DOCSERA_WORKSPACE_ICON_ASSET_TABLE, tableSysId: attachmentSysId === "att-failed" ? "asset-failed" : "asset-retired" } : null),
+      loadClaimedAssetsByWorkspace: vi.fn(() => [first, second]),
+      loadWorkspaceBySysId: vi.fn(() => replacementWorkspace)
+    });
+
+    createWorkspaceIconService(deps).retireObsoleteClaimedWorkspaceIcons("workspace-1");
+
+    expect(deps.deleteAttachment).toHaveBeenCalledWith("att-failed");
+    expect(deps.deleteAttachment).toHaveBeenCalledWith("att-retired");
+    expect(deps.tryRetireClaimedAsset).toHaveBeenCalledWith("asset-retired", "workspace-1", "att-retired");
+    expect(deps.tryRetireClaimedAsset).not.toHaveBeenCalledWith("asset-failed", "workspace-1", "att-failed");
   });
 
   it("fails uploaded icon finalization when the claimed asset cannot be tied to the provisioning request and workspace", () => {

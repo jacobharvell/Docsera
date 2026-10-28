@@ -466,6 +466,23 @@ describe("workspace settings service", () => {
     expect(retireClaimedWorkspaceIcon).toHaveBeenCalledWith("wsi_old", "workspace-1");
   });
 
+  it("retries bounded obsolete-icon retirement after every successful authorized settings save", async () => {
+    const currentWorkspace = workspace({
+      icon: { type: "uploaded", key: "wsi_current", label: "current.png", assetPath: "/icons/file?assetKey=wsi_current" }
+    });
+    const retireObsoleteClaimedWorkspaceIcons = vi.fn();
+    const settingsWithRetry = createWorkspaceSettingsService({
+      evaluateWorkspaceCapabilities: vi.fn(() => ({ canAdminWorkspace: true, canEditWorkspace: true, canManageWorkspaceMembers: true, canViewWorkspace: true })),
+      loadWorkspaceBySlug: vi.fn(async () => currentWorkspace),
+      loadWorkspaceBySysId: vi.fn(async () => currentWorkspace),
+      retireObsoleteClaimedWorkspaceIcons,
+      saveWorkspaceSettings: vi.fn(async (saved: WorkspaceRecord) => saved)
+    });
+
+    await expect(settingsWithRetry.saveWorkspaceSettings({ workspaceSlug: "platform-docs", workspaceSysId: "workspace-1", name: "Platform Docs", icon: { type: "builtin", key: "docsera-workspace", label: "Docsera workspace icon" } })).resolves.toMatchObject({ kind: "succeeded" });
+    expect(retireObsoleteClaimedWorkspaceIcons).toHaveBeenCalledWith("workspace-1");
+  });
+
   it("rejects missing or mismatched workspace identity before persistence", async () => {
     const { deps, settingsService } = service();
 

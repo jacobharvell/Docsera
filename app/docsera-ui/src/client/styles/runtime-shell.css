@@ -830,6 +830,12 @@ html[data-docsera-theme="dark"] .docsera-launcher-toolbar__search-icon {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  opacity: 0;
+  transition: opacity 160ms ease-out;
+}
+
+.docsera-workspace-icon-badge--uploaded-ready .docsera-workspace-icon-badge__uploaded-image {
+  opacity: 1;
 }
 
 .docsera-workspace-icon-badge__glyph {
@@ -2954,17 +2960,9 @@ html[data-docsera-theme="dark"] .docsera-header__bar {
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
-.docsera-header__workspace-icon--loading {
-  background:
-    linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--docsera-surface-muted) 92%, transparent) 0%,
-      color-mix(in srgb, var(--docsera-surface) 88%, #ffffff 12%) 50%,
-      color-mix(in srgb, var(--docsera-surface-muted) 92%, transparent) 100%
-    );
-  background-size: 200% 100%;
-  animation: docsera-identity-shimmer 1.2s linear infinite;
-  box-shadow: inset 0 0 0 1px var(--docsera-border-soft);
+.docsera-header__workspace-icon--empty {
+  background: transparent;
+  box-shadow: none;
 }
 
 .docsera-header__workspace-icon--artwork {
@@ -2996,6 +2994,11 @@ html[data-docsera-theme="dark"] .docsera-header__bar {
 .docsera-header__workspace-icon.docsera-workspace-icon-badge--builtin:not(.docsera-workspace-icon-badge--artwork) {
   background: transparent;
   color: var(--docsera-primary);
+  box-shadow: none;
+}
+
+.docsera-header__workspace-icon.docsera-workspace-icon-badge--uploaded {
+  background: transparent;
   box-shadow: none;
 }
 
@@ -6924,7 +6927,6 @@ html[data-docsera-theme="dark"] .docsera-main__callout-icon {
     transition: none;
   }
 
-  .docsera-header__workspace-icon--loading,
   .docsera-header__workspace-name-skeleton {
     animation: none;
   }

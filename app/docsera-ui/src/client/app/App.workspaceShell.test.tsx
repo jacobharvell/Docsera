@@ -2561,9 +2561,9 @@ describe("App workspace shell integration", () => {
       signal: expect.any(AbortSignal)
     });
     const canonicalLoadingHeader = screen.getByRole("button", { name: /Workspace switcher: Product Docs/i });
-    expect(canonicalLoadingHeader.querySelector("img[src='blob:staged-workspace-icon']")).toBeInTheDocument();
+    expect(canonicalLoadingHeader.querySelector("img[src='blob:staged-workspace-icon']")).not.toBeInTheDocument();
     expect(canonicalLoadingHeader.querySelector(".docsera-workspace-icon-badge")?.textContent).toBe("");
-    expect(revokeObjectUrlSpy).not.toHaveBeenCalledWith("blob:staged-workspace-icon");
+    expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:staged-workspace-icon");
 
     await act(async () => {
       deferredCanonicalIcon.resolve(new Blob(["canonical"], { type: "image/png" }));
@@ -2679,8 +2679,8 @@ describe("App workspace shell integration", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }).querySelector("img[src='blob:staged-workspace-icon']")).toBeInTheDocument();
-    expect(revokeObjectUrlSpy).not.toHaveBeenCalledWith("blob:staged-workspace-icon");
+    expect(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }).querySelector("img[src='blob:staged-workspace-icon']")).not.toBeInTheDocument();
+    expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:staged-workspace-icon");
 
     await act(async () => {
       deferredCanonicalIcon.resolve(null);
@@ -2919,7 +2919,7 @@ describe("App workspace shell integration", () => {
     const fileInput = within(panel).getByLabelText("Upload custom workspace icon", { selector: "input" });
     fireEvent.change(fileInput, { target: { files: [new File(["one"], "first.png", { type: "image/png" })] } });
     await waitFor(() => expect(uploadWorkspaceIcon).toHaveBeenCalledTimes(1));
-    await within(panel).findByText("Custom image uploaded.");
+    await within(panel).findByRole("button", { name: /current uploaded icon, selected/ });
     fireEvent.change(fileInput, { target: { files: [new File(["two"], "second.png", { type: "image/png" })] } });
     await waitFor(() => expect(uploadWorkspaceIcon).toHaveBeenCalledTimes(2));
     expect(cleanupWorkspaceSettingsIcon).toHaveBeenCalledWith({ assetKey: "wsi_first", workspaceSysId: "workspace-001" });
