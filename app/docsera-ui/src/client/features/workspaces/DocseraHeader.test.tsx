@@ -53,6 +53,41 @@ describe("DocseraHeader publishing changes", () => {
     expect(screen.getByRole("button", { name: "Parent" })).toBeInTheDocument();
   });
 
+  it("keeps breadcrumb ancestors navigable with hover and visible keyboard-focus feedback", () => {
+    const onSelectBreadcrumb = vi.fn();
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+
+    render(
+      <DocseraHeader
+        {...baseProps}
+        breadcrumbs={[
+          { id: "parent", title: "Parent" },
+          { id: "child", title: "Child" }
+        ] as unknown as WorkspacePageView[]}
+        onSelectBreadcrumb={onSelectBreadcrumb}
+      />
+    );
+
+    const parent = screen.getByRole("button", { name: "Parent" });
+    const current = screen.getByText("Child");
+    fireEvent.click(parent);
+
+    expect(onSelectBreadcrumb).toHaveBeenCalledWith("parent");
+    expect(current).toHaveAttribute("aria-current", "page");
+    expect(current.tagName).toBe("SPAN");
+    expect(source).toMatch(/\.docsera-breadcrumbs__item:hover \{[\s\S]*?color: var\(--docsera-primary\);[\s\S]*?text-decoration: underline;/);
+    expect(source).toMatch(/\.docsera-breadcrumbs__item:focus-visible \{[\s\S]*?outline: 2px solid var\(--docsera-primary\);[\s\S]*?outline-offset: -2px;/);
+    expect(source).not.toMatch(/\.docsera-breadcrumbs__item:focus-visible \{[^}]*var\(--docsera-focus\)/);
+    expect(source).not.toMatch(/\.docsera-breadcrumbs__current:hover/);
+  });
+
   it("shows a neutral account placeholder before authenticated identity is available", () => {
     const { container } = render(<DocseraHeader {...baseProps} currentUser={null} />);
 

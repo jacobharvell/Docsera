@@ -447,6 +447,138 @@ describe("App workspace shell integration", () => {
     await waitFor(() => expect(readRecentWorkspaceSlugs(userSysId)).toEqual(["zulu-docs", "flaky-docs", "api-docs"]));
   });
 
+  it("hides My Workspaces only after unfiltered eligibility confirms a read-only user has no authoring access, while retaining recent navigation", async () => {
+    const userSysId = "user-read-only";
+    const readOnlyWorkspace = createWorkspace({
+      canManageSettings: false,
+      canManageWorkspaceMembers: false,
+      name: "Reader Docs",
+      roleLabel: null,
+      slug: "reader-docs"
+    });
+    window.localStorage.setItem(recentWorkspaceStorageKey(userSysId), JSON.stringify([readOnlyWorkspace.slug]));
+    const getWorkspace = vi.fn(async () => ({ workspace: readOnlyWorkspace }));
+    const listWorkspaces = vi.fn(async (): Promise<WorkspaceListResult> => ({
+      canCreateWorkspaces: false,
+      hasNextPage: false,
+      items: [],
+      page: 1,
+      pageSize: 10,
+      searchText: "",
+      totalCount: 0
+    }));
+
+    renderAuthenticatedApp("/?view=my-workspaces", userSysId, { getWorkspace, listWorkspaces });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Workspace switcher: Docsera" }));
+    const menu = await screen.findByRole("menu", { name: "Recent workspaces" });
+    expect(within(menu).getByRole("menuitem", { name: "Reader Docs" })).toBeInTheDocument();
+    expect(within(menu).queryByRole("menuitem", { name: "My Workspaces" })).not.toBeInTheDocument();
+    expect(menu.querySelector(".docsera-header__menu-divider")).not.toBeInTheDocument();
+
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Reader Docs" }));
+    expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+  });
+
+  it("uses only the unfiltered switcher eligibility, retaining the footer for non-recent authoring access and global creation capability", async () => {
+    const userSysId = "user-authoring-elsewhere";
+    const readOnlyWorkspace = createWorkspace({ name: "Reader Docs", roleLabel: null, slug: "reader-docs" });
+    window.localStorage.setItem(recentWorkspaceStorageKey(userSysId), JSON.stringify([readOnlyWorkspace.slug]));
+    const getWorkspace = vi.fn(async () => ({ workspace: readOnlyWorkspace }));
+    const listWorkspaces = vi.fn(async ({ pageSize, searchText }: { pageSize?: number; searchText?: string } = {}): Promise<WorkspaceListResult> => {
+      if (pageSize === 10 && !searchText) {
+        return {
+          canCreateWorkspaces: false,
+          hasNextPage: true,
+          items: [createWorkspace({ name: "Editor Elsewhere", slug: "editor-elsewhere" })],
+          page: 1,
+          pageSize: 10,
+          searchText: "",
+          totalCount: 2
+        };
+      }
+
+      return {
+        canCreateWorkspaces: false,
+        hasNextPage: false,
+        items: [],
+        page: 1,
+        pageSize: pageSize ?? 10,
+        searchText: searchText ?? "",
+        totalCount: 0
+      };
+    });
+
+    renderAuthenticatedApp("/?view=my-workspaces", userSysId, { getWorkspace, listWorkspaces });
+    fireEvent.click(await screen.findByRole("button", { name: "Workspace switcher: Docsera" }));
+    expect(await screen.findByRole("menuitem", { name: "My Workspaces" })).toBeInTheDocument();
+    expect(listWorkspaces).toHaveBeenCalledWith({ page: 1, pageSize: 10 });
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "My Workspaces" }));
+    expect(await screen.findByRole("heading", { name: "My Workspaces" })).toBeInTheDocument();
+  });
+
+  it("retains My Workspaces for a global Docsera Admin with no authoring memberships", async () => {
+    const userSysId = "user-global-admin";
+    const readOnlyWorkspace = createWorkspace({ name: "Reader Docs", roleLabel: null, slug: "reader-docs" });
+    window.localStorage.setItem(recentWorkspaceStorageKey(userSysId), JSON.stringify([readOnlyWorkspace.slug]));
+
+    renderAuthenticatedApp("/?view=my-workspaces", userSysId, {
+      getWorkspace: vi.fn(async () => ({ workspace: readOnlyWorkspace })),
+      listWorkspaces: vi.fn(async (): Promise<WorkspaceListResult> => ({
+        canCreateWorkspaces: true,
+        hasNextPage: false,
+        items: [],
+        page: 1,
+        pageSize: 10,
+        searchText: "",
+        totalCount: 0
+      }))
+    });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Workspace switcher: Docsera" }));
+    expect(await screen.findByRole("menuitem", { name: "My Workspaces" })).toBeInTheDocument();
+  });
+
+  it("keeps the footer visible while eligibility is unknown after initial failure or refresh, then applies confirmed refresh eligibility", async () => {
+    const userSysId = "user-eligibility-refresh";
+    const readOnlyWorkspace = createWorkspace({ name: "Reader Docs", roleLabel: null, slug: "reader-docs" });
+    window.localStorage.setItem(recentWorkspaceStorageKey(userSysId), JSON.stringify([readOnlyWorkspace.slug]));
+    const getWorkspace = vi.fn(async () => ({ workspace: readOnlyWorkspace }));
+    const failedClient = createClient({
+      getWorkspace,
+      listWorkspaces: vi.fn(async () => {
+        throw new Error("temporary list failure");
+      }),
+      ping: vi.fn(async () => ({
+        authenticated: true, scope: "x_82900_docsera", status: "ok", timestamp: "2026-09-22 10:15:00", userAvatarPath: "", userDisplayName: "Reader", userName: "reader", userSysId
+      }))
+    });
+    const runtime = { ...createRuntime("/?view=my-workspaces"), config: { backendPingPath: "/api/x_82900_docsera/docsera_runtime/ping" } };
+    const view = render(<App runtime={runtime} serviceNowClient={failedClient} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Workspace switcher: Docsera" }));
+    expect(await screen.findByRole("menuitem", { name: "My Workspaces" })).toBeInTheDocument();
+
+    const refreshedEligibility = createDeferred<WorkspaceListResult>();
+    const refreshingClient = createClient({
+      getWorkspace,
+      listWorkspaces: vi.fn(({ pageSize }: { pageSize?: number } = {}) =>
+        pageSize === 10
+          ? refreshedEligibility.promise
+          : Promise.resolve({ canCreateWorkspaces: false, hasNextPage: false, items: [], page: 1, pageSize: pageSize ?? 10, searchText: "", totalCount: 0 })
+      ),
+      ping: failedClient.ping
+    });
+    view.rerender(<App runtime={runtime} serviceNowClient={refreshingClient} />);
+
+    expect(screen.getByRole("menuitem", { name: "My Workspaces" })).toBeInTheDocument();
+    await act(async () => {
+      refreshedEligibility.resolve({ canCreateWorkspaces: false, hasNextPage: false, items: [], page: 1, pageSize: 10, searchText: "", totalCount: 0 });
+    });
+    await waitFor(() => expect(screen.queryByRole("menuitem", { name: "My Workspaces" })).not.toBeInTheDocument());
+  });
+
   it("persists recent workspaces across remounts and keeps authenticated users separated", async () => {
     const workspaces = createWorkspaceMap(["api-docs", "product-docs"]);
     const getWorkspace = vi.fn(async (workspaceSlug: string) => ({ workspace: workspaces[workspaceSlug] ?? null }));
@@ -1769,8 +1901,7 @@ describe("App workspace shell integration", () => {
     expect(within(pane).getByText("Admin One")).toBeInTheDocument();
     expect(within(pane).getByText(/Inactive Editor/)).toBeInTheDocument();
     expect(within(pane).getByText(/inactive/)).toBeInTheDocument();
-    expect(within(pane).getByText(/Workspace admins/)).toBeInTheDocument();
-    expect(within(pane).getByText(/Editors/)).toBeInTheDocument();
+    expect(within(pane).getByText("Admins change settings and manage access. Editors can create and edit documents.")).toBeInTheDocument();
 
     expect(within(pane).getByPlaceholderText("Filter member list")).toHaveAccessibleName("Filter member list");
     expect(within(pane).queryByRole("textbox", { name: "Search members" })).not.toBeInTheDocument();
@@ -2325,7 +2456,7 @@ describe("App workspace shell integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
     fireEvent.click(within(await screen.findByRole("complementary", { name: "Workspace Settings" })).getByRole("button", { name: "Manage workspace access" }));
     let pane = await screen.findByRole("complementary", { name: "Manage access" });
-    expect(within(pane).getByText("Last active Workspace Admin")).toBeInTheDocument();
+    expect(within(pane).getByText("Last active Admin")).toBeInTheDocument();
     expect(within(pane).getByRole("button", { name: "Remove access for Last Admin" })).toBeDisabled();
     expect(within(pane).getByLabelText("Access level for Last Admin")).toBeDisabled();
 

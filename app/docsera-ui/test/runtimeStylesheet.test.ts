@@ -918,13 +918,13 @@ test("keeps manage access Add Members visual states on defined theme tokens", ()
   );
   expect(css).toMatch(/\.docsera-manage-access__role-select\s*{[^}]*cursor:\s*auto;/s);
   expect(css).toMatch(
-    /\.docsera-manage-access__user-option span\s*{[^}]*font-size:\s*0\.8125rem;[^}]*line-height:\s*1\.25;/s
+    /\.docsera-manage-access__user-option span\s*{[^}]*font-size:\s*0\.75rem;[^}]*line-height:\s*1\.25;/s
   );
   expect(css).toMatch(
     /\.docsera-manage-access__user-option small\s*{[^}]*font-size:\s*0\.75rem;/s
   );
   expect(css).toMatch(
-    /\.docsera-manage-access__staged-member \.docsera-manage-access__member-name\s*{[^}]*font-size:\s*0\.8125rem;[^}]*line-height:\s*1\.25;/s
+    /\.docsera-manage-access__staged-member \.docsera-manage-access__member-name\s*{[^}]*font-size:\s*0\.75rem;[^}]*line-height:\s*1\.25;/s
   );
   expect(css).toMatch(
     /\.docsera-manage-access__staged-member \.docsera-manage-access__member-actions select\s*{[^}]*min-height:\s*32px;[^}]*font-size:\s*0\.8125rem;/s

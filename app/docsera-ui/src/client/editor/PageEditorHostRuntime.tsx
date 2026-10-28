@@ -375,7 +375,8 @@ const IMAGE_RESIZE_HANDLE_INSET = 6;
 const BLOCK_ACTION_MENU_WIDTH = 182;
 const BLOCK_ACTION_MENU_HEIGHT = 144;
 const BLOCK_TURN_INTO_MENU_WIDTH = 198;
-const BLOCK_TURN_INTO_MENU_HEIGHT = 280;
+const BLOCK_MENU_ITEM_MIN_HEIGHT = 38;
+const BLOCK_MENU_LIST_PADDING = 8;
 const TIPTAP_SKIP_TRAILING_NODE_META = "skipTrailingNode";
 const COMMAND_QUERY_PRESENTATION_PLUGIN_KEY = new PluginKey<CommandQueryPresentationState | null>("docseraCommandQueryPresentation");
 const BLOCK_SELECTION_PLUGIN_KEY = new PluginKey<BlockSelectionState | null>("docseraBlockSelection");
@@ -1370,6 +1371,10 @@ function resolveConstrainedSurfaceHeight(
   return Math.max(1, Math.min(height, viewportAvailableHeight, sideAvailableHeight));
 }
 
+function getBlockTurnIntoMenuHeight(commandCount: number): number {
+  return Math.max(1, commandCount) * BLOCK_MENU_ITEM_MIN_HEIGHT + BLOCK_MENU_LIST_PADDING * 2;
+}
+
 function buildSurfaceStyle(
   ownerDocument: Document,
   rect: DOMRect,
@@ -1617,6 +1622,7 @@ function buildBlockTurnIntoMenuSurfaceStyle(
     top,
     width: `${clampedWidth}px`,
     maxWidth: `${maxSurfaceWidth}px`,
+    height: `${clampedHeight}px`,
     maxHeight: `${clampedHeight}px`
   };
 }
@@ -4380,6 +4386,7 @@ export function PageEditorHostRuntime({
       const targetRect = blockTurnIntoTriggerRef.current?.getBoundingClientRect() ?? anchorRect ?? getTopLevelBlockRect(runtimeEditor, blockIndex);
       const sourceNode = getTopLevelBlockNodeFromDoc(runtimeEditor.state.doc, blockIndex);
       const sourceCommandId = sourceNode ? getTurnIntoBlockCommandIdFromNode(sourceNode) : null;
+      const turnIntoMenuHeight = sourceNode ? getBlockTurnIntoMenuHeight(getTurnIntoBlockCommandsForBlock(sourceNode).length) : 0;
       if (!targetRect) {
         return;
       }
@@ -4389,7 +4396,7 @@ export function PageEditorHostRuntime({
         activeIndex: Math.max(0, TURN_INTO_EDITOR_BLOCK_COMMANDS.findIndex((command) => command.id === sourceCommandId)),
         anchorRect: nextAnchorRect,
         blockIndex,
-        placement: resolveCommandSelectorPlacement(overlayOwnerDocument, nextAnchorRect, BLOCK_TURN_INTO_MENU_HEIGHT),
+        placement: resolveCommandSelectorPlacement(overlayOwnerDocument, nextAnchorRect, turnIntoMenuHeight),
         source
       });
     },
@@ -5264,7 +5271,15 @@ export function PageEditorHostRuntime({
     }
 
     const nextAnchorRect = triggerElement.getBoundingClientRect();
-    const nextPlacement = resolveCommandSelectorPlacement(overlayOwnerDocument, nextAnchorRect, BLOCK_TURN_INTO_MENU_HEIGHT);
+    const runtimeEditor = editorRef.current;
+    const sourceNode = runtimeEditor && !runtimeEditor.isDestroyed
+      ? getTopLevelBlockNodeFromDoc(runtimeEditor.state.doc, blockTurnIntoMenu.blockIndex)
+      : null;
+    const nextPlacement = resolveCommandSelectorPlacement(
+      overlayOwnerDocument,
+      nextAnchorRect,
+      getBlockTurnIntoMenuHeight(sourceNode ? getTurnIntoBlockCommandsForBlock(sourceNode).length : 0)
+    );
     if (areDomRectsEqual(blockTurnIntoMenu.anchorRect, nextAnchorRect) && blockTurnIntoMenu.placement === nextPlacement) {
       return;
     }
@@ -7219,6 +7234,7 @@ export function PageEditorHostRuntime({
         )
       : undefined;
   const blockTurnIntoCommands = blockActionMenuNode ? getTurnIntoBlockCommandsForBlock(blockActionMenuNode) : [];
+  const blockTurnIntoMenuHeight = getBlockTurnIntoMenuHeight(blockTurnIntoCommands.length);
   const blockTurnIntoSelectedCommandId = blockActionMenuNode ? getTurnIntoBlockCommandIdFromNode(blockActionMenuNode) : null;
   const blockActionMenuSurfaceRect = blockActionMenuSurfaceRef.current?.getBoundingClientRect() ?? null;
   const blockTurnIntoMenuStyle =
@@ -7227,7 +7243,7 @@ export function PageEditorHostRuntime({
           overlayOwnerDocument,
           blockTurnIntoMenu.anchorRect,
           BLOCK_TURN_INTO_MENU_WIDTH,
-          BLOCK_TURN_INTO_MENU_HEIGHT,
+          blockTurnIntoMenuHeight,
           blockTurnIntoMenu.placement,
           blockActionMenuSurfaceRect
         )
@@ -8312,6 +8328,10 @@ export function PageEditorHostRuntime({
           display: grid;
           gap: 0;
           padding: 8px;
+        }
+        .docsera-block-turn-into-menu__list {
+          min-height: 0;
+          overflow-y: auto;
         }
         .docsera-block-menu__item {
           display: flex;

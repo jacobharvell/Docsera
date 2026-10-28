@@ -198,7 +198,7 @@ const WORKSPACE_COMMAND_AUTHORING_LOCK_MESSAGE = "Workspace authoring is locked 
 type WorkspaceSwitcherState =
   | { status: "idle" }
   | { status: "loading" }
-  | { items: WorkspaceViewRecord[]; status: "success" }
+  | { canCreateWorkspaces: boolean; items: WorkspaceViewRecord[]; status: "success"; totalCount: number }
   | { status: "error" };
 
 type RecentWorkspacesState =
@@ -2199,6 +2199,10 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     () => (recentWorkspacesState.status === "success" ? recentWorkspacesState.items : []),
     [recentWorkspacesState]
   );
+  const showMyWorkspacesFooter =
+    workspaceSwitcherState.status !== "success" ||
+    workspaceSwitcherState.totalCount > 0 ||
+    workspaceSwitcherState.canCreateWorkspaces;
   const workspaceStateData = workspaceState.status === "success" ? workspaceState.data : null;
   activeWorkspaceSysIdRef.current = route.mode === "workspace" ? cleanText(workspaceStateData?.sysId) : "";
   const hasAuthoringCapability = Boolean(workspaceState.status === "success" && workspaceState.data.roleLabel);
@@ -3193,7 +3197,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
   useEffect(() => {
     let canceled = false;
-    setWorkspaceSwitcherState({ status: "loading" });
+    setWorkspaceSwitcherState((current) => (current.status === "success" ? current : { status: "loading" }));
 
     serviceNowClient
       .listWorkspaces({
@@ -3203,14 +3207,16 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       .then((result) => {
         if (!canceled) {
           setWorkspaceSwitcherState({
+            canCreateWorkspaces: result.canCreateWorkspaces,
             items: result.items.slice(0, 10),
-            status: "success"
+            status: "success",
+            totalCount: result.totalCount
           });
         }
       })
       .catch(() => {
         if (!canceled) {
-          setWorkspaceSwitcherState({ status: "error" });
+          setWorkspaceSwitcherState((current) => (current.status === "success" ? current : { status: "error" }));
         }
       });
 
@@ -7892,6 +7898,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         onSelectBreadcrumb={route.mode === "workspace" ? openWorkspacePage : undefined}
         onToggleSidebar={route.mode === "workspace" ? () => setSidebarCollapsed((collapsed) => !collapsed) : undefined}
         recentWorkspaces={recentWorkspaceItems}
+        showMyWorkspacesFooter={showMyWorkspacesFooter}
         saveStatus={appHeaderWorkspaceMode === "edit" && renderedEditorSession ? editorStatusLabel as EditorTransitionState["status"] : undefined}
         onRetryCurrentPageSave={() => void retryCurrentPageSave()}
         onDiscardCurrentPageEdits={() => void discardCurrentPageLocalEdits()}

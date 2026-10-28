@@ -95,6 +95,7 @@ type DocseraHeaderProps = {
   onAuthoringSurfaceChange?: (surface: WorkspaceAuthoringSurface) => void;
   onWorkspaceModeChange?: (mode: WorkspaceMode) => void;
   showWorkspaceSwitcher?: boolean;
+  showMyWorkspacesFooter?: boolean;
   showWorkspaceSettings?: boolean;
   workspaceControlsLocked?: boolean;
   sidebarCollapsed?: boolean;
@@ -350,6 +351,7 @@ export function DocseraHeader({
   onAuthoringSurfaceChange,
   onWorkspaceModeChange,
   showWorkspaceSwitcher = recentWorkspaces.length > 0,
+  showMyWorkspacesFooter = true,
   showWorkspaceSettings = false,
   workspaceControlsLocked = false,
   sidebarCollapsed = false,
@@ -741,6 +743,7 @@ export function DocseraHeader({
                 currentWorkspaceSlug={currentWorkspaceSlug}
                 items={recentWorkspaces}
                 loadUploadedIcon={loadUploadedIcon}
+                showMyWorkspacesFooter={showMyWorkspacesFooter}
                 onOpenMyWorkspaces={() => {
                   setWorkspaceMenuOpen(false);
                   onOpenMyWorkspaces();

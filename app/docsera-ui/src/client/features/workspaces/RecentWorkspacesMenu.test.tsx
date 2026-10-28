@@ -24,6 +24,32 @@ describe("RecentWorkspacesMenu", () => {
     expect(openWorkspace).toHaveBeenCalledWith("workspace-19", items[19]);
   });
 
+  it("keeps read-only recent workspace navigation while hiding the ineligible My Workspaces footer and divider", () => {
+    const workspace: RecentWorkspaceItem = {
+      icon: { type: "builtin", key: "docs", label: "Docs" },
+      name: "Read-only Docs",
+      slug: "read-only-docs"
+    };
+    const onOpenWorkspace = vi.fn();
+
+    render(
+      <RecentWorkspacesMenu
+        items={[workspace]}
+        showMyWorkspacesFooter={false}
+        onOpenMyWorkspaces={vi.fn()}
+        onOpenWorkspace={onOpenWorkspace}
+      />
+    );
+
+    const menu = screen.getByRole("menu", { name: "Recent workspaces" });
+    expect(screen.getByRole("menuitem", { name: workspace.name })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "My Workspaces" })).not.toBeInTheDocument();
+    expect(menu.querySelector(".docsera-header__menu-divider")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: workspace.name }));
+    expect(onOpenWorkspace).toHaveBeenCalledWith(workspace.slug, workspace);
+  });
+
   it("keeps long workspace names within the identity layout and preserves the existing footer and current-state treatment", () => {
     const onOpenMyWorkspaces = vi.fn();
     const onOpenWorkspace = vi.fn();

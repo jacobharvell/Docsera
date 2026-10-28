@@ -412,17 +412,17 @@ export function WorkspaceManageAccessOverlay({
                   const protectedLastAdmin = isProtectedLastAdmin(member);
                   const memberName = cleanText(member.displayName) || member.userName || "Unknown user";
                   return (
-                    <div key={member.userSysId} className={`docsera-manage-access__member${member.active ? "" : " docsera-manage-access__member--inactive"}`}>
+                    <div className={`docsera-manage-access__member${member.active ? "" : " docsera-manage-access__member--inactive"}`} key={member.userSysId}>
                       <span className="docsera-manage-access__avatar" aria-hidden="true">{memberInitials(member)}</span>
                       <div className="docsera-manage-access__member-main">
                         <span className="docsera-manage-access__member-name">{memberName}</span>
                         <span className="docsera-manage-access__member-meta">{memberIdentity(member)}{member.active ? "" : " - inactive"}</span>
-                        {protectedLastAdmin ? <span className="docsera-manage-access__restriction">Last active Workspace Admin</span> : null}
+                        {protectedLastAdmin ? <span className="docsera-manage-access__restriction">Last active Admin</span> : null}
                       </div>
                       <div className="docsera-manage-access__member-actions">
                         <select aria-label={`Access level for ${member.displayName}`} value={member.accessLevel} disabled={Boolean(mutatingUserSysId) || protectedLastAdmin} onChange={(event) => void commitRoleChange(member, event.target.value as WorkspaceMemberAccessLevel)}>
                           <option value="editor">Editor</option>
-                          <option value="admin">Workspace Admin</option>
+                          <option value="admin">Admin</option>
                         </select>
                         <DocseraCompactTooltip label={`Remove access for ${memberName}`}>
                           <button type="button" className="docsera-manage-access__remove-button" aria-label={`Remove access for ${memberName}`} disabled={Boolean(mutatingUserSysId) || protectedLastAdmin} onClick={() => setRemoveTarget(member)}>
@@ -434,7 +434,7 @@ export function WorkspaceManageAccessOverlay({
                   );
                 })}
               </div>
-              <p className="docsera-manage-access__permissions-copy"><strong>Workspace admins</strong> can change settings and manage access. <strong>Editors</strong> can create and edit documents.</p>
+              <p className="docsera-manage-access__permissions-copy">Admins change settings and manage access. Editors can create and edit documents.</p>
             </>
           ) : null}
         </div>
@@ -466,12 +466,15 @@ export function WorkspaceManageAccessOverlay({
                   <div className="docsera-manage-access__search-results" role="listbox" aria-label="Users" onScroll={handleUsersScroll}>
                     {addSearchState.status === "error" ? <div className="docsera-manage-access__state" role="alert">{addSearchState.errorMessage}</div> : null}
                     {addSearchState.status === "success" && availableUsers.length === 0 ? <div className="docsera-manage-access__state">No active non-members found.</div> : null}
-                    {availableUsers.map((user) => (
-                      <button key={user.userSysId} type="button" className={`docsera-manage-access__user-option${selectedUserIds.has(user.userSysId) ? " docsera-manage-access__user-option--selected" : ""}`} role="option" aria-selected={selectedUserIds.has(user.userSysId)} onClick={(event) => selectAvailableUser(event, user.userSysId)}>
-                        <span>{cleanText(user.displayName) || user.userName}</span>
-                        <small>{memberIdentity(user)}</small>
-                      </button>
-                    ))}
+                    {availableUsers.map((user) => {
+                      const userName = cleanText(user.displayName) || user.userName;
+                      return (
+                        <button key={user.userSysId} type="button" className={`docsera-manage-access__user-option${selectedUserIds.has(user.userSysId) ? " docsera-manage-access__user-option--selected" : ""}`} role="option" aria-selected={selectedUserIds.has(user.userSysId)} onClick={(event) => selectAvailableUser(event, user.userSysId)}>
+                            <span>{userName}</span>
+                            <small>{memberIdentity(user)}</small>
+                          </button>
+                      );
+                    })}
                   </div>
                 </section>
                 <div className="docsera-manage-access__add-transfer">
@@ -494,7 +497,7 @@ export function WorkspaceManageAccessOverlay({
                   <div className="docsera-manage-access__staged-list" role="listbox" aria-label="Members to add">
                     {stagedMembers.length === 0 ? <div className="docsera-manage-access__state">No users staged.</div> : null}
                     {stagedMembers.map((member) => (
-                      <div key={member.userSysId} className={`docsera-manage-access__staged-member${selectedStagedUserIds.has(member.userSysId) ? " docsera-manage-access__staged-member--selected" : ""}${member.errorMessage ? " docsera-manage-access__staged-member--error" : ""}`} role="option" aria-selected={selectedStagedUserIds.has(member.userSysId)} tabIndex={0} onClick={(event) => selectStagedUser(event, member.userSysId)}>
+                      <div className={`docsera-manage-access__staged-member${selectedStagedUserIds.has(member.userSysId) ? " docsera-manage-access__staged-member--selected" : ""}${member.errorMessage ? " docsera-manage-access__staged-member--error" : ""}`} key={member.userSysId} role="option" aria-selected={selectedStagedUserIds.has(member.userSysId)} tabIndex={0} onClick={(event) => selectStagedUser(event, member.userSysId)}>
                         <div className="docsera-manage-access__member-main">
                           <span className="docsera-manage-access__member-name">{cleanText(member.displayName) || member.userName}</span>
                           <span className="docsera-manage-access__member-meta">{memberIdentity(member)}</span>
@@ -503,7 +506,7 @@ export function WorkspaceManageAccessOverlay({
                         <div className="docsera-manage-access__member-actions">
                           <select className="docsera-manage-access__role-select" aria-label={`Access level for ${member.displayName}`} value={member.accessLevel} disabled={Boolean(mutatingUserSysId)} onClick={(event) => event.stopPropagation()} onChange={(event) => updateStagedAccessLevel(member.userSysId, event.target.value as WorkspaceMemberAccessLevel)}>
                             <option value="editor">Editor</option>
-                            <option value="admin">Workspace Admin</option>
+                            <option value="admin">Admin</option>
                           </select>
                         </div>
                       </div>

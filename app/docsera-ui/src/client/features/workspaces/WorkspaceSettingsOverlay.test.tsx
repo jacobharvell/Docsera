@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
-import type { WorkspaceViewRecord } from "../../shared/types/docsera";
+import type { WorkspaceMemberRecord, WorkspaceMemberUserSearchRecord, WorkspaceViewRecord } from "../../shared/types/docsera";
 import { PageSettingsOverlay } from "./PageSettingsOverlay";
 import { WorkspaceManageAccessOverlay } from "./WorkspaceManageAccessOverlay";
 import { WorkspaceSettingsOverlay } from "./WorkspaceSettingsOverlay";
@@ -778,6 +778,92 @@ describe("WorkspaceSettingsOverlay", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Documentation" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Documentation, selected" })).toHaveAttribute("aria-pressed", "true"));
+  });
+
+  it("uses concise role labels while preserving member role values and last-active-admin protection", async () => {
+    const member: WorkspaceMemberRecord = {
+      accessLevel: "admin",
+      active: true,
+      displayName: "Admin One",
+      email: "admin@example.com",
+      userName: "admin.one",
+      userSysId: "user-admin"
+    };
+    const setMemberAccess = vi.fn(async () => ({ ok: true }));
+
+    render(
+      <WorkspaceManageAccessOverlay
+        loadMembers={vi.fn(async () => ({ status: "success" as const, callerCapabilities: { canManageWorkspaceMembers: true }, members: [member] }))}
+        onBack={vi.fn()}
+        onClose={vi.fn()}
+        onMutationCommitted={vi.fn()}
+        open
+        removeMemberAccess={vi.fn(async () => ({ ok: true }))}
+        searchUsers={vi.fn(async () => ({ status: "success" as const, users: [] }))}
+        setMemberAccess={setMemberAccess}
+        workspace={createWorkspace()}
+      />
+    );
+
+    const selector = await screen.findByRole("combobox", { name: "Access level for Admin One" });
+    expect(within(selector).getByRole("option", { name: "Admin" })).toHaveValue("admin");
+    expect(within(selector).getByRole("option", { name: "Editor" })).toHaveValue("editor");
+    expect(selector).toBeDisabled();
+    expect(screen.getByText("Last active Admin")).toBeInTheDocument();
+    expect(screen.getByText("Admins change settings and manage access. Editors can create and edit documents.")).toBeInTheDocument();
+    expect(screen.queryByText("Workspace Admin", { exact: true })).not.toBeInTheDocument();
+    expect(setMemberAccess).not.toHaveBeenCalled();
+  });
+
+  it("keeps identities out of tooltips while preserving action tooltips and member selection", async () => {
+    const member: WorkspaceMemberRecord = {
+      accessLevel: "editor",
+      active: true,
+      displayName: "Editor One",
+      email: "editor@example.com",
+      userName: "editor.one",
+      userSysId: "user-editor"
+    };
+    const availableUser: WorkspaceMemberUserSearchRecord = {
+      displayName: "Available User",
+      email: "available@example.com",
+      userName: "available.user",
+      userSysId: "user-available"
+    };
+    const searchUsers = vi.fn(async () => ({ status: "success" as const, users: [availableUser] }));
+    render(
+      <WorkspaceManageAccessOverlay
+        loadMembers={vi.fn(async () => ({ status: "success" as const, callerCapabilities: { canManageWorkspaceMembers: true }, members: [member] }))}
+        onBack={vi.fn()}
+        onClose={vi.fn()}
+        onMutationCommitted={vi.fn()}
+        open
+        removeMemberAccess={vi.fn(async () => ({ ok: true }))}
+        searchUsers={searchUsers}
+        setMemberAccess={vi.fn(async () => ({ ok: true }))}
+        workspace={createWorkspace()}
+      />
+    );
+
+    const memberRow = await screen.findByText(member.displayName).then((element) => element.closest(".docsera-manage-access__member")!);
+    expect(memberRow).not.toHaveAttribute("tabindex");
+    fireEvent.mouseEnter(memberRow);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+
+    const closeButton = screen.getByRole("button", { name: "Close manage access" });
+    fireEvent.focus(closeButton);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Close manage access");
+    fireEvent.blur(closeButton);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add members" }));
+    const availableRow = await screen.findByRole("option", { name: /Available User/ });
+    fireEvent.mouseEnter(availableRow);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    fireEvent.click(availableRow);
+    fireEvent.click(screen.getByRole("button", { name: "Stage selected users" }));
+    const stagedRow = await screen.findByRole("option", { name: /Available User/ });
+    fireEvent.focus(stagedRow);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
   });
 
   it("shows invalid icon uploads in a dismissible modal without losing the settings draft", async () => {

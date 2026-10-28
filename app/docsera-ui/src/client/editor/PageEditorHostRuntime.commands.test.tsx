@@ -4948,6 +4948,8 @@ describe("PageEditorHostRuntime", () => {
     expect(menu.querySelector(".docsera-block-action-menu__list")).toHaveClass("docsera-editor-dropdown--shift-enter");
     expect(submenu).toHaveClass("docsera-editor-dropdown--enter");
     expect(submenu).toHaveStyle({ left: "386px", top: "100px" });
+    expect(submenu).toHaveStyle({ height: "320px", maxHeight: "320px" });
+    expect(submenu.querySelector(".docsera-block-turn-into-menu__list")).toHaveStyle({ overflowY: "auto" });
     expect(getMenuItemNames(submenu)).toEqual(["Text", "Heading 1", "Heading 2", "Heading 3", "Blockquote", "Bulleted List", "Numbered List", "Task List"]);
     expect(within(submenu).queryByText("Turn into")).toBeNull();
     expect(within(submenu).getByRole("menuitemradio", { name: "Text" })).toHaveAttribute("aria-checked", "true");
@@ -4978,6 +4980,45 @@ describe("PageEditorHostRuntime", () => {
     expect(screen.queryByRole("menu", { name: "Turn into Text" })).toBeNull();
 
     geometrySpy.mockRestore();
+  });
+
+  it("constrains a short-viewport Turn into menu with internal scrolling while keeping Task List keyboard-accessible", async () => {
+    const initialViewportHeight = window.innerHeight;
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 300 });
+    try {
+      const { editorReady } = renderRuntime({
+        initialEnvelope: createEnvelopeFromDocument({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "Alpha" }] }] })
+      });
+      await waitFor(() => expect(editorReady[0]).toBeDefined());
+
+      const editor = editorReady[0];
+      const geometrySpy = mockTopLevelBlockGeometry(editor, [new DOMRect(132, 52, 620, 28)]);
+      const surface = editor.view.dom.closest(".docsera-editor-runtime__surface");
+      if (!(surface instanceof HTMLElement)) {
+        throw new Error("Expected the editor surface to be available.");
+      }
+      await dispatchOwnerPointerMove(surface.ownerDocument, surface, { clientX: 120, clientY: 64 });
+      const handle = await screen.findByRole("button", { name: "Select block: Text" });
+      await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
+      await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
+
+      const menu = await screen.findByRole("menu", { name: "Block actions for Text" });
+      Object.defineProperty(menu, "getBoundingClientRect", { configurable: true, value: () => new DOMRect(200, 100, 180, 144) });
+      fireEvent.keyDown(menu, { key: "ArrowRight" });
+      const submenu = await screen.findByRole("menu", { name: "Turn into Text" });
+      expect(submenu).toHaveStyle({ height: "276px", maxHeight: "276px" });
+      expect(submenu.querySelector(".docsera-block-turn-into-menu__list")).toHaveStyle({ overflowY: "auto" });
+
+      for (let index = 0; index < 7; index += 1) {
+        fireEvent.keyDown(submenu, { key: "ArrowDown" });
+      }
+      expect(within(submenu).getByRole("menuitemradio", { name: "Task List" })).toHaveFocus();
+      fireEvent.keyDown(submenu, { key: "Enter" });
+      await waitFor(() => expect(editor.getJSON().content?.[0]?.type).toBe("taskList"));
+      geometrySpy.mockRestore();
+    } finally {
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: initialViewportHeight });
+    }
   });
 
   it.each([

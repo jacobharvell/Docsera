@@ -12,6 +12,7 @@ type RecentWorkspacesMenuProps = {
   currentWorkspaceSlug?: string;
   items: RecentWorkspaceItem[];
   loadUploadedIcon?: WorkspaceUploadedIconLoader;
+  showMyWorkspacesFooter?: boolean;
   onOpenMyWorkspaces: () => void;
   onOpenWorkspace: (workspaceSlug: string, item?: RecentWorkspaceItem) => void;
 };
@@ -21,6 +22,7 @@ export function RecentWorkspacesMenu({
   currentWorkspaceSlug = "",
   items,
   loadUploadedIcon,
+  showMyWorkspacesFooter = true,
   onOpenMyWorkspaces,
   onOpenWorkspace
 }: RecentWorkspacesMenuProps) {
@@ -58,11 +60,15 @@ export function RecentWorkspacesMenu({
       ) : (
         <div className="docsera-header__menu-empty">No recent workspaces available.</div>
       )}
-      <div className="docsera-header__menu-divider" aria-hidden="true" />
-      <button type="button" className="docsera-header__menu-footer" onClick={onOpenMyWorkspaces} role="menuitem">
-        <WorkspaceListIcon />
-        <span>My Workspaces</span>
-      </button>
+      {showMyWorkspacesFooter ? (
+        <>
+          <div className="docsera-header__menu-divider" aria-hidden="true" />
+          <button type="button" className="docsera-header__menu-footer" onClick={onOpenMyWorkspaces} role="menuitem">
+            <WorkspaceListIcon />
+            <span>My Workspaces</span>
+          </button>
+        </>
+      ) : null}
     </div>
   );
 }
