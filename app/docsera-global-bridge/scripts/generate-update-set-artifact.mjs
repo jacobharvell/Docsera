@@ -15,13 +15,13 @@ const scopedAppConfigPath = path.resolve(packageRoot, "..", "docsera-ui", "now.c
 const constants = Object.freeze({
   buildType: "global",
   appVersion: "0.1.0",
-  artifactRevision: "worker-queue-companion-r2",
-  updateSetName: "Docsera Global Workspace Provisioning Worker Queue 0.1.0 Companion",
+  artifactRevision: "friendly-url-host-companion-r1",
+  updateSetName: "Docsera Global Companion 0.1.0",
   updateSetDescription:
-    "Companion global update set for the Docsera workspace provisioning worker queue runtime records.",
-  updateSetFileName: "sys_remote_update_set_docsera_global_workspace_provisioning_worker_queue_0_1_0_companion.xml",
-  manifestFileName: "docsera-global-workspace-bridge.update-set.json",
-  remoteUpdateSetSource: "docsera-global-workspace-provisioning-worker-queue-companion",
+    "Global companion update set for Docsera workspace provisioning and the authenticated docsera.do host.",
+  updateSetFileName: "sys_remote_update_set_docsera_global_companion_0_1_0.xml",
+  manifestFileName: "docsera-global-companion.update-set.json",
+  remoteUpdateSetSource: "docsera-global-companion",
   recordedBy: "codex"
 });
 
@@ -285,7 +285,17 @@ function buildRestrictedCallerAccessRecords() {
 function buildCompanionRecords() {
   const baseRecords = buildGlobalBaseRecords();
   const restrictedCallerAccessRecords = buildRestrictedCallerAccessRecords();
-  const builtRecords = readRecordEntries().filter((relativePath) => !relativePath.startsWith("scope/")).map(parseRecord);
+  const parsedRecords = readRecordEntries()
+    .filter((relativePath) => !relativePath.startsWith("scope/"))
+    .map(parseRecord);
+
+  // The SDK retains the prior INSERT_OR_UPDATE beside its generated DELETE for a
+  // removed composite relation. Ship only the deletion so an installed proof no
+  // longer requires the temporary editor role.
+  const retiredFriendlyUrlAclRoleId = "1416f98418e24c18af184b0300f7793c";
+  const builtRecords = parsedRecords.filter((record) => {
+    return record.targetSysId !== retiredFriendlyUrlAclRoleId || record.relativePath.startsWith("author_elective_update/");
+  });
 
   return [...baseRecords, ...restrictedCallerAccessRecords, ...builtRecords];
 }

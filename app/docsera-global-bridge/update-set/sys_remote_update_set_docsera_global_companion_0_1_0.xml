@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<unload unload_date="2026-09-23 16:44:08" unload_version="1" syntax="glide">
+<unload unload_date="2026-10-28 13:11:03" unload_version="1" syntax="glide">
   <sys_remote_update_set action="INSERT_OR_UPDATE">
-    <sys_id>cbb4d31e2a5358f32458ac92ba22a522</sys_id>
+    <sys_id>9ba0df893a5160bb44e3b129e6080e04</sys_id>
     <application display_value="Global">global</application>
-    <description>Companion global update set for the Docsera workspace provisioning worker queue runtime records.</description>
-    <name>Docsera Global Workspace Provisioning Worker Queue 0.1.0 Companion</name>
-    <origin_sys_id>cbb4d31e2a5358f32458ac92ba22a522</origin_sys_id>
-    <remote_base_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_base_update_set>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <description>Global companion update set for Docsera workspace provisioning and the authenticated docsera.do host.</description>
+    <name>Docsera Global Companion 0.1.0</name>
+    <origin_sys_id>9ba0df893a5160bb44e3b129e6080e04</origin_sys_id>
+    <remote_base_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_base_update_set>
+    <source>docsera-global-companion</source>
     <state>loaded</state>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
@@ -35,9 +35,9 @@
     &lt;version&gt;0.1.0&lt;/version&gt;
   &lt;/sys_package&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>Global</target_name>
@@ -69,9 +69,9 @@
     &lt;subscription_entitlement/&gt;
   &lt;/sys_scope&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>global</target_name>
@@ -105,9 +105,9 @@
     &lt;target_type&gt;2&lt;/target_type&gt;
   &lt;/sys_restricted_caller_access&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>global.DocseraGlobalWorkspaceMembershipBridge</target_name>
@@ -115,6 +115,33 @@
     <type>sys_restricted_caller_access</type>
     <update_guid>e56a4247ff58abdb67dc25c5dab9de0f</update_guid>
     <update_guid_history>e243bc3fcc2892c50cf81ab88a98ba5c</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>d167396ea8e31fbbf862c99d1abc618a</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_security_acl_role_1416f98418e24c18af184b0300f7793c</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_security_acl_role&quot;&gt;
+  &lt;sys_security_acl_role action=&quot;DELETE&quot;&gt;
+    &lt;sys_id&gt;1416f98418e24c18af184b0300f7793c&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_security_acl_role_1416f98418e24c18af184b0300f7793c&lt;/sys_update_name&gt;
+    &lt;sys_security_acl&gt;879785c448564188a54416cb90d18c14&lt;/sys_security_acl&gt;
+    &lt;sys_user_role name=&quot;x_82900_docsera.editor&quot;&gt;5783d8fea6d44949aaeb308b197412c2&lt;/sys_user_role&gt;
+  &lt;/sys_security_acl_role&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>sys_security_acl_role_1416f98418e24c18af184b0300f7793c</target_name>
+    <target_sys_id>1416f98418e24c18af184b0300f7793c</target_sys_id>
+    <type>sys_security_acl_role</type>
+    <update_guid>40a04196e6b88597220c15c229f362d5</update_guid>
+    <update_guid_history>7b9e3a8269258e675de784186b3cbe15</update_guid_history>
   </sys_update_xml>
   <sys_update_xml action="INSERT_OR_UPDATE">
     <sys_id>025c1e6459de237046202384789f0215</sys_id>
@@ -191,9 +218,9 @@
     &lt;sys_name&gt;/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-member-mutation-command.js&lt;/sys_name&gt;
   &lt;/sys_module&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-member-mutation-command.js</target_name>
@@ -427,9 +454,9 @@ DocseraGlobalWorkspaceMembershipBridge.prototype = {
     &lt;sys_name&gt;/global/docsera-global-workspace-bridge/0.1.0/src/server/script-includes/docsera-global-workspace-membership-bridge.js&lt;/sys_name&gt;
   &lt;/sys_module&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>/global/docsera-global-workspace-bridge/0.1.0/src/server/script-includes/docsera-global-workspace-membership-bridge.js</target_name>
@@ -468,9 +495,9 @@ DocseraGlobalWorkspaceMembershipBridge.prototype = {
     &lt;sys_name&gt;/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-provision-request.js&lt;/sys_name&gt;
   &lt;/sys_module&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-provision-request.js</target_name>
@@ -497,9 +524,9 @@ DocseraGlobalWorkspaceMembershipBridge.prototype = {
   &quot;bomFormat&quot;: &quot;CycloneDX&quot;,
   &quot;specVersion&quot;: &quot;1.6&quot;,
   &quot;version&quot;: 1,
-  &quot;serialNumber&quot;: &quot;urn:uuid:75b71813-f35a-4837-a1fb-12f3667a35db&quot;,
+  &quot;serialNumber&quot;: &quot;urn:uuid:6fc3d257-a67e-41ab-9dec-ddf273238e4f&quot;,
   &quot;metadata&quot;: {
-    &quot;timestamp&quot;: &quot;2026-09-23T16:42:48.949Z&quot;,
+    &quot;timestamp&quot;: &quot;2026-10-28T13:10:53.462Z&quot;,
     &quot;tools&quot;: {
       &quot;components&quot;: [
         {
@@ -529,9 +556,9 @@ DocseraGlobalWorkspaceMembershipBridge.prototype = {
 }]]&gt;&lt;/content&gt;
   &lt;/sys_module&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>sys_module_d9b48b4fd7c4406583535934478c82db</target_name>
@@ -985,9 +1012,9 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     &lt;sys_name&gt;/global/docsera-global-workspace-bridge/0.1.0/src/server/script-includes/docsera-global-workspace-provisioning-bridge.js&lt;/sys_name&gt;
   &lt;/sys_module&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>/global/docsera-global-workspace-bridge/0.1.0/src/server/script-includes/docsera-global-workspace-provisioning-bridge.js</target_name>
@@ -1020,9 +1047,12 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
   &quot;scripts&quot;: {
     &quot;build&quot;: &quot;now-sdk build&quot;,
     &quot;generate:update-set&quot;: &quot;node ./scripts/generate-update-set-artifact.mjs&quot;,
+    &quot;preflight:friendly-url-host&quot;: &quot;node ./scripts/preflight-friendly-url-host.mjs&quot;,
+    &quot;test:friendly-url-host&quot;: &quot;node --test ./scripts/friendly-url-host-preflight-contract.test.mjs ./scripts/package-contents.test.mjs&quot;,
     &quot;install:sdk&quot;: &quot;now-sdk install&quot;,
     &quot;types:sdk&quot;: &quot;now-sdk dependencies&quot;,
     &quot;verify:sdk&quot;: &quot;node ./scripts/verify-global-bridge.mjs&quot;,
+    &quot;verify:friendly-url-host&quot;: &quot;node ./scripts/verify-friendly-url-host-artifact.mjs&quot;,
     &quot;validate&quot;: &quot;npm run build&quot;
   },
   &quot;devDependencies&quot;: {
@@ -1035,9 +1065,9 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     &lt;sys_name&gt;/global/docsera-global-workspace-bridge/0.1.0/package.json&lt;/sys_name&gt;
   &lt;/sys_module&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>/global/docsera-global-workspace-bridge/0.1.0/package.json</target_name>
@@ -1066,9 +1096,9 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
   &lt;/sys_scope_privilege&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>sys_scope_privilege_0d4d751c513343088b88326ab5354c71</target_name>
@@ -1097,9 +1127,9 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
   &lt;/sys_scope_privilege&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>sys_scope_privilege_180009d4ff894e0baadce8a57b91fd2f</target_name>
@@ -1128,9 +1158,9 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
   &lt;/sys_scope_privilege&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>sys_scope_privilege_1bbfe8f3691f4d7981a769118c65249f</target_name>
@@ -1159,9 +1189,9 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
   &lt;/sys_scope_privilege&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>sys_scope_privilege_86ca73048d744baeb377d39abd8b9e09</target_name>
@@ -1190,9 +1220,9 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
   &lt;/sys_scope_privilege&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>sys_scope_privilege_957dd0a5355f409084022a37f40c35ab</target_name>
@@ -1221,9 +1251,9 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
   &lt;/sys_scope_privilege&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>sys_scope_privilege_9bee1d780be04e5790100aedb520cf64</target_name>
@@ -1252,9 +1282,9 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
   &lt;/sys_scope_privilege&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>sys_scope_privilege_9f92dc99a2cc467792837aaa2eda7685</target_name>
@@ -1283,9 +1313,9 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
   &lt;/sys_scope_privilege&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>sys_scope_privilege_e27d95e53c7447b29ab1fb9f94284418</target_name>
@@ -1314,9 +1344,9 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
   &lt;/sys_scope_privilege&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>sys_scope_privilege_e5de9fae882e41f4ae5e5936a6141657</target_name>
@@ -1427,9 +1457,9 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     &lt;when&gt;after&lt;/when&gt;
   &lt;/sys_script&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>Docsera Workspace Member Mutation Command Worker</target_name>
@@ -1495,9 +1525,9 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     &lt;when&gt;async_always&lt;/when&gt;
   &lt;/sys_script&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>Docsera Workspace Provision Request Worker</target_name>
@@ -1737,9 +1767,9 @@ DocseraGlobalWorkspaceMembershipBridge.prototype = {
 ]]&gt;&lt;/script&gt;
   &lt;/sys_script_include&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>DocseraGlobalWorkspaceMembershipBridge</target_name>
@@ -2199,9 +2229,9 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
 ]]&gt;&lt;/script&gt;
   &lt;/sys_script_include&gt;
 &lt;/record_update&gt;</payload>
-    <remote_update_set>cbb4d31e2a5358f32458ac92ba22a522</remote_update_set>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
     <replace_on_upgrade>false</replace_on_upgrade>
-    <source>docsera-global-workspace-provisioning-worker-queue-companion</source>
+    <source>docsera-global-companion</source>
     <sys_created_by>codex</sys_created_by>
     <sys_updated_by>codex</sys_updated_by>
     <target_name>DocseraGlobalWorkspaceProvisioningBridge</target_name>
@@ -2209,5 +2239,230 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
     <type>sys_script_include</type>
     <update_guid>c98eecc308f5216cb0ebca4f53b0ddec</update_guid>
     <update_guid_history>c3c37fe7d77e51e5366e1bb36abc306d</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>47beb3487c2eced1a5625553bfe8d5f3</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_security_acl_879785c448564188a54416cb90d18c14</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_security_acl&quot;&gt;
+  &lt;sys_security_acl action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;879785c448564188a54416cb90d18c14&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_security_acl_879785c448564188a54416cb90d18c14&lt;/sys_update_name&gt;
+    &lt;active&gt;true&lt;/active&gt;
+    &lt;admin_overrides&gt;true&lt;/admin_overrides&gt;
+    &lt;advanced&gt;true&lt;/advanced&gt;
+    &lt;applies_to/&gt;
+    &lt;condition/&gt;
+    &lt;decision_type&gt;allow&lt;/decision_type&gt;
+    &lt;description&gt;Allow authenticated ServiceNow users to read the Docsera Global friendly URL host.&lt;/description&gt;
+    &lt;local_or_existing&gt;Local&lt;/local_or_existing&gt;
+    &lt;name&gt;docsera&lt;/name&gt;
+    &lt;operation&gt;read&lt;/operation&gt;
+    &lt;script&gt;&lt;![CDATA[answer = gs.isLoggedIn();]]&gt;&lt;/script&gt;
+    &lt;security_attribute/&gt;
+    &lt;type&gt;ui_page&lt;/type&gt;
+  &lt;/sys_security_acl&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>docsera</target_name>
+    <target_sys_id>879785c448564188a54416cb90d18c14</target_sys_id>
+    <type>sys_security_acl</type>
+    <update_guid>8b2bc30d22baefc4fd017c26b99f041a</update_guid>
+    <update_guid_history>41970bfdadfaa20f350665b9596b167e</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>ff8d639a140abac569f13f335792a2b4</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_ui_page_de3b81474ba94c0a9296d12f9c6bd9cc</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_ui_page&quot;&gt;
+  &lt;sys_ui_page action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;de3b81474ba94c0a9296d12f9c6bd9cc&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_ui_page_de3b81474ba94c0a9296d12f9c6bd9cc&lt;/sys_update_name&gt;
+    &lt;name&gt;docsera&lt;/name&gt;
+    &lt;endpoint/&gt;
+    &lt;description&gt;Docsera production friendly URL host for the installed scoped runtime.&lt;/description&gt;
+    &lt;direct&gt;true&lt;/direct&gt;
+    &lt;category&gt;general&lt;/category&gt;
+    &lt;html&gt;&lt;![CDATA[
+&lt;!-- @fluent-import-html WARNING: This file was imported from the output of a static build. Modifications of any kind are likely to result in unintended behavior. In most cases, you should edit the source file of the HTML imported below. If you are absolutely certain you want to take control of this HTML, you can remove this comment to prevent the SDK from regenerating it. However, you will then be responsible for the management of this HTML in your Fluent file. --&gt;
+&lt;html lang=&quot;en&quot;&gt;
+  &lt;head&gt;
+    &lt;meta charset=&quot;utf-8&quot;&gt;&lt;/meta&gt;
+    &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;&lt;/meta&gt;
+    &lt;title&gt;Docsera&lt;/title&gt;
+    &lt;!-- @sdk:now-ux-globals --&gt;
+    &lt;!-- Resolved from sdk:now-ux-globals tag at NowSDK build time to support earlier Glide releases --&gt;
+    &lt;script&gt;window.NOW = {};
+window.NOW.user = {};
+window.NOW.batch_glide_ajax_requests = false;
+window.NOW.isUsingPolaris = true;
+window.NOW.exclude_dark_theme = &quot;false&quot;;
+window.g_ck = &quot;$[gs.getSession().getSessionToken() || gs.getSessionToken()]&quot;;&lt;/script&gt;
+    &lt;!-- Include ServiceNow&apos;s required scripts --&gt;
+    &lt;g:requires name=&quot;scripts/doctype/functions_bootstrap14.js&quot;&gt;&lt;/g:requires&gt;
+    &lt;g:requires name=&quot;scripts/lib/prototype.js&quot;&gt;&lt;/g:requires&gt;
+    &lt;g:requires name=&quot;scripts/classes/ajax/GlideURL.js&quot;&gt;&lt;/g:requires&gt;
+    &lt;g:requires name=&quot;scripts/doctype/CustomEventManager.js&quot;&gt;&lt;/g:requires&gt;
+    &lt;g:requires name=&quot;scripts/classes/ajax/GlideAjax.js&quot;&gt;&lt;/g:requires&gt;
+    &lt;g:requires name=&quot;scripts/classes/GlideUser.js&quot;&gt;&lt;/g:requires&gt;
+    &lt;g2:client_script type=&quot;user&quot;&gt;&lt;/g2:client_script&gt;
+    &lt;link rel=&quot;preload&quot; href=&quot;/uxasset/set-cache-buster/$[UxFrameworkScriptables.getFlushTimestamp()].js&quot; as=&quot;script&quot;&gt;&lt;/link&gt;
+    &lt;g:requires name=&quot;scripts/polaris_theme_refresh_observer.js&quot;&gt;&lt;/g:requires&gt;
+    &lt;link data-source-id=&quot;glide-theme&quot; id=&quot;polarisberg_theme_variables&quot; rel=&quot;stylesheet&quot; href=&quot;/$uxappimmutables.do?sysparm_request_type=ux_theme$[AMP]sysparm_app_sys_id=c86a62e2c7022010099a308dc7c26022$[AMP]uxpcb=$[sn_ui.PolarisUI.getThemeVariableCssCacheKey()]&quot;&gt;&lt;/link&gt;
+    &lt;script type=&quot;module&quot; src=&quot;/uxasset/externals/@devsnc/library-uxf/index.jsdbx&quot;&gt;&lt;/script&gt;
+    &lt;!-- @sdk:now-ux-globals --&gt;
+    &lt;script&gt;window.DOCSERA_RUNTIME_CONFIG = {
+      backendPingPath: &quot;/api/x_82900_docsera/docsera_runtime/ping&quot;,
+      pageCollectionPath: &quot;/api/x_82900_docsera/docsera_runtime/pages&quot;,
+      workspaceCollectionPath: &quot;/api/x_82900_docsera/docsera_runtime/workspaces&quot;,
+      workspaceProvisioningStatusPath: &quot;/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status&quot;
+    };&lt;/script&gt;
+    &lt;script src=&quot;/uxasset/externals/global/docsera-friendly-url-proof.jsdbx?uxpcb=$[UxFrameworkScriptables.getFlushTimestamp()]&quot; type=&quot;module&quot;&gt;&lt;/script&gt;
+  &lt;/head&gt;
+  &lt;body&gt;
+    &lt;div id=&quot;docsera-root&quot;&gt;&lt;/div&gt;
+  &lt;/body&gt;
+&lt;/html&gt;]]&gt;&lt;/html&gt;
+  &lt;/sys_ui_page&gt;
+  &lt;sn_glider_source_artifact_m2m action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;960753b5fc02488881af288ac6a8c24f&lt;/sys_id&gt;
+    &lt;application_file&gt;de3b81474ba94c0a9296d12f9c6bd9cc&lt;/application_file&gt;
+    &lt;source_artifact&gt;97384beb48c7467b9d0c93f66c0f2d83&lt;/source_artifact&gt;
+  &lt;/sn_glider_source_artifact_m2m&gt;
+  &lt;sn_glider_source_artifact action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;97384beb48c7467b9d0c93f66c0f2d83&lt;/sys_id&gt;
+    &lt;name&gt;docsera.do - BYOUI Files&lt;/name&gt;
+  &lt;/sn_glider_source_artifact&gt;
+  &lt;sys_attachment action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;0d00845fc93fa395860d7fe58742f2d2&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;table_sys_id&gt;97384beb48c7467b9d0c93f66c0f2d83&lt;/table_sys_id&gt;
+    &lt;table_name&gt;sn_glider_source_artifact&lt;/table_name&gt;
+    &lt;file_name&gt;docsera.do - BYOUI Files.zip&lt;/file_name&gt;
+    &lt;content_type&gt;application/zip&lt;/content_type&gt;
+    &lt;size_bytes&gt;911&lt;/size_bytes&gt;
+    &lt;size_compressed&gt;850&lt;/size_compressed&gt;
+    &lt;compressed&gt;true&lt;/compressed&gt;
+    &lt;chunk_size_bytes&gt;933336&lt;/chunk_size_bytes&gt;
+    &lt;hash&gt;f5b2fdd5c9ef150d8a29f0371af32fa622428e35b8453271be01c783a4c7089b&lt;/hash&gt;
+    &lt;average_image_color/&gt;
+    &lt;image_width/&gt;
+    &lt;image_height/&gt;
+  &lt;/sys_attachment&gt;
+  &lt;sys_attachment_doc action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;b8dd109f4ef2809490d9d3853304088d&lt;/sys_id&gt;
+    &lt;sys_attachment&gt;0d00845fc93fa395860d7fe58742f2d2&lt;/sys_attachment&gt;
+    &lt;position&gt;0&lt;/position&gt;
+    &lt;data&gt;UEsDBBQAAAAIAAAAIQQpICJNZwEAANYCAAAqAAAAc3JjL2NsaWVudC9kb2NzZXJhLWZyaWVuZGx5LXVybC1wcm9vZi5odG1snZLBTuMwEIbvfYqRz7hm98SySaRVYVccFirYPUeuPW1GdezInjRUiHfHSVvgwAVO9sz883nkf4qGWwdO+00p0ItqVjSobTUDKFpkDabRMSGXoue1vBCg3kpet1iKHeHQhcgCTPCMPksHstyUFndkUE7BGZAnJu1kMtph+e0EYmKH1VUwCaMu1CEcC8luL30YZP8oNy6stEtVoT5ITloTqePxCjCQt2GYX90tHq7vf9X3/2//3fy9rhd3t79v/kAJT5MKYKXNFr1dkt8sNTeXIJTuSD3WF99/nJ/X9jCROp517D1Ti6rLenF2ZHR6g4vgHBqm4D+FyZ3plTOEuE2dNl+EvbZ/QFzGsKOUgXnuB9bcpy+RZfeOI9MEEtNbzz9HB9SbBUc3IEVTivkJKdeR8ne7veyjG2lhPeckgPdd3qE22N6hGB0+cgp1WMNiFex+wlraAdlSnIAZwWNHzo/ygy635XWuZi9QSwMEFAAAAAgAAAAhBKViXhiZAAAAuQAAACgAAABzcmMvY2xpZW50L2RvY3NlcmEtZnJpZW5kbHktdXJsLXByb29mLnRzbc5LDoIwEADQPadojAsgkRJXGkJ0xc6Nn5UxpLQTrPaXzhR7fD2AJ3hPeofEUPoA6pwcaQsnr5IB1heMrXjKAhGIQyaIThjkedxt9207Ki8RouBWaNe8UE35kHKQU7++3/IQhYWPj++LjDqQmAxgMwMNJuHz+kOQhA1l9Vh1RbF4rZi2wUcqec2OiybY6Nn5CKzm/3JVV3wBUEsBAhQAFAAAAAgAAAAhBCkgIk1nAQAA1gIAACoAAAAAAAAAAAAAAAAAAAAAAHNyYy9jbGllbnQvZG9jc2VyYS1mcmllbmRseS11cmwtcHJvb2YuaHRtbFBLAQIUABQAAAAIAAAAIQSlYl4YmQAAALkAAAAoAAAAAAAAAAAAAAAAAK8BAABzcmMvY2xpZW50L2RvY3NlcmEtZnJpZW5kbHktdXJsLXByb29mLnRzUEsFBgAAAAACAAIArgAAAI4CAAAAAA==&lt;/data&gt;
+  &lt;/sys_attachment_doc&gt;
+  &lt;sys_attachment action=&quot;delete_multiple&quot; query=&quot;table_sys_id=97384beb48c7467b9d0c93f66c0f2d83^sys_idNOT IN0d00845fc93fa395860d7fe58742f2d2&quot;/&gt;
+  &lt;sys_attachment_doc action=&quot;delete_multiple&quot; query=&quot;sys_attachment.table_sys_id=97384beb48c7467b9d0c93f66c0f2d83^sys_idNOT INb8dd109f4ef2809490d9d3853304088d&quot;/&gt;
+  &lt;sn_glider_source_artifact_m2m action=&quot;delete_multiple&quot; query=&quot;source_artifact=97384beb48c7467b9d0c93f66c0f2d83^sys_idNOT IN960753b5fc02488881af288ac6a8c24f,d4b68208d7494aedabda32ae9cc5c214,377308e9610d4a5485845827fe52145a&quot;/&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>docsera</target_name>
+    <target_sys_id>de3b81474ba94c0a9296d12f9c6bd9cc</target_sys_id>
+    <type>sys_ui_page</type>
+    <update_guid>7bf5c4fe02720d5d14df07f3f3e19bfa</update_guid>
+    <update_guid_history>dc0b37f7ade0f8444631f21a3ca02176</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>3850da3597a6ca317261eb76f41dd8b4</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_ux_lib_asset_271d5363931d4b57ac26212e883ed1ab</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update&gt;
+  &lt;sys_ux_lib_asset action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;271d5363931d4b57ac26212e883ed1ab&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_ux_lib_asset_271d5363931d4b57ac26212e883ed1ab&lt;/sys_update_name&gt;
+    &lt;category&gt;component&lt;/category&gt;
+    &lt;checksum&gt;489c32d628c6f4e83d77ff6a08fbb969&lt;/checksum&gt;
+    &lt;content&gt;&lt;![CDATA[/*__ESM_BODY_START__*/window.process={};import(&quot;/uxasset/externals/x_82900_docsera/main.jsdbx?uxpcb=$[UxFrameworkScriptables.getFlushTimestamp()]&quot;);
+//# sourceMappingURL=docsera-friendly-url-proof.js.map.jsdbx
+]]&gt;&lt;/content&gt;
+    &lt;engine&gt;21&lt;/engine&gt;
+    &lt;es_module&gt;true&lt;/es_module&gt;
+    &lt;is_attachment&gt;false&lt;/is_attachment&gt;
+    &lt;mime_type&gt;application/javascript&lt;/mime_type&gt;
+    &lt;name&gt;global/docsera-friendly-url-proof&lt;/name&gt;
+    &lt;sys_package&gt;global&lt;/sys_package&gt;
+  &lt;/sys_ux_lib_asset&gt;
+  &lt;sn_glider_source_artifact_m2m action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;d4b68208d7494aedabda32ae9cc5c214&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sn_glider_source_artifact_m2m_d4b68208d7494aedabda32ae9cc5c214&lt;/sys_update_name&gt;
+    &lt;application_file&gt;271d5363931d4b57ac26212e883ed1ab&lt;/application_file&gt;
+    &lt;source_artifact&gt;97384beb48c7467b9d0c93f66c0f2d83&lt;/source_artifact&gt;
+  &lt;/sn_glider_source_artifact_m2m&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>global/docsera-friendly-url-proof</target_name>
+    <target_sys_id>271d5363931d4b57ac26212e883ed1ab</target_sys_id>
+    <type>sys_ux_lib_asset</type>
+    <update_guid>f45dbfe6c17fb557fa35b11c10759f0b</update_guid>
+    <update_guid_history>08f38bcac26b5c96fb6aa3064bfdeaf7</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>5a386e587267047adb2cb2e9fb5d6eb5</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_ux_lib_asset_8e4cefdd7fdd40f493c43fd2630de2c8</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update&gt;
+  &lt;sys_ux_lib_asset action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;8e4cefdd7fdd40f493c43fd2630de2c8&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_ux_lib_asset_8e4cefdd7fdd40f493c43fd2630de2c8&lt;/sys_update_name&gt;
+    &lt;category&gt;source_map&lt;/category&gt;
+    &lt;checksum&gt;0df6d46fac961e719ba2f3c3985d8ac4&lt;/checksum&gt;
+    &lt;content&gt;&lt;![CDATA[{&quot;version&quot;:3,&quot;file&quot;:&quot;docsera-friendly-url-proof.jsdbx&quot;,&quot;sources&quot;:[&quot;../../src/client/docsera-friendly-url-proof.ts&quot;],&quot;sourcesContent&quot;:[&quot;const scopedRuntimeModule =\n  \&quot;/uxasset/externals/x_82900_docsera/main.jsdbx?uxpcb=$[UxFrameworkScriptables.getFlushTimestamp()]\&quot;;\n\nvoid import(/* @vite-ignore */ scopedRuntimeModule);\n&quot;],&quot;names&quot;:[],&quot;mappings&quot;:&quot;wCAGK,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAFH,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA&quot;}]]&gt;&lt;/content&gt;
+    &lt;es_module&gt;false&lt;/es_module&gt;
+    &lt;is_attachment&gt;false&lt;/is_attachment&gt;
+    &lt;mime_type&gt;application/json&lt;/mime_type&gt;
+    &lt;name&gt;global/docsera-friendly-url-proof.js.map&lt;/name&gt;
+    &lt;sys_package&gt;global&lt;/sys_package&gt;
+  &lt;/sys_ux_lib_asset&gt;
+  &lt;sn_glider_source_artifact_m2m action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;377308e9610d4a5485845827fe52145a&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sn_glider_source_artifact_m2m_377308e9610d4a5485845827fe52145a&lt;/sys_update_name&gt;
+    &lt;application_file&gt;8e4cefdd7fdd40f493c43fd2630de2c8&lt;/application_file&gt;
+    &lt;source_artifact&gt;97384beb48c7467b9d0c93f66c0f2d83&lt;/source_artifact&gt;
+  &lt;/sn_glider_source_artifact_m2m&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>9ba0df893a5160bb44e3b129e6080e04</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>global/docsera-friendly-url-proof.js.map</target_name>
+    <target_sys_id>8e4cefdd7fdd40f493c43fd2630de2c8</target_sys_id>
+    <type>sys_ux_lib_asset</type>
+    <update_guid>34ef2510221beea9c563f9c244482e67</update_guid>
+    <update_guid_history>8623996dc98a22db3a3f378cba5b6bb7</update_guid_history>
   </sys_update_xml>
 </unload>

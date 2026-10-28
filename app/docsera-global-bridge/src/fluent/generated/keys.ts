@@ -9,6 +9,10 @@ declare global {
                         table: 'sys_module'
                         id: 'd9b48b4fd7c4406583535934478c82db'
                     }
+                    'docsera-friendly-url-proof-page-read': {
+                        table: 'sys_security_acl'
+                        id: '879785c448564188a54416cb90d18c14'
+                    }
                     'docsera-global-workspace-membership-bridge': {
                         table: 'sys_script_include'
                         id: '5bf5c028daaa417d88de36616e4c8300'
@@ -82,6 +86,74 @@ declare global {
                         id: 'dffea7d69a244e5ebc8cb193a29c5e92'
                     }
                 }
+                composite: [
+                    {
+                        table: 'sys_security_acl_role'
+                        id: '1416f98418e24c18af184b0300f7793c'
+                        deleted: true
+                        key: {
+                            sys_security_acl: '879785c448564188a54416cb90d18c14'
+                            sys_user_role: {
+                                id: '5783d8fea6d44949aaeb308b197412c2'
+                                key: {
+                                    name: 'x_82900_docsera.editor'
+                                }
+                            }
+                        }
+                    },
+                    {
+                        table: 'sys_ux_lib_asset'
+                        id: '271d5363931d4b57ac26212e883ed1ab'
+                        key: {
+                            name: 'global/docsera-friendly-url-proof'
+                        }
+                    },
+                    {
+                        table: 'sn_glider_source_artifact_m2m'
+                        id: '377308e9610d4a5485845827fe52145a'
+                        key: {
+                            application_file: '8e4cefdd7fdd40f493c43fd2630de2c8'
+                            source_artifact: '97384beb48c7467b9d0c93f66c0f2d83'
+                        }
+                    },
+                    {
+                        table: 'sys_ux_lib_asset'
+                        id: '8e4cefdd7fdd40f493c43fd2630de2c8'
+                        key: {
+                            name: 'global/docsera-friendly-url-proof.js.map'
+                        }
+                    },
+                    {
+                        table: 'sn_glider_source_artifact_m2m'
+                        id: '960753b5fc02488881af288ac6a8c24f'
+                        key: {
+                            application_file: 'de3b81474ba94c0a9296d12f9c6bd9cc'
+                            source_artifact: '97384beb48c7467b9d0c93f66c0f2d83'
+                        }
+                    },
+                    {
+                        table: 'sn_glider_source_artifact'
+                        id: '97384beb48c7467b9d0c93f66c0f2d83'
+                        key: {
+                            name: 'docsera.do - BYOUI Files'
+                        }
+                    },
+                    {
+                        table: 'sn_glider_source_artifact_m2m'
+                        id: 'd4b68208d7494aedabda32ae9cc5c214'
+                        key: {
+                            application_file: '271d5363931d4b57ac26212e883ed1ab'
+                            source_artifact: '97384beb48c7467b9d0c93f66c0f2d83'
+                        }
+                    },
+                    {
+                        table: 'sys_ui_page'
+                        id: 'de3b81474ba94c0a9296d12f9c6bd9cc'
+                        key: {
+                            name: 'docsera'
+                        }
+                    },
+                ]
             }
         }
     }

@@ -10,9 +10,12 @@
   "scripts": {
     "build": "now-sdk build",
     "generate:update-set": "node ./scripts/generate-update-set-artifact.mjs",
+    "preflight:friendly-url-host": "node ./scripts/preflight-friendly-url-host.mjs",
+    "test:friendly-url-host": "node --test ./scripts/friendly-url-host-preflight-contract.test.mjs ./scripts/package-contents.test.mjs",
     "install:sdk": "now-sdk install",
     "types:sdk": "now-sdk dependencies",
     "verify:sdk": "node ./scripts/verify-global-bridge.mjs",
+    "verify:friendly-url-host": "node ./scripts/verify-friendly-url-host-artifact.mjs",
     "validate": "npm run build"
   },
   "devDependencies": {

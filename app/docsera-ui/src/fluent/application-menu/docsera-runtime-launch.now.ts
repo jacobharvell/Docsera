@@ -17,7 +17,7 @@ Record({
     title: "My Workspaces",
     application: docseraApplicationMenu,
     link_type: "DIRECT",
-    query: "x_82900_docsera_docsera_sdk_runtime.do",
+    query: "docsera.do",
     hint: "Open Docsera My Workspaces",
     active: true,
     order: 100
