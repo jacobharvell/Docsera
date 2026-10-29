@@ -28,6 +28,21 @@ function getMenuItemNames(container: HTMLElement): string[] {
     .map((item) => item.getAttribute("aria-label") ?? item.textContent?.trim() ?? "");
 }
 
+function setViewportWidth(width: number) {
+  const descriptor = Object.getOwnPropertyDescriptor(window, "innerWidth");
+  Object.defineProperty(window, "innerWidth", { configurable: true, value: width });
+  window.dispatchEvent(new Event("resize"));
+
+  return () => {
+    if (descriptor) {
+      Object.defineProperty(window, "innerWidth", descriptor);
+    } else {
+      Reflect.deleteProperty(window, "innerWidth");
+    }
+    window.dispatchEvent(new Event("resize"));
+  };
+}
+
 function getSelectedBlockElement(editor: Editor): HTMLElement | null {
   const selectedBlock = editor.view.dom.querySelector("[data-docsera-block-selected='true']");
   return selectedBlock instanceof HTMLElement ? selectedBlock : null;
@@ -973,7 +988,7 @@ describe("PageEditorHostRuntime accordion corrections", () => {
     expect(secondAddIcon).toHaveAttribute("width", "14");
     expect(secondAddIcon).toHaveAttribute("height", "14");
     expect(secondMenu).toHaveAttribute("hidden");
-    const secondDeleteItem = secondMenu.querySelector<HTMLElement>('[role="menuitem"]');
+    const secondDeleteItem = secondMenu.querySelector<HTMLElement>('[role="menuitem"][aria-label="Delete item"]');
     if (!(secondDeleteItem instanceof HTMLElement)) {
       throw new Error("Expected the hidden delete menu item.");
     }
@@ -988,6 +1003,127 @@ describe("PageEditorHostRuntime accordion corrections", () => {
     expect(secondDeleteIcon.querySelector("svg")).toHaveAttribute("width", "15");
     expect(secondDeleteIcon.querySelector("svg")).toHaveAttribute("height", "15");
     expect(secondDeleteLabel).toHaveTextContent("Delete item");
+
+    const desktopMenuAdd = secondMenu.querySelector<HTMLElement>('[role="menuitem"][aria-label="Add item"]');
+    if (!(desktopMenuAdd instanceof HTMLElement)) {
+      throw new Error("Expected the desktop accordion add menu item.");
+    }
+    expect(desktopMenuAdd).toHaveAttribute("hidden");
+    expect(getComputedStyle(desktopMenuAdd).display).toBe("none");
+  });
+
+  it("moves compact final-item insertion into the menu without changing the desktop lane contract", async () => {
+    const restoreViewport = setViewportWidth(920);
+    try {
+      const initial = createAccordionDocument();
+      const { editorReady, onSaveDraft } = renderRuntime({ initialEnvelope: createEnvelopeFromDocument(initial) });
+      await waitFor(() => expect(editorReady[0]).toBeDefined());
+
+      const editor = editorReady[0];
+      const firstItem = getAccordionItemElement(editor, "accordion-item-overview");
+      const finalItem = getAccordionItemElement(editor, "accordion-item-plan");
+      if (!(firstItem instanceof HTMLElement) || !(finalItem instanceof HTMLElement)) {
+        throw new Error("Expected compact accordion items.");
+      }
+
+      const finalLane = finalItem.querySelector<HTMLElement>('[data-docsera-accordion-control="add-lane"]');
+      const finalAdd = finalItem.querySelector<HTMLButtonElement>('[data-docsera-accordion-control="add"]');
+      const finalMenuButton = finalItem.querySelector<HTMLButtonElement>('[data-docsera-accordion-control="menu"]');
+      const firstMenuButton = firstItem.querySelector<HTMLButtonElement>('[data-docsera-accordion-control="menu"]');
+      if (!(finalLane instanceof HTMLElement) || !(finalAdd instanceof HTMLButtonElement) || !(finalMenuButton instanceof HTMLButtonElement) || !(firstMenuButton instanceof HTMLButtonElement)) {
+        throw new Error("Expected compact accordion controls.");
+      }
+      expect(finalLane).not.toHaveAttribute("hidden");
+      expect(finalAdd).not.toHaveAttribute("hidden");
+
+      const compactFirstMenuAdd = firstItem.querySelector<HTMLElement>('[role="menuitem"][aria-label="Add item"]');
+      const compactFinalMenuAdd = finalItem.querySelector<HTMLElement>('[role="menuitem"][aria-label="Add item"]');
+      if (!(compactFirstMenuAdd instanceof HTMLElement) || !(compactFinalMenuAdd instanceof HTMLElement)) {
+        throw new Error("Expected both compact accordion add menu items.");
+      }
+      expect(compactFirstMenuAdd).toHaveAttribute("hidden");
+      expect(getComputedStyle(compactFirstMenuAdd).display).toBe("none");
+      expect(compactFinalMenuAdd).not.toHaveAttribute("hidden");
+      expect(getComputedStyle(compactFinalMenuAdd).display).toBe("flex");
+
+      fireEvent.click(firstMenuButton);
+      const firstMenu = await screen.findByRole("menu", { name: "Accordion item actions: Overview" });
+      expect(getMenuItemNames(firstMenu)).toEqual(["Delete item"]);
+      fireEvent.keyDown(firstMenuButton, { key: "Escape" });
+
+      fireEvent.click(finalMenuButton);
+      const menu = await screen.findByRole("menu", { name: "Accordion item actions: Plan" });
+      expect(getMenuItemNames(menu)).toEqual(["Add item", "Delete item"]);
+      const menuAdd = within(menu).getByRole("menuitem", { name: "Add item" });
+      expect(menuAdd).toHaveClass("docsera-block-menu__item", "docsera-editor-accordion__add-item");
+      expect(menuAdd.querySelector(".docsera-block-menu__icon svg")).toHaveAttribute("width", "14");
+      expect(document.activeElement).toBe(menuAdd);
+
+      fireEvent.keyDown(menuAdd, { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("menu", { name: "Accordion item actions: Plan" })).toBeNull());
+      expect(document.activeElement).toBe(finalMenuButton);
+
+      fireEvent.click(finalMenuButton);
+      fireEvent.click(await screen.findByRole("menuitem", { name: "Add item" }));
+      await waitFor(() => expect(editor.getJSON().content?.[0]?.content).toHaveLength(3));
+      const addedItem = (editor.getJSON().content?.[0]?.content ?? [])[2] as JSONContent;
+      const addedItemId = (addedItem.attrs as { accordionItemId?: string }).accordionItemId ?? "";
+      expect(addedItemId).toMatch(/^accordion-item-/);
+      expect(getAccordionOpenItemId(editor.state, "accordion-actions")).toBe(addedItemId);
+      expect(editor.state.selection.$from.parent.type.name).toBe("accordionTitle");
+      expect(editor.view.hasFocus()).toBe(true);
+
+      await runAutosave();
+      await waitFor(() => expect(onSaveDraft).toHaveBeenCalledTimes(1));
+      await act(async () => { editor.commands.undo(); });
+      await waitFor(() => expect(editor.getJSON()).toEqual(initial));
+      await act(async () => { editor.commands.redo(); });
+      await waitFor(() => expect(editor.getJSON().content?.[0]?.content).toHaveLength(3));
+    } finally {
+      restoreViewport();
+    }
+  });
+
+  it("keeps compact single-item Add item available while Delete item remains disabled", async () => {
+    const restoreViewport = setViewportWidth(920);
+    try {
+      const { editorReady } = renderRuntime({ initialEnvelope: createEnvelopeFromDocument(createSingleItemAccordionDocument()) });
+      await waitFor(() => expect(editorReady[0]).toBeDefined());
+
+      const editor = editorReady[0];
+      const item = getAccordionItemElement(editor, "accordion-item-overview");
+      const menuButton = item?.querySelector<HTMLButtonElement>('[data-docsera-accordion-control="menu"]');
+      if (!(menuButton instanceof HTMLButtonElement)) {
+        throw new Error("Expected the single accordion item menu control.");
+      }
+
+      fireEvent.click(menuButton);
+      const menu = await screen.findByRole("menu", { name: "Accordion item actions: Overview" });
+      expect(getMenuItemNames(menu)).toEqual(["Add item", "Delete item"]);
+      expect(document.activeElement).toBe(within(menu).getByRole("menuitem", { name: "Add item" }));
+      expect(within(menu).getByRole("menuitem", { name: "Delete item" })).toBeDisabled();
+
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: 921 });
+      window.dispatchEvent(new Event("resize"));
+      await waitFor(() => expect(screen.queryByRole("menu", { name: "Accordion item actions: Overview" })).toBeNull());
+      expect(document.activeElement).toBe(menuButton);
+    } finally {
+      restoreViewport();
+    }
+  });
+
+  it("keeps the 920px compact rule scoped to the external accordion add affordance", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/PageEditorHostRuntime.tsx`,
+      "utf8"
+    );
+
+    expect(source).toMatch(/\.docsera-editor-accordion__control--add \{\s*right:\s*-2\.25rem;/s);
+    expect(source).toMatch(/@media \(max-width:\s*920px\) \{\s*\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__add-lane,\s*\.docsera-editor-runtime__surface \.ProseMirror \.docsera-editor-accordion__control--add \{\s*display:\s*none;/s);
   });
 
   it("keeps the item menu hidden until opened, closes it again, and still deletes accordion items while keeping the last item protected", async () => {

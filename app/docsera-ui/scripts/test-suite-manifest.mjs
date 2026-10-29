@@ -107,6 +107,7 @@ export const testSuites = [
     name: "editor-image",
     description: "focused image editor runtime behavior: picker, hover, preview, options, resize, upload, session lifecycle, and stylesheet contracts.",
     files: [
+      "src/client/shared/media/ImageFullscreenViewer.test.tsx",
       "src/client/editor/PageEditorHostRuntime.imageControls.test.tsx",
       "src/client/editor/PageEditorHostRuntime.imageMedia.test.tsx"
     ]
@@ -221,6 +222,7 @@ export const testSuites = [
       "src/client/main.test.ts",
       "src/client/runtimeLaunch.test.ts",
       "src/client/shared/icons/DocseraIcon.test.tsx",
+      "src/client/shared/tooltip/DocseraTooltip.test.tsx",
       "src/server/api/docsera-runtime-ping.test.ts",
       "src/server/scheduled-scripts/docsera-workspace-icon-cleanup.test.ts",
       "src/server/workspaces/serverWorkspaceIconImage.test.ts",

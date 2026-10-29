@@ -1314,6 +1314,78 @@ describe("App workspace shell integration", () => {
     expect(document.querySelector(".docsera-header")).toBe(header);
   });
 
+  it("paints the compact cached-launcher pending state before revealing My Workspaces after workspace navigation", async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn((query: string) => ({
+        matches: query === "(max-width: 920px)",
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn()
+      }))
+    });
+
+    try {
+      renderApp("/?workspace=product-docs&page=overview", {
+        listWorkspaces: vi.fn(async () => ({
+          canCreateWorkspaces: true,
+          items: [createWorkspace()],
+          page: 1,
+          pageSize: 10,
+          totalCount: 1,
+          hasNextPage: false,
+          searchText: ""
+        }))
+      });
+
+      expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+      await waitFor(
+        () => expect(document.querySelector("[data-docsera-content-reveal='live']")).toHaveAttribute("data-docsera-content-reveal-state", "idle"),
+        { timeout: 1000 }
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "My Workspaces" }));
+
+      const launcherContent = document.querySelector(".docsera-launcher__content-reveal");
+      expect(launcherContent).toHaveAttribute("data-docsera-launcher-reveal-state", "pending");
+      expect(launcherContent).toHaveAttribute("data-docsera-launcher-reveal-pending", "true");
+      await waitFor(() => expect(launcherContent).toHaveAttribute("data-docsera-launcher-reveal-state", "enter"));
+      expect(launcherContent).not.toHaveAttribute("data-docsera-launcher-reveal-pending");
+    } finally {
+      Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+    }
+  });
+
+  it("shows compact cached My Workspaces immediately when reduced motion is requested", async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn((query: string) => ({
+        matches: query === "(max-width: 920px)" || query === "(prefers-reduced-motion: reduce)",
+        media: query,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn()
+      }))
+    });
+
+    try {
+      renderApp("/?workspace=product-docs&page=overview");
+      expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: /Workspace switcher: Product Docs/i }));
+      fireEvent.click(await screen.findByRole("menuitem", { name: "My Workspaces" }));
+
+      expect(await screen.findByRole("heading", { name: "My Workspaces" })).toBeInTheDocument();
+      const launcherContent = document.querySelector(".docsera-launcher__content-reveal");
+      expect(launcherContent).toHaveAttribute("data-docsera-launcher-reveal-state", "idle");
+      expect(launcherContent).not.toHaveAttribute("data-docsera-launcher-reveal-pending");
+    } finally {
+      Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+    }
+  });
+
   it("reveals an initially loaded empty workspace once", async () => {
     const listPages = vi.fn(async ({ mode, workspaceSlug }: { mode?: WorkspaceMode; workspaceSlug: string }) =>
       createPageListResult(mode === "edit" ? "edit" : "live", workspaceSlug, [])

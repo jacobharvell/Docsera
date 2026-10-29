@@ -48,9 +48,11 @@ export function useContentRevealState<TSurface>(
   const previousWorkspaceIdentityRef = useRef(workspaceIdentity);
   const pendingSurfaceRef = useRef<TSurface | null>(revealIntent?.destination ?? null);
   const [state, setState] = useState<ContentRevealState>("idle");
+  const stateRef = useRef<ContentRevealState>(state);
+  stateRef.current = state;
 
   useLayoutEffect(() => {
-    const enterPendingSurface = () => {
+    const enterPendingSurface = (paintPendingStateFirst = false) => {
       if (prefersReducedMotion) {
         pendingSurfaceRef.current = null;
         setState("idle");
@@ -62,12 +64,29 @@ export function useContentRevealState<TSurface>(
         return undefined;
       }
 
-      pendingSurfaceRef.current = null;
-      setState("enter");
+      let timeout: number | undefined;
+      const enter = () => {
+        pendingSurfaceRef.current = null;
+        setState("enter");
+        timeout = window.setTimeout(() => setState("idle"), DOCSERA_CONTENT_REVEAL_DURATION_MS);
+      };
 
-      const timeout = window.setTimeout(() => setState("idle"), DOCSERA_CONTENT_REVEAL_DURATION_MS);
+      if (stateRef.current === "pending" || !paintPendingStateFirst) {
+        enter();
+        return () => {
+          if (timeout !== undefined) {
+            window.clearTimeout(timeout);
+          }
+        };
+      }
+
+      setState("pending");
+      const frame = window.requestAnimationFrame(enter);
       return () => {
-        window.clearTimeout(timeout);
+        window.cancelAnimationFrame(frame);
+        if (timeout !== undefined) {
+          window.clearTimeout(timeout);
+        }
       };
     };
 
@@ -80,7 +99,7 @@ export function useContentRevealState<TSurface>(
         setState(pendingSurfaceRef.current === surface ? "pending" : "idle");
         return undefined;
       }
-      return enterPendingSurface();
+      return enterPendingSurface(true);
     }
 
     const revealIntentKey = revealIntent?.key ?? 0;

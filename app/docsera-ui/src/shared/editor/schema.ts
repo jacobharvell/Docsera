@@ -628,6 +628,9 @@ function createDocseraAccordionExtensions(taskItemProgress: TaskItemProgressOpti
           const ellipsisButton = document.createElement("button");
           const addButton = document.createElement("button");
           const menu = document.createElement("div");
+          const menuAddButton = document.createElement("button");
+          const menuAddIcon = document.createElement("span");
+          const menuAddLabel = document.createElement("span");
           const menuDeleteButton = document.createElement("button");
           const menuDeleteIcon = document.createElement("span");
           const menuDeleteLabel = document.createElement("span");
@@ -636,6 +639,7 @@ function createDocseraAccordionExtensions(taskItemProgress: TaskItemProgressOpti
           let menuOpen = false;
           let documentPointerDownListener: ((event: PointerEvent) => void) | null = null;
           let documentKeyDownListener: ((event: KeyboardEvent) => void) | null = null;
+          let windowResizeListener: (() => void) | null = null;
 
           itemRoot.className = "docsera-editor-accordion__item";
           itemRoot.setAttribute("data-docsera-accordion-item", "true");
@@ -662,6 +666,16 @@ function createDocseraAccordionExtensions(taskItemProgress: TaskItemProgressOpti
           menu.hidden = true;
           menu.setAttribute("contenteditable", "false");
           menu.setAttribute("role", "menu");
+          menuAddButton.type = "button";
+          menuAddButton.className = "docsera-block-menu__item docsera-editor-accordion__add-item";
+          menuAddButton.setAttribute("role", "menuitem");
+          menuAddButton.setAttribute("aria-label", "Add item");
+          menuAddIcon.className = "docsera-block-menu__icon";
+          menuAddIcon.setAttribute("aria-hidden", "true");
+          menuAddIcon.append(createAccordionPlusIcon());
+          menuAddLabel.className = "docsera-block-menu__label";
+          menuAddLabel.textContent = "Add item";
+          menuAddButton.append(menuAddIcon, menuAddLabel);
           menuDeleteButton.type = "button";
           menuDeleteButton.className =
             "docsera-block-menu__item docsera-block-menu__item--destructive docsera-editor-accordion__delete-item";
@@ -676,7 +690,7 @@ function createDocseraAccordionExtensions(taskItemProgress: TaskItemProgressOpti
           contentDOM.className = "docsera-editor-accordion__item-content";
 
           controlsLayer.append(toggleButton, addInteractionLane, ellipsisButton, addButton);
-          menu.append(menuDeleteButton);
+          menu.append(menuAddButton, menuDeleteButton);
           itemRoot.append(controlsLayer, contentDOM, menu);
           contentDOM.setAttribute("data-docsera-accordion-item-content", "true");
 
@@ -749,6 +763,33 @@ function createDocseraAccordionExtensions(taskItemProgress: TaskItemProgressOpti
             }
           }
 
+          function isCompactViewport() {
+            return (itemRoot.ownerDocument.defaultView?.innerWidth ?? Number.POSITIVE_INFINITY) <= 920;
+          }
+
+          function addItem(context = resolveItemContext()) {
+            if (!context) {
+              return;
+            }
+
+            const newItem = createAccordionItemNode(editor.schema);
+            const insertPos = context.position + context.itemNode.nodeSize;
+            let transaction = editor.state.tr
+              .insert(insertPos, newItem)
+              .setMeta(DOCSERA_ACCORDION_DISCLOSURE_PLUGIN_KEY, {
+                accordionId: context.accordionId,
+                itemId: newItem.attrs.accordionItemId
+              });
+            try {
+              transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(insertPos + 2), 1));
+            } catch {
+              // The insertion still succeeded; selection will remain where the editor can place it safely.
+            }
+
+            editor.view.dispatch(transaction);
+            editor.view.focus();
+          }
+
           function updateControls() {
             const context = resolveItemContext();
             if (!context) {
@@ -783,6 +824,7 @@ function createDocseraAccordionExtensions(taskItemProgress: TaskItemProgressOpti
             addButton.hidden = !isLastItem;
             menu.setAttribute("aria-label", `Accordion item actions${titleLabel}`);
             menu.hidden = !menuOpen;
+            menuAddButton.hidden = !(isLastItem && isCompactViewport());
             menuDeleteButton.disabled = itemCount <= 1;
           }
 
@@ -842,7 +884,7 @@ function createDocseraAccordionExtensions(taskItemProgress: TaskItemProgressOpti
             menuOpen = true;
             attachMenuDismissListeners();
             updateControls();
-            menuDeleteButton.focus();
+            (menuAddButton.hidden ? menuDeleteButton : menuAddButton).focus();
           }
 
           function closeMenu(returnFocus = false) {
@@ -870,6 +912,24 @@ function createDocseraAccordionExtensions(taskItemProgress: TaskItemProgressOpti
           menuDeleteButton.addEventListener("mousedown", (event) => {
             event.preventDefault();
           });
+          menuAddButton.addEventListener("mousedown", (event) => {
+            event.preventDefault();
+          });
+
+          const ownerWindow = itemRoot.ownerDocument.defaultView;
+          if (ownerWindow) {
+            windowResizeListener = () => {
+              updateControls();
+              if (menuOpen && menuAddButton.hidden) {
+                if (menuDeleteButton.disabled) {
+                  closeMenu(true);
+                } else {
+                  menuDeleteButton.focus();
+                }
+              }
+            };
+            ownerWindow.addEventListener("resize", windowResizeListener);
+          }
 
           itemRoot.addEventListener("focusin", () => {
             itemRoot.setAttribute("data-docsera-accordion-item-affordances-visible", "true");
@@ -916,27 +976,17 @@ function createDocseraAccordionExtensions(taskItemProgress: TaskItemProgressOpti
           });
 
           addButton.addEventListener("click", () => {
+            addItem();
+          });
+
+          menuAddButton.addEventListener("click", () => {
             const context = resolveItemContext();
             if (!context) {
               return;
             }
 
-            const newItem = createAccordionItemNode(editor.schema);
-            const insertPos = context.position + context.itemNode.nodeSize;
-            let transaction = editor.state.tr
-              .insert(insertPos, newItem)
-              .setMeta(DOCSERA_ACCORDION_DISCLOSURE_PLUGIN_KEY, {
-                accordionId: context.accordionId,
-                itemId: newItem.attrs.accordionItemId
-              });
-            try {
-              transaction = transaction.setSelection(Selection.near(transaction.doc.resolve(insertPos + 2), 1));
-            } catch {
-              // The insertion still succeeded; selection will remain where the editor can place it safely.
-            }
-
-            editor.view.dispatch(transaction);
-            editor.view.focus();
+            closeMenu();
+            addItem(context);
           });
 
           menuDeleteButton.addEventListener("click", () => {
@@ -971,6 +1021,10 @@ function createDocseraAccordionExtensions(taskItemProgress: TaskItemProgressOpti
             destroy() {
               destroyed = true;
               closeMenu();
+              if (windowResizeListener) {
+                itemRoot.ownerDocument.defaultView?.removeEventListener("resize", windowResizeListener);
+                windowResizeListener = null;
+              }
             },
             ignoreMutation(mutation) {
               const target = mutation.target as globalThis.Node;

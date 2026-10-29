@@ -6,6 +6,18 @@ Status: implementation note
 
 My Workspaces is the launcher surface for Docsera authors and admins.
 
+## Compact presentation
+
+At viewport widths of 920px and below, the launcher keeps the existing behavior and authorization model while changing only its presentation:
+
+- the shared launcher header remains one constant-height row with Docsera identity and switcher at left, a full-height divider, and theme/account controls at right;
+- the page introduction stacks its authorized New Workspace action below the title and description at full content width;
+- the list card keeps search directly above rows, removes the visible desktop column-heading row, and hides role labels while retaining the existing role semantics in row markup; at 680px and below the stacked search control uses its intrinsic height and the full toolbar width;
+- workspace identity text truncates to one line, optional descriptions remain omitted when absent, Settings stays right-aligned only for authorized rows, rows without Settings give the full compact grid width to identity, and every row keeps a consistent minimum height;
+- the pagination summary precedes a full-width two-column Previous/Next action row.
+
+The expanded presentation above 920px remains unchanged. The existing 680px refinement reduces page and row padding without changing the compact header, row, or pagination arrangement.
+
 This note summarizes repo-side implementation behavior only. Accepted product requirements live in the Obsidian vault; see `docs/process/Requirements Source Map.md`.
 
 ## Page Behavior

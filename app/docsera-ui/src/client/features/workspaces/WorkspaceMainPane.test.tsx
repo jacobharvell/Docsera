@@ -179,8 +179,10 @@ describe("empty workspace session recovery", () => {
   it("preserves normal empty views without a conflict", () => {
     const view = render(<WorkspaceMainPane {...createEmptyWorkspaceProps({ workspaceMode: "live" })} />);
     expect(screen.getByText("No published pages")).toBeInTheDocument();
+    expect(document.querySelector(".docsera-main__surface--empty")).not.toHaveClass("docsera-main__surface--document");
     view.rerender(<WorkspaceMainPane {...createEmptyWorkspaceProps()} />);
     expect(screen.getByText("No pages yet")).toBeInTheDocument();
+    expect(document.querySelector(".docsera-main__surface--empty")).not.toHaveClass("docsera-main__surface--document");
     expect(screen.getByRole("button", { name: "New page" })).toBeInTheDocument();
   });
 });
@@ -1377,7 +1379,7 @@ describe("WorkspaceMainPane", () => {
     });
     const revealSurface = document.querySelector("[data-docsera-content-reveal='visual']");
     expect(revealSurface).toHaveAttribute("data-docsera-content-reveal-state", "idle");
-    expect(revealSurface).toHaveClass("docsera-main__surface");
+    expect(revealSurface).toHaveClass("docsera-main__surface", "docsera-main__surface--document", "docsera-main__surface--editor");
 
     restoreMotion();
   });

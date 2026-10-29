@@ -37,6 +37,56 @@ describe("DocseraHeader publishing changes", () => {
     vi.restoreAllMocks();
   });
 
+  it("reserves an inert launcher chevron while recent workspaces are loading, then enables the existing switcher without changing its structure", () => {
+    const launcherProps = {
+      ...baseProps,
+      identity: { kind: "docsera" as const, icon: { type: "builtin" as const, key: "docsera-workspace", label: "Docsera" }, name: "Docsera" },
+      mode: "launcher" as const,
+      showEditModeToggle: false,
+      showWorkspaceSwitcher: false,
+      workspaceSwitcherLoading: true
+    };
+    const { container, rerender } = render(<DocseraHeader {...launcherProps} />);
+
+    const button = screen.getByRole("button", { name: "Docsera" });
+    expect(button).toBeDisabled();
+    expect(button.querySelector(".docsera-header__workspace-chevron")).toBeInTheDocument();
+    expect(container.querySelector(".docsera-header__workspace")).toContainElement(button);
+
+    rerender(
+      <DocseraHeader
+        {...launcherProps}
+        recentWorkspaces={[{ icon: { type: "builtin", key: "docs", label: "Docs" }, name: "Docs", slug: "docs" }]}
+        showWorkspaceSwitcher
+        workspaceSwitcherLoading={false}
+      />
+    );
+
+    const enabledButton = screen.getByRole("button", { name: "Workspace switcher: Docsera" });
+    expect(enabledButton).toBeEnabled();
+    expect(enabledButton.querySelector(".docsera-header__workspace-chevron")).toBeInTheDocument();
+    expect(container.querySelectorAll(".docsera-header__workspace-chevron")).toHaveLength(1);
+  });
+
+  it("keeps the launcher chevron reserved but inert when recent workspaces resolve empty", () => {
+    const { container } = render(
+      <DocseraHeader
+        {...baseProps}
+        identity={{ kind: "docsera", icon: { type: "builtin", key: "docsera-workspace", label: "Docsera" }, name: "Docsera" }}
+        mode="launcher"
+        showEditModeToggle={false}
+        showWorkspaceSwitcher={false}
+        workspaceSwitcherLoading={false}
+      />
+    );
+
+    const button = screen.getByRole("button", { name: "Docsera" });
+    expect(button).toBeDisabled();
+    expect(button).not.toHaveAttribute("aria-haspopup");
+    expect(button.querySelector(".docsera-header__workspace-chevron")).toBeInTheDocument();
+    expect(container.querySelector(".docsera-header__workspace-panel")).toBeInTheDocument();
+  });
+
   it("keeps breadcrumbs unanimated even while content regions reveal", () => {
     render(
       <DocseraHeader

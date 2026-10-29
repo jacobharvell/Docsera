@@ -1,7 +1,7 @@
 import { useDropdownExitPresence } from "./useDropdownExitPresence";
 import { createPortal } from "react-dom";
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
-import { Code2, Eye } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type RefObject } from "react";
+import { Code2, Eye, MoreHorizontal } from "lucide-react";
 import type { PingResult, WorkspaceMode, WorkspacePendingChangesResult, WorkspaceViewRecord } from "../../shared/types/docsera";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
@@ -23,6 +23,10 @@ import type { ContentRevealState } from "./contentReveal";
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function firstDisplayNamePart(value: string): string {
+  return cleanText(value).split(/\s+/u)[0] ?? "";
 }
 
 type CurrentPageSaveStatus = "Unsaved" | "Saving…" | "Saved" | "Changes not saved";
@@ -59,6 +63,9 @@ type DocseraHeaderProps = {
   onReleaseWorkspaceSettingsPreviewObjectUrl?: (objectUrl: string) => void;
   onSelectBreadcrumb?: (pageId: string) => void;
   onToggleSidebar?: () => void;
+  onToggleCompactNavigation?: () => void;
+  compactNavigationTriggerRef?: RefObject<HTMLButtonElement>;
+  compactNavigationOpen?: boolean;
   recentWorkspaces: RecentWorkspaceItem[];
   pendingChanges?: WorkspacePendingChangesResult | null;
   pendingChangesLoading?: boolean;
@@ -95,6 +102,7 @@ type DocseraHeaderProps = {
   onAuthoringSurfaceChange?: (surface: WorkspaceAuthoringSurface) => void;
   onWorkspaceModeChange?: (mode: WorkspaceMode) => void;
   showWorkspaceSwitcher?: boolean;
+  workspaceSwitcherLoading?: boolean;
   showMyWorkspacesFooter?: boolean;
   showWorkspaceSettings?: boolean;
   workspaceControlsLocked?: boolean;
@@ -119,6 +127,28 @@ function getCurrentUserInitials(currentUser: Pick<PingResult, "userDisplayName" 
     .filter(Boolean);
   const initials = words.length > 1 ? `${words[0]![0]}${words[words.length - 1]![0]}` : words[0]!.slice(0, 2);
   return initials.toUpperCase();
+}
+
+function useCompactWorkspaceLayout(): boolean {
+  const [compact, setCompact] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return false;
+    }
+
+    return Boolean(window.matchMedia("(max-width: 920px)")?.matches);
+  });
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(max-width: 920px)");
+    if (!query) return;
+    const update = () => setCompact(query.matches);
+    update();
+    if (typeof query.addEventListener === "function") {
+      query.addEventListener("change", update);
+      return () => query.removeEventListener("change", update);
+    }
+  }, []);
+  return compact;
 }
 
 function navigateToNativeLogout(): void {
@@ -302,6 +332,32 @@ function HeaderIdentityIcon({
   );
 }
 
+export function CompactWorkspaceSwitcher({ identity, currentWorkspaceSlug, recentWorkspaces, showWorkspaceSwitcher, showMyWorkspacesFooter, loadUploadedIcon, onReleaseWorkspaceSettingsPreviewObjectUrl, onOpenMyWorkspaces, onOpenWorkspace, onComplete }: {
+  identity: HeaderIdentity; currentWorkspaceSlug?: string; recentWorkspaces: RecentWorkspaceItem[]; showWorkspaceSwitcher: boolean; showMyWorkspacesFooter: boolean; loadUploadedIcon?: WorkspaceUploadedIconLoader; onReleaseWorkspaceSettingsPreviewObjectUrl?: (objectUrl: string) => void; onOpenMyWorkspaces: () => void; onOpenWorkspace: (workspaceSlug: string) => void; onComplete: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const presence = useDropdownExitPresence(open ? true : null);
+  useEffect(() => {
+    if (!open) return;
+    const closeIfOutside = (event: PointerEvent) => { if (!ref.current?.contains(event.target as Node)) setOpen(false); };
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    document.addEventListener("pointerdown", closeIfOutside, true);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => { document.removeEventListener("pointerdown", closeIfOutside, true); document.removeEventListener("keydown", closeOnEscape); };
+  }, [open]);
+  const canSwitch = showWorkspaceSwitcher;
+  const label = identity.kind === "workspace-loading" ? "Workspace switcher loading" : `Workspace switcher: ${identity.name}`;
+  return <div className="docsera-compact-workspace-switcher" ref={ref}>
+    <button type="button" className="docsera-header__workspace-button" aria-label={label} aria-expanded={canSwitch ? open : undefined} aria-haspopup={canSwitch ? "menu" : undefined} disabled={!canSwitch} onClick={() => canSwitch && setOpen((current) => !current)}>
+      <HeaderIdentityIcon identity={identity} loadUploadedIcon={loadUploadedIcon} onReleaseWorkspaceSettingsPreviewObjectUrl={onReleaseWorkspaceSettingsPreviewObjectUrl} />
+      <span className="docsera-header__workspace-copy"><span className="docsera-header__workspace-name">{identity.kind === "workspace-loading" ? "Loading workspace" : identity.name}</span></span>
+      {canSwitch ? <DoubleChevronIcon /> : null}
+    </button>
+    {presence.item ? <RecentWorkspacesMenu open={presence.open} currentWorkspaceSlug={currentWorkspaceSlug} items={recentWorkspaces} loadUploadedIcon={loadUploadedIcon} showMyWorkspacesFooter={showMyWorkspacesFooter} onOpenMyWorkspaces={() => { setOpen(false); onComplete(); onOpenMyWorkspaces(); }} onOpenWorkspace={(workspaceSlug) => { setOpen(false); onComplete(); onOpenWorkspace(workspaceSlug); }} /> : null}
+  </div>;
+}
+
 export function DocseraHeader({
   breadcrumbs = [],
   currentWorkspaceSlug = "",
@@ -319,6 +375,9 @@ export function DocseraHeader({
   onDiscardAllPendingChanges,
   onSelectBreadcrumb,
   onToggleSidebar,
+  onToggleCompactNavigation,
+  compactNavigationTriggerRef,
+  compactNavigationOpen = false,
   onRetryPendingChanges,
   onRetryCurrentPageSave,
   pendingChanges = null,
@@ -351,6 +410,7 @@ export function DocseraHeader({
   onAuthoringSurfaceChange,
   onWorkspaceModeChange,
   showWorkspaceSwitcher = recentWorkspaces.length > 0,
+  workspaceSwitcherLoading = false,
   showMyWorkspacesFooter = true,
   showWorkspaceSettings = false,
   workspaceControlsLocked = false,
@@ -363,6 +423,8 @@ export function DocseraHeader({
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [changesOpen, setChangesOpen] = useState(false);
+  const [compactMoreOpen, setCompactMoreOpen] = useState(false);
+  const compactLayout = useCompactWorkspaceLayout();
   const workspacePresence = useDropdownExitPresence(workspaceMenuOpen ? true : null);
   const accountPresence = useDropdownExitPresence(accountMenuOpen ? true : null);
   const changesPresence = useDropdownExitPresence(changesOpen ? true : null);
@@ -373,6 +435,8 @@ export function DocseraHeader({
   const workspaceMenuRef = useRef<HTMLDivElement>(null);
   const accountMenuRef = useRef<HTMLDivElement>(null);
   const accountTriggerRef = useRef<HTMLButtonElement>(null);
+  const compactMoreRef = useRef<HTMLDivElement>(null);
+  const compactMoreTriggerRef = useRef<HTMLButtonElement>(null);
   const publishPanelRef = useRef<HTMLDivElement>(null);
   const changesCenterRef = useRef<HTMLElement>(null);
   const publishButtonRef = useRef<HTMLButtonElement>(null);
@@ -382,6 +446,9 @@ export function DocseraHeader({
   const discardModalOriginRef = useRef<HTMLElement | null>(null);
   const discardModalReturnFocusRef = useRef(false);
   const canSwitchWorkspaces = showWorkspaceSwitcher;
+  // The launcher always reserves its switcher affordance.  Recent-workspace
+  // availability resolves asynchronously, but that must not move its divider.
+  const showWorkspaceSwitcherChevron = mode === "launcher" || canSwitchWorkspaces || workspaceSwitcherLoading;
   const workspaceButtonLabel =
     identity.kind === "workspace-loading"
       ? canSwitchWorkspaces
@@ -691,7 +758,28 @@ export function DocseraHeader({
     setDiscardPageTarget(null);
   }, [discardPageTarget, pendingChangesDiscardPageErrorMessage, pendingChangesDiscardPagePending, pendingRows]);
 
-  const headerClassName = `docsera-header${mode === "launcher" ? " docsera-header--launcher" : ""}${mode === "workspace" && showWorkspaceMode === "live" ? " docsera-header--live" : ""}${mode === "workspace" && sidebarCollapsed ? " docsera-header--sidebar-collapsed" : ""}`;
+  useEffect(() => {
+    if (!compactLayout) {
+      setCompactMoreOpen(false);
+    }
+  }, [compactLayout]);
+
+  useEffect(() => {
+    if (!compactMoreOpen) return;
+    const dismiss = (restoreFocus: boolean) => {
+      setCompactMoreOpen(false);
+      if (restoreFocus) compactMoreTriggerRef.current?.focus();
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (!compactMoreRef.current?.contains(event.target as Node)) dismiss(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") dismiss(true); };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown);
+    return () => { document.removeEventListener("pointerdown", onPointerDown, true); document.removeEventListener("keydown", onKeyDown); };
+  }, [compactMoreOpen]);
+
+  const headerClassName = `docsera-header${mode === "launcher" ? " docsera-header--launcher" : ""}${mode === "workspace" && showWorkspaceMode === "live" ? " docsera-header--live" : ""}${mode === "workspace" && sidebarCollapsed ? " docsera-header--sidebar-collapsed" : ""}${compactLayout && mode === "workspace" ? " docsera-header--compact" : ""}`;
 
   return (
     <header
@@ -734,7 +822,7 @@ export function DocseraHeader({
                   </span>
                 )}
               </div>
-              {canSwitchWorkspaces ? <DoubleChevronIcon /> : null}
+              {showWorkspaceSwitcherChevron ? <DoubleChevronIcon /> : null}
             </button>
 
             {workspacePresence.item ? (
@@ -761,14 +849,14 @@ export function DocseraHeader({
       <div className="docsera-header__bar">
         <div className="docsera-header__leading">
           {mode === "workspace" && onToggleSidebar ? (
-            <DocseraCompactTooltip label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}>
-              <button
+            <DocseraCompactTooltip label={compactLayout ? (compactNavigationOpen ? "Close navigation" : "Open navigation") : sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}>
+              <button ref={compactNavigationTriggerRef}
                 type="button"
                 className="docsera-header__ghost-button docsera-header__ghost-button--sidebar-toggle"
-                onClick={onToggleSidebar}
-                aria-label={sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
+                onClick={compactLayout ? onToggleCompactNavigation : onToggleSidebar}
+                aria-label={compactLayout ? (compactNavigationOpen ? "Close navigation" : "Open navigation") : sidebarCollapsed ? "Expand navigation" : "Collapse navigation"}
               >
-                <SidebarToggleIcon collapsed={sidebarCollapsed} />
+                <SidebarToggleIcon collapsed={compactLayout ? !compactNavigationOpen : sidebarCollapsed} />
               </button>
             </DocseraCompactTooltip>
           ) : null}
@@ -1173,6 +1261,37 @@ export function DocseraHeader({
               </div>
             ) : null}
           </div>
+          {compactLayout && showPublishControl ? (
+            <div className="docsera-header__compact-more" ref={compactMoreRef}>
+              <button ref={compactMoreTriggerRef} type="button" className="docsera-header__ghost-button" aria-label={compactMoreOpen ? "Close more menu" : "More actions"} aria-expanded={compactMoreOpen} aria-haspopup="menu" onClick={() => setCompactMoreOpen((open) => !open)}>
+                <MoreHorizontal aria-hidden="true" size={20} />
+              </button>
+              {compactMoreOpen ? (
+                <div className="docsera-header__compact-more-menu" role="menu" aria-label="More actions">
+                  <>
+                      <div className="docsera-header__compact-more-controls">
+                        {showAuthoringSurfaceToggleControl ? (
+                          <div className={`docsera-header__surface-toggle docsera-header__surface-toggle--${authoringSurface}`} role="group" aria-label="Authoring surface">
+                            <span className="docsera-header__segmented-indicator" aria-hidden="true" />
+                            <button type="button" className={`docsera-header__surface-segment${authoringSurface === "visual" ? " docsera-header__surface-segment--active" : ""}`} aria-label="Visual" aria-pressed={authoringSurface === "visual"} disabled={authoringSurfaceLocked} onClick={() => authoringSurfaceChange?.("visual")}><Eye aria-hidden="true" size={20} /></button>
+                            <button type="button" className={`docsera-header__surface-segment${authoringSurface === "markdown" ? " docsera-header__surface-segment--active" : ""}`} aria-label="Markdown Source" aria-pressed={authoringSurface === "markdown"} disabled={authoringSurfaceLocked} onClick={() => authoringSurfaceChange?.("markdown")}><Code2 aria-hidden="true" size={20} /></button>
+                          </div>
+                        ) : null}
+                        <button type="button" className="docsera-header__ghost-button" aria-label="Toggle theme" onClick={onToggleTheme}>{theme === "dark" ? <SunIcon /> : <MoonIcon />}</button>
+                        {showWorkspaceSettings && onOpenWorkspaceSettings ? <button type="button" className="docsera-header__ghost-button" aria-label="Workspace settings" disabled={workspaceControlsLocked} onClick={() => { onOpenWorkspaceSettings(); setCompactMoreOpen(false); }}><GearIcon /></button> : null}
+                      </div>
+                      <div className="docsera-header__compact-account">
+                        <span className={`docsera-header__profile${currentUserAvailable ? "" : " docsera-header__profile--placeholder"}${showCurrentUserAvatar ? " docsera-header__profile--avatar" : ""}`} aria-hidden="true">
+                          {showCurrentUserAvatar ? <img className="docsera-header__profile-avatar" src={currentUserAvatarPath} alt="" onError={() => setFailedProfileAvatarPath(currentUserAvatarPath)} /> : currentUserInitials || <span className="docsera-header__profile-placeholder-dot" />}
+                        </span>
+                        <div className="docsera-account-menu__identity" role="presentation"><strong title={currentUserDisplayName || undefined}>{firstDisplayNamePart(currentUserDisplayName) || currentUserName || "Current user"}</strong><span>{currentUserName || "Loading session"}</span></div>
+                      </div>
+                      <button type="button" className="docsera-account-menu__item" role="menuitem" onClick={navigateToNativeLogout}>Sign out</button>
+                  </>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       </div>
       {typeof document !== "undefined"

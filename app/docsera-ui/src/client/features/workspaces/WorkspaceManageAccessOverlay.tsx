@@ -480,12 +480,12 @@ export function WorkspaceManageAccessOverlay({
                 <div className="docsera-manage-access__add-transfer">
                   <DocseraCompactTooltip label="Stage selected users">
                     <button type="button" className="docsera-modal__secondary docsera-manage-access__move-button" aria-label="Stage selected users" disabled={selectedUserIds.size === 0 || Boolean(mutatingUserSysId)} onClick={stageSelectedUsers}>
-                      <DocseraIcon icon={docseraIcons.chevronRight} />
+                      <span className="docsera-manage-access__move-icon"><DocseraIcon icon={docseraIcons.chevronRight} /></span>
                     </button>
                   </DocseraCompactTooltip>
                   <DocseraCompactTooltip label="Remove selected staged members">
                     <button type="button" className="docsera-modal__secondary docsera-manage-access__move-button" aria-label="Remove selected staged members" disabled={selectedStagedUserIds.size === 0 || Boolean(mutatingUserSysId)} onClick={unstageSelectedUsers}>
-                      <DocseraIcon icon={docseraIcons.chevronLeft} />
+                      <span className="docsera-manage-access__move-icon"><DocseraIcon icon={docseraIcons.chevronLeft} /></span>
                     </button>
                   </DocseraCompactTooltip>
                 </div>

@@ -180,35 +180,36 @@ export function PageSettingsOverlay({
           </button>
         </DocseraCompactTooltip>
       </div>
-      <div className="docsera-page-settings__header-divider" aria-hidden="true" />
 
-      {renderSnapshot.noticeMessage ? (
-        <div className="docsera-page-settings__notice" role="status">
-          {renderSnapshot.noticeMessage}
+      <div className="docsera-page-settings__scroll-content">
+        {renderSnapshot.noticeMessage ? (
+          <div className="docsera-page-settings__notice" role="status">
+            {renderSnapshot.noticeMessage}
+          </div>
+        ) : null}
+
+        {renderSnapshot.generalError ? (
+          <div className="docsera-page-settings__error" role="alert">
+            {renderSnapshot.generalError}
+          </div>
+        ) : null}
+
+        <div className="docsera-page-settings__rows">
+          {renderField("title", "Title", renderSnapshot.pageTitle, renderSnapshot.titleError)}
+          {renderField("slug", "Slug", renderSnapshot.pageSlug, renderSnapshot.slugError)}
         </div>
-      ) : null}
 
-      {renderSnapshot.generalError ? (
-        <div className="docsera-page-settings__error" role="alert">
-          {renderSnapshot.generalError}
-        </div>
-      ) : null}
-
-      <div className="docsera-page-settings__rows">
-        {renderField("title", "Title", renderSnapshot.pageTitle, renderSnapshot.titleError)}
-        {renderField("slug", "Slug", renderSnapshot.pageSlug, renderSnapshot.slugError)}
+        <section className="docsera-page-settings__delete-section" aria-label="Delete page">
+          <div className="docsera-page-settings__section-divider" aria-hidden="true" />
+          <button type="button" className="docsera-destructive-action docsera-page-settings__destructive" onClick={onRequestDelete}>
+            <TrashIcon />
+            <span>Delete page</span>
+          </button>
+          <p className="docsera-page-settings__footer-helper">
+            Changes are saved automatically when you close this panel or click outside of it.
+          </p>
+        </section>
       </div>
-
-      <section className="docsera-page-settings__delete-section" aria-label="Delete page">
-        <div className="docsera-page-settings__section-divider" aria-hidden="true" />
-        <button type="button" className="docsera-destructive-action docsera-page-settings__destructive" onClick={onRequestDelete}>
-          <TrashIcon />
-          <span>Delete page</span>
-        </button>
-        <p className="docsera-page-settings__footer-helper">
-          Changes are saved automatically when you close this panel or click outside of it.
-        </p>
-      </section>
     </aside>
     </div>
   );

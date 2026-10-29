@@ -334,19 +334,26 @@ test("keeps published reader blocks on the same content lane as the visual edito
   const accordionRule = getRuleBody(runtimeCss, ".docsera-main__accordion");
 
   for (const [label, body] of [
-    ["reader", readerRule],
     ["paragraph", paragraphRule],
     ["h1", h1Rule],
     ["h2", h2Rule],
-    ["h3", h3Rule],
+    ["h3", h3Rule]
+  ] as const) {
+    expect(body, label).not.toContain("max-width:");
+  }
+
+  // Content surfaces may fill the editor-aligned lane, but none may introduce
+  // a narrower fixed width of their own.
+  for (const [label, body] of [
+    ["reader", readerRule],
     ["media", mediaRule],
     ["table wrapper", tableWrapperRule],
     ["columns", columnsRule],
     ["accordion", accordionRule]
   ] as const) {
-    expect(body, label).not.toContain("max-width:");
+    expect(body, label).toContain("max-width: 100%;");
+    expect(body, label).toContain("min-width: 0;");
   }
-
   expect(readerRule).not.toMatch(/(?:^|\n)\s*width:/);
   expect(paragraphRule).not.toMatch(/(?:^|\n)\s*width:/);
   expect(h1Rule).not.toMatch(/(?:^|\n)\s*width:/);
@@ -430,22 +437,22 @@ test("keeps the same main-surface anchor contract when the ToC auto-hides at the
   expect(responsive).not.toContain("margin: 0 auto;");
 });
 
-test("keeps Page Settings flex spacing and header divider alignment", () => {
+test("keeps Page Settings fixed and clipped while its content region owns scrolling", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
 
   expect(css).toMatch(
     /\.docsera-page-settings-shell\s*{[^}]*inset:\s*0 auto 0 var\(--docsera-workspace-nav-width\);[^}]*width:\s*min\(432px, calc\(100vw - var\(--docsera-workspace-nav-width\)\)\);[^}]*overflow:\s*clip;/s
   );
   expect(css).toMatch(
-    /\.docsera-page-settings\s*{[^}]*position:\s*absolute;[^}]*inset:\s*0 auto 0 0;[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*gap:\s*18px;[^}]*width:\s*100%;[^}]*overflow-x:\s*clip;[^}]*overflow-y:\s*auto;/s
+    /\.docsera-page-settings\s*{[^}]*position:\s*absolute;[^}]*inset:\s*0 auto 0 0;[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*width:\s*100%;[^}]*overflow:\s*clip;/s
   );
   expect(css).toMatch(
-    /\.docsera-page-settings__header\s*{[^}]*flex:\s*0 0 auto;[^}]*display:\s*flex;[^}]*align-items:\s*center;[^}]*height:\s*var\(--docsera-header-height\);[^}]*min-height:\s*var\(--docsera-header-height\);/s
+    /\.docsera-page-settings__scroll-content\s*{[^}]*flex:\s*1 1 auto;[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*gap:\s*18px;[^}]*overflow-x:\s*clip;[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;/s
   );
   expect(css).toMatch(
-    /\.docsera-page-settings__header-divider\s*{[^}]*height:\s*1px;[^}]*margin:\s*-19px -20px 0;[^}]*background:\s*var\(--docsera-border\);/s
+    /\.docsera-page-settings__header\s*{[^}]*box-sizing:\s*border-box;[^}]*height:\s*var\(--docsera-header-height\);[^}]*min-height:\s*var\(--docsera-header-height\);[^}]*padding:\s*0 20px;[^}]*border-bottom:\s*1px solid var\(--docsera-border\);/s
   );
-  expect(css).not.toMatch(/\.docsera-page-settings__header-divider\s*{[^}]*margin:\s*-18px -20px -1px;/s);
+  expect(css).not.toContain(".docsera-page-settings__header-divider");
   expect(css).toMatch(/\.docsera-page-settings__rows\s*{[^}]*display:\s*grid;[^}]*gap:\s*14px;[^}]*min-width:\s*0;/s);
 });
 
@@ -454,11 +461,22 @@ test("keeps Page Settings shell usable across the 920px responsive breakpoint", 
   const responsive920 = getCssSlice(css, "@media (max-width: 920px)", "@media (max-width: 680px)");
 
   expect(responsive920).toMatch(
-    /\.docsera-page-settings-shell\s*{[^}]*inset:\s*var\(--docsera-header-height\) auto 0 0;[^}]*width:\s*min\(456px, 100vw\);/s
+    /\.docsera-page-settings-shell\s*{[^}]*inset:\s*0 auto 0 0;[^}]*width:\s*min\(456px, 100vw\);/s
   );
   expect(responsive920).toMatch(/\.docsera-page-settings\s*{[^}]*inset:\s*0 auto 0 0;[^}]*width:\s*100%;/s);
   expect(responsive920).not.toMatch(
     /\.docsera-page-settings-shell\s*{[^}]*var\(--docsera-workspace-nav-width\)[^}]*calc\(100vw - var\(--docsera-workspace-nav-width\)\)/s
+  );
+});
+
+test("keeps workspace settings and manage access full viewport at the 920px breakpoint", () => {
+  const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
+  const responsive920 = getCssSlice(css, "@media (max-width: 920px)", "@media (max-width: 680px)");
+
+  expect(css).toMatch(/\.docsera-workspace-settings-overlay\s*{[^}]*position:\s*fixed;[^}]*inset:\s*0;/s);
+  expect(css).toMatch(/\.docsera-manage-access\s*{[^}]*inset:\s*0;[^}]*position:\s*fixed;/s);
+  expect(responsive920).not.toMatch(
+    /\.(?:docsera-workspace-settings-overlay|docsera-manage-access)\s*{[^}]*inset:\s*var\(--docsera-header-height\)/s
   );
 });
 
@@ -467,13 +485,9 @@ test("keeps settings and access panel header dividers aligned to the workspace h
 
   expect(css).toMatch(/\.docsera-header\s*{[^}]*min-height:\s*var\(--docsera-header-height\);[^}]*border-bottom:\s*1px solid var\(--docsera-border\);/s);
   expect(css).toMatch(
-    /\.docsera-page-settings__header\s*{[^}]*height:\s*var\(--docsera-header-height\);[^}]*min-height:\s*var\(--docsera-header-height\);/s
+    /\.docsera-page-settings__header\s*{[^}]*box-sizing:\s*border-box;[^}]*height:\s*var\(--docsera-header-height\);[^}]*min-height:\s*var\(--docsera-header-height\);[^}]*border-bottom:\s*1px solid var\(--docsera-border\);/s
   );
-  expect(css).toMatch(
-    /\.docsera-page-settings__header-divider\s*{[^}]*height:\s*1px;[^}]*margin:\s*-19px -20px 0;[^}]*background:\s*var\(--docsera-border\);/s
-  );
-  expect(css).not.toMatch(/\.docsera-page-settings__header-divider\s*{[^}]*margin:\s*-18px -20px -1px;/s);
-  expect(css).not.toMatch(/\.docsera-page-settings__header-divider\s*{[^}]*margin:\s*-18px -20px 0;/s);
+  expect(css).not.toContain(".docsera-page-settings__header-divider");
   expect(css).toMatch(
     /\.docsera-workspace-settings-overlay__header\s*{[^}]*box-sizing:\s*border-box;[^}]*height:\s*var\(--docsera-header-height\);[^}]*padding:\s*0 20px;[^}]*min-height:\s*var\(--docsera-header-height\);[^}]*border-bottom:\s*1px solid var\(--docsera-border\);/s
   );
@@ -562,7 +576,7 @@ test("animates workspace navigation collapse while keeping resize immediate and 
   expect(css).toMatch(/\.docsera-workspace__nav-frame\s*{[^}]*overflow:\s*visible;[^}]*transition:[^}]*border-color 200ms cubic-bezier\(0\.4, 0, 0\.2, 1\);/s);
   expect(css).not.toMatch(/\.docsera-workspace__nav-frame\s*{[^}]*transition:[^}]*opacity 200ms cubic-bezier\(0\.4, 0, 0\.2, 1\);/s);
   expect(css).toMatch(
-    /\.docsera-workspace--sidebar-collapsed \.docsera-workspace__nav-frame\s*{[^}]*border-right-color:\s*transparent;[^}]*pointer-events:\s*none;/s
+    /\.docsera-workspace--sidebar-collapsed \.docsera-workspace__nav-frame:not\(\[data-docsera-compact-navigation-open="true"\]\)\s*{[^}]*border-right-color:\s*transparent;[^}]*pointer-events:\s*none;/s
   );
   expect(css).not.toMatch(/\.docsera-workspace--sidebar-collapsed \.docsera-workspace__nav-frame\s*{[^}]*opacity:\s*0;/s);
   expect(css).not.toMatch(/\.docsera-workspace--sidebar-collapsed \.docsera-workspace__nav-frame\s*{[^}]*overflow:\s*hidden;/s);
@@ -572,17 +586,22 @@ test("animates workspace navigation collapse while keeping resize immediate and 
   expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.docsera-header,\s*\.docsera-workspace,\s*\.docsera-workspace__nav-frame,\s*\.docsera-main__surface,[\s\S]*?transition:\s*none;/s);
   expect(css).toMatch(/@media \(max-width: 1180px\)[\s\S]*?\.docsera-workspace--sidebar-collapsed\s*{\s*grid-template-columns:\s*0 minmax\(0, 1fr\);/s);
   expect(shellSource).toContain('"--docsera-workspace-content-nav-width": sidebarCollapsed ? "0px" : `${workspaceNavWidth}px`');
-  expect(shellSource).toContain("navFrame.inert = sidebarCollapsed;");
-  expect(shellSource).toContain('aria-hidden={sidebarCollapsed ? "true" : undefined}');
+  expect(shellSource).toContain("const navigationUnavailable = compactLayout ? !compactNavigationOpen : sidebarCollapsed;");
+  expect(shellSource).toContain("navFrame.inert = navigationUnavailable;");
+  expect(shellSource).toContain('aria-hidden={!compactNavigationVisible ? "true" : undefined}');
   expect(shellSource).not.toContain("{!sidebarCollapsed ? (");
 });
 
-test("keeps narrow workspace navigation in normal stacked flow", () => {
+test("keeps narrow workspace navigation in a fixed, independently sized compact drawer", () => {
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
 
   expect(css).toMatch(
-    /@media \(max-width: 920px\)[\s\S]*?\.docsera-workspace,\s*\.docsera-workspace--sidebar-collapsed\s*{[\s\S]*?grid-template-columns:\s*1fr;[\s\S]*?\.docsera-workspace__nav-resizer\s*{[\s\S]*?display:\s*none;[\s\S]*?\.docsera-workspace__nav-frame\s*{[\s\S]*?position:\s*relative;[\s\S]*?top:\s*auto;[\s\S]*?align-self:\s*stretch;[\s\S]*?height:\s*auto;[\s\S]*?border-right:\s*0;[\s\S]*?\.docsera-workspace--sidebar-collapsed \.docsera-workspace__nav-frame\s*{[\s\S]*?height:\s*0;/s
+    /@media \(max-width: 920px\)[\s\S]*?\.docsera-workspace,\s*\.docsera-workspace--sidebar-collapsed\s*{[\s\S]*?grid-template-columns:\s*1fr;[\s\S]*?\.docsera-workspace__nav-resizer\s*{[\s\S]*?display:\s*none;[\s\S]*?\.docsera-workspace__nav-scrim\s*{[\s\S]*?inset:\s*0;[\s\S]*?\.docsera-workspace__nav-frame\s*{[\s\S]*?position:\s*fixed;[\s\S]*?\.docsera-workspace__nav-clip\s*{\s*display:\s*flex;\s*flex-direction:\s*column;\s*min-height:\s*0;\s*}[\s\S]*?\.docsera-workspace__nav-frame \.docsera-sidebar\s*{[^}]*width:\s*100%;[^}]*min-height:\s*0;/s
   );
+  expect(css).toMatch(/\.docsera-workspace__nav-frame\s*{[^}]*position:\s*fixed;[^}]*inset:\s*0 auto 0 0;[^}]*width:\s*min\(360px, calc\(100vw - 36px\)\);[^}]*height:\s*100dvh;/s);
+  expect(css).toMatch(/\.docsera-workspace__compact-nav-header\s*{[^}]*min-height:\s*var\(--docsera-header-height\);[^}]*border-bottom:\s*1px solid var\(--docsera-border\);/s);
+  expect(css).toContain(".docsera-workspace__compact-nav-header > button");
+  expect(css).not.toContain(".docsera-workspace__compact-nav-header button {");
 });
 
 test("keeps the collapsed workspace ToC tab outside the outer aside clip boundary", () => {
@@ -605,7 +624,7 @@ test("keeps workspace mode controls in the right-side header cluster with matche
   const css = readFileSync("src/client/styles/runtime-shell.css", "utf8");
 
   expect(css).toMatch(/\.docsera-header__action-slot--mode\s*{[^}]*z-index:\s*1;[^}]*min-width:\s*0;/s);
-  expect(css).not.toMatch(/\.docsera-header__action-slot--mode\s*{[^}]*position:\s*absolute;/s);
+  expect(css).toMatch(/@media \(max-width: 920px\)[\s\S]*?\.docsera-header--compact \.docsera-header__action-slot--mode\s*{\s*position:\s*absolute;\s*left:\s*52px;\s*}/s);
   expect(css).not.toMatch(/\.docsera-header__action-slot--mode\s*{[^}]*transform:\s*translate\(-50%, -50%\);/s);
   expect(css).toMatch(/\.docsera-header__action-divider\s*{[^}]*width:\s*1px;[^}]*height:\s*26px;[^}]*background:\s*var\(--docsera-border\);/s);
   expect(css).toMatch(/\.docsera-header__action-divider--mode-surface\s*{[^}]*margin-inline:\s*-2px;/s);
@@ -613,6 +632,7 @@ test("keeps workspace mode controls in the right-side header cluster with matche
   expect(css).toMatch(/\.docsera-header--live \.docsera-header__actions::before,\s*\.docsera-header--launcher \.docsera-header__actions::before\s*{[^}]*background:\s*transparent;/s);
   expect(css).toMatch(/\.docsera-header__mode-toggle\s*{[^}]*height:\s*32px;[^}]*box-sizing:\s*border-box;/s);
   expect(css).toMatch(/\.docsera-header__surface-toggle\s*{[^}]*height:\s*32px;[^}]*box-sizing:\s*border-box;/s);
+  expect(css).toMatch(/@media \(max-width: 680px\)[\s\S]*?\.docsera-header--compact \.docsera-header__bar,[\s\S]*?\.docsera-header--compact \.docsera-header__actions\s*{\s*flex-wrap:\s*nowrap;/s);
   expect(css).toMatch(/\.docsera-header__mode-segment,\s*\.docsera-header__surface-segment\s*{[^}]*height:\s*100%;[^}]*box-sizing:\s*border-box;/s);
   expect(css).toMatch(/\.docsera-header__save-status\s*{[^}]*position:\s*relative;[^}]*width:\s*20px;[^}]*height:\s*20px;/s);
   expect(css).toContain(".docsera-header__save-status-sr-only {");
@@ -861,13 +881,13 @@ test("keeps manage access Add Members visual states on defined theme tokens", ()
 
   expect(css).toMatch(/\.docsera-modal__panel\s*{[^}]*width:\s*min\(100%, 448px\);/s);
   expect(css).toMatch(
-    /\.docsera-manage-access__add-panel\s*{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*width:\s*min\(960px, calc\(100vw - 48px\)\);[^}]*max-height:\s*min\(760px, calc\(100vh - 80px\)\);/s
+    /\.docsera-manage-access__add-panel\s*{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*width:\s*min\(960px, calc\(100vw - 48px\)\);[^}]*height:\s*min\(760px, calc\(100dvh - 48px\)\);[^}]*max-height:\s*calc\(100dvh - 48px\);/s
   );
   expect(css).toMatch(
     /\.docsera-manage-access__add-panel \.docsera-modal__header,\s*\.docsera-manage-access__add-panel \.docsera-modal__footer\s*{[^}]*flex:\s*0 0 auto;/s
   );
   expect(css).toMatch(
-    /\.docsera-manage-access__add-body\s*{[^}]*--docsera-manage-access-add-list-height:\s*clamp\(280px, 46vh, 420px\);[^}]*flex:\s*1 1 auto;[^}]*min-height:\s*0;[^}]*overflow:\s*auto;/s
+    /\.docsera-manage-access__add-body\s*{[^}]*--docsera-manage-access-add-list-height:\s*clamp\(160px, 46dvh, 420px\);[^}]*flex:\s*1 1 auto;[^}]*min-height:\s*0;[^}]*overflow:\s*auto;/s
   );
   expect(css).toMatch(
     /\.docsera-workspace-settings-overlay__title\s*{[^}]*color:\s*var\(--docsera-text\);[^}]*font-family:\s*Geist, Inter, "Segoe UI", sans-serif;[^}]*font-size:\s*1rem;[^}]*font-weight:\s*700;[^}]*line-height:\s*1\.25;/s

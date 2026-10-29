@@ -142,7 +142,7 @@ export function WorkspaceRow({
 }) {
   return (
     <li className="docsera-workspace-list__item">
-      <article className="docsera-workspace-row">
+      <article className={`docsera-workspace-row${workspace.canManageSettings ? " docsera-workspace-row--has-settings" : ""}`}>
         <div className="docsera-workspace-row__identity">
           <WorkspaceIconBadge workspace={workspace} className="docsera-workspace-row__icon" loadUploadedIcon={loadUploadedIcon} />
           <div className="docsera-workspace-row__copy">

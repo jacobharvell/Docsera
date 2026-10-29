@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react";
 import type { PageBodySaveResult, WorkspaceMode, WorkspaceViewRecord } from "../../shared/types/docsera";
 import type { PageEditorCanonicalHandoffResult, PageEditorHostFailure, PageEditorRecoverySnapshot } from "../../editor/PageEditorHost";
 import type { EditorMediaAdapter } from "../../editor/contracts";
@@ -6,6 +6,8 @@ import type { InlinePageCreateState } from "./PageTree";
 import { WorkspaceMainPane } from "./WorkspaceMainPane";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { WorkspaceToc } from "./WorkspaceToc";
+import { SidebarToggleIcon } from "./DocseraHeaderIcons";
+import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
 import type { WorkspacePageOutlineItem, WorkspacePageView } from "./workspaceViewModels";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
 import type { WorkspaceAuthoringSurface } from "./workspaceAuthoringSurface";
@@ -113,6 +115,12 @@ type WorkspaceShellProps = {
   showPendingState: boolean;
   workspaceNavWidth: number;
   onSidebarCollapsedChange: (collapsed: boolean) => void;
+  compactNavigationOpen?: boolean;
+  onCompactNavigationDismiss?: () => void;
+  onCompactPageSettingsOpenFromNavigation?: () => void;
+  compactNavigationTriggerRef?: RefObject<HTMLButtonElement>;
+  compactNavigationTitle?: string;
+  compactNavigationHeader?: ReactNode;
   onWorkspaceNavWidthChange: (width: number) => void;
   theme: "dark" | "light";
   treeFilter: string;
@@ -252,6 +260,12 @@ export function WorkspaceShell({
   showPendingState,
   workspaceNavWidth,
   onSidebarCollapsedChange,
+  compactNavigationOpen = false,
+  onCompactNavigationDismiss,
+  onCompactPageSettingsOpenFromNavigation,
+  compactNavigationTriggerRef,
+  compactNavigationTitle = "Workspace navigation",
+  compactNavigationHeader,
   onWorkspaceNavWidthChange,
   theme,
   treeFilter,
@@ -262,10 +276,12 @@ export function WorkspaceShell({
   contentRevealState = "idle",
   contentRevealIntent = null
 }: WorkspaceShellProps) {
+  const [compactLayout, setCompactLayout] = useState(() => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 920px)").matches);
   const [tocCollapsed, setTocCollapsed] = useState(() => readStoredWorkspaceTocCollapsedPreference(currentWorkspaceSlug) ?? false);
   const tocCollapsedHasUserPreferenceRef = useRef(readStoredWorkspaceTocCollapsedPreference(currentWorkspaceSlug) !== null);
   const resizeStateRef = useRef<{ active: boolean }>({ active: false });
   const navFrameRef = useRef<HTMLDivElement>(null);
+  const compactCloseButtonRef = useRef<HTMLButtonElement>(null);
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const shellStyle = {
     "--docsera-workspace-content-nav-width": sidebarCollapsed ? "0px" : `${workspaceNavWidth}px`,
@@ -273,6 +289,34 @@ export function WorkspaceShell({
     "--docsera-workspace-nav-track-width": sidebarCollapsed ? "0px" : `${workspaceNavWidth}px`,
     "--docsera-workspace-nav-width": `${workspaceNavWidth}px`
   } as CSSProperties;
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(max-width: 920px)");
+    const update = () => setCompactLayout(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    if (!compactLayout || !compactNavigationOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") dismissCompactNavigationAndRestoreFocus();
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [compactLayout, compactNavigationOpen, onCompactNavigationDismiss, compactNavigationTriggerRef]);
+
+  useEffect(() => {
+    if (compactLayout && compactNavigationOpen) {
+      const closeButton = compactCloseButtonRef.current;
+      if (closeButton) {
+        closeButton.dataset.docseraSuppressFocusTooltip = "true";
+        closeButton.focus();
+      }
+    }
+  }, [compactLayout, compactNavigationOpen]);
 
   useEffect(() => {
     const storedPreference = readStoredWorkspaceTocCollapsedPreference(currentWorkspaceSlug);
@@ -353,14 +397,15 @@ export function WorkspaceShell({
       return;
     }
 
-    navFrame.inert = sidebarCollapsed;
-    if (sidebarCollapsed) {
+    const navigationUnavailable = compactLayout ? !compactNavigationOpen : sidebarCollapsed;
+    navFrame.inert = navigationUnavailable;
+    if (navigationUnavailable) {
       navFrame.setAttribute("inert", "");
       return;
     }
 
     navFrame.removeAttribute("inert");
-  }, [sidebarCollapsed]);
+  }, [compactLayout, compactNavigationOpen, sidebarCollapsed]);
 
   useEffect(() => {
     if (!sidebarCollapsed || !resizeStateRef.current.active) {
@@ -391,9 +436,19 @@ export function WorkspaceShell({
     setTocCollapsed((current) => !current);
   }
 
+  function dismissCompactNavigationAndRestoreFocus() {
+    onCompactNavigationDismiss?.();
+    const trigger = compactNavigationTriggerRef?.current;
+    if (trigger) {
+      trigger.dataset.docseraSuppressFocusTooltip = "true";
+      trigger.focus();
+    }
+  }
+
   const selectedPageViewForShell = shellStatus === "ready" ? selectedPage : null;
   const outlinePageForShell = shellStatus === "ready" ? outlinePage : null;
   const showWorkspaceLoading = shellStatus !== "ready";
+  const compactNavigationVisible = compactLayout ? compactNavigationOpen : !sidebarCollapsed;
 
   return (
     <div className="docsera-shell" style={shellStyle}>
@@ -402,19 +457,29 @@ export function WorkspaceShell({
           sidebarResizing ? " docsera-workspace--sidebar-resizing" : ""
         }`}
       >
+        {compactLayout && compactNavigationOpen ? <button className="docsera-workspace__nav-scrim" aria-label="Close navigation" onClick={dismissCompactNavigationAndRestoreFocus} /> : null}
         <div
           ref={navFrameRef}
           className="docsera-workspace__nav-frame"
-          aria-hidden={sidebarCollapsed ? "true" : undefined}
+          aria-hidden={!compactNavigationVisible ? "true" : undefined}
+          data-docsera-compact-navigation-open={compactLayout ? String(compactNavigationOpen) : undefined}
           data-docsera-nav-collapsed={sidebarCollapsed ? "true" : undefined}
         >
           <div className="docsera-workspace__nav-clip">
+            {compactLayout ? <div className="docsera-workspace__compact-nav-header">
+              <DocseraCompactTooltip label="Close navigation">
+                <button ref={compactCloseButtonRef} type="button" className="docsera-header__ghost-button docsera-header__ghost-button--sidebar-toggle" aria-label="Close navigation" onClick={dismissCompactNavigationAndRestoreFocus}>
+                  <SidebarToggleIcon collapsed={false} />
+                </button>
+              </DocseraCompactTooltip>
+              <div className="docsera-workspace__compact-nav-identity">{compactNavigationHeader ?? <strong>{compactNavigationTitle}</strong>}</div>
+            </div> : null}
             <WorkspaceSidebar
               canCreatePage={canCreatePage}
               createPageDisabledReason={createPageDisabledReason}
               canManagePageSettings={canManagePageSettings}
               collapsedPageIds={collapsedPageIds}
-              navigationCollapsed={sidebarCollapsed}
+              navigationCollapsed={!compactLayout && sidebarCollapsed}
               inlineCreateState={inlineCreateState}
               inlineRenameErrorMessage={inlineRenameErrorMessage}
               inlineRenamePageId={inlineRenamePageId}
@@ -429,13 +494,24 @@ export function WorkspaceShell({
               onCommitInlineRename={onCommitInlineRename}
               onInlineCreateTitleChange={onInlineCreateTitleChange}
               onInlineRenameTitleChange={onInlineRenameTitleChange}
-              onSelectPage={onSelectPage}
+              onSelectPage={(pageId) => { onSelectPage(pageId); if (compactLayout) onCompactNavigationDismiss?.(); }}
               onMovePage={onMovePage}
               onRequestDeletePage={onRequestDeletePage}
               onStartInlineRename={onStartInlineRename}
               onShowCreatePage={onShowCreatePage}
               onShowChildPageCreate={onShowChildPageCreate}
-              onTogglePageSettings={onTogglePageSettings}
+              onTogglePageSettings={(pageId) => {
+                if (compactLayout && compactNavigationOpen) {
+                  if (onCompactPageSettingsOpenFromNavigation) {
+                    onCompactPageSettingsOpenFromNavigation();
+                  } else {
+                    onCompactNavigationDismiss?.();
+                  }
+                } else if (compactLayout) {
+                  onCompactNavigationDismiss?.();
+                }
+                onTogglePageSettings(pageId);
+              }}
               pageSettingsOpenPageId={pageSettingsOpenPageId}
               pages={showWorkspaceLoading ? [] : treePages}
               selectedPageId={selectedPageViewForShell?.id ?? selectedPageId}

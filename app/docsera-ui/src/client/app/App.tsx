@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { DocseraHeader, type HeaderIdentity } from "../features/workspaces/DocseraHeader";
+import { CompactWorkspaceSwitcher, DocseraHeader, type HeaderIdentity } from "../features/workspaces/DocseraHeader";
 import { DirtyTransitionDialog } from "../features/workspaces/DirtyTransitionDialog";
 import { MyWorkspacesScreen } from "../features/workspaces/MyWorkspacesScreen";
 import { PageSettingsDeleteDialog } from "../features/workspaces/PageSettingsDeleteDialog";
@@ -1249,6 +1249,22 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     initialRoute.mode === "workspace" ? readStoredWorkspaceNavWidth(initialRoute.workspaceSlug) : DEFAULT_WORKSPACE_NAV_WIDTH
   );
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [compactNavigationOpen, setCompactNavigationOpen] = useState(false);
+  const compactPageSettingsReturnIntentRef = useRef<{ workspaceMode: WorkspaceMode; workspaceSlug: string } | null>(null);
+  const compactNavigationTriggerRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(max-width: 920px)");
+    const closeOnExpandedLayout = () => {
+      if (!query.matches) {
+        compactPageSettingsReturnIntentRef.current = null;
+        setCompactNavigationOpen(false);
+      }
+    };
+    closeOnExpandedLayout();
+    query.addEventListener("change", closeOnExpandedLayout);
+    return () => query.removeEventListener("change", closeOnExpandedLayout);
+  }, []);
   const [pingState, setPingState] = useState<RuntimeProbeState>(() => createInitialPingState(runtime));
   const [launcherSearchText, setLauncherSearchText] = useState("");
   const [launcherPage, setLauncherPage] = useState(1);
@@ -4139,6 +4155,14 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     const beforeRoute = route;
     navigateTo(href, replace, reason);
     const nextRoute = readAppRoute(window.location);
+    if (
+      beforeRoute.mode !== "workspace" ||
+      nextRoute.mode !== "workspace" ||
+      beforeRoute.workspaceSlug !== nextRoute.workspaceSlug ||
+      beforeRoute.workspaceMode !== nextRoute.workspaceMode
+    ) {
+      compactPageSettingsReturnIntentRef.current = null;
+    }
     recordDocseraDiagnosticEvent("route.commit", {
       afterRoute: nextRoute,
       beforeRoute,
@@ -4322,6 +4346,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }
 
   function openLauncher() {
+    compactPageSettingsReturnIntentRef.current = null;
     requestRouteTransition({
       href: buildLauncherHref(),
       reason: "open_launcher",
@@ -4340,6 +4365,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     settingsIntentOrItem: boolean | PendingWorkspaceIdentity = false,
     item?: PendingWorkspaceIdentity
   ) {
+    compactPageSettingsReturnIntentRef.current = null;
     const settingsIntent = typeof settingsIntentOrItem === "boolean" ? settingsIntentOrItem : false;
     const optimisticIdentity = typeof settingsIntentOrItem === "boolean" ? item ?? null : settingsIntentOrItem;
 
@@ -4404,6 +4430,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     if (nextMode === activeWorkspaceMode && requestedWorkspaceMode === nextMode) {
       return;
     }
+    compactPageSettingsReturnIntentRef.current = null;
     const isDeliberateBlockedReentry =
       nextMode === "edit" &&
       activeWorkspaceMode === "live" &&
@@ -4540,6 +4567,23 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     }
 
     openPageSettings(nextPageId);
+  }
+
+  function restoreCompactNavigationAfterPageSettingsDismissal() {
+    const intent = compactPageSettingsReturnIntentRef.current;
+    compactPageSettingsReturnIntentRef.current = null;
+    if (
+      !intent ||
+      route.mode !== "workspace" ||
+      intent.workspaceSlug !== currentWorkspaceSlug ||
+      intent.workspaceMode !== requestedWorkspaceMode ||
+      typeof window.matchMedia !== "function" ||
+      !window.matchMedia("(max-width: 920px)").matches
+    ) {
+      return;
+    }
+
+    setCompactNavigationOpen(true);
   }
 
   function updatePageSettingsField(field: PageSettingsField, value: string) {
@@ -4863,6 +4907,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         const nextState = createEmptyPageSettingsState();
         pageSettingsStateRef.current = nextState;
         setPageSettingsState(nextState);
+        restoreCompactNavigationAfterPageSettingsDismissal();
       }
       const nextPageId = cleanText(nextSelectedPageId);
       if (nextPageId && nextPageId !== currentPageSettingsState.pageSysId) {
@@ -4889,6 +4934,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
     pageSettingsStateRef.current = nextDraftState;
     setPageSettingsState(nextDraftState);
+    restoreCompactNavigationAfterPageSettingsDismissal();
 
     if (staleRefreshBlocksCurrentWorkspaceWrites || workspaceCommandBlocksCurrentWorkspaceWrites) {
       const blockedDraftState: PageSettingsState = {
@@ -7184,6 +7230,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     route.mode === "workspace"
       ? Boolean(workspaceHeaderPresentation?.showWorkspaceSwitcher)
       : recentWorkspaceItems.length > 0;
+  const appHeaderWorkspaceSwitcherLoading =
+    route.mode === "launcher" && recentWorkspacesState.status !== "success";
   const workspaceSettingsPanelWorkspace =
     route.mode === "workspace" &&
     workspaceState.status === "success" &&
@@ -7897,6 +7945,9 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         onOpenPendingPage={route.mode === "workspace" ? openWorkspacePage : undefined}
         onSelectBreadcrumb={route.mode === "workspace" ? openWorkspacePage : undefined}
         onToggleSidebar={route.mode === "workspace" ? () => setSidebarCollapsed((collapsed) => !collapsed) : undefined}
+        onToggleCompactNavigation={route.mode === "workspace" ? () => setCompactNavigationOpen((open) => !open) : undefined}
+        compactNavigationTriggerRef={compactNavigationTriggerRef}
+        compactNavigationOpen={compactNavigationOpen}
         recentWorkspaces={recentWorkspaceItems}
         showMyWorkspacesFooter={showMyWorkspacesFooter}
         saveStatus={appHeaderWorkspaceMode === "edit" && renderedEditorSession ? editorStatusLabel as EditorTransitionState["status"] : undefined}
@@ -7933,6 +7984,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         workspaceControlsLocked={appHeaderWorkspaceControlsLocked}
         onWorkspaceModeChange={route.mode === "workspace" ? changeWorkspaceMode : undefined}
         showWorkspaceSwitcher={appHeaderShowWorkspaceSwitcher}
+        workspaceSwitcherLoading={appHeaderWorkspaceSwitcherLoading}
         showWorkspaceSettings={appHeaderShowWorkspaceSettings}
         sidebarCollapsed={appHeaderSidebarCollapsed}
         theme={theme}
@@ -8148,6 +8200,34 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               workspaceNavWidth={workspaceNavWidth}
               workspaceTocAvailable={workspaceState.status === "success" ? workspaceState.data.layout?.tocVisible ?? true : true}
               onSidebarCollapsedChange={setSidebarCollapsed}
+              compactNavigationOpen={compactNavigationOpen}
+              onCompactNavigationDismiss={() => setCompactNavigationOpen(false)}
+              onCompactPageSettingsOpenFromNavigation={() => {
+                if (route.mode !== "workspace") {
+                  return;
+                }
+                compactPageSettingsReturnIntentRef.current = {
+                  workspaceMode: requestedWorkspaceMode,
+                  workspaceSlug: currentWorkspaceSlug
+                };
+                setCompactNavigationOpen(false);
+              }}
+              compactNavigationTriggerRef={compactNavigationTriggerRef}
+              compactNavigationTitle={appHeaderIdentity.kind === "workspace-loading" ? "Workspace navigation" : appHeaderIdentity.name}
+              compactNavigationHeader={
+                <CompactWorkspaceSwitcher
+                  identity={appHeaderIdentity}
+                  currentWorkspaceSlug={appHeaderWorkspaceSlug}
+                  recentWorkspaces={recentWorkspaceItems}
+                  showWorkspaceSwitcher={appHeaderShowWorkspaceSwitcher}
+                  showMyWorkspacesFooter={showMyWorkspacesFooter}
+                  loadUploadedIcon={serviceNowClient.loadWorkspaceIcon}
+                  onReleaseWorkspaceSettingsPreviewObjectUrl={releaseWorkspaceSettingsOwnedPreviewObjectUrl}
+                  onOpenMyWorkspaces={openLauncher}
+                  onOpenWorkspace={openWorkspace}
+                  onComplete={() => setCompactNavigationOpen(false)}
+                />
+              }
               onWorkspaceNavWidthChange={setWorkspaceNavWidth}
               theme={theme}
               onTreeFilterChange={(value) => {

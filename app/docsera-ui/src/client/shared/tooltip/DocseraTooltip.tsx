@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useLayoutEffect, useRef, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { CSSProperties, ReactElement, RefObject, ReactNode } from "react";
 
@@ -136,6 +136,7 @@ export function DocseraCompactTooltip({
   const [tooltip, setTooltip] = useState<CompactTooltipState | null>(null);
   const timerRef = useRef<number | null>(null);
   const tooltipRef = useRef<HTMLDivElement | null>(null);
+  const suppressRestoredFocusTooltipRef = useRef(false);
   const resolvedOwnerDocument = ownerDocument ?? (typeof document !== "undefined" ? document : null);
   const ownerWindow = resolvedOwnerDocument?.defaultView ?? (typeof window !== "undefined" ? window : null);
 
@@ -170,6 +171,36 @@ export function DocseraCompactTooltip({
     }, DOCSERA_TOOLTIP_DELAY_MS) ?? null;
   }
 
+  useEffect(() => {
+    if (!resolvedOwnerDocument) {
+      return;
+    }
+
+    const dismissForInactiveDocument = () => {
+      suppressRestoredFocusTooltipRef.current = true;
+      hideTooltip();
+    };
+    const handleVisibilityChange = () => {
+      if (resolvedOwnerDocument.hidden) {
+        dismissForInactiveDocument();
+      }
+    };
+    const allowFocusTooltipAfterUserInteraction = () => {
+      suppressRestoredFocusTooltipRef.current = false;
+    };
+
+    ownerWindow?.addEventListener("blur", dismissForInactiveDocument);
+    resolvedOwnerDocument.addEventListener("visibilitychange", handleVisibilityChange);
+    resolvedOwnerDocument.addEventListener("keydown", allowFocusTooltipAfterUserInteraction, true);
+
+    return () => {
+      ownerWindow?.removeEventListener("blur", dismissForInactiveDocument);
+      resolvedOwnerDocument.removeEventListener("visibilitychange", handleVisibilityChange);
+      resolvedOwnerDocument.removeEventListener("keydown", allowFocusTooltipAfterUserInteraction, true);
+      clearTooltipTimer();
+    };
+  }, [ownerWindow, resolvedOwnerDocument]);
+
   if (!isValidElement(children)) {
     return children;
   }
@@ -184,10 +215,20 @@ export function DocseraCompactTooltip({
       children.props.onClick?.(event);
     },
     onFocus: (event: React.FocusEvent<HTMLElement>) => {
+      if (event.currentTarget.dataset.docseraSuppressFocusTooltip === "true") {
+        delete event.currentTarget.dataset.docseraSuppressFocusTooltip;
+        children.props.onFocus?.(event);
+        return;
+      }
+      if (suppressRestoredFocusTooltipRef.current) {
+        children.props.onFocus?.(event);
+        return;
+      }
       showTooltip(event.currentTarget, true);
       children.props.onFocus?.(event);
     },
     onMouseEnter: (event: React.MouseEvent<HTMLElement>) => {
+      suppressRestoredFocusTooltipRef.current = false;
       showTooltip(event.currentTarget);
       children.props.onMouseEnter?.(event);
     },

@@ -20,7 +20,7 @@ describe("owned scrollbar presentation", () => {
     expect(css).toMatch(/\.docsera-toc__list::-webkit-scrollbar\s*\{[^}]*width:\s*4px/s);
   });
   it("styles the actual panel and editor scroll owners with native fallback", () => {
-    for (const owner of [".docsera-page-settings", ".docsera-workspace-settings-overlay__body", ".docsera-manage-access__body", ".docsera-manage-access__search-results", ".docsera-manage-access__staged-list", ".docsera-changes-center__list", ".docsera-modal__user-results", ".docsera-header__menu-list"]) expect(css).toContain(owner);
+    for (const owner of [".docsera-page-settings__scroll-content", ".docsera-workspace-settings-overlay__body", ".docsera-manage-access__body", ".docsera-manage-access__search-results", ".docsera-manage-access__staged-list", ".docsera-changes-center__list", ".docsera-modal__user-results", ".docsera-header__menu-list"]) expect(css).toContain(owner);
     for (const owner of [".docsera-block-selector__scroll", ".docsera-table-controls-overlay__menu", ".docsera-image-picker__library-scroll", ".docsera-image-options-panel"]) expect(EDITOR_SCROLLBAR_STYLES).toContain(owner);
     for (const styles of [css, EDITOR_SCROLLBAR_STYLES]) {
       expect(styles).toContain("@supports not selector(::-webkit-scrollbar)");
@@ -34,12 +34,12 @@ describe("owned scrollbar presentation", () => {
     const shared = css.slice(css.indexOf("/* Docsera-owned vertical scroll regions"), css.indexOf("@media (hover: none) {\n  .docsera-sidebar__tree"));
     expect(shared).not.toContain(".docsera-app__body");
     expect(css).toMatch(/\.docsera-app__body\s*\{[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;/s);
-    expect(css).toMatch(/\.docsera-page-settings\s*\{[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;/s);
+    expect(css).toMatch(/\.docsera-page-settings__scroll-content\s*\{[^}]*overflow-y:\s*auto;[^}]*scrollbar-gutter:\s*stable;/s);
     expect(css).toMatch(/\.docsera-page-settings-shell\s*\{[^}]*pointer-events:\s*none/s);
     expect(css).toMatch(/\.docsera-page-settings--open\s*\{[^}]*pointer-events:\s*auto/s);
     for (const state of ["hover", "focus-within"]) {
-      expect(shared).toContain(`.docsera-page-settings-shell:${state} .docsera-page-settings::-webkit-scrollbar-thumb`);
-      expect(shared).not.toContain(`.docsera-page-settings:${state}::-webkit-scrollbar-thumb`);
+      expect(shared).toContain(`.docsera-page-settings-shell:${state} .docsera-page-settings__scroll-content::-webkit-scrollbar-thumb`);
+      expect(shared).not.toContain(`.docsera-page-settings__scroll-content:${state}::-webkit-scrollbar-thumb`);
     }
     const pairs = [
       [".docsera-workspace-settings-overlay__panel", ".docsera-workspace-settings-overlay__body"],

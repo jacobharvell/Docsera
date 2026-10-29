@@ -150,7 +150,9 @@ describe("PublishedDocumentReader columns", () => {
 
     expect(source).toContain(".docsera-main__columns {");
     expect(source).toContain("grid-template-columns: repeat(var(--docsera-columns-count), minmax(0, 1fr));");
+    expect(source).toMatch(/\.docsera-main__columns \{[\s\S]*?max-width: 100%;\s*min-width: 0;/);
     expect(source).toContain(".docsera-main__column {");
+    expect(source).toMatch(/\.docsera-main__column \{\s*min-width: 0;/);
     expect(source).toContain("overflow-wrap: anywhere;");
     expect(source).toContain("@media (max-width: 920px) {");
     expect(source).toContain(".docsera-main__columns {");

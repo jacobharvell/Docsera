@@ -344,6 +344,7 @@ export function ImageFullscreenViewer({ isOpen, overlayRoot, onDismissed, onRequ
             type="button"
             className="docsera-image-viewer__close"
             aria-label="Close image viewer"
+            data-docsera-suppress-focus-tooltip="true"
             onMouseDown={(event) => {
               event.preventDefault();
             }}

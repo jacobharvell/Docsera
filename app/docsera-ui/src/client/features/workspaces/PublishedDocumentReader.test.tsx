@@ -299,14 +299,65 @@ describe("PublishedDocumentReader", () => {
     expect(source).toContain(".docsera-main__list-item + .docsera-main__list-item {");
     expect(source).toContain("margin-top: var(--docsera-document-list-item-gap);");
     expect(source).toContain(".docsera-main__blockquote {\n  margin: 0 0 var(--docsera-document-block-spacing);");
-    expect(source).toContain(".docsera-main__media {\n  display: grid;\n  gap: 12px;\n  margin: 0;\n}");
+    expect(source).toMatch(/\.docsera-main__media \{\s*display: grid;\s*gap: 12px;[\s\S]*?margin: 0;\s*\}/);
     expect(source).toContain(".docsera-main__reader > .docsera-main__media:not(:last-child) {\n  margin-bottom: calc(var(--docsera-document-block-spacing) + 0.25rem);\n}");
     expect(readerSource).not.toContain('margin: "0 0 var(--docsera-document-block-spacing)",');
     expect(source).toContain(".docsera-main__media-caption {\n  margin: 0;");
     expect(source).toContain(".docsera-main__inline-code {\n  padding: var(--docsera-document-code-inline-padding);");
-    expect(source).toContain(".docsera-main__code {\n  margin: 0 0 var(--docsera-document-block-spacing);");
+    expect(source).toMatch(/\.docsera-main__code \{[\s\S]*?margin: 0 0 var\(--docsera-document-block-spacing\);/);
     expect(source).toContain(".docsera-main__divider {\n  width: 100%;\n  height: 0;\n  margin: var(--docsera-document-rule-margin);");
     expect(source).toMatch(/\.docsera-main__reader sup,\s*\.docsera-main__reader sub \{/);
+  });
+
+  it("uses balanced compact Live width without changing the editor gutter or desktop reading measure", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    ).replace(/\r\n/g, "\n");
+    const editorSource = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/editor/PageEditorHostRuntime.tsx`,
+      "utf8"
+    ).replace(/\r\n/g, "\n");
+
+    expect(source).toContain("--docsera-main-surface-max-width: 768px;");
+    expect(source).toMatch(
+      /@media \(max-width: 920px\)[\s\S]*?\.docsera-main__surface:not\(\.docsera-main__surface--editor\) \{\s*width: min\(calc\(100% - 48px\), var\(--docsera-main-surface-max-width\)\);\s*margin-inline: auto;/
+    );
+    expect(source).toMatch(
+      /@media \(max-width: 680px\)[\s\S]*?\.docsera-main__surface:not\(\.docsera-main__surface--editor\) \{\s*width: min\(calc\(100% - 32px\), var\(--docsera-main-surface-max-width\)\);/
+    );
+    expect(source).toContain(
+      ".docsera-main__surface--editor {\n  gap: 0;\n  width: calc(var(--docsera-main-surface-inline-size) + var(--docsera-editor-block-gutter-width));"
+    );
+    expect(source).toMatch(
+      /@media \(max-width: 920px\)[\s\S]*?\.docsera-main__surface--editor \{\s*margin-inline-start: calc\(var\(--docsera-main-surface-anchor-min\) - var\(--docsera-editor-block-gutter-width\)\);/
+    );
+    expect(source).toContain(".docsera-main__surface--document {\n  padding-bottom: 400px;\n}");
+    expect(source).toMatch(/@media \(max-width: 680px\)[\s\S]*?\.docsera-main__surface--document \{\s*padding-bottom: 400px;/);
+    expect(source).not.toMatch(/\.docsera-main__reader \{[^}]*padding-bottom:/s);
+    expect(editorSource).not.toMatch(/\.docsera-editor-runtime__surface \.ProseMirror \{[^}]*padding-bottom:/s);
+  });
+
+  it("keeps reader content shrinkable while wide table and code blocks scroll locally", () => {
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+
+    expect(source).toMatch(/\.docsera-main__reader \{[\s\S]*?max-width: 100%;\s*min-width: 0;[\s\S]*?overflow-wrap: anywhere;/);
+    expect(source).toMatch(/\.docsera-main__media \{[\s\S]*?max-width: 100%;\s*min-width: 0;/);
+    expect(source).toMatch(/\.docsera-main__accordion-panel \{[\s\S]*?min-width: 0;/);
+    expect(source).toMatch(/\.docsera-main__code \{\s*max-width: 100%;\s*min-width: 0;[\s\S]*?overflow-x: auto;/);
+    expect(source).toMatch(/\.docsera-main__table-wrapper \{\s*max-width: 100%;\s*min-width: 0;\s*overflow-x: auto;/);
+    expect(source).not.toMatch(/\.docsera-main__reader \{[^}]*overflow:\s*(?:hidden|clip)/s);
   });
 
   it("renders the supported E2 envelope with nested lists, marks, task state, code blocks, and safe links", () => {

@@ -55,6 +55,35 @@ async function openPageSettingsFromPageTree(pageTitle: string) {
 }
 
 describe("App page settings integration", () => {
+  it("restores the compact drawer immediately after closing Page Settings opened from that drawer", async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn((query: string) => ({
+        matches: query === "(max-width: 920px)",
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn()
+      }))
+    });
+
+    try {
+      renderApp(App, "/?workspace=product-docs&mode=edit&page=overview");
+      expect(await screen.findByRole("heading", { name: "Overview" })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Open navigation" }));
+      await openPageSettingsFromPageTree("Overview");
+      const panel = await screen.findByRole("complementary", { name: "Page Settings" });
+      expect(screen.getByRole("button", { name: "Open navigation" })).toBeInTheDocument();
+
+      fireEvent.click(within(panel).getByRole("button", { name: "Close page settings" }));
+
+      await waitFor(() => expect(screen.queryByRole("heading", { name: "Page Settings" })).not.toBeInTheDocument());
+      expect(document.querySelector(".docsera-workspace__nav-frame[data-docsera-compact-navigation-open='true']")).toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+    }
+  });
+
   it("shows page settings only in edit mode", async () => {
     renderApp(App, "/?workspace=product-docs&page=overview");
 
@@ -863,6 +892,11 @@ describe("App page settings integration", () => {
       errorMessage: "The active draft generation changed. Reload before saving again.",
       state: "failed"
     }));
+    const recoverWorkspaceBodySave = vi.fn(async () => ({
+      changeSetId: "change-set-001",
+      changeSetRevision: 8,
+      state: "recovered" as const
+    }));
     const getWorkspacePendingChanges = vi.fn(async () =>
       createPendingChangesResult([
         {
@@ -883,6 +917,7 @@ describe("App page settings integration", () => {
     renderApp(App, "/?workspace=product-docs&mode=edit&page=overview", {
       getWorkspacePendingChanges,
       listPages,
+      recoverWorkspaceBodySave,
       savePageSettings
     });
 
@@ -901,9 +936,12 @@ describe("App page settings integration", () => {
     expect(
       within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Overview Pending Refresh" })
     ).toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.getAllByText("Reloading the latest draft projection. Saving is temporarily unavailable.").length).toBeGreaterThan(0)
-    );
+    await waitFor(() => expect(recoverWorkspaceBodySave).toHaveBeenCalledWith({
+      leaseToken: "workspace-lease-token",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+    await waitFor(() => expect(listPages).toHaveBeenCalledTimes(2));
 
     await openPageSettingsFromPageTree("Overview Pending Refresh");
     const blockedPanel = await screen.findByRole("complementary", { name: "Page Settings" });
@@ -915,13 +953,6 @@ describe("App page settings integration", () => {
     expect(
       within(screen.getByRole("navigation", { name: "Page tree" })).getByRole("button", { name: "Overview Pending Refresh" })
     ).toBeInTheDocument();
-    expect(screen.getAllByText("Reloading the latest draft projection. Saving is temporarily unavailable.").length).toBeGreaterThan(0);
-
-    fireEvent.click(screen.getByRole("button", { name: "Open Changes Center" }));
-    const changesCenter = await screen.findByRole("dialog", { name: "Changes Center" });
-    expect(within(changesCenter).getByText("The visual editor is still getting ready.")).toBeInTheDocument();
-    expect(within(changesCenter).getByRole("button", { name: "Publish" })).toBeDisabled();
-    expect(within(changesCenter).getByRole("button", { name: "Discard all" })).toBeDisabled();
 
     await openPageSettingsFromPageTree("Overview Pending Refresh");
     const reopenedPanel = await screen.findByRole("complementary", { name: "Page Settings" });

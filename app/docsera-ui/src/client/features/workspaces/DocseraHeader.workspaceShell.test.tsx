@@ -1,7 +1,8 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DocseraHeader } from "./DocseraHeader";
+import { DocseraCompactTooltip } from "../../shared/tooltip/DocseraTooltip";
 
 const baseProps = {
   identity: { kind: "workspace" as const, icon: { type: "builtin" as const, key: "docs", label: "Docs" }, name: "Docs" },
@@ -19,6 +20,120 @@ const baseProps = {
 };
 
 describe("DocseraHeader workspace shell", () => {
+  it("uses the compact edit header actions and moves secondary controls into More", () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: true, addEventListener: () => undefined, removeEventListener: () => undefined }) });
+    try {
+      render(
+        <DocseraHeader
+          {...baseProps}
+          onToggleCompactNavigation={vi.fn()}
+          onToggleSidebar={vi.fn()}
+          compactNavigationOpen={false}
+          onOpenWorkspaceSettings={vi.fn()}
+          onAuthoringSurfaceChange={vi.fn()}
+          showWorkspaceSettings
+          saveStatus="Saved"
+        />
+      );
+      expect(screen.getByRole("button", { name: "Open navigation" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+      const menu = screen.getByRole("menu", { name: "More actions" });
+      expect(within(menu).getByRole("group", { name: "Authoring surface" })).toBeInTheDocument();
+      expect(within(menu).getByRole("button", { name: "Visual" })).toHaveAttribute("aria-pressed", "true");
+      expect(within(menu).getByRole("button", { name: "Markdown Source" })).toHaveAttribute("aria-pressed", "false");
+      expect(within(menu).getByRole("button", { name: "Toggle theme" })).toBeInTheDocument();
+      expect(within(menu).getByRole("button", { name: "Workspace settings" })).toBeInTheDocument();
+      expect(screen.getByRole("menu", { name: "More actions" })).toHaveTextContent("Priya");
+      expect(screen.getByRole("menu", { name: "More actions" })).not.toHaveTextContent("Priya Writer");
+      const nodeProcess = new Function("return process")() as {
+        cwd: () => string;
+        getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+      };
+      const runtimeShellCss = nodeProcess.getBuiltinModule("fs").readFileSync(`${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`, "utf8");
+      expect(runtimeShellCss).toMatch(/\.docsera-header--compact \.docsera-header__action-slot--surface[\s\S]*?display:\s*none;/);
+      expect(runtimeShellCss).not.toMatch(/\.docsera-header--compact \.docsera-header__surface-toggle\s*\{/);
+      expect(runtimeShellCss).toMatch(/\.docsera-header--compact \.docsera-header__publish-panel\s*\{[^}]*order:\s*0;/);
+      expect(runtimeShellCss).toMatch(/\.docsera-header--compact \.docsera-header__compact-more\s*\{[^}]*order:\s*1;/);
+      expect(runtimeShellCss).toMatch(/\.docsera-header__compact-more-controls \.docsera-header__surface-toggle\s*\{\s*flex:\s*0 0 70px;\s*\}/);
+      expect(runtimeShellCss).toMatch(/\.docsera-header__compact-more-controls \.docsera-header__ghost-button\s*\{\s*flex:\s*0 0 32px;\s*\}/);
+      expect(runtimeShellCss).toMatch(/\.docsera-header__compact-more-menu\s*\{[^}]*width:\s*166px;/s);
+      expect(runtimeShellCss).toMatch(/\.docsera-header__compact-more-controls\s*\{[^}]*gap:\s*8px;[^}]*padding:\s*8px 7px;/s);
+      expect(runtimeShellCss).toMatch(/\.docsera-header__compact-account \.docsera-account-menu__identity\s*\{[^}]*min-width:\s*0;/s);
+      expect(runtimeShellCss).toMatch(/\.docsera-header__compact-more-menu > \.docsera-account-menu__item\s*\{[^}]*padding-left:\s*48px;/s);
+      expect(runtimeShellCss).not.toContain("docsera-header__compact-account-back");
+      expect(runtimeShellCss).not.toMatch(/\.docsera-header__compact-more-controls \.docsera-header__surface-toggle button\s*\{[^}]*min-height:/s);
+      expect(screen.getByRole("menuitem", { name: "Sign out" })).toBeInTheDocument();
+      expect(screen.queryByRole("menuitem", { name: "Priya Writer" })).not.toBeInTheDocument();
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(screen.queryByRole("menu", { name: "More actions" })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "More actions" })).toHaveFocus();
+    } finally {
+      Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+    }
+  });
+
+  it("truncates a long compact first name without showing the remaining display name", () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: true, addEventListener: () => undefined, removeEventListener: () => undefined }) });
+    try {
+      render(<DocseraHeader {...baseProps} currentUser={{ userDisplayName: "Alexanderthelong Writer", userName: "awriter" }} onToggleCompactNavigation={vi.fn()} />);
+      fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+      const identity = screen.getByRole("menu", { name: "More actions" }).querySelector(".docsera-account-menu__identity strong");
+      expect(identity).toHaveTextContent("Alexanderthelong");
+      expect(identity).toHaveAttribute("title", "Alexanderthelong Writer");
+    } finally {
+      Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+    }
+  });
+
+  it("keeps the live theme and account controls available in the compact header", () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: true, addEventListener: () => undefined, removeEventListener: () => undefined }) });
+    try {
+      render(<DocseraHeader {...baseProps} showWorkspaceMode="live" onToggleCompactNavigation={vi.fn()} />);
+      expect(screen.getByRole("button", { name: "Toggle theme" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Current user: Priya Writer" })).toBeInTheDocument();
+    } finally {
+      Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+    }
+  });
+
+  it("uses compact navigation state for the navigation tooltip label", async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: true, addEventListener: () => undefined, removeEventListener: () => undefined }) });
+    try {
+      const { rerender } = render(<DocseraHeader {...baseProps} onToggleCompactNavigation={vi.fn()} onToggleSidebar={vi.fn()} compactNavigationOpen={false} />);
+      const trigger = screen.getByRole("button", { name: "Open navigation" });
+      fireEvent.focus(trigger);
+      expect(await screen.findByRole("tooltip")).toHaveTextContent("Open navigation");
+
+      rerender(<DocseraHeader {...baseProps} onToggleCompactNavigation={vi.fn()} onToggleSidebar={vi.fn()} compactNavigationOpen />);
+      const closeTrigger = screen.getByRole("button", { name: "Close navigation" });
+      fireEvent.focus(closeTrigger);
+      expect(await screen.findByRole("tooltip")).toHaveTextContent("Close navigation");
+    } finally {
+      Object.defineProperty(window, "matchMedia", { configurable: true, value: originalMatchMedia });
+    }
+  });
+
+  it("suppresses only the marked restored focus tooltip and preserves intentional focus tooltips", async () => {
+    render(
+      <DocseraCompactTooltip label="Open navigation">
+        <button type="button" data-docsera-suppress-focus-tooltip="true">Navigation</button>
+      </DocseraCompactTooltip>
+    );
+
+    const trigger = screen.getByRole("button", { name: "Navigation" });
+    fireEvent.focus(trigger);
+    expect(screen.queryByRole("tooltip")).not.toBeInTheDocument();
+    expect(trigger).not.toHaveAttribute("data-docsera-suppress-focus-tooltip");
+
+    fireEvent.blur(trigger);
+    fireEvent.focus(trigger);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent("Open navigation");
+  });
+
   it("uses shared tooltips for compact workspace header controls", async () => {
     render(
       <DocseraHeader
@@ -133,6 +248,7 @@ describe("DocseraHeader workspace shell", () => {
         onAuthoringSurfaceChange={vi.fn()}
         onOpenWorkspaceSettings={openSettings}
         saveStatus="Saved"
+        showAuthoringSurfaceToggle={false}
         showWorkspaceMode="live"
       />
     );

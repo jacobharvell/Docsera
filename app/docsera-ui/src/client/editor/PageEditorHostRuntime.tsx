@@ -7714,6 +7714,12 @@ export function PageEditorHostRuntime({
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--add {
           right: -2.25rem;
         }
+        @media (max-width: 920px) {
+          .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__add-lane,
+          .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__control--add {
+            display: none;
+          }
+        }
         .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__menu {
           position: absolute;
           right: 1.1rem;
@@ -8347,6 +8353,9 @@ export function PageEditorHostRuntime({
           cursor: pointer;
           text-align: left;
           transition: background-color 0.16s ease, color 0.16s ease;
+        }
+        .docsera-editor-runtime__surface .ProseMirror .docsera-editor-accordion__add-item[hidden] {
+          display: none;
         }
         .docsera-block-menu__item:hover,
         .docsera-block-menu__item:focus-visible,

@@ -125,7 +125,7 @@ describe("WorkspaceCreateModal", () => {
     expect(screen.getByText("Square, 128x128 min, 1 MB max. PNG, JPG or WebP.")).toBeInTheDocument();
   });
 
-  it("uses scoped compact New Workspace presentation without changing shared picker defaults", () => {
+  it("uses the shared compact modal header and preserves picker defaults", () => {
     const nodeProcess = new Function("return process")() as {
       cwd: () => string;
       getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
@@ -152,6 +152,8 @@ describe("WorkspaceCreateModal", () => {
     const sharedGridBlock = source.match(/\n\.docsera-workspace-icon-picker__grid \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const sharedOptionBlock = source.match(/\.docsera-workspace-icon-picker__option \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const sharedBadgeBlock = source.match(/\.docsera-workspace-icon-picker__option \.docsera-workspace-icon-badge \{([\s\S]*?)\n\}/)?.[1] ?? "";
+    const narrowRules = source.slice(source.indexOf("@media (max-width: 680px)"), source.indexOf("@media (prefers-reduced-motion: reduce)"));
+    const narrowModalHeaderBlock = narrowRules.match(/\.docsera-modal__header \{([\s\S]*?)\n\s*\}/)?.[1] ?? "";
 
     expect(panelBlock).toContain("width: min(100%, 448px);");
     expect(bodyBlock).toContain("gap: 16px;");
@@ -184,6 +186,8 @@ describe("WorkspaceCreateModal", () => {
     expect(sharedOptionBlock).toContain("min-height: 72px;");
     expect(sharedBadgeBlock).toContain("width: 46px;");
     expect(constraintsBlock).not.toContain("text-align: center;");
+    expect(narrowModalHeaderBlock).not.toContain("flex-direction: column;");
+    expect(source).toMatch(/\.docsera-modal__header\s*\{[^}]*align-items:\s*center;[^}]*justify-content:\s*space-between;/s);
   });
 
   it("uploads a custom image, previews it, switches between uploaded and built-in selections, and submits the returned asset key", async () => {

@@ -15,6 +15,7 @@
 - The lightweight Live Accordion owns the normal semantic presentation baseline for Accordion border, background, separators, row rhythm, title typography, disclosure/title alignment, expanded-body spacing, and collapsed-panel zero-height behavior. Edit-mode author-only controls are separate chrome and must not change that normal Accordion geometry.
 - Editor `onUpdate` no longer suppresses invalid document validation errors for accordion paste. Normal accordion paste behavior is expected to produce canonical document state directly.
 - The final accordion item now owns a persistent invisible add interaction lane that spans the full hidden add-button footprint and keeps the add affordance reachable from any approach direction without changing layout.
+- At the shared 920px compact breakpoint, the external final-item add control and interaction lane are hidden. The final item's existing menu instead exposes its standard plus-icon `Add item` action before `Delete item`; desktop menus remain delete-only. Both entry points use the same insertion transaction, including fresh identity, disclosure, selection, undo history, and autosave behavior.
 - The accordion item menu now uses the shared destructive block-menu presentation for `Delete item`, including the standard trash icon, icon/label structure, and disabled-state styling when only one accordion item remains.
 
 ## Validation Coverage

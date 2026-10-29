@@ -70,6 +70,8 @@ describe("PageSettingsDeleteDialog", () => {
     expect(idleTitle).toHaveClass("docsera-page-settings__value");
     expect(editingSlug).toHaveClass("docsera-page-settings__input", "docsera-page-settings__input--invalid");
     expect(within(panel).getByRole("alert")).toHaveClass("docsera-page-settings__field-error");
+    expect(panel.querySelector(".docsera-page-settings__header-divider")).not.toBeInTheDocument();
+    expect(panel.querySelector(".docsera-page-settings__scroll-content")).toContainElement(idleTitle);
 
     const source = readRuntimeShellCss();
     const pageLabelBlock = readCssRuleBlock(source, ".docsera-page-settings__label");
@@ -77,6 +79,9 @@ describe("PageSettingsDeleteDialog", () => {
     const pageValueInputBlock =
       source.match(/\.docsera-page-settings__value,\n\.docsera-page-settings__input \{([\s\S]*?)\n\}/)?.[1] ?? "";
     const workspaceInputBlock = readCssRuleBlock(source, ".docsera-workspace-settings-overlay__input");
+    const pagePanelBlock = readCssRuleBlock(source, ".docsera-page-settings");
+    const pageHeaderBlock = readCssRuleBlock(source, ".docsera-page-settings__header");
+    const pageScrollContentBlock = readCssRuleBlock(source, ".docsera-page-settings__scroll-content");
     const darkPageAndCloseBlock =
       source.match(
         /html\[data-docsera-theme="dark"\] \.docsera-page-settings__value,\nhtml\[data-docsera-theme="dark"\] \.docsera-page-settings__input,\nhtml\[data-docsera-theme="dark"\] \.docsera-workspace-settings-overlay__close \{([\s\S]*?)\n\}/
@@ -95,6 +100,15 @@ describe("PageSettingsDeleteDialog", () => {
     expect(pageValueInputBlock).toContain("background: color-mix(in srgb, var(--docsera-primary) 4%, var(--docsera-surface) 96%);");
     expect(workspaceInputBlock).toContain("background: color-mix(in srgb, var(--docsera-primary) 4%, var(--docsera-surface) 96%);");
     expect(darkPageAndCloseBlock).toContain("background: rgba(17, 22, 29, 0.92);");
+    expect(pagePanelBlock).toContain("overflow: clip;");
+    expect(pagePanelBlock).not.toContain("scrollbar-gutter:");
+    expect(pageHeaderBlock).toContain("height: var(--docsera-header-height);");
+    expect(pageHeaderBlock).toContain("padding: 0 20px;");
+    expect(pageHeaderBlock).toContain("box-sizing: border-box;");
+    expect(pageHeaderBlock).toContain("border-bottom: 1px solid var(--docsera-border);");
+    expect(pageScrollContentBlock).toContain("overflow-y: auto;");
+    expect(pageScrollContentBlock).toContain("scrollbar-gutter: stable;");
+    expect(pageScrollContentBlock).toContain("overflow-x: clip;");
   });
 
   it("uses the shared destructive action treatment for the Page Settings delete entry point", () => {
@@ -246,4 +260,39 @@ describe("PageSettingsDeleteDialog", () => {
     expect(deleteButton.querySelector(".docsera-delete-confirmation-button__spinner")).not.toBeInTheDocument();
     expect(props.onConfirm).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps the compact header divider outside its opaque bar, shares the theme border with slide panels, and gives member transfer controls vertical directions", () => {
+    const source = readRuntimeShellCss();
+    const headerBlock = readCssRuleBlock(source, ".docsera-header");
+    const darkHeaderBlock = readCssRuleBlock(source, 'html[data-docsera-theme="dark"] .docsera-header');
+    const pageSettingsHeaderBlock = readCssRuleBlock(source, ".docsera-page-settings__header");
+    const workspaceSettingsHeaderBlock = readCssRuleBlock(source, ".docsera-workspace-settings-overlay__header");
+    const manageAccessHeaderBlock = readCssRuleBlock(source, ".docsera-manage-access__header");
+    const lightThemeBlock = readCssRuleBlock(source, ":root");
+    const darkThemeBlock = readCssRuleBlock(source, ':root[data-docsera-theme="dark"]');
+    const compactStart = source.indexOf("@media (max-width: 920px) {");
+    const compactBlock = source.slice(compactStart, source.indexOf("@media", compactStart + 1));
+    const narrowCompactStart = source.indexOf("@media (max-width: 680px) {");
+    const narrowCompactBlock = source.slice(narrowCompactStart, source.indexOf("@media", narrowCompactStart + 1));
+    const compactHeaderBlock = compactBlock.match(/\.docsera-header--compact \{\n([\s\S]*?)\n  \}/)?.[1] ?? "";
+
+    expect(lightThemeBlock).toContain("--docsera-border: #e2e8f0;");
+    expect(darkThemeBlock).toContain("--docsera-border: #30363d;");
+    expect(headerBlock).toContain("min-height: var(--docsera-header-height);");
+    expect(headerBlock).toContain("border-bottom: 1px solid var(--docsera-border);");
+    expect(darkHeaderBlock).toContain("background: #0b0e14;");
+    expect(compactHeaderBlock).not.toBe("");
+    expect(compactHeaderBlock).not.toContain("border-bottom-color:");
+    expect(compactHeaderBlock).not.toContain("color-mix(");
+    expect(pageSettingsHeaderBlock).toContain("border-bottom: 1px solid var(--docsera-border);");
+    expect(workspaceSettingsHeaderBlock).toContain("border-bottom: 1px solid var(--docsera-border);");
+    expect(manageAccessHeaderBlock).toContain("border-bottom: 1px solid var(--docsera-border);");
+    expect(compactBlock).toContain(".docsera-header--compact .docsera-header__bar {");
+    expect(compactBlock).toContain("height: calc(var(--docsera-header-height) - 1px);");
+    expect(narrowCompactBlock).toContain(".docsera-manage-access__move-icon svg { width: 20px; height: 20px; stroke-width: 2.25; }");
+    expect(narrowCompactBlock).toContain('Stage selected users"] .docsera-manage-access__move-icon { transform: rotate(90deg); }');
+    expect(narrowCompactBlock).toContain('Remove selected staged members"] .docsera-manage-access__move-icon { transform: rotate(90deg); }');
+    expect(source).toContain(".docsera-manage-access__add-transfer {\n  align-items: center;\n  display: flex;\n  flex-direction: column;");
+  });
+
 });
