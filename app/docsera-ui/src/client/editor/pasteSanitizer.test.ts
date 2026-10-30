@@ -16,6 +16,18 @@ describe("paste sanitizer", () => {
     expect(sanitized).not.toContain("https://example.com/image.png");
   });
 
+  it("repairs malformed pasted markup before removing unsafe embedded content and link destinations", () => {
+    const sanitized = sanitizeDocseraPastedHTML(
+      '<p>Before<a href="javascript:alert(1)">unsafe</a><iframe src="https://example.com/embed"><p>After'
+    );
+
+    expect(sanitized).toContain("<p>Before<a>unsafe</a></p>");
+    expect(sanitized).not.toContain("After");
+    expect(sanitized).not.toContain("javascript:");
+    expect(sanitized).not.toContain("iframe");
+    expect(sanitized).not.toContain("https://example.com/embed");
+  });
+
   it("preserves hard breaks inside substantive pasted paragraphs", () => {
     expect(sanitizeDocseraPastedHTML("<p>Alpha<br>Beta</p>")).toBe("<p>Alpha<br>Beta</p>");
   });

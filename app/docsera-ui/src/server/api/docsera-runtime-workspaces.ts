@@ -105,6 +105,14 @@ function logUnexpectedWorkspaceError(error: unknown, context: Record<string, unk
   );
 }
 
+function summarizeRequest(request: RequestLike) {
+  const workspaceSlug = readQueryParam(request, "workspaceSlug") || readQueryParam(request, "workspace");
+  const searchText = readQueryParam(request, "q") || readQueryParam(request, "searchText") || readQueryParam(request, "name");
+  const page = readPageNumber(request, "page", 1);
+  const pageSize = readPageNumber(request, "pageSize", 10);
+  return { workspaceSlugPresent: Boolean(workspaceSlug), workspaceSlugLength: workspaceSlug.length, searchTextPresent: Boolean(searchText), searchTextLength: searchText.length, page, pageSize };
+}
+
 export async function process(request: RequestLike, response: ResponseLike) {
   try {
     const service = createServiceNowWorkspaceCatalogService();
@@ -149,10 +157,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
     });
   } catch (error) {
     response.setStatus?.(500);
-    logUnexpectedWorkspaceError(error, {
-      queryString: cleanText(request?.queryString),
-      queryParams: request?.queryParams && typeof request.queryParams === "object" ? request.queryParams : undefined
-    });
+    logUnexpectedWorkspaceError(error, summarizeRequest(request));
     response.setBody({
       error: {
         message: "Unable to load workspaces. Please try again."

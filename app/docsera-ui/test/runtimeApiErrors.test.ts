@@ -89,12 +89,20 @@ vi.mock("../src/server/workspaces/serviceNowWorkspaceProvisioning.ts", () => ({
   createServiceNowWorkspaceProvisioningService: vi.fn()
 }));
 
+vi.mock("../src/server/workspaces/serviceNowWorkspaceSettings.ts", () => ({
+  createServiceNowWorkspaceSettingsService: vi.fn()
+}));
+
 vi.mock("../src/server/workspaces/serviceNowWorkspaceCapabilities.ts", () => ({
   canCurrentUserCreateWorkspaces: vi.fn(() => true)
 }));
 
 import { process as processCreateWorkspace } from "../src/server/api/docsera-runtime-create-workspace";
+import { process as processCreatePage } from "../src/server/api/docsera-runtime-create-page";
+import { process as processDeletePage } from "../src/server/api/docsera-runtime-page-delete-action";
+import { process as processPageSettings } from "../src/server/api/docsera-runtime-page-settings-save";
 import { process as processPageSave } from "../src/server/api/docsera-runtime-page-save";
+import { process as processWorkspaceSettings } from "../src/server/api/docsera-runtime-workspace-settings-save";
 import { process as processPagePublish } from "../src/server/api/docsera-runtime-page-publish";
 import { process as processPages } from "../src/server/api/docsera-runtime-pages";
 import { process as processWorkspaceProvisioningStatus } from "../src/server/api/docsera-runtime-workspace-provisioning-status";
@@ -104,6 +112,7 @@ import { createServiceNowWorkspaceChangeSetPersistenceService } from "../src/ser
 import { createServiceNowPagePublishService } from "../src/server/pages/serviceNowPagePublishing.ts";
 import { createServiceNowPageListingService } from "../src/server/pages/serviceNowPageListing.ts";
 import { createServiceNowWorkspaceProvisioningService } from "../src/server/workspaces/serviceNowWorkspaceProvisioning.ts";
+import { createServiceNowWorkspaceSettingsService } from "../src/server/workspaces/serviceNowWorkspaceSettings.ts";
 import { canCurrentUserCreateWorkspaces } from "../src/server/workspaces/serviceNowWorkspaceCapabilities.ts";
 
 type ResponseRecorder = {
@@ -133,6 +142,7 @@ beforeEach(() => {
   vi.mocked(createServiceNowPagePublishService).mockReset();
   vi.mocked(createServiceNowPageListingService).mockReset();
   vi.mocked(createServiceNowWorkspaceProvisioningService).mockReset();
+  vi.mocked(createServiceNowWorkspaceSettingsService).mockReset();
   vi.mocked(canCurrentUserCreateWorkspaces).mockReset();
   vi.mocked(canCurrentUserCreateWorkspaces).mockReturnValue(true);
   vi.mocked(readWorkspaceMutationAuthority).mockReturnValue({
@@ -151,7 +161,7 @@ test("workspaces endpoint hides unexpected internal errors behind a safe message
 
   const response = createResponseRecorder();
 
-  await processWorkspaces({ queryString: "page=1&pageSize=10" }, response);
+  await processWorkspaces({ queryString: "q=WORKSPACE-QUERY-MARKER&page=1&pageSize=10&unexpected=UNEXPECTED-QUERY-MARKER" }, response);
 
   expect(response.status).toBe(500);
   expect(response.body).toEqual({
@@ -159,7 +169,11 @@ test("workspaces endpoint hides unexpected internal errors behind a safe message
       message: "Unable to load workspaces. Please try again."
     }
   });
-  expect(String(gsError.mock.calls[0]?.[0] ?? "")).toContain("GlideRecord failed for table x_82900_docsera_docsera_workspace");
+  const logEntry = String(gsError.mock.calls[0]?.[0] ?? "");
+  expect(logEntry).toContain("GlideRecord failed for table x_82900_docsera_docsera_workspace");
+  expect(logEntry).toContain("\"searchTextLength\":22");
+  expect(logEntry).not.toContain("WORKSPACE-QUERY-MARKER");
+  expect(logEntry).not.toContain("UNEXPECTED-QUERY-MARKER");
 });
 
 test("workspace lookup failures still return a safe user-facing message", async () => {
@@ -216,14 +230,14 @@ test("workspaces endpoint exposes the server workspace-creation capability", asy
   }
 });
 
-test("page listing failures still return a safe user-facing message", async () => {
+test("page listing failures log bounded query metadata and return a safe user-facing message", async () => {
   vi.mocked(createServiceNowPageListingService).mockReturnValue({
     listPages: vi.fn().mockRejectedValue(new Error("ACL denied on x_82900_docsera_page"))
   } as never);
 
   const response = createResponseRecorder();
 
-  await processPages({ queryString: "workspaceSlug=workspace-001" }, response);
+  await processPages({ queryString: "workspaceSlug=QUERY-DATA-MARKER&unexpected=UNEXPECTED-QUERY-MARKER" }, response);
 
   expect(response.status).toBe(500);
   expect(response.body).toEqual({
@@ -231,7 +245,11 @@ test("page listing failures still return a safe user-facing message", async () =
       message: "Unable to load pages. Please try again."
     }
   });
-  expect(String(gsError.mock.calls[0]?.[0] ?? "")).toContain("ACL denied on x_82900_docsera_page");
+  const logEntry = String(gsError.mock.calls[0]?.[0] ?? "");
+  expect(logEntry).toContain("ACL denied on x_82900_docsera_page");
+  expect(logEntry).toContain("\"workspaceSlugLength\":17");
+  expect(logEntry).not.toContain("QUERY-DATA-MARKER");
+  expect(logEntry).not.toContain("UNEXPECTED-QUERY-MARKER");
 });
 
 test("page save failures redact draft body text from unexpected error logging", async () => {
@@ -279,6 +297,44 @@ test("page save failures redact draft body text from unexpected error logging", 
   expect(logEntry).not.toContain("Sensitive draft body text");
   expect(logEntry).not.toContain("draft_content_json");
   expect(logEntry).not.toContain("workspace-lease-token");
+});
+
+test("page create, delete, and settings failures log bounded metadata without lease tokens or authored text", async () => {
+  const requestBody = {
+    workspaceSlug: "product-docs",
+    workspaceSysId: "workspace-001",
+    pageSysId: "page-001",
+    title: "AUTHORED-PAGE-TEXT-MARKER",
+    slug: "page-marker",
+    workspaceLeaseToken: "LEASE-TOKEN-MARKER",
+    unexpectedField: "UNEXPECTED-FIELD-MARKER"
+  };
+  const createResponse = createResponseRecorder();
+  vi.mocked(createServiceNowWorkspaceChangeSetPersistenceService).mockReturnValue({
+    createPage: vi.fn().mockRejectedValue(new Error("create failure"))
+  } as never);
+  await processCreatePage({ body: { data: requestBody } }, createResponse);
+
+  const deleteResponse = createResponseRecorder();
+  vi.mocked(createServiceNowWorkspaceChangeSetPersistenceService).mockReturnValue({
+    deletePage: vi.fn().mockRejectedValue(new Error("delete failure"))
+  } as never);
+  await processDeletePage({ body: { data: requestBody } }, deleteResponse);
+
+  const settingsResponse = createResponseRecorder();
+  vi.mocked(createServiceNowWorkspaceChangeSetPersistenceService).mockReturnValue({
+    listPages: vi.fn(() => ({ kind: "succeeded", pages: [] })),
+    savePageSettings: vi.fn().mockRejectedValue(new Error("settings failure"))
+  } as never);
+  await processPageSettings({ body: { data: requestBody } }, settingsResponse);
+
+  expect([createResponse.status, deleteResponse.status, settingsResponse.status]).toEqual([500, 500, 500]);
+  const logs = gsError.mock.calls.map(([entry]) => String(entry)).join("\n");
+  expect(logs).toContain("\"workspaceSysIdLength\":13");
+  expect(logs).toContain("\"titleLength\":25");
+  expect(logs).not.toContain("LEASE-TOKEN-MARKER");
+  expect(logs).not.toContain("AUTHORED-PAGE-TEXT-MARKER");
+  expect(logs).not.toContain("UNEXPECTED-FIELD-MARKER");
 });
 
 test("page save passes raw draft_content_json through without coercion", async () => {
@@ -402,6 +458,39 @@ test("create workspace hides unexpected errors behind a safe message", async () 
     }
   });
   expect(String(gsError.mock.calls[0]?.[0] ?? "")).toContain("Insert failed: x_82900_docsera_docsera_workspace_provision_request");
+});
+
+test("workspace create and settings failures log only allowlisted diagnostic metadata", async () => {
+  const requestBody = {
+    workspaceSlug: "product-docs",
+    workspaceSysId: "workspace-001",
+    name: "AUTHORED-WORKSPACE-NAME-MARKER",
+    shortDescription: "AUTHORED-WORKSPACE-DESCRIPTION-MARKER",
+    workspaceLeaseToken: "LEASE-TOKEN-MARKER",
+    unexpectedField: "UNEXPECTED-FIELD-MARKER"
+  };
+  vi.mocked(createServiceNowWorkspaceProvisioningService).mockReturnValue({
+    createWorkspace: vi.fn().mockRejectedValue(new Error("provision failure")),
+    roleNames: { docseraAdmin: "Docsera admin", editor: "Editor", workspaceAdmin: "Workspace admin" },
+    statusPathFor: vi.fn()
+  } as never);
+  const createResponse = createResponseRecorder();
+  await processCreateWorkspace({ body: requestBody }, createResponse);
+
+  vi.mocked(createServiceNowWorkspaceSettingsService).mockReturnValue({
+    saveWorkspaceSettings: vi.fn().mockRejectedValue(new Error("settings failure"))
+  } as never);
+  const settingsResponse = createResponseRecorder();
+  await processWorkspaceSettings({ body: requestBody }, settingsResponse);
+
+  expect([createResponse.status, settingsResponse.status]).toEqual([500, 500]);
+  const logs = gsError.mock.calls.map(([entry]) => String(entry)).join("\n");
+  expect(logs).toContain("\"nameLength\":30");
+  expect(logs).toContain("\"shortDescriptionLength\":37");
+  expect(logs).not.toContain("LEASE-TOKEN-MARKER");
+  expect(logs).not.toContain("AUTHORED-WORKSPACE-NAME-MARKER");
+  expect(logs).not.toContain("AUTHORED-WORKSPACE-DESCRIPTION-MARKER");
+  expect(logs).not.toContain("UNEXPECTED-FIELD-MARKER");
 });
 
 test("create workspace rejects unsupported built-in workspace icons before provisioning", async () => {

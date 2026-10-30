@@ -248,4 +248,30 @@ describe("workspace media routes", () => {
       }
     });
   });
+
+  it("redacts query data while retaining bounded metadata for list, retrieval, and upload exceptions", async () => {
+    mocks.service.listWorkspaceMedia.mockRejectedValue(new Error("list failure"));
+    mocks.service.getWorkspaceMediaFile.mockRejectedValue(new Error("file failure"));
+    mocks.service.uploadWorkspaceMedia.mockRejectedValue(new Error("upload failure"));
+    const request = {
+      body: { dataStream: "raw-image-stream" },
+      headers: { "Content-Type": "image/png", "X-Docsera-Workspace-Lease-Token": "LEASE-TOKEN-MARKER" },
+      queryString: "workspaceSysId=QUERY-WORKSPACE-MARKER&mediaId=QUERY-MEDIA-MARKER&fileName=QUERY-FILE-MARKER&unexpected=UNEXPECTED-QUERY-MARKER"
+    };
+
+    await processWorkspaceMediaList(request, createResponseRecorder());
+    await processWorkspaceMediaFile(request, createResponseRecorder());
+    await processWorkspaceMediaUpload(request, createResponseRecorder());
+
+    const logs = mocks.glide.gs.error.mock.calls.map(([entry]) => String(entry)).join("\n");
+    expect(logs).toContain("\"workspaceSysIdLength\":22");
+    expect(logs).toContain("\"mediaIdLength\":18");
+    expect(logs).toContain("\"fileNameLength\":17");
+    expect(logs).toContain("\"contentTypePresent\":true");
+    expect(logs).not.toContain("QUERY-WORKSPACE-MARKER");
+    expect(logs).not.toContain("QUERY-MEDIA-MARKER");
+    expect(logs).not.toContain("QUERY-FILE-MARKER");
+    expect(logs).not.toContain("UNEXPECTED-QUERY-MARKER");
+    expect(logs).not.toContain("LEASE-TOKEN-MARKER");
+  });
 });

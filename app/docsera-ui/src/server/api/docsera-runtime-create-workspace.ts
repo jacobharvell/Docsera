@@ -48,6 +48,14 @@ function readRequestBody(request: RequestLike): Record<string, unknown> {
   return rawBody && typeof rawBody === "object" ? (rawBody as Record<string, unknown>) : {};
 }
 
+function summarizeRequestBody(body: Record<string, unknown>) {
+  const name = cleanText(body.name);
+  const shortDescription = cleanText(body.shortDescription);
+  const icon = body.icon && typeof body.icon === "object" ? body.icon as Record<string, unknown> : null;
+  const layout = body.layout && typeof body.layout === "object" ? body.layout as Record<string, unknown> : null;
+  return { namePresent: Boolean(name), nameLength: name.length, shortDescriptionPresent: Boolean(shortDescription), shortDescriptionLength: shortDescription.length, iconProvided: body.icon !== undefined, iconType: icon?.type === "builtin" || icon?.type === "uploaded" ? icon.type : undefined, layoutProvided: Boolean(layout), layoutTocVisibleProvided: typeof layout?.tocVisible === "boolean", layoutPageWidth: layout?.pageWidth === "full" || layout?.pageWidth === "readable" ? layout.pageWidth : undefined, status: body.status === "inactive" ? "inactive" : "active" };
+}
+
 function normalizeWorkspaceInput(request: RequestLike): WorkspaceDraftInput {
   const body = readRequestBody(request);
   const icon = body.icon && typeof body.icon === "object" ? (body.icon as Record<string, unknown>) : null;
@@ -189,7 +197,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
     }
 
     logUnexpectedWorkspaceCreationError(error, {
-      requestBody: readRequestBody(request)
+      ...summarizeRequestBody(readRequestBody(request))
     });
 
     response.setBody({

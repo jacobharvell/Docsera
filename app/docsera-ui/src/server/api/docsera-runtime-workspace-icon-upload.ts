@@ -23,6 +23,14 @@ function logUnexpectedIconError(error: unknown, context: Record<string, unknown>
   gs.error(`[Docsera workspace icon upload] ${JSON.stringify({ context, message: cleanText(error instanceof Error ? error.message : error) || "Unknown workspace icon upload failure." })}`);
 }
 
+function summarizeRequest(request: RequestLike) {
+  const fileName = readQueryParam(request, "fileName");
+  const workspaceSysId = readQueryParam(request, "workspaceSysId");
+  const assetKey = readQueryParam(request, "assetKey");
+  const contentLengthBytes = readNumericHeader(request, "Content-Length");
+  return { action: readQueryParam(request, "action") === "cleanup-settings-staged" ? "cleanup-settings-staged" : "upload", fileNamePresent: Boolean(fileName), fileNameLength: fileName.length, workspaceSysIdPresent: Boolean(workspaceSysId), workspaceSysIdLength: workspaceSysId.length, assetKeyPresent: Boolean(assetKey), assetKeyLength: assetKey.length, contentTypePresent: Boolean(readHeader(request, "Content-Type")), contentLengthBytes: typeof contentLengthBytes === "number" ? contentLengthBytes : undefined };
+}
+
 export async function process(request: RequestLike, response: ResponseLike) {
   try {
     const service = createServiceNowWorkspaceIconService();
@@ -51,7 +59,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
     response.setBody({ result: { asset: result.asset } });
   } catch (error) {
     response.setStatus?.(500);
-    logUnexpectedIconError(error, { queryString: cleanText(request?.queryString), contentType: readHeader(request, "Content-Type") });
+    logUnexpectedIconError(error, summarizeRequest(request));
     response.setBody({ error: { message: "Something went wrong while uploading the workspace icon. The file was not saved. Please try again." } });
   }
 }

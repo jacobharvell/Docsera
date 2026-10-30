@@ -26,6 +26,15 @@ function readRequestBody(request: RequestLike): Record<string, unknown> {
   return rawBody && typeof rawBody === "object" ? (rawBody as Record<string, unknown>) : {};
 }
 
+function summarizeRequestBody(body: Record<string, unknown>) {
+  const workspaceSlug = cleanText(body.workspaceSlug);
+  const workspaceSysId = cleanText(body.workspaceSysId);
+  const name = cleanText(body.name);
+  const shortDescription = cleanText(body.shortDescription);
+  const layout = body.layout && typeof body.layout === "object" ? body.layout as Record<string, unknown> : null;
+  return { workspaceSlugPresent: Boolean(workspaceSlug), workspaceSlugLength: workspaceSlug.length, workspaceSysIdPresent: Boolean(workspaceSysId), workspaceSysIdLength: workspaceSysId.length, namePresent: Boolean(name), nameLength: name.length, shortDescriptionPresent: Boolean(shortDescription), shortDescriptionLength: shortDescription.length, iconProvided: body.icon !== undefined, layoutProvided: Boolean(layout), layoutTocVisibleProvided: typeof layout?.tocVisible === "boolean" };
+}
+
 function logUnexpectedWorkspaceSettingsError(error: unknown, context: Record<string, unknown>) {
   const message = cleanText(error instanceof Error ? error.message : error) || "Unknown workspace settings failure.";
   const stack = error instanceof Error ? cleanText(error.stack) : "";
@@ -89,7 +98,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
   } catch (error) {
     response.setStatus?.(500);
     logUnexpectedWorkspaceSettingsError(error, {
-      requestBody: body
+      ...summarizeRequestBody(body)
     });
     response.setBody({
       error: {

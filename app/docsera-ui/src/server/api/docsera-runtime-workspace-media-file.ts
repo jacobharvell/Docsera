@@ -30,6 +30,12 @@ function logUnexpectedMediaError(error: unknown, context: Record<string, unknown
   );
 }
 
+function summarizeRequest(request: RequestLike) {
+  const mediaId = readQueryParam(request, "mediaId");
+  const workspaceSysId = readQueryParam(request, "workspaceSysId");
+  return { action: "retrieve", mediaIdPresent: Boolean(mediaId), mediaIdLength: mediaId.length, workspaceSysIdPresent: Boolean(workspaceSysId), workspaceSysIdLength: workspaceSysId.length };
+}
+
 export async function process(request: RequestLike, response: ResponseLike) {
   try {
     const service = createServiceNowWorkspaceMediaService();
@@ -59,11 +65,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
     writer.writeStream(result.contentStream);
   } catch (error) {
     response.setStatus?.(500);
-    logUnexpectedMediaError(error, {
-      action: "retrieve",
-      queryString: cleanText(request?.queryString),
-      queryParams: request?.queryParams && typeof request.queryParams === "object" ? request.queryParams : undefined
-    });
+    logUnexpectedMediaError(error, summarizeRequest(request));
     response.setBody({
       error: {
         message: "Unable to load media file. Please try again."

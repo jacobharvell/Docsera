@@ -64,6 +64,21 @@ function logUnexpectedWorkspaceMemberError(error: unknown, context: Record<strin
   );
 }
 
+function summarizeQueryRequest(request: RequestLike, operation: "list" | "search") {
+  const workspaceRef = readWorkspaceRef(request, {});
+  const term = readQueryParam(request, "q") || readQueryParam(request, "term");
+  const excludedUserCount = (readQueryParam(request, "exclude") || "").split(",").map(cleanText).filter(Boolean).length;
+  const limit = Number(readQueryParam(request, "limit"));
+  return { operation, workspaceSlugPresent: Boolean(workspaceRef.workspaceSlug), workspaceSlugLength: workspaceRef.workspaceSlug.length, workspaceSysIdPresent: Boolean(workspaceRef.workspaceSysId), workspaceSysIdLength: workspaceRef.workspaceSysId.length, termPresent: Boolean(term), termLength: term.length, excludedUserCount, limit: Number.isSafeInteger(limit) && limit > 0 ? limit : undefined };
+}
+
+function summarizeBodyRequest(body: Record<string, unknown>, operation: "set" | "remove") {
+  const workspaceSlug = cleanText(body.workspaceSlug);
+  const workspaceSysId = cleanText(body.workspaceSysId);
+  const userSysId = cleanText(body.userSysId);
+  return { operation, workspaceSlugPresent: Boolean(workspaceSlug), workspaceSlugLength: workspaceSlug.length, workspaceSysIdPresent: Boolean(workspaceSysId), workspaceSysIdLength: workspaceSysId.length, userSysIdPresent: Boolean(userSysId), userSysIdLength: userSysId.length, accessLevel: body.accessLevel === "admin" || body.accessLevel === "editor" || body.accessLevel === "viewer" ? body.accessLevel : undefined };
+}
+
 export function listWorkspaceMembers(request: RequestLike, response: ResponseLike) {
   try {
     const service = createServiceNowWorkspaceMembershipService();
@@ -71,7 +86,7 @@ export function listWorkspaceMembers(request: RequestLike, response: ResponseLik
     setOutcome(response, outcome, outcome.kind === "succeeded" ? { callerCapabilities: outcome.callerCapabilities, members: outcome.members } : {});
   } catch (error) {
     response.setStatus?.(500);
-    logUnexpectedWorkspaceMemberError(error, { operation: "list", queryString: cleanText(request?.queryString) });
+    logUnexpectedWorkspaceMemberError(error, summarizeQueryRequest(request, "list"));
     response.setBody({ error: { message: "Unable to load workspace members. Please try again." } });
   }
 }
@@ -93,7 +108,7 @@ export function searchWorkspaceMemberUsers(request: RequestLike, response: Respo
     setOutcome(response, outcome, outcome.kind === "succeeded" ? { callerCapabilities: outcome.callerCapabilities, users: outcome.users } : {});
   } catch (error) {
     response.setStatus?.(500);
-    logUnexpectedWorkspaceMemberError(error, { operation: "search", queryString: cleanText(request?.queryString) });
+    logUnexpectedWorkspaceMemberError(error, summarizeQueryRequest(request, "search"));
     response.setBody({ error: { message: "Unable to search users. Please try again." } });
   }
 }
@@ -110,7 +125,7 @@ export function setWorkspaceMemberAccess(request: RequestLike, response: Respons
     setOutcome(response, outcome, outcome.kind === "succeeded" ? { callerCapabilities: outcome.callerCapabilities, member: outcome.member, members: outcome.members } : {});
   } catch (error) {
     response.setStatus?.(500);
-    logUnexpectedWorkspaceMemberError(error, { operation: "set", workspaceSysId: cleanText(body.workspaceSysId) });
+    logUnexpectedWorkspaceMemberError(error, summarizeBodyRequest(body, "set"));
     response.setBody({ error: { message: "Unable to update workspace membership. Please try again." } });
   }
 }
@@ -126,7 +141,7 @@ export function removeWorkspaceMemberAccess(request: RequestLike, response: Resp
     setOutcome(response, outcome, outcome.kind === "succeeded" ? { callerCapabilities: outcome.callerCapabilities, members: outcome.members } : {});
   } catch (error) {
     response.setStatus?.(500);
-    logUnexpectedWorkspaceMemberError(error, { operation: "remove", workspaceSysId: cleanText(body.workspaceSysId) });
+    logUnexpectedWorkspaceMemberError(error, summarizeBodyRequest(body, "remove"));
     response.setBody({ error: { message: "Unable to remove workspace membership. Please try again." } });
   }
 }

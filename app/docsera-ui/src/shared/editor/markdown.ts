@@ -764,7 +764,10 @@ function serializeBlockNode(node: unknown, orderedDepth = 0): string {
     case "taskList":
       return (Array.isArray(node.content) ? node.content : [])
         .map((item) => {
-          return `- [ ] ${serializeListItemContent((item as RecordValue).content as unknown[] | undefined, orderedDepth)}`;
+          const taskItem = isRecord(item) ? item : {};
+          const taskAttrs = isRecord(taskItem.attrs) ? taskItem.attrs : {};
+          const marker = taskAttrs.checked === true ? "x" : " ";
+          return `- [${marker}] ${serializeListItemContent(taskItem.content as unknown[] | undefined, orderedDepth)}`;
         })
         .join("\n");
     case "blockquote":
@@ -1407,7 +1410,7 @@ function parseFlow(nodes: unknown[] | undefined, sourceText?: string): Canonical
           if (isTaskList) {
             content.push({
               type: "taskItem",
-              attrs: { checked: false },
+              attrs: { checked: item.checked === true },
               content: parsedChildren
             });
           } else {

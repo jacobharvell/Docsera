@@ -193,6 +193,7 @@ export const testSuites = [
     description: "roles; permissions; authorization boundaries; access loss; role-sensitive behavior.",
     files: [
       "src/server/api/docsera-runtime-workspace-edit-lease.test.ts",
+      "src/server/api/docsera-runtime-workspace-members.test.ts",
       "src/server/pages/serviceNowPageCreation.access-security.test.ts",
       "src/server/workspaces/serviceNowWorkspaceSettings.test.ts",
       "src/server/workspaces/serviceNowWorkspaceCatalog.test.ts",
@@ -224,6 +225,7 @@ export const testSuites = [
       "src/client/shared/icons/DocseraIcon.test.tsx",
       "src/client/shared/tooltip/DocseraTooltip.test.tsx",
       "src/server/api/docsera-runtime-ping.test.ts",
+      "src/server/api/docsera-runtime-workspace-icon.test.ts",
       "src/server/scheduled-scripts/docsera-workspace-icon-cleanup.test.ts",
       "src/server/workspaces/serverWorkspaceIconImage.test.ts",
       "src/server/workspaces/serviceNowWorkspaceIcons.test.ts",

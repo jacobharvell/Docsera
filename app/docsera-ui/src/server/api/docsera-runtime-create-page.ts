@@ -28,6 +28,14 @@ function readRequestBody(request: RequestLike): Record<string, unknown> {
   return rawBody && typeof rawBody === "object" ? (rawBody as Record<string, unknown>) : {};
 }
 
+function summarizeRequestBody(body: Record<string, unknown>) {
+  const workspaceSlug = cleanText(body.workspaceSlug);
+  const workspaceSysId = cleanText(body.workspaceSysId);
+  const title = cleanText(body.title);
+  const parentPageSysId = cleanText(body.parentPageSysId);
+  return { workspaceSlugPresent: Boolean(workspaceSlug), workspaceSlugLength: workspaceSlug.length, workspaceSysIdPresent: Boolean(workspaceSysId), workspaceSysIdLength: workspaceSysId.length, titlePresent: Boolean(title), titleLength: title.length, parentPageSysIdPresent: Boolean(parentPageSysId), parentPageSysIdLength: parentPageSysId.length };
+}
+
 function logUnexpectedPageCreationError(error: unknown, context: Record<string, unknown>) {
   const message = cleanText(error instanceof Error ? error.message : error) || "Unknown page creation failure.";
   const stack = error instanceof Error ? cleanText(error.stack) : "";
@@ -142,7 +150,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
   } catch (error) {
     response.setStatus?.(500);
     logUnexpectedPageCreationError(error, {
-      requestBody: readRequestBody(request)
+      ...summarizeRequestBody(readRequestBody(request))
     });
     response.setBody({
       error: {

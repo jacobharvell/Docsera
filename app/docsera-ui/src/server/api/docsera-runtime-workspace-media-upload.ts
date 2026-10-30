@@ -32,6 +32,13 @@ function logUnexpectedMediaError(error: unknown, context: Record<string, unknown
   );
 }
 
+function summarizeRequest(request: RequestLike) {
+  const fileName = readQueryParam(request, "fileName");
+  const workspaceSysId = readQueryParam(request, "workspaceSysId");
+  const contentLengthBytes = readNumericHeader(request, "Content-Length");
+  return { action: "upload", fileNamePresent: Boolean(fileName), fileNameLength: fileName.length, workspaceSysIdPresent: Boolean(workspaceSysId), workspaceSysIdLength: workspaceSysId.length, contentTypePresent: Boolean(readHeader(request, "Content-Type")), contentLengthBytes: typeof contentLengthBytes === "number" ? contentLengthBytes : undefined };
+}
+
 export async function process(request: RequestLike, response: ResponseLike) {
   try {
     const service = createServiceNowWorkspaceMediaService();
@@ -62,12 +69,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
     });
   } catch (error) {
     response.setStatus?.(500);
-    logUnexpectedMediaError(error, {
-      action: "upload",
-      queryString: cleanText(request?.queryString),
-      queryParams: request?.queryParams && typeof request.queryParams === "object" ? request.queryParams : undefined,
-      contentType: readHeader(request, "Content-Type")
-    });
+    logUnexpectedMediaError(error, summarizeRequest(request));
     response.setBody({
       error: {
         message: "Something went wrong while uploading media. The file was not saved. Please try again."

@@ -29,6 +29,15 @@ function readRequestBody(request: RequestLike): Record<string, unknown> {
   return rawBody && typeof rawBody === "object" ? (rawBody as Record<string, unknown>) : {};
 }
 
+function summarizeRequestBody(body: Record<string, unknown>) {
+  const workspaceSlug = cleanText(body.workspaceSlug);
+  const workspaceSysId = cleanText(body.workspaceSysId);
+  const pageSysId = cleanText(body.pageSysId);
+  const title = cleanText(body.title);
+  const slug = cleanText(body.slug);
+  return { workspaceSlugPresent: Boolean(workspaceSlug), workspaceSlugLength: workspaceSlug.length, workspaceSysIdPresent: Boolean(workspaceSysId), workspaceSysIdLength: workspaceSysId.length, pageSysIdPresent: Boolean(pageSysId), pageSysIdLength: pageSysId.length, titlePresent: Boolean(title), titleLength: title.length, slugPresent: Boolean(slug), slugLength: slug.length };
+}
+
 function logUnexpectedPageSettingsError(error: unknown, context: Record<string, unknown>) {
   const message = cleanText(error instanceof Error ? error.message : error) || "Unknown page settings failure.";
   const stack = error instanceof Error ? cleanText(error.stack) : "";
@@ -160,7 +169,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
   } catch (error) {
     response.setStatus?.(500);
     logUnexpectedPageSettingsError(error, {
-      requestBody: readRequestBody(request)
+      ...summarizeRequestBody(readRequestBody(request))
     });
     response.setBody({
       error: {

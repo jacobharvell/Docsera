@@ -28,6 +28,11 @@ function logUnexpectedMediaError(error: unknown, context: Record<string, unknown
   );
 }
 
+function summarizeRequest(request: RequestLike) {
+  const workspaceSysId = readQueryParam(request, "workspaceSysId");
+  return { action: "list", workspaceSysIdPresent: Boolean(workspaceSysId), workspaceSysIdLength: workspaceSysId.length };
+}
+
 export async function process(request: RequestLike, response: ResponseLike) {
   try {
     const service = createServiceNowWorkspaceMediaService();
@@ -52,11 +57,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
     });
   } catch (error) {
     response.setStatus?.(500);
-    logUnexpectedMediaError(error, {
-      action: "list",
-      queryString: cleanText(request?.queryString),
-      queryParams: request?.queryParams && typeof request.queryParams === "object" ? request.queryParams : undefined
-    });
+    logUnexpectedMediaError(error, summarizeRequest(request));
     response.setBody({
       error: {
         message: "Unable to load workspace media. Please try again."

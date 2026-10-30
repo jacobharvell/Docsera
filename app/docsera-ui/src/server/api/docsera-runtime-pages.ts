@@ -100,6 +100,12 @@ function logUnexpectedPageListingError(error: unknown, context: Record<string, u
   );
 }
 
+function summarizeRequest(request: RequestLike) {
+  const workspaceSlug = readQueryParam(request, "workspaceSlug") || readQueryParam(request, "workspace");
+  const mode = readQueryParam(request, "mode");
+  return { workspaceSlugPresent: Boolean(workspaceSlug), workspaceSlugLength: workspaceSlug.length, mode: mode === "edit" ? "edit" : mode ? "other" : "absent" };
+}
+
 export async function process(request: RequestLike, response: ResponseLike) {
   try {
     const service = createServiceNowPageListingService();
@@ -141,8 +147,7 @@ export async function process(request: RequestLike, response: ResponseLike) {
   } catch (error) {
     response.setStatus?.(500);
     logUnexpectedPageListingError(error, {
-      queryString: cleanText(request?.queryString),
-      queryParams: request?.queryParams && typeof request.queryParams === "object" ? request.queryParams : undefined
+      ...summarizeRequest(request)
     });
     response.setBody({
       error: {
