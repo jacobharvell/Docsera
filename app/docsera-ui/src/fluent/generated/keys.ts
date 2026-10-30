@@ -171,6 +171,22 @@ declare global {
                         table: 'sys_security_acl'
                         id: 'dcae77963642435aa7f117fa536a6fe6'
                     }
+                    docsera_workspace_provision_request_create_deny: {
+                        table: 'sys_security_acl'
+                        id: '84323cfbd25b4249a8fa272e32884f27'
+                    }
+                    docsera_workspace_provision_request_delete_deny: {
+                        table: 'sys_security_acl'
+                        id: '7381ac581be1435d83b98bbc68a40c6a'
+                    }
+                    docsera_workspace_provision_request_read_deny: {
+                        table: 'sys_security_acl'
+                        id: '2d54dd55aef64b97aa91412be58e7e4d'
+                    }
+                    docsera_workspace_provision_request_write_deny: {
+                        table: 'sys_security_acl'
+                        id: '2cbc752b4cb7470b956b6776a15d676a'
+                    }
                     docsera_workspace_removal_batch_create_deny: {
                         table: 'sys_security_acl'
                         id: 'bfcb2f02f15549258209290676c65965'

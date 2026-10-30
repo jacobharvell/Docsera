@@ -12,7 +12,7 @@ export const x_82900_docsera_workspace_provision_request = Table({
   label: "Docsera Workspace Provision Request",
   display: "name",
   actions: ["read", "update"],
-  allowWebServiceAccess: true,
+  allowWebServiceAccess: false,
   audit: true,
   schema: {
     name: StringColumn({

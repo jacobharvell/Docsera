@@ -71,6 +71,13 @@ describe("workspace change-set metadata contract", () => {
     expect(source("docsera-workspace-member-mutation-command.now.ts")).toContain('validate_workspace_group_deletion: "Validate workspace group deletion"');
   });
 
+  it("keeps the privileged provisioning queue outside direct web-service access while preserving worker table actions", () => {
+    const requestQueue = source("docsera-workspace-provision-request.now.ts");
+
+    expect(requestQueue).toContain('actions: ["read", "update"]');
+    expect(requestQueue).toContain("allowWebServiceAccess: false");
+  });
+
   it("supports inactive workspace tombstones without generated access group references", () => {
     const workspace = source("docsera-workspace.now.ts");
 
@@ -100,7 +107,8 @@ describe("workspace change-set metadata contract", () => {
       "x_82900_docsera_workspace_removal_batch",
       "x_82900_docsera_workspace_removal_member",
       "x_82900_docsera_workspace_icon_asset",
-      "x_82900_docsera_workspace_member_mutation_command"
+      "x_82900_docsera_workspace_member_mutation_command",
+      "x_82900_docsera_workspace_provision_request"
     ];
     for (const table of protectedTables) {
       expect(acl).toContain(table);
@@ -109,5 +117,14 @@ describe("workspace change-set metadata contract", () => {
     expect(acl.match(/decisionType: "deny"/g)).toHaveLength(expectedAclCount);
     expect(acl.match(/adminOverrides: false/g)).toHaveLength(expectedAclCount);
     expect(acl.match(/script: "return false;"/g)).toHaveLength(expectedAclCount);
+  });
+
+  it("declares a stable Deny-Unless ACL for every provisioning queue CRUD operation", () => {
+    const acl = source("security/docsera-workspace-foundation-table-access.now.ts");
+
+    for (const operation of ["create", "read", "write", "delete"]) {
+      expect(acl).toContain(`Now.ID["docsera_workspace_provision_request_${operation}_deny"]`);
+      expect(acl).toContain(`table: "x_82900_docsera_workspace_provision_request", operation: "${operation}", decisionType: "deny", adminOverrides: false, script: "return false;"`);
+    }
   });
 });
