@@ -502,3 +502,71 @@ test("workspace provisioning status hides unexpected errors behind a safe messag
   });
   expect(String(gsError.mock.calls[0]?.[0] ?? "")).toContain("Table x_82900_docsera_docsera_workspace_provision_request not found");
 });
+
+test("workspace provisioning status allows an authorized caller to poll a known request", async () => {
+  const getProvisioningStatus = vi.fn().mockResolvedValue({
+    kind: "pending",
+    requestId: "known-request-001",
+    state: "processing"
+  });
+  vi.mocked(createServiceNowWorkspaceProvisioningService).mockReturnValue({
+    getProvisioningStatus,
+    roleNames: {
+      docseraAdmin: "Docsera admin",
+      editor: "Editor",
+      workspaceAdmin: "Workspace admin"
+    },
+    statusPathFor: vi.fn((requestId: string) => `/status?requestId=${requestId}`)
+  } as never);
+
+  const response = createResponseRecorder();
+
+  await processWorkspaceProvisioningStatus({ queryString: "requestId=known-request-001" }, response);
+
+  expect(response.status).toBeUndefined();
+  expect(getProvisioningStatus).toHaveBeenCalledWith("known-request-001");
+  expect(response.body).toEqual({
+    result: {
+      mode: "servicenow",
+      provisioning: {
+        pollAfterMs: 1000,
+        requestId: "known-request-001",
+        state: "processing",
+        statusPath: "/status?requestId=known-request-001"
+      },
+      roleNames: {
+        docseraAdmin: "Docsera admin",
+        editor: "Editor",
+        workspaceAdmin: "Workspace admin"
+      }
+    }
+  });
+});
+
+test("workspace provisioning status rejects an unauthorized caller before looking up a known request", async () => {
+  vi.mocked(canCurrentUserCreateWorkspaces).mockReturnValue(false);
+  const getProvisioningStatus = vi.fn();
+  vi.mocked(createServiceNowWorkspaceProvisioningService).mockReturnValue({
+    getProvisioningStatus,
+    roleNames: {
+      docseraAdmin: "Docsera admin",
+      editor: "Editor",
+      workspaceAdmin: "Workspace admin"
+    },
+    statusPathFor: vi.fn()
+  } as never);
+
+  const response = createResponseRecorder();
+
+  await processWorkspaceProvisioningStatus({ queryString: "requestId=known-request-001" }, response);
+
+  expect(response.status).toBe(403);
+  expect(response.body).toEqual({
+    error: {
+      code: "workspace_provisioning_status_forbidden",
+      message: "You do not have permission to check workspace provisioning status."
+    }
+  });
+  expect(createServiceNowWorkspaceProvisioningService).not.toHaveBeenCalled();
+  expect(getProvisioningStatus).not.toHaveBeenCalled();
+});

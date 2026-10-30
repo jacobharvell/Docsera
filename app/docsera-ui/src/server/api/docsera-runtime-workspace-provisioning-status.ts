@@ -1,6 +1,7 @@
 import { gs } from "@servicenow/glide";
 import type { RESTAPIRequest, RESTAPIResponse } from "@servicenow/glide/sn_ws_int";
 import { createServiceNowWorkspaceProvisioningService } from "../workspaces/serviceNowWorkspaceProvisioning.ts";
+import { canCurrentUserCreateWorkspaces } from "../workspaces/serviceNowWorkspaceCapabilities.ts";
 import { toWorkspaceViewRecord } from "../workspaces/serviceNowWorkspaceRecords.ts";
 
 function cleanText(value: unknown): string {
@@ -76,6 +77,17 @@ function logUnexpectedWorkspaceProvisioningStatusError(error: unknown, context: 
 }
 
 export async function process(request: Partial<RESTAPIRequest>, response: Partial<RESTAPIResponse>) {
+  if (!canCurrentUserCreateWorkspaces()) {
+    response.setStatus?.(403);
+    response.setBody?.({
+      error: {
+        code: "workspace_provisioning_status_forbidden",
+        message: "You do not have permission to check workspace provisioning status."
+      }
+    });
+    return;
+  }
+
   const requestId = readRequestId(request);
   if (!requestId) {
     response.setStatus?.(400);

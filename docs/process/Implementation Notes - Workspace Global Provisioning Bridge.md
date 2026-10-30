@@ -51,6 +51,7 @@ The status route returns:
 - `200` with `requested`, `processing`, `succeeded`, or `failed` state data
 - `404` when the request does not exist
 - `400` for malformed status requests
+- `403` before parsing the request ID or loading provisioning data when the current user is not an effective Docsera Admin; it uses the same `canCurrentUserCreateWorkspaces()` authority boundary as workspace creation
 
 ### Global side
 
