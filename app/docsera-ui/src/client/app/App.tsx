@@ -6035,21 +6035,21 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
 
   async function moveWorkspacePage(input: { pageSysId: string; parentPageSysId: string | null; siblingOrder: string | number }) {
     if (!serviceNowClient.movePage || !canManagePageSettings || !workspacePagesLoaded || workspaceState.status !== "success") {
-      return;
+      return false;
     }
     if (workspaceCommandBlocksCurrentWorkspaceWrites) {
-      return;
+      return false;
     }
     if (staleRefreshBlocksCurrentWorkspaceWrites) {
       requestStaleRefreshBlock(currentWorkspaceMutationAuthority() ?? {});
-      return;
+      return false;
     }
     const pageSysId = cleanText(input.pageSysId);
     const siblingOrder = String(input.siblingOrder);
     const parentPageSysId = cleanText(input.parentPageSysId) || null;
     const movingPage = findWorkspacePageBySysId(currentWorkspacePages, pageSysId);
     if (!movingPage || ((cleanText(movingPage.parentPageSysId) || null) === parentPageSysId && String(movingPage.siblingOrder) === siblingOrder)) {
-      return;
+      return false;
     }
     const previousPages = currentWorkspacePages;
     const optimisticPages = previousPages.map((page) =>
@@ -6077,16 +6077,16 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           workspaceAuthority
         })
       });
-      if (isObsoleteWorkspaceMutationOutcome(outcome) && !isCurrentWorkspaceMutationContext(mutationContextKey)) return;
+      if (isObsoleteWorkspaceMutationOutcome(outcome) && !isCurrentWorkspaceMutationContext(mutationContextKey)) return false;
       if (outcome.state === "contention" || outcome.state === "forbidden" || outcome.state === "transient_failure") {
         setWorkspacePagesState((current) =>
           current.status === "success" && current.workspaceSlug === workspaceState.data.slug && current.mode === activeWorkspaceMode
             ? { ...current, data: previousPages }
             : current
         );
-        return;
+        return false;
       }
-      if (!isCurrentWorkspaceMutationContext(mutationContextKey)) return;
+      if (!isCurrentWorkspaceMutationContext(mutationContextKey)) return false;
       const result = outcome;
       if (result.state === "failed" && result.code === "forbidden") {
         setWorkspacePagesState((current) =>
@@ -6103,7 +6103,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           workspaceSlug: workspaceState.data.slug,
           workspaceSysId: cleanText(workspaceState.data.sysId)
         });
-        return;
+        return false;
       }
       if (result.state === "failed") {
         if (result.code === "recovery_required") {
@@ -6124,7 +6124,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
             ? { ...current, data: previousPages }
             : current
         );
-        return;
+        return false;
       }
       requestPendingChangesRefresh();
       setWorkspacePagesState((current) =>
@@ -6132,13 +6132,15 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           ? { ...current, data: result.pages, totalCount: result.pages.length }
           : current
       );
+      return true;
     } catch {
-      if (!isCurrentWorkspaceMutationContext(mutationContextKey)) return;
+      if (!isCurrentWorkspaceMutationContext(mutationContextKey)) return false;
       setWorkspacePagesState((current) =>
         current.status === "success" && current.workspaceSlug === workspaceState.data.slug && current.mode === activeWorkspaceMode
           ? { ...current, data: previousPages }
           : current
       );
+      return false;
     }
   }
 

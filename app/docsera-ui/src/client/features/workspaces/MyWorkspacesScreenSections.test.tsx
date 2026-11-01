@@ -212,6 +212,12 @@ describe("WorkspaceList", () => {
     expect(clearSearchButton).toHaveAccessibleName("Clear search");
   });
 
+  it("gives the workspace search field a stable accessible name", () => {
+    render(<LauncherSearchToolbar searchText="" onSearchTextChange={vi.fn()} />);
+
+    expect(screen.getByRole("textbox", { name: "Search workspaces" })).toBeInTheDocument();
+  });
+
   it("keeps Settings as a navigation link that opens the settings intent", () => {
     const onOpenWorkspaceSettings = vi.fn();
 

@@ -95,6 +95,7 @@ export function LauncherSearchToolbar({
           className="docsera-launcher-toolbar__search-input"
           type="text"
           autoComplete="off"
+          aria-label="Search workspaces"
           placeholder="Search workspaces..."
           value={searchText}
           onChange={(event) => onSearchTextChange(event.target.value)}

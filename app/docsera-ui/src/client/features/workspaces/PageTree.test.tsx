@@ -1088,6 +1088,174 @@ describe("PageTree row interaction", () => {
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
   });
 
+  it("restores the originating page focus while a keyboard movement is pending", async () => {
+    let resolveMovement: (moved: boolean) => void = () => undefined;
+    const onMovePage = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveMovement = resolve;
+        })
+    );
+    const pages = [
+      page({ id: "page-a", title: "Page A", siblingOrder: 1 }),
+      page({ id: "page-b", title: "Page B", siblingOrder: 2 }),
+      page({ id: "page-c", title: "Page C", siblingOrder: 3 })
+    ];
+    mockDropResolver({
+      "page-a": {
+        before: { pageSysId: "page-b", parentPageSysId: null, position: "before", siblingOrder: "0", targetPageId: "page-a" },
+        inside: { pageSysId: "page-b", parentPageSysId: "page-a", position: "inside", siblingOrder: "1", targetPageId: "page-a" }
+      },
+      "page-c": {
+        after: { pageSysId: "page-b", parentPageSysId: null, position: "after", siblingOrder: "4", targetPageId: "page-c" }
+      }
+    });
+    renderTree(pages, { onMovePage });
+
+    const pageButton = screen.getByRole("button", { name: "Page B" });
+    pageButton.focus();
+    fireEvent.keyDown(pageButton, { key: "ContextMenu" });
+
+    const menu = await screen.findByRole("menu", { name: "Page actions for Page B" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Page settings",
+      "Rename",
+      "Move up",
+      "Indent",
+      "Move down",
+      "Delete"
+    ]);
+    fireEvent.keyDown(within(menu).getByRole("menuitem", { name: "Move up" }), { key: "Enter" });
+
+    expect(onMovePage).toHaveBeenCalledWith({ pageSysId: "page-b", parentPageSysId: null, siblingOrder: "0" });
+    await waitFor(() => expect(pageButton).toHaveFocus());
+    expect(screen.getByRole("status")).toHaveTextContent("");
+
+    await act(async () => resolveMovement(false));
+  });
+
+  it("retains originating page focus without a success announcement when a keyboard movement is rejected", async () => {
+    const onMovePage = vi.fn(() => false);
+    const pages = [page({ id: "page-a", title: "Page A", siblingOrder: 1 }), page({ id: "page-b", title: "Page B", siblingOrder: 2 })];
+    mockDropResolver({
+      "page-a": {
+        before: { pageSysId: "page-b", parentPageSysId: null, position: "before", siblingOrder: "0", targetPageId: "page-a" }
+      }
+    });
+    renderTree(pages, { onMovePage });
+
+    const pageButton = screen.getByRole("button", { name: "Page B" });
+    pageButton.focus();
+    fireEvent.keyDown(pageButton, { key: "ContextMenu" });
+    fireEvent.keyDown(await screen.findByRole("menuitem", { name: "Move up" }), { key: "Enter" });
+
+    await waitFor(() => expect(pageButton).toHaveFocus());
+    expect(screen.getByRole("status")).toHaveTextContent("");
+  });
+
+  it("offers outdent only when the resolver accepts it and suppresses ambiguous or depth-invalid movement commands", async () => {
+    const nested = page({
+      id: "parent",
+      title: "Parent",
+      children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
+    });
+    mockDropResolver({
+      parent: {
+        after: { pageSysId: "child", parentPageSysId: null, position: "after", siblingOrder: "2", targetPageId: "parent" }
+      }
+    });
+    const { rerender } = renderTree([nested], { onMovePage: vi.fn() });
+
+    fireEvent.contextMenu(row("Child"), { clientX: 20, clientY: 30 });
+    expect(await screen.findByRole("menuitem", { name: "Outdent" })).toBeInTheDocument();
+
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    rerender(treeElement([nested], { filterText: "Child", onMovePage: vi.fn() }));
+    fireEvent.contextMenu(row("Child"), { clientX: 20, clientY: 30 });
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /Move up|Move down|Indent|Outdent/ })).not.toBeInTheDocument();
+
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+    rerender(treeElement([nested], { filterText: "", onMovePage: vi.fn() }));
+    mockDropResolver({ parent: { after: null } });
+    fireEvent.contextMenu(row("Child"), { clientX: 20, clientY: 30 });
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Outdent" })).not.toBeInTheDocument();
+  });
+
+  it("does not offer Indent when nesting the page subtree would exceed six levels", async () => {
+    const levelSix = page({ id: "level-six", parentPageSysId: "level-five", title: "Level six" });
+    const source = page({
+      id: "source",
+      parentPageSysId: "level-five",
+      title: "Source",
+      siblingOrder: 2,
+      children: [page({ id: "source-child", parentPageSysId: "source", title: "Source child" })]
+    });
+    const levelOne = page({
+      id: "level-one",
+      title: "Level one",
+      children: [
+        page({
+          id: "level-two",
+          parentPageSysId: "level-one",
+          title: "Level two",
+          children: [
+            page({
+              id: "level-three",
+              parentPageSysId: "level-two",
+              title: "Level three",
+              children: [
+                page({
+                  id: "level-four",
+                  parentPageSysId: "level-three",
+                  title: "Level four",
+                  children: [page({ id: "level-five", parentPageSysId: "level-four", title: "Level five", children: [levelSix, source] })]
+                })
+              ]
+            })
+          ]
+        })
+      ]
+    });
+    mockDropResolver({ "level-six": { inside: null } });
+    renderTree([levelOne], { onMovePage: vi.fn() });
+
+    fireEvent.contextMenu(row("Source"), { clientX: 20, clientY: 30 });
+    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Indent" })).not.toBeInTheDocument();
+  });
+
+  it("announces and restores focus after the authoritative hierarchy reflects a keyboard move", async () => {
+    const onMovePage = vi.fn(() => true);
+    const initialPages = [page({ id: "page-a", title: "Page A", siblingOrder: 1 }), page({ id: "page-b", title: "Page B", siblingOrder: 2 })];
+    mockDropResolver({
+      "page-a": {
+        before: { pageSysId: "page-b", parentPageSysId: null, position: "before", siblingOrder: "0", targetPageId: "page-a" }
+      }
+    });
+    const { rerender } = renderTree(initialPages, { onMovePage });
+
+    const pageButton = screen.getByRole("button", { name: "Page B" });
+    pageButton.focus();
+    fireEvent.keyDown(pageButton, { key: "ContextMenu" });
+    fireEvent.keyDown(await screen.findByRole("menuitem", { name: "Move up" }), { key: "Enter" });
+    expect(onMovePage).toHaveBeenCalledWith({ pageSysId: "page-b", parentPageSysId: null, siblingOrder: "0" });
+    expect(screen.getByRole("status")).toHaveTextContent("");
+    await waitFor(() => expect(pageButton).toHaveFocus());
+
+    rerender(
+      treeElement([page({ id: "page-b", title: "Page B", siblingOrder: 0 }), page({ id: "page-a", title: "Page A", siblingOrder: 1 })], {
+        onMovePage
+      })
+    );
+
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Page B moved up."));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Page B" })).toHaveFocus());
+  });
+
   it("styles Delete through the Docsera error token without replacing the destructive foreground on hover or focus", async () => {
     renderTree([page({ id: "leaf", title: "Leaf" })], {
       canCreatePage: true,

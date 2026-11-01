@@ -10,6 +10,13 @@ export const nodeNativeTestFiles = new Set([
 
 export const testSuites = [
   {
+    name: "accessibility-audit",
+    description: "repeatable axe-core audit of representative core user-interface states; kept separate from product regression suites.",
+    files: [
+      "src/client/accessibility/RR027AutomatedAccessibilityAudit.test.tsx"
+    ]
+  },
+  {
     name: "my-workspaces",
     description: "launcher; workspace list; search; filtering; pagination; workspace creation entry points.",
     files: [

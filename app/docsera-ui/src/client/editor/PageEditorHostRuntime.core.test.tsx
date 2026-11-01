@@ -921,6 +921,7 @@ describe("PageEditorHostRuntime", () => {
 
     const editor = editorReady[0];
     expect(editor.view.dom).toHaveAttribute("contenteditable", "true");
+    expect(screen.getByRole("textbox", { name: "Visual editor content" })).toBe(editor.view.dom);
 
     await act(async () => {
       editor.view.dom.focus();

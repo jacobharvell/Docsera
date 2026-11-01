@@ -46,7 +46,7 @@ type PageTreeProps = {
   onInlineCreateTitleChange: (value: string) => void;
   onInlineRenameTitleChange?: (value: string) => void;
   onSelectPage: (pageId: string) => void;
-  onMovePage?: (input: { pageSysId: string; parentPageSysId: string | null; siblingOrder: string | number }) => void;
+  onMovePage?: (input: { pageSysId: string; parentPageSysId: string | null; siblingOrder: string | number }) => Promise<boolean> | boolean | void;
   onRequestDeletePage: (pageId: string) => void;
   onStartInlineRename?: (pageId: string) => void;
   onShowCreatePage: () => void;
@@ -98,7 +98,19 @@ type PageTreeContextMenuState = {
   placement: "pointer" | "control";
 };
 
-type PageTreeContextMenuAction = "settings" | "rename" | "delete" | "add-child";
+type PageTreeMovementAction = "move-up" | "move-down" | "indent" | "outdent";
+type PageTreeContextMenuAction = "settings" | "rename" | "delete" | "add-child" | PageTreeMovementAction;
+
+type PageTreeMovementCommand = {
+  action: PageTreeMovementAction;
+  destination: PageTreeDropDestination;
+};
+
+type PendingPageTreeMovement = PageTreeMovementCommand & {
+  focusOrigin: HTMLElement | null;
+  pageId: string;
+  pageTitle: string;
+};
 
 const CONTEXT_MENU_VIEWPORT_MARGIN = 8;
 const CONTEXT_MENU_CONTROL_OFFSET = 4;
@@ -121,6 +133,66 @@ function PageTreeMenuIcon({ action }: { action: PageTreeContextMenuAction }) {
           ? docseraIcons.trash
           : docseraIcons.plus;
   return <DocseraIcon icon={icon} size={14} />;
+}
+
+function pageTreeMovementLabel(action: PageTreeMovementAction): string {
+  return action === "move-up" ? "Move up" : action === "move-down" ? "Move down" : action === "indent" ? "Indent" : "Outdent";
+}
+
+function pageTreeMovementFeedback(pageTitle: string, action: PageTreeMovementAction): string {
+  return action === "move-up"
+    ? `${pageTitle} moved up.`
+    : action === "move-down"
+      ? `${pageTitle} moved down.`
+      : action === "indent"
+        ? `${pageTitle} indented.`
+        : `${pageTitle} outdented.`;
+}
+
+function resolvePageTreeMovementCommands(input: {
+  canMovePage: boolean;
+  filterText: string;
+  page: WorkspacePageView | null;
+  pagesById: ReadonlyMap<string, WorkspacePageView>;
+  pagesByParent: ReadonlyMap<string, WorkspacePageView[]>;
+}): PageTreeMovementCommand[] {
+  if (!input.canMovePage || input.filterText.trim() || !input.page) {
+    return [];
+  }
+
+  const page = input.page;
+  const siblings = input.pagesByParent.get(page.parentPageSysId ?? "") ?? [];
+  const index = siblings.findIndex((sibling) => sibling.id === page.id);
+  if (index < 0) {
+    return [];
+  }
+
+  const candidates: Array<{ action: PageTreeMovementAction; position: PageTreeDropDestination["position"]; targetPageId: string }> = [];
+  const precedingSibling = siblings[index - 1];
+  const followingSibling = siblings[index + 1];
+  if (precedingSibling) {
+    candidates.push(
+      { action: "move-up", position: "before", targetPageId: precedingSibling.id },
+      { action: "indent", position: "inside", targetPageId: precedingSibling.id }
+    );
+  }
+  if (followingSibling) {
+    candidates.push({ action: "move-down", position: "after", targetPageId: followingSibling.id });
+  }
+  if (page.parentPageSysId) {
+    candidates.push({ action: "outdent", position: "after", targetPageId: page.parentPageSysId });
+  }
+
+  return candidates.flatMap((candidate) => {
+    const destination = resolvePageTreeDropDestination({
+      draggedPageId: page.id,
+      pagesById: input.pagesById,
+      pagesByParent: input.pagesByParent,
+      position: candidate.position,
+      targetPageId: candidate.targetPageId
+    });
+    return destination ? [{ action: candidate.action, destination }] : [];
+  });
 }
 
 function ChevronIcon({ expanded }: { expanded: boolean }) {
@@ -944,6 +1016,8 @@ export function PageTree({
   const [draggedPageId, setDraggedPageId] = useState("");
   const [dropPreview, setDropPreview] = useState<PageTreeDropPreviewState | null>(null);
   const [contextMenu, setContextMenu] = useState<PageTreeContextMenuState | null>(null);
+  const [pendingMovement, setPendingMovement] = useState<PendingPageTreeMovement | null>(null);
+  const [movementFeedback, setMovementFeedback] = useState("");
   const contextMenuPresence = useDropdownExitPresence(contextMenu);
   const menuRef = useRef<HTMLDivElement>(null);
   const draggedPageIdRef = useRef("");
@@ -996,11 +1070,23 @@ export function PageTree({
     pagesByParent
   };
 
+  const movementCommands = useMemo(
+    () =>
+      resolvePageTreeMovementCommands({
+        canMovePage,
+        filterText,
+        page: contextMenu?.page ?? null,
+        pagesById,
+        pagesByParent
+      }),
+    [canMovePage, contextMenu?.page, filterText, pagesById, pagesByParent]
+  );
   const contextMenuActions = useMemo(() => {
     const actions: PageTreeContextMenuAction[] = [];
     if (canManagePageSettings) {
       actions.push("settings", "rename");
     }
+    actions.push(...movementCommands.map((command) => command.action));
     if (canCreatePage && !isCreatingPage) {
       actions.push("add-child");
     }
@@ -1008,7 +1094,43 @@ export function PageTree({
       actions.push("delete");
     }
     return actions;
-  }, [canCreatePage, canManagePageSettings, isCreatingPage]);
+  }, [canCreatePage, canManagePageSettings, isCreatingPage, movementCommands]);
+
+  useEffect(() => {
+    if (!pendingMovement) {
+      return;
+    }
+
+    const movedPage = pagesById.get(pendingMovement.pageId);
+    const targetPage = pagesById.get(pendingMovement.destination.targetPageId);
+    if (!movedPage || !targetPage || movedPage.parentPageSysId !== pendingMovement.destination.parentPageSysId) {
+      return;
+    }
+
+    const siblings = pagesByParent.get(movedPage.parentPageSysId ?? "") ?? [];
+    const movedIndex = siblings.findIndex((page) => page.id === movedPage.id);
+    const targetIndex = siblings.findIndex((page) => page.id === targetPage.id);
+    const movementIsReflected =
+      pendingMovement.action === "indent" ||
+      (pendingMovement.action === "move-up" && movedIndex >= 0 && movedIndex < targetIndex) ||
+      ((pendingMovement.action === "move-down" || pendingMovement.action === "outdent") && movedIndex > targetIndex);
+    if (!movementIsReflected) {
+      return;
+    }
+
+    setPendingMovement(null);
+    setMovementFeedback(pageTreeMovementFeedback(pendingMovement.pageTitle, pendingMovement.action));
+    window.setTimeout(() => {
+      const activeElement = document.activeElement;
+      if (activeElement !== document.body && activeElement !== pendingMovement.focusOrigin) {
+        return;
+      }
+      const row = [...document.querySelectorAll<HTMLElement>("[data-docsera-page-id]")].find(
+        (element) => element.dataset.docseraPageId === pendingMovement.pageId
+      );
+      row?.querySelector<HTMLButtonElement>(".docsera-page-tree__button")?.focus();
+    }, 0);
+  }, [pagesById, pagesByParent, pendingMovement]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -1053,17 +1175,47 @@ export function PageTree({
     const origin = contextMenu?.origin ?? null;
     setContextMenu(null);
     if (options.restoreFocus) {
-      window.setTimeout(() => origin?.focus(), 0);
+      restoreContextMenuFocus(origin);
     }
+  }
+
+  function restoreContextMenuFocus(origin: HTMLElement | null, focusAtDismissal = document.activeElement) {
+    window.setTimeout(() => {
+      if (!origin?.isConnected) {
+        return;
+      }
+
+      const activeElement = document.activeElement;
+      if (activeElement === document.body || activeElement === origin || activeElement === focusAtDismissal) {
+        origin.focus();
+      }
+    }, 0);
   }
 
   function activateContextMenuAction(action: PageTreeContextMenuAction) {
     const target = contextMenu?.page;
+    const focusOrigin = contextMenu?.origin ?? null;
     if (!target) {
       return;
     }
 
     setContextMenu(null);
+    const movementCommand = movementCommands.find((command) => command.action === action);
+    if (movementCommand && onMovePage) {
+      restoreContextMenuFocus(focusOrigin);
+      void Promise.resolve(
+        onMovePage({
+          pageSysId: movementCommand.destination.pageSysId,
+          parentPageSysId: movementCommand.destination.parentPageSysId,
+          siblingOrder: movementCommand.destination.siblingOrder
+        })
+      ).then((moved) => {
+        if (moved) {
+          setPendingMovement({ ...movementCommand, focusOrigin, pageId: target.id, pageTitle: target.title });
+        }
+      });
+      return;
+    }
     if (action === "add-child") {
       onShowChildPageCreate(target.sysId || target.id, target.title);
       return;
@@ -1254,7 +1406,16 @@ export function PageTree({
                 focusMenuBoundary("last");
               } else if (event.key === "Enter" || event.key === " ") {
                 const action = event.target instanceof HTMLElement ? event.target.dataset.docseraPageTreeMenuAction : "";
-                if (action === "add-child" || action === "settings" || action === "rename" || action === "delete") {
+                if (
+                  action === "add-child" ||
+                  action === "settings" ||
+                  action === "rename" ||
+                  action === "delete" ||
+                  action === "move-up" ||
+                  action === "move-down" ||
+                  action === "indent" ||
+                  action === "outdent"
+                ) {
                   event.preventDefault();
                   activateContextMenuAction(action);
                 }
@@ -1282,7 +1443,9 @@ export function PageTree({
                       ? "Rename"
                       : action === "delete"
                         ? "Delete"
-                        : "Add child page"}
+                        : action === "add-child"
+                          ? "Add child page"
+                          : pageTreeMovementLabel(action)}
                 </span>
               </button>
             ))}
@@ -1293,6 +1456,9 @@ export function PageTree({
 
   return (
     <>
+    <p className="docsera-page-tree__movement-feedback" role="status">
+      {movementFeedback}
+    </p>
     <div
       className="docsera-page-tree__list"
       onDragLeave={!dragSurfaceRef && canMovePage ? clearDropDestination : undefined}

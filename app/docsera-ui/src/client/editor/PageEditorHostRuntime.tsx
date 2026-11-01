@@ -61,7 +61,8 @@ import { subscribeToPageOwnershipHandoff } from "../pageOwnershipHandoff";
 import {
   buildTopLevelBlockDragFeedbackStyle,
   buildTopLevelBlockDropIndicatorStyle,
-  isValidBlockDragDestinationIndex
+  isValidBlockDragDestinationIndex,
+  moveTopLevelBlocks
 } from "./blockDragReorder";
 import {
   createEditorAutoScrollSession,
@@ -84,6 +85,8 @@ import {
 import { useTopLevelBlockDragSession } from "./useTopLevelBlockDragSession";
 import { getTaskListProgressStorageKey, readTaskListProgress, writeTaskListProgress } from "../shared/taskListProgress";
 import {
+  ArrowDown,
+  ArrowUp,
   AlignLeft,
   AlignCenter,
   AlignRight,
@@ -373,7 +376,6 @@ const IMAGE_ALIGNMENT_MENU_HEIGHT = 240;
 const IMAGE_RESIZE_HANDLE_WIDTH = 12;
 const IMAGE_RESIZE_HANDLE_INSET = 6;
 const BLOCK_ACTION_MENU_WIDTH = 182;
-const BLOCK_ACTION_MENU_HEIGHT = 144;
 const BLOCK_TURN_INTO_MENU_WIDTH = 198;
 const BLOCK_MENU_ITEM_MIN_HEIGHT = 38;
 const BLOCK_MENU_LIST_PADDING = 8;
@@ -1591,7 +1593,9 @@ function buildBlockActionMenuSurfaceStyle(
     left,
     top,
     width: `${clampedWidth}px`,
-    maxWidth: `${maxSurfaceWidth}px`
+    maxWidth: `${maxSurfaceWidth}px`,
+    height: `${clampedHeight}px`,
+    maxHeight: `${clampedHeight}px`
   };
 }
 
@@ -2487,6 +2491,12 @@ function getTurnIntoBlockCommandsForBlock(
 
 type BlockActionMenuEntry =
   | {
+      kind: "moveDown";
+    }
+  | {
+      kind: "moveUp";
+    }
+  | {
       kind: "duplicate";
     }
   | {
@@ -2498,7 +2508,9 @@ type BlockActionMenuEntry =
     };
 
 function getBlockActionMenuEntries(
-  node: Editor["state"]["doc"]["content"]["content"][number]
+  node: Editor["state"]["doc"]["content"]["content"][number],
+  blockIndex: number,
+  blockCount: number
 ): BlockActionMenuEntry[] {
   const turnIntoCommands = getTurnIntoBlockCommandsForBlock(node);
   const entries: BlockActionMenuEntry[] = [];
@@ -2507,6 +2519,14 @@ function getBlockActionMenuEntries(
       kind: "turnInto",
       commands: turnIntoCommands
     });
+  }
+
+  if (blockIndex > 0) {
+    entries.push({ kind: "moveUp" });
+  }
+
+  if (blockIndex < blockCount - 1) {
+    entries.push({ kind: "moveDown" });
   }
 
   entries.push({
@@ -2518,6 +2538,11 @@ function getBlockActionMenuEntries(
   });
 
   return entries;
+}
+
+function getBlockActionMenuHeight(entries: BlockActionMenuEntry[]): number {
+  const hasTurnInto = entries.some((entry) => entry.kind === "turnInto");
+  return BLOCK_MENU_LIST_PADDING * 2 + entries.length * BLOCK_MENU_ITEM_MIN_HEIGHT + (hasTurnInto && entries.length > 1 ? 13 : 0);
 }
 
 function createConvertedTopLevelBlockNode(
@@ -3392,6 +3417,7 @@ export function PageEditorHostRuntime({
   const [imageFullscreenOpen, setImageFullscreenOpen] = useState(false);
   const [imageDisplayState, setImageDisplayState] = useState(() => getDocseraImageDisplayState());
   const [blockActionMenu, setBlockActionMenu] = useState<BlockActionMenuState | null>(null);
+  const [blockActionAnnouncement, setBlockActionAnnouncement] = useState("");
   const [blockTurnIntoMenu, setBlockTurnIntoMenu] = useState<BlockTurnIntoMenuState | null>(null);
   const [gutterTooltip, setGutterTooltip] = useState<GutterTooltipState | null>(null);
   const [selectorScrollMetrics, setSelectorScrollMetrics] = useState({ hasOverflow: false, scrollbarWidth: 0 });
@@ -3524,6 +3550,9 @@ export function PageEditorHostRuntime({
 
   const editorProps = useMemo(
     () => ({
+      attributes: {
+        "aria-label": "Visual editor content"
+      },
       transformPastedHTML: sanitizeDocseraPastedHTML,
       transformPastedText: sanitizeDocseraPastedText,
       transformPasted: (slice: Slice, view: Editor["view"]) =>
@@ -3762,7 +3791,7 @@ export function PageEditorHostRuntime({
             return true;
           }
 
-          const menuEntries = getBlockActionMenuEntries(menuNode);
+          const menuEntries = getBlockActionMenuEntries(menuNode, menuState.blockIndex, runtimeEditor.state.doc.childCount);
           const nextIndex = Math.max(0, Math.min(menuState.activeIndex, menuEntries.length - 1));
 
           if (event.key === "Escape") {
@@ -3807,6 +3836,25 @@ export function PageEditorHostRuntime({
 
             if (activeEntry.kind === "turnInto") {
               openBlockTurnIntoMenu(menuState.blockIndex, menuState.source, menuState.anchorRect);
+              return true;
+            }
+
+            if (activeEntry.kind === "moveUp" || activeEntry.kind === "moveDown") {
+              const didMove = moveTopLevelBlocks(
+                runtimeEditor,
+                menuState.blockIndex,
+                menuState.blockIndex,
+                activeEntry.kind === "moveUp" ? menuState.blockIndex - 1 : menuState.blockIndex + 2,
+                {
+                  focusTopLevelBlockSelection,
+                  getTopLevelBlockRange,
+                  selectTopLevelBlockRange: setTransientBlockSelectionRange
+                }
+              );
+              if (didMove) {
+                closeBlockActionMenus({ focusEditor: false });
+                setBlockActionAnnouncement(`Moved ${getTopLevelBlockLabelFromNode(menuNode)} ${activeEntry.kind === "moveUp" ? "up" : "down"}.`);
+              }
               return true;
             }
 
@@ -4283,7 +4331,11 @@ export function PageEditorHostRuntime({
         activeIndex: 0,
         anchorRect: buildBlockActionMenuAnchorRect(targetRect),
         blockIndex,
-        placement: resolveCommandSelectorPlacement(overlayOwnerDocument, buildBlockActionMenuAnchorRect(targetRect), BLOCK_ACTION_MENU_HEIGHT),
+        placement: resolveCommandSelectorPlacement(
+          overlayOwnerDocument,
+          buildBlockActionMenuAnchorRect(targetRect),
+          getBlockActionMenuHeight(getBlockActionMenuEntries(runtimeEditor.state.doc.child(blockIndex), blockIndex, runtimeEditor.state.doc.childCount))
+        ),
         source
       });
     },
@@ -4437,6 +4489,28 @@ export function PageEditorHostRuntime({
 
       if (entry.kind === "turnInto") {
         openBlockTurnIntoMenu(activeMenu.blockIndex, activeMenu.source, activeMenu.anchorRect);
+        return;
+      }
+
+      if (entry.kind === "moveUp" || entry.kind === "moveDown") {
+        const menuNode = getTopLevelBlockNodeFromDoc(runtimeEditor.state.doc, activeMenu.blockIndex);
+        const didMove = moveTopLevelBlocks(
+          runtimeEditor,
+          activeMenu.blockIndex,
+          activeMenu.blockIndex,
+          entry.kind === "moveUp" ? activeMenu.blockIndex - 1 : activeMenu.blockIndex + 2,
+          {
+            focusTopLevelBlockSelection,
+            getTopLevelBlockRange,
+            selectTopLevelBlockRange: setTransientBlockSelectionRange
+          }
+        );
+        if (didMove) {
+          closeBlockActionMenus({ focusEditor: false });
+          if (menuNode) {
+            setBlockActionAnnouncement(`Moved ${getTopLevelBlockLabelFromNode(menuNode)} ${entry.kind === "moveUp" ? "up" : "down"}.`);
+          }
+        }
         return;
       }
 
@@ -5021,7 +5095,7 @@ export function PageEditorHostRuntime({
         return;
       }
 
-      const menuEntries = getBlockActionMenuEntries(menuNode);
+      const menuEntries = getBlockActionMenuEntries(menuNode, activeMenu.blockIndex, runtimeEditor.state.doc.childCount);
       const nextIndex = Math.max(0, Math.min(activeMenu.activeIndex, menuEntries.length - 1));
 
       if (event.key === "Escape") {
@@ -5244,7 +5318,16 @@ export function PageEditorHostRuntime({
     }
 
     const nextAnchorRect = buildBlockActionMenuAnchorRect(targetRect);
-    const nextPlacement = resolveCommandSelectorPlacement(overlayOwnerDocument, nextAnchorRect, BLOCK_ACTION_MENU_HEIGHT);
+    const menuNode = getTopLevelBlockNodeFromDoc(runtimeEditor.state.doc, blockActionMenu.blockIndex);
+    if (!menuNode) {
+      closeAllBlockSurfaces({ focusEditor: true });
+      return;
+    }
+    const nextPlacement = resolveCommandSelectorPlacement(
+      overlayOwnerDocument,
+      nextAnchorRect,
+      getBlockActionMenuHeight(getBlockActionMenuEntries(menuNode, blockActionMenu.blockIndex, runtimeEditor.state.doc.childCount))
+    );
     if (areDomRectsEqual(blockActionMenu.anchorRect, nextAnchorRect) && blockActionMenu.placement === nextPlacement) {
       return;
     }
@@ -5309,7 +5392,11 @@ export function PageEditorHostRuntime({
       return;
     }
 
-    blockActionMenuItemRefs.current[blockActionMenu.activeIndex]?.focus();
+    const activeBlockActionMenuItem = blockActionMenuItemRefs.current[blockActionMenu.activeIndex];
+    activeBlockActionMenuItem?.focus();
+    if (typeof activeBlockActionMenuItem?.scrollIntoView === "function") {
+      activeBlockActionMenuItem.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
   }, [blockActionMenu]);
 
   useLayoutEffect(() => {
@@ -7222,14 +7309,17 @@ export function PageEditorHostRuntime({
     Boolean(blockHandleGesture && activeBlockControlTarget && blockHandleGesture.blockIndex === activeBlockControlTarget.blockIndex && !blockDragState);
   const blockActionMenuNode =
     mountedEditor && blockActionMenu ? getTopLevelBlockNodeFromDoc(mountedEditor.state.doc, blockActionMenu.blockIndex) : null;
-  const blockActionMenuEntries = blockActionMenuNode ? getBlockActionMenuEntries(blockActionMenuNode) : [];
+  const blockActionMenuEntries =
+    blockActionMenuNode && blockActionMenu && mountedEditor
+      ? getBlockActionMenuEntries(blockActionMenuNode, blockActionMenu.blockIndex, mountedEditor.state.doc.childCount)
+      : [];
   const blockActionMenuStyle =
     editor && blockActionMenu
       ? buildBlockActionMenuSurfaceStyle(
           overlayOwnerDocument,
           blockActionMenu.anchorRect,
           BLOCK_ACTION_MENU_WIDTH,
-          BLOCK_ACTION_MENU_HEIGHT,
+          getBlockActionMenuHeight(blockActionMenuEntries),
           blockActionMenu.placement
         )
       : undefined;
@@ -8339,6 +8429,12 @@ export function PageEditorHostRuntime({
           min-height: 0;
           overflow-y: auto;
         }
+        .docsera-block-action-menu__list {
+          box-sizing: border-box;
+          height: 100%;
+          min-height: 0;
+          overflow-y: auto;
+        }
         .docsera-block-menu__item {
           display: flex;
           align-items: center;
@@ -8956,9 +9052,9 @@ export function PageEditorHostRuntime({
                 onKeyDown={handleBlockActionMenuKeyDown}
               >
                 <div className="docsera-block-action-menu__list docsera-editor-dropdown--shift-enter">
-                  {blockActionMenuEntries.map((entry) => {
+                  {blockActionMenuEntries.map((entry, index) => {
                     if (entry.kind === "turnInto") {
-                      const turnIntoItemIndex = 0;
+                      const turnIntoItemIndex = index;
                       return (
                         <React.Fragment key="turnInto">
                           <button
@@ -9003,9 +9099,16 @@ export function PageEditorHostRuntime({
                       );
                     }
 
-                    const directActionIndex = entry.kind === "duplicate" ? (blockActionMenuEntries[0]?.kind === "turnInto" ? 1 : 0) : blockActionMenuEntries.length - 1;
-                    const icon = entry.kind === "duplicate" ? <Copy size={15} strokeWidth={2.2} aria-hidden="true" focusable="false" /> : <Trash2 size={15} strokeWidth={2.2} aria-hidden="true" focusable="false" />;
-                    const label = entry.kind === "duplicate" ? "Duplicate" : "Delete";
+                    const directActionIndex = index;
+                    const icon =
+                      entry.kind === "moveUp" ? <ArrowUp size={15} strokeWidth={2.2} aria-hidden="true" focusable="false" /> :
+                      entry.kind === "moveDown" ? <ArrowDown size={15} strokeWidth={2.2} aria-hidden="true" focusable="false" /> :
+                      entry.kind === "duplicate" ? <Copy size={15} strokeWidth={2.2} aria-hidden="true" focusable="false" /> :
+                      <Trash2 size={15} strokeWidth={2.2} aria-hidden="true" focusable="false" />;
+                    const label =
+                      entry.kind === "moveUp" ? "Move up" :
+                      entry.kind === "moveDown" ? "Move down" :
+                      entry.kind === "duplicate" ? "Duplicate" : "Delete";
 
                     return (
                       <button
@@ -9238,6 +9341,23 @@ export function PageEditorHostRuntime({
           </div>,
           overlayRoot
         )}
+      </div>
+      <div
+        aria-atomic="true"
+        aria-live="polite"
+        role="status"
+        style={{
+          clip: "rect(0 0 0 0)",
+          clipPath: "inset(50%)",
+          height: "1px",
+          margin: "-1px",
+          overflow: "hidden",
+          position: "fixed",
+          whiteSpace: "nowrap",
+          width: "1px"
+        }}
+      >
+        {blockActionAnnouncement}
       </div>
     </section>
   );

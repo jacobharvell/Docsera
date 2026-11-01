@@ -532,6 +532,15 @@ function renderListItemChildren(node: Record<string, unknown>, path: string, con
   return renderBlockChildren(getNodeContent(node), `${path}-child`, context);
 }
 
+function getTaskItemAccessibleName(node: Record<string, unknown>): string {
+  // A canonical task item begins with the paragraph that holds its own task text.
+  // Nested lists follow it, so deriving from the leading paragraph keeps child task text out of the parent name.
+  const [taskTextNode] = getNodeContent(node);
+  const taskText = extractCanonicalHeadingText(taskTextNode);
+
+  return taskText || "Untitled task";
+}
+
 function renderBulletList(node: Record<string, unknown>, path: string, context: ReaderContext): ReactNode {
   const items = getNodeContent(node);
   return (
@@ -602,7 +611,7 @@ function renderTaskItem(node: Record<string, unknown>, path: string, context: Re
           type="checkbox"
           checked={checked}
           onChange={(event) => context.onTaskChecked(ordinal, event.target.checked)}
-          aria-label={checked ? "Checked task" : "Unchecked task"}
+          aria-label={getTaskItemAccessibleName(node)}
         />
         <div className="docsera-main__task-content">{renderListItemChildren(node, path, context)}</div>
       </div>

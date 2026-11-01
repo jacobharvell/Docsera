@@ -27,6 +27,7 @@ The block actions menu exposes the accepted direct actions in a fixed order.
 - a divider separates the conversion entry from the direct actions
 - `Duplicate` copies the full selected top-level block
 - `Delete` removes the selected top-level block
+- `Move up` and `Move down` appear only when the selected top-level block has a preceding or following sibling, respectively
 - multi-block actions are not surfaced
 
 The `Turn into` entry opens a nested submenu that lists only valid destination block types for the current source block. The current block type is omitted from the submenu.
@@ -59,6 +60,7 @@ The block actions menu can be opened from the keyboard.
 - `Enter` and `Space` activate the focused entry
 - right arrow opens the `Turn into` submenu
 - left arrow returns from the submenu to the parent menu
+- Move actions use the same complete-block transaction as pointer drag reordering. A successful move closes the menu, retains the moved block selection/focus, and announces the direction; unavailable or rejected moves are not announced.
 
 ## Validation
 

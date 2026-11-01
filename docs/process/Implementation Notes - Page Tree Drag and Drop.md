@@ -31,6 +31,9 @@ Implemented behavior:
 - source and destination sibling normalization after a successful move
 - preserved selection state through page slug routing after a move
 - tree geometry and indicator state are transient client UI state
+- keyboard page movement through the existing page-actions menu: valid Move up, Move down, Indent, and Outdent commands use the same destination resolver as drag/drop
+- movement commands are omitted for filtered trees, viewer-only users, no-op placements, circular placements, and placements that exceed the six-level limit
+- `onMovePage` resolves `true` only after the mutation installs the authoritative refreshed hierarchy; the tree then announces a keyboard move and restores focus to the moved page
 
 ## Domain Support
 
@@ -60,6 +63,8 @@ Current repo-side behavior:
 - selected page slug and route target are recomputed from the updated tree
 - page settings and page creation remain separate behaviors
 - tree geometry and indicator state remain transient client UI state
+- the page-actions menu derives keyboard move destinations from the complete hierarchy, never from the filtered visible rows
+- keyboard movement invokes the existing `onMovePage` contract with the resolver-derived parent and sibling rank; it does not create a second mutation path
 
 ## Validation Notes
 
@@ -75,6 +80,7 @@ The local validation harness covers:
 - workspace mismatch rejection
 - six-level depth rejection
 - local shell view model updates after a move
+- keyboard movement command availability, resolver-derived destinations, filtered-tree suppression, rejected hierarchy commands, delayed status feedback, and post-update focus restoration
 
 ## Non-Goals
 

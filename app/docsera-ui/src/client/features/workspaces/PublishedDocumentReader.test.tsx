@@ -22,7 +22,8 @@ import {
   createMultiItemAccordionDocseraDocumentEnvelope,
   createSingleItemAccordionDocseraDocumentEnvelope,
   createStandardTableDocseraDocumentEnvelope,
-  createSupportedE2DocseraDocumentEnvelope
+  createSupportedE2DocseraDocumentEnvelope,
+  createTaskCheckedStateDocseraDocumentEnvelope
 } from "../../../shared/editor/documentFixtures";
 import type { DocseraDocumentEnvelope } from "../../../shared/editor/document";
 
@@ -388,6 +389,10 @@ describe("PublishedDocumentReader", () => {
     expect(checkboxes).toHaveLength(3);
     expect(checkboxes.filter((checkbox) => checkbox.checked)).toHaveLength(0);
     expect(checkboxes.filter((checkbox) => !checkbox.checked)).toHaveLength(3);
+    expect(within(reader).getByRole("checkbox", { name: "Nested task" })).toBeInTheDocument();
+    expect(within(reader).getByRole("checkbox", { name: "Checked task" })).toBeInTheDocument();
+    expect(within(reader).getByRole("checkbox", { name: "Nested checked task" })).toBeInTheDocument();
+    expect(within(reader).getByRole("checkbox", { name: "Checked task" })).not.toHaveAccessibleName("Checked task Nested checked task");
 
     const combinedLink = within(reader).getByRole("link", { name: "Combined" });
     expect(combinedLink).toHaveAttribute("href", "https://example.com/docs");
@@ -412,11 +417,13 @@ describe("PublishedDocumentReader", () => {
     const before = JSON.stringify(envelope.document);
     const view = renderReader(envelope, { pageIdentity: "task-progress-page-a" });
     const reader = screen.getByLabelText("Published page content");
-    const checkbox = within(reader).getAllByRole("checkbox")[0] as HTMLInputElement;
+    const checkbox = within(reader).getByRole("checkbox", { name: "Nested task" }) as HTMLInputElement;
 
     expect(checkbox).not.toBeDisabled();
+    expect(checkbox).toHaveAccessibleName("Nested task");
     fireEvent.click(checkbox);
     expect(checkbox).toBeChecked();
+    expect(checkbox).toHaveAccessibleName("Nested task");
     expect(JSON.stringify(envelope.document)).toBe(before);
 
     view.rerender(<PublishedDocumentReader envelope={envelope} pageIdentity="task-progress-page-a" />);
@@ -424,6 +431,20 @@ describe("PublishedDocumentReader", () => {
 
     view.rerender(<PublishedDocumentReader envelope={envelope} pageIdentity="task-progress-page-b" />);
     expect((within(screen.getByLabelText("Published page content")).getAllByRole("checkbox")[0] as HTMLInputElement).checked).toBe(false);
+  });
+
+  it("gives an empty task item a meaningful fallback checkbox name", () => {
+    const envelope = createTaskCheckedStateDocseraDocumentEnvelope(false);
+    envelope.document.content = [
+      {
+        type: "taskList",
+        content: [{ type: "taskItem", attrs: { checked: false }, content: [{ type: "paragraph", content: [] }] }]
+      }
+    ];
+
+    renderReader(envelope);
+
+    expect(screen.getByRole("checkbox", { name: "Untitled task" })).toBeInTheDocument();
   });
 
   it("renders accordions with single-open and zero-open disclosure behavior in the lightweight reader", async () => {

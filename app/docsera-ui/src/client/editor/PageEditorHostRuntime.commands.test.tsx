@@ -2818,6 +2818,7 @@ describe("PageEditorHostRuntime", () => {
       "Blockquote",
       "Bulleted List",
       "Numbered List",
+      "Task List",
       "Accordion",
       "Callout",
       "2 columns",
@@ -4835,6 +4836,93 @@ describe("PageEditorHostRuntime", () => {
     geometrySpy.mockRestore();
   });
 
+  it("moves a complete top-level block up through the keyboard block-actions menu, announces it, and preserves undo and autosave", async () => {
+    const initial = {
+      type: "doc",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Alpha" }] },
+        {
+          type: "blockquote",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Beta" }] }]
+        },
+        { type: "paragraph", content: [{ type: "text", text: "Omega" }] }
+      ]
+    };
+    const onSaveDraft = vi.fn(async ({ draftContentJson }: { draftContentJson: ReturnType<typeof createEmptyDocseraDocumentEnvelope> }) => ({
+      state: "succeeded" as const,
+      page: { ...createSuccessPage(1), draftContentJson }
+    }));
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument(initial as DocseraTiptapDocument),
+      onSaveDraft
+    });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+
+    const editor = editorReady[0];
+    const before = editor.getJSON();
+    const undoDepthBefore = undoDepth(editor.state);
+    await act(async () => {
+      editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 2);
+    });
+    fireEvent.keyDown(editor.view.dom, { key: "ContextMenu" });
+
+    const menu = await screen.findByRole("menu", { name: "Block actions for Blockquote" });
+    expect(getMenuItemNames(menu, "menuitem")).toEqual(["Turn into", "Move up", "Move down", "Duplicate", "Delete"]);
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(within(menu).getByRole("menuitem", { name: "Move up" })).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "Enter" });
+
+    await waitFor(() => expect(editor.getJSON().content?.map((node) => node.type)).toEqual(["blockquote", "paragraph", "paragraph"]));
+    expect(editor.state.doc.child(0).textContent).toBe("Beta");
+    expect(resolveTopLevelBlockIndexFromPosition(editor, editor.state.selection.from)).toBe(0);
+    expect(screen.queryByRole("menu", { name: "Block actions for Blockquote" })).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("Moved Blockquote up.");
+    expect(undoDepth(editor.state)).toBe(undoDepthBefore + 1);
+
+    await runAutosave();
+    await waitFor(() => expect(onSaveDraft).toHaveBeenCalledTimes(1));
+    expect(onSaveDraft.mock.calls[0]?.[0].draftContentJson.document.content?.[0]).toMatchObject({
+      type: "blockquote"
+    });
+
+    await act(async () => {
+      editor.commands.undo();
+    });
+    expect(editor.getJSON()).toEqual(before);
+    await act(async () => {
+      editor.commands.redo();
+    });
+    expect(editor.state.doc.child(0).type.name).toBe("blockquote");
+  });
+
+  it("only exposes valid block movement commands at the first and last top-level block boundaries", async () => {
+    const { editorReady } = renderRuntime({
+      initialEnvelope: createEnvelopeFromDocument({
+        type: "doc",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Alpha" }] },
+          { type: "paragraph", content: [{ type: "text", text: "Beta" }] }
+        ]
+      })
+    });
+    await waitFor(() => expect(editorReady[0]).toBeDefined());
+    const editor = editorReady[0];
+
+    fireEvent.keyDown(editor.view.dom, { key: "ContextMenu" });
+    let menu = await screen.findByRole("menu", { name: "Block actions for Text" });
+    expect(within(menu).queryByRole("menuitem", { name: "Move up" })).toBeNull();
+    expect(within(menu).getByRole("menuitem", { name: "Move down" })).toBeInTheDocument();
+    fireEvent.keyDown(menu, { key: "Escape" });
+
+    await act(async () => {
+      editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 1);
+    });
+    fireEvent.keyDown(editor.view.dom, { key: "ContextMenu" });
+    menu = await screen.findByRole("menu", { name: "Block actions for Text" });
+    expect(within(menu).getByRole("menuitem", { name: "Move up" })).toBeInTheDocument();
+    expect(within(menu).queryByRole("menuitem", { name: "Move down" })).toBeNull();
+  });
+
   it("duplicates the selected block from the menu and keeps the duplicate focused", async () => {
     const initial = {
       type: "doc",
@@ -5021,6 +5109,53 @@ describe("PageEditorHostRuntime", () => {
     }
   });
 
+  it("constrains a short-viewport block actions menu and reveals the keyboard-focused action", async () => {
+    const initialViewportHeight = window.innerHeight;
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 300 });
+    try {
+      const { editorReady } = renderRuntime({
+        initialEnvelope: createEnvelopeFromDocument({
+          type: "doc",
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "Alpha" }] },
+            { type: "paragraph", content: [{ type: "text", text: "Beta" }] },
+            { type: "paragraph", content: [{ type: "text", text: "Omega" }] }
+          ]
+        })
+      });
+      await waitFor(() => expect(editorReady[0]).toBeDefined());
+
+      const editor = editorReady[0];
+      const geometrySpy = mockTopLevelBlockGeometry(editor, [
+        new DOMRect(132, 52, 620, 28),
+        new DOMRect(132, 108, 620, 28),
+        new DOMRect(132, 164, 620, 28)
+      ]);
+      await act(async () => {
+        editor.commands.setTextSelection(editor.state.doc.child(0).nodeSize + 2);
+      });
+      fireEvent.keyDown(editor.view.dom, { key: "ContextMenu" });
+
+      const menu = await screen.findByRole("menu", { name: "Block actions for Text" });
+      expect(Number.parseFloat(menu.style.height)).toBeLessThan(219);
+      expect(menu.style.height).toBe(menu.style.maxHeight);
+      expect(menu.querySelector(".docsera-block-action-menu__list")).toHaveStyle({ overflowY: "auto" });
+
+      const deleteAction = within(menu).getByRole("menuitem", { name: "Delete" });
+      const scrollIntoView = vi.fn();
+      Object.defineProperty(deleteAction, "scrollIntoView", { configurable: true, value: scrollIntoView });
+      for (let index = 0; index < 4; index += 1) {
+        fireEvent.keyDown(menu, { key: "ArrowDown" });
+      }
+
+      expect(deleteAction).toHaveFocus();
+      expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest", inline: "nearest" });
+      geometrySpy.mockRestore();
+    } finally {
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: initialViewportHeight });
+    }
+  });
+
   it.each([
     ["Bulleted List", "bulletList"],
     ["Numbered List", "orderedList"]
@@ -5051,9 +5186,9 @@ describe("PageEditorHostRuntime", () => {
     await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerdown", { clientX: 160, clientY: 64 }, { button: 0, buttons: 1 });
     await dispatchOwnerPointerEvent(surface.ownerDocument, handle, "pointerup", { clientX: 160, clientY: 64 }, { button: 0, buttons: 0 });
 
-    const menu = await screen.findByRole("menu", { name: "Block actions for Task list" });
+    const menu = await screen.findByRole("menu", { name: "Block actions for Task List" });
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Turn into" }));
-    const submenu = await screen.findByRole("menu", { name: "Turn into Task list" });
+    const submenu = await screen.findByRole("menu", { name: "Turn into Task List" });
     fireEvent.click(within(submenu).getByRole("menuitemradio", { name: targetLabel }));
 
     await waitFor(() => {
