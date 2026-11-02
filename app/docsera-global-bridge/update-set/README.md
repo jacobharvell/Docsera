@@ -22,9 +22,9 @@ through **System Update Sets > Retrieved Update Sets > Import Update Set from XM
 2. Run `npm run preflight:friendly-url-host -- --auth-alias <configured-sdk-alias>`.
    This read-only query fails closed unless the Global `docsera` page is absent or is the
    exact known Docsera-owned legacy/prod host record.
-3. Import, preview, and commit the Global companion. A PDI with the tested proof upgrades
-   the stable host records in place; clean installs create them. No manual record edits are
-   required.
+3. Import and preview the Global companion, then stop for independent review before any
+   commit. It upgrades the stable Docsera-owned host and bridge records in place; clean
+   installs create them. No manual record edits are required.
 4. The scoped application menu opens `docsera.do`; deep links remain
    `docsera.do#/<route>`. The legacy scoped endpoint remains available during transition.
 
@@ -43,8 +43,17 @@ administration, and every other protected action. The temporary editor-only ACL-
 binding is retired on upgrade.
 
 The companion continues to include the existing Global provisioning and membership bridge
-records. It intentionally excludes `sys_app:global`; importing that subclass record causes
-duplicate-key failures on current PDIs.
+records, including their Global `sys_module` runtime records and the required scoped-app
+privileges. It intentionally excludes the shared Global identity records
+`sys_package:global`, `sys_scope:global`, and `sys_app:global`: an installation must never
+overwrite the receiving instance's Global package or scope configuration. The generator and
+artifact regression test fail if any of those records are reintroduced.
+
+The package runtime modules remain a qualification requirement. Before accepting a commit,
+verify on the receiving instance that the expected Global `sys_module` paths were installed
+and that the Global Script Includes and workers resolve and execute under the instance's
+existing Global package configuration. This artifact does not claim that its former
+development package JSON path or Global scope settings are portable prerequisites.
 
 ## Safe removal
 

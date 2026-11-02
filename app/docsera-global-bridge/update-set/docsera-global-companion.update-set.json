@@ -1,27 +1,13 @@
 {
   "name": "Docsera Global Companion 0.1.0",
   "version": "0.1.0",
-  "artifactRevision": "friendly-url-host-companion-r1",
+  "artifactRevision": "global-base-metadata-safe-r2",
   "buildType": "global",
-  "generatedAt": "2026-10-28 13:11:03",
-  "remoteUpdateSetSysId": "9ba0df893a5160bb44e3b129e6080e04",
+  "generatedAt": "2026-11-02 15:55:38",
+  "remoteUpdateSetSysId": "beabd28f94519b6d0e3fb3fbe0c84bdc",
   "sourceDistRoot": "dist",
   "artifactFile": "sys_remote_update_set_docsera_global_companion_0_1_0.xml",
   "records": [
-    {
-      "sourceFile": "synthetic/sys_package_global.xml",
-      "table": "sys_package",
-      "targetName": "Global",
-      "targetSysId": "global",
-      "updateName": "sys_package_global"
-    },
-    {
-      "sourceFile": "synthetic/sys_scope_global.xml",
-      "table": "sys_scope",
-      "targetName": "global",
-      "targetSysId": "global",
-      "updateName": "sys_scope_global"
-    },
     {
       "sourceFile": "synthetic/sys_restricted_caller_access_449a6d8fb9d6e5b6c84e14c4314d8ccb.xml",
       "table": "sys_restricted_caller_access",

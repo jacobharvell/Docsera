@@ -12,7 +12,7 @@ export const x_82900_docsera_workspace_mutation_claim = Table({
   schema: {
     workspace: ReferenceColumn({ label: "Workspace", mandatory: true, referenceTable: "x_82900_docsera_workspace" }),
     change_set: ReferenceColumn({ label: "Change set", mandatory: true, referenceTable: "x_82900_docsera_workspace_change_set" }),
-    generation_key: StringColumn({ label: "Generation key", mandatory: true, maxLength: 80 }),
+    generation_key: StringColumn({ label: "Generation key", mandatory: true, maxLength: 80, unique: true }),
     mutation_key: StringColumn({ label: "Mutation key", mandatory: true, maxLength: 64 }),
     mutation_kind: ChoiceColumn({
       label: "Mutation kind",
@@ -53,6 +53,5 @@ export const x_82900_docsera_workspace_mutation_claim = Table({
     claimed_on: DateTimeColumn({ label: "Claimed on", mandatory: true }),
     applied_on: DateTimeColumn({ label: "Applied on" }),
     finalized_on: DateTimeColumn({ label: "Finalized on" })
-  },
-  index: [{ name: "generation_key_unique", element: "generation_key", unique: true }]
+  }
 });

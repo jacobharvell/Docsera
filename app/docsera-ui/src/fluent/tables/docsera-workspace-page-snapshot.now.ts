@@ -12,7 +12,7 @@ export const x_82900_docsera_workspace_page_snapshot = Table({
   schema: {
     snapshot_set: ReferenceColumn({ label: "Snapshot set", mandatory: true, referenceTable: "x_82900_docsera_workspace_snapshot_set" }),
     page: ReferenceColumn({ label: "Page identity", mandatory: true, referenceTable: "x_82900_docsera_page" }),
-    snapshot_page_key: StringColumn({ label: "Snapshot page key", mandatory: true, maxLength: 80 }),
+    snapshot_page_key: StringColumn({ label: "Snapshot page key", mandatory: true, maxLength: 80, unique: true }),
     parent_page: ReferenceColumn({ label: "Published parent identity", referenceTable: "x_82900_docsera_page" }),
     sibling_order: StringColumn({ label: "Published sibling order", mandatory: true, maxLength: 16 }),
     title: StringColumn({ label: "Title", mandatory: true, maxLength: 160 }),
@@ -23,6 +23,5 @@ export const x_82900_docsera_workspace_page_snapshot = Table({
     active: BooleanColumn({ label: "Active", mandatory: true, default: true }),
     published_on: DateTimeColumn({ label: "Published on" }),
     published_by: ReferenceColumn({ label: "Published by", referenceTable: "sys_user" })
-  },
-  index: [{ name: "snapshot_page_key_unique", element: "snapshot_page_key", unique: true }]
+  }
 });

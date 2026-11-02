@@ -1944,6 +1944,7 @@ declare global {
                     {
                         table: 'sys_index'
                         id: '505e32a207bc49ac8de05b34188d41c8'
+                        deleted: true
                         key: {
                             logical_table_name: 'x_82900_docsera_workspace_mutation_claim'
                             col_name_string: 'generation_key'
@@ -2070,7 +2071,7 @@ declare global {
                     {
                         table: 'sys_index'
                         id: '58556d0fa54f4e7d92f14e7529581cbd'
-                        deleted: false
+                        deleted: true
                         key: {
                             logical_table_name: 'x_82900_docsera_workspace_removal_member'
                             col_name_string: 'batch_page_key'
@@ -2418,6 +2419,7 @@ declare global {
                     {
                         table: 'sys_index'
                         id: '7231000b1af441f7a08cf5503b8ea67e'
+                        deleted: true
                         key: {
                             logical_table_name: 'x_82900_docsera_workspace_page_snapshot'
                             col_name_string: 'snapshot_page_key'
@@ -2669,6 +2671,7 @@ declare global {
                     {
                         table: 'sys_index'
                         id: '7d93982ec7b54d36908b6983d1ed463a'
+                        deleted: true
                         key: {
                             logical_table_name: 'x_82900_docsera_workspace_snapshot_set'
                             col_name_string: 'snapshot_key'
@@ -3126,6 +3129,7 @@ declare global {
                     {
                         table: 'sys_index'
                         id: '9cbfc0d9cdfd4ffbb5b67826ef0981fd'
+                        deleted: true
                         key: {
                             logical_table_name: 'x_82900_docsera_workspace_change_set'
                             col_name_string: 'generation_key'
@@ -3558,6 +3562,7 @@ declare global {
                     {
                         table: 'sys_index'
                         id: 'b5841b5d3d3543aab64ef9a177426ff0'
+                        deleted: true
                         key: {
                             logical_table_name: 'x_82900_docsera_workspace_edit_lease'
                             col_name_string: 'workspace_key'
@@ -3766,6 +3771,7 @@ declare global {
                     {
                         table: 'sys_index'
                         id: 'c04e08fa70334a979d6fe1b5a871cdf2'
+                        deleted: true
                         key: {
                             logical_table_name: 'x_82900_docsera_workspace_change_entry'
                             col_name_string: 'generation_page_key'
@@ -4088,6 +4094,7 @@ declare global {
                     {
                         table: 'sys_index'
                         id: 'd52b1ebda73447e7a418bc0db4b71d5c'
+                        deleted: true
                         key: {
                             logical_table_name: 'x_82900_docsera_workspace_removal_batch'
                             col_name_string: 'batch_key'

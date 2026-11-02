@@ -15,7 +15,7 @@ const scopedAppConfigPath = path.resolve(packageRoot, "..", "docsera-ui", "now.c
 const constants = Object.freeze({
   buildType: "global",
   appVersion: "0.1.0",
-  artifactRevision: "friendly-url-host-companion-r1",
+  artifactRevision: "global-base-metadata-safe-r2",
   updateSetName: "Docsera Global Companion 0.1.0",
   updateSetDescription:
     "Global companion update set for Docsera workspace provisioning and the authenticated docsera.do host.",
@@ -24,8 +24,6 @@ const constants = Object.freeze({
   remoteUpdateSetSource: "docsera-global-companion",
   recordedBy: "codex"
 });
-
-const globalRuntimePath = `/global/docsera-global-workspace-bridge/${constants.appVersion}`;
 
 function readScopedAppConfig() {
   const rawConfig = JSON.parse(readText(scopedAppConfigPath));
@@ -140,22 +138,6 @@ function parseRecord(relativePath) {
   };
 }
 
-function extractOptionalValue(content, tagName) {
-  const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = content.match(new RegExp(`<${escapedTag}(?:\\s+[^>]*)?>([\\s\\S]*?)</${escapedTag}>`));
-  return match ? match[1] : "";
-}
-
-function extractSelfClosingPresence(content, tagName) {
-  const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`<${escapedTag}\\s*/>`).test(content);
-}
-
-function readBooleanTag(content, tagName, fallback = "false") {
-  const value = extractOptionalValue(content, tagName);
-  return value ? value.trim() : fallback;
-}
-
 function buildRecordUpdateXml(tableName, sysId, fields) {
   const fieldXml = fields
     .map(({ name, value, attributes = "" }) => {
@@ -176,67 +158,6 @@ function buildRecordUpdateXml(tableName, sysId, fields) {
     `  </${tableName}>`,
     "</record_update>"
   ].join("\n");
-}
-
-function buildGlobalBaseRecords() {
-  const sysAppPath = path.join(distAppRoot, "scope", "sys_app_global.xml");
-  const sysAppContent = readText(sysAppPath);
-
-  const packageRecord = {
-    absolutePath: sysAppPath,
-    content: buildRecordUpdateXml("sys_package", "global", [
-      { name: "source", value: "global" },
-      { name: "active", value: readBooleanTag(sysAppContent, "active", "true") },
-      { name: "enforce_license", value: extractOptionalValue(sysAppContent, "enforce_license") || "log" },
-      { name: "licensable", value: readBooleanTag(sysAppContent, "licensable", "true") },
-      { name: "license_category", value: extractOptionalValue(sysAppContent, "license_category") || "none" },
-      { name: "license_model", value: extractOptionalValue(sysAppContent, "license_model") || "none" },
-      { name: "name", value: extractOptionalValue(sysAppContent, "name") || "Docsera Global Workspace Provisioning Bridge" },
-      { name: "package_json", value: extractOptionalValue(sysAppContent, "package_json") || `${globalRuntimePath}/package.json` },
-      { name: "package_resolver_version", value: extractOptionalValue(sysAppContent, "package_resolver_version") || "2.0.0" },
-      { name: "trackable", value: readBooleanTag(sysAppContent, "trackable", "true") },
-      { name: "version", value: extractOptionalValue(sysAppContent, "version") || constants.appVersion }
-    ]),
-    relativePath: "synthetic/sys_package_global.xml",
-    tableName: "sys_package",
-    targetName: "Global",
-    targetSysId: "global",
-    updateName: "sys_package_global",
-    updateXmlSysId: stableSysId("sys_update_xml:synthetic/sys_package_global.xml")
-  };
-
-  const shortDescription = extractOptionalValue(sysAppContent, "short_description");
-  const logoIsEmpty = extractSelfClosingPresence(sysAppContent, "logo");
-  const guidedSetupIsEmpty = extractSelfClosingPresence(sysAppContent, "guided_setup_guid");
-  const entitlementIsEmpty = extractSelfClosingPresence(sysAppContent, "subscription_entitlement");
-
-  const scopeRecord = {
-    absolutePath: sysAppPath,
-    content: buildRecordUpdateXml("sys_scope", "global", [
-      { name: "can_edit_in_studio", value: readBooleanTag(sysAppContent, "can_edit_in_studio", "true") },
-      { name: "guided_setup_guid", value: guidedSetupIsEmpty ? null : extractOptionalValue(sysAppContent, "guided_setup_guid") || null },
-      { name: "js_level", value: extractOptionalValue(sysAppContent, "js_level") || "es_latest" },
-      { name: "logo", value: logoIsEmpty ? null : extractOptionalValue(sysAppContent, "logo") || null },
-      { name: "private", value: readBooleanTag(sysAppContent, "private", "false") },
-      { name: "restrict_table_access", value: readBooleanTag(sysAppContent, "restrict_table_access", "false") },
-      { name: "runtime_access_tracking", value: extractOptionalValue(sysAppContent, "runtime_access_tracking") || "permissive" },
-      { name: "scope", value: extractOptionalValue(sysAppContent, "scope") || "global" },
-      { name: "scoped_administration", value: readBooleanTag(sysAppContent, "scoped_administration", "false") },
-      { name: "short_description", value: shortDescription ? shortDescription : null },
-      {
-        name: "subscription_entitlement",
-        value: entitlementIsEmpty ? null : extractOptionalValue(sysAppContent, "subscription_entitlement") || null
-      }
-    ]),
-    relativePath: "synthetic/sys_scope_global.xml",
-    tableName: "sys_scope",
-    targetName: "global",
-    targetSysId: "global",
-    updateName: "sys_scope_global",
-    updateXmlSysId: stableSysId("sys_update_xml:synthetic/sys_scope_global.xml")
-  };
-
-  return [packageRecord, scopeRecord];
 }
 
 function buildRestrictedCallerAccessRecords() {
@@ -283,7 +204,6 @@ function buildRestrictedCallerAccessRecords() {
 }
 
 function buildCompanionRecords() {
-  const baseRecords = buildGlobalBaseRecords();
   const restrictedCallerAccessRecords = buildRestrictedCallerAccessRecords();
   const parsedRecords = readRecordEntries()
     .filter((relativePath) => !relativePath.startsWith("scope/"))
@@ -297,7 +217,21 @@ function buildCompanionRecords() {
     return record.targetSysId !== retiredFriendlyUrlAclRoleId || record.relativePath.startsWith("author_elective_update/");
   });
 
-  return [...baseRecords, ...restrictedCallerAccessRecords, ...builtRecords];
+  const records = [...restrictedCallerAccessRecords, ...builtRecords];
+  const unsafeSharedGlobalRecords = records.filter(
+    (record) =>
+      record.targetSysId === "global" &&
+      ["sys_package", "sys_scope", "sys_app"].includes(record.tableName)
+  );
+  if (unsafeSharedGlobalRecords.length > 0) {
+    throw new Error(
+      `Refusing to package shared Global identity records: ${unsafeSharedGlobalRecords
+        .map((record) => `${record.tableName}:${record.targetSysId}`)
+        .join(", ")}`
+    );
+  }
+
+  return records;
 }
 
 function buildRemoteUpdateSetXml({ remoteUpdateSetSysId, createdAt, records }) {

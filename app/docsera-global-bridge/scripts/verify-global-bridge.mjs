@@ -12,10 +12,6 @@ const defaults = {
   workerName: "DocseraGlobalWorkspaceProvisioningBridge",
   workerRuleName: "Docsera Workspace Provision Request Worker",
   packageRuntimePathPrefix: "/global/docsera-global-workspace-bridge/0.1.0/",
-  expectedPackageResolverVersion: "2.0.0",
-  expectedPackageJsonPath: "/global/docsera-global-workspace-bridge/0.1.0/package.json",
-  expectedGlobalJsLevel: "es_latest",
-  expectedRuntimeAccessTracking: "permissive",
   scopedRequestTable: "x_82900_docsera_workspace_provision_request",
   scopedWorkspaceIconAssetTable: "x_82900_docsera_workspace_icon_asset",
   scopedWorkspaceTable: "x_82900_docsera_workspace",
@@ -437,6 +433,11 @@ function main() {
     detail: JSON.stringify(runtimeModuleRecords)
   });
   checks.push({
+    ok: runtimeModuleRecords.every((record) => cleanText(record.sys_scope) === "global"),
+    label: "global bridge package runtime sys_module records remain in Global scope",
+    detail: JSON.stringify(runtimeModuleRecords)
+  });
+  checks.push({
     ok: runtimeModulePaths.has(`${defaults.packageRuntimePathPrefix}package.json`),
     label: "global bridge package.json sys_module is installed",
     detail: JSON.stringify(runtimeModuleRecords)
@@ -463,54 +464,6 @@ function main() {
     detail: JSON.stringify(runtimeModuleRecords)
   });
 
-  const packageRecords = runQuery({
-    authAlias,
-    table: "sys_package",
-    query: "sys_id=global",
-    fields: "sys_id,name,source,version,package_json,package_resolver_version,active"
-  });
-  const packageRecord = packageRecords[0] ?? null;
-
-  checks.push({
-    ok: packageRecords.length === 1,
-    label: "global package record is queryable",
-    detail: JSON.stringify(packageRecords)
-  });
-  checks.push({
-    ok: cleanText(packageRecord?.package_json) === defaults.expectedPackageJsonPath,
-    label: "global package_json points at the bridge package path",
-    detail: JSON.stringify(packageRecord)
-  });
-  checks.push({
-    ok: cleanText(packageRecord?.package_resolver_version) === defaults.expectedPackageResolverVersion,
-    label: "global package resolver version matches the SDK bridge package",
-    detail: JSON.stringify(packageRecord)
-  });
-
-  const scopeRecords = runQuery({
-    authAlias,
-    table: "sys_scope",
-    query: "sys_id=global",
-    fields: "sys_id,scope,js_level,runtime_access_tracking,can_edit_in_studio"
-  });
-  const scopeRecord = scopeRecords[0] ?? null;
-
-  checks.push({
-    ok: scopeRecords.length === 1,
-    label: "global scope record is queryable",
-    detail: JSON.stringify(scopeRecords)
-  });
-  checks.push({
-    ok: cleanText(scopeRecord?.js_level) === defaults.expectedGlobalJsLevel,
-    label: "global scope js_level matches the SDK bridge package",
-    detail: JSON.stringify(scopeRecord)
-  });
-  checks.push({
-    ok: cleanText(scopeRecord?.runtime_access_tracking) === defaults.expectedRuntimeAccessTracking,
-    label: "global scope runtime access tracking matches the SDK bridge package",
-    detail: JSON.stringify(scopeRecord)
-  });
-
   console.log("Scoped table privilege diagnostics");
   console.log(JSON.stringify(privilegeRecords, null, 2));
   console.log("");
@@ -522,12 +475,6 @@ function main() {
   console.log("");
   console.log("Global package runtime sys_module diagnostics");
   console.log(JSON.stringify(runtimeModuleRecords, null, 2));
-  console.log("");
-  console.log("Global package metadata diagnostics");
-  console.log(JSON.stringify(packageRecords, null, 2));
-  console.log("");
-  console.log("Global scope metadata diagnostics");
-  console.log(JSON.stringify(scopeRecords, null, 2));
   console.log("");
 
   for (const check of checks) {
