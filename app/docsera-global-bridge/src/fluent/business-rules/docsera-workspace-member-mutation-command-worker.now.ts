@@ -4,7 +4,7 @@ import { BusinessRule } from "@servicenow/sdk/core";
 BusinessRule({
   $id: Now.ID["docsera-workspace-member-mutation-command-worker"],
   name: "Docsera Workspace Member Mutation Command Worker",
-  table: "x_82900_docsera_workspace_member_mutation_command",
+  table: "x_2300756_docsera_workspace_member_mutation_command",
   when: "after",
   action: ["insert"],
   order: 100,

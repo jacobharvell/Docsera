@@ -7,8 +7,8 @@ import {
   Table
 } from "@servicenow/sdk/core";
 
-export const x_82900_docsera_workspace_provision_request = Table({
-  name: "x_82900_docsera_workspace_provision_request",
+export const x_2300756_docsera_workspace_provision_request = Table({
+  name: "x_2300756_docsera_workspace_provision_request",
   label: "Docsera Workspace Provision Request",
   display: "name",
   actions: ["read", "update"],
@@ -108,7 +108,7 @@ export const x_82900_docsera_workspace_provision_request = Table({
     }),
     workspace: ReferenceColumn({
       label: "Workspace",
-      referenceTable: "x_82900_docsera_workspace"
+      referenceTable: "x_2300756_docsera_workspace"
     }),
     admin_group: ReferenceColumn({
       label: "Admin group",

@@ -12,10 +12,10 @@ const defaults = {
   workerName: "DocseraGlobalWorkspaceProvisioningBridge",
   workerRuleName: "Docsera Workspace Provision Request Worker",
   packageRuntimePathPrefix: "/global/docsera-global-workspace-bridge/0.1.0/",
-  scopedRequestTable: "x_82900_docsera_workspace_provision_request",
-  scopedWorkspaceIconAssetTable: "x_82900_docsera_workspace_icon_asset",
-  scopedWorkspaceTable: "x_82900_docsera_workspace",
-  scopedScopeId: "6997f092c3fd8310c569bf0d0501314d",
+  scopedRequestTable: "x_2300756_docsera_workspace_provision_request",
+  scopedWorkspaceIconAssetTable: "x_2300756_docsera_workspace_icon_asset",
+  scopedWorkspaceTable: "x_2300756_docsera_workspace",
+  scopedScopeId: "e6e43323accd4c7fb9271525a343850e",
   rca: Object.freeze({
     operationExecuteApi: "execute",
     rcaTypeRealRca: "real_rca",
@@ -345,7 +345,7 @@ function main() {
   const privilegeRecords = runQuery({
     authAlias,
     table: "sys_scope_privilege",
-    query: `target_scope=6997f092c3fd8310c569bf0d0501314d^target_nameIN${defaults.scopedRequestTable},${defaults.scopedWorkspaceTable},${defaults.scopedWorkspaceIconAssetTable}`,
+    query: `target_scope=e6e43323accd4c7fb9271525a343850e^target_nameIN${defaults.scopedRequestTable},${defaults.scopedWorkspaceTable},${defaults.scopedWorkspaceIconAssetTable}`,
     fields: "sys_id,target_name,target_scope,target_type,operation,status,source_scope"
   });
   const privilegeKeys = new Set(

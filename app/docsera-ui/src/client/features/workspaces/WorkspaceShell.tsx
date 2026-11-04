@@ -15,11 +15,6 @@ import type { ContentRevealIntent, ContentRevealState } from "./contentReveal";
 import type { WorkspaceContentRevealSurface } from "./WorkspaceMainPane";
 
 type WorkspaceShellProps = {
-  bodyNotice?: {
-    eyebrow: string;
-    kind: "alert" | "status";
-    message: string;
-  } | null;
   bodyState: "loading" | "ready";
   canCreatePage: boolean;
   createPageDisabledReason: string;
@@ -33,6 +28,7 @@ type WorkspaceShellProps = {
   loadMedia?: (input: { mediaId: string; signal?: AbortSignal }) => Promise<Blob | null>;
   editAccessLost: boolean;
   accessLossMessage?: string;
+  accessLossTitle?: string;
   leaseConflict?: boolean;
   leaseHolder?: { displayName: string | null; userSysId?: string };
   onEndPreviousSession?: () => void;
@@ -176,7 +172,6 @@ function readStoredWorkspaceTocCollapsedPreference(workspaceSlug: string): boole
 }
 
 export function WorkspaceShell({
-  bodyNotice,
   bodyState,
   canCreatePage,
   createPageDisabledReason,
@@ -190,6 +185,7 @@ export function WorkspaceShell({
   loadMedia,
   editAccessLost,
   accessLossMessage,
+  accessLossTitle,
   leaseConflict,
   leaseHolder,
   onEndPreviousSession,
@@ -534,13 +530,13 @@ export function WorkspaceShell({
         </div>
 
         <WorkspaceMainPane
-          bodyNotice={bodyNotice}
           bodyState={bodyState}
           editorCanonicalEnvelope={editorCanonicalEnvelope}
           canCreatePage={canCreatePage}
           canEditPageBody={canEditPageBody}
           canManagePageSettings={canManagePageSettings}
           accessLossMessage={accessLossMessage}
+          accessLossTitle={accessLossTitle}
           leaseConflict={leaseConflict}
           leaseHolder={leaseHolder}
           onEndPreviousSession={onEndPreviousSession}

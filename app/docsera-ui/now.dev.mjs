@@ -1,5 +1,6 @@
 import { servicenowFrontEndPlugins, watch } from "@servicenow/isomorphic-rollup";
 import { inlineCssTextPlugin } from "./inlineCssTextPlugin.mjs";
+import { serviceNowSafeMarkupOutputPlugin } from "./serviceNowSafeMarkupPlugin.mjs";
 
 export default async ({ rootDir, config, fs, path, logger, credential }) => {
   const clientDir = path.join(rootDir, config.clientDir);
@@ -22,6 +23,7 @@ export default async ({ rootDir, config, fs, path, logger, credential }) => {
     ],
     output: {
       dir: staticContentDir,
+      plugins: [serviceNowSafeMarkupOutputPlugin()],
       sourcemap: true
     }
   });

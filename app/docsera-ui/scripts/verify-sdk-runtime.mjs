@@ -8,13 +8,13 @@ import {
   runtimeStyleIdentity,
   sha256Hex
 } from "./inline-runtime-css.mjs";
-import { parseRuntimeVerificationOptions } from "./sdk-runtime-verification-options.mjs";
+import { instanceUrlsMatch, parseRuntimeVerificationOptions } from "./sdk-runtime-verification-options.mjs";
 
 const defaults = {
-  authAlias: "docsera-pdi",
-  instanceUrl: "https://dev295482.service-now.com",
-  pageEndpoint: "x_82900_docsera_docsera_sdk_runtime.do",
-  pingPath: "/api/x_82900_docsera/docsera_runtime/ping",
+  authAlias: "docsera-dev468303",
+  instanceUrl: "https://dev468303.service-now.com",
+  pageEndpoint: "x_2300756_docsera_docsera_sdk_runtime.do",
+  pingPath: "/api/x_2300756_docsera/docsera_runtime/ping",
   keyringAccount: "now-sdk",
   keyringService: "ServiceNow",
   propagationAttempts: 10,
@@ -636,7 +636,7 @@ async function main() {
   const storedCredential = parsedCredential.credential;
   const storedInstanceUrl = storedCredential.creds?.instanceUrl;
 
-  if (storedInstanceUrl && storedInstanceUrl !== instanceUrl) {
+  if (storedInstanceUrl && !instanceUrlsMatch(storedInstanceUrl, instanceUrl)) {
     failCheck(
       checks,
       "SDK auth alias matches instance URL",
@@ -880,11 +880,11 @@ async function main() {
     checks.push({
       ok:
         normalizedPing.authenticated === true &&
-        normalizedPing.scope === "x_82900_docsera" &&
+        normalizedPing.scope === "x_2300756_docsera" &&
         normalizedPing.status === "ok",
       label: "REST ping returned authenticated scope payload",
       diagnostic:
-        `Expected authenticated=true, scope=x_82900_docsera, status=ok but got authenticated=${normalizedPing.authenticated}, scope=${normalizedPing.scope}, status=${normalizedPing.status}.`
+        `Expected authenticated=true, scope=x_2300756_docsera, status=ok but got authenticated=${normalizedPing.authenticated}, scope=${normalizedPing.scope}, status=${normalizedPing.status}.`
     });
   }
 

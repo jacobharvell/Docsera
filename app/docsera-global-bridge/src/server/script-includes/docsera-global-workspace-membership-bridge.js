@@ -132,7 +132,7 @@ DocseraGlobalWorkspaceMembershipBridge.prototype = {
     },
 
     _validateWorkspaceGroupPair: function (adminGroupSysId, editorGroupSysId) {
-        var workspace = new GlideRecord('x_82900_docsera_workspace');
+        var workspace = new GlideRecord('x_2300756_docsera_workspace');
         workspace.addQuery('admin_group', adminGroupSysId);
         workspace.addQuery('editor_group', editorGroupSysId);
         workspace.setLimit(1);

@@ -1,5 +1,5 @@
 (function () {
-    var TABLE = 'x_82900_docsera_workspace_icon_asset';
+    var TABLE = 'x_2300756_docsera_workspace_icon_asset';
     var RETENTION_SECONDS = 7 * 24 * 60 * 60;
     var BATCH_SIZE = 50;
     var cutoff = new GlideDateTime();

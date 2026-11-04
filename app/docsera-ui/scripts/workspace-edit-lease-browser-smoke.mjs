@@ -10,7 +10,7 @@ const defaults = {
   instanceUrl: "https://dev295482.service-now.com",
   keyringAccount: "now-sdk",
   keyringService: "ServiceNow",
-  pageEndpoint: "x_82900_docsera_docsera_sdk_runtime.do"
+  pageEndpoint: "x_2300756_docsera_docsera_sdk_runtime.do"
 };
 
 function cleanText(value) {

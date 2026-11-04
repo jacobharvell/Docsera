@@ -1,0 +1,66 @@
+{
+  "sdkVersion": "4.8.1",
+  "candidateConfiguration": {
+    "scope": "global",
+    "scopeId": "2698dffadc844c00a9f20d67fca177d5",
+    "name": "Docsera Global Workspace Provisioning Bridge",
+    "packageName": "docsera-global-workspace-bridge",
+    "version": "0.1.0"
+  },
+  "applicationRecord": {
+    "file": "scope/sys_app_2698dffadc844c00a9f20d67fca177d5.xml",
+    "table": "sys_app",
+    "targetId": "2698dffadc844c00a9f20d67fca177d5",
+    "sha256": "D64514522FCA99C7E106BF4D07A3F74EBFC1AF19F0372EC8BF867F19DEF613D8",
+    "action": "INSERT_OR_UPDATE"
+  },
+  "comparisonWithRR060ConvertedRegistry": {
+    "registrySha256": "85681AF257D9F26621D442DD3068E041667A8367B8CD51B1CA5D4B3FF4826B86",
+    "expectedMetadataRecordCount": 23,
+    "generatedMetadataRecordCount": 23,
+    "metadataTargetIdsMatch": true,
+    "sourceRegistryChangedByBuild": false,
+    "sourceRegistrySha256AfterBuild": "85681AF257D9F26621D442DD3068E041667A8367B8CD51B1CA5D4B3FF4826B86"
+  },
+  "inventory": [
+    {"table":"sys_module","id":"4a22dfafc6cc4b01a796c36fa2d7e6b6","path":"/global/docsera-global-workspace-bridge/0.1.0/package.json"},
+    {"table":"sys_module","id":"582ab55688144454bc95080a6ce5885f","path":"/global/docsera-global-workspace-bridge/0.1.0/src/server/script-includes/docsera-global-workspace-membership-bridge.js"},
+    {"table":"sys_module","id":"582d44e43f714b8cb0ebbffe9b4fa991","path":"/global/docsera-global-workspace-bridge/0.1.0/bom.json"},
+    {"table":"sys_module","id":"94bc0de883764e819b01d8b0ae0d62ec","path":"/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-member-mutation-command.js"},
+    {"table":"sys_module","id":"d4a3dc19596e40aea9186c8eac8079b0","path":"/global/docsera-global-workspace-bridge/0.1.0/src/server/script-includes/docsera-global-workspace-provisioning-bridge.js"},
+    {"table":"sys_module","id":"f7a3b9131ef04ac5aebf403d2856e72c","path":"/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-provision-request.js"},
+    {"table":"sys_scope_privilege","id":"020b66150c26442d80ec0a26b6f37099"},
+    {"table":"sys_scope_privilege","id":"2a575e9f2d314c9aa08c6e4fa60b545a"},
+    {"table":"sys_scope_privilege","id":"44a6377dac404a3885de4107e29aa707"},
+    {"table":"sys_scope_privilege","id":"8c73924ac3f34315a312d25c04beca68"},
+    {"table":"sys_scope_privilege","id":"a9463de9f8f24cc9be7296b8e1019ddc"},
+    {"table":"sys_scope_privilege","id":"d48779f205ab43da816d52079e0150c0"},
+    {"table":"sys_scope_privilege","id":"d4959e2588174efda0d5769c9861cc9b"},
+    {"table":"sys_scope_privilege","id":"d4f3ccc29a484d13b8aada2b3a015d34"},
+    {"table":"sys_scope_privilege","id":"eaf188f8dcc240e896b30a140aa28dfa"},
+    {"table":"sys_script","id":"c7debb094bef4e5093645239504c84b6","name":"Docsera Workspace Provision Request Worker"},
+    {"table":"sys_script","id":"f91e7303f060417e97e9b6ea7d34efbe","name":"Docsera Workspace Member Mutation Command Worker"},
+    {"table":"sys_script_include","id":"010930ea12354689b678fc9b37ba0f88","name":"DocseraGlobalWorkspaceProvisioningBridge"},
+    {"table":"sys_script_include","id":"bb42e634e203492591a8d18e6953eae1","name":"DocseraGlobalWorkspaceMembershipBridge"},
+    {"table":"sys_security_acl","id":"b9d7e176310f447ea61072dc4a9fca11","name":"docsera"},
+    {"table":"sys_ui_page","id":"4bb3dc32dcfc4441a57bfce97db77529","name":"docsera"},
+    {"table":"sys_ux_lib_asset","id":"377d32f160d24dafa9959f5d346c042d","name":"global/docsera-friendly-url-proof.js.map"},
+    {"table":"sys_ux_lib_asset","id":"7c2ec161a0214744aa75f7d22e6edf59","name":"global/docsera-friendly-url-proof"}
+  ],
+  "tableCounts": {"sys_module":6,"sys_scope_privilege":9,"sys_script":2,"sys_script_include":2,"sys_security_acl":1,"sys_ui_page":1,"sys_ux_lib_asset":2,"sys_app":1},
+  "payloadChecks": {
+    "xmlFileCount": 24,
+    "uniqueTargetIdCount": 24,
+    "deleteDeclarations": 0,
+    "oldCanonicalScopeReferences": 0,
+    "sysAppGlobalReferences": 0,
+    "sysScopeGlobalReferences": 0,
+    "sharedGlobalPackageMetadataReferences": 0
+  },
+  "ownershipChange": {
+    "metadataSysScopeReference": "2698dffadc844c00a9f20d67fca177d5",
+    "metadataSysScopeDisplayValue": "global",
+    "updateRecordCountWithNewOwnerReference": 23,
+    "runtimeScope": "global"
+  }
+}

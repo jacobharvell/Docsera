@@ -109,7 +109,7 @@ vi.mock("../src/server/workspaces/serviceNowWorkspaceIcons.ts", () => ({
 
 import { createServiceNowWorkspaceProvisioningService } from "../src/server/workspaces/serviceNowWorkspaceProvisioning.ts";
 
-const requestTable = "x_82900_docsera_workspace_provision_request";
+const requestTable = "x_2300756_docsera_workspace_provision_request";
 
 describe("workspace provisioning trigger contract", () => {
   beforeEach(() => {
@@ -122,7 +122,7 @@ describe("workspace provisioning trigger contract", () => {
       return {
       asset: { sysId: "asset-001" },
       icon: {
-        assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001",
+        assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001",
         key: "asset-key-001",
         label: "Canonical uploaded icon.png",
         type: "uploaded"
@@ -162,7 +162,7 @@ describe("workspace provisioning trigger contract", () => {
         expect.objectContaining({ name: "setValue:icon_label", value: "Canonical uploaded icon.png" }),
         expect.objectContaining({
           name: "setValue:icon_asset_path",
-          value: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001"
+          value: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001"
         })
       ])
     );
@@ -177,7 +177,7 @@ describe("workspace provisioning trigger contract", () => {
 
     const insert = provisioningOperations.find((entry) => entry.name === "insert");
     expect(insert?.fields).toMatchObject({
-      icon_asset_path: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001",
+      icon_asset_path: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001",
       icon_key: "asset-key-001",
       icon_label: "Canonical uploaded icon.png",
       icon_type: "uploaded",

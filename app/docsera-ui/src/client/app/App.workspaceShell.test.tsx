@@ -305,7 +305,7 @@ function renderAuthenticatedApp(path: string, userSysId: string, clientOverrides
   const serviceNowClient = createClient({
     ping: vi.fn(async () => ({
       authenticated: true,
-      scope: "x_82900_docsera",
+      scope: "x_2300756_docsera",
       status: "ok",
       timestamp: "2026-09-22 10:15:00",
       userAvatarPath: "",
@@ -320,7 +320,7 @@ function renderAuthenticatedApp(path: string, userSysId: string, clientOverrides
     serviceNowClient,
     ...render(
       <App
-        runtime={{ ...createRuntime(path), config: { backendPingPath: "/api/x_82900_docsera/docsera_runtime/ping" } }}
+        runtime={{ ...createRuntime(path), config: { backendPingPath: "/api/x_2300756_docsera/docsera_runtime/ping" } }}
         serviceNowClient={serviceNowClient}
       />
     )
@@ -551,10 +551,10 @@ describe("App workspace shell integration", () => {
         throw new Error("temporary list failure");
       }),
       ping: vi.fn(async () => ({
-        authenticated: true, scope: "x_82900_docsera", status: "ok", timestamp: "2026-09-22 10:15:00", userAvatarPath: "", userDisplayName: "Reader", userName: "reader", userSysId
+        authenticated: true, scope: "x_2300756_docsera", status: "ok", timestamp: "2026-09-22 10:15:00", userAvatarPath: "", userDisplayName: "Reader", userName: "reader", userSysId
       }))
     });
-    const runtime = { ...createRuntime("/?view=my-workspaces"), config: { backendPingPath: "/api/x_82900_docsera/docsera_runtime/ping" } };
+    const runtime = { ...createRuntime("/?view=my-workspaces"), config: { backendPingPath: "/api/x_2300756_docsera/docsera_runtime/ping" } };
     const view = render(<App runtime={runtime} serviceNowClient={failedClient} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "Workspace switcher: Docsera" }));
@@ -605,7 +605,7 @@ describe("App workspace shell integration", () => {
     const client = createClient({
       ping: vi.fn(async () => ({
         authenticated: true,
-        scope: "x_82900_docsera",
+        scope: "x_2300756_docsera",
         status: "ok",
         timestamp: "2026-09-07 10:15:00",
         userAvatarPath: "/avatar.do?sysparm_user=6816f79cc0a8016401c5a33be04be441",
@@ -617,7 +617,7 @@ describe("App workspace shell integration", () => {
 
     render(
       <App
-        runtime={{ ...createRuntime(), config: { backendPingPath: "/api/x_82900_docsera/docsera_runtime/ping" } }}
+        runtime={{ ...createRuntime(), config: { backendPingPath: "/api/x_2300756_docsera/docsera_runtime/ping" } }}
         serviceNowClient={client}
       />
     );
@@ -648,15 +648,17 @@ describe("App workspace shell integration", () => {
 
   it.each([true, false])("shows the other editor profile in recovery with selected page: %s", async (selected) => {
     const acquireWorkspaceEditLease = vi.fn().mockResolvedValue({ state: "locked", holderDisplayName: "System Administrator", holderUserSysId: "6816f79cc0a8016401c5a33be04be441", sameUserDifferentSession: false });
+    const getWorkspaceEditLeaseStatus = vi.fn();
     const listPages = vi.fn(async ({ mode }: { mode?: WorkspaceMode; workspaceSlug: string }) => createPageListResult(mode === "edit" ? "edit" : "live", "product-docs", selected ? [createPageRecord()] : []));
-    renderApp(selected ? "/?workspace=product-docs&mode=edit&page=overview" : "/?workspace=product-docs&mode=edit", { acquireWorkspaceEditLease, listPages });
+    renderApp(selected ? "/?workspace=product-docs&mode=edit&page=overview" : "/?workspace=product-docs&mode=edit", { acquireWorkspaceEditLease, getWorkspaceEditLeaseStatus, listPages });
     expect(await screen.findByRole("heading", { name: "Editing session already active" })).toBeInTheDocument();
     expect(screen.queryByText("Access lost")).not.toBeInTheDocument();
     const link = screen.getByRole("link", { name: "System Administrator" });
     expect(link).toHaveAttribute("href", "/nav_to.do?uri=sys_user.do%3Fsys_id%3D6816f79cc0a8016401c5a33be04be441");
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
-    expect(screen.getByRole("button", { name: "Return to Live" })).toHaveClass("docsera-modal__secondary");
+    expect(screen.queryByRole("button", { name: "Return to Live" })).not.toBeInTheDocument();
+    expect(getWorkspaceEditLeaseStatus).not.toHaveBeenCalled();
   });
 
   it.each([undefined, "invalid"])("renders a safe holder name without a valid ID: %s", async (holderUserSysId) => {
@@ -667,8 +669,9 @@ describe("App workspace shell integration", () => {
 
   it("ends an observed same-account session once and reacquires editing", async () => {
     const release = createDeferred<{ state: "released" }>();
+    const reacquire = createDeferred<{ state: "held"; leaseToken: string; heartbeatIntervalMs: number; staleAfterMs: number; changeSetId: string; changeSetRevision: number }>();
     const endPreviousWorkspaceEditSession = vi.fn(() => release.promise);
-    const acquireWorkspaceEditLease = vi.fn().mockResolvedValueOnce({ state: "locked", holderDisplayName: "Editor", sameUserDifferentSession: true, observedLeaseId: "lease-1" }).mockResolvedValue({ state: "held", leaseToken: "new-token", heartbeatIntervalMs: 60000, staleAfterMs: 300000, changeSetId: "change-set-001", changeSetRevision: 9 });
+    const acquireWorkspaceEditLease = vi.fn().mockResolvedValueOnce({ state: "locked", holderDisplayName: "Editor", sameUserDifferentSession: true, observedLeaseId: "lease-1" }).mockImplementationOnce(() => reacquire.promise);
     renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease, endPreviousWorkspaceEditSession });
     const button = await screen.findByRole("button", { name: "End previous session" });
     expect(screen.getByRole("heading", { name: "Editing session already active" })).toBeInTheDocument();
@@ -679,7 +682,51 @@ describe("App workspace shell integration", () => {
     expect(button).toBeDisabled();
     await act(async () => { release.resolve({ state: "released" }); });
     await waitFor(() => expect(acquireWorkspaceEditLease).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("heading", { name: "Editing session already active" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Authoring access is no longer available" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "End previous session" })).toBeNull();
+    reacquire.resolve({ state: "held", leaseToken: "new-token", heartbeatIntervalMs: 60000, staleAfterMs: 300000, changeSetId: "change-set-001", changeSetRevision: 9 });
     await waitFor(() => expect(document.querySelector("[data-docsera-page-editor-host='true']")).toBeInTheDocument());
+  });
+
+  it("rechecks a same-account lock without an observed lease ID before takeover", async () => {
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+    const acquireWorkspaceEditLease = vi.fn().mockResolvedValueOnce({ state: "locked" as const, holderDisplayName: "Editor", sameUserDifferentSession: true }).mockResolvedValue({ state: "held" as const, leaseToken: "replacement-token", heartbeatIntervalMs: 60_000, staleAfterMs: 300_000, changeSetId: "change-set-001", changeSetRevision: 9 });
+    const getWorkspaceEditLeaseStatus = vi.fn(async () => ({ state: "locked" as const, holderDisplayName: "Editor", sameUserDifferentSession: true, observedLeaseId: "tab-b-token" }));
+    const endPreviousWorkspaceEditSession = vi.fn(async () => ({ state: "released" as const }));
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease, endPreviousWorkspaceEditSession, getWorkspaceEditLeaseStatus });
+
+    const button = await screen.findByRole("button", { name: "End previous session" });
+    expect(getWorkspaceEditLeaseStatus).toHaveBeenCalledTimes(1);
+    fireEvent.click(button);
+    await waitFor(() => expect(endPreviousWorkspaceEditSession).toHaveBeenCalledWith({
+      observedLeaseId: "tab-b-token",
+      workspaceSlug: "product-docs",
+      workspaceSysId: "workspace-001"
+    }));
+  });
+
+  it("recovers a displaced-tab lost response through a same-account status recheck without showing Retry Edit", async () => {
+    window.sessionStorage.clear();
+    window.localStorage.clear();
+    const acquireWorkspaceEditLease = vi.fn().mockResolvedValueOnce({
+      state: "lost" as const,
+      errorMessage: "This editing session ended.",
+      holderDisplayName: null,
+      sameUserDifferentSession: false
+    });
+    const getWorkspaceEditLeaseStatus = vi.fn(async () => ({
+      state: "locked" as const,
+      holderDisplayName: "Editor",
+      sameUserDifferentSession: true,
+      observedLeaseId: "tab-b-token"
+    }));
+    renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease, getWorkspaceEditLeaseStatus });
+
+    expect(await screen.findByRole("button", { name: "End previous session" })).toBeInTheDocument();
+    expect(getWorkspaceEditLeaseStatus).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Retry Edit" })).not.toBeInTheDocument();
   });
 
   it("recovers a same-account session when there are no published pages", async () => {
@@ -693,10 +740,14 @@ describe("App workspace shell integration", () => {
     expect(await screen.findByText("No pages yet")).toBeInTheDocument();
   });
 
-  it("shows release failure and allows returning to Live", async () => {
+  it("shows release failure and keeps a retry path without a redundant Live action", async () => {
     window.sessionStorage.clear();
     window.localStorage.clear();
-    const acquireWorkspaceEditLease = vi.fn().mockResolvedValue({ state: "locked", holderDisplayName: "Editor", sameUserDifferentSession: true, observedLeaseId: "lease-1" });
+    const reacquire = createDeferred<{ state: "locked"; holderDisplayName: string; sameUserDifferentSession: boolean; observedLeaseId: string }>();
+    const acquireWorkspaceEditLease = vi.fn()
+      .mockResolvedValueOnce({ state: "locked" as const, holderDisplayName: "Editor", sameUserDifferentSession: true, observedLeaseId: "lease-1" })
+      .mockImplementationOnce(() => reacquire.promise)
+      .mockResolvedValue({ state: "locked" as const, holderDisplayName: "Editor", sameUserDifferentSession: true, observedLeaseId: "lease-1" });
     const endPreviousWorkspaceEditSession = vi.fn().mockResolvedValue({ state: "lost", errorMessage: "The session changed.", holderDisplayName: null, sameUserDifferentSession: false });
     renderApp("/?workspace=product-docs&mode=edit&page=overview", { acquireWorkspaceEditLease, endPreviousWorkspaceEditSession });
     fireEvent.click(await screen.findByRole("button", { name: "End previous session" }));
@@ -706,11 +757,16 @@ describe("App workspace shell integration", () => {
     expect(screen.getByText("The session changed.")).toBeInTheDocument();
     expect(window.location.search).toContain("mode=edit");
     fireEvent.click(screen.getByRole("button", { name: "Retry Edit" }));
+    await waitFor(() => expect(acquireWorkspaceEditLease).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole("heading", { name: "Editing session ended" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Authoring access is no longer available" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Retry Edit" })).toBeNull();
+    reacquire.resolve({ state: "locked", holderDisplayName: "Editor", sameUserDifferentSession: true, observedLeaseId: "lease-1" });
     expect(await screen.findByRole("button", { name: "End previous session" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "End previous session" }));
     expect(await screen.findByText("The session changed.")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Return to Live" }));
-    await waitFor(() => expect(window.location.search).not.toContain("mode=edit"));
+    expect(screen.queryByRole("button", { name: "Return to Live" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry Edit" })).toBeInTheDocument();
   });
 
   it("animates direct refresh into Edit once after the lease and editor become ready", async () => {
@@ -1849,7 +1905,7 @@ describe("App workspace shell integration", () => {
         type: "uploaded" as const,
         key: "wsi_staged",
         label: "Uploaded workspace icon",
-        assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
+        assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
       },
       state: "succeeded" as const
     }));
@@ -2589,7 +2645,7 @@ describe("App workspace shell integration", () => {
         type: "uploaded",
         key: "custom",
         label: "Custom docs",
-        assetPath: "/api/x_82900_docsera/icon/custom"
+        assetPath: "/api/x_2300756_docsera/icon/custom"
       }
     });
     const loadWorkspaceIcon = vi.fn(async () => new Blob(["icon"], { type: "image/png" }));
@@ -2612,7 +2668,7 @@ describe("App workspace shell integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "Workspace settings" }));
     const panel = await screen.findByRole("complementary", { name: "Workspace Settings" });
     await waitFor(() => expect(loadWorkspaceIcon).toHaveBeenCalledWith({
-      assetPath: "/api/x_82900_docsera/icon/custom",
+      assetPath: "/api/x_2300756_docsera/icon/custom",
       signal: expect.any(AbortSignal)
     }));
     fireEvent.change(within(panel).getByDisplayValue("Product Docs"), { target: { value: "Uploaded Docs" } });
@@ -2635,7 +2691,7 @@ describe("App workspace shell integration", () => {
         type: "uploaded",
         key: "custom",
         label: "Custom docs",
-        assetPath: "/api/x_82900_docsera/icon/custom"
+        assetPath: "/api/x_2300756_docsera/icon/custom"
       }
     });
 
@@ -2706,7 +2762,7 @@ describe("App workspace shell integration", () => {
         type: "uploaded" as const,
         key: "wsi_staged",
         label: "staged.png",
-        assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
+        assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
       },
       state: "succeeded" as const
     }));
@@ -2733,7 +2789,7 @@ describe("App workspace shell integration", () => {
 
     await waitFor(() => expect(saveWorkspaceSettings).toHaveBeenCalledTimes(1));
     expect(vi.mocked(saveWorkspaceSettings).mock.calls[0]?.[0].icon).toMatchObject({
-      assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged",
+      assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged",
       key: "wsi_staged",
       type: "uploaded"
     });
@@ -2752,7 +2808,7 @@ describe("App workspace shell integration", () => {
             type: "uploaded",
             key: "wsi_staged",
             label: "staged.png",
-            assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
+            assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
           }
         })
       });
@@ -2760,7 +2816,7 @@ describe("App workspace shell integration", () => {
     });
 
     expect(loadWorkspaceIcon).toHaveBeenCalledWith({
-      assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged",
+      assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged",
       signal: expect.any(AbortSignal)
     });
     const canonicalLoadingHeader = screen.getByRole("button", { name: /Workspace switcher: Product Docs/i });
@@ -2788,7 +2844,7 @@ describe("App workspace shell integration", () => {
         type: "uploaded" as const,
         key: "wsi_staged",
         label: "staged.png",
-        assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
+        assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
       },
       state: "succeeded" as const
     }));
@@ -2824,7 +2880,7 @@ describe("App workspace shell integration", () => {
             type: "uploaded",
             key: "wsi_staged",
             label: "staged.png",
-            assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
+            assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
           }
         })
       });
@@ -2845,7 +2901,7 @@ describe("App workspace shell integration", () => {
         type: "uploaded" as const,
         key: "wsi_staged",
         label: "staged.png",
-        assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
+        assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
       },
       state: "succeeded" as const
     }));
@@ -2875,7 +2931,7 @@ describe("App workspace shell integration", () => {
             type: "uploaded",
             key: "wsi_staged",
             label: "staged.png",
-            assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
+            assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_staged"
           }
         })
       });
@@ -3103,11 +3159,11 @@ describe("App workspace shell integration", () => {
     const uploadWorkspaceIcon = vi
       .fn()
       .mockResolvedValueOnce({
-        icon: { type: "uploaded" as const, key: "wsi_first", label: "first.png", assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_first" },
+        icon: { type: "uploaded" as const, key: "wsi_first", label: "first.png", assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_first" },
         state: "succeeded" as const
       })
       .mockResolvedValueOnce({
-        icon: { type: "uploaded" as const, key: "wsi_second", label: "second.png", assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_second" },
+        icon: { type: "uploaded" as const, key: "wsi_second", label: "second.png", assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_second" },
         state: "succeeded" as const
       });
 

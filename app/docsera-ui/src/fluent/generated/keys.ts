@@ -5,4777 +5,4449 @@ declare global {
         namespace Internal {
             interface Keys extends KeysRegistry {
                 explicit: {
-                    '77e04e2dc3024f50c569bf0d0501319a': {
-                        table: 'sys_scope_privilege'
-                        id: '77e04e2dc3024f50c569bf0d0501319a'
-                        deleted: true
-                    }
                     bom_json: {
                         table: 'sys_module'
-                        id: '035d3e11746f42faa56baf67d7f58279'
-                    }
-                    'cto-3c-removal-member-m2m': {
-                        table: 'sys_m2m'
-                        id: '3b0bc87c6433409fb930186bb30449c6'
-                        deleted: true
+                        id: 'bbd58f26b97f4ba1b8bcf1279e95360d'
                     }
                     docsera_page_draft_parent_server_owned_write: {
                         table: 'sys_security_acl'
-                        id: 'c063d6dd00ec434c91ec43443d575358'
+                        id: '24515ee7e49c428ba5a7df2fb0becb14'
                     }
                     docsera_page_draft_removed_server_owned_write: {
                         table: 'sys_security_acl'
-                        id: 'df89ef4b7aaf45778c320df055cf2baf'
+                        id: 'acc804d2266c434bbe6c20a47cf1617e'
                     }
                     docsera_page_draft_sibling_server_owned_write: {
                         table: 'sys_security_acl'
-                        id: 'c83ddd28ea9d44a0b957ef06e0aea61c'
+                        id: '4dbd02352c9341f99f6c9c1fd5016a43'
                     }
                     docsera_page_last_draft_changed_by_server_owned_write: {
                         table: 'sys_security_acl'
-                        id: '98da27aa07824cb9b7d8ad696b02a397'
+                        id: 'a0c240e46183464fae586d5d808eb9a6'
                     }
                     docsera_page_last_draft_changed_on_server_owned_write: {
                         table: 'sys_security_acl'
-                        id: '9fc3cf4280f449f59b2e062e32479c00'
-                    }
-                    docsera_rm_member_create_deny: {
-                        table: 'sys_security_acl'
-                        id: '205a3ac89f304bdb9f124087a05ad295'
-                        deleted: true
-                    }
-                    docsera_rm_member_delete_deny: {
-                        table: 'sys_security_acl'
-                        id: 'c1e7e4aecee94a529f349405b662773d'
-                        deleted: true
-                    }
-                    docsera_rm_member_read_deny: {
-                        table: 'sys_security_acl'
-                        id: '263d2d4b7a024e44914c0fe529fbecc6'
-                        deleted: true
-                    }
-                    docsera_rm_member_write_deny: {
-                        table: 'sys_security_acl'
-                        id: '9cbe4ae17f3a44b2a3fbacd31d7cce33'
-                        deleted: true
+                        id: '7e5b093ecd864b5a8d47b4ab479c3f8e'
                     }
                     docsera_workspace_change_entry_create_deny: {
                         table: 'sys_security_acl'
-                        id: '89b57403786041deb8dfa62f32c5a670'
+                        id: 'd915a27b2d0d446e927607aa46b78d86'
                     }
                     docsera_workspace_change_entry_delete_deny: {
                         table: 'sys_security_acl'
-                        id: 'e5af3ddcc59146a4858c8347ffbf6c72'
+                        id: 'dbdc08c2c61b4f03904ab2b62958bcda'
                     }
                     docsera_workspace_change_entry_read_deny: {
                         table: 'sys_security_acl'
-                        id: 'f3d4c5ceb8fe4d40a9446fd25c7de7b4'
+                        id: 'c3eab5682b25426b837b4edbcca93b84'
                     }
                     docsera_workspace_change_entry_write_deny: {
                         table: 'sys_security_acl'
-                        id: '17937a8f40ae456b9787d3385f14b015'
+                        id: 'e2ce2a86a573490796318eb85fc1a759'
                     }
                     docsera_workspace_change_set_create_deny: {
                         table: 'sys_security_acl'
-                        id: 'f61f041d0c214bc28a76295a2ccdf5d5'
+                        id: '923af456053c47a496279a78bc86acb8'
                     }
                     docsera_workspace_change_set_delete_deny: {
                         table: 'sys_security_acl'
-                        id: '4ae8e86a3b5c49f7a9d26e9ca67c4709'
+                        id: 'f439fc3a5dae4c87a943bfc25cc8915e'
                     }
                     docsera_workspace_change_set_read_deny: {
                         table: 'sys_security_acl'
-                        id: '0989dffb081145a8ab93815d6802b8f6'
+                        id: '08d0c1b3a2c14cfc9d344621f5c112ce'
                     }
                     docsera_workspace_change_set_write_deny: {
                         table: 'sys_security_acl'
-                        id: 'f4e0f3f1c14941769c85cb2de549caf7'
+                        id: '9ca8af6fc50a4742b4c5ddbc3e67bd87'
                     }
                     docsera_workspace_edit_lease_create_deny: {
                         table: 'sys_security_acl'
-                        id: '4b6cc6a9f2ea44fdafd8dbc314ff81bc'
+                        id: 'a282a870e0fa4b5fa1987bb49d3162f8'
                     }
                     docsera_workspace_edit_lease_delete_deny: {
                         table: 'sys_security_acl'
-                        id: 'b83c836a9265450fb12c7b7aa54f0d83'
+                        id: 'fe5e98241c114a6e96794ffa2265674f'
                     }
                     docsera_workspace_edit_lease_read_deny: {
                         table: 'sys_security_acl'
-                        id: '8e4d5cc76a594cc08280f10cd7b0d3d2'
+                        id: '0fec49702e254fd28dec6a2adb933cb0'
                     }
                     docsera_workspace_edit_lease_write_deny: {
                         table: 'sys_security_acl'
-                        id: '605c1621a605441ba2113e35b797da13'
+                        id: 'a108d66a35974a68b1958f6460915a3f'
                     }
                     docsera_workspace_icon_asset_create_deny: {
                         table: 'sys_security_acl'
-                        id: '01fa4c77fc43449095555d027fa1dc82'
+                        id: 'd05465a4bbba4011a7e5226d83b4acd1'
                     }
                     docsera_workspace_icon_asset_delete_deny: {
                         table: 'sys_security_acl'
-                        id: '669aa377e68f4998bcb745267d213afd'
+                        id: '93a5d9ad5c554028a9ce66b1aca02071'
                     }
                     docsera_workspace_icon_asset_read_deny: {
                         table: 'sys_security_acl'
-                        id: '993ec69f54454e53a77ba15094d0fbe0'
+                        id: '54501677ffad4b728c050cb441b49279'
                     }
                     docsera_workspace_icon_asset_write_deny: {
                         table: 'sys_security_acl'
-                        id: '57c45f7e94914669b31c6efe8e9b926b'
+                        id: '68320c3e4fef41e4a465c784e8144f4f'
                     }
                     docsera_workspace_member_mutation_command_create_deny: {
                         table: 'sys_security_acl'
-                        id: 'ad04d00fe86849d984a723135e8d9a7f'
+                        id: 'c4b38e0fd12243309008f3036349ecc5'
                     }
                     docsera_workspace_member_mutation_command_delete_deny: {
                         table: 'sys_security_acl'
-                        id: 'c0dbc90172684bd79bebf8b1cf506500'
+                        id: '545428e2278d43ecbae1358352d2d9a6'
                     }
                     docsera_workspace_member_mutation_command_read_deny: {
                         table: 'sys_security_acl'
-                        id: '090f5dfb707f42eeb08bbd084091a55a'
+                        id: 'fb664e182f7e4b1ea8c6a9d44cfeb46d'
                     }
                     docsera_workspace_member_mutation_command_write_deny: {
                         table: 'sys_security_acl'
-                        id: '26a3638846e34511a402b6c13b8ee50b'
+                        id: '950569c7bc8547778b2a808e4de9edd1'
                     }
                     docsera_workspace_mutation_claim_create_deny: {
                         table: 'sys_security_acl'
-                        id: '98db5ab14dbd44fdbc430c68248547c5'
+                        id: '76da22be0c6d43f1963b9739aebb7d84'
                     }
                     docsera_workspace_mutation_claim_delete_deny: {
                         table: 'sys_security_acl'
-                        id: '89229a07e57c4ba4847211774abfe117'
+                        id: '329bb31b957e44cc83e50cb393a72f05'
                     }
                     docsera_workspace_mutation_claim_read_deny: {
                         table: 'sys_security_acl'
-                        id: '7ba99019302a4321a19e1f8e62b8e57e'
+                        id: 'b1a5f8073f8d4a5aac39297232ec8103'
                     }
                     docsera_workspace_mutation_claim_write_deny: {
                         table: 'sys_security_acl'
-                        id: '50b57dc76a794c4197b1b7fc9160eccd'
+                        id: 'dfa33bb44e5840c5aa602e3e7f02a504'
                     }
                     docsera_workspace_page_snapshot_create_deny: {
                         table: 'sys_security_acl'
-                        id: 'e5fff99e9b844f2caad819ed91c3fd60'
+                        id: 'd26d9ac22b0941fabe6842cdf5ac3534'
                     }
                     docsera_workspace_page_snapshot_delete_deny: {
                         table: 'sys_security_acl'
-                        id: 'f140e0b7e3eb426ca8b666d7c94d5c65'
+                        id: 'a73e92c7937343dd8c30f04217068766'
                     }
                     docsera_workspace_page_snapshot_read_deny: {
                         table: 'sys_security_acl'
-                        id: 'e1c72b37fce34207af2de882e2876df5'
+                        id: 'c0d435890d874dca9f0bcee7ba481732'
                     }
                     docsera_workspace_page_snapshot_write_deny: {
                         table: 'sys_security_acl'
-                        id: 'dcae77963642435aa7f117fa536a6fe6'
+                        id: '2917e5a08dbf4c9592fe802c336772f2'
                     }
                     docsera_workspace_provision_request_create_deny: {
                         table: 'sys_security_acl'
-                        id: '84323cfbd25b4249a8fa272e32884f27'
+                        id: '7a3c48b9245744a481912560b306f810'
                     }
                     docsera_workspace_provision_request_delete_deny: {
                         table: 'sys_security_acl'
-                        id: '7381ac581be1435d83b98bbc68a40c6a'
+                        id: 'a4369de23349432397cda2d3bdc83081'
                     }
                     docsera_workspace_provision_request_read_deny: {
                         table: 'sys_security_acl'
-                        id: '2d54dd55aef64b97aa91412be58e7e4d'
+                        id: 'c5c9f2925e92479ab4dfd4698ea3ef15'
                     }
                     docsera_workspace_provision_request_write_deny: {
                         table: 'sys_security_acl'
-                        id: '2cbc752b4cb7470b956b6776a15d676a'
+                        id: '7eb322db7fb8401383ec839975ad83a7'
                     }
                     docsera_workspace_removal_batch_create_deny: {
                         table: 'sys_security_acl'
-                        id: 'bfcb2f02f15549258209290676c65965'
+                        id: 'a4178fb51ff74fc3be4b26ef4731c211'
                     }
                     docsera_workspace_removal_batch_delete_deny: {
                         table: 'sys_security_acl'
-                        id: '05299bc06fa24cb8949a63b0baf2e951'
+                        id: '7194eaa59f2048738add42c3c297c615'
                     }
                     docsera_workspace_removal_batch_read_deny: {
                         table: 'sys_security_acl'
-                        id: 'd35131d914f64019807ba5613f83bd44'
+                        id: '8651f063d3684810b53693524c25a8dd'
                     }
                     docsera_workspace_removal_batch_write_deny: {
                         table: 'sys_security_acl'
-                        id: 'f1d32618d7214ed1aa414d9f22385bea'
+                        id: 'e4aa9331e8c9472992a32c832522d330'
                     }
                     docsera_workspace_removal_member_create_deny: {
                         table: 'sys_security_acl'
-                        id: '0605b7ec27274052bca7a2d2b8bb1c90'
-                        deleted: false
+                        id: '5f3d1e08309f4030aac23141fabd9c4c'
                     }
                     docsera_workspace_removal_member_delete_deny: {
                         table: 'sys_security_acl'
-                        id: 'ac25d4ff219d450fb9ddfc82aac603c0'
-                        deleted: false
+                        id: '3d4c5210e6184d7992e22b34a49a9fbc'
                     }
                     docsera_workspace_removal_member_read_deny: {
                         table: 'sys_security_acl'
-                        id: '2db50e05f8b34e14b16c3f318b6e0577'
-                        deleted: false
+                        id: '174f1706942a46f8870a647973c27849'
                     }
                     docsera_workspace_removal_member_write_deny: {
                         table: 'sys_security_acl'
-                        id: 'fca815ff662245c8a9cb71176092c094'
-                        deleted: false
+                        id: 'd87c8b4769464f69890a763224ac078b'
                     }
                     docsera_workspace_snapshot_set_create_deny: {
                         table: 'sys_security_acl'
-                        id: '59fcdd9365ef4773af055df8d871b802'
+                        id: 'fb3dcfe104764b8f99124d08429bba83'
                     }
                     docsera_workspace_snapshot_set_delete_deny: {
                         table: 'sys_security_acl'
-                        id: '947979c4a5e54d718f58900ded94c7d2'
+                        id: '5a6a25e7269d466a9df046335b58b8cf'
                     }
                     docsera_workspace_snapshot_set_read_deny: {
                         table: 'sys_security_acl'
-                        id: 'ffef165d8fb042d886d0fbe0452b1813'
+                        id: 'af4777e6afa44129b6fb4b052e5f0d30'
                     }
                     docsera_workspace_snapshot_set_write_deny: {
                         table: 'sys_security_acl'
-                        id: 'd7f33f5f7a3b4570ab316ff20e18800e'
+                        id: '538c8c3637e840c79a52daa6f942f19b'
                     }
                     'docsera-application-menu': {
                         table: 'sys_app_application'
-                        id: 'e2cd229c013f4b10bfcd04d39ea4cacb'
+                        id: 'b191909563744bdbaef60a8f381fff28'
                     }
                     'docsera-global-workspace-membership-bridge-execute': {
                         table: 'sys_scope_privilege'
-                        id: '6f11653b8d5047f696e45c5f533c3d56'
-                    }
-                    'docsera-global-workspace-provisioning-bridge-execute': {
-                        table: 'sys_scope_privilege'
-                        id: 'b523541000134b7ba376fb9302a1857f'
-                        deleted: true
+                        id: '41cfc3a240b54130bd9d4388d5d8c881'
                     }
                     'docsera-my-workspaces-module': {
                         table: 'sys_app_module'
-                        id: '1c9eda581c43423ea49aca42455c9bd1'
+                        id: 'ca2af57d10b84895ac12afcafc832c3c'
                     }
                     'docsera-runtime-api': {
                         table: 'sys_ws_definition'
-                        id: '814e0e79e0734df7af652df1e048a18f'
+                        id: '731376395fa94a9c910a223b8ef62a4f'
                     }
                     'docsera-runtime-pages-delete': {
                         table: 'sys_ws_operation'
-                        id: 'd731c28132024a66bfa57ebb20d175ee'
+                        id: '1c0f9ddbbebd4e32b99a7a27de7f5534'
                     }
                     'docsera-runtime-pages-delete-action-post': {
                         table: 'sys_ws_operation'
-                        id: 'bd0bda51ce3549f69dcdf70235f07629'
+                        id: '71d9c10f19ee48e99a5a0500f935db77'
                     }
                     'docsera-runtime-pages-get': {
                         table: 'sys_ws_operation'
-                        id: '2c1ee14346fb48d69552e328e5c980be'
+                        id: 'fedd2a39139945ceb3ca7cd7590f8028'
                     }
                     'docsera-runtime-pages-move-post': {
                         table: 'sys_ws_operation'
-                        id: '0b28f2e7060b4602912000b44d28b46e'
+                        id: '1daf9869daf1497896f1826e3104f525'
                     }
                     'docsera-runtime-pages-patch': {
                         table: 'sys_ws_operation'
-                        id: '6aa2c4f5b3d44d2f8d8e8f7f1f6a0c1b'
+                        id: '4d2bcc3bfc0746ca8702b47812a5dc10'
                     }
                     'docsera-runtime-pages-post': {
                         table: 'sys_ws_operation'
-                        id: '0123141679ea4a7b9bbf5c118e10360b'
+                        id: '3641442389cc4554b42e7c1d8f2d1f80'
                     }
                     'docsera-runtime-pages-publish-post': {
                         table: 'sys_ws_operation'
-                        id: '7eeef17b41b446478278e93d9563f94f'
+                        id: 'a51a4fd81f1545c39396840ad65ba816'
                     }
                     'docsera-runtime-pages-put': {
                         table: 'sys_ws_operation'
-                        id: '6ffe3ab21b874ff6b0540f5fcddb56bf'
+                        id: '962375409e3e4ee2945bcfb122abaa3f'
                     }
                     'docsera-runtime-ping-get': {
                         table: 'sys_ws_operation'
-                        id: 'a054642614c6403a92e30682e1de4aec'
+                        id: '7fbb460943d0492b9da68ed22bbc451f'
                     }
                     'docsera-runtime-workspace-body-save-recovery-post': {
                         table: 'sys_ws_operation'
-                        id: '68826c6afc684603aec33fa402788804'
+                        id: 'd634810e1aa144b4a7d5669b25aa3587'
                     }
                     'docsera-runtime-workspace-delete-post': {
                         table: 'sys_ws_operation'
-                        id: '9b0b4ee86ce5427fa96b353dba7b22b9'
+                        id: 'd067e803dcb1427a8cff24d226bb26f2'
                     }
                     'docsera-runtime-workspace-discard-all-post': {
                         table: 'sys_ws_operation'
-                        id: 'a6291b1703364ae0aec20c17ef95aa92'
+                        id: '36a04407370a42eda1c91e3eb6640504'
                     }
                     'docsera-runtime-workspace-discard-page-post': {
                         table: 'sys_ws_operation'
-                        id: 'b49b0f70ab0344bba7261ba3d8186281'
+                        id: '9ba4f48ee068466bb8500596f5f6393b'
                     }
                     'docsera-runtime-workspace-edit-lease-acquire-post': {
                         table: 'sys_ws_operation'
-                        id: 'd9b512c471e84df9af57ae21b4db3414'
+                        id: 'f3c78bd3567f46288da82cfbc6a6df4b'
                     }
                     'docsera-runtime-workspace-edit-lease-end-previous-session-post': {
                         table: 'sys_ws_operation'
-                        id: '9cce1539896846b09583eaf9f1e116eb'
+                        id: '9ef0e46d4f774ad3b4b1e21c55c72b40'
                     }
                     'docsera-runtime-workspace-edit-lease-release-post': {
                         table: 'sys_ws_operation'
-                        id: 'abf52c7cd4094770960c81a515336b67'
+                        id: '28f289500f2141dba1955fb0bf5269dd'
                     }
                     'docsera-runtime-workspace-edit-lease-renew-post': {
                         table: 'sys_ws_operation'
-                        id: 'a9b2ba469e944b2883a171c509d73e32'
+                        id: 'c86e06fa9e7840ee818234ea0be53ba8'
                     }
                     'docsera-runtime-workspace-edit-lease-resume-post': {
                         table: 'sys_ws_operation'
-                        id: '939433ddcd4d49de91c35e765ca5af76'
+                        id: '86f16da464cd4b6fabd08056330a0cb3'
                     }
                     'docsera-runtime-workspace-edit-lease-status-post': {
                         table: 'sys_ws_operation'
-                        id: '38193dfc681443eeba57c8b83150a313'
+                        id: 'dc6b752127f54d4084ce2e5e91130312'
                     }
                     'docsera-runtime-workspace-icon-file-get': {
                         table: 'sys_ws_operation'
-                        id: 'e7a9310dd1f3408aba89137dfcdcfce9'
+                        id: 'c192f279ed02474ba2d7ef7b0a59b143'
                     }
                     'docsera-runtime-workspace-icon-post': {
                         table: 'sys_ws_operation'
-                        id: '10baec6fa9314f7488456c35aa2f6da2'
-                    }
-                    'docsera-runtime-workspace-initial-admin-users-get': {
-                        table: 'sys_ws_operation'
-                        id: '9b39731f6fd8491496290fd1582f64fb'
-                        deleted: true
+                        id: 'c108574be3b843fd962f5493354422bc'
                     }
                     'docsera-runtime-workspace-media-file-get': {
                         table: 'sys_ws_operation'
-                        id: 'bd641d50194b4549bbfb8a59f69611b5'
+                        id: '4cce5e00747d48429773a2b0edc0b663'
                     }
                     'docsera-runtime-workspace-media-get': {
                         table: 'sys_ws_operation'
-                        id: 'd9e2c19db5e041de99e255cdcb267c6a'
+                        id: 'be5a7950a5e24e8994c499e073e01dd2'
                     }
                     'docsera-runtime-workspace-media-post': {
                         table: 'sys_ws_operation'
-                        id: '7010f50adafe409c82ccf41b0d0acb19'
+                        id: 'd9eedf4cd881484d996951b15ab8dc66'
                     }
                     'docsera-runtime-workspace-members-get': {
                         table: 'sys_ws_operation'
-                        id: '66a7da731e68449388dbfed54873450e'
+                        id: '5f3f3d4a12f549d0b3e61f3cc9575beb'
                     }
                     'docsera-runtime-workspace-members-put': {
                         table: 'sys_ws_operation'
-                        id: '9e696343d13249d29fd953d57163c7b1'
+                        id: '334f6f86246644c19b4e2d834e2349e2'
                     }
                     'docsera-runtime-workspace-members-remove-post': {
                         table: 'sys_ws_operation'
-                        id: '73057242d6724c329aab2f910190e2bb'
+                        id: '2ba2371735484f7cbcd4b9cc20be7b76'
                     }
                     'docsera-runtime-workspace-members-search-get': {
                         table: 'sys_ws_operation'
-                        id: 'd170eb0d8e1f4e7ab40e30d2ff6f6a87'
+                        id: '850bd6fa39f14006afa847e01efe49ad'
                     }
                     'docsera-runtime-workspace-pending-changes-post': {
                         table: 'sys_ws_operation'
-                        id: '1912ff3235804ba780bc53c6aeec1b51'
+                        id: 'dd56af042a734afeb34517454a6e91a0'
                     }
                     'docsera-runtime-workspace-provisioning-status-get': {
                         table: 'sys_ws_operation'
-                        id: 'd6b8cefeabf34dab9fa3bd1f9a92d97f'
+                        id: '085eaae884fe4f6eb4058cc3f8b042f0'
                     }
                     'docsera-runtime-workspace-publish-post': {
                         table: 'sys_ws_operation'
-                        id: '49d50db5280b4234b7780e5009a47cce'
+                        id: 'd893d34b99c84e878909aaf3b6ad6afd'
                     }
                     'docsera-runtime-workspace-settings-put': {
                         table: 'sys_ws_operation'
-                        id: '77675553a0d54e128211cdc94df22a04'
+                        id: '750039f45bc14fd28eaeb712a2113069'
                     }
                     'docsera-runtime-workspaces-get': {
                         table: 'sys_ws_operation'
-                        id: 'fcc3ff0a938442a2921579852f5aebea'
+                        id: '689312af3abf4d398b68e4c55b45a812'
                     }
                     'docsera-runtime-workspaces-post': {
                         table: 'sys_ws_operation'
-                        id: '05e86307b95e4b549a1e6b87059767fe'
+                        id: '7cc82531afb84888905e10cdd7f9fffb'
                     }
                     'docsera-workspace-edit-lease-cleanup': {
                         table: 'sysauto_script'
-                        id: 'b243fba1b5f7443192a4aaf93f25186c'
+                        id: 'd10e6693bf37427a8ef6f7049ace26d9'
                     }
                     'docsera-workspace-icon-cleanup': {
                         table: 'sysauto_script'
-                        id: 'fed21c6fa56e463881c2522d13b0c5ed'
+                        id: '705c1a6e32fa48fb9157541b3545b467'
                     }
                     package_json: {
                         table: 'sys_module'
-                        id: '59eb37ac11e3463591b83e545fd64cc4'
-                        deleted: false
+                        id: '33c3566d8ace4429b40dc4e91066aae4'
                     }
                     'src_server_api_docsera-runtime-create-page_ts': {
                         table: 'sys_module'
-                        id: '2402bb56614747d5b42d7669793745fc'
+                        id: 'd62d283c4ef640bc857d8758c2c74972'
                     }
                     'src_server_api_docsera-runtime-create-workspace_ts': {
                         table: 'sys_module'
-                        id: 'd1c85ce69fec4046a9c4e52ccbf1ed4e'
+                        id: 'a9ab3906dded478f9162af35b02635dc'
                     }
                     'src_server_api_docsera-runtime-page-delete_ts': {
                         table: 'sys_module'
-                        id: 'cc6dadf3e0554cd989a1ea5cc738947c'
+                        id: '830d1acde7024f1fb4bb5ca311718cf3'
                     }
                     'src_server_api_docsera-runtime-page-delete-action_ts': {
                         table: 'sys_module'
-                        id: '08f43b579ccb43b99e77dc804e52fed1'
+                        id: 'b76550354fdb4dcaaeabc6a2671e97f4'
                     }
                     'src_server_api_docsera-runtime-page-move_ts': {
                         table: 'sys_module'
-                        id: '91c731fa0a3c4a75b746a975c5a726a7'
+                        id: '574747ab264c44c1bf53c85258857d50'
                     }
                     'src_server_api_docsera-runtime-page-publish_ts': {
                         table: 'sys_module'
-                        id: '5ba0370ecbb5427fb7449bf1a38df3c5'
+                        id: '5529808b496f460ebe604475d6162ce0'
                     }
                     'src_server_api_docsera-runtime-page-save_ts': {
                         table: 'sys_module'
-                        id: '9f7c1b2a3d4e4f6091a2b3c4d5e6f708'
+                        id: '8ceedb64127a4587bad9afc3eeed975b'
                     }
                     'src_server_api_docsera-runtime-page-settings-save_ts': {
                         table: 'sys_module'
-                        id: '8e8c2844f2c24db0978b72869252c291'
+                        id: 'f7e2d7cf40ab498fbd3e1087ac04aa04'
                     }
                     'src_server_api_docsera-runtime-pages_ts': {
                         table: 'sys_module'
-                        id: 'f0ae2028924d46f6b6950914d45a15b1'
+                        id: '01b2f2e0f5564834a7adaf2de483ab2e'
                     }
                     'src_server_api_docsera-runtime-ping_ts': {
                         table: 'sys_module'
-                        id: '0cae8437f1b24d1b8e2e27367ffef695'
+                        id: 'f0ad814593a44c78b9cf22e2b54d72da'
                     }
                     'src_server_api_docsera-runtime-request_ts': {
                         table: 'sys_module'
-                        id: '1f906ab5540a48a98443ebaae3b3102a'
+                        id: '9d21cd134a584a1c974eec119aeee0cd'
                     }
                     'src_server_api_docsera-runtime-workspace-delete_ts': {
                         table: 'sys_module'
-                        id: 'f6f3e0993cc14bb48309273a75db471a'
+                        id: 'ab658fa9140b4bc3b4143f25f8f37d72'
                     }
                     'src_server_api_docsera-runtime-workspace-discard-all_ts': {
                         table: 'sys_module'
-                        id: '6be6316f3dad4a9ebf85bba70319280e'
+                        id: 'e0ab24034c7a4fdda544559615c35d9a'
                     }
                     'src_server_api_docsera-runtime-workspace-discard-page_ts': {
                         table: 'sys_module'
-                        id: '349aec20baee4ab388b342084eb6bfd9'
+                        id: 'd077bb4d79a74384ac1b13030adaf98b'
                     }
                     'src_server_api_docsera-runtime-workspace-edit-lease_ts': {
                         table: 'sys_module'
-                        id: 'f742dd684dfa465197e67bd6ab8c1348'
+                        id: 'b856e20acb6a4f1380a2774ebe73a699'
                     }
                     'src_server_api_docsera-runtime-workspace-edit-lease-acquire_ts': {
                         table: 'sys_module'
-                        id: '59e85952305f4bb2b7176d43b85b5dbf'
+                        id: '1841a738719a426f9f5ec853af4d107c'
                     }
                     'src_server_api_docsera-runtime-workspace-edit-lease-end-previous-session_ts': {
                         table: 'sys_module'
-                        id: '96f746b211fc453b9b32f1029d478038'
+                        id: '57658b6ccc984fa986d5c8394b36cf04'
                     }
                     'src_server_api_docsera-runtime-workspace-edit-lease-release_ts': {
                         table: 'sys_module'
-                        id: '5f0fe80bad56448da5c54e76224d808a'
+                        id: 'e46edcc6342c486d904c0d33dc700e39'
                     }
                     'src_server_api_docsera-runtime-workspace-edit-lease-renew_ts': {
                         table: 'sys_module'
-                        id: '0512911163324a6989860438b6716dff'
+                        id: 'beb40190bd06498c827d046545b349e5'
                     }
                     'src_server_api_docsera-runtime-workspace-edit-lease-resume_ts': {
                         table: 'sys_module'
-                        id: 'e364bb56f9ca475fb70f97abd934e3d2'
+                        id: '80b41180c6c741efbc4144bbea52928e'
                     }
                     'src_server_api_docsera-runtime-workspace-edit-lease-status_ts': {
                         table: 'sys_module'
-                        id: 'b5be1f4d19db4db781c89ba7c5648bb4'
+                        id: 'cedb76c223ad4d88a42b1404e329685a'
                     }
                     'src_server_api_docsera-runtime-workspace-icon-file_ts': {
                         table: 'sys_module'
-                        id: 'f2f7a73f21754adc860c25b9af7bfaf1'
+                        id: '00b9487710b34e059f600f8def319c32'
                     }
                     'src_server_api_docsera-runtime-workspace-icon-upload_ts': {
                         table: 'sys_module'
-                        id: 'f61ba199a7f448b3bc28a3d26992fc7c'
-                    }
-                    'src_server_api_docsera-runtime-workspace-initial-admin-users_ts': {
-                        table: 'sys_module'
-                        id: '786211c4a2e744a59df8455d6223a82e'
-                        deleted: true
+                        id: '42bb5c120d1e466683e32d62429dfb83'
                     }
                     'src_server_api_docsera-runtime-workspace-media_ts': {
                         table: 'sys_module'
-                        id: '4b4662cf544f4479bdd4e50ea4e1db4c'
+                        id: 'f2f24ff947444a548dadd77df78e8050'
                     }
                     'src_server_api_docsera-runtime-workspace-media-file_ts': {
                         table: 'sys_module'
-                        id: '788b34648cc048f4a262b46b51fb035c'
+                        id: 'a673a09512144e94a5476daa4f9b4b3f'
                     }
                     'src_server_api_docsera-runtime-workspace-media-upload_ts': {
                         table: 'sys_module'
-                        id: 'afd67e96467f44cbaf80ac420ec03e3b'
+                        id: '4b23a3247e5443d982830553ce34992a'
                     }
                     'src_server_api_docsera-runtime-workspace-members_ts': {
                         table: 'sys_module'
-                        id: '94082884f01b4086b2bb9e08c32b5a3d'
+                        id: '4c95c208a1904705818bcbb4565f1e3f'
                     }
                     'src_server_api_docsera-runtime-workspace-pending-changes_ts': {
                         table: 'sys_module'
-                        id: '89d5e8db71cc41309d4276b8064fe28a'
+                        id: '3c5d77de0a87471096f48e6dbf2146ad'
                     }
                     'src_server_api_docsera-runtime-workspace-provisioning-status_ts': {
                         table: 'sys_module'
-                        id: '7ef70560cca4454b8456cd9e5635225a'
+                        id: '76072ec07d1b4939a653f2549de29f7f'
                     }
                     'src_server_api_docsera-runtime-workspace-publish_ts': {
                         table: 'sys_module'
-                        id: '9490f88cf5394d2889ea8d160b26423d'
+                        id: 'c202a36f4dfb42889911ec4a42d2bbf9'
                     }
                     'src_server_api_docsera-runtime-workspace-settings-save_ts': {
                         table: 'sys_module'
-                        id: 'd1d7e8ada6f34713a28c03dcae085579'
+                        id: '137613f1d801456b863e5c06b32cfc67'
                     }
                     'src_server_api_docsera-runtime-workspaces_ts': {
                         table: 'sys_module'
-                        id: 'd9bb2f597b564a9ab74fab37b5e777e4'
+                        id: 'e1502b8f7418431d8e2a2084ea45075e'
                     }
                     src_server_editor_colorContract_ts: {
                         table: 'sys_module'
-                        id: '08cde97bfcba4c6db3230a1a2f4fa6fc'
+                        id: 'e6e17845e55e48c099970ba6b629e610'
                     }
                     src_server_pages_serverEditorDocument_ts: {
                         table: 'sys_module'
-                        id: '82c7f7d7d6804f42ba403e468abeb2db'
+                        id: '91cf221cdcb44ef0972f5d5f44a919e1'
                     }
                     src_server_pages_serverImageContract_ts: {
                         table: 'sys_module'
-                        id: 'a6e99b88e62c4fa0aae055cd19533f29'
+                        id: 'daaaddaa636e46ba8f9000a9bd3595c5'
                     }
                     src_server_pages_serverPageDomain_ts: {
                         table: 'sys_module'
-                        id: '8405ade511e74b5783d977e8a5cb0165'
+                        id: 'ce947b9f37a7438092c63073c1103bd5'
                     }
                     src_server_pages_serviceNowPageCreation_ts: {
                         table: 'sys_module'
-                        id: '15f2c4ddfa3d429eaee05457c8553eef'
+                        id: '68708b12da0143bca9c08b057e79f910'
                     }
                     src_server_pages_serviceNowPageDraftPersistence_ts: {
                         table: 'sys_module'
-                        id: '3cbef95d63b7474993a221971a6c9e2b'
+                        id: 'a2f5fb26c34c4f88906f984d5e209b49'
                     }
                     src_server_pages_serviceNowPageListing_ts: {
                         table: 'sys_module'
-                        id: '6a431e1ba00846fda409ca43a08a23bf'
+                        id: '15820f3e34794478b5bf9b61fb4dfc90'
                     }
                     src_server_pages_serviceNowPagePersistence_ts: {
                         table: 'sys_module'
-                        id: '1980fa8f1354457e8cd75c9f3978bc1a'
+                        id: 'b739644bdfc947459665af0d0c0311df'
                     }
                     src_server_pages_serviceNowPagePublishing_ts: {
                         table: 'sys_module'
-                        id: 'f0ee5ef3e7d0486aaeeef14ea9eba876'
+                        id: '62efa124099547169c40ca68713368ff'
                     }
                     src_server_pages_serviceNowPageQueries_ts: {
                         table: 'sys_module'
-                        id: '812c5633833a463d8b19cb00aa1678e2'
+                        id: 'a143a919fef543ee8122a1c4a925e297'
                     }
                     src_server_pages_serviceNowPageRecords_ts: {
                         table: 'sys_module'
-                        id: '4d9911302ec443b399935ca3365063db'
+                        id: '28b54c7a40634dbfbe3fbcc445ee8c0f'
                     }
                     src_server_pages_serviceNowPageSettings_ts: {
                         table: 'sys_module'
-                        id: '6e50ac65fad94c23bc09b8c678a0e11c'
+                        id: 'dd9fbd812f3f4abf9cd5a8904df96a85'
                     }
                     'src_server_scheduled-scripts_docsera-workspace-edit-lease-cleanup_js': {
                         table: 'sys_module'
-                        id: '1e31c75ebf0f4905897c7d24d582c0bb'
+                        id: 'b4b547bceeba4dc38fc504f9125d6eaa'
                     }
                     'src_server_scheduled-scripts_docsera-workspace-icon-cleanup_js': {
                         table: 'sys_module'
-                        id: '6b27647ae1504c24b92b6caefb8695e6'
+                        id: '06e970428b874994a6859d33cf8734be'
                     }
                     'src_server_workspace-leases_serverWorkspaceEditLeaseDomain_ts': {
                         table: 'sys_module'
-                        id: '265d61c2e2a849caae00e0ca6cbd1b43'
+                        id: '700b94fed0314cf4a1e38fcbe289ab76'
                     }
                     'src_server_workspace-leases_serviceNowWorkspaceEditLeases_ts': {
                         table: 'sys_module'
-                        id: 'a4760ccdb9594e0fbc910d7cac801935'
+                        id: '3b2105962dcd4049bf3f4805524cdda8'
                     }
                     'src_server_workspace-leases_workspaceEditLeaseService_ts': {
                         table: 'sys_module'
-                        id: '0dfee33b216d4a278b9b60eea95dc482'
+                        id: '6258c509ae9b44eabcd027b9d3a7e3c7'
                     }
                     src_server_workspaces_serverWorkspaceDomain_ts: {
                         table: 'sys_module'
-                        id: '15e7818a1cd7415682575fce3df6368e'
+                        id: '3cd3d9d47d5342b59944218514090139'
                     }
                     src_server_workspaces_serverWorkspaceIconCatalog_ts: {
                         table: 'sys_module'
-                        id: '5b0e1f348af4483a913fcdacfbf52d7e'
+                        id: 'd6ae1c919e2d46089125833cd7a4a48d'
                     }
                     src_server_workspaces_serverWorkspaceIconImage_ts: {
                         table: 'sys_module'
-                        id: 'b79c2db965b1442f92304994a5802edd'
+                        id: '6e113ae800b441daa44a5b09c91ccdeb'
                     }
                     src_server_workspaces_serviceNowWorkspaceCapabilities_ts: {
                         table: 'sys_module'
-                        id: 'e95a4d192e1e4d7e9426e30597dd9910'
+                        id: '9d32d037d94e4f59a29857f4c456ee21'
                     }
                     src_server_workspaces_serviceNowWorkspaceCatalog_ts: {
                         table: 'sys_module'
-                        id: 'c671e60c1d4f4133a3b9fbcc8e98104e'
+                        id: 'aef2fd66f772457c82d37896ba4177cb'
                     }
                     src_server_workspaces_serviceNowWorkspaceChangeSetPersistence_ts: {
                         table: 'sys_module'
-                        id: '33fd02cf34a346bf96af94a3f07e1253'
+                        id: 'bb9e501aebaf4ef2b55ee45c64705e6f'
                     }
                     src_server_workspaces_serviceNowWorkspaceDeletion_ts: {
                         table: 'sys_module'
-                        id: 'a4cfa31243b6446ebb05194525fc44a9'
+                        id: 'cbeb1b557e0a41ecb49be6b0e7bea51b'
                     }
                     src_server_workspaces_serviceNowWorkspaceIcons_ts: {
                         table: 'sys_module'
-                        id: '95e11909e2ee4b539ee761c312dea815'
+                        id: 'd131a9eaa4af404cb8b72ab6fc44413c'
                     }
                     src_server_workspaces_serviceNowWorkspaceMedia_ts: {
                         table: 'sys_module'
-                        id: 'ee1288870b964d52b59f01c3c1b5499f'
+                        id: 'ac9f602870294e4db9f550ff3fce98a9'
                     }
                     src_server_workspaces_serviceNowWorkspaceMembers_ts: {
                         table: 'sys_module'
-                        id: '623ab8acdf4c468296dc3a3e53dae017'
+                        id: '60ec1a3bb51145c99526b3122cb40e5c'
                     }
                     src_server_workspaces_serviceNowWorkspaceProvisioning_ts: {
                         table: 'sys_module'
-                        id: 'af3b3203ec254b04a09ca602a42829e7'
+                        id: '04673d9a71504f38bbf38a075b26ee40'
                     }
                     src_server_workspaces_serviceNowWorkspaceRecords_ts: {
                         table: 'sys_module'
-                        id: '453e4ed122a04dabb3ee142e95de0c8c'
+                        id: 'd7b61708511743bebb11b064eff2b812'
                     }
                     src_server_workspaces_serviceNowWorkspaceSettings_ts: {
                         table: 'sys_module'
-                        id: '425bbfd1d9cc43b6a8ba81e28b1323a6'
+                        id: 'c1135f94bafa4e98ba9da34a4dfb1948'
                     }
                     src_server_workspaces_workspaceChangeSetDomain_ts: {
                         table: 'sys_module'
-                        id: '68d5a69a139047d5aefef385c644253f'
-                    }
-                    'x_82900_docsera/assets/docsera-default-workspace-icon.png': {
-                        table: 'db_image'
-                        id: 'e5d2414784714ca5a4ddeae39791462c'
-                        deleted: true
+                        id: '87ae64042a7542ba89c93cda5792574b'
                     }
                 }
                 composite: [
                     {
-                        table: 'sys_dictionary'
-                        id: '00403debe56b41e2883e6fcb1dbb7575'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'snapshot_set'
-                        }
-                    },
-                    {
                         table: 'sys_documentation'
-                        id: '0147b7ad729747308a44212b3ce0c41e'
+                        id: '003b3b051ecb4dc59812cd7927b6b321'
                         key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'name'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '0295fc236cc9436aa4b1c5a2caf350d0'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'published_title'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '036ab39330f142008a910d51a357c62f'
-                        deleted: false
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_member'
-                            element: 'first_pending_sequence'
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'slug'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_choice'
-                        id: '03ba2c7dc67d4766a0eccd6b197f38a6'
+                        id: '0091adca17db4029b104b22c53a7c969'
                         key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_state'
-                            value: 'applied'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '0469578f3d4d4d94b60273189f18556b'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'readiness_state'
-                            value: 'retired'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '04c8ba8b7efc430fad5239901fb6b4a8'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                            element: 'change_set'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '050efb6ae60144f6919b5257abcde7f0'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'NULL'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '0510acc20b48471bbb697b511ac6281d'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'lifecycle_state'
-                            value: 'active'
-                        }
-                    },
-                    {
-                        table: 'sys_ui_page'
-                        id: '053e258583814373a3f0ef19199023b4'
-                        key: {
-                            endpoint: 'x_82900_docsera_docsera_sdk_runtime.do'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '0607e2fc3ef24280b8133757bed8dba2'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'asset_key'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '0763e38b7ae44c3d8dcc94e3d4805052'
-                        deleted: true
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'initial_admin_user'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '07e678be733c4f35afcbba165c037ccd'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'NULL'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '07f48c1e584d4db5b87588ad7cea535e'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_state'
-                        }
-                    },
-                    {
-                        table: 'ua_table_licensing_config'
-                        id: '0805f2138b7140ab86200658b2941f76'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '091d00f16aa14ad5b60e8ce3501798cb'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'state'
-                            value: 'succeeded'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '0920b6fe328e49e4a6454319127e9267'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'workspace_state_revision'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '096559ae9cfb4ca7a26b9680109c7d61'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'published_snapshot_set'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '09d7914fa0a34a7ab33766bd48f5fbb0'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'NULL'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '0a485cae090c4b9295dde5ed17603876'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'result_change_set_revision'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '0ae65deef82743728ea72ce5fbc5303a'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'removed_by'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice_set'
-                        id: '0b44ce3dcdac4afcb64ec30b7c08b5a6'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'state'
-                        }
-                    },
-                    {
-                        table: 'sn_glider_source_artifact'
-                        id: '0b944690279d44618ced2280edd7263c'
-                        deleted: true
-                        key: {
-                            name: 'x_82900_docsera_docsera_sdk_runtime.do - BYOUI Files'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '0c21886ec55546fba398a199d0083d7d'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                            element: 'change_set'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '0c3f26a103614a69bda3c4ea8e193297'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'lifecycle_state'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '0ce1d231c31d4f61b57dfaa644ca0e49'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'finalized_on'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '0cf2d645310343479bd70703822460fe'
-                        deleted: true
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'initial_admin_user'
-                        }
-                    },
-                    {
-                        table: 'sys_db_object'
-                        id: '0e90bb36b013496ab7174302cb24f0c1'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                        }
-                    },
-                    {
-                        table: 'sys_choice_set'
-                        id: '0ea8ad8d4b9f423ca1cd67aaf83a37dd'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'state'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '0fe8112f6f754ef8b08df169a57421f1'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'requested_by'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '1003f5c3b95e418c9211a9d8ca1c0cc6'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'published_by'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '1036f1724cf246b59b9a9c69935c3e70'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
                             element: 'state'
                             value: 'requested'
                         }
                     },
                     {
-                        table: 'sys_documentation'
-                        id: '10bf35952d43420d935db4632da435ca'
+                        table: 'sys_dictionary'
+                        id: '00aa1c07c0b84038ace3c3931fd2f18b'
                         key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'target_removal_batch_key'
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'icon_key'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '00d8e5db827b4022900b47ce45730055'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'creator'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: '12197a30258b470c88c09ec14399d36d'
+                        id: '01abd03c51cc4dad97858e958ac6c325'
                         key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'sibling_order'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '122d38e3f3664bd5a5298dcff72e95a4'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                            element: 'last_changed_on'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '12fddb7581cf4ca48db798719a2d615a'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'active'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '13433155d0ab4878b1b46b4c8404ff32'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'requested_by'
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'size_bytes'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_choice_set'
-                        id: '1468889f94584c30ba7a1234049415bf'
+                        id: '01b860ce37524c61b2c34b11bbfde4ec'
                         key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'mutation_kind'
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'readiness_state'
                         }
                     },
                     {
-                        table: 'sys_dictionary'
-                        id: '1508adc0ba1f420c82f378b22e608d89'
+                        table: 'sys_documentation'
+                        id: '026906b624f84009a3eb1401811b4b03'
                         key: {
-                            name: 'x_82900_docsera_page'
+                            name: 'x_2300756_docsera_page'
                             element: 'draft_title'
+                            language: 'en'
                         }
                     },
                     {
-                        table: 'sys_ux_lib_asset'
-                        id: '159c08ca62ab4bc29405fc4522c6e0f4'
+                        table: 'sys_choice_set'
+                        id: '02dc984a4f1348f0a1e76df73edc43ef'
                         key: {
-                            name: 'x_82900_docsera/mountEditorRuntimeSpike'
-                        }
-                    },
-                    {
-                        table: 'ua_table_licensing_config'
-                        id: '159e3d8b36c04e008a1caaab453cfaf9'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                        }
-                    },
-                    {
-                        table: 'ua_table_licensing_config'
-                        id: '16185a30f9774e42bc3bc4e5b3552fab'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                        }
-                    },
-                    {
-                        table: 'sys_db_object'
-                        id: '16345b1cb3864624a57e7263306abf84'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'page_width'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: '16862e5e51304fe6a547e1045af77fa8'
+                        id: '03212e7965df48539e6b1d1a8161cfa6'
                         key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'workspace'
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'claim_owner_key'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: '1700addcf17d4cc6977685b4be0ef2d3'
+                        id: '042f33fdf3ec4958b3c4e1d3d4306735'
                         key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'parent_page'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '17381c4eb8724b52a4421f2c61784915'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'content_type'
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'recovery_state'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: '1752290f722044ae829fc6741284063d'
+                        id: '04a62f2564ba4a209e58f37a07290547'
                         key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'status'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '17c75b0c8603403db0d61915ada83121'
-                        deleted: true
-                        key: {
-                            name: 'x_82900_docsera_rm_member'
-                            element: 'NULL'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '17f71d6728a44ad386696569afff0330'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'workspace'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '184a72ad896d4cbeac7456f5126614dc'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'NULL'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '18e9d98ff4ae4558922817b8fb560b91'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'draft_parent_page'
-                            language: 'en'
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'generation_key'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: '196d43dedc604faf8200a069956b4a47'
+                        id: '04aac4b00d88463fb369db260b3a5a80'
                         key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'NULL'
-                        }
-                    },
-                    {
-                        table: 'sys_user_role'
-                        id: '1a567676cd914d03967f6ccf5d4a3216'
-                        key: {
-                            name: 'x_82900_docsera.admin'
-                        }
-                    },
-                    {
-                        table: 'sys_ux_lib_asset'
-                        id: '1acd40f0fcb0422e8e047afac7546c60'
-                        deleted: false
-                        key: {
-                            name: 'x_82900_docsera/main'
-                        }
-                    },
-                    {
-                        table: 'sys_user_role_contains'
-                        id: '1addaaf5f12c44ce8a0e73e4181e6a97'
-                        key: {
-                            role: {
-                                id: '1a567676cd914d03967f6ccf5d4a3216'
-                                key: {
-                                    name: 'x_82900_docsera.admin'
-                                }
-                            }
-                            contains: {
-                                id: 'bed03ee93aa74f62aedc3ee7d9419ca6'
-                                key: {
-                                    name: 'x_82900_docsera.workspace_admin'
-                                }
-                            }
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '1b2809fa5e1f4c3f9e5d213fb8c14d5f'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_state'
-                            value: 'finalized'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '1bd5116dad4544759de4c4ea312e828f'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'state'
-                            value: 'cleaning'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '1c3d13975aa741a998b2e6dce3a06e4c'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'name'
-                            language: 'en'
+                            name: 'x_2300756_docsera_page'
+                            element: 'last_draft_changed_on'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: '1cb4bfef67604f2c89b9f3b74058f97c'
+                        id: '04af6cda0b4c4504aaf2d363eac33c78'
                         key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'NULL'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '1ce4c32417624c499d157d2e93db9925'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'icon_asset_path'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '1db79334a63c461db173c4d8602b4b0c'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'command_kind'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '1deaf5b2320247bbaa30af0e5a3d5b03'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'sibling_order'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '1ebdb25bdcac451a9a13d39dfaba7377'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'command_kind'
-                            value: 'discard_all'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '1f9919d52fdb4d4b82594c06e1479427'
-                        deleted: true
-                        key: {
-                            name: 'x_82900_docsera_rm_member'
-                            element: 'removal_batch'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '215486706cd54d77a48993cddf64a672'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'content_json'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '22d42cfc8d6f4d7297ea437e169ea7c2'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'admin_group_name'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '22f8b7d2f45549efb6d75352e74dd344'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'admin_group'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '234559814c6d4b9d8c4b791da8aa5e3f'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_key'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '23953ceef7164cdaa83453453bae9ede'
-                        key: {
-                            name: 'x_82900_docsera_workspace_edit_lease'
-                            element: 'holder_user'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '2463e62d7f204a8c8dbd25611ce729e2'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'icon_type'
-                            value: 'uploaded'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '25101e5af7cf4768be832fd6b408edad'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'published_on'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'ua_table_licensing_config'
-                        id: '25ef567377fe48209bccf9e4a6de9898'
-                        deleted: true
-                        key: {
-                            name: 'x_82900_docsera_rm_member'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '26c1da75893940e4b38dbfe0dc4cf769'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'content_json'
-                        }
-                    },
-                    {
-                        table: 'ua_table_licensing_config'
-                        id: '26ccebe3e9bb408eb15e62992b45dd5a'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                        }
-                    },
-                    {
-                        table: 'sys_db_object'
-                        id: '26fcb8d5f44249b6934e76583c62b20b'
-                        deleted: true
-                        key: {
-                            name: 'x_82900_docsera_rm_member'
-                        }
-                    },
-                    {
-                        table: 'sys_index'
-                        id: '278a8809e2f14b55af2cbbbdd5683fdb'
-                        key: {
-                            logical_table_name: 'x_82900_docsera_workspace_edit_lease'
-                            col_name_string: 'last_seen_on'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '28e9d2d1a4b14d66ba7e59bd11e54347'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'state'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '29d0cbe3777f469588e65f72e0770cb9'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
                             element: 'change_set'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: '29ffcb3bd3b24e57a1ca99032bc82667'
+                        id: '0538105ce53d4d87acec959cb1a4e5d2'
                         key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'published_body_text'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '2a73eac62eee4f07b9aa8d4d84c9e3b4'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'result_change_set'
-                        }
-                    },
-                    {
-                        table: 'sys_db_object'
-                        id: '2ab06f4b68d244e9b9af5e8cbcb4ee7e'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '2b261b49881d4e79aaa4a42e0d415c16'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                            element: 'generation_page_key'
-                        }
-                    },
-                    {
-                        table: 'sys_db_object'
-                        id: '2b3758c7073340a7baf7d830936e75d7'
-                        deleted: false
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_member'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '2b55c28122f84e86bba2946cb0609236'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'access_level'
-                            value: 'editor'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '2c05c8e108984f66aabb05b2a3ee2f02'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'workspace_status'
+                            name: 'x_2300756_docsera_page'
+                            element: 'NULL'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: '2c47c632112640439541997bf1c7a2bd'
+                        id: '056e63d14d584512b181d07ab2ef909b'
                         key: {
-                            name: 'x_82900_docsera_workspace_edit_lease'
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'snapshot_set'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '05b761ca61794d3b92b68a731cc8dcae'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'state'
+                            value: 'failed'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '05ffeedd0bdf44ccb96ab15baefe5ee4'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'active'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '0641a1a50853403ebc47dfa4d6f81891'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'command_kind'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '066f7e0bfebe4bfeaf48574ef3de4365'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'lifecycle_state'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '06d1cb229ad34d12aaa4e133cafaea64'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_edit_lease'
                             element: 'verifier_digest'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_choice'
-                        id: '2cb4e40f4ad847bbaf45c56365d07955'
+                        id: '072f68a3427c4ab29613a0e8110d90c2'
                         key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'access_level'
-                            value: 'admin'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '2cec6be967e7434cb819ec01da0dbda0'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'removed_by'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '2e48721bd94f4b69a9788d5803c60414'
-                        deleted: false
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_member'
-                            element: 'page'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '2eb8d2cc6be748e59dce02f8cb0f72da'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'creator'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '2ecb5229d5724069a8b31283d613f0f9'
-                        key: {
-                            name: 'x_82900_docsera_workspace_edit_lease'
-                            element: 'last_seen_on'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '2ed4a0ee8ca7489b8a931995932e420c'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'snapshot_page_key'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '2eda67f176e644c38c07141bc456f770'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                            element: 'last_changed_on'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '3068781b117d4013a88b8ffffed6a392'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'source_change_set'
-                        }
-                    },
-                    {
-                        table: 'sys_user_role_contains'
-                        id: '30992d441c7448029b72968730aa3732'
-                        key: {
-                            role: {
-                                id: 'bed03ee93aa74f62aedc3ee7d9419ca6'
-                                key: {
-                                    name: 'x_82900_docsera.workspace_admin'
-                                }
-                            }
-                            contains: {
-                                id: '4b00751fca4346129d38f205fda047c5'
-                                key: {
-                                    name: 'x_82900_docsera.editor'
-                                }
-                            }
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '30c832bc432b4a178f48a87b27690c14'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'body_text'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '311e5f7129ef44639282f0f132052ad6'
-                        key: {
-                            name: 'x_82900_docsera_workspace_edit_lease'
-                            element: 'acquired_on'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '31836902b8f44557adad29a5c426291c'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                            element: 'NULL'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '318cb5808fee434d96ddd34eb01ca986'
-                        key: {
-                            name: 'x_82900_docsera_workspace_edit_lease'
-                            element: 'workspace_key'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '321d5a4693d84162beb643d9dac3372d'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'draft_slug'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '3241a63354b840b6abb971e7951c4f78'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'error_code'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '331163a850bf4995a03b4f699e4610e0'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
                             element: 'mutation_kind'
-                        }
-                    },
-                    {
-                        table: 'sys_choice_set'
-                        id: '33d0b1db20a446628d0a0ea1aac224cc'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'lifecycle_state'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '35305cac601748a2942d4a91e5643190'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'NULL'
+                            value: 'body'
                         }
                     },
                     {
                         table: 'sys_choice'
-                        id: '353d769b0b9a4f6baa26c1ce190715f6'
+                        id: '0795ba4758f84c6f86e885fe8111ac21'
                         key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'execution_phase'
-                            value: 'change_set_persisted'
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'icon_type'
+                            value: 'builtin'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: '360643cc4b0949909c9d29850f9094e7'
+                        id: '07b5600232824f499098aa67121e6340'
                         key: {
-                            name: 'x_82900_docsera_workspace_edit_lease'
-                            element: 'acquired_on'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '36ade2e9351e4f4bb690aa6c372cd568'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'NULL'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '36baa74aaa1e4b029cc9303c024603f8'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'pending_change_set'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '3b361239d4d8408084f51d8447e7774a'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
+                            name: 'x_2300756_docsera_workspace_provision_request'
                             element: 'editor_group'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '3c2e4a9e4d834410b95292a8d581ae97'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'root_page'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_ux_lib_asset'
-                        id: '3c8e41b9e36a4b3698e5a3c577e2ef17'
-                        deleted: true
-                        key: {
-                            name: 'x_82900_docsera/WorkspaceMarkdownSourcePanel'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '3e0e9f5fa9a849438b39e672fac4404e'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'NULL'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '3e3664a20d1040ddbaea3405e7551715'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'result_change_set'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: '3e5cbce9cfb643378dec82cc96452596'
+                        id: '07fa04214cd046629f8cac3cfa2ae6bf'
                         key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'provision_request'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '3ee06371a864459d9aaa7d1190e4bcb6'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'last_draft_changed_on'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '3f3309d2c5f34d3aa0f4ff344c7168fd'
-                        key: {
-                            name: 'x_82900_docsera_workspace_edit_lease'
-                            element: 'workspace'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '3f9d0cc58f3f4d7dbe953761f7047b21'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'state'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '40905289b7e74c6aa80e724ab28471f1'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_state'
-                            value: 'claimed'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '4133700cd49048a38ed5bc7538c90d45'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'recovery_state'
-                            value: 'switched'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '41408d857edb4c438d55723e36b1b647'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'page_width'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '41a2955bc7a84e6ca30142b3b86fc593'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'execution_phase'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '424c9be761e041fcb652176c77941814'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'published_content_json'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '4260c66ea61945e6b97495dd8db0a91d'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'error_message'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '43d2eafb8f6140659065b261f62a495f'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'publication_state'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '44766defb6ca4dae929f3aba57870162'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'width'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '44df1f0d1f5244a48a1a32410dd4d17b'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'owner_expires_on'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '45014888447540faa8acc292f5df5c36'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'asset_key'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '45a4438fe67e46d782103412cf36129e'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'slug_normalized'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '471910b4beb5406f9f05e9d4a1795b8a'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'target_removal_batch_key'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '47776305b7b448d192442e17d0d75333'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                            element: 'NULL'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '479272f6c78a4d1fb4fe02d9c42e0cc4'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_result_json'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '47ef8315ff77493ba7d9363226864830'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'state'
-                            value: 'invalid'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '4808d3006a0844cfae87618e01ad6da0'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_state'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '48d384b600a54394839f624f5c5bbed2'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'change_set'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_ux_lib_asset'
-                        id: '49074d350f4742d1a1dc581518fd6686'
-                        deleted: false
-                        key: {
-                            name: 'x_82900_docsera/main.js.map'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '49b2f68cd8c844cc894c13d36b923f37'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'published_at'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '4a18388666d3458793838d5e6ab98d1d'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'pending_change_set'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '4adea8e543004fc18451d6fa1cf2e78b'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'size_bytes'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '4ae8d8e43abc4a17b8af0d87c043b0d1'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'icon_label'
-                        }
-                    },
-                    {
-                        table: 'sys_user_role'
-                        id: '4b00751fca4346129d38f205fda047c5'
-                        key: {
-                            name: 'x_82900_docsera.editor'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '4c145c03bc1a45fe8584d76876fe95e2'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'state'
-                            value: 'succeeded'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '4cafb90a65af45a993d1ef85db17ee59'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'result_change_set_revision'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '4cd76260e339496097be70e1b4bd5e3b'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'error_message'
-                        }
-                    },
-                    {
-                        table: 'sys_choice_set'
-                        id: '4d815c2dca724b8f8b2d0704093dc51a'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'state'
-                        }
-                    },
-                    {
-                        table: 'sn_glider_source_artifact_m2m'
-                        id: '4eb9bf84e89e48a5bf50713fbd2cbe33'
-                        deleted: true
-                        key: {
-                            application_file: '1acd40f0fcb0422e8e047afac7546c60'
-                            source_artifact: '0b944690279d44618ced2280edd7263c'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '4f4aaa0296b54cb8baf28fce32c411b8'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'published_content_json'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '4f82b144a5e54d70996259ee6c04dbab'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'content_type'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '4fd139e50b6b4fd99cde9c31d2899c19'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'editor_group_name'
-                        }
-                    },
-                    {
-                        table: 'sys_index'
-                        id: '505e32a207bc49ac8de05b34188d41c8'
-                        deleted: true
-                        key: {
-                            logical_table_name: 'x_82900_docsera_workspace_mutation_claim'
-                            col_name_string: 'generation_key'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '50c1bdc24e7846589c068e3ff4455777'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'command_correlation_id'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '515cab481ca3484aaf48768b4102083b'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'generation_key'
-                        }
-                    },
-                    {
-                        table: 'ua_table_licensing_config'
-                        id: '519152b0b6d240f7b05a20c4afbdcca8'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '52603570a88c4708ac610ddc0d094fee'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'width'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '52d2cffd245f4e9bb946495676ef9ced'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'file_name'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '52e81e981b7c40668244510d038e2079'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'draft_body_text'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '53f3229b2e0b4172a69e166030634ff1'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'removed_on'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '549495bdadcc420bb1e5f118ac594723'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'icon_asset_path'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '56053783994b45af8a7de9d398fe81e4'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'workspace'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '56168c6134f84f99a04ea0fa064acc7f'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'icon_type'
-                            value: 'builtin'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '561b81ed5a234f68a94694fc54bf9f6e'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'batch_key'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '56641d5147714479a5228859536740f5'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_kind'
-                            value: 'move'
-                        }
-                    },
-                    {
-                        table: 'sys_ux_lib_asset'
-                        id: '56a7d664df6a442ab56734faddecc0d1'
-                        deleted: true
-                        key: {
-                            name: 'x_82900_docsera/index'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '57f2fad1d3b24d6b9f22dbdaa4c255ef'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'error_message'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_index'
-                        id: '58556d0fa54f4e7d92f14e7529581cbd'
-                        deleted: true
-                        key: {
-                            logical_table_name: 'x_82900_docsera_workspace_removal_member'
-                            col_name_string: 'batch_page_key'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '58c7cd5b8cfa4e178c8ff1660af98e5f'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'draft_revision'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '590fd60154ea47a3b6a7738d4de394bf'
-                        deleted: true
-                        key: {
-                            name: 'x_82900_docsera_rm_member'
-                            element: 'removal_batch'
-                        }
-                    },
-                    {
-                        table: 'sys_choice_set'
-                        id: '59806beb596b4774af32174c0f192def'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'page_width'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '59cb1bb0404a43a6ab9631c4efbbb95d'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                            element: 'page'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '5a5d5d3c443d4bd2a1a4b07c84289a31'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_payload_json'
-                        }
-                    },
-                    {
-                        table: 'ua_table_licensing_config'
-                        id: '5ad8692a5caa4769a84044304b97be87'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '5bcf0f9756534d99ae7e2178883d45f6'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'draft_sibling_order'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '5d5121845652471ba9cd5dfcd43454c3'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'snapshot_key'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '5e4e4c2d70fd412f9bbea7460cdec5eb'
-                        deleted: true
-                        key: {
-                            name: 'x_82900_docsera_rm_member'
-                            element: 'first_pending_sequence'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '5f21ea08b3954b26aa10dad29f8e65bc'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'icon_label'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '5f36079293bd4f00a7f707e104eaff1d'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'publication_state'
-                            value: 'published_with_unpublished_changes'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '5f6c9b3730174704815499f36e413265'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'icon_type'
-                            value: 'builtin'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '5fac8c87e84e4c57b3cdea0cd724a5a2'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'last_draft_changed_by'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '60f56f710cb24d5f8e8b54625459b370'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'icon_type'
-                            value: 'uploaded'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '62bfd05ca04848ff95edc5e305b9866e'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'target_user'
-                        }
-                    },
-                    {
-                        table: 'sys_index'
-                        id: '62e49cb53ce74dac9ca1968c240fb7b6'
-                        deleted: true
-                        key: {
-                            logical_table_name: 'x_82900_docsera_rm_member'
-                            col_name_string: 'removal_batch,page'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '64efde1f4ca24db3b8965ef60bd329a3'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'NULL'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '662545f6121949f89d088199bc915448'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'finalized_on'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '666cbd3d09604954ad57ff03a031fb8a'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'published_on'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '6777d6d62a594df69dca6a92441d8301'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'snapshot_set'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '67c970b7b16a40f593c88ac525e90521'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'lifecycle_state'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '67d6e2da155b4869accd2aef7a5789ae'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
                             element: 'readiness_state'
                             language: 'en'
                         }
                     },
                     {
-                        table: 'sys_choice_set'
-                        id: '68443606374d4a61a30e56b71030b8a3'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_state'
-                        }
-                    },
-                    {
                         table: 'sys_documentation'
-                        id: '6889cc4e56074a9fb528757973d6e680'
+                        id: '07fd6e043af74b5f9169987ca7660860'
                         key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'published_by'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '692c43a867f04acca3944135c43ac676'
-                        deleted: false
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_member'
-                            element: 'first_pending_sequence'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '696fd98178d74642a2dc4fc4ace7ab0a'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'mutation_kind'
-                            value: 'delete_workspace_groups'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '6b59324fbf2543c790bd275ba921d43e'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'workspace_slug'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '6b633d953a6c4845bd34377bf47741aa'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'title'
-                        }
-                    },
-                    {
-                        table: 'sys_db_object'
-                        id: '6b639ffbe8d547e29a26a923767442ff'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '6c1f6374f5d541b5ab61bbc14a10fa92'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'name'
-                        }
-                    },
-                    {
-                        table: 'sys_choice_set'
-                        id: '6ca16ffce52f435ba1b748212bb638e4'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'command_kind'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '6ce213bd13914b4d9683a9be2869f40c'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'sibling_order'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '6d883934af1a44128a130f3d7d863ffe'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'execution_phase'
-                            value: 'result_persisted'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '6d8fe5667a9141c1ba0ac102be4544ae'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'next_pending_sequence'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '6da36cbf7be5400b927e49bb6ed0a2a0'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'NULL'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '6dd43d2e38274e83859e219f90087ceb'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'state'
-                            value: 'requested'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '6fe76cb454f348d3a729093f6c040054'
-                        key: {
-                            name: 'x_82900_docsera_page'
+                            name: 'x_2300756_docsera_page'
                             element: 'draft_body_text'
                             language: 'en'
                         }
                     },
                     {
-                        table: 'sys_dictionary'
-                        id: '7084209e68644aebba6d2159eb8d4257'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                            element: 'first_pending_sequence'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '71156072c71c47c487cc4998f1b93a33'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'NULL'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '71752ad4400648e9b8d00d627cdcfaaa'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'state'
-                            value: 'staged'
-                        }
-                    },
-                    {
-                        table: 'sys_index'
-                        id: '7231000b1af441f7a08cf5503b8ea67e'
-                        deleted: true
-                        key: {
-                            logical_table_name: 'x_82900_docsera_workspace_page_snapshot'
-                            col_name_string: 'snapshot_page_key'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '729b302d85284f6485bae8ae11cb92eb'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'draft_slug_normalized'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '740ea2cf57e14662a4eef4734db929ad'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'access_level'
-                        }
-                    },
-                    {
                         table: 'sys_documentation'
-                        id: '7490cbb8da9045bc92bcd51687cf8767'
+                        id: '097d739927494040b5f9bbfa1e41ad53'
                         key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'draft_removed'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '74c5a6df6c884e329d90ba8d57619e75'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'draft_title'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '759f098eec1a4c668d30ea190b6bde09'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'lifecycle_state'
-                            value: 'active'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '75e71f99d07a40d3b99f9021171c36d3'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'icon_key'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '761058d9e09c480f84cd1ddc5cd0d6f2'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'published_by'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '762f9d23622a4ed3b0bdf2eed566f281'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'workspace_slug'
-                        }
-                    },
-                    {
-                        table: 'sys_db_object'
-                        id: '7682e50347ba46b489f892f4d388a942'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '76b81cd15b8e43db8967271139c310b2'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'publication_state'
-                            value: 'draft'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '76e7b71c7040414795bd998826ea5183'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                            element: 'generation_page_key'
+                            name: 'x_2300756_docsera_workspace_removal_member'
+                            element: 'removal_batch'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: '7740e92a9b424d72a9e272f1a0d2387a'
+                        id: '0993f87c25d5499f9a9f0b62be24bbb7'
                         key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'draft_content_json'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '78cf7b238a584525a4fd1a00f703b391'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'published_at'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_ux_lib_asset'
-                        id: '78d4e776403c4d78bbd1a710c3cad3b4'
-                        key: {
-                            name: 'x_82900_docsera/MarkdownSourceSession.js.map'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '79026abd9071401c95b9fae0f6bed023'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'NULL'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '79653667f42a4385a4fd58ffd9208181'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'draft_sibling_order'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '796b60b0a31e448ea5533118c6bd2f75'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'parent_page'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '79b97f09401d475f98e56f9e77a0ae15'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_key'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '7aa94fed138443769cbf4eb62218ffd2'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'creator'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '7ac73a0fc7c1423a8072f02f78cdce48'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'workspace'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '7b2d22daa3ae4733bfc621793de0144a'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'toc_default_visible'
-                        }
-                    },
-                    {
-                        table: 'ua_table_licensing_config'
-                        id: '7b59d5a59bba44549074fbbe0f1e5b76'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '7b9a7d2f035b4fe0ab3be1b6f3a179a8'
-                        key: {
-                            name: 'x_82900_docsera_workspace_edit_lease'
-                            element: 'workspace'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'ua_table_licensing_config'
-                        id: '7c2fc91592484bc4b42aa107e39f870e'
-                        deleted: false
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_member'
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'icon_asset_path'
                         }
                     },
                     {
                         table: 'sys_choice_set'
-                        id: '7cab1b4bb3324b4f8e84d98a12757582'
+                        id: '0a6e48a7494d412e9bb5f06882142052'
                         key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'status'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '7cf2b50d5ed4457c913941d57f23093a'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'claimed_on'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '7d4235e9e7fc4f2fb5fe52630ae4a6d1'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'workspace_slug'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '7d7aa13ae16b449e9226af2f1c5e23cf'
-                        deleted: false
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_member'
-                            element: 'removal_batch'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '7d8b2c5068b14627b937441fcad54271'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'published_slug_normalized'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_index'
-                        id: '7d93982ec7b54d36908b6983d1ed463a'
-                        deleted: true
-                        key: {
-                            logical_table_name: 'x_82900_docsera_workspace_snapshot_set'
-                            col_name_string: 'snapshot_key'
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'workspace_status'
                         }
                     },
                     {
                         table: 'sys_choice'
-                        id: '7dc79d5f88844e23b9eb4f473f6b9ede'
+                        id: '0aaaa844abe3488ea4415ad65c02435a'
                         key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'execution_phase'
-                            value: 'claimed'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '7f952dbc1d314105bb0cef2fda556fd1'
-                        deleted: false
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_member'
-                            element: 'batch_page_key'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '80e5dc0a20084a38a58b9c4a89d58e72'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'workspace_group_key'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '811224f9950d42aaa23da467982b2f08'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'active'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_db_object'
-                        id: '81dab2e2c7064ab8a38a956b8e236e5f'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '82f019173d184e22aaeadd797b01a44d'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'NULL'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '840d9a9dae9f46008217a8feaf4eb461'
-                        deleted: false
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_member'
-                            element: 'removal_batch'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '848ef1beb889441298c7454d895c7285'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
                             element: 'execution_phase'
                             value: 'removal_persisted'
                         }
                     },
                     {
-                        table: 'sys_documentation'
-                        id: '8596388673e5446cb3a1d9df33b5f6fd'
-                        key: {
-                            name: 'x_82900_docsera_workspace_edit_lease'
-                            element: 'NULL'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '85ec22b9f0c74322b908c775fb9038d4'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'body_text'
-                            language: 'en'
-                        }
-                    },
-                    {
                         table: 'sys_dictionary'
-                        id: '8634d7caa38140e085ad8d3a24f4a012'
+                        id: '0b6d61dbf7cb4419a46361f8dad7a183'
                         key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'finalized_on'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '863fd443f057479eb37589a938212047'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'publication_state'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '86486b5248424831b42119a764817595'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'workspace'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '871f13a3a699475cabbefa647551e657'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_kind'
-                            value: 'settings'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '88082df5cfb447368621806bae10897d'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'owner_expires_on'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '8831f23d6ce1479cb5469c89497bc868'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                            element: 'first_pending_on'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '889b58a7c4784199a1a0dedf7657ff8b'
-                        key: {
-                            name: 'x_82900_docsera_page'
+                            name: 'x_2300756_docsera_page'
                             element: 'draft_revision'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'ua_table_licensing_config'
-                        id: '8a600391e5784b78aaf75f058a65b0d2'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '8a62aeb5c6134d51b2ee0d29a3eb7b7e'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'NULL'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '8c0fb83766034352a85434dd998ec602'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'icon_label'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'ua_table_licensing_config'
-                        id: '8c8eddf95e0e45f89cecfd200f5fc26f'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '8cb4b43694d549cfbd2b0f60b737e192'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'slug'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice_set'
-                        id: '8cd12dc2c2f04a339714d6180ba9bd59'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'page_width'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: '8d29289a73d6453998e45ed0417e9447'
+                        id: '0befc32b00b94b069316f441dddf209e'
                         key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_kind'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '8e5450a2097f47d998bba1aed9617dc0'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'generation_key'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '8ec1b7d9d77c49ef9a445e1def3eed7c'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'icon_type'
-                        }
-                    },
-                    {
-                        table: 'sys_choice_set'
-                        id: '8ef5cb423d154a71bea12960489cf363'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'recovery_state'
-                        }
-                    },
-                    {
-                        table: 'ua_table_licensing_config'
-                        id: '8f8f344fa21c46e2b6aa649ecbdabf86'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '8fb025ba4a4a4bb8990efa7a4cdfd9ba'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'target_page_sys_id'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '9088eeca6e674305973d29207c0a2c7e'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'error_message'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '909797f2cc574de8ae3315315d649fc0'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'lifecycle_state'
-                        }
-                    },
-                    {
-                        table: 'sys_choice_set'
-                        id: '90cb950e71074bdfb6f1cfc4c3c8085e'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'publication_state'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '91b3d494d96b427e9c2ea9ab111e46b5'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'access_level'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '929848174fdb4e8fb840dfb25012b5ed'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'icon_type'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '92ec5d5b1a294d699f4e32877bcad910'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'workspace_status'
-                            value: 'inactive'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '93185f6e7b514e05bfa5bb83bfd87384'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'mutation_kind'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '93a71fe900d64c168a574e01d6742300'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'height'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '943131d5b9eb4cb8aa022fbffb57158d'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'root_page'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '944d0548318344e39b5d50d6ff9f11f0'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'draft_parent_page'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '963f04c9918e48b19d7be78300aa4c90'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_kind'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'ua_table_licensing_config'
-                        id: '96dee943430c4d239bd1a8cb9cb312d2'
-                        key: {
-                            name: 'x_82900_docsera_workspace_edit_lease'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '9804870b6d664936b659f9e27b126dc3'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'attachment'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '9843a28d29b74736bc4983a61a5cbf34'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'published_slug_normalized'
-                        }
-                    },
-                    {
-                        table: 'sys_choice_set'
-                        id: '996499fc51084cdcb7554647a689a396'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_kind'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '99bed102a19e4ea5a02091ed42246985'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'next_pending_sequence'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice_set'
-                        id: '99c85ba7fe29491f9a42a27b49d2ebaa'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'lifecycle_state'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '99fe169593bd41c1b4fe125740fc5623'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'last_draft_changed_on'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_ux_lib_asset'
-                        id: '9ab41a4cef344a6a8d83de33963279be'
-                        key: {
-                            name: 'x_82900_docsera/PageEditorHostRuntime.js.map'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '9b17ced7190a466ea1e92613302ea281'
-                        key: {
-                            name: 'x_82900_docsera_workspace_edit_lease'
-                            element: 'workspace_key'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '9b38fa8616fb4ba3a44b7bba350f0577'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'admin_group'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '9c14341a26634ef6a418c5138ddd92c0'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'target_next_page_sys_id'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: '9c475a8320d245049e3babefa0e058d3'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'execution_phase'
-                            value: 'change_set_advancing'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: '9c5dcc38667441a0af4feb829411241b'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'icon_type'
-                        }
-                    },
-                    {
-                        table: 'sys_index'
-                        id: '9cbfc0d9cdfd4ffbb5b67826ef0981fd'
-                        deleted: true
-                        key: {
-                            logical_table_name: 'x_82900_docsera_workspace_change_set'
-                            col_name_string: 'generation_key'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '9cf5a895544e47618f1025a85fa798c3'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'published_snapshot_set'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: '9eadfffee9cd4d1a8c4a4d91eed3f057'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_result_json'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'a0347a2fdeaf415fab42466786e5cbaa'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'NULL'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'a12091d6f7034a9aab129b4149dbaa52'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'execution_phase'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'a250b3e684124edc88ac2b609a91e5bf'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_kind'
-                            value: 'publish'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'a2b77bd2d0904b82a0a33535b3b63ae8'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'provision_request'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'a44879e2ad2c4b0f8187c8174f1aacd5'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'icon_key'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'a4d0235f137c40b58c886b23ddd646f7'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'claim_owner_key'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'a52e43d635f04cbe9b9ce846664f64ef'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'workspace_status'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_ux_lib_asset'
-                        id: 'a582b1d3b6c74d6f85f2fa40e097907b'
-                        key: {
-                            name: 'x_82900_docsera/MarkdownSourceSession'
-                        }
-                    },
-                    {
-                        table: 'sys_db_object'
-                        id: 'a58cf7c84e0f48cca450fc37d769fa54'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'a5d51d9ddb304c588a6d5a2648d46d17'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'status'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'a6a028c6e360477a809f0f23a36f4eea'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'slug_normalized'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'a6f426ea07ed46c39d5d6abc264b1616'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'published_title'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'a6f4e79a83f946388cd1e9b62ed170b7'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'lifecycle_state'
-                            value: 'retired'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'a70a7ff84438414bad1743d882cd47e5'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'page_width'
-                            value: 'full'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'a70c2a86d8a44c0cabbc7407e0397516'
-                        deleted: false
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_member'
-                            element: 'page'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'a7ea6e7d82d34992abe440320761210a'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'requested_by'
-                        }
-                    },
-                    {
-                        table: 'sys_db_object'
-                        id: 'a7eceaf5b7c74fa7a8f8a0484c4c4b54'
-                        key: {
-                            name: 'x_82900_docsera_workspace_edit_lease'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'a86b2f498ff74018af1efe7882f9faa7'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'workspace'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'a874f4635f4c4883bc41800b022b041d'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'parent_page'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'a87fa22eee1743c6b0bc18a27374f7eb'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'page_width'
-                            value: 'full'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'a902d09ba1e84dda802a738be1b05f10'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'toc_default_visible'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'a9236bd948734835b2ed21451eaf462a'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'parent_page'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'a976dc6a179b4f77967e9a3c5ebc7ac9'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'page_width'
-                            value: 'readable'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'aa0161dd49c54b3e8762658a227cd5ab'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_kind'
-                            value: 'delete'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'aa1d72a33dac4a0fa6318531d763c4f9'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'target_user'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'aa790e95ebac4586971985ab588e7f94'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'status'
-                            value: 'inactive'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'aad30393381e42b7ad7e7fb71ef699b8'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'title'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'ab47fe01e67b44999a496370a9f155e5'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'error_message'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'ab614b15ca7943bdbf5390f80abbbdb9'
-                        deleted: true
-                        key: {
-                            name: 'x_82900_docsera_rm_member'
-                            element: 'page'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'ac8624760aab4a2ea9dd9fabd1df41b2'
-                        key: {
-                            name: 'x_82900_docsera_workspace_edit_lease'
-                            element: 'last_seen_on'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'ad15dc1e736f43398005cba2a11326a5'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
+                            name: 'x_2300756_docsera_workspace_provision_request'
                             element: 'icon_asset_path'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'ad8053aeb6a744c2b18e3b30043928f0'
+                        id: '0c52fd213e0b4959bbae2b3c3f36098a'
                         key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'published_slug'
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'NULL'
                             language: 'en'
                         }
                     },
                     {
-                        table: 'sn_glider_source_artifact_m2m'
-                        id: 'ae80f34dcfdf4b2e881bce9943b37083'
-                        deleted: true
+                        table: 'sys_dictionary'
+                        id: '0d46d9ee21f742258c83d38481302966'
                         key: {
-                            application_file: '053e258583814373a3f0ef19199023b4'
-                            source_artifact: '0b944690279d44618ced2280edd7263c'
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'batch_key'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'aed1d152f285462f8d975965c18f84ef'
+                        id: '0effbb50d0f543c2b95552dc73e55ebd'
                         key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'command_correlation_id'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '0f999f1f98a244e4860c8068aedab998'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'asset_key'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_db_object'
+                        id: '101147e343c84301a4f425edea69b7cb'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_edit_lease'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '106b3a15c557484d836da62047946468'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_kind'
+                            value: 'move'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '1173e832b7044a2cbe23e84f765bdf9d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'source_change_set_revision'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '1185d155860f4d218e073beb7a183b28'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'NULL'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '11906c3a4b77439c822c2d28be386280'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'editor_group'
+                        }
+                    },
+                    {
+                        table: 'ua_table_licensing_config'
+                        id: '122b3bcadf374696831bdc7dff6a6855'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '122b41548feb4a7abc8f791f31c321f2'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
                             element: 'icon_label'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'af510a4fce3546b093838053268cf360'
+                        id: '12bb2fddd2cf4f7c8a2e0a8a809626c5'
                         key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'workspace_group_key'
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'workspace_slug'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '1339111b78184dbab4ea28591fb68030'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'NULL'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '13960d0ed76540798d364f82c67b5b5b'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_state'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '13cb818768f54fe0a4a6b1ede5f46970'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'parent_page'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_choice'
-                        id: 'af9124af5daf40f29533bc069b88ffbc'
+                        id: '14ae12a76f44447d82ad7fb5d7eb9145'
                         key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'lifecycle_state'
-                            value: 'retired'
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'state'
+                            value: 'staged'
                         }
                     },
                     {
-                        table: 'sys_dictionary'
-                        id: 'afc80fee52764084a1e9e3827f5e86c2'
+                        table: 'sys_choice'
+                        id: '1573ddb470f947f2ac945c9b78dd26ac'
                         key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                            element: 'first_pending_on'
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'execution_phase'
+                            value: 'change_set_persisted'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '15f597ce0afd41579afd53f40e808b49'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'recovery_state'
+                            value: 'switched'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'b0577783ef88471f9a82605d57dd3abf'
+                        id: '162cc8a7eb234de1ba440bb5f43fab89'
                         key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'icon_key'
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'short_description'
                             language: 'en'
                         }
                     },
                     {
-                        table: 'sys_dictionary'
-                        id: 'b0b5891410b34c1e9f54bb27b5346a25'
+                        table: 'sys_choice'
+                        id: '18a03f25f95d4e7aa6178008dbd208d8'
                         key: {
-                            name: 'x_82900_docsera_workspace_change_set'
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'page_width'
+                            value: 'full'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '1a05fd4d15014959ad0e12de5be24266'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
                             element: 'NULL'
                         }
                     },
                     {
-                        table: 'sys_dictionary'
-                        id: 'b0cc0d534a3b4b47ac09b777fdcd9cd8'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'published_on'
-                        }
-                    },
-                    {
-                        table: 'sys_choice_set'
-                        id: 'b1a0ba2336c142e385af12bb10e85abd'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'icon_type'
-                        }
-                    },
-                    {
                         table: 'sys_documentation'
-                        id: 'b25a8604611b4423b5aa2e9cd97fa8f2'
+                        id: '1a1ecb977bff45a0a57211360cf73f47'
                         key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'icon_key'
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'pending_change_set'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_choice'
-                        id: 'b26914bdc9234689a4d40ed835e3b909'
+                        id: '1a3b7d459b794b6a81b96502eb24464c'
                         key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'state'
-                            value: 'claimed'
+                            name: 'x_2300756_docsera_page'
+                            element: 'publication_state'
+                            value: 'draft'
                         }
                     },
                     {
-                        table: 'sys_documentation'
-                        id: 'b2b640255397412c8b355e25c7f5e9b4'
+                        table: 'sys_db_object'
+                        id: '1ad8476616bc4b09908ae34bb6f3a95b'
                         key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'draft_slug_normalized'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'b2ff9b3e232745fe904be4b441b5627a'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'toc_default_visible'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'b38a5a5536bc4e83a1399febe4884fb7'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'editor_group'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'b46735de962446cf906830d588f5946f'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                            element: 'page'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_index'
-                        id: 'b5841b5d3d3543aab64ef9a177426ff0'
-                        deleted: true
-                        key: {
-                            logical_table_name: 'x_82900_docsera_workspace_edit_lease'
-                            col_name_string: 'workspace_key'
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'b587318c1f9440909e70ffa726698d15'
+                        id: '1b0e1131396d4f0491fabeb0363ab9a8'
                         key: {
-                            name: 'x_82900_docsera_workspace'
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                            element: 'last_changed_on'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '1b3d82e924a44fe78dfcf1618b9dc17a'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'removed_by'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '1c51183a635c4012bb0b2d88b1006318'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
                             element: 'short_description'
                         }
                     },
                     {
-                        table: 'sys_dictionary'
-                        id: 'b638c03f663c4ee28af91480a2364727'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'name'
-                        }
-                    },
-                    {
                         table: 'sys_documentation'
-                        id: 'b7ba0a728bac402f90bf396981217373'
+                        id: '1c99a979eba840a08e0aa8d72abf25b7'
                         key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'snapshot_key'
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'workspace_state_revision'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'b8522b150da14f7890a2159465bb1978'
+                        id: '1cbeac3adc9843dab1087338a6521054'
                         key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'error_code'
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'NULL'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'ba74560db33d48538438ffbc154fc513'
+                        id: '1cce0b5f29694a0ba1585a00d39b3f48'
                         key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'finalized_on'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '1e05a625ae9c48feb5402bd2db8eddcb'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'page_width'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '1e1db8b812544f3d983c9a66943b24cc'
+                        key: {
+                            name: 'x_2300756_docsera_page'
                             element: 'published_by'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'ba886395a8d346c8b8a70ae3de066f33'
-                        deleted: true
+                        id: '1e2a0319547047a0aca6ec928e0baa9d'
                         key: {
-                            name: 'x_82900_docsera_rm_member'
-                            element: 'page'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'baa2878159f3404fa75c3fcbd0a0f6a9'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'page'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'bbd3d2981bdd487bab5eb374978778d3'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'state'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'bbdeface540f46eb872fbebdafef973f'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'execution_phase'
-                            value: 'entry_persisted'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'bbe046933cbd40c0b4154149b80802b9'
-                        deleted: true
-                        key: {
-                            name: 'x_82900_docsera_rm_member'
-                            element: 'first_pending_sequence'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'bc679ce9a4504c1b9c15c5d0a5b7aaf2'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'target_page_sys_id'
-                            language: 'en'
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'result_change_set'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'bd37cc90120b443b973413ed1afb78a7'
+                        id: '1e2e291db5634a7cb2ecf5f2bd1bfaeb'
                         key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'admin_group_name'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'bd862f568fb746ad9dd6c209222706e2'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'published_slug'
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'mutation_kind'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'bdc40b89f02543449c90e284ea779c2a'
+                        id: '1e30548c1217401ebba97edb65181f15'
                         key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'NULL'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'bdd8c55d848248b8b839e326f0e7f190'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'recovery_state'
-                            value: 'staged'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'bdda9a2bea7d45958fabec114c00744b'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'short_description'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'be24108a1b444a31a4b17ca8ef2c35e5'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'state'
-                            value: 'failed'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'be5b290a25e143849bcf9928a94e9f16'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'requested_by'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'be9b39d74d6147d3a8972a05c2bd28dc'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'short_description'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_user_role'
-                        id: 'bed03ee93aa74f62aedc3ee7d9419ca6'
-                        key: {
-                            name: 'x_82900_docsera.workspace_admin'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'bed40eca41624670a98988d26c45c32b'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'command_correlation_id'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'bf912b10ef5f4590919dc38820a41105'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'workspace'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'bfea5649cb1e44168bb0d6e77774ca3d'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'page_width'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_index'
-                        id: 'c04e08fa70334a979d6fe1b5a871cdf2'
-                        deleted: true
-                        key: {
-                            logical_table_name: 'x_82900_docsera_workspace_change_entry'
-                            col_name_string: 'generation_page_key'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'c0e009fbe0e4446f9f52a86bd1c7eda2'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_state'
-                            value: 'rolled_back'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'c1baca1f67fb42acab5b0ffda982d628'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'recovery_state'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'c22b28448e0545e2872796cb03dd139f'
-                        deleted: true
-                        key: {
-                            name: 'x_82900_docsera_rm_member'
-                            element: 'NULL'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'c2611e4f22f548a9a10f2a2da8e65d8f'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                            element: 'first_pending_sequence'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'c32c545b8f6e4e46941f6e7ee7c8917f'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'state'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'c40b181751e649f7aabb3440819fd59d'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'source_change_set_revision'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'c43d1afefebd4c5ca9c41a7b550d4fd4'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'NULL'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'c457e2f535f24ebda1dab0300d1afb0a'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'removed_on'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'c48ba5dab6a245779e5e96a9630536ee'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'draft_content_json'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'c4f2bfe644e54cf19ebb749a99edc1fc'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'workspace'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'c4fb5bfe7b6b4d92858d6e4b1d039bea'
-                        key: {
-                            name: 'x_82900_docsera_workspace_edit_lease'
-                            element: 'holder_user'
-                        }
-                    },
-                    {
-                        table: 'ua_table_licensing_config'
-                        id: 'c50bfa3a7ca04e05a1583f014851c68f'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'c5962c4277ef4a3c806722e783e808a4'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'recovery_state'
-                            value: 'recovered'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'c5f8f78942fb460a93a94a2777073089'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'page_width'
-                            value: 'readable'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'c5faf915fd87428ba9a427f13b8b2bf8'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'published_body_text'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'c612f6111019465b881c960a5c3b2695'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'workspace_status'
-                            value: 'active'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'c6139871a8234ea5ac037bd1b225b70b'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
+                            name: 'x_2300756_docsera_workspace'
                             element: 'admin_group'
                             language: 'en'
                         }
                     },
                     {
-                        table: 'sys_dictionary'
-                        id: 'c75324526913463fbd6d1aee0c5a5753'
+                        table: 'sys_choice'
+                        id: '1e32dc31ead24d4c92af261b07484200'
                         key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'claim_owner_key'
-                        }
-                    },
-                    {
-                        table: 'sys_db_object'
-                        id: 'c7af4767e8cf42918445fb187813b05b'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                        }
-                    },
-                    {
-                        table: 'sys_ux_lib_asset'
-                        id: 'c8d1260d361b4d9c98f1ae4036fb04c8'
-                        key: {
-                            name: 'x_82900_docsera/mountEditorRuntimeSpike.js.map'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'c9437e7350a8474db7694c8e299f5e87'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'error_message'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'cb6386dd32a5421bbc7f5cd51e8cc657'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'toc_default_visible'
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'mutation_kind'
+                            value: 'set'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'cd0ce918742b4d64a19bce452089622d'
+                        id: '1eb0409fd51646139e699ec2a446cbfe'
                         key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'workspace'
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'content_json'
                             language: 'en'
                         }
                     },
                     {
-                        table: 'sys_documentation'
-                        id: 'cd21472059f84b02a6cdb95f0a5aef41'
+                        table: 'sys_choice_set'
+                        id: '1ed4d18106f44a3c8da9b9b52304a02a'
                         key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'workspace'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'cd4ac9572c624001b1af7ea61932fb9f'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'source_change_set_revision'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_db_object'
-                        id: 'cde2fef7be9f4c9db83fea72955e4677'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'ce006c4d403a43de90f9cb436a5f3976'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'workspace'
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_state'
                         }
                     },
                     {
                         table: 'sys_choice'
-                        id: 'ce70a4ba1942418a971e9d934aaa0c0f'
+                        id: '20bf486558cf44febfe6584a72d8a48c'
                         key: {
-                            name: 'x_82900_docsera_workspace_change_set'
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'state'
+                            value: 'succeeded'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '2162ac909d3643b8a10705b93430470f'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_member'
+                            element: 'NULL'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '2181bdd1c5b94e7687708ef7e4158016'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'name'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '220b8c8255dd4e8f8072f042200d5619'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'admin_group'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '2266f999bffe41cea66292346e96975e'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'source_change_set'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '2407e0206a6f497c8762ca11a5689932'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'execution_phase'
+                            value: 'entry_persisted'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '24354a0a105d4f30ace581912dd82c2b'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
                             element: 'recovery_state'
                             value: 'none'
                         }
                     },
                     {
                         table: 'sys_choice'
-                        id: 'ced2cb2112894c089235b6b72dea6b1f'
+                        id: '24358aef380d4417a98cf6638923b7be'
                         key: {
-                            name: 'x_82900_docsera_workspace'
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'mutation_kind'
+                            value: 'delete_workspace_groups'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '266385a68dee4502b92a1b566603457a'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'published_snapshot_set'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '26b21dbf71d14c47848e894250646241'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'NULL'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '26f7bd359a5b4ba5bfce368dcfae41e6'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'workspace_slug'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '278c39851bc3488a80757816811becdd'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'draft_title'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '27e8e607679640c580422eda466a1738'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'active'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '286828cb57bc4d87b34be2d9594aa37c'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'icon_type'
+                            value: 'uploaded'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '28f7fb1d9f6c4d09888284e3b79079fd'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'change_set_revision'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'ua_table_licensing_config'
+                        id: '2990b22a953c4c7a977cebbbfb8f447f'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '299a64d7029440ac843024e01a0bb9b2'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'draft_removed'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '29adfc27e6624849841e06992c4bc724'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'icon_label'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '2a0e35ee844d4273a00cfe2b487cd084'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'lifecycle_state'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '2b3f8d985b244bda8193b2b2d80a42ea'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'published_title'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '2bcc327257434727920eeceea30ae97e'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'page'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '2cf310e320bb4bbeae3fbfbfe08bf05e'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'publication_state'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '2d6d215b3a094948ad8eb0b5e81a8d5d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'command_kind'
+                            value: 'discard_all'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '2e35ac98d0d843e5b945b75645ae0ab6'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'state'
+                            value: 'processing'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '2e78501891f14af3b84f9b576f7ac059'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'target_page_sys_id'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '2f1cd6259ff94eb49378144a2c163a0a'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'published_at'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '2f375623e0464cbd9660de6038662f41'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'published_content_json'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '2f68ce9bc4b14ce59872f6e837fb8fce'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'state'
+                            value: 'invalid'
+                        }
+                    },
+                    {
+                        table: 'sys_db_object'
+                        id: '3009dd75f8c144d8b5877b6d37f006bf'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '303cd8fdc3974985aad3cdcb0b9d773c'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_key'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_db_object'
+                        id: '30793360808f45b4a7e4d9c547776cdd'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '30a08a0c145c4cbf8c0295ea1f9b4836'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'icon_key'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '31369f20898e488fb4338516575428f2'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'error_message'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: '31a7d3280e82482084816171db47921c'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'state'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '31eb456cfa72477caba538ac445bd24a'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'published_title'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '332b6a35dad7415e9fa7e39af3a4bc5e'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'lifecycle_state'
+                            value: 'active'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '33e8a0f831ff4e218bed546918dfb233'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'requested_by'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '34045fb8588d4824a7ce8a392e408914'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_edit_lease'
+                            element: 'acquired_on'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '347f47f99a9c4b699de1de1ef06353ef'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'change_set'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: '352ae41eb90f43c583d0bf3e2607bc1c'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_kind'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: '3552fab11bc24c1ca498ad94063d40ff'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'icon_type'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '35728e7d79bc4befb1dd6d146c0a1a9b'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'asset_key'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '375f957bca654de48358d1a798fe454d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'workspace'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '37685fc01eb94fcc8bf92d4f607db850'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'page_width'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '37b1c25bfac445a2bcb7ca87f220f3e9'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_edit_lease'
+                            element: 'verifier_digest'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '386118f373c74b7ca3d11f8ad55b5e8d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'lifecycle_state'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '39b8a458aa9348e28260626d15f38c53'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'readiness_state'
+                            value: 'staging'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '39e1e2ff429247019cc0096c78294879'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_edit_lease'
+                            element: 'last_seen_on'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '3a0f4e1b9adc4e6385073368a0f3c4fd'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'NULL'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '3a771895208549fcbf8ac307c7b3df62'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'requested_by'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '3ae20502e664478cbe8a7ffe43125dc0'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'toc_default_visible'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '3d86d5ba70874f63adb69728e478e384'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_edit_lease'
+                            element: 'workspace'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '3e7fe1e03211492cbdec061d6cdca526'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'error_message'
+                        }
+                    },
+                    {
+                        table: 'ua_table_licensing_config'
+                        id: '3e93d818b0324c5bb7b9eb314b2b4d80'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                        }
+                    },
+                    {
+                        table: 'sys_db_object'
+                        id: '40340b8e522d46ed81199aa4901c471a'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_member'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '40b9501e1d9748129b1baebdf7db7681'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
                             element: 'status'
                             value: 'active'
                         }
                     },
                     {
                         table: 'sys_choice'
-                        id: 'cf6270c20c1045c9b5a075a26b2240a4'
+                        id: '4120751b08a34698976a14cef1f9b0ed'
                         key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'execution_phase'
-                            value: 'page_persisted'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'cfdbcc83c1924afd8201d9447b7409f5'
-                        key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'file_name'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'd1421798c8964d0b94834eab4e9dc369'
-                        deleted: false
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_member'
-                            element: 'NULL'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'd1bc8066c15041dba91ef3c3b5cc0914'
-                        key: {
-                            name: 'x_82900_docsera_workspace_edit_lease'
-                            element: 'NULL'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'd25c2ee91fd7406d90c59c0c0ce84981'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
+                            name: 'x_2300756_docsera_workspace_provision_request'
                             element: 'state'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'd42f1663e99b4282b2716e48ca5db12c'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'mutation_kind'
-                            value: 'validate_workspace_group_deletion'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'd44057f6bc15434a94b771134c2fc41e'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'publication_state'
-                            value: 'published'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'd4df6a327f424252890b27737063ee81'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'state'
-                            value: 'processing'
-                        }
-                    },
-                    {
-                        table: 'sys_index'
-                        id: 'd52b1ebda73447e7a418bc0db4b71d5c'
-                        deleted: true
-                        key: {
-                            logical_table_name: 'x_82900_docsera_workspace_removal_batch'
-                            col_name_string: 'batch_key'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'd6db7f88c9eb43e7a0e2c56ca81bb52e'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'workspace'
+                            value: 'requested'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'd6f3bf175c5240b1926894947a9d76ab'
+                        id: '4145be00a51847a48ab78ccc22b65b27'
                         key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                            element: 'last_changed_by'
+                            name: 'x_2300756_docsera_page'
+                            element: 'published_body_text'
                             language: 'en'
                         }
                     },
                     {
-                        table: 'sys_choice'
-                        id: 'd706620cfead4190a9a950b7f2d54f69'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'lifecycle_state'
-                            value: 'staged'
-                        }
-                    },
-                    {
                         table: 'sys_documentation'
-                        id: 'd79484f47f284999adf686212e7e04a9'
+                        id: '41f2a12ffc2d4c20a6b6de9bfdc90ea2'
                         key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'editor_group'
+                            name: 'x_2300756_docsera_page'
+                            element: 'published_at'
                             language: 'en'
                         }
                     },
                     {
-                        table: 'sys_choice'
-                        id: 'd7ef7eca0c37418ba32bf27bd7d57721'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'mutation_kind'
-                            value: 'body'
-                        }
-                    },
-                    {
                         table: 'sys_documentation'
-                        id: 'd80243c3d5b94340b5c19585808f81c7'
+                        id: '429b1613f79147d786feb13e9f421a08'
                         key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
+                            name: 'x_2300756_docsera_workspace_icon_asset'
                             element: 'height'
                             language: 'en'
                         }
                     },
                     {
-                        table: 'sys_dictionary'
-                        id: 'd87538d5215c4fcebbc15205385ea282'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'workspace_state_revision'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'd88aaf0deb5945149f63871e894ee306'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'finalized_on'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'd8a736fb26cf420a95d5e5fbf5f396e7'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'requested_by'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'd8c2081e71bf4af4bf92e937f55426d5'
-                        key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'slug'
-                        }
-                    },
-                    {
                         table: 'sys_documentation'
-                        id: 'd919b92051154eff94d018d31a9cbc96'
+                        id: '42f2918899a24bb38407d57a8cb56c9b'
                         key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'size_bytes'
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'name'
                             language: 'en'
                         }
                     },
                     {
-                        table: 'sys_documentation'
-                        id: 'd9ef8024e8084a608d0df1b73d3c0500'
+                        table: 'sys_user_role'
+                        id: '431b0c97bdd2449b90442c9e190373fc'
                         key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
+                            name: 'x_2300756_docsera.editor'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '439ee5add487435fbeaa53ffa6f2f271'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
                             element: 'icon_asset_path'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'da2ef56c420244ecbf42e02eb8872071'
+                        id: '44425deed53340b2be6ba9da481fbdac'
                         key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'recovery_state'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'dacb1af2fae34f9ab142aa759d607a6a'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'generation_key'
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'access_level'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'daefe17aebef450288fb748bbaadf38b'
+                        id: '445199bacc534be0a933e2b6106bf19f'
                         key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'icon_type'
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'content_type'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '448b74da56ae4d12824781b97117a7ac'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'editor_group'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'dbdba8cd932c407dad0d2aa9d2d0ae06'
+                        id: '44955bf338b8421eb2f4b9e317589329'
                         key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'source_change_set_revision'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '4522f2dc6a904ffa83b3460d4146b7b9'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'slug_normalized'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '46d7ccfab8484e1d974177e404f8d59a'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'error_message'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '46fba94e862241f19f78a9092662ccd1'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_member'
+                            element: 'page'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '47d2b03845dc43b69f943b102c062469'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'result_change_set_revision'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '4881827130b1470da112f854fcfd6799'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'workspace_status'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '48a256e56ac9430e91b1fe641a080ae2'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'target_user'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '49ba37b3ce4741099c78cd3cc277d079'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
                             element: 'applied_on'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '4a105d915a154ebea73a7a509648dec2'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'toc_default_visible'
+                            language: 'en'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'dc6562e2247d46c88619369eb3aaf639'
+                        id: '4a8ee1be4f3c40a39f7177c8a1a7d51e'
                         key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'target_next_page_sys_id'
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                            element: 'change_set'
+                        }
+                    },
+                    {
+                        table: 'sys_db_object'
+                        id: '4d22f3a2f188445ea056c0a0391997fc'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '4e1cdd122adc425897da7bf9b707589e'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'NULL'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '4e42a450b7ff4df9a4e4368161918bc1'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'published_slug'
+                            language: 'en'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'dcca0a0da0484809a48d6d345712e966'
+                        id: '4e8ea420e3a645ae826dd3b8ca2c938c'
                         key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'workspace'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '4e95e6394053419c8c44d8155eaee5e7'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                            element: 'NULL'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '4ea1443cabf7446787b3979b500ef535'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
                             element: 'snapshot_page_key'
                         }
                     },
                     {
+                        table: 'sys_dictionary'
+                        id: '505581e8de7b41ccb09e71eedc7c0487'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'snapshot_key'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '509a4dfbc5814332b60f9f1b2cfd8262'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'state'
+                        }
+                    },
+                    {
                         table: 'sys_user_role_contains'
-                        id: 'dd1251e68d2641a78c7984e114cde142'
+                        id: '50e389db56ab497f92ec35cf17cc8565'
                         key: {
                             role: {
-                                id: '1a567676cd914d03967f6ccf5d4a3216'
+                                id: 'bcd161c9d3674a40807a6b54c881db6f'
                                 key: {
-                                    name: 'x_82900_docsera.admin'
+                                    name: 'x_2300756_docsera.admin'
                                 }
                             }
                             contains: {
-                                id: '4b00751fca4346129d38f205fda047c5'
+                                id: '431b0c97bdd2449b90442c9e190373fc'
                                 key: {
-                                    name: 'x_82900_docsera.editor'
+                                    name: 'x_2300756_docsera.editor'
                                 }
                             }
                         }
                     },
                     {
-                        table: 'sys_choice'
-                        id: 'dd61091ce8aa44ef917f5868beda7341'
+                        table: 'sys_dictionary'
+                        id: '50f75ddeb4514afca74e5607ee50305f'
                         key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
+                            name: 'x_2300756_docsera_page'
+                            element: 'draft_slug'
+                        }
+                    },
+                    {
+                        table: 'ua_table_licensing_config'
+                        id: '52261287df3a40ee8dfaf722ee3af4f0'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '52b250a219654d29bec077a730e33018'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'change_set_revision'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '544da5bb13de430e94b216fa9d36339d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'error_code'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '5454449113b74fc593cdcf65f33f83ab'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'target_next_page_sys_id'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '54be1003a2cb4bb3bd95a3e9a28fea94'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'requested_by'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '5604150aad0943f19254267ebb9cbc79'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                            element: 'last_changed_on'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '57082cb65c5542439971b882955cbbbb'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'workspace'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '572e1d5b71334b25bf9de675b274023e'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_edit_lease'
+                            element: 'workspace_key'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '5748789e3b684b52890f925dd972e3f2'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                            element: 'first_pending_sequence'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '5781239168a44fc39344b96ed56a178e'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'removed_by'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '5aeeaa9ef2c14dc8a107b3eddc7e48c8'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'icon_label'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '5b3ec4a87db54af88b4688bc13afa1de'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'NULL'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '5b4e38d45e8f460c966144d23bc613e9'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'page'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '5b6396cc3a7e4519bee64103ab10d819'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'provision_request'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '5b7e732da277457582848419c8af963e'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'state'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'ua_table_licensing_config'
+                        id: '5d2ffaba3de14c7dbae56d79eee744f5'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_edit_lease'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '5da379965992494e9d8666ff1333d936'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'active'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '600c2a0bcdea4341a295b353aeeaa364'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_edit_lease'
+                            element: 'NULL'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '6050f34fa6314b3592cc468f9c129734'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'state'
+                            value: 'failed'
+                        }
+                    },
+                    {
+                        table: 'ua_table_licensing_config'
+                        id: '60a72f9f8e834e2696a93384798a7383'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '61780c5ff18f4b639a51654a68289f5e'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
                             element: 'mutation_kind'
                             value: 'create'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'ddb73b8ac9f046519b7df8561f4842f7'
+                        id: '63035d00718f40eca8aa6511928d9ce3'
                         key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'short_description'
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'NULL'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '649a8a9084f64d28bc556b11104e0a99'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'icon_key'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '64abfb18179b4c8391561bf8e7b2426d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'content_type'
+                        }
+                    },
+                    {
+                        table: 'sys_index'
+                        id: '64d29e7b3c72496f9eddb394d77b9079'
+                        key: {
+                            logical_table_name: 'x_2300756_docsera_workspace_edit_lease'
+                            col_name_string: 'last_seen_on'
+                        }
+                    },
+                    {
+                        table: 'ua_table_licensing_config'
+                        id: '6533036f72b9453e936f595365196702'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '6593bcaa0f7d43c5b42e59a7585ec576'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'draft_sibling_order'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: '6650891c90994729846e5c47ceaff8c8'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'state'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '691fcb20cd6d448c99aab634fa423157'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'NULL'
+                            language: 'en'
                         }
                     },
                     {
                         table: 'sys_db_object'
-                        id: 'ddc3632f2e084e0fa1efeb6ece2b96dd'
+                        id: '69d3f41734754fbe8f194fe98f6d5ab6'
                         key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: '69fac3df02364644829f9245e53e8667'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'state'
                         }
                     },
                     {
                         table: 'sys_choice'
-                        id: 'dedbc1fd7d954f91963b2a4208f11076'
+                        id: '6a54d481e32947b383cbd97429fe5570'
                         key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'mutation_kind'
-                            value: 'set'
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'icon_type'
+                            value: 'builtin'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'df34b992d96e4b7aa9c98563608963f0'
+                        id: '6a9586bd6bdb4feeae699e8cde843468'
                         key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'command_kind'
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'slug'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '6b173ac74d9840cd87c2dbfa84da3265'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                            element: 'first_pending_on'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '6b97519d613148d1a10c9486198be919'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'icon_type'
+                            value: 'uploaded'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: '6cb70c8c73ad49c6bebc03b84c15f5ea'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'execution_phase'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '6d92e12510574e00a4fe401880f39580'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'icon_type'
+                            language: 'en'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'df912529348e48f6bb3b8e742dab205d'
+                        id: '6dada2779b054cb894edf4a0ed3e9fac'
                         key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'title'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '6e1011aab7444b3fb3a3df71f4aa89a0'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'published_body_text'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '6e600a7332fa4448882ce51193decf53'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'status'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '6ee75201c3ed4032bb15d7f18f22991d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'workspace_status'
+                            value: 'inactive'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '6fd960d872df497a8a0619372841c975'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'publication_state'
+                            value: 'published_with_unpublished_changes'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '700d278a956c4b469e996c993caba3a0'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
                             element: 'NULL'
                         }
                     },
                     {
                         table: 'sys_choice'
-                        id: 'e13a411b183649839ca0ae8ef63005c0'
+                        id: '7087ff07bee348e29409b4e52061822f'
                         key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'lifecycle_state'
-                            value: 'superseded'
-                        }
-                    },
-                    {
-                        table: 'sys_ux_lib_asset'
-                        id: 'e1482fed27b54655a9044745ba601ad6'
-                        deleted: true
-                        key: {
-                            name: 'x_82900_docsera/index.js.map'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'e14ed05943544904a1604c9b60f7c179'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'applied_on'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_db_object'
-                        id: 'e18605b3c86f47529b48bada5c853a3a'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'e1f74b0895d044ea8b980bb2b7d38645'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'active'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'e21b956dcb054129a49367f9bc217084'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'draft_slug'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'e4678526df0843ba8504ddecff18d3e3'
-                        key: {
-                            name: 'x_82900_docsera_workspace'
-                            element: 'workspace_slug'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'e558ebbb19f14c3d8a25e77ebc5a481b'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'mutation_kind'
-                            value: 'remove'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'e6896779c386464e855e4f12970ab23d'
-                        deleted: false
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_member'
-                            element: 'batch_page_key'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'e6f1fc344cb142f5834f3c966cf43eab'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'lifecycle_state'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'e740ffc436ed4de2b7f7e00790526a49'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'claimed_on'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'e774a67ef25047e98cef144785d595fd'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'editor_group_name'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'e79979edfc904a2d8d6a86aeb2e583f5'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
                             element: 'readiness_state'
                             value: 'ready'
                         }
                     },
                     {
-                        table: 'sys_choice_set'
-                        id: 'e7d26390a1c04cccb5383e4a202f763d'
+                        table: 'sys_dictionary'
+                        id: '724341f112744894850341ae9ef55c2d'
                         key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'readiness_state'
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'body_text'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'e8933b04d564451c92632333b438ffd3'
+                        id: '7292d77a252b41a28d836bbd42d1f005'
                         key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'source_change_set'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'ea577a8811c149c0adcd4de4a993c17d'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'change_set'
+                            name: 'x_2300756_docsera_page'
+                            element: 'draft_slug_normalized'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'ea8b1bbb4f8e4b209a144d098df18f53'
+                        id: '73b6f1c978f74262aa166a0419918ba9'
                         key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'active'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'eaa5152b2bdd448d8cd4bc0c770685ad'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'draft_removed'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'eabf97c830a5473b8925871baeb86d34'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'command_kind'
-                            value: 'publish'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'eaef88fbcb964425891fdee2ca4113c2'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'page_width'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'eb4fac02d93943d29513ab341c7216d5'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'editor_group'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'ebba4e7633204b93985351598f4150ab'
-                        key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'workspace'
+                            name: 'x_2300756_docsera_page'
+                            element: 'published_slug'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'ecc716a800324402ba932754614acda7'
+                        id: '74409d72361e4f8e8027f199f7348bb2'
                         key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'command_correlation_id'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'ed17c292e21f47baba64914b55874c95'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'workspace'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'eda9caf6f41c4af9bafc1733443ea750'
-                        key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'state'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'ef0b679aaead4f8187ee10b1e400e883'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'admin_group'
-                            language: 'en'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'ef37d1ed7e8c47c0a9af21457fdd67cb'
-                        key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'readiness_state'
-                        }
-                    },
-                    {
-                        table: 'sys_documentation'
-                        id: 'ef583d5e0beb44a59f3ca15a44a19df4'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
                             element: 'mutation_payload_json'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'efe1937b54274bcea89efe052e3b5139'
+                        id: '74c46e35440e40de9c2d7e68fb2efe45'
                         key: {
-                            name: 'x_82900_docsera_workspace_page_snapshot'
-                            element: 'page'
-                        }
-                    },
-                    {
-                        table: 'sn_glider_source_artifact_m2m'
-                        id: 'f0d51d93a14349e58288c8e9e13381c8'
-                        deleted: true
-                        key: {
-                            application_file: '49074d350f4742d1a1dc581518fd6686'
-                            source_artifact: '0b944690279d44618ced2280edd7263c'
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'width'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'f0e7b0651a5f4c339b8fad6e4e2e13bf'
+                        id: '774d63f11cd5427daf82247095a08811'
                         key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'change_set_revision'
+                            name: 'x_2300756_docsera_workspace_removal_member'
+                            element: 'first_pending_sequence'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '775e51c9e98547c9aebf383f4865a7dd'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'content_json'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '77b74fb936594dda91cc57f4604a2ba5'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'NULL'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'f1fe5ccfb6a7433594cdb62c0026f330'
+                        id: '77f2d34859f44d07a11feb702bc755c1'
                         key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
+                            name: 'x_2300756_docsera_page'
+                            element: 'last_draft_changed_on'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '788c03362a4647e3bda258544310842d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'NULL'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '789e190f6b414b81a8c5056a96e47a81'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'NULL'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '79803e8ae09d483d8e522288ebf85f14'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'requested_by'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '79d2c3ad6e9847078b1832a49281aebd'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                            element: 'last_changed_by'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '7a44b19e39cb40d6a699ba6a3878dc52'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'workspace'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: '7b563e51779045a291243565a609eab3'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'command_kind'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '7ba087ea8a5c48ee85336f6f6b098fc3'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'root_page'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '7bdad6c1f04f4e63b4a86de75e5db58a'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'execution_phase'
+                            value: 'claimed'
+                        }
+                    },
+                    {
+                        table: 'sys_db_object'
+                        id: '7c17d2b0799748398fc1d10721b6a577'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '7e3569423d514976bd305d3b4386e900'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'finalized_on'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '7f9911f787184e028bc3c98b5a12adb7'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'page_width'
+                            value: 'full'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '7fbef034edb44ee78d274a084ce43d81'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'command_correlation_id'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '7fd43b1b6d2d4186bfed8a80e61c6781'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                            element: 'last_changed_by'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '7fd58902c9f943e3ae9089dcda928c40'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_state'
+                            value: 'applied'
+                        }
+                    },
+                    {
+                        table: 'sys_ux_lib_asset'
+                        id: '7fee0b502705422e8a9854324554faf8'
+                        key: {
+                            name: 'x_2300756_docsera/main.js.map'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '8012ba34e09a492aae89e0ed04a50dfb'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_kind'
+                            value: 'delete'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '80d999261ba247f982d276ea8bc98eac'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'workspace'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '81a780de9d9b4183a7c38cabe6e3f6a4'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'error_message'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '8327b8e36b6244b99f92ed764d1009c5'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'toc_default_visible'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '83eb1fff15814461a5224c5b74e65765'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_payload_json'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '849febbb43e548b69b3512ac8a0ee503'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
                             element: 'published_on'
                             language: 'en'
                         }
                     },
                     {
-                        table: 'sys_documentation'
-                        id: 'f243365480e1448b8774dbbf5d89d0d6'
+                        table: 'sys_db_object'
+                        id: '85de30fee2264220973ae57ad59b696e'
                         key: {
-                            name: 'x_82900_docsera_workspace_change_set'
-                            element: 'change_set_revision'
+                            name: 'x_2300756_docsera_workspace_change_set'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: '85faf57322d04e4fa522befc9cd804ba'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'lifecycle_state'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '860976c3869b49cc91f4ccaa4c8b150c'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'admin_group'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '8655e56786bb4e78add5edc848e9a19b'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'published_by'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'f3e0506a82fc4ad0b0cbd0bcdf6a6b05'
+                        id: '86d4885c0c0a43ebb428f0dc0b31b062'
                         key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'command_correlation_id'
-                        }
-                    },
-                    {
-                        table: 'sys_choice'
-                        id: 'f3eea2f11f8b4492b4d4445ca33873d7'
-                        key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'execution_phase'
-                            value: 'finalized'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'f424b897544241f19aabbad3c59c6b7a'
-                        key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'change_set'
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'state'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'f4657fe3eb0c4436b1c69374bb9d9ed0'
-                        deleted: false
+                        id: '88a082ac754948adb722a73cc79b8eb5'
                         key: {
-                            name: 'x_82900_docsera_workspace_removal_member'
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'batch_key'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '8a50f7bc4c8341c4b7e936c57f871b86'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'result_change_set_revision'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '8a88ac785c654d7586ca6a4a85184497'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'last_draft_changed_by'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: '8b7b8b51b644483cb381e4d293c2b89d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'mutation_kind'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '8b84eee6b5b647108934a6002774b6c6'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'publication_state'
+                            value: 'published'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '8c0c1cf3b2334443b86df82763f21a1a'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_edit_lease'
+                            element: 'workspace_key'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '8da45a8a645d4625aad5cd978e7ab119'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'published_by'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '90433383eec14232817e696968c2b710'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_state'
+                            value: 'rolled_back'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '90602ec3cdba4c8bb9af91ca1519381a'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'next_pending_sequence'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '91a815880aaa4f2ca168ade54ba6160e'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'error_code'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '921b9c1b200a4eaca0a980dcd39efed6'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'access_level'
+                            value: 'admin'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '92246c998f154584af0c8aaf5fe2e888'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                            element: 'first_pending_sequence'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '92306abbcd1e4766b6c52c21506e690b'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'sibling_order'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '933c4f405c66498ba1879ac9ea409e85'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'icon_label'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '9380e7731a1d48a78d8864bdbb77ef63'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_state'
+                            value: 'finalized'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '9468dea4a9bf4d61ae253063e1d2f2a1'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_kind'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '9575c50dd95a46e09334b6bf55b1a180'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'active'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: '95dcbf8dbdc44a089179e5dd7e079a1c'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'page_width'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '95df94a8ad554df1b14fa315cc8d9c3f'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'admin_group'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '95f89f40f5174e4c8d77c2d1bae1b0eb'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'workspace'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '96a86184b8fa4511bd476c6a341ff5b1'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_edit_lease'
                             element: 'NULL'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'f4e97e36f0f54b25a70c9b5b0932de6a'
+                        id: '9886118bd96e4266befcad763dfddc6a'
                         key: {
-                            name: 'x_82900_docsera_page'
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'NULL'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '997c1a8a72f64794859b8044deae18a2'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'lifecycle_state'
+                            value: 'retired'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '9a6c7f037e864a73bc187c8eb0436ea8'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_edit_lease'
+                            element: 'acquired_on'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '9af218a52b874e6ab842c9966e184178'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'NULL'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '9bec53e245204603bb71cb0fe777cd68'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'attachment'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '9c8adcb916dd403e95d60e192cbed61a'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'generation_key'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '9cc234a54f6343ba836c44cc307822b3'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'workspace_slug'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '9cfd2e489d5d4cf984f2beb90026df2f'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'state'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '9d0761949cbf48c98f63bf39ade0c605'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'requested_by'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '9d48161b0ffb4f02abff919fda692eef'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'published_by'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: '9f0d5bdd5d654110bf0f1728c1a66bb6'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'workspace_status'
+                            value: 'active'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: '9f2c1b7aaf084896a81e51716cd0638a'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_state'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: '9f7134e4ba7c4d13b96fc0c78cbf810c'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'command_correlation_id'
+                        }
+                    },
+                    {
+                        table: 'ua_table_licensing_config'
+                        id: '9fa1982494754928887152ca19921ecb'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                        }
+                    },
+                    {
+                        table: 'sys_ux_lib_asset'
+                        id: 'a03da8513bc94a398b3a3dafcca17dc8'
+                        key: {
+                            name: 'x_2300756_docsera/mountEditorRuntimeSpike.js.map'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'a04114f026b14810bc9a2e2c08402e67'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_member'
+                            element: 'NULL'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'a14fe862558a47f9a00602a171872687'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'owner_expires_on'
+                        }
+                    },
+                    {
+                        table: 'sys_user_role_contains'
+                        id: 'a18019275a0449c0a4deda2a95337cf0'
+                        key: {
+                            role: {
+                                id: 'bcd161c9d3674a40807a6b54c881db6f'
+                                key: {
+                                    name: 'x_2300756_docsera.admin'
+                                }
+                            }
+                            contains: {
+                                id: 'ac57cfc6fbe349ff95400d43c5f3c191'
+                                key: {
+                                    name: 'x_2300756_docsera.workspace_admin'
+                                }
+                            }
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'a1906abd5f0b4c4f8986c1be45472cc1'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'page_width'
+                            value: 'readable'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'a1de50260c4c463882b85298098071b5'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_edit_lease'
+                            element: 'workspace'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'a2dddbea6414442eb8760c258ef017c7'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'access_level'
+                            value: 'editor'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'a2df3b2d03eb47ffba6db3ac3fc0fd83'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'slug_normalized'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'a334ee3d657f4b0bad9a7cad1a561bc9'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'lifecycle_state'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'a368a26a4f1c44caacc445677403448c'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'icon_type'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'a462e6aad5d445b9b63b763a20ef3fce'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'page_width'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'a4870bffc2504a06ba71b1a26857a4af'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'requested_by'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'a4ee93c6aeb247dcb1a0d9204777f109'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'snapshot_set'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'a598938c858645c68c41b7a95364ced2'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'execution_phase'
+                            value: 'page_persisted'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'a60b5278868f4e3dae90e522ebe8ee6e'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'attachment'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'a776d749bfcf4a7289ce13fb9e48122d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'source_change_set'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'a791e1b912394349bea5dc6af79c98d0'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'execution_phase'
+                            value: 'result_persisted'
+                        }
+                    },
+                    {
+                        table: 'sys_db_object'
+                        id: 'a88c33cecb814d32a98daca5c41f33ac'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                        }
+                    },
+                    {
+                        table: 'ua_table_licensing_config'
+                        id: 'a971fefda72e4defaaef2d51e7452c3f'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'aa2badcfc82b47aaba36f19be80d104b'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'publication_state'
+                        }
+                    },
+                    {
+                        table: 'sys_ux_lib_asset'
+                        id: 'aadf45c1fe1e4a348ff06aa2da33adde'
+                        key: {
+                            name: 'x_2300756_docsera/MarkdownSourceSession'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'ab1f74a6f9254f268e24a2f915130565'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'published_content_json'
+                        }
+                    },
+                    {
+                        table: 'ua_table_licensing_config'
+                        id: 'ab90e8b32ec34b5d8140e12cbe804504'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'abdd4cdc1fb8463882c2293267066d79'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'editor_group_name'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'ac2ac98cbdda40788db19d3e4f19e4c9'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'state'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'ac44520beb22407ea5afb17f04da5001'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'creator'
+                        }
+                    },
+                    {
+                        table: 'sys_user_role'
+                        id: 'ac57cfc6fbe349ff95400d43c5f3c191'
+                        key: {
+                            name: 'x_2300756_docsera.workspace_admin'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'ac6ace199db8468f8085ab16d7a3007e'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'parent_page'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'acf0aeae69d9407696df609b6730521d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'admin_group_name'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'adf26218b83f4adbb6143fc441c48c17'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'draft_sibling_order'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'ae309f7f44984cbaae30fad0e1967219'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'finalized_on'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'af87a930940f40f4b20653ab86ba5022'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'workspace'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'afa897b488464d0aaff8b0c291d94ebe'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'generation_key'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'afb0817f7fd5458d93caa9cde602af0f'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'workspace'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'b01ea8fdca4e47ceaec35e653414ea8f'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'size_bytes'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'b07e3f21452b492e91a465d807ee7f23'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'target_next_page_sys_id'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'b0b1b0d50d044204a3eb12d36209a396'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'draft_parent_page'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'b1295275305b4a9a847bf682a90fdd0d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'admin_group_name'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'b162c8170bcb486b8ae6ab3f55e5976f'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'workspace'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'b162ebab25994c24ad6e0a7c5452cea2'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'target_page_sys_id'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'b19b926566e2468986696b06826c6b83'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'next_pending_sequence'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'b1ad0ba079e8411885430cdf463fd57c'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_member'
+                            element: 'removal_batch'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'b2e13e74961f426cb0a2c5c1a120a1ba'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'workspace_group_key'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'b4daa1f3bd26490e9cca59eae91e9e2e'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'draft_content_json'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'b5620127e8a34d19aeedba4d5fd36d38'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'snapshot_page_key'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'b5e0277c6843497aa127c20f23a283b4'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'snapshot_key'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'b606e67f71574d088d85402d84af0aee'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'lifecycle_state'
+                            value: 'staged'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'b669e883525c4a8c86c2f73552fb0e6d'
+                        key: {
+                            name: 'x_2300756_docsera_page'
                             element: 'sibling_order'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'f557b2d3463b4629af91cc27b1988308'
+                        id: 'b682334472cb41d2a5230b2fe1396017'
                         key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'page_width'
+                            name: 'x_2300756_docsera_page'
+                            element: 'published_slug_normalized'
                             language: 'en'
                         }
                     },
                     {
-                        table: 'sys_ux_lib_asset'
-                        id: 'f6ecfb7903d54a72ba8a77ceb1e87657'
-                        deleted: true
+                        table: 'sys_dictionary'
+                        id: 'b6d54dc9564641b5bab156ec31d5905d'
                         key: {
-                            name: 'x_82900_docsera/WorkspaceMarkdownSourcePanel.js.map'
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'claim_owner_key'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'b78fdf8a065d4089a9551c572ac8d6b0'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'pending_change_set'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'b7c4f1f0109f46eab8fc3f7e1cdbf9f8'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'file_name'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'ba2aa9538cc24bcc9333fd5e051875cc'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'target_removal_batch_key'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: 'baf3d855f0f14353b929da3ea62b1939'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'publication_state'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'bc39fdfb47cd4ee2a0f68876c1a63675'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'height'
+                        }
+                    },
+                    {
+                        table: 'sys_user_role'
+                        id: 'bcd161c9d3674a40807a6b54c881db6f'
+                        key: {
+                            name: 'x_2300756_docsera.admin'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'f6efcef572e74166b56887de8f766000'
+                        id: 'bd3ec0fd23af4da599892f9a6ef1dfaf'
                         key: {
-                            name: 'x_82900_docsera_workspace_removal_batch'
-                            element: 'batch_key'
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'owner_expires_on'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_choice_set'
-                        id: 'f6ff0287de7b4cb3ada6732448e8b2a5'
+                        id: 'be1a40c42f6d43bc98a8f5f3fd05eb11'
                         key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'access_level'
-                        }
-                    },
-                    {
-                        table: 'sys_ux_lib_asset'
-                        id: 'f8117032c4f74ba98f743499f7472240'
-                        key: {
-                            name: 'x_82900_docsera/PageEditorHostRuntime'
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'lifecycle_state'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'f82b9dcb70da4922835f74c0768f07dd'
+                        id: 'be6b2c7fda994c38a9a83fed54e5dde9'
                         key: {
-                            name: 'x_82900_docsera_workspace_change_entry'
-                            element: 'last_changed_by'
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'published_on'
                         }
                     },
                     {
                         table: 'sys_dictionary'
-                        id: 'f8bbfeb2abfd449ea4f9e8f6dcbdb71a'
+                        id: 'be9461d2beab4ee19d8f672d229c8236'
                         key: {
-                            name: 'x_82900_docsera_workspace_member_mutation_command'
-                            element: 'requested_by'
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'recovery_state'
                         }
                     },
                     {
-                        table: 'sys_choice_set'
-                        id: 'f959b22d7de54047a6de00b7097fcce4'
+                        table: 'sys_documentation'
+                        id: 'c002c7fb117342e3998e7b9fc7a070a4'
                         key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
+                            name: 'x_2300756_docsera_page'
+                            element: 'draft_revision'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'c13e1a125d5645e3989fabe7fc9a65d1'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'lifecycle_state'
+                            value: 'superseded'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'c1cd31ad58df4d42a9740f02e7453f45'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'toc_default_visible'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'c4584e8b0a8447e5b6a564121117b3d8'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
                             element: 'workspace_status'
                         }
                     },
                     {
-                        table: 'sys_choice_set'
-                        id: 'fab4edb1631f465aab05d9fb6b5bab2a'
+                        table: 'sys_choice'
+                        id: 'c4cd57f70b44463e8b04ffdcfc724130'
                         key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
-                            element: 'execution_phase'
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'lifecycle_state'
+                            value: 'active'
                         }
                     },
                     {
-                        table: 'sys_dictionary'
-                        id: 'fbe5f073d5cd420daa1e6e9d7ac687a5'
+                        table: 'sys_ux_lib_asset'
+                        id: 'c58dabe08ad142cca3f1909a68b0a713'
                         key: {
-                            name: 'x_82900_docsera_workspace_icon_asset'
-                            element: 'attachment'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'fbf22bc056244f809a05a629cbfc5260'
-                        key: {
-                            name: 'x_82900_docsera_page'
-                            element: 'last_draft_changed_by'
-                        }
-                    },
-                    {
-                        table: 'sys_dictionary'
-                        id: 'fc32d2b21d0e40dba4b5cd9291ed50fd'
-                        key: {
-                            name: 'x_82900_docsera_workspace_edit_lease'
-                            element: 'verifier_digest'
+                            name: 'x_2300756_docsera/mountEditorRuntimeSpike'
                         }
                     },
                     {
                         table: 'sys_documentation'
-                        id: 'fd2726d37ae345739364868e2d2a5d1b'
+                        id: 'c620a1486e7a4ef8ace86ae619e8139b'
                         key: {
-                            name: 'x_82900_docsera_workspace_mutation_claim'
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'claimed_on'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'c6a164a366cb490fa862f69c773a7b41'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_kind'
+                            value: 'publish'
+                        }
+                    },
+                    {
+                        table: 'sys_ui_page'
+                        id: 'c7a040a2d7bb4148b8ce008bc1f8d6c9'
+                        key: {
+                            endpoint: 'x_2300756_docsera_docsera_sdk_runtime.do'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'c89877f990de4a3992889f4cdcecaace'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                            element: 'page'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'c8dcb14928b14f80a32670e7251c7d87'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'draft_slug_normalized'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: 'c9cb3bd4eba34033963112a9702d102d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'icon_type'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'ca0cb04650fc4723b0af76bd02ca08ff'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'status'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'ca5ac5fb847b4e139c17a9a8d62c66e5'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'draft_removed'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'cafd78f7a9b9473d80866378211923f2'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'short_description'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'cb5ac6d10591481a850570aca8d396a6'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'mutation_kind'
+                            value: 'validate_workspace_group_deletion'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'cc82c53a96014b66b4d66cafdc0d993f'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_edit_lease'
+                            element: 'last_seen_on'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'cc8ab55255f142978150484946defc01'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'workspace'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'cdd9858546604f55bcfe78c849e9b8a9'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'removed_on'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: 'cdfb2a772465440fa69a283899af7483'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'recovery_state'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'ce881265c4764d989a90f93177ee12f6'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'finalized_on'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'ce92e6f9eacd4bffaa0a5aa66d466f17'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'execution_phase'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'ce9a23fd744d41d1938c06017e516ee8'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'short_description'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'ceee39647b1c461b96026937bbb5fb63'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_edit_lease'
+                            element: 'holder_user'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'cf14d8944cd147339939e1979d10d305'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'page_width'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'cf7f16ca02f34452873e219ba3f75540'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_result_json'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'cf8b2fd5cd3040958c4319062245c72d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'access_level'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'cfb0b8b245744ca497b2a999ed5b5760'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'lifecycle_state'
+                            value: 'retired'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd04d1a79ffc14017b09c13aeb557072a'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'published_snapshot_set'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd084d3679e114b1495a4b475286747c5'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'width'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'd092afe8d5444b4f8b56742bb3b48819'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'workspace_group_key'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd190dc4b01ca4f9dab0e123ae4fef6ff'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'draft_parent_page'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'd216c83e25954641a2441cfb2dba0521'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'workspace_state_revision'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd266874171e249bc805d07537030f482'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'name'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'd269450171154be99ad02aeac76d4b0f'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_state'
+                            value: 'claimed'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd3202ea35c83425b8f7c02e06751f9bb'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'NULL'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd323791533e14206886a8b338852e9ea'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'parent_page'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd3af72e18a40436984930c7d4706bc04'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'change_set'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: 'd40f6251a88a40aebe4db5ec253eeb6f'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'status'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'd4643362faaa4be69a616198ee113672'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'mutation_kind'
+                            value: 'remove'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd490f76937704c43b955dd50fa7bacfc'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'command_kind'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd4d2f472d31c4f5eb56f8e1258377648'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'icon_key'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd5e23c70bae64d528140820bdd5430ec'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'icon_type'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'd5e404725213403dbaa8a4e398cfafdf'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'editor_group'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd661f8f14fdf4c39b970e066509c4411'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'change_set'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd6b53c365ee34712b668dcbb6f4e7b94'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'workspace'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'ua_table_licensing_config'
+                        id: 'd70ba09cdb774a8dbac897866b3f0c19'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'd72c764a94ff4ce3a2e2dea9e415d1f9'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'error_message'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd78cc6c8c89b4da1972115efb3f4fbb0'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'last_draft_changed_by'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'd802e243e57c4ad5a61a014fb19690b8'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'parent_page'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'd83815d4c2554c99b3a07a19eafe9cbd'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                            element: 'first_pending_on'
+                        }
+                    },
+                    {
+                        table: 'sys_db_object'
+                        id: 'd89d4890fd6a4b51b57acdf5af959723'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'd9c6e4f28efd48d685ca08068c223281'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_member'
+                            element: 'batch_page_key'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice_set'
+                        id: 'da0795ced80646ef825625f9fe109c2c'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'access_level'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'da8873ce63ab4a9981f34c739d89d38e'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'body_text'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'dac5cfa5c37c4480b42c838faf7c5989'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_key'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'db259c5760ae48d2a09fbc9296e7ec4c'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_result_json'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'dca4a89383c74805a4f82b019b48a149'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                            element: 'generation_page_key'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'dd8e788c704f42c7b516b2b7297ad500'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'draft_body_text'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'ddbcc31abeb84259af47d82df79adbfe'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_kind'
+                            value: 'settings'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'de38c93ed91b4f65880a105be786bb85'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'state'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'de4e67bbdfb44ec6b0e0c9fda466f0d4'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'title'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'ua_table_licensing_config'
+                        id: 'de76b0b9c6654a6482459a3d58549b36'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_member'
+                        }
+                    },
+                    {
+                        table: 'sys_ux_lib_asset'
+                        id: 'df24c523344943119915ed6a5270cf7c'
+                        key: {
+                            name: 'x_2300756_docsera/MarkdownSourceSession.js.map'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'dfa99e131b73435b9f466d92be0fdfeb'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'workspace_slug'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'e0f579b12dff4c73831f3ef3aeb8733d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'mutation_kind'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'e1efe927bd5d4a81a6139956e316cc91'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_member'
+                            element: 'page'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'e2afba5a87864fa6adfc8b636a906c60'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_edit_lease'
+                            element: 'holder_user'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'e2c5e310e68c42dc88f63d05ee599a45'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'recovery_state'
+                            value: 'recovered'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'e41a0eaeeaf948c0b0b59fbd2285cbbd'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'command_correlation_id'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'e45ff39f579b4404b49d31812fff6b52'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'applied_on'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'e4605c92e7594d2490bde6bebba59860'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'workspace'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'e52c79130a7a40f78d8ff0146919f5e0'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'readiness_state'
+                            value: 'retired'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'e5f824ee6fd24696b9e096e45fbd39a7'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'name'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'e6d36f6b414c449bb4bd4f79514b7042'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'result_change_set'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'e6db071ff8db4e6e8e1390c747135396'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'error_message'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'e703df309fa14fe29f448461996eee58'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'execution_phase'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'e873a9b4ade94a9d8552cb36e1468840'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_member_mutation_command'
+                            element: 'target_user'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'e91301470cc74184b5c5e67b19953c79'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'state'
+                            value: 'claimed'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'e944bc85175c4aa2af7e98da8aee5ec0'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'icon_asset_path'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'e966b41550984e84bff19b43749207e4'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'file_name'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'e9b0ef9c13b248c58d9031e3d5d5c41a'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'draft_slug'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'ea2bb2ed69844043b70b6a926ed842b2'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'removed_on'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'eac6572ecee747809c4a9577871df581'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'readiness_state'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'eb73ead5b76c47a5af9582c98d283bd1'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'draft_content_json'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'eb78d1e8166540d5a11ad82d5f394668'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'status'
+                            value: 'inactive'
+                        }
+                    },
+                    {
+                        table: 'ua_table_licensing_config'
+                        id: 'eb8701e4408b4beeac45a5aa7e327c1f'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'ec2d8c1f6c4e47048171d231b07eb012'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_set'
+                            element: 'recovery_state'
+                            value: 'staged'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'edce2368ade34a22bbc7662fbf0633f1'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'published_on'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'ee334bb387b247ad9c5f9811d290f77e'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'state'
+                            value: 'cleaning'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'ee4b4c28199649ea8b34049a3fa6ce8d'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'sibling_order'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'ef3316bb8bce4087a4117b2d56451d9d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                            element: 'change_set'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'efe3cb57364a4a7fb4eceaf45a33b3bf'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'mutation_kind'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'f016064c19144c9ea52d3830ec54a15b'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'claimed_on'
+                        }
+                    },
+                    {
+                        table: 'sys_ux_lib_asset'
+                        id: 'f058e74bbed44dbfad24e6b661817a56'
+                        key: {
+                            name: 'x_2300756_docsera/main'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'f0c56e4098de4cf68407850fdec249de'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'NULL'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'f1290adea19f4a2baf4acc989a51ea24'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                            element: 'NULL'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'f1a8c4d6659f4f45bf036dbdf8d0f39b'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                            element: 'page'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'f1c114cc694e4a76bdec936d34559f46'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_page_snapshot'
+                            element: 'sibling_order'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'f1c551836a394980be43df6789180b24'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'editor_group_name'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'f204353e0f6a4929865a0f85fbbb34aa'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'page_width'
+                            value: 'readable'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'f20ceb13ba1340068df0bf588cc0cfbe'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'workspace'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'f265f318aa294a74a47dcb82268c888f'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'execution_phase'
+                            value: 'change_set_advancing'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'f2a2fe710ce6402bb5ca5e25b624a3ff'
+                        key: {
+                            name: 'x_2300756_docsera_page'
+                            element: 'published_slug_normalized'
+                        }
+                    },
+                    {
+                        table: 'sys_choice'
+                        id: 'f3824de0b3934f228e857f4e4942aa93'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'command_kind'
+                            value: 'publish'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'f386257c45ca469a8ac28d606d5d86e5'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                            element: 'generation_page_key'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'f55ad8e8a0034102a6160f767fdfb45b'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'target_removal_batch_key'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'f640bb5f86454fed9339725efc8901ed'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_member'
+                            element: 'first_pending_sequence'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'f6db305107824117be88efc428d5e299'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_batch'
+                            element: 'root_page'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_db_object'
+                        id: 'f81a3ee74a844fc0925a59155357e67d'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'f8c67658b3ac4c798583b9723f544727'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_icon_asset'
+                            element: 'provision_request'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'f8d0531b500f4d958a4d1e937b3bba25'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
                             element: 'generation_key'
                             language: 'en'
                         }
                     },
                     {
                         table: 'sys_choice'
-                        id: 'fd2bc138a13e4d28ae6396af624d985d'
+                        id: 'f99027e8504d4ba1bbc5e10725b9b3ed'
                         key: {
-                            name: 'x_82900_docsera_workspace_snapshot_set'
-                            element: 'readiness_state'
-                            value: 'staging'
-                        }
-                    },
-                    {
-                        table: 'sys_choice_set'
-                        id: 'fe180986de614464a5b62f682a5ef606'
-                        key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'icon_type'
+                            name: 'x_2300756_docsera_workspace_provision_request'
+                            element: 'state'
+                            value: 'succeeded'
                         }
                     },
                     {
                         table: 'sys_choice'
-                        id: 'ffa2968257d04f7fb80bfdc06b29f854'
+                        id: 'fa23db0df6084f71bc6cd03f0f7ea587'
                         key: {
-                            name: 'x_82900_docsera_workspace_provision_request'
-                            element: 'state'
-                            value: 'failed'
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'execution_phase'
+                            value: 'finalized'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'fc8274e7b12b499eb89ad9e438a5ee70'
+                        key: {
+                            name: 'x_2300756_docsera_workspace'
+                            element: 'icon_type'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'fcd7728ae7ec45778421fd8fda6c32ea'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_mutation_claim'
+                            element: 'workspace'
+                        }
+                    },
+                    {
+                        table: 'sys_user_role_contains'
+                        id: 'fd031682689f4e2894a96c5075dfcd8b'
+                        key: {
+                            role: {
+                                id: 'ac57cfc6fbe349ff95400d43c5f3c191'
+                                key: {
+                                    name: 'x_2300756_docsera.workspace_admin'
+                                }
+                            }
+                            contains: {
+                                id: '431b0c97bdd2449b90442c9e190373fc'
+                                key: {
+                                    name: 'x_2300756_docsera.editor'
+                                }
+                            }
+                        }
+                    },
+                    {
+                        table: 'sys_ux_lib_asset'
+                        id: 'fd276797a5234724a22cfb4a291dfc1c'
+                        key: {
+                            name: 'x_2300756_docsera/PageEditorHostRuntime'
+                        }
+                    },
+                    {
+                        table: 'sys_db_object'
+                        id: 'fe43a1e12f124bf39ae5a438ac98a93c'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_change_entry'
+                        }
+                    },
+                    {
+                        table: 'sys_documentation'
+                        id: 'fe57d3ffd6484cc3ba96c65a9882b4f3'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_snapshot_set'
+                            element: 'published_on'
+                            language: 'en'
+                        }
+                    },
+                    {
+                        table: 'sys_ux_lib_asset'
+                        id: 'ff39bfa689d841dd838d011d104dbf01'
+                        key: {
+                            name: 'x_2300756_docsera/PageEditorHostRuntime.js.map'
+                        }
+                    },
+                    {
+                        table: 'sys_dictionary'
+                        id: 'ff98f73e8ed34b15a2c3fa803c65e7c9'
+                        key: {
+                            name: 'x_2300756_docsera_workspace_removal_member'
+                            element: 'batch_page_key'
                         }
                     },
                 ]

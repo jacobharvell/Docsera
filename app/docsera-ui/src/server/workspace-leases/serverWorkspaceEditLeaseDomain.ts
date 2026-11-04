@@ -1,7 +1,7 @@
-export const DOCSERA_WORKSPACE_EDIT_LEASE_TABLE = "x_82900_docsera_workspace_edit_lease";
+export const DOCSERA_WORKSPACE_EDIT_LEASE_TABLE = "x_2300756_docsera_workspace_edit_lease";
 export const DOCSERA_WORKSPACE_EDIT_LEASE_HEARTBEAT_INTERVAL_MS = 60_000;
 export const DOCSERA_WORKSPACE_EDIT_LEASE_STALE_AFTER_MS = 300_000;
-export const DOCSERA_WORKSPACE_CHANGE_SET_TABLE = "x_82900_docsera_workspace_change_set";
+export const DOCSERA_WORKSPACE_CHANGE_SET_TABLE = "x_2300756_docsera_workspace_change_set";
 
 export type WorkspaceEditLeaseRecord = {
   acquiredAt: string;

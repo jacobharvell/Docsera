@@ -20,11 +20,6 @@ import { EmojiPickerControls } from "../../editor/EmojiPickerControls";
 import { useContentRevealState, type ContentRevealIntent } from "./contentReveal";
 
 type WorkspaceMainPaneProps = {
-  bodyNotice?: {
-    eyebrow: string;
-    kind: "alert" | "status";
-    message: string;
-  } | null;
   bodyState: "loading" | "ready";
   editorInitialSavedEnvelope?: DocseraDocumentEnvelope;
   editorCanonicalEnvelope?: DocseraDocumentEnvelope | null;
@@ -38,6 +33,7 @@ type WorkspaceMainPaneProps = {
   canManagePageSettings: boolean;
   editAccessLost: boolean;
   accessLossMessage?: string;
+  accessLossTitle?: string;
   leaseConflict?: boolean;
   leaseHolder?: { displayName: string | null; userSysId?: string };
   onEndPreviousSession?: () => void;
@@ -222,7 +218,6 @@ function EditorRecovery({
 }) {
   return (
     <section className="docsera-main__editor-recovery" role="alert">
-      <p className="docsera-main__eyebrow">Editor recovery</p>
       <h2 className="docsera-main__recovery-title">The draft editor is unavailable</h2>
       <p className="docsera-main__lede">{message}</p>
       <div className="docsera-main__recovery-actions">
@@ -250,7 +245,6 @@ function WorkspaceStateCard({
 }) {
   return (
     <section className="docsera-main__editor-recovery" role="alert">
-      <p className="docsera-main__eyebrow">Workspace</p>
       <h2 id="docsera-workspace-error-title" className="docsera-main__recovery-title">
         {title}
       </h2>
@@ -270,7 +264,6 @@ function WorkspaceStateCard({
 }
 
 export function WorkspaceMainPane({
-  bodyNotice,
   bodyState,
   editorInitialSavedEnvelope,
   editorCanonicalEnvelope,
@@ -283,6 +276,7 @@ export function WorkspaceMainPane({
   canManagePageSettings,
   editAccessLost,
   accessLossMessage,
+  accessLossTitle,
   leaseConflict,
   leaseHolder,
   onEndPreviousSession,
@@ -420,14 +414,13 @@ export function WorkspaceMainPane({
   const holderId = leaseHolder?.userSysId?.trim();
   const holderUrl = holderName && holderId && /^[0-9a-f]{32}$/i.test(holderId) ? `/nav_to.do?uri=sys_user.do%3Fsys_id%3D${holderId}` : null;
   const accessLossCard = (
-    <section className="docsera-main__access-loss" role="alert">
-      {!leaseConflict ? <p className="docsera-main__eyebrow">Access lost</p> : null}
-      <h2 className="docsera-main__recovery-title">{leaseConflict ? "Editing session already active" : "Authoring access is no longer available"}</h2>
-      <p className="docsera-main__lede">{holderUrl ? <>This workspace is currently being edited by: <a className="docsera-main__holder-link" href={holderUrl} target="_blank" rel="noopener noreferrer">{holderName}</a></> : accessLossMessage || "Further draft actions are disabled for this session. Return to Live to reload the published workspace view."}</p>
+    <section className="docsera-main__access-loss docsera-main__access-loss--session-recovery" role="alert">
+      <h2 className="docsera-main__recovery-title">{accessLossTitle || (leaseConflict ? "Editing session already active" : onRetryEdit ? "Editing session ended" : "Authoring access is no longer available")}</h2>
+      <p className="docsera-main__lede">{holderUrl ? <>This workspace is currently being edited by: <a className="docsera-main__holder-link" href={holderUrl} target="_blank" rel="noopener noreferrer">{holderName}</a></> : accessLossMessage || (onRetryEdit ? "Retry Edit to check whether the workspace is available." : "Further draft actions are disabled for this session.")}</p>
       <div className="docsera-main__recovery-actions">
         {onEndPreviousSession ? <button type="button" className="docsera-modal__primary" disabled={endingPreviousSession} onClick={onEndPreviousSession}>End previous session</button> : null}
         {onRetryEdit ? <button type="button" className="docsera-modal__primary" onClick={onRetryEdit}>Retry Edit</button> : null}
-        <button type="button" className="docsera-modal__secondary" onClick={onReturnToLive}>Return to Live</button>
+        {workspaceMode === "edit" ? <button type="button" className="docsera-modal__secondary" onClick={onReturnToLive}>Return to Live</button> : null}
       </div>
     </section>
   );
@@ -508,7 +501,7 @@ export function WorkspaceMainPane({
         </section>
       ) : null}
       <article
-        className={`docsera-main__surface docsera-main__surface--document docsera-main__content-reveal${workspaceMode === "edit" ? " docsera-main__surface--editor" : ""}`}
+        className={`docsera-main__surface docsera-main__surface--document docsera-main__content-reveal${workspaceMode === "edit" ? " docsera-main__surface--editor" : ""}${editAccessLost ? " docsera-main__surface--session-recovery" : ""}`}
         data-docsera-content-reveal={displayedSurface}
         data-docsera-content-reveal-scope={contentRevealIntent?.scope ?? "workspace"}
         data-docsera-content-reveal-pending={contentRevealPending ? "true" : undefined}
@@ -534,13 +527,6 @@ export function WorkspaceMainPane({
               />
             </div>
           </div>
-        ) : null}
-
-        {bodyNotice ? (
-          <section className="docsera-main__reader-notice" role={bodyNotice.kind}>
-            <p className="docsera-main__eyebrow">{bodyNotice.eyebrow}</p>
-            <p className="docsera-main__lede">{bodyNotice.message}</p>
-          </section>
         ) : null}
 
         {editAccessLost ? (

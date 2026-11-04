@@ -745,7 +745,7 @@ describe("WorkspaceSettingsOverlay", () => {
         type: "uploaded" as const,
         key: "asset-key-001",
         label: "custom.png",
-        assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001"
+        assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001"
       }
     }));
 

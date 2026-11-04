@@ -20,6 +20,25 @@ const baseProps = {
 };
 
 describe("DocseraHeader workspace shell", () => {
+  it("presents a dismissible recovery warning in the shared toast layer", () => {
+    const dismiss = vi.fn();
+    const { container } = render(
+      <DocseraHeader
+        {...baseProps}
+        recoveryWarningToastMessage="Your unsaved changes were restored. Review them before saving."
+        onDismissRecoveryWarningToast={dismiss}
+      />
+    );
+
+    const toast = screen.getByRole("alert");
+    expect(toast).toHaveClass("docsera-header__publish-toast--warning");
+    expect(toast).toHaveTextContent("Your unsaved changes were restored. Review them before saving.");
+    expect(toast.querySelector(".docsera-header__publish-toast-icon")).toBeInTheDocument();
+    expect(container.querySelector(".docsera-main__reader-notice")).toBeNull();
+    fireEvent.click(within(toast).getByRole("button", { name: "Dismiss recovery warning" }));
+    expect(dismiss).toHaveBeenCalledOnce();
+  });
+
   it("uses the compact edit header actions and moves secondary controls into More", () => {
     const originalMatchMedia = window.matchMedia;
     Object.defineProperty(window, "matchMedia", { configurable: true, value: () => ({ matches: true, addEventListener: () => undefined, removeEventListener: () => undefined }) });

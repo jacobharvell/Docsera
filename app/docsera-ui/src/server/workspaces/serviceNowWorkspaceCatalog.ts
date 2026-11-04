@@ -12,7 +12,7 @@ import {
 import { canCurrentUserCreateWorkspaces, evaluateCurrentUserWorkspaceCapabilities } from "./serviceNowWorkspaceCapabilities.ts";
 import { mapWorkspaceRecord } from "./serviceNowWorkspaceRecords.ts";
 
-const DOCSERA_WORKSPACE_TABLE = "x_82900_docsera_workspace";
+const DOCSERA_WORKSPACE_TABLE = "x_2300756_docsera_workspace";
 
 function cleanText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";

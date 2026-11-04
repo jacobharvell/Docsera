@@ -143,7 +143,7 @@ afterEach(() => {
   cleanup();
   document.querySelector("[data-docsera-page-editor-host='true']")?.remove();
   Reflect.deleteProperty(window, "matchMedia");
-  window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do");
+  window.history.replaceState({}, "", "/x_2300756_docsera_docsera_sdk_runtime.do");
 });
 
 describe("WorkspaceToc", () => {
@@ -308,7 +308,7 @@ describe("WorkspaceToc", () => {
 
   it("smoothly scrolls to the canonical live heading anchor without mutating the workspace route", () => {
     const envelope = createDuplicateHeadingDocseraDocumentEnvelope();
-    window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/overview?mode=edit");
+    window.history.replaceState({}, "", "/x_2300756_docsera_docsera_sdk_runtime.do#/product-docs/overview?mode=edit");
     const matchMedia = mockReducedMotionPreference(false);
     renderToc(envelope);
 
@@ -335,7 +335,7 @@ describe("WorkspaceToc", () => {
 
   it("supports keyboard activation with the same smooth in-page scroll behavior", () => {
     const envelope = createHeadingHierarchyDocseraDocumentEnvelope();
-    window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/overview");
+    window.history.replaceState({}, "", "/x_2300756_docsera_docsera_sdk_runtime.do#/product-docs/overview");
     mockReducedMotionPreference(false);
     renderToc(envelope);
 
@@ -475,7 +475,7 @@ describe("WorkspaceToc", () => {
         content: [{ type: "text", text: "CLI" }]
       }
     ]);
-    window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/overview?mode=edit");
+    window.history.replaceState({}, "", "/x_2300756_docsera_docsera_sdk_runtime.do#/product-docs/overview?mode=edit");
     renderTocOnly(envelope);
 
     const editorHost = document.createElement("div");
@@ -513,7 +513,7 @@ describe("WorkspaceToc", () => {
         content: [{ type: "text", text: "CLI" }]
       }
     ]);
-    window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/overview?mode=edit");
+    window.history.replaceState({}, "", "/x_2300756_docsera_docsera_sdk_runtime.do#/product-docs/overview?mode=edit");
     mockReducedMotionPreference(false);
     renderTocOnly(envelope);
 
@@ -552,7 +552,7 @@ describe("WorkspaceToc", () => {
         content: [{ type: "text", text: "Overview" }]
       }
     ]);
-    window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/overview");
+    window.history.replaceState({}, "", "/x_2300756_docsera_docsera_sdk_runtime.do#/product-docs/overview");
     mockReducedMotionPreference(false);
     renderTocOnly(envelope);
 

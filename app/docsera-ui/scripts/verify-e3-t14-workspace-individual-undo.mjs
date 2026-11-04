@@ -13,17 +13,17 @@ const defaults = {
   instanceUrl: "https://dev295482.service-now.com",
   keyringAccount: "now-sdk",
   keyringService: "ServiceNow",
-  pingPath: "/api/x_82900_docsera/docsera_runtime/ping",
-  workspacePath: "/api/x_82900_docsera/docsera_runtime/workspaces",
-  workspaceProvisioningStatusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status",
-  workspaceEditLeasePath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease",
-  pendingChangesPath: "/api/x_82900_docsera/docsera_runtime/workspaces/pending-changes",
-  pagesPath: "/api/x_82900_docsera/docsera_runtime/pages",
-  pageMovePath: "/api/x_82900_docsera/docsera_runtime/pages/move",
-  pageDeletePath: "/api/x_82900_docsera/docsera_runtime/pages/delete",
-  workspacePublishPath: "/api/x_82900_docsera/docsera_runtime/workspaces/publish",
-  workspaceDiscardAllPath: "/api/x_82900_docsera/docsera_runtime/workspaces/discard-all",
-  workspaceDiscardPagePath: "/api/x_82900_docsera/docsera_runtime/workspaces/discard-page"
+  pingPath: "/api/x_2300756_docsera/docsera_runtime/ping",
+  workspacePath: "/api/x_2300756_docsera/docsera_runtime/workspaces",
+  workspaceProvisioningStatusPath: "/api/x_2300756_docsera/docsera_runtime/workspace-provisioning-status",
+  workspaceEditLeasePath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease",
+  pendingChangesPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/pending-changes",
+  pagesPath: "/api/x_2300756_docsera/docsera_runtime/pages",
+  pageMovePath: "/api/x_2300756_docsera/docsera_runtime/pages/move",
+  pageDeletePath: "/api/x_2300756_docsera/docsera_runtime/pages/delete",
+  workspacePublishPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/publish",
+  workspaceDiscardAllPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/discard-all",
+  workspaceDiscardPagePath: "/api/x_2300756_docsera/docsera_runtime/workspaces/discard-page"
 };
 
 function cleanText(value) { return typeof value === "string" ? value.trim() : ""; }

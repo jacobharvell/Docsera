@@ -7,21 +7,21 @@ const defaults = {
   instanceUrl: "https://dev295482.service-now.com",
   keyringAccount: "now-sdk",
   keyringService: "ServiceNow",
-  pingPath: "/api/x_82900_docsera/docsera_runtime/ping",
-  workspacePath: "/api/x_82900_docsera/docsera_runtime/workspaces",
-  workspaceProvisioningStatusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status",
-  pagesPath: "/api/x_82900_docsera/docsera_runtime/pages",
-  workspaceEditLeasePath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease",
-  workspaceTable: "x_82900_docsera_workspace",
-  workspaceLeaseTable: "x_82900_docsera_workspace_edit_lease",
-  workspaceChangeSetTable: "x_82900_docsera_workspace_change_set",
-  workspaceSnapshotSetTable: "x_82900_docsera_workspace_snapshot_set",
-  workspacePageSnapshotTable: "x_82900_docsera_workspace_page_snapshot",
-  workspaceChangeEntryTable: "x_82900_docsera_workspace_change_entry",
-  workspaceMutationClaimTable: "x_82900_docsera_workspace_mutation_claim",
-  workspaceRemovalBatchTable: "x_82900_docsera_workspace_removal_batch",
-  workspaceRemovalMemberTable: "x_82900_docsera_workspace_removal_member",
-  pageTable: "x_82900_docsera_page"
+  pingPath: "/api/x_2300756_docsera/docsera_runtime/ping",
+  workspacePath: "/api/x_2300756_docsera/docsera_runtime/workspaces",
+  workspaceProvisioningStatusPath: "/api/x_2300756_docsera/docsera_runtime/workspace-provisioning-status",
+  pagesPath: "/api/x_2300756_docsera/docsera_runtime/pages",
+  workspaceEditLeasePath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease",
+  workspaceTable: "x_2300756_docsera_workspace",
+  workspaceLeaseTable: "x_2300756_docsera_workspace_edit_lease",
+  workspaceChangeSetTable: "x_2300756_docsera_workspace_change_set",
+  workspaceSnapshotSetTable: "x_2300756_docsera_workspace_snapshot_set",
+  workspacePageSnapshotTable: "x_2300756_docsera_workspace_page_snapshot",
+  workspaceChangeEntryTable: "x_2300756_docsera_workspace_change_entry",
+  workspaceMutationClaimTable: "x_2300756_docsera_workspace_mutation_claim",
+  workspaceRemovalBatchTable: "x_2300756_docsera_workspace_removal_batch",
+  workspaceRemovalMemberTable: "x_2300756_docsera_workspace_removal_member",
+  pageTable: "x_2300756_docsera_page"
 };
 
 const proofWorkspaceOwnershipMarker = "Temporary verification workspace owned by reset-editor-smoke-data.mjs";
@@ -68,8 +68,8 @@ const ownedGroupNames = Object.freeze(
   ownedWorkspaceConfigs.flatMap((workspace) => [workspace.groups.admin, workspace.groups.editor])
 );
 const workspaceRoleNames = Object.freeze({
-  workspaceAdmin: "x_82900_docsera.workspace_admin",
-  editor: "x_82900_docsera.editor"
+  workspaceAdmin: "x_2300756_docsera.workspace_admin",
+  editor: "x_2300756_docsera.editor"
 });
 
 const representativeEnvelope = Object.freeze({
@@ -481,7 +481,7 @@ async function callRuntime(instanceUrl, session, path, body, method = "POST") {
   });
 }
 
-async function runBackgroundScript(instanceUrl, session, script, scopeName = "x_82900_docsera") {
+async function runBackgroundScript(instanceUrl, session, script, scopeName = "x_2300756_docsera") {
   const form = await fetchText(instanceUrl, session, "sys.scripts.do", { accept: "text/html" });
   if (!form.ok) {
     throw new Error(`Background script form failed with HTTP ${form.status}.`);
@@ -990,19 +990,19 @@ async function getCurrentUser(instanceUrl, session) {
 }
 
 async function loadOwnedRecords(instanceUrl, session) {
-  const requestRecords = await tableQuery(instanceUrl, session, "x_82900_docsera_workspace_provision_request", {
+  const requestRecords = await tableQuery(instanceUrl, session, "x_2300756_docsera_workspace_provision_request", {
     query: `workspace_slugIN${ownedWorkspaceSlugs.join(",")}`,
     fields: "sys_id,workspace_slug,name",
     limit: 100
   });
-  const workspaceRecords = await tableQuery(instanceUrl, session, "x_82900_docsera_workspace", {
+  const workspaceRecords = await tableQuery(instanceUrl, session, "x_2300756_docsera_workspace", {
     query: `workspace_slugIN${ownedWorkspaceSlugs.join(",")}`,
     fields: "sys_id,workspace_slug,name,admin_group,editor_group",
     limit: 100
   });
   const workspaceSysIds = workspaceRecords.map((record) => cleanText(record.sys_id)).filter(Boolean);
   const pageRecords = workspaceSysIds.length
-    ? await tableQuery(instanceUrl, session, "x_82900_docsera_page", {
+    ? await tableQuery(instanceUrl, session, "x_2300756_docsera_page", {
         query: `workspaceIN${workspaceSysIds.join(",")}`,
         fields: "sys_id,draft_title,draft_slug,workspace",
         limit: 200
@@ -1057,15 +1057,15 @@ function printOwnedRecords(ownedRecords) {
 
 async function deleteOwnedRecords(instanceUrl, session, ownedRecords) {
   for (const record of ownedRecords.pageRecords) {
-    await tableDelete(instanceUrl, session, "x_82900_docsera_page", cleanText(record.sys_id));
+    await tableDelete(instanceUrl, session, "x_2300756_docsera_page", cleanText(record.sys_id));
   }
 
   for (const record of ownedRecords.requestRecords) {
-    await tableDelete(instanceUrl, session, "x_82900_docsera_workspace_provision_request", cleanText(record.sys_id));
+    await tableDelete(instanceUrl, session, "x_2300756_docsera_workspace_provision_request", cleanText(record.sys_id));
   }
 
   for (const record of ownedRecords.workspaceRecords) {
-    await tableDelete(instanceUrl, session, "x_82900_docsera_workspace", cleanText(record.sys_id));
+    await tableDelete(instanceUrl, session, "x_2300756_docsera_workspace", cleanText(record.sys_id));
   }
 
   for (const record of ownedRecords.membershipRecords) {
@@ -1226,9 +1226,9 @@ async function inspectProofWorkspaceBoundary(instanceUrl, session, boundary) {
 
       var requestRowIds = [];
       if (requestIds.length) {
-        requestRowIds = listIds('x_82900_docsera_workspace_provision_request', 'sys_id', requestIds);
+        requestRowIds = listIds('x_2300756_docsera_workspace_provision_request', 'sys_id', requestIds);
       } else if (workspaceSlug) {
-        var requestRows = new GlideRecord('x_82900_docsera_workspace_provision_request');
+        var requestRows = new GlideRecord('x_2300756_docsera_workspace_provision_request');
         requestRows.addQuery('workspace_slug', workspaceSlug);
         requestRows.query();
         while (requestRows.next()) {
@@ -1314,7 +1314,7 @@ async function cleanupProofWorkspaceBoundary(instanceUrl, session, inventory) {
             deleteByIds('${defaults.workspaceChangeSetTable}', ids);
             break;
           case 'requests':
-            deleteByIds('x_82900_docsera_workspace_provision_request', ids);
+            deleteByIds('x_2300756_docsera_workspace_provision_request', ids);
             break;
           case 'workspace':
             deleteByIds('${defaults.workspaceTable}', ids);
@@ -1370,7 +1370,7 @@ async function preflightProofWorkspaceRecovery(instanceUrl, session) {
 }
 
 async function loadFailedProofProvisionRequests(instanceUrl, session) {
-  return tableQuery(instanceUrl, session, "x_82900_docsera_workspace_provision_request", {
+  return tableQuery(instanceUrl, session, "x_2300756_docsera_workspace_provision_request", {
     query: `short_description=${proofWorkspaceOwnershipMarker}^workspaceISEMPTY`,
     fields: "sys_id,workspace_slug,name,admin_group,editor_group,admin_group_name,editor_group_name,state,error_code,error_message",
     limit: 20
@@ -1502,7 +1502,7 @@ async function applyProofRecoveryPlan(instanceUrl, session, proofRecoveryInspect
     if (requestPlan.plannedAction !== "cleanup" || !requestPlan.requestId) {
       continue;
     }
-    await tableDelete(instanceUrl, session, "x_82900_docsera_workspace_provision_request", requestPlan.requestId);
+    await tableDelete(instanceUrl, session, "x_2300756_docsera_workspace_provision_request", requestPlan.requestId);
     failedRequestRecoveries.push({
       requestId: requestPlan.requestId,
       workspaceSlug: requestPlan.workspaceSlug,
@@ -1666,7 +1666,7 @@ async function createOwnedRecords(instanceUrl, session, currentUser, dryRun) {
     const workspaceRecord = await tableInsert(
       instanceUrl,
       session,
-      "x_82900_docsera_workspace",
+      "x_2300756_docsera_workspace",
       buildWorkspaceInsert(workspaceConfig, currentUser.sysId, {
         admin: cleanText(adminGroup?.sys_id),
         editor: cleanText(editorGroup?.sys_id)
@@ -1681,7 +1681,7 @@ async function createOwnedRecords(instanceUrl, session, currentUser, dryRun) {
       const pageRecord = await tableInsert(
         instanceUrl,
         session,
-        "x_82900_docsera_page",
+        "x_2300756_docsera_page",
         buildRepresentativePageInsert(workspaceSysId, workspaceConfig.page)
       );
       created.pages.push(cleanText(pageRecord?.sys_id));

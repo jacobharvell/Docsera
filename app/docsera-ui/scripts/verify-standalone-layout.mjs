@@ -9,7 +9,7 @@ const defaults = {
   authAlias: "docsera-pdi",
   browserExecutablePath: "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
   instanceUrl: "https://dev295482.service-now.com",
-  pageEndpoint: "x_82900_docsera_docsera_sdk_runtime.do"
+  pageEndpoint: "x_2300756_docsera_docsera_sdk_runtime.do"
 };
 
 function readEnv(...names) {

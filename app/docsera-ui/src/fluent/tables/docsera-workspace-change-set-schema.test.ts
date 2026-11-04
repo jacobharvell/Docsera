@@ -98,17 +98,17 @@ describe("workspace change-set metadata contract", () => {
   it("denies generic CRUD across the workspace lease and workflow tables", () => {
     const acl = source("security/docsera-workspace-foundation-table-access.now.ts");
     const protectedTables = [
-      "x_82900_docsera_workspace_edit_lease",
-      "x_82900_docsera_workspace_change_set",
-      "x_82900_docsera_workspace_snapshot_set",
-      "x_82900_docsera_workspace_page_snapshot",
-      "x_82900_docsera_workspace_change_entry",
-      "x_82900_docsera_workspace_mutation_claim",
-      "x_82900_docsera_workspace_removal_batch",
-      "x_82900_docsera_workspace_removal_member",
-      "x_82900_docsera_workspace_icon_asset",
-      "x_82900_docsera_workspace_member_mutation_command",
-      "x_82900_docsera_workspace_provision_request"
+      "x_2300756_docsera_workspace_edit_lease",
+      "x_2300756_docsera_workspace_change_set",
+      "x_2300756_docsera_workspace_snapshot_set",
+      "x_2300756_docsera_workspace_page_snapshot",
+      "x_2300756_docsera_workspace_change_entry",
+      "x_2300756_docsera_workspace_mutation_claim",
+      "x_2300756_docsera_workspace_removal_batch",
+      "x_2300756_docsera_workspace_removal_member",
+      "x_2300756_docsera_workspace_icon_asset",
+      "x_2300756_docsera_workspace_member_mutation_command",
+      "x_2300756_docsera_workspace_provision_request"
     ];
     for (const table of protectedTables) {
       expect(acl).toContain(table);
@@ -124,7 +124,7 @@ describe("workspace change-set metadata contract", () => {
 
     for (const operation of ["create", "read", "write", "delete"]) {
       expect(acl).toContain(`Now.ID["docsera_workspace_provision_request_${operation}_deny"]`);
-      expect(acl).toContain(`table: "x_82900_docsera_workspace_provision_request", operation: "${operation}", decisionType: "deny", adminOverrides: false, script: "return false;"`);
+      expect(acl).toContain(`table: "x_2300756_docsera_workspace_provision_request", operation: "${operation}", decisionType: "deny", adminOverrides: false, script: "return false;"`);
     }
   });
 });

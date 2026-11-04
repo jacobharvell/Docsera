@@ -1,8 +1,8 @@
 import "@servicenow/sdk/global";
 import { BooleanColumn, ChoiceColumn, DateTimeColumn, IntegerColumn, ReferenceColumn, StringColumn, Table } from "@servicenow/sdk/core";
 
-export const x_82900_docsera_page = Table({
-  name: "x_82900_docsera_page",
+export const x_2300756_docsera_page = Table({
+  name: "x_2300756_docsera_page",
   label: "Docsera Page",
   display: "draft_title",
   actions: ["read", "create"],
@@ -12,11 +12,11 @@ export const x_82900_docsera_page = Table({
     workspace: ReferenceColumn({
       label: "Workspace",
       mandatory: true,
-      referenceTable: "x_82900_docsera_workspace"
+      referenceTable: "x_2300756_docsera_workspace"
     }),
     parent_page: ReferenceColumn({
       label: "Parent page",
-      referenceTable: "x_82900_docsera_page"
+      referenceTable: "x_2300756_docsera_page"
     }),
     sibling_order: StringColumn({
       label: "Sibling order",
@@ -25,7 +25,7 @@ export const x_82900_docsera_page = Table({
     }),
     draft_parent_page: ReferenceColumn({
       label: "Draft parent page",
-      referenceTable: "x_82900_docsera_page"
+      referenceTable: "x_2300756_docsera_page"
     }),
     draft_sibling_order: StringColumn({
       label: "Draft sibling order",

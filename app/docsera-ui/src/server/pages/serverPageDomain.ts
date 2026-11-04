@@ -5,7 +5,7 @@ import {
   type ServerTiptapDocument
 } from "./serverEditorDocument.ts";
 
-export const DOCSERA_PAGE_TABLE = "x_82900_docsera_page";
+export const DOCSERA_PAGE_TABLE = "x_2300756_docsera_page";
 
 export type PagePublicationState = "draft" | "published" | "published_with_unpublished_changes";
 

@@ -97,13 +97,13 @@ type JsonResponse<T> = {
   status: number;
 };
 
-const DEFAULT_WORKSPACE_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces";
-const DEFAULT_PAGE_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/pages";
-const DEFAULT_WORKSPACE_MEDIA_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/media";
-const DEFAULT_WORKSPACE_MEDIA_FILE_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/media/file";
-const DEFAULT_WORKSPACE_ICON_COLLECTION_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/icons";
-const DEFAULT_WORKSPACE_SETTINGS_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/settings";
-const DEFAULT_WORKSPACE_MEMBERS_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/members";
+const DEFAULT_WORKSPACE_COLLECTION_PATH = "/api/x_2300756_docsera/docsera_runtime/workspaces";
+const DEFAULT_PAGE_COLLECTION_PATH = "/api/x_2300756_docsera/docsera_runtime/pages";
+const DEFAULT_WORKSPACE_MEDIA_COLLECTION_PATH = "/api/x_2300756_docsera/docsera_runtime/workspaces/media";
+const DEFAULT_WORKSPACE_MEDIA_FILE_PATH = "/api/x_2300756_docsera/docsera_runtime/workspaces/media/file";
+const DEFAULT_WORKSPACE_ICON_COLLECTION_PATH = "/api/x_2300756_docsera/docsera_runtime/workspaces/icons";
+const DEFAULT_WORKSPACE_SETTINGS_PATH = "/api/x_2300756_docsera/docsera_runtime/workspaces/settings";
+const DEFAULT_WORKSPACE_MEMBERS_PATH = "/api/x_2300756_docsera/docsera_runtime/workspaces/members";
 const DEFAULT_CURRENT_USER_PATH = "/api/now/ui/user/current_user";
 const SAFE_PAGE_BODY_SAVE_ERROR_MESSAGE = "Something went wrong while saving the page body. Please try again.";
 const SAFE_PAGE_DELETE_ERROR_MESSAGE = "Something went wrong while deleting the page. The page was not deleted. Please try again.";
@@ -2114,7 +2114,7 @@ export function createServiceNowClient(runtime: DocseraRuntimeContext): ServiceN
   const workspacePublishPath = resolveWorkspacePublishPath(collectionPath);
   const provisioningStatusPath = resolvePath(
     runtime.config.workspaceProvisioningStatusPath,
-    "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status"
+    "/api/x_2300756_docsera/docsera_runtime/workspace-provisioning-status"
   );
 
   return {

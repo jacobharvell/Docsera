@@ -43,7 +43,7 @@ vi.mock("../workspaces/serviceNowWorkspaceRecords.ts", () => ({
 }));
 
 vi.mock("../workspaces/serverWorkspaceDomain.ts", () => ({
-  DOCSERA_WORKSPACE_TABLE: "x_82900_docsera_workspace"
+  DOCSERA_WORKSPACE_TABLE: "x_2300756_docsera_workspace"
 }));
 
 vi.mock("@servicenow/glide", () => ({

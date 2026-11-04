@@ -6,11 +6,11 @@ const runtime: DocseraRuntimeContext = {
   mountNode: document.createElement("div"),
   mountNodeId: "docsera-root",
   config: {
-    backendPingPath: "/api/x_82900_docsera/docsera_runtime/ping",
+    backendPingPath: "/api/x_2300756_docsera/docsera_runtime/ping",
     cssPath: undefined,
     scriptPath: undefined,
-    workspaceCollectionPath: "/api/x_82900_docsera/docsera_runtime/workspaces",
-    workspaceProvisioningStatusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status"
+    workspaceCollectionPath: "/api/x_2300756_docsera/docsera_runtime/workspaces",
+    workspaceProvisioningStatusPath: "/api/x_2300756_docsera/docsera_runtime/workspace-provisioning-status"
   }
 };
 
@@ -26,7 +26,7 @@ function createPingEnvelope(): PingEnvelope {
   return {
     result: {
       authenticated: true,
-      scope: "x_82900_docsera",
+      scope: "x_2300756_docsera",
       status: "ok",
       timestamp: "2026-07-03 11:16:20",
       userDisplayName: "System Administrator",
@@ -97,7 +97,7 @@ test("ping sends the ServiceNow user token when one is available", async () => {
   const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
   const [currentUserPath, currentUserInit] = fetchMock.mock.calls[1] as [string, RequestInit];
 
-  expect(path).toBe("/api/x_82900_docsera/docsera_runtime/ping");
+  expect(path).toBe("/api/x_2300756_docsera/docsera_runtime/ping");
   expect(init.credentials).toBe("same-origin");
   expect(init.headers).toEqual({
     Accept: "application/json",
@@ -111,7 +111,7 @@ test("ping sends the ServiceNow user token when one is available", async () => {
   });
   expect(result).toMatchObject({
     authenticated: true,
-    scope: "x_82900_docsera",
+    scope: "x_2300756_docsera",
     status: "ok"
   });
   expect(result).toMatchObject({
@@ -183,7 +183,7 @@ test("ping does not synthesize literal unknown identity fallbacks", async () => 
           createResponseBody(
             {
               authenticated: true,
-              scope: "x_82900_docsera",
+              scope: "x_2300756_docsera",
               status: "ok",
               timestamp: "2026-07-03 11:16:20"
             },
@@ -244,7 +244,7 @@ test("listWorkspaces normalizes a double-wrapped live response", async () => {
   });
 
   expect(fetchMock).toHaveBeenCalledWith(
-    "/api/x_82900_docsera/docsera_runtime/workspaces?q=admin&page=2&pageSize=10",
+    "/api/x_2300756_docsera/docsera_runtime/workspaces?q=admin&page=2&pageSize=10",
     expect.objectContaining({
       credentials: "same-origin",
       headers: expect.objectContaining({
@@ -321,12 +321,12 @@ test("createWorkspace resolves pending workspaces and the status endpoint resolv
               pollAfterMs: 1000,
               requestId: "request-001",
               state: "requested",
-              statusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-001"
+              statusPath: "/api/x_2300756_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-001"
             },
             roleNames: {
-              docseraAdmin: "x_82900_docsera.admin",
-              editor: "x_82900_docsera.editor",
-              workspaceAdmin: "x_82900_docsera.workspace_admin"
+              docseraAdmin: "x_2300756_docsera.admin",
+              editor: "x_2300756_docsera.editor",
+              workspaceAdmin: "x_2300756_docsera.workspace_admin"
             }
           },
           2
@@ -342,7 +342,7 @@ test("createWorkspace resolves pending workspaces and the status endpoint resolv
             provisioning: {
               requestId: "request-001",
               state: "succeeded",
-              statusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-001"
+              statusPath: "/api/x_2300756_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-001"
             },
             workspace: createWorkspaceView("Team Docs", "team-docs"),
             groups: {
@@ -370,7 +370,7 @@ test("createWorkspace resolves pending workspaces and the status endpoint resolv
   const resolved = await client.getWorkspaceProvisioningStatus(
     pending.state === "pending"
       ? pending.statusPath
-      : "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-001"
+      : "/api/x_2300756_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-001"
   );
 
   expect(pending).toMatchObject({
@@ -400,12 +400,12 @@ test("provisioning status normalizes double-wrapped failed responses", async () 
           provisioning: {
             requestId: "request-002",
             state: "failed",
-            statusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-002"
+            statusPath: "/api/x_2300756_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-002"
           },
           roleNames: {
-            docseraAdmin: "x_82900_docsera.admin",
-            editor: "x_82900_docsera.editor",
-            workspaceAdmin: "x_82900_docsera.workspace_admin"
+            docseraAdmin: "x_2300756_docsera.admin",
+            editor: "x_2300756_docsera.editor",
+            workspaceAdmin: "x_2300756_docsera.workspace_admin"
           }
         },
         2
@@ -415,7 +415,7 @@ test("provisioning status normalizes double-wrapped failed responses", async () 
   globalThis.fetch = fetchMock as typeof fetch;
 
   const result = await createServiceNowClient(runtime).getWorkspaceProvisioningStatus(
-    "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-002"
+    "/api/x_2300756_docsera/docsera_runtime/workspace-provisioning-status?requestId=request-002"
   );
 
   expect(result).toMatchObject({
@@ -505,7 +505,7 @@ test("uploadWorkspaceIcon posts the selected file to the workspace icon boundary
           asset: {
             assetKey: "asset-key-001",
             fileName: "brand.png",
-            url: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001",
+            url: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001",
             contentType: "image/png",
             sizeBytes: 512,
             width: 128,
@@ -521,7 +521,7 @@ test("uploadWorkspaceIcon posts the selected file to the workspace icon boundary
   const result = await createServiceNowClient(runtime).uploadWorkspaceIcon!({ file });
   const [path, init] = fetchMock.mock.calls[0] as [string, RequestInit];
 
-  expect(path).toBe("/api/x_82900_docsera/docsera_runtime/workspaces/icons?fileName=brand.png");
+  expect(path).toBe("/api/x_2300756_docsera/docsera_runtime/workspaces/icons?fileName=brand.png");
   expect(init.method).toBe("POST");
   expect(init.body).toBe(file);
   expect(init.headers).toMatchObject({
@@ -534,7 +534,7 @@ test("uploadWorkspaceIcon posts the selected file to the workspace icon boundary
       type: "uploaded",
       key: "asset-key-001",
       label: "brand.png",
-      assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001"
+      assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001"
     }
   });
 });

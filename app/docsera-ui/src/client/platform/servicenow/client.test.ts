@@ -13,9 +13,9 @@ function createRuntime(): DocseraRuntimeContext {
     mountNodeId: "docsera-root",
     config: {
       backendPingPath: undefined,
-      pageCollectionPath: "/api/x_82900_docsera/docsera_runtime/pages",
-      workspaceCollectionPath: "/api/x_82900_docsera/docsera_runtime/workspaces",
-      workspaceProvisioningStatusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status"
+      pageCollectionPath: "/api/x_2300756_docsera/docsera_runtime/pages",
+      workspaceCollectionPath: "/api/x_2300756_docsera/docsera_runtime/workspaces",
+      workspaceProvisioningStatusPath: "/api/x_2300756_docsera/docsera_runtime/workspace-provisioning-status"
     }
   };
 }
@@ -41,7 +41,7 @@ function createBinaryResponse(status: number, blob: Blob) {
 describe("service now client workspace media", () => {
   it("sends only the workspace reference and held lease token for body-save recovery", async () => {
     const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(path)).toBe("/api/x_82900_docsera/docsera_runtime/workspaces/recover-body-save");
+      expect(String(path)).toBe("/api/x_2300756_docsera/docsera_runtime/workspaces/recover-body-save");
       expect(JSON.parse(String(init?.body))).toEqual({ workspaceSlug: "product-docs", workspaceSysId: "workspace-001", workspaceLeaseToken: "workspace-lease-token" });
       return createJsonResponse(200, { result: { outcome: "recovered", changeSetId: "change-set-002", changeSetRevision: 10 } });
     });
@@ -55,7 +55,7 @@ describe("service now client workspace media", () => {
   });
   it("distinguishes committed workspace deletion cleanup failures from preflight failures", async () => {
     const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(path)).toBe("/api/x_82900_docsera/docsera_runtime/workspaces/delete");
+      expect(String(path)).toBe("/api/x_2300756_docsera/docsera_runtime/workspaces/delete");
       expect(init?.method).toBe("POST");
       return createJsonResponse(500, {
         error: {
@@ -84,7 +84,7 @@ describe("service now client workspace media", () => {
 
   it("lists workspace media and normalizes the returned descriptors", async () => {
     const fetchMock = vi.fn(async (path: RequestInfo | URL) => {
-      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/workspaces/media?workspaceSysId=workspace-001");
+      expect(String(path)).toContain("/api/x_2300756_docsera/docsera_runtime/workspaces/media?workspaceSysId=workspace-001");
       return createJsonResponse(200, {
         result: {
           items: [
@@ -126,7 +126,7 @@ describe("service now client workspace media", () => {
     const file = new File(["image-data"], "diagram.png", { type: "image/png" });
     const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
       expect(String(path)).toContain(
-        "/api/x_82900_docsera/docsera_runtime/workspaces/media?workspaceSysId=workspace-001&fileName=diagram.png"
+        "/api/x_2300756_docsera/docsera_runtime/workspaces/media?workspaceSysId=workspace-001&fileName=diagram.png"
       );
       expect(init?.method).toBe("POST");
       expect(init?.body).toBe(file);
@@ -175,7 +175,7 @@ describe("service now client workspace media", () => {
     const blob = new Blob(["binary-image"], { type: "image/png" });
     const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
       expect(String(path)).toContain(
-        "/api/x_82900_docsera/docsera_runtime/workspaces/media/file?workspaceSysId=workspace-001&mediaId=media-001"
+        "/api/x_2300756_docsera/docsera_runtime/workspaces/media/file?workspaceSysId=workspace-001&mediaId=media-001"
       );
       expect(init?.credentials).toBe("same-origin");
       expect(init?.signal).toBe(signal);
@@ -202,7 +202,7 @@ describe("service now client workspace media", () => {
     const signal = new AbortController().signal;
     const blob = new Blob(["icon-image"], { type: "image/png" });
     const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      expect(path).toBe("/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001");
+      expect(path).toBe("/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001");
       expect(init?.credentials).toBe("same-origin");
       expect(init?.signal).toBe(signal);
       expect((init?.headers as HeadersInit | undefined) ?? {}).toMatchObject({
@@ -215,7 +215,7 @@ describe("service now client workspace media", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await createServiceNowClient(createRuntime()).loadWorkspaceIcon!({
-      assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001",
+      assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001",
       signal
     });
 
@@ -226,7 +226,7 @@ describe("service now client workspace media", () => {
     vi.stubGlobal("fetch", vi.fn(async () => createBinaryResponse(404, new Blob())));
 
     const result = await createServiceNowClient(createRuntime()).loadWorkspaceIcon!({
-      assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001"
+      assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001"
     });
 
     expect(result).toBeNull();
@@ -252,7 +252,7 @@ afterEach(() => {
 describe("service now client page creation", () => {
   it("normalizes a nested live page list response", async () => {
     const fetchMock = vi.fn(async (path: RequestInfo | URL) => {
-      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/pages?workspaceSlug=product-docs");
+      expect(String(path)).toContain("/api/x_2300756_docsera/docsera_runtime/pages?workspaceSlug=product-docs");
       return createJsonResponse(200, {
         result: {
           items: [
@@ -301,7 +301,7 @@ describe("service now client page creation", () => {
 
   it("posts page moves with workspace authority and normalizes the refreshed Edit projection", async () => {
     const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(path)).toBe("/api/x_82900_docsera/docsera_runtime/pages/move");
+      expect(String(path)).toBe("/api/x_2300756_docsera/docsera_runtime/pages/move");
       expect(JSON.parse(String(init?.body))).toEqual({
         expectedChangeSetId: "change-set-001",
         expectedChangeSetRevision: 9,
@@ -381,7 +381,7 @@ describe("service now client page creation", () => {
 
   it("posts workspace publish commands with exact authority and normalizes successor state", async () => {
     const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(path)).toBe("/api/x_82900_docsera/docsera_runtime/workspaces/publish");
+      expect(String(path)).toBe("/api/x_2300756_docsera/docsera_runtime/workspaces/publish");
       expect(JSON.parse(String(init?.body))).toEqual({
         commandId: "publish-001",
         expectedChangeSetId: "change-set-001",
@@ -450,7 +450,7 @@ describe("service now client page creation", () => {
       changeSetRevision: 9
     };
     const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/workspaces/discard-all");
+      expect(String(path)).toContain("/api/x_2300756_docsera/docsera_runtime/workspaces/discard-all");
       expect(JSON.parse(String(init?.body))).toEqual({
         commandId: "discard-001",
         expectedChangeSetId: "change-set-001",
@@ -730,7 +730,7 @@ describe("service now client page creation", () => {
 
   it("normalizes a nested page body save response", async () => {
     const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/pages");
+      expect(String(path)).toContain("/api/x_2300756_docsera/docsera_runtime/pages");
       expect(init?.method).toBe("PATCH");
       expect(JSON.parse(String(init?.body))).toEqual({
         workspaceSlug: "product-docs",
@@ -839,7 +839,7 @@ describe("service now client page creation", () => {
 
   it("normalizes a page publish response and preserves published metadata", async () => {
     const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/pages/publish");
+      expect(String(path)).toContain("/api/x_2300756_docsera/docsera_runtime/pages/publish");
       expect(init?.method).toBe("POST");
       expect(JSON.parse(String(init?.body))).toEqual({
         workspaceSlug: "product-docs",
@@ -991,7 +991,7 @@ describe("service now client page creation", () => {
 
   it("normalizes a double-wrapped page body save response", async () => {
     const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/pages");
+      expect(String(path)).toContain("/api/x_2300756_docsera/docsera_runtime/pages");
       expect(init?.method).toBe("PATCH");
       expect(JSON.parse(String(init?.body))).toEqual({
         workspaceSlug: "",
@@ -1141,7 +1141,7 @@ describe("service now client page creation", () => {
   it.each([
     {
       action: "acquireWorkspaceEditLease" as const,
-      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/acquire",
+      expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/acquire",
       input: {
         workspaceSlug: "product-docs",
         workspaceSysId: "workspace-001"
@@ -1167,7 +1167,7 @@ describe("service now client page creation", () => {
     },
     {
       action: "resumeWorkspaceEditLease" as const,
-      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/resume",
+      expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/resume",
       input: {
         workspaceSlug: "product-docs",
         workspaceSysId: "workspace-001",
@@ -1192,7 +1192,7 @@ describe("service now client page creation", () => {
     },
     {
       action: "renewWorkspaceEditLease" as const,
-      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/renew",
+      expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/renew",
       input: {
         workspaceSlug: "product-docs",
         workspaceSysId: "workspace-001",
@@ -1238,7 +1238,7 @@ describe("service now client page creation", () => {
   it.each([
     {
       action: "acquireWorkspaceEditLease" as const,
-      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/acquire",
+      expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/acquire",
       input: {
         workspaceSlug: "product-docs",
         workspaceSysId: "workspace-001"
@@ -1247,7 +1247,7 @@ describe("service now client page creation", () => {
     },
     {
       action: "acquireWorkspaceEditLease" as const,
-      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/acquire",
+      expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/acquire",
       input: {
         workspaceSlug: "product-docs",
         workspaceSysId: "workspace-001"
@@ -1256,7 +1256,7 @@ describe("service now client page creation", () => {
     },
     {
       action: "resumeWorkspaceEditLease" as const,
-      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/resume",
+      expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/resume",
       input: {
         workspaceSlug: "product-docs",
         workspaceSysId: "workspace-001",
@@ -1266,7 +1266,7 @@ describe("service now client page creation", () => {
     },
     {
       action: "resumeWorkspaceEditLease" as const,
-      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/resume",
+      expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/resume",
       input: {
         workspaceSlug: "product-docs",
         workspaceSysId: "workspace-001",
@@ -1276,7 +1276,7 @@ describe("service now client page creation", () => {
     },
     {
       action: "renewWorkspaceEditLease" as const,
-      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/renew",
+      expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/renew",
       input: {
         workspaceSlug: "product-docs",
         workspaceSysId: "workspace-001",
@@ -1286,7 +1286,7 @@ describe("service now client page creation", () => {
     },
     {
       action: "renewWorkspaceEditLease" as const,
-      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/renew",
+      expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/renew",
       input: {
         workspaceSlug: "product-docs",
         workspaceSysId: "workspace-001",
@@ -1296,7 +1296,7 @@ describe("service now client page creation", () => {
     },
     {
       action: "releaseWorkspaceEditLease" as const,
-      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/release",
+      expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/release",
       input: {
         workspaceSlug: "product-docs",
         workspaceSysId: "workspace-001",
@@ -1314,7 +1314,7 @@ describe("service now client page creation", () => {
     },
     {
       action: "releaseWorkspaceEditLease" as const,
-      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/release",
+      expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/release",
       input: {
         workspaceSlug: "product-docs",
         workspaceSysId: "workspace-001",
@@ -1324,7 +1324,7 @@ describe("service now client page creation", () => {
     },
     {
       action: "getWorkspaceEditLeaseStatus" as const,
-      expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/status",
+      expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/status",
       input: {
         workspaceSlug: "product-docs",
         workspaceSysId: "workspace-001"
@@ -1385,7 +1385,7 @@ describe("service now client page creation", () => {
     const cases = [
       {
         action: "acquireWorkspaceEditLease" as const,
-        expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/acquire",
+        expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/acquire",
         input: {
           workspaceSlug: "product-docs",
           workspaceSysId: "workspace-001"
@@ -1403,7 +1403,7 @@ describe("service now client page creation", () => {
       },
       {
         action: "resumeWorkspaceEditLease" as const,
-        expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/resume",
+        expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/resume",
         input: {
           workspaceSlug: "product-docs",
           workspaceSysId: "workspace-001",
@@ -1424,7 +1424,7 @@ describe("service now client page creation", () => {
       },
       {
         action: "renewWorkspaceEditLease" as const,
-        expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/renew",
+        expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/renew",
         input: {
           workspaceSlug: "product-docs",
           workspaceSysId: "workspace-001",
@@ -1445,7 +1445,7 @@ describe("service now client page creation", () => {
       },
       {
         action: "getWorkspaceEditLeaseStatus" as const,
-        expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/status",
+        expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/status",
         input: {
           workspaceSlug: "product-docs",
           workspaceSysId: "workspace-001"
@@ -1459,7 +1459,7 @@ describe("service now client page creation", () => {
       },
       {
         action: "releaseWorkspaceEditLease" as const,
-        expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/release",
+        expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/release",
         input: {
           workspaceSlug: "product-docs",
           workspaceSysId: "workspace-001",
@@ -1474,7 +1474,7 @@ describe("service now client page creation", () => {
       },
       {
         action: "releaseWorkspaceEditLease" as const,
-        expectedPath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/release",
+        expectedPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/release",
         input: {
           workspaceSlug: "product-docs",
           workspaceSysId: "workspace-001",
@@ -1577,7 +1577,7 @@ describe("service now client page creation", () => {
 
   it("normalizes a page settings save response", async () => {
     const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/pages");
+      expect(String(path)).toContain("/api/x_2300756_docsera/docsera_runtime/pages");
       expect(init?.method).toBe("PUT");
       expect(JSON.parse(String(init?.body))).toEqual({
         workspaceSlug: "product-docs",
@@ -1641,7 +1641,7 @@ describe("service now client page creation", () => {
 
   it("normalizes a page delete response", async () => {
     const fetchMock = vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/pages/delete");
+      expect(String(path)).toContain("/api/x_2300756_docsera/docsera_runtime/pages/delete");
       expect(init?.method).toBe("POST");
       expect(JSON.parse(String(init?.body))).toEqual({
         workspaceSlug: "product-docs",
@@ -1706,7 +1706,7 @@ describe("service now client page creation", () => {
 
   it("normalizes workspace lease acquisition with the active generation pair", async () => {
     vi.stubGlobal("fetch", vi.fn(async (path: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(path)).toContain("/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease/acquire");
+      expect(String(path)).toContain("/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease/acquire");
       expect(JSON.parse(String(init?.body))).toEqual({
         workspaceSlug: "product-docs",
         workspaceSysId: "workspace-001"

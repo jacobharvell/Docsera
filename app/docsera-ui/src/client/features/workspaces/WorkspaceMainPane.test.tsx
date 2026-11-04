@@ -167,13 +167,64 @@ function createEmptyWorkspaceProps(
   };
 }
 
-describe("empty workspace session recovery", () => {
+describe("workspace session recovery", () => {
+  it("applies recovery spacing to the selected-page surface without adding card margin", () => {
+    const page = createPageView();
+    render(
+      <WorkspaceMainPane
+        {...createEmptyWorkspaceProps({
+          editAccessLost: true,
+          leaseConflict: true,
+          page,
+          workspaceMode: "live"
+        })}
+      />
+    );
+
+    const recoveryCard = screen.getByRole("alert");
+    expect(recoveryCard).toHaveClass("docsera-main__access-loss--session-recovery");
+    expect(recoveryCard.closest(".docsera-main__surface")).toHaveClass("docsera-main__surface--session-recovery");
+
+    const nodeProcess = new Function("return process")() as {
+      cwd: () => string;
+      getBuiltinModule: (name: string) => { readFileSync: (path: string, encoding: string) => string };
+    };
+    const source = nodeProcess.getBuiltinModule("fs").readFileSync(
+      `${nodeProcess.cwd()}/src/client/styles/runtime-shell.css`,
+      "utf8"
+    );
+    expect(source).toMatch(/\.docsera-main__surface--session-recovery \{\s*gap: 14px;\s*\}/);
+    expect(source).toMatch(/\.docsera-main__access-loss--session-recovery \.docsera-main__recovery-title \{\s*margin: 0;\s*\}/);
+    expect(source).not.toMatch(/\.docsera-main__access-loss--session-recovery \{\s*margin-top:/);
+  });
+
   it("shows recovery controls without a selected page", () => {
     const end = vi.fn();
     render(<WorkspaceMainPane {...createEmptyWorkspaceProps({ workspaceMode: "live", editAccessLost: true, leaseConflict: true, onEndPreviousSession: end })} />);
     fireEvent.click(screen.getByRole("button", { name: "End previous session" }));
     expect(end).toHaveBeenCalledOnce();
     expect(screen.queryByText("No published pages")).not.toBeInTheDocument();
+    expect(document.querySelector(".docsera-main__surface--empty")).not.toHaveClass("docsera-main__surface--session-recovery");
+  });
+
+  it("offers a fresh Edit retry without a no-op Live action after a displaced session returns to Live", () => {
+    const retry = vi.fn();
+    render(
+      <WorkspaceMainPane
+        {...createEmptyWorkspaceProps({
+          accessLossMessage: "This workspace is already being edited in another tab or window for your account.",
+          editAccessLost: true,
+          onRetryEdit: retry,
+          workspaceMode: "live"
+        })}
+      />
+    );
+
+    expect(screen.getByRole("heading", { name: "Editing session ended" })).toBeInTheDocument();
+    expect(screen.queryByText("Access lost")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Return to Live" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry Edit" }));
+    expect(retry).toHaveBeenCalledOnce();
   });
 
   it("preserves normal empty views without a conflict", () => {
@@ -495,7 +546,7 @@ describe("WorkspaceMainPane", () => {
     expect(screen.queryByRole("button", { name: "New page" })).not.toBeInTheDocument();
   });
 
-  it("keeps workspace recovery presentation on the legacy recovery action treatment", () => {
+  it("uses the current recovery title treatment while retaining the established actions", () => {
     render(
       <WorkspaceMainPane
         {...createEmptyWorkspaceProps({
@@ -507,7 +558,8 @@ describe("WorkspaceMainPane", () => {
       />
     );
 
-    expect(screen.getByText("Workspace")).toHaveClass("docsera-main__eyebrow");
+    expect(screen.getByRole("heading", { name: "Workspace unavailable" })).toHaveClass("docsera-main__recovery-title");
+    expect(screen.queryByText("Workspace")).not.toBeInTheDocument();
     const retryButton = screen.getByRole("button", { name: "Try again" });
     expect(retryButton).toHaveClass("docsera-main__empty-action");
     expect(retryButton).not.toHaveClass("docsera-modal__primary");

@@ -1,5 +1,6 @@
 import { servicenowFrontEndPlugins, rollup, glob } from "@servicenow/isomorphic-rollup";
 import { inlineCssTextPlugin } from "./inlineCssTextPlugin.mjs";
+import { serviceNowSafeMarkupOutputPlugin } from "./serviceNowSafeMarkupPlugin.mjs";
 
 export default async ({ rootDir, config, fs, path, logger, registerExplicitId }) => {
   const registerNormalizedExplicitId = (table, key, guidOverride) => {
@@ -64,6 +65,7 @@ export default async ({ rootDir, config, fs, path, logger, registerExplicitId })
 
   const rollupOutput = await rollupBundle.write({
     dir: staticContentDir,
+    plugins: [serviceNowSafeMarkupOutputPlugin()],
     sourcemap: true
   });
 

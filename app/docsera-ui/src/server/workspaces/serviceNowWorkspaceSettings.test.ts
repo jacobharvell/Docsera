@@ -390,7 +390,7 @@ describe("workspace settings service", () => {
           width: 128,
           workspaceSysId: "workspace-1"
         },
-        icon: { assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_new", key: "wsi_new", label: "icon.png", type: "uploaded" },
+        icon: { assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_new", key: "wsi_new", label: "icon.png", type: "uploaded" },
         kind: "succeeded"
       } as const));
     const settingsWithIconClaim = createWorkspaceSettingsService({
@@ -440,7 +440,7 @@ describe("workspace settings service", () => {
           width: 128,
           workspaceSysId: "workspace-1"
         },
-        icon: { assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_new", key: "wsi_new", label: "icon.png", type: "uploaded" },
+        icon: { assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=wsi_new", key: "wsi_new", label: "icon.png", type: "uploaded" },
         kind: "succeeded"
       })),
       evaluateWorkspaceCapabilities: vi.fn(() => ({

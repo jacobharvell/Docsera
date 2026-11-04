@@ -59,6 +59,14 @@ Behavior:
 
 The prebuild hook still keeps a narrow path-normalization pass for backslash-shaped asset query paths. That normalization remains for non-CSS asset stability only; it no longer renames, hashes, or patches runtime CSS assets.
 
+### ServiceNow-safe React DOM markup serialization
+
+React DOM 18.3.1's production renderer emits an inert element constructor containing the raw JavaScript source literal `"<script><\\/script>"`. ServiceNow's REST serialization can HTML-escape that raw opening tag in a UX Asset, changing the executed bundle and its checksum.
+
+`serviceNowSafeMarkupPlugin.mjs` applies a scoped Rollup output transform only to `main.jsdbx`: it replaces that single rendered literal with `"<\\x73cript><\\/script>"`. Both expressions evaluate to the same string. `magic-string` generates the chained source map for the replacement; no generated bundle, source map, or SDK XML is edited by hand.
+
+The standard `npm run build` runs `verify:sdk-bundle-serialization` after SDK generation. It requires the safe literal, rejects the raw one, verifies the `main` UX Asset content and MD5 checksum, verifies the source-map UX Asset checksum and identity, and checks that the generated map still identifies `main.jsdbx` and React DOM with non-empty mappings.
+
 ## Removed / Rejected Behavior
 
 The production branch does not use the old fallback runtime CSS asset path:

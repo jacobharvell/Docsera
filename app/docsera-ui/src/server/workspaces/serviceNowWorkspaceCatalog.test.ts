@@ -61,13 +61,13 @@ vi.mock("@servicenow/glide", () => ({
   GlideRecord: glideMock.FakeGlideRecord,
   gs: {
     getUserID: vi.fn(() => "current-user"),
-    hasRole: vi.fn((roleName: string) => roleName === "x_82900_docsera.workspace_admin" || roleName === "x_82900_docsera.editor")
+    hasRole: vi.fn((roleName: string) => roleName === "x_2300756_docsera.workspace_admin" || roleName === "x_2300756_docsera.editor")
   }
 }));
 
 import { createServiceNowWorkspaceCatalogService } from "./serviceNowWorkspaceCatalog.ts";
 
-const WORKSPACE_TABLE = "x_82900_docsera_workspace";
+const WORKSPACE_TABLE = "x_2300756_docsera_workspace";
 const MEMBERSHIP_TABLE = "sys_user_grmember";
 
 function workspaceRow(index: number, name: string) {

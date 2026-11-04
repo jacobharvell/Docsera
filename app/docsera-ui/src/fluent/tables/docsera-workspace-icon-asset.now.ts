@@ -7,8 +7,8 @@ import {
   Table
 } from "@servicenow/sdk/core";
 
-export const x_82900_docsera_workspace_icon_asset = Table({
-  name: "x_82900_docsera_workspace_icon_asset",
+export const x_2300756_docsera_workspace_icon_asset = Table({
+  name: "x_2300756_docsera_workspace_icon_asset",
   label: "Docsera Workspace Icon Asset",
   display: "asset_key",
   actions: ["read", "create", "update", "delete"],
@@ -28,8 +28,8 @@ export const x_82900_docsera_workspace_icon_asset = Table({
       }
     }),
     requested_by: ReferenceColumn({ label: "Requested by", mandatory: true, referenceTable: "sys_user" }),
-    workspace: ReferenceColumn({ label: "Workspace", referenceTable: "x_82900_docsera_workspace" }),
-    provision_request: ReferenceColumn({ label: "Provision request", referenceTable: "x_82900_docsera_workspace_provision_request" }),
+    workspace: ReferenceColumn({ label: "Workspace", referenceTable: "x_2300756_docsera_workspace" }),
+    provision_request: ReferenceColumn({ label: "Provision request", referenceTable: "x_2300756_docsera_workspace_provision_request" }),
     attachment: ReferenceColumn({ label: "Attachment", referenceTable: "sys_attachment" }),
     file_name: StringColumn({ label: "File name", maxLength: 255 }),
     content_type: StringColumn({ label: "Content type", maxLength: 80 }),

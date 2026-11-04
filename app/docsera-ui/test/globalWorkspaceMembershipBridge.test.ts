@@ -24,7 +24,7 @@ function createBridge({ groups = [], workspaces = [], memberships = [] }: { grou
   const tables: Record<string, Row[]> = {
     sys_user_group: groups,
     sys_user_grmember: memberships,
-    x_82900_docsera_workspace: workspaces
+    x_2300756_docsera_workspace: workspaces
   };
 
   function GlideRecord(this: any, tableName: string) {

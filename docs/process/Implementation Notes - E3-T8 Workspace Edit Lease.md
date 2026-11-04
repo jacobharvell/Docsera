@@ -178,3 +178,14 @@ A same-account lease conflict exposes recovery even when no page is selected. An
 
 
 Cross-account locked responses carry the holder user sys_id from the server lease record for the recovery card. The client links a named holder to the core user record only when the ID is a valid ServiceNow sys_id; otherwise it shows plain text. Same-account conflicts retain the observed lease ID for takeover and do not expose a profile link.
+
+### RR-043 displaced-session recovery
+
+A same-user tab displaced by a `lost` result leaves Edit immediately and preserves recoverable local authoring input, but its Live recovery card now offers **Retry Edit** rather than a redundant Live action. Retry performs a fresh normal Edit acquisition; it does not reuse the lost result or infer a takeover target. Only a subsequent same-account `locked` result carrying a current observed lease ID exposes **End previous session**. A successful held acquisition clears the recovery card. Permission, terminal, and transient failures retain their existing safe handling. Recovery/message cards use their title directly, without a retired uppercase eyebrow or its reserved vertical space.
+
+### RR-043B editing-session recovery corrections
+
+- After an initial `lost` result, or a `locked` result that cannot yet identify an observed same-account lease, the client makes at most one status-only lease recheck. A recheck that returns a same-account `locked` result with the server-issued observed lease ID exposes **End previous session** immediately. It does not acquire, release, replay, or take over anything automatically; the existing explicit button remains the only path that calls the end-previous-session route.
+- If status is unlocked, malformed, unavailable, or otherwise cannot establish a same-account target, the original blocked state remains in force. Existing manual retry and safe failure presentation are unchanged, and the recheck cannot loop.
+- Authoring recovery messages are displayed through the shared dismissible header toast surface rather than as an inline document section. The warning variant retains the recovery message and recovery-state semantics, uses the shared positioning/dismissal interaction, and leaves recovered unsaved input intact when dismissed. It intentionally omits the obsolete `RECOVERY` eyebrow and applies an amber light/dark treatment.
+- The editing-session card keeps a scoped editor-surface spacing rule so document-title/editor spacing is unchanged for normal authoring.

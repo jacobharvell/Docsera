@@ -42,16 +42,27 @@ npm run deploy:sdk-ui-page
 npm run verify:sdk-ui-page
 ```
 
+`deploy:sdk-ui-page` is the canonical development deployment command. It
+targets `https://dev468303.service-now.com`, requires the
+`docsera-dev468303` SDK alias, and refuses to install if that alias or the
+installed scoped application identity does not match
+`x_2300756_docsera` (`e6e43323accd4c7fb9271525a343850e`).
+
 From `app/docsera-ui/`:
 
 ```powershell
-.\scripts\initialize-sdk-auth.ps1 -InstanceUrl https://<instance>.service-now.com -Alias docsera-pdi -Username <username>
+.\scripts\initialize-sdk-auth.ps1 -InstanceUrl https://<instance>.service-now.com -Alias <alias> -Username <username>
 npx @servicenow/sdk transform --auth <alias>
 npm run install:sdk
 npm run verify:sdk-runtime
 ```
 
 `deploy:sdk-ui-page` runs clean, build, install, and deployed-runtime verification in sequence. Normal deployment and standalone verification perform non-browser checks and report `Browser proof: skipped`.
+
+For a contributor-owned PDI, retain the generic commands and supply that
+instance's alias explicitly, for example `npm run install:sdk -- --auth
+docsera-dev123456`. Do not run the canonical deployment command against a
+contributor identity.
 
 Browser proof is separate and requires Jacob's explicit authorization. Run the verifier entrypoint directly when it is authorized:
 

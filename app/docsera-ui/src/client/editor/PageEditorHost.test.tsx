@@ -151,7 +151,7 @@ describe("PageEditorHost runtime containment", () => {
       });
     });
     expect(JSON.stringify(onError.mock.calls)).not.toContain("Sensitive render failure");
-    expect(JSON.stringify(onError.mock.calls)).not.toContain("sys_id=x_82900_docsera_page");
+    expect(JSON.stringify(onError.mock.calls)).not.toContain("sys_id=x_2300756_docsera_page");
 
     crashOnRender = false;
     onError.mockClear();

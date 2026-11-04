@@ -10,22 +10,22 @@ const defaults = {
   instanceUrl: "https://dev295482.service-now.com",
   keyringAccount: "now-sdk",
   keyringService: "ServiceNow",
-  pingPath: "/api/x_82900_docsera/docsera_runtime/ping",
-  workspacePath: "/api/x_82900_docsera/docsera_runtime/workspaces",
-  workspaceProvisioningStatusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status",
-  workspaceEditLeasePath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease",
-  pagesPath: "/api/x_82900_docsera/docsera_runtime/pages",
-  pageDeleteActionPath: "/api/x_82900_docsera/docsera_runtime/pages/delete",
-  requestTable: "x_82900_docsera_workspace_provision_request",
-  workspaceTable: "x_82900_docsera_workspace",
-  pageTable: "x_82900_docsera_page",
-  workspaceChangeSetTable: "x_82900_docsera_workspace_change_set",
-  workspaceSnapshotSetTable: "x_82900_docsera_workspace_snapshot_set",
-  workspacePageSnapshotTable: "x_82900_docsera_workspace_page_snapshot",
-  workspaceChangeEntryTable: "x_82900_docsera_workspace_change_entry",
-  workspaceRemovalBatchTable: "x_82900_docsera_workspace_removal_batch",
-  workspaceRemovalMemberTable: "x_82900_docsera_workspace_removal_member",
-  workspaceMutationClaimTable: "x_82900_docsera_workspace_mutation_claim"
+  pingPath: "/api/x_2300756_docsera/docsera_runtime/ping",
+  workspacePath: "/api/x_2300756_docsera/docsera_runtime/workspaces",
+  workspaceProvisioningStatusPath: "/api/x_2300756_docsera/docsera_runtime/workspace-provisioning-status",
+  workspaceEditLeasePath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease",
+  pagesPath: "/api/x_2300756_docsera/docsera_runtime/pages",
+  pageDeleteActionPath: "/api/x_2300756_docsera/docsera_runtime/pages/delete",
+  requestTable: "x_2300756_docsera_workspace_provision_request",
+  workspaceTable: "x_2300756_docsera_workspace",
+  pageTable: "x_2300756_docsera_page",
+  workspaceChangeSetTable: "x_2300756_docsera_workspace_change_set",
+  workspaceSnapshotSetTable: "x_2300756_docsera_workspace_snapshot_set",
+  workspacePageSnapshotTable: "x_2300756_docsera_workspace_page_snapshot",
+  workspaceChangeEntryTable: "x_2300756_docsera_workspace_change_entry",
+  workspaceRemovalBatchTable: "x_2300756_docsera_workspace_removal_batch",
+  workspaceRemovalMemberTable: "x_2300756_docsera_workspace_removal_member",
+  workspaceMutationClaimTable: "x_2300756_docsera_workspace_mutation_claim"
 };
 
 function cleanText(value) {
@@ -238,7 +238,7 @@ async function fetchText(instanceUrl, session, path, options = {}) {
   };
 }
 
-async function runBackgroundScript(instanceUrl, session, script, scopeName = "x_82900_docsera") {
+async function runBackgroundScript(instanceUrl, session, script, scopeName = "x_2300756_docsera") {
   const form = await fetchText(instanceUrl, session, "sys.scripts.do", { accept: "text/html" });
   if (!form.ok) {
     throw new Error(`Background script form failed with HTTP ${form.status}.`);

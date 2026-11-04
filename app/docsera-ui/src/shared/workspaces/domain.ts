@@ -1,5 +1,5 @@
-export const DOCSERA_SCOPE = "x_82900_docsera";
-export const DOCSERA_WORKSPACE_TABLE = "x_82900_docsera_workspace";
+export const DOCSERA_SCOPE = "x_2300756_docsera";
+export const DOCSERA_WORKSPACE_TABLE = "x_2300756_docsera_workspace";
 
 export const WORKSPACE_ROLE_NAMES = Object.freeze({
   docseraAdmin: `${DOCSERA_SCOPE}.admin`,

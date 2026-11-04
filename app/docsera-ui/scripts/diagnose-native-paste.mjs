@@ -10,14 +10,14 @@ const defaults = {
   instanceUrl: "https://dev295482.service-now.com",
   keyringAccount: "now-sdk",
   keyringService: "ServiceNow",
-  pageEndpoint: "x_82900_docsera_docsera_sdk_runtime.do",
-  pingPath: "/api/x_82900_docsera/docsera_runtime/ping",
-  pagesPath: "/api/x_82900_docsera/docsera_runtime/pages",
-  workspacePublishPath: "/api/x_82900_docsera/docsera_runtime/workspaces/publish",
-  workspaceEditLeasePath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease",
-  workspaceDeletePath: "/api/x_82900_docsera/docsera_runtime/workspaces/delete",
-  workspacePath: "/api/x_82900_docsera/docsera_runtime/workspaces",
-  workspaceProvisioningStatusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status"
+  pageEndpoint: "x_2300756_docsera_docsera_sdk_runtime.do",
+  pingPath: "/api/x_2300756_docsera/docsera_runtime/ping",
+  pagesPath: "/api/x_2300756_docsera/docsera_runtime/pages",
+  workspacePublishPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/publish",
+  workspaceEditLeasePath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease",
+  workspaceDeletePath: "/api/x_2300756_docsera/docsera_runtime/workspaces/delete",
+  workspacePath: "/api/x_2300756_docsera/docsera_runtime/workspaces",
+  workspaceProvisioningStatusPath: "/api/x_2300756_docsera/docsera_runtime/workspace-provisioning-status"
 };
 
 const pasteText = "Alpha\r\n\r\nBeta\r\n\r\nGamma\r\n\r\nDelta";

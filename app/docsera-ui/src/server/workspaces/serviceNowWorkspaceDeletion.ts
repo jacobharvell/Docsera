@@ -3,17 +3,17 @@ import { DOCSERA_WORKSPACE_TABLE, type WorkspaceRecord } from "./serverWorkspace
 import { evaluateCurrentUserWorkspaceCapabilities } from "./serviceNowWorkspaceCapabilities.ts";
 import { mapWorkspaceRecord } from "./serviceNowWorkspaceRecords.ts";
 
-const DOCSERA_PAGE_TABLE = "x_82900_docsera_page";
-const DOCSERA_WORKSPACE_CHANGE_SET_TABLE = "x_82900_docsera_workspace_change_set";
-const DOCSERA_WORKSPACE_CHANGE_ENTRY_TABLE = "x_82900_docsera_workspace_change_entry";
-const DOCSERA_WORKSPACE_EDIT_LEASE_TABLE = "x_82900_docsera_workspace_edit_lease";
-const DOCSERA_WORKSPACE_ICON_ASSET_TABLE = "x_82900_docsera_workspace_icon_asset";
-const DOCSERA_WORKSPACE_MEMBER_MUTATION_COMMAND_TABLE = "x_82900_docsera_workspace_member_mutation_command";
-const DOCSERA_WORKSPACE_MUTATION_CLAIM_TABLE = "x_82900_docsera_workspace_mutation_claim";
-const DOCSERA_WORKSPACE_PAGE_SNAPSHOT_TABLE = "x_82900_docsera_workspace_page_snapshot";
-const DOCSERA_WORKSPACE_REMOVAL_BATCH_TABLE = "x_82900_docsera_workspace_removal_batch";
-const DOCSERA_WORKSPACE_REMOVAL_MEMBER_TABLE = "x_82900_docsera_workspace_removal_member";
-const DOCSERA_WORKSPACE_SNAPSHOT_SET_TABLE = "x_82900_docsera_workspace_snapshot_set";
+const DOCSERA_PAGE_TABLE = "x_2300756_docsera_page";
+const DOCSERA_WORKSPACE_CHANGE_SET_TABLE = "x_2300756_docsera_workspace_change_set";
+const DOCSERA_WORKSPACE_CHANGE_ENTRY_TABLE = "x_2300756_docsera_workspace_change_entry";
+const DOCSERA_WORKSPACE_EDIT_LEASE_TABLE = "x_2300756_docsera_workspace_edit_lease";
+const DOCSERA_WORKSPACE_ICON_ASSET_TABLE = "x_2300756_docsera_workspace_icon_asset";
+const DOCSERA_WORKSPACE_MEMBER_MUTATION_COMMAND_TABLE = "x_2300756_docsera_workspace_member_mutation_command";
+const DOCSERA_WORKSPACE_MUTATION_CLAIM_TABLE = "x_2300756_docsera_workspace_mutation_claim";
+const DOCSERA_WORKSPACE_PAGE_SNAPSHOT_TABLE = "x_2300756_docsera_workspace_page_snapshot";
+const DOCSERA_WORKSPACE_REMOVAL_BATCH_TABLE = "x_2300756_docsera_workspace_removal_batch";
+const DOCSERA_WORKSPACE_REMOVAL_MEMBER_TABLE = "x_2300756_docsera_workspace_removal_member";
+const DOCSERA_WORKSPACE_SNAPSHOT_SET_TABLE = "x_2300756_docsera_workspace_snapshot_set";
 
 type WorkspaceDeletionStatus = 400 | 403 | 404 | 500;
 type WorkspaceGroupCommandState = "failed" | "requested" | "succeeded" | "unavailable";

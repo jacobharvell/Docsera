@@ -3,8 +3,8 @@ import { DateTimeColumn, ReferenceColumn, StringColumn, Table } from "@serviceno
 
 /** The sole durable authoring authority for a workspace.  It is intentionally
  * package-private: clients can only operate it through the scoped REST routes. */
-export const x_82900_docsera_workspace_edit_lease = Table({
-  name: "x_82900_docsera_workspace_edit_lease",
+export const x_2300756_docsera_workspace_edit_lease = Table({
+  name: "x_2300756_docsera_workspace_edit_lease",
   label: "Docsera Workspace Edit Lease",
   display: "workspace_key",
   accessibleFrom: "package_private",
@@ -13,7 +13,7 @@ export const x_82900_docsera_workspace_edit_lease = Table({
   allowWebServiceAccess: false,
   schema: {
     workspace_key: StringColumn({ label: "Workspace key", mandatory: true, maxLength: 40, unique: true }),
-    workspace: ReferenceColumn({ label: "Workspace", mandatory: true, referenceTable: "x_82900_docsera_workspace" }),
+    workspace: ReferenceColumn({ label: "Workspace", mandatory: true, referenceTable: "x_2300756_docsera_workspace" }),
     holder_user: ReferenceColumn({ label: "Holder user", mandatory: true, referenceTable: "sys_user" }),
     verifier_digest: StringColumn({ label: "Verifier digest", mandatory: true, maxLength: 64 }),
     acquired_on: DateTimeColumn({ label: "Acquired on", mandatory: true }),

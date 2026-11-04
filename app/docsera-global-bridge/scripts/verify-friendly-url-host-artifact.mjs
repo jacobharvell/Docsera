@@ -9,7 +9,7 @@ const required = [["sys_ui_page", "de3b81474ba94c0a9296d12f9c6bd9cc"], ["sys_sec
 for (const [table, sysId] of required) {
   if (!manifest.records.some((record) => record.table === table && record.targetSysId === sysId)) throw new Error(`Companion manifest is missing ${table}:${sysId}.`);
 }
-for (const fragment of ["&lt;name&gt;docsera&lt;/name&gt;", "&lt;direct&gt;true&lt;/direct&gt;", "id=&quot;docsera-root&quot;", "window.DOCSERA_RUNTIME_CONFIG", "import(&quot;/uxasset/externals/x_82900_docsera/main.jsdbx", "answer = gs.isLoggedIn();"]) {
+for (const fragment of ["&lt;name&gt;docsera&lt;/name&gt;", "&lt;direct&gt;true&lt;/direct&gt;", "id=&quot;docsera-root&quot;", "window.DOCSERA_RUNTIME_CONFIG", "import(&quot;/uxasset/externals/x_2300756_docsera/main.jsdbx", "answer = gs.isLoggedIn();"]) {
   if (!artifact.includes(fragment)) throw new Error(`Companion artifact is missing required production content: ${fragment}`);
 }
 if (artifact.includes("gs.getUser().isLoggedIn()")) throw new Error("Companion artifact contains the unsupported GlideUser isLoggedIn() ACL expression.");

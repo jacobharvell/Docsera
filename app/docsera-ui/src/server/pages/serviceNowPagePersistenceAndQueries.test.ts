@@ -613,7 +613,7 @@ describe("page persistence and listing", () => {
       })
     );
 
-    const storedRow = glideMock.getRows("x_82900_docsera_page")[0];
+    const storedRow = glideMock.getRows("x_2300756_docsera_page")[0];
     const storedDraftJson = String(storedRow?.fields.draft_content_json ?? "");
     const storedPublishedJson = String(storedRow?.fields.published_content_json ?? "");
 
@@ -641,7 +641,7 @@ describe("page persistence and listing", () => {
     expect(savedPage.publishedContentJson).toBeNull();
     expect(listedPages[0]?.publishedContentJson).toBeNull();
 
-    const storedRow = glideMock.getRows("x_82900_docsera_page")[0];
+    const storedRow = glideMock.getRows("x_2300756_docsera_page")[0];
     expect(storedRow?.fields.published_content_json).toBe("");
     expect(storedRow?.fields.published_body_text).toBe("");
   });

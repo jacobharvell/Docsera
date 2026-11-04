@@ -11,7 +11,7 @@ describe("defaultWorkspaceIconAsset", () => {
     const baseline = getDefaultWorkspaceIconSrc();
 
     const script = document.createElement("script");
-    script.src = "/uxasset/externals/x_82900_docsera/main.jsdbx?uxpcb=1783536189";
+    script.src = "/uxasset/externals/x_2300756_docsera/main.jsdbx?uxpcb=1783536189";
     document.head.appendChild(script);
 
     expect(getDefaultWorkspaceIconSrc()).toBe(baseline);

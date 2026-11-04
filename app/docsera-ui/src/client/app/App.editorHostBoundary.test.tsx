@@ -1923,9 +1923,14 @@ describe("App editor-host session boundary", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
 
     await waitFor(() => expectWorkspaceSearch({ workspace: "product-docs", mode: "edit", page: "overview" }));
-    expect(await screen.findByText("Your unsaved changes were restored. Review them before saving.")).toBeInTheDocument();
+    const recoveryToast = await screen.findByRole("alert", { name: "Your unsaved changes were restored. Review them before saving." });
+    expect(recoveryToast).toHaveClass("docsera-header__publish-toast--warning");
+    expect(document.querySelector(".docsera-main__reader-notice")).toBeNull();
     await waitFor(() => expect(latestHostControl?.status?.isDirty).toBe(true));
     expect(screen.getAllByText(/Draft change/).length).toBeGreaterThan(0);
+    fireEvent.click(within(recoveryToast).getByRole("button", { name: "Dismiss recovery warning" }));
+    expect(screen.queryByRole("alert", { name: "Your unsaved changes were restored. Review them before saving." })).toBeNull();
+    expect(latestHostControl?.status?.isDirty).toBe(true);
     expect(savePageBody).toHaveBeenCalledTimes(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Register successful flush" }));

@@ -22,3 +22,11 @@ export function parseRuntimeVerificationOptions(argv = []) {
     values: parsedArgs.values
   };
 }
+
+export function instanceUrlsMatch(storedInstanceUrl, instanceUrl) {
+  try {
+    return new URL(storedInstanceUrl).href === new URL(instanceUrl).href;
+  } catch {
+    return storedInstanceUrl === instanceUrl;
+  }
+}

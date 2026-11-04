@@ -80,6 +80,7 @@ type DocseraHeaderProps = {
   pendingChangesPublishErrorMessage?: string;
   pendingChangesPublishRetryable?: boolean;
   pendingChangesPublishToastMessage?: string;
+  recoveryWarningToastMessage?: string;
   pendingChangesPublishing?: boolean;
   pendingChangesReadinessMessage?: string;
   pendingChangesRefreshing?: boolean;
@@ -88,6 +89,7 @@ type DocseraHeaderProps = {
   onRetryCurrentPageSave?: () => void;
   onDiscardCurrentPageEdits?: () => void;
   onDismissPendingChangesPublishToast?: () => void;
+  onDismissRecoveryWarningToast?: () => void;
   onOpenPendingPage?: (pageSysId: string) => void;
   onDiscardAllPendingChanges?: () => void;
   onDiscardPendingPage?: (pageSysId: string) => void;
@@ -171,6 +173,17 @@ function PublishSuccessIcon() {
       <svg viewBox="0 0 20 20" focusable="false">
         <circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" strokeWidth="1.8" />
         <path d="M6.5 10.2l2.2 2.3 4.8-5" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      </svg>
+    </span>
+  );
+}
+
+function RecoveryWarningIcon() {
+  return (
+    <span className="docsera-header__publish-toast-icon" aria-hidden="true">
+      <svg viewBox="0 0 20 20" focusable="false">
+        <path d="M10 2.5l8 14H2l8-14z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+        <path d="M10 7v4.5M10 14h.01" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
       </svg>
     </span>
   );
@@ -370,6 +383,7 @@ export function DocseraHeader({
   onOpenWorkspaceSettings,
   onReleaseWorkspaceSettingsPreviewObjectUrl,
   onDismissPendingChangesPublishToast,
+  onDismissRecoveryWarningToast,
   onDiscardCurrentPageEdits,
   onOpenPendingPage,
   onDiscardAllPendingChanges,
@@ -394,6 +408,7 @@ export function DocseraHeader({
   pendingChangesPublishErrorMessage = "",
   pendingChangesPublishRetryable = false,
   pendingChangesPublishToastMessage = "",
+  recoveryWarningToastMessage = "",
   pendingChangesPublishing = false,
   pendingChangesReadinessMessage = "",
   pendingChangesRefreshing = false,
@@ -990,6 +1005,19 @@ export function DocseraHeader({
                       aria-label="Dismiss publish success"
                       onClick={onDismissPendingChangesPublishToast}
                     >
+                      <svg viewBox="0 0 16 16" width="12" height="12" focusable="false" aria-hidden="true">
+                        <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
+                      </svg>
+                    </button>
+                  </DocseraCompactTooltip>
+                </div>
+              ) : null}
+              {recoveryWarningToastMessage ? (
+                <div className="docsera-header__publish-toast docsera-header__publish-toast--warning" role="alert" aria-atomic="true">
+                  <RecoveryWarningIcon />
+                  <span className="docsera-header__publish-toast-message">{recoveryWarningToastMessage}</span>
+                  <DocseraCompactTooltip label="Dismiss recovery warning">
+                    <button type="button" className="docsera-header__publish-toast-dismiss" aria-label="Dismiss recovery warning" onClick={onDismissRecoveryWarningToast}>
                       <svg viewBox="0 0 16 16" width="12" height="12" focusable="false" aria-hidden="true">
                         <path d="M4 4l8 8M12 4l-8 8" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="1.7" />
                       </svg>

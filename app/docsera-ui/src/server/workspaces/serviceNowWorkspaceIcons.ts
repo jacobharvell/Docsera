@@ -4,8 +4,8 @@ import { evaluateCurrentUserWorkspaceCapabilities } from "./serviceNowWorkspaceC
 import { mapWorkspaceRecord } from "./serviceNowWorkspaceRecords.ts";
 import { validateWorkspaceIconImage, type WorkspaceIconImageMetadata } from "./serverWorkspaceIconImage.ts";
 
-export const DOCSERA_WORKSPACE_ICON_ASSET_TABLE = "x_82900_docsera_workspace_icon_asset";
-export const WORKSPACE_ICON_FILE_ROUTE_PATH = "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file";
+export const DOCSERA_WORKSPACE_ICON_ASSET_TABLE = "x_2300756_docsera_workspace_icon_asset";
+export const WORKSPACE_ICON_FILE_ROUTE_PATH = "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file";
 
 export type WorkspaceIconAssetRecord = WorkspaceIconImageMetadata & {
   assetKey: string;
@@ -178,7 +178,7 @@ function mapAsset(record: { getUniqueValue: () => string; getValue: (fieldName: 
 
 function createDefaultDependencies(): WorkspaceIconServiceDependencies {
   return {
-    canCreateWorkspaces: () => gs.hasRole("x_82900_docsera.admin"),
+    canCreateWorkspaces: () => gs.hasRole("x_2300756_docsera.admin"),
     createAsset(input) {
       const record = new GlideRecord(DOCSERA_WORKSPACE_ICON_ASSET_TABLE);
       record.initialize();
@@ -244,7 +244,7 @@ function createDefaultDependencies(): WorkspaceIconServiceDependencies {
       return assets;
     },
     loadProvisionRequestBySysId(provisionRequestSysId) {
-      const record = new GlideRecord("x_82900_docsera_workspace_provision_request");
+      const record = new GlideRecord("x_2300756_docsera_workspace_provision_request");
       if (!record.get("sys_id", cleanText(provisionRequestSysId))) {
         return null;
       }

@@ -1,0 +1,20 @@
+{
+  "target": {"scope": "x_2300756_docsera", "scopeId": "e6e43323accd4c7fb9271525a343850e", "output": "C:\\Dev\\Docsera-rr-060-converted-output-20261103-final", "hasReparsePoints": false},
+  "conversion": {"unsupportedReferences": 0, "remainingCanonicalReferences": 0, "excludedFrozenArtifacts": ["app/docsera-global-bridge/update-set"]},
+  "scoped": {
+    "generatedXmlCount": 364,
+    "metadataTypes": {"sys_app_application": 1, "sys_app_module": 1, "sys_choice": 20, "sys_db_object": 13, "sys_dictionary": 162, "sys_module": 65, "sys_scope_privilege": 1, "sys_security_acl": 49, "sys_ui_page": 1, "sys_user_role": 3, "sys_user_role_contains": 3, "sys_ux_lib_asset": 8, "sys_ws_definition": 1, "sys_ws_operation": 34, "sysauto_script": 2},
+    "generatedRegistryIdCount": 605, "canonicalRegistryIdCount": 644,
+    "registrySha256": "EC4978C8CBC81C3829CBCD6E2672AF8DDF3CD6A9F61B77443F9FD28F0596784D", "canonicalIdOverlap": [], "deleteDeclarations": [],
+    "importantRecords": {"application": "b191909563744bdbaef60a8f381fff28", "runtimePage": "c7a040a2d7bb4148b8ce008bc1f8d6c9", "mainAsset": {"id": "f058e74bbed44dbfad24e6b661817a56", "name": "x_2300756_docsera/main"}, "mainMapAsset": {"id": "7fee0b502705422e8a9854324554faf8", "name": "x_2300756_docsera/main.js.map"}}
+  },
+  "global": {
+    "generatedXmlCount": 23,
+    "metadataTypes": {"sys_module": 6, "sys_scope_privilege": 9, "sys_script": 2, "sys_script_include": 2, "sys_security_acl": 1, "sys_ui_page": 1, "sys_ux_lib_asset": 2},
+    "generatedRegistryIdCount": 27, "canonicalRegistryIdCount": 29,
+    "registrySha256": "85681AF257D9F26621D442DD3068E041667A8367B8CD51B1CA5D4B3FF4826B86", "canonicalIdOverlap": [], "deleteDeclarations": [],
+    "importantRecords": {"hostPage": "4bb3dc32dcfc4441a57bfce97db77529", "hostAsset": {"id": "7c2ec161a0214744aa75f7d22e6edf59", "name": "global/docsera-friendly-url-proof"}, "hostMapAsset": {"id": "377d32f160d24dafa9959f5d346c042d", "name": "global/docsera-friendly-url-proof.js.map"}}
+  },
+  "canonicalPreservation": {"scopedKeysSha256": "37526EDEDDC459F900BEE12391793797BE999F5F5E24B7615D41653760B59BF1", "globalKeysSha256": "B3B2241826A2DC12DE6BF12ADA6A1B19839D71D439D7F48FB586FFD0828E11E7", "frozenGlobalUpdateSetSha256": "08C3ECD90636B759ADAB0D3443A9AEB24ECE908BB309548CF35E50101A1CEA10", "unchangedFromBase": true},
+  "notInstalled": true
+}

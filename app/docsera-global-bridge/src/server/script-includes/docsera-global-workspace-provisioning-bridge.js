@@ -72,14 +72,14 @@ DocseraGlobalWorkspaceProvisioningBridge.prototype = {
         }
     },
 
-    _DOCSERA_SCOPE: 'x_82900_docsera',
-    _REQUEST_TABLE: 'x_82900_docsera_workspace_provision_request',
-    _WORKSPACE_TABLE: 'x_82900_docsera_workspace',
-    _WORKSPACE_ICON_ASSET_TABLE: 'x_82900_docsera_workspace_icon_asset',
+    _DOCSERA_SCOPE: 'x_2300756_docsera',
+    _REQUEST_TABLE: 'x_2300756_docsera_workspace_provision_request',
+    _WORKSPACE_TABLE: 'x_2300756_docsera_workspace',
+    _WORKSPACE_ICON_ASSET_TABLE: 'x_2300756_docsera_workspace_icon_asset',
 
     _ROLE_NAMES: {
-        workspaceAdmin: 'x_82900_docsera.workspace_admin',
-        editor: 'x_82900_docsera.editor',
+        workspaceAdmin: 'x_2300756_docsera.workspace_admin',
+        editor: 'x_2300756_docsera.editor',
     },
 
     _cleanText: function (value) {

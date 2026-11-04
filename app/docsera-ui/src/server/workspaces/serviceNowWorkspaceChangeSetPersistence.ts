@@ -35,13 +35,13 @@ import { createEmptyServerDocumentEnvelope, extractPlainTextFromServerDocument, 
 
 declare const GlideRecordSecure: (new (tableName: string) => AclReadableRecord) | undefined;
 
-const DOCSERA_WORKSPACE_CHANGE_SET_TABLE = "x_82900_docsera_workspace_change_set";
-const DOCSERA_WORKSPACE_SNAPSHOT_SET_TABLE = "x_82900_docsera_workspace_snapshot_set";
-const DOCSERA_WORKSPACE_PAGE_SNAPSHOT_TABLE = "x_82900_docsera_workspace_page_snapshot";
-const DOCSERA_WORKSPACE_CHANGE_ENTRY_TABLE = "x_82900_docsera_workspace_change_entry";
-const DOCSERA_WORKSPACE_REMOVAL_BATCH_TABLE = "x_82900_docsera_workspace_removal_batch";
-const DOCSERA_WORKSPACE_REMOVAL_MEMBER_TABLE = "x_82900_docsera_workspace_removal_member";
-const DOCSERA_WORKSPACE_MUTATION_CLAIM_TABLE = "x_82900_docsera_workspace_mutation_claim";
+const DOCSERA_WORKSPACE_CHANGE_SET_TABLE = "x_2300756_docsera_workspace_change_set";
+const DOCSERA_WORKSPACE_SNAPSHOT_SET_TABLE = "x_2300756_docsera_workspace_snapshot_set";
+const DOCSERA_WORKSPACE_PAGE_SNAPSHOT_TABLE = "x_2300756_docsera_workspace_page_snapshot";
+const DOCSERA_WORKSPACE_CHANGE_ENTRY_TABLE = "x_2300756_docsera_workspace_change_entry";
+const DOCSERA_WORKSPACE_REMOVAL_BATCH_TABLE = "x_2300756_docsera_workspace_removal_batch";
+const DOCSERA_WORKSPACE_REMOVAL_MEMBER_TABLE = "x_2300756_docsera_workspace_removal_member";
+const DOCSERA_WORKSPACE_MUTATION_CLAIM_TABLE = "x_2300756_docsera_workspace_mutation_claim";
 
 export type WorkspaceMutationAuthority = {
   changeSetId: string;

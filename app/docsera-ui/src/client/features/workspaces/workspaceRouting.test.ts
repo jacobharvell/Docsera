@@ -3,12 +3,12 @@ import { buildLauncherHref, buildWorkspaceHref, readAppRoute, replaceWorkspaceIn
 
 describe("workspace routing", () => {
   it("parses and builds canonical My Workspaces, workspace, and page routes", () => {
-    window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do");
+    window.history.replaceState({}, "", "/x_2300756_docsera_docsera_sdk_runtime.do");
 
-    expect(readAppRoute(new URL("https://example.test/x_82900_docsera_docsera_sdk_runtime.do"))).toEqual({
+    expect(readAppRoute(new URL("https://example.test/x_2300756_docsera_docsera_sdk_runtime.do"))).toEqual({
       mode: "launcher"
     });
-    expect(readAppRoute(new URL("https://example.test/x_82900_docsera_docsera_sdk_runtime.do#/product-docs"))).toEqual({
+    expect(readAppRoute(new URL("https://example.test/x_2300756_docsera_docsera_sdk_runtime.do#/product-docs"))).toEqual({
       legacyPageId: "",
       mode: "workspace",
       pageSlug: "",
@@ -16,7 +16,7 @@ describe("workspace routing", () => {
       workspaceMode: "live",
       workspaceSlug: "product-docs"
     });
-    expect(readAppRoute(new URL("https://example.test/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/details?mode=edit"))).toEqual({
+    expect(readAppRoute(new URL("https://example.test/x_2300756_docsera_docsera_sdk_runtime.do#/product-docs/details?mode=edit"))).toEqual({
       legacyPageId: "",
       mode: "workspace",
       pageSlug: "details",
@@ -25,24 +25,24 @@ describe("workspace routing", () => {
       workspaceSlug: "product-docs"
     });
 
-    expect(buildLauncherHref()).toBe("/x_82900_docsera_docsera_sdk_runtime.do");
-    expect(buildWorkspaceHref("product-docs")).toBe("/x_82900_docsera_docsera_sdk_runtime.do#/product-docs");
-    expect(buildWorkspaceHref("product-docs", { pageSlug: "overview" })).toBe("/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/overview");
+    expect(buildLauncherHref()).toBe("/x_2300756_docsera_docsera_sdk_runtime.do");
+    expect(buildWorkspaceHref("product-docs")).toBe("/x_2300756_docsera_docsera_sdk_runtime.do#/product-docs");
+    expect(buildWorkspaceHref("product-docs", { pageSlug: "overview" })).toBe("/x_2300756_docsera_docsera_sdk_runtime.do#/product-docs/overview");
     expect(buildWorkspaceHref("product-docs", { mode: "edit", pageSlug: "details", settingsIntent: true })).toBe(
-      "/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/details?mode=edit&settings=1"
+      "/x_2300756_docsera_docsera_sdk_runtime.do#/product-docs/details?mode=edit&settings=1"
     );
     expect(replaceWorkspaceIntentState("product-docs", { mode: "edit", pageSlug: "details" })).toBe(
-      "/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/details?mode=edit"
+      "/x_2300756_docsera_docsera_sdk_runtime.do#/product-docs/details?mode=edit"
     );
   });
 
   it("encodes and decodes workspace and page route segments safely", () => {
-    window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do");
+    window.history.replaceState({}, "", "/x_2300756_docsera_docsera_sdk_runtime.do");
 
     expect(buildWorkspaceHref("api docs", { pageSlug: "getting/started" })).toBe(
-      "/x_82900_docsera_docsera_sdk_runtime.do#/api%20docs/getting%2Fstarted"
+      "/x_2300756_docsera_docsera_sdk_runtime.do#/api%20docs/getting%2Fstarted"
     );
-    expect(readAppRoute(new URL("https://example.test/x_82900_docsera_docsera_sdk_runtime.do#/api%20docs/getting%2Fstarted"))).toEqual({
+    expect(readAppRoute(new URL("https://example.test/x_2300756_docsera_docsera_sdk_runtime.do#/api%20docs/getting%2Fstarted"))).toEqual({
       legacyPageId: "",
       mode: "workspace",
       pageSlug: "getting/started",
@@ -53,13 +53,13 @@ describe("workspace routing", () => {
   });
 
   it("keeps live implicit and edit explicit in the canonical URL", () => {
-    window.history.replaceState({}, "", "/x_82900_docsera_docsera_sdk_runtime.do");
+    window.history.replaceState({}, "", "/x_2300756_docsera_docsera_sdk_runtime.do");
 
     expect(buildWorkspaceHref("product-docs", { mode: "live", pageSlug: "overview" })).toBe(
-      "/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/overview"
+      "/x_2300756_docsera_docsera_sdk_runtime.do#/product-docs/overview"
     );
     expect(buildWorkspaceHref("product-docs", { mode: "edit", pageSlug: "overview" })).toBe(
-      "/x_82900_docsera_docsera_sdk_runtime.do#/product-docs/overview?mode=edit"
+      "/x_2300756_docsera_docsera_sdk_runtime.do#/product-docs/overview?mode=edit"
     );
   });
 

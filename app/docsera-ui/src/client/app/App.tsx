@@ -397,6 +397,7 @@ type WorkspaceLeaseState =
   | ({ state: "held" } & WorkspaceEditLeaseHeld)
   | { state: "blocked"; failure: "locked" | "lost" | "forbidden" | "transient" | "terminal"; holderDisplayName: string | null; holderUserSysId?: string; message: string; sameUserDifferentSession: boolean; observedLeaseId?: string; releaseFailure?: boolean };
 type WorkspaceLeaseBinding = WorkspaceEditLeaseHeld & { bindingId: string; workspaceSlug: string; workspaceSysId: string };
+type WorkspaceLeaseRecoveryPresentation = { workspaceSlug: string; message: string; title: string };
 
 function workspaceLeaseStorageKey(workspaceSysId: string): string { return `${DOCSERA_WORKSPACE_LEASE_STORAGE_PREFIX}${cleanText(workspaceSysId)}`; }
 function workspaceLeaseReloadMarkerKey(workspaceSysId: string): string { return `${DOCSERA_WORKSPACE_LEASE_RELOAD_MARKER_PREFIX}${cleanText(workspaceSysId)}`; }
@@ -1320,6 +1321,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   const endingPreviousSessionRef = useRef(false);
   const leaseRecoveryContextRef = useRef("");
   const [workspaceLeaseState, setWorkspaceLeaseState] = useState<WorkspaceLeaseState>({ state: "idle" });
+  const [workspaceLeaseRecoveryPresentation, setWorkspaceLeaseRecoveryPresentation] = useState<WorkspaceLeaseRecoveryPresentation | null>(null);
   const [editorRetryNonce, setEditorRetryNonce] = useState(0);
   const [editorAuthoritativeRebindNonce, setEditorAuthoritativeRebindNonce] = useState(0);
   const [workspacePagesRetryNonce, setWorkspacePagesRetryNonce] = useState(0);
@@ -3571,11 +3573,27 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         workspaceSlug: workspace.slug,
         workspaceSysId
       });
-      const result = canResume && stored.token && serviceNowClient.resumeWorkspaceEditLease
+      let result = canResume && stored.token && serviceNowClient.resumeWorkspaceEditLease
         ? await serviceNowClient.resumeWorkspaceEditLease({ workspaceSlug: workspace.slug, workspaceSysId, leaseToken: stored.token })
         : serviceNowClient.acquireWorkspaceEditLease
           ? await serviceNowClient.acquireWorkspaceEditLease({ workspaceSlug: workspace.slug, workspaceSysId })
           : { state: "failed" as const, errorMessage: "Workspace editing is unavailable.", failure: "terminal" as const, retryable: false };
+      // A displaced tab can initially report an indeterminate lease loss, and a same-account
+      // lock can omit the observed lease ID. Recheck once only when it can establish the
+      // server-issued target needed for an explicit takeover.
+      if (
+        (result.state === "lost" || (result.state === "locked" && result.sameUserDifferentSession && !result.observedLeaseId)) &&
+        serviceNowClient.getWorkspaceEditLeaseStatus
+      ) {
+        try {
+          const status = await serviceNowClient.getWorkspaceEditLeaseStatus({ workspaceSlug: workspace.slug, workspaceSysId });
+          if (status.state === "locked" && status.sameUserDifferentSession && status.observedLeaseId) {
+            result = status;
+          }
+        } catch {
+          // The lookup is advisory. Keep the original outcome when it cannot provide a takeover target.
+        }
+      }
       if (!current || workspaceLeaseOperationGenerationRef.current !== operationGeneration) {
         recordDocseraDiagnosticEvent("lease.acquireResult.ignored", {
           cleanup: result.state === "held",
@@ -3598,6 +3616,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
           workspaceSlug: workspace.slug,
           workspaceSysId
         });
+        setWorkspaceLeaseRecoveryPresentation(null);
         setWorkspaceLeaseState(result);
         setEditAccessLost(false);
         return;
@@ -3618,6 +3637,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         workspaceSlug: workspace.slug,
         workspaceSysId
       });
+      setWorkspaceLeaseRecoveryPresentation(null);
       setWorkspaceLeaseState(result.state === "locked" || result.state === "lost"
         ? createWorkspaceLeaseHolderNotice(result, result.state)
         : createWorkspaceLeaseFailureNotice(result));
@@ -3627,6 +3647,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         clearStoredWorkspaceLease(workspaceSysId, "acquire_exception");
         clearContentRevealIntent();
         editReentryRequestedRef.current = false;
+        setWorkspaceLeaseRecoveryPresentation(null);
         setWorkspaceLeaseState(createWorkspaceLeaseFailureNotice({ errorMessage: "Workspace editing is temporarily unavailable. Please try again.", failure: "transient" }));
         setEditAccessLost(true);
       }
@@ -3655,6 +3676,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
       const result = await end({ workspaceSlug: workspace.slug, workspaceSysId: cleanText(workspace.sysId), observedLeaseId: state.observedLeaseId });
       if (workspaceLeaseOperationGenerationRef.current !== operationGeneration || leaseRecoveryContextRef.current !== recoveryContext) return;
       if (result.state === "released") {
+        setWorkspaceLeaseRecoveryPresentation({
+          workspaceSlug: workspace.slug,
+          message: state.message,
+          title: "Editing session already active"
+        });
         setWorkspaceLeaseState({ state: "idle" });
         if (requestedWorkspaceMode === "edit") setLeaseAcquireNonce((value) => value + 1);
         else changeWorkspaceMode("edit");
@@ -6564,6 +6590,27 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
     });
   }
 
+  function retryWorkspaceEdit() {
+    if (route.mode !== "workspace" || workspaceLeaseState.state !== "blocked") {
+      return;
+    }
+
+    const recoveryPresentation = {
+      workspaceSlug: currentWorkspaceSlug,
+      message: workspaceLeaseState.message,
+      title: "Editing session ended"
+    };
+    setWorkspaceLeaseRecoveryPresentation(recoveryPresentation);
+
+    if (requestedWorkspaceMode === "edit") {
+      setWorkspaceLeaseState({ state: "idle" });
+      setLeaseAcquireNonce((value) => value + 1);
+      return;
+    }
+
+    changeWorkspaceMode("edit");
+  }
+
   function applySavedPage(page: WorkspacePageRecord) {
     if (workspaceState.status !== "success") {
       return;
@@ -7263,6 +7310,11 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
   }, [workspaceSettingsPanelWorkspace]);
   const appHeaderWorkspaceControlsLocked = isRetainingWorkspaceHeaderPresentation || workspaceCommandBlocksCurrentWorkspaceWrites;
   const editorStatusLabel = cleanText(editorTransitionState.status) || "Saved";
+  const retainedWorkspaceLeaseRecoveryPresentation =
+    requestedWorkspaceMode === "edit" &&
+    workspaceLeaseRecoveryPresentation?.workspaceSlug === currentWorkspaceSlug
+      ? workspaceLeaseRecoveryPresentation
+      : null;
   const currentPageAuthoringReadiness = resolveCurrentPageAuthoringReadiness({
     activeWorkspaceMode,
     canEditPageBody: hasAuthoringCapability && !editAccessLost && !workspaceCommandBlocksCurrentWorkspaceWrites,
@@ -7941,6 +7993,8 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         onReleaseWorkspaceSettingsPreviewObjectUrl={releaseWorkspaceSettingsOwnedPreviewObjectUrl}
         mode={appHeaderMode}
         onDismissPendingChangesPublishToast={clearWorkspacePublishToast}
+        recoveryWarningToastMessage={visibleShellNotice?.message ?? ""}
+        onDismissRecoveryWarningToast={() => setScopedShellNotice(null)}
         onOpenMyWorkspaces={openLauncher}
         onOpenWorkspace={openWorkspace}
         onOpenWorkspaceSettings={route.mode === "workspace" ? openCurrentWorkspaceSettingsPanel : undefined}
@@ -7999,18 +8053,18 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
         {route.mode === "workspace" ? (
           <>
             <WorkspaceShell
-              bodyNotice={visibleShellNotice ? { eyebrow: visibleShellNotice.eyebrow, kind: visibleShellNotice.kind, message: visibleShellNotice.message } : null}
               contentRevealState={chromeContentRevealState}
               contentRevealIntent={contentRevealIntent}
               bodyState={workspaceMainPaneBodyState}
               canCreatePage={canCreatePage}
               createPageDisabledReason={createPageDisabledReason}
-              canEditPageBody={hasAuthoringCapability && !editAccessLost && !workspaceCommandBlocksCurrentWorkspaceWrites}
-              accessLossMessage={workspaceLeaseState.state === "blocked" ? workspaceLeaseState.message : undefined}
+              canEditPageBody={hasAuthoringCapability && !editAccessLost && !retainedWorkspaceLeaseRecoveryPresentation && !workspaceCommandBlocksCurrentWorkspaceWrites}
+              accessLossMessage={workspaceLeaseState.state === "blocked" ? workspaceLeaseState.message : retainedWorkspaceLeaseRecoveryPresentation?.message}
+              accessLossTitle={retainedWorkspaceLeaseRecoveryPresentation?.title}
               leaseConflict={workspaceLeaseState.state === "blocked" && workspaceLeaseState.failure === "locked"}
               leaseHolder={workspaceLeaseState.state === "blocked" && workspaceLeaseState.failure === "locked" && !workspaceLeaseState.sameUserDifferentSession ? { displayName: workspaceLeaseState.holderDisplayName, userSysId: workspaceLeaseState.holderUserSysId } : undefined}
               onEndPreviousSession={workspaceLeaseState.state === "blocked" && workspaceLeaseState.failure === "locked" && workspaceLeaseState.sameUserDifferentSession && workspaceLeaseState.observedLeaseId ? endPreviousSession : undefined}
-              onRetryEdit={workspaceLeaseState.state === "blocked" && workspaceLeaseState.releaseFailure ? () => { setWorkspaceLeaseState({ state: "idle" }); setLeaseAcquireNonce((value) => value + 1); } : undefined}
+              onRetryEdit={workspaceLeaseState.state === "blocked" && (workspaceLeaseState.failure === "lost" || workspaceLeaseState.releaseFailure) ? retryWorkspaceEdit : undefined}
               endingPreviousSession={endingPreviousSession}
               canManagePageSettings={canManagePageSettings}
               collapsedPageIds={currentModeUiState.collapsedPageIds}
@@ -8027,7 +8081,7 @@ export function App({ runtime, serviceNowClient }: { runtime: DocseraRuntimeCont
               onSourceDiscardInvalidDraft={handleSourceDiscardInvalidDraft}
               onSourceInvalidChange={handleSourceInvalidChange}
               onSourceTitleChange={handleSourceTitleChange}
-              editAccessLost={editAccessLost}
+              editAccessLost={editAccessLost || Boolean(retainedWorkspaceLeaseRecoveryPresentation)}
               editorFailure={editorFailure}
               mediaAdapter={workspaceMediaAdapter}
               inlineCreateState={displayedInlinePageCreateState}

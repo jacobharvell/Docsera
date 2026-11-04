@@ -8,18 +8,18 @@ const defaults = {
   instanceUrl: "https://dev295482.service-now.com",
   keyringAccount: "now-sdk",
   keyringService: "ServiceNow",
-  pingPath: "/api/x_82900_docsera/docsera_runtime/ping",
-  pagesPath: "/api/x_82900_docsera/docsera_runtime/pages",
-  workspaceProvisioningStatusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status",
-  workspacePath: "/api/x_82900_docsera/docsera_runtime/workspaces",
+  pingPath: "/api/x_2300756_docsera/docsera_runtime/ping",
+  pagesPath: "/api/x_2300756_docsera/docsera_runtime/pages",
+  workspaceProvisioningStatusPath: "/api/x_2300756_docsera/docsera_runtime/workspace-provisioning-status",
+  workspacePath: "/api/x_2300756_docsera/docsera_runtime/workspaces",
   workspaceName: "Verification Workspace",
   workspaceDescription: "Temporary workspace for Docsera platform verification"
 };
 
 const workspaceRoleNames = Object.freeze({
-  docseraAdmin: "x_82900_docsera.admin",
-  workspaceAdmin: "x_82900_docsera.workspace_admin",
-  editor: "x_82900_docsera.editor"
+  docseraAdmin: "x_2300756_docsera.admin",
+  workspaceAdmin: "x_2300756_docsera.workspace_admin",
+  editor: "x_2300756_docsera.editor"
 });
 
 function readEnv(...names) {
@@ -439,13 +439,13 @@ async function main() {
   addCheck(checks, pingResult.status === 200, "runtime ping is healthy before workspace verification");
 
   const tableDefinition = await tableQuery(instanceUrl, session, "sys_db_object", {
-    query: "name=x_82900_docsera_workspace",
+    query: "name=x_2300756_docsera_workspace",
     fields: "sys_id,name,label,super_class"
   });
   addCheck(checks, tableDefinition.length === 1, "workspace table metadata is installed", tableDefinition.length === 1 ? "" : JSON.stringify(tableDefinition));
 
   const requestTableDefinition = await tableQuery(instanceUrl, session, "sys_db_object", {
-    query: "name=x_82900_docsera_workspace_provision_request",
+    query: "name=x_2300756_docsera_workspace_provision_request",
     fields: "sys_id,name,label,super_class"
   });
   addCheck(
@@ -479,7 +479,7 @@ async function main() {
   }
 
   const slugDictionary = await tableQuery(instanceUrl, session, "sys_dictionary", {
-    query: "name=x_82900_docsera_workspace^element=workspace_slug",
+    query: "name=x_2300756_docsera_workspace^element=workspace_slug",
     fields: "sys_id,name,element,mandatory,unique,max_length"
   });
   const slugField = slugDictionary[0] ?? null;
@@ -496,12 +496,12 @@ async function main() {
   addCheck(checks, roleNames.has(workspaceRoleNames.editor), "scoped editor role is installed");
 
   const restDefinitions = await tableQuery(instanceUrl, session, "sys_ws_definition", {
-    query: "namespace=x_82900_docsera^service_id=docsera_runtime",
+    query: "namespace=x_2300756_docsera^service_id=docsera_runtime",
     fields: "sys_id,name,namespace,service_id,base_uri"
   });
   const restDefinition = restDefinitions[0] ?? null;
   addCheck(checks, restDefinitions.length === 1, "Docsera runtime REST definition is installed", JSON.stringify(restDefinitions));
-  addCheck(checks, cleanText(restDefinition?.base_uri) === "/api/x_82900_docsera/docsera_runtime", "REST definition base URI matches expected value", JSON.stringify(restDefinition));
+  addCheck(checks, cleanText(restDefinition?.base_uri) === "/api/x_2300756_docsera/docsera_runtime", "REST definition base URI matches expected value", JSON.stringify(restDefinition));
 
   const restOperations = await tableQuery(instanceUrl, session, "sys_ws_operation", {
     query: `web_service_definition=${cleanText(restDefinition?.sys_id)}^nameINping,workspaces,workspace_provisioning_status,pages_list,pages_create,pages_save`,
@@ -564,7 +564,7 @@ async function main() {
     );
     createdRequestSysIds.push(firstRequestId);
     const firstRequestSnapshot = (
-      await tableQuery(instanceUrl, session, "x_82900_docsera_workspace_provision_request", {
+      await tableQuery(instanceUrl, session, "x_2300756_docsera_workspace_provision_request", {
         query: `sys_id=${firstRequestId}`,
         fields: "sys_id,state,requested_by",
         limit: 1
@@ -626,7 +626,7 @@ async function main() {
     );
     createdRequestSysIds.push(secondRequestId);
     const secondRequestSnapshot = (
-      await tableQuery(instanceUrl, session, "x_82900_docsera_workspace_provision_request", {
+      await tableQuery(instanceUrl, session, "x_2300756_docsera_workspace_provision_request", {
         query: `sys_id=${secondRequestId}`,
         fields: "sys_id,state,requested_by",
         limit: 1
@@ -665,7 +665,7 @@ async function main() {
       })
     );
 
-    const requestRecords = await tableQuery(instanceUrl, session, "x_82900_docsera_workspace_provision_request", {
+    const requestRecords = await tableQuery(instanceUrl, session, "x_2300756_docsera_workspace_provision_request", {
       query: `sys_idIN${createdRequestSysIds.join(",")}`,
       fields: "sys_id,name,workspace_slug,state,workspace,admin_group,editor_group,error_code,error_message,requested_by"
     });
@@ -683,7 +683,7 @@ async function main() {
       addCheck(checks, cleanText(requestRecord?.requested_by) === currentUserSysId, `provision request ${requestId} stores the authenticated request creator`, JSON.stringify(requestRecord));
     }
 
-    const workspaceRecords = await tableQuery(instanceUrl, session, "x_82900_docsera_workspace", {
+    const workspaceRecords = await tableQuery(instanceUrl, session, "x_2300756_docsera_workspace", {
       query: `sys_idIN${createdWorkspaceSysIds.join(",")}`,
       fields: "sys_id,name,workspace_slug,status,icon_type,icon_key,icon_label,toc_default_visible,page_width,admin_group,editor_group,creator,short_description"
     });
@@ -741,22 +741,22 @@ async function main() {
     addCheck(
       checks,
       groupRoleKey.has(`${cleanText(firstWorkspace.groups?.admin?.sysId)}::${cleanText(workspaceAdminRole?.sys_id)}`),
-      "first admin group has x_82900_docsera.workspace_admin"
+      "first admin group has x_2300756_docsera.workspace_admin"
     );
     addCheck(
       checks,
       groupRoleKey.has(`${cleanText(firstWorkspace.groups?.editor?.sysId)}::${cleanText(editorRole?.sys_id)}`),
-      "first editor group has x_82900_docsera.editor"
+      "first editor group has x_2300756_docsera.editor"
     );
     addCheck(
       checks,
       groupRoleKey.has(`${cleanText(secondWorkspace.groups?.admin?.sysId)}::${cleanText(workspaceAdminRole?.sys_id)}`),
-      "second admin group has x_82900_docsera.workspace_admin"
+      "second admin group has x_2300756_docsera.workspace_admin"
     );
     addCheck(
       checks,
       groupRoleKey.has(`${cleanText(secondWorkspace.groups?.editor?.sysId)}::${cleanText(editorRole?.sys_id)}`),
-      "second editor group has x_82900_docsera.editor"
+      "second editor group has x_2300756_docsera.editor"
     );
 
     const automaticMembershipRecords = await tableQuery(instanceUrl, session, "sys_user_grmember", {
@@ -781,7 +781,7 @@ async function main() {
       JSON.stringify(creatorMembershipRecords)
     );
 
-    const duplicateInsert = await fetchJson(instanceUrl, session, "/api/now/table/x_82900_docsera_workspace", {
+    const duplicateInsert = await fetchJson(instanceUrl, session, "/api/now/table/x_2300756_docsera_workspace", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -823,14 +823,14 @@ async function main() {
   } finally {
     if (!keepData) {
       for (const requestSysId of [...new Set(createdRequestSysIds)].reverse()) {
-        const deleted = await tableDelete(instanceUrl, session, "x_82900_docsera_workspace_provision_request", requestSysId);
+        const deleted = await tableDelete(instanceUrl, session, "x_2300756_docsera_workspace_provision_request", requestSysId);
         if (!deleted) {
           cleanupFailures.push(`request:${requestSysId}`);
         }
       }
 
       for (const workspaceSysId of [...new Set(createdWorkspaceSysIds)].reverse()) {
-        const deleted = await tableDelete(instanceUrl, session, "x_82900_docsera_workspace", workspaceSysId);
+        const deleted = await tableDelete(instanceUrl, session, "x_2300756_docsera_workspace", workspaceSysId);
         if (!deleted) {
           cleanupFailures.push(`workspace:${workspaceSysId}`);
         }

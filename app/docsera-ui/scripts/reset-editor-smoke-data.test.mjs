@@ -15,8 +15,8 @@ const resetScriptSource = await readFile("scripts/reset-editor-smoke-data.mjs", 
 
 describe("editor smoke reset lease handling", () => {
   it("cleans production removal memberships from the ordinary custom table", () => {
-    expect(resetScriptSource).toContain('workspaceRemovalMemberTable: "x_82900_docsera_workspace_removal_member"');
-    expect(resetScriptSource).not.toContain('workspaceRemovalMemberTable: "x_82900_docsera_rm_member"');
+    expect(resetScriptSource).toContain('workspaceRemovalMemberTable: "x_2300756_docsera_workspace_removal_member"');
+    expect(resetScriptSource).not.toContain('workspaceRemovalMemberTable: "x_2300756_docsera_rm_member"');
   });
 
   it("treats a held workspace lease as a destructive-reset block", () => {

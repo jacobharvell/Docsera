@@ -1,6 +1,6 @@
 import { GlideDateTime, gs } from "@servicenow/glide";
 
-const DOCSERA_SCOPE = "x_82900_docsera";
+const DOCSERA_SCOPE = "x_2300756_docsera";
 
 export function process(_request: unknown, response: { setBody: (payload: unknown) => void }) {
   response.setBody({

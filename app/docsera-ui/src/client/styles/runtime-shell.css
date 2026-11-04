@@ -3916,6 +3916,31 @@ html[data-docsera-theme="dark"] .docsera-header__publish-toast {
   box-shadow: 0 22px 44px rgba(0, 0, 0, 0.34);
 }
 
+.docsera-header__publish-toast--warning {
+  border-color: color-mix(in srgb, #c88700 34%, var(--docsera-border));
+  background: color-mix(in srgb, var(--docsera-surface) 91%, #f2b544 9%);
+}
+
+.docsera-header__publish-toast--warning .docsera-header__publish-toast-icon {
+  color: #a86900;
+}
+
+.docsera-header__publish-toast--warning .docsera-header__publish-toast-dismiss:hover {
+  background: color-mix(in srgb, #c88700 12%, transparent);
+}
+
+.docsera-header__publish-toast--warning .docsera-header__publish-toast-dismiss:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in srgb, #c88700 28%, transparent);
+}
+
+html[data-docsera-theme="dark"] .docsera-header__publish-toast--warning {
+  background: color-mix(in srgb, var(--docsera-surface) 85%, #d69319 15%);
+}
+
+html[data-docsera-theme="dark"] .docsera-header__publish-toast--warning .docsera-header__publish-toast-icon {
+  color: #f3bd4b;
+}
+
 .docsera-header__ghost-button--theme,
 .docsera-header__action-slot--settings {
   order: 3;
@@ -5344,6 +5369,14 @@ html[data-docsera-theme="dark"] .docsera-page-tree__new-page:hover {
 
 .docsera-main__surface--document {
   padding-bottom: 400px;
+}
+
+.docsera-main__surface--session-recovery {
+  gap: 14px;
+}
+
+.docsera-main__access-loss--session-recovery .docsera-main__recovery-title {
+  margin: 0;
 }
 
 .docsera-main__surface--empty {

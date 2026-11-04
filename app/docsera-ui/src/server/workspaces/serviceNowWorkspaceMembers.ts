@@ -41,7 +41,7 @@ export type WorkspaceMemberRemoveInput = {
 export type WorkspaceMembershipMutationKind = "set" | "remove";
 
 export const DOCSERA_WORKSPACE_MEMBERSHIP_MUTATION_COMMAND_TABLE =
-  "x_82900_docsera_workspace_member_mutation_command";
+  "x_2300756_docsera_workspace_member_mutation_command";
 
 export type WorkspaceMemberMutationCommand = {
   accessLevel: WorkspaceMembershipAccessLevel | null;

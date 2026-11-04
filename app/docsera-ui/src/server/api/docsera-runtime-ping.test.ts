@@ -23,7 +23,7 @@ describe("docsera runtime ping", () => {
     expect(setBody).toHaveBeenCalledWith({
       result: {
         authenticated: true,
-        scope: "x_82900_docsera",
+        scope: "x_2300756_docsera",
         status: "ok",
         timestamp: "2026-09-07 10:15:00",
         userDisplayName: "Priya Writer",

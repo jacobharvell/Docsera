@@ -9,25 +9,25 @@ const defaults = {
   instanceUrl: "https://dev295482.service-now.com",
   keyringAccount: "now-sdk",
   keyringService: "ServiceNow",
-  pingPath: "/api/x_82900_docsera/docsera_runtime/ping",
-  workspacePath: "/api/x_82900_docsera/docsera_runtime/workspaces",
-  workspaceProvisioningStatusPath: "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status",
-  workspaceEditLeasePath: "/api/x_82900_docsera/docsera_runtime/workspaces/edit-lease",
-  pendingChangesPath: "/api/x_82900_docsera/docsera_runtime/workspaces/pending-changes",
-  pageSavePath: "/api/x_82900_docsera/docsera_runtime/pages",
-  pageMovePath: "/api/x_82900_docsera/docsera_runtime/pages/move",
-  pageDeletePath: "/api/x_82900_docsera/docsera_runtime/pages/delete",
-  requestTable: "x_82900_docsera_workspace_provision_request",
-  workspaceTable: "x_82900_docsera_workspace",
-  workspaceLeaseTable: "x_82900_docsera_workspace_edit_lease",
-  pageTable: "x_82900_docsera_page",
-  workspaceChangeSetTable: "x_82900_docsera_workspace_change_set",
-  workspaceSnapshotSetTable: "x_82900_docsera_workspace_snapshot_set",
-  workspacePageSnapshotTable: "x_82900_docsera_workspace_page_snapshot",
-  workspaceChangeEntryTable: "x_82900_docsera_workspace_change_entry",
-  workspaceMutationClaimTable: "x_82900_docsera_workspace_mutation_claim",
-  workspaceRemovalBatchTable: "x_82900_docsera_workspace_removal_batch",
-  workspaceRemovalMemberTable: "x_82900_docsera_workspace_removal_member"
+  pingPath: "/api/x_2300756_docsera/docsera_runtime/ping",
+  workspacePath: "/api/x_2300756_docsera/docsera_runtime/workspaces",
+  workspaceProvisioningStatusPath: "/api/x_2300756_docsera/docsera_runtime/workspace-provisioning-status",
+  workspaceEditLeasePath: "/api/x_2300756_docsera/docsera_runtime/workspaces/edit-lease",
+  pendingChangesPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/pending-changes",
+  pageSavePath: "/api/x_2300756_docsera/docsera_runtime/pages",
+  pageMovePath: "/api/x_2300756_docsera/docsera_runtime/pages/move",
+  pageDeletePath: "/api/x_2300756_docsera/docsera_runtime/pages/delete",
+  requestTable: "x_2300756_docsera_workspace_provision_request",
+  workspaceTable: "x_2300756_docsera_workspace",
+  workspaceLeaseTable: "x_2300756_docsera_workspace_edit_lease",
+  pageTable: "x_2300756_docsera_page",
+  workspaceChangeSetTable: "x_2300756_docsera_workspace_change_set",
+  workspaceSnapshotSetTable: "x_2300756_docsera_workspace_snapshot_set",
+  workspacePageSnapshotTable: "x_2300756_docsera_workspace_page_snapshot",
+  workspaceChangeEntryTable: "x_2300756_docsera_workspace_change_entry",
+  workspaceMutationClaimTable: "x_2300756_docsera_workspace_mutation_claim",
+  workspaceRemovalBatchTable: "x_2300756_docsera_workspace_removal_batch",
+  workspaceRemovalMemberTable: "x_2300756_docsera_workspace_removal_member"
 };
 
 function cleanText(value) {
@@ -145,7 +145,7 @@ async function fetchText(instanceUrl, session, path, options = {}) {
   return { ok: response.ok, status: response.status, text: await response.text() };
 }
 
-async function runBackgroundScript(instanceUrl, session, script, scopeName = "x_82900_docsera") {
+async function runBackgroundScript(instanceUrl, session, script, scopeName = "x_2300756_docsera") {
   const form = await fetchText(instanceUrl, session, "sys.scripts.do", { accept: "text/html" });
   if (!form.ok) throw new Error(`Background script form failed with HTTP ${form.status}.`);
   const ckMatch = form.text.match(/name="sysparm_ck" type="hidden" value="([^"]+)"/i);

@@ -10,9 +10,9 @@ import {
 import { mapWorkspaceRecord } from "./serviceNowWorkspaceRecords.ts";
 import { createServiceNowWorkspaceIconService } from "./serviceNowWorkspaceIcons.ts";
 
-const DOCSERA_WORKSPACE_PROVISION_REQUEST_TABLE = "x_82900_docsera_workspace_provision_request";
+const DOCSERA_WORKSPACE_PROVISION_REQUEST_TABLE = "x_2300756_docsera_workspace_provision_request";
 const PROVISION_STATUS_ROUTE_PATH =
-  "/api/x_82900_docsera/docsera_runtime/workspace-provisioning-status";
+  "/api/x_2300756_docsera/docsera_runtime/workspace-provisioning-status";
 type ProvisionRequestState = "requested" | "processing" | "succeeded" | "failed";
 
 type ProvisionRequestRecord = {

@@ -53,5 +53,5 @@ test("the production Global host ACL uses the supported GlideSystem authenticati
 test("the scoped application launcher opens the Global host while the scoped runtime remains independent", () => {
   const launcher = readFileSync(path.resolve(root, "..", "docsera-ui", "src", "fluent", "application-menu", "docsera-runtime-launch.now.ts"), "utf8");
   assert.match(launcher, /query: "docsera\.do"/);
-  assert.doesNotMatch(launcher, /query: "x_82900_docsera_docsera_sdk_runtime\.do"/);
+  assert.doesNotMatch(launcher, /query: "x_2300756_docsera_docsera_sdk_runtime\.do"/);
 });

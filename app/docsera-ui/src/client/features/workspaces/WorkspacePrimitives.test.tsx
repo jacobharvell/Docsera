@@ -97,7 +97,7 @@ describe("WorkspaceIconBadge", () => {
             type: "uploaded",
             key: "asset-key-001",
             label: "Custom icon",
-            assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001"
+            assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001"
           },
           name: "Custom Docs"
         }}
@@ -108,7 +108,7 @@ describe("WorkspaceIconBadge", () => {
     await waitFor(() => expect(container.querySelector("img")).toHaveAttribute("src", "blob:workspace-icon"));
     const image = container.querySelector("img");
     expect(loadUploadedIcon).toHaveBeenCalledWith({
-      assetPath: "/api/x_82900_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001",
+      assetPath: "/api/x_2300756_docsera/docsera_runtime/workspaces/icons/file?assetKey=asset-key-001",
       signal: expect.any(AbortSignal)
     });
     expect(createObjectUrlSpy).toHaveBeenCalledWith(expect.any(Blob));

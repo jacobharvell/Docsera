@@ -38,6 +38,7 @@ async function removeDir(dir) {
 describe("test suite manifest", () => {
   it("excludes Node-native tests while retaining strict Vitest discovery", () => {
     expect(nodeNativeTestFiles).toContain("scripts/verify-sdk-module-keys.test.mjs");
+    expect(nodeNativeTestFiles).toContain("scripts/serviceNowSafeMarkupPlugin.test.mjs");
     expect(isNodeNativeTestFile("scripts/verify-sdk-module-keys.test.mjs")).toBe(true);
     expect(isNodeNativeTestFile("scripts\\verify-sdk-module-keys.test.mjs")).toBe(true);
     expect(isNodeNativeTestFile("scripts/test-suite-manifest.test.mjs")).toBe(false);

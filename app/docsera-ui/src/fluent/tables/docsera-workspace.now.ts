@@ -8,8 +8,8 @@ import {
   Table
 } from "@servicenow/sdk/core";
 
-export const x_82900_docsera_workspace = Table({
-  name: "x_82900_docsera_workspace",
+export const x_2300756_docsera_workspace = Table({
+  name: "x_2300756_docsera_workspace",
   label: "Docsera Workspace",
   display: "name",
   actions: ["read", "create", "update", "delete"],
@@ -92,11 +92,11 @@ export const x_82900_docsera_workspace = Table({
     }),
     pending_change_set: ReferenceColumn({
       label: "Active pending change set",
-      referenceTable: "x_82900_docsera_workspace_change_set"
+      referenceTable: "x_2300756_docsera_workspace_change_set"
     }),
     published_snapshot_set: ReferenceColumn({
       label: "Published snapshot set",
-      referenceTable: "x_82900_docsera_workspace_snapshot_set"
+      referenceTable: "x_2300756_docsera_workspace_snapshot_set"
     }),
     workspace_state_revision: IntegerColumn({
       label: "Workspace selector revision",

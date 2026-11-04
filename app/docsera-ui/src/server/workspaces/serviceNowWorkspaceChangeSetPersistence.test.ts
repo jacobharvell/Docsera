@@ -29,13 +29,13 @@ const glideMock = vi.hoisted(() => {
   let nextSysId = 1;
   let nextRandom = 1;
   const uniqueFields = new Map<string, string[]>([
-    ["x_82900_docsera_workspace_change_set", ["generation_key"]],
-    ["x_82900_docsera_workspace_snapshot_set", ["snapshot_key"]],
-    ["x_82900_docsera_workspace_page_snapshot", ["snapshot_page_key"]],
-    ["x_82900_docsera_workspace_change_entry", ["generation_page_key"]],
-    ["x_82900_docsera_workspace_mutation_claim", ["generation_key"]],
-    ["x_82900_docsera_workspace_removal_batch", ["batch_key"]],
-    ["x_82900_docsera_workspace_removal_member", ["batch_page_key"]]
+    ["x_2300756_docsera_workspace_change_set", ["generation_key"]],
+    ["x_2300756_docsera_workspace_snapshot_set", ["snapshot_key"]],
+    ["x_2300756_docsera_workspace_page_snapshot", ["snapshot_page_key"]],
+    ["x_2300756_docsera_workspace_change_entry", ["generation_page_key"]],
+    ["x_2300756_docsera_workspace_mutation_claim", ["generation_key"]],
+    ["x_2300756_docsera_workspace_removal_batch", ["batch_key"]],
+    ["x_2300756_docsera_workspace_removal_member", ["batch_page_key"]]
   ]);
 
   function cleanText(value: unknown): string {
@@ -359,15 +359,15 @@ vi.mock("@servicenow/glide", () => ({
 
 import { createServiceNowWorkspaceChangeSetPersistenceService } from "./serviceNowWorkspaceChangeSetPersistence.ts";
 
-const workspaceTable = "x_82900_docsera_workspace";
-const changeSetTable = "x_82900_docsera_workspace_change_set";
-const snapshotSetTable = "x_82900_docsera_workspace_snapshot_set";
-const pageSnapshotTable = "x_82900_docsera_workspace_page_snapshot";
-const pageTable = "x_82900_docsera_page";
-const changeEntryTable = "x_82900_docsera_workspace_change_entry";
-const mutationClaimTable = "x_82900_docsera_workspace_mutation_claim";
-const removalBatchTable = "x_82900_docsera_workspace_removal_batch";
-const removalMemberTable = "x_82900_docsera_workspace_removal_member";
+const workspaceTable = "x_2300756_docsera_workspace";
+const changeSetTable = "x_2300756_docsera_workspace_change_set";
+const snapshotSetTable = "x_2300756_docsera_workspace_snapshot_set";
+const pageSnapshotTable = "x_2300756_docsera_workspace_page_snapshot";
+const pageTable = "x_2300756_docsera_page";
+const changeEntryTable = "x_2300756_docsera_workspace_change_entry";
+const mutationClaimTable = "x_2300756_docsera_workspace_mutation_claim";
+const removalBatchTable = "x_2300756_docsera_workspace_removal_batch";
+const removalMemberTable = "x_2300756_docsera_workspace_removal_member";
 const UNKNOWN_USER_ATTRIBUTION_FOR_TEST = {
   accessibleLabel: "Last changed by Unknown user",
   displayName: "Unknown user",

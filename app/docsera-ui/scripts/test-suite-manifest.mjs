@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 export const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 export const supportedSuiteNamePattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const nodeNativeTestFiles = new Set([
+  "scripts/serviceNowSafeMarkupPlugin.test.mjs",
+  "scripts/verify-sdk-bundle-serialization.test.mjs",
   "scripts/verify-sdk-module-keys.test.mjs"
 ]);
 

@@ -22,7 +22,7 @@
     var mutationKind = cleanText(current.getValue('mutation_kind'));
     var accessLevel = cleanText(current.getValue('access_level'));
 
-    var workspace = new GlideRecord('x_82900_docsera_workspace');
+    var workspace = new GlideRecord('x_2300756_docsera_workspace');
     if (!workspace.get(workspaceSysId)) {
         fail('Workspace could not be found.');
         return;

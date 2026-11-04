@@ -36,7 +36,7 @@ describe("main bootstrap entry", () => {
   it("starts diagnostics, CSS, and React only for the top-level standalone runtime", async () => {
     prepareStandaloneRuntimeLaunch.mockReturnValue({
       kind: "continue",
-      targetUrl: "/x_82900_docsera_docsera_sdk_runtime.do"
+      targetUrl: "/x_2300756_docsera_docsera_sdk_runtime.do"
     });
 
     await import("./main");
@@ -51,7 +51,7 @@ describe("main bootstrap entry", () => {
   it("does not start diagnostics, CSS, or React in the framed copy while the top-level handoff is in progress", async () => {
     prepareStandaloneRuntimeLaunch.mockReturnValue({
       kind: "redirected",
-      targetUrl: "/x_82900_docsera_docsera_sdk_runtime.do#/workspace/page?mode=edit"
+      targetUrl: "/x_2300756_docsera_docsera_sdk_runtime.do#/workspace/page?mode=edit"
     });
 
     await import("./main");
@@ -65,13 +65,13 @@ describe("main bootstrap entry", () => {
 
   it("renders a launch failure surface instead of starting the framed runtime when handoff cannot complete", async () => {
     const failure = {
-      currentUrl: "https://example.service-now.com/x_82900_docsera_docsera_sdk_runtime.do",
+      currentUrl: "https://example.service-now.com/x_2300756_docsera_docsera_sdk_runtime.do",
       details: {
         redirectError: "replace failed"
       },
       kind: "failed" as const,
       message: "Docsera could not switch this launch into the standalone runtime.",
-      targetUrl: "/x_82900_docsera_docsera_sdk_runtime.do#/workspace/page?mode=edit"
+      targetUrl: "/x_2300756_docsera_docsera_sdk_runtime.do#/workspace/page?mode=edit"
     };
     prepareStandaloneRuntimeLaunch.mockReturnValue(failure);
 

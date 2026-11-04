@@ -25,14 +25,14 @@ function createBridge() {
     sys_user: [{ active: "true", sys_id: "creator-user" }],
     sys_user_group: [],
     sys_user_role: [
-      { name: "x_82900_docsera.workspace_admin", sys_id: "workspace-admin-role" },
-      { name: "x_82900_docsera.editor", sys_id: "editor-role" }
+      { name: "x_2300756_docsera.workspace_admin", sys_id: "workspace-admin-role" },
+      { name: "x_2300756_docsera.editor", sys_id: "editor-role" }
     ],
     sys_group_has_role: [],
     sys_user_grmember: [],
-    x_82900_docsera_workspace: [],
-    x_82900_docsera_workspace_icon_asset: [],
-    x_82900_docsera_workspace_provision_request: [
+    x_2300756_docsera_workspace: [],
+    x_2300756_docsera_workspace_icon_asset: [],
+    x_2300756_docsera_workspace_provision_request: [
       {
         admin_group_name: "Docsera_Product_Docs_Admins",
         editor_group_name: "Docsera_Product_Docs_Editors",
@@ -152,7 +152,7 @@ describe("global workspace provisioning bridge", () => {
       ])
     );
     expect(inserts.sys_user_grmember ?? []).toEqual([]);
-    expect(inserts.x_82900_docsera_workspace?.[0]).toMatchObject({
+    expect(inserts.x_2300756_docsera_workspace?.[0]).toMatchObject({
       creator: "creator-user"
     });
   });

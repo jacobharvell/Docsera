@@ -1,6 +1,6 @@
 {
   "scope": "global",
-  "scopeId": "global",
+  "scopeId": "2698dffadc844c00a9f20d67fca177d5",
   "name": "Docsera Global Workspace Provisioning Bridge",
   "tsconfigPath": "./src/server/tsconfig.json"
 }

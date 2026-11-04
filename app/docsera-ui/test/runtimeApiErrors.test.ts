@@ -156,7 +156,7 @@ beforeEach(() => {
 test("workspaces endpoint hides unexpected internal errors behind a safe message", async () => {
   vi.mocked(createServiceNowWorkspaceCatalogService).mockReturnValue({
     getWorkspace: vi.fn(),
-    listWorkspaces: vi.fn().mockRejectedValue(new Error("GlideRecord failed for table x_82900_docsera_docsera_workspace with sys_id=workspace-001"))
+    listWorkspaces: vi.fn().mockRejectedValue(new Error("GlideRecord failed for table x_2300756_docsera_docsera_workspace with sys_id=workspace-001"))
   } as never);
 
   const response = createResponseRecorder();
@@ -170,7 +170,7 @@ test("workspaces endpoint hides unexpected internal errors behind a safe message
     }
   });
   const logEntry = String(gsError.mock.calls[0]?.[0] ?? "");
-  expect(logEntry).toContain("GlideRecord failed for table x_82900_docsera_docsera_workspace");
+  expect(logEntry).toContain("GlideRecord failed for table x_2300756_docsera_docsera_workspace");
   expect(logEntry).toContain("\"searchTextLength\":22");
   expect(logEntry).not.toContain("WORKSPACE-QUERY-MARKER");
   expect(logEntry).not.toContain("UNEXPECTED-QUERY-MARKER");
@@ -178,7 +178,7 @@ test("workspaces endpoint hides unexpected internal errors behind a safe message
 
 test("workspace lookup failures still return a safe user-facing message", async () => {
   vi.mocked(createServiceNowWorkspaceCatalogService).mockReturnValue({
-    getWorkspace: vi.fn().mockRejectedValue(new Error("ACL denied on x_82900_docsera_docsera_workspace")),
+    getWorkspace: vi.fn().mockRejectedValue(new Error("ACL denied on x_2300756_docsera_docsera_workspace")),
     listWorkspaces: vi.fn()
   } as never);
 
@@ -192,7 +192,7 @@ test("workspace lookup failures still return a safe user-facing message", async 
       message: "Unable to load workspaces. Please try again."
     }
   });
-  expect(String(gsError.mock.calls[0]?.[0] ?? "")).toContain("ACL denied on x_82900_docsera_docsera_workspace");
+  expect(String(gsError.mock.calls[0]?.[0] ?? "")).toContain("ACL denied on x_2300756_docsera_docsera_workspace");
 });
 
 test("workspaces endpoint exposes the server workspace-creation capability", async () => {
@@ -232,7 +232,7 @@ test("workspaces endpoint exposes the server workspace-creation capability", asy
 
 test("page listing failures log bounded query metadata and return a safe user-facing message", async () => {
   vi.mocked(createServiceNowPageListingService).mockReturnValue({
-    listPages: vi.fn().mockRejectedValue(new Error("ACL denied on x_82900_docsera_page"))
+    listPages: vi.fn().mockRejectedValue(new Error("ACL denied on x_2300756_docsera_page"))
   } as never);
 
   const response = createResponseRecorder();
@@ -246,7 +246,7 @@ test("page listing failures log bounded query metadata and return a safe user-fa
     }
   });
   const logEntry = String(gsError.mock.calls[0]?.[0] ?? "");
-  expect(logEntry).toContain("ACL denied on x_82900_docsera_page");
+  expect(logEntry).toContain("ACL denied on x_2300756_docsera_page");
   expect(logEntry).toContain("\"workspaceSlugLength\":17");
   expect(logEntry).not.toContain("QUERY-DATA-MARKER");
   expect(logEntry).not.toContain("UNEXPECTED-QUERY-MARKER");
@@ -254,7 +254,7 @@ test("page listing failures log bounded query metadata and return a safe user-fa
 
 test("page save failures redact draft body text from unexpected error logging", async () => {
   vi.mocked(createServiceNowWorkspaceChangeSetPersistenceService).mockReturnValue({
-    savePageBody: vi.fn().mockRejectedValue(new Error("GlideRecord failed for x_82900_docsera_page"))
+    savePageBody: vi.fn().mockRejectedValue(new Error("GlideRecord failed for x_2300756_docsera_page"))
   } as never);
 
   const response = createResponseRecorder();
@@ -430,7 +430,7 @@ test("page publish failures redact workspace lease tokens from unexpected error 
 
 test("create workspace hides unexpected errors behind a safe message", async () => {
   vi.mocked(createServiceNowWorkspaceProvisioningService).mockReturnValue({
-    createWorkspace: vi.fn().mockRejectedValue(new Error("Insert failed: x_82900_docsera_docsera_workspace_provision_request")),
+    createWorkspace: vi.fn().mockRejectedValue(new Error("Insert failed: x_2300756_docsera_docsera_workspace_provision_request")),
     roleNames: {
       docseraAdmin: "Docsera admin",
       editor: "Editor",
@@ -457,7 +457,7 @@ test("create workspace hides unexpected errors behind a safe message", async () 
       message: "Something went wrong while creating the workspace. The workspace was not created. Please try again."
     }
   });
-  expect(String(gsError.mock.calls[0]?.[0] ?? "")).toContain("Insert failed: x_82900_docsera_docsera_workspace_provision_request");
+  expect(String(gsError.mock.calls[0]?.[0] ?? "")).toContain("Insert failed: x_2300756_docsera_docsera_workspace_provision_request");
 });
 
 test("workspace create and settings failures log only allowlisted diagnostic metadata", async () => {
@@ -570,7 +570,7 @@ test("create workspace rejects unauthorized requests before provisioning", async
 
 test("workspace provisioning status hides unexpected errors behind a safe message", async () => {
   vi.mocked(createServiceNowWorkspaceProvisioningService).mockReturnValue({
-    getProvisioningStatus: vi.fn().mockRejectedValue(new Error("Table x_82900_docsera_docsera_workspace_provision_request not found")),
+    getProvisioningStatus: vi.fn().mockRejectedValue(new Error("Table x_2300756_docsera_docsera_workspace_provision_request not found")),
     roleNames: {
       docseraAdmin: "Docsera admin",
       editor: "Editor",
@@ -589,7 +589,7 @@ test("workspace provisioning status hides unexpected errors behind a safe messag
       message: "Workspace provisioning status could not be checked. Please try again."
     }
   });
-  expect(String(gsError.mock.calls[0]?.[0] ?? "")).toContain("Table x_82900_docsera_docsera_workspace_provision_request not found");
+  expect(String(gsError.mock.calls[0]?.[0] ?? "")).toContain("Table x_2300756_docsera_docsera_workspace_provision_request not found");
 });
 
 test("workspace provisioning status allows an authorized caller to poll a known request", async () => {

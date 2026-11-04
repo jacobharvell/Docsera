@@ -1,8 +1,8 @@
 import "@servicenow/sdk/global";
 import { ChoiceColumn, ReferenceColumn, StringColumn, Table } from "@servicenow/sdk/core";
 
-export const x_82900_docsera_workspace_member_mutation_command = Table({
-  name: "x_82900_docsera_workspace_member_mutation_command",
+export const x_2300756_docsera_workspace_member_mutation_command = Table({
+  name: "x_2300756_docsera_workspace_member_mutation_command",
   label: "Docsera Workspace Member Mutation Command",
   display: "workspace",
   actions: ["read", "update"],
@@ -12,7 +12,7 @@ export const x_82900_docsera_workspace_member_mutation_command = Table({
     workspace: ReferenceColumn({
       label: "Workspace",
       mandatory: true,
-      referenceTable: "x_82900_docsera_workspace"
+      referenceTable: "x_2300756_docsera_workspace"
     }),
     target_user: ReferenceColumn({
       label: "Target user",

@@ -252,7 +252,7 @@ describe("server module boundaries", () => {
     expect(workspaceTableSource).toContain('actions: ["read", "create", "update", "delete"]');
     expect(bridgeAccessSource).toContain('$id: Now.ID["docsera-workspace-delete"]');
     expect(bridgeAccessSource).toContain('operation: "delete"');
-    expect(bridgeAccessSource).toContain('targetName: "x_82900_docsera_workspace"');
+    expect(bridgeAccessSource).toContain('targetName: "x_2300756_docsera_workspace"');
     expect(readFileSync(globalBridgeVerifyPath, "utf8")).toContain("delete_access");
   });
 
@@ -268,7 +268,7 @@ describe("server module boundaries", () => {
     expect(accessSource).toContain('targetType: "sys_script_include"');
 
     expect(bridgeSource).toContain("_validateWorkspaceGroupPair");
-    expect(bridgeSource).toContain("new GlideRecord('x_82900_docsera_workspace')");
+    expect(bridgeSource).toContain("new GlideRecord('x_2300756_docsera_workspace')");
     expect(bridgeSource).toContain("workspace.addQuery('admin_group', adminGroupSysId)");
     expect(bridgeSource).toContain("workspace.addQuery('editor_group', editorGroupSysId)");
 
@@ -317,7 +317,7 @@ describe("server module boundaries", () => {
     ).toBe(true);
     expect(updateSetXml).toContain("&lt;record_update table=&quot;sys_restricted_caller_access&quot;&gt;");
     expect(updateSetXml).toContain("&lt;rca_type&gt;real_rca&lt;/rca_type&gt;");
-    expect(updateSetXml).toContain("&lt;source_scope display_value=&quot;x_82900_docsera&quot;&gt;6997f092c3fd8310c569bf0d0501314d&lt;/source_scope&gt;");
+    expect(updateSetXml).toContain("&lt;source_scope display_value=&quot;x_2300756_docsera&quot;&gt;e6e43323accd4c7fb9271525a343850e&lt;/source_scope&gt;");
     expect(updateSetXml).toContain("&lt;source_type&gt;5&lt;/source_type&gt;");
     expect(updateSetXml).toContain("&lt;target display_value=&quot;DocseraGlobalWorkspaceMembershipBridge&quot;&gt;5bf5c028daaa417d88de36616e4c8300&lt;/target&gt;");
     expect(updateSetXml).toContain("&lt;target_type&gt;2&lt;/target_type&gt;");
