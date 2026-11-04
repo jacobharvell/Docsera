@@ -1,3 +1,6 @@
 # The RR-074 candidate manifest hashes these release-like XML bytes. Keep the
 # checked-out representation identical to the committed blob on Windows.
 /app/docsera-global-bridge/update-set/candidates/rr-074-global-consumer-portability/sys_remote_update_set_docsera_global_companion_consumer_candidate_0_1_0.xml text eol=lf
+
+# Preserve the native ServiceNow RR-077 XML download byte-for-byte.
+/app/docsera-ui/update-set/candidates/rr-077-controlled-scoped-export/docsera-scoped-v0.1.0-rr-077-diagnostic.xml -text
