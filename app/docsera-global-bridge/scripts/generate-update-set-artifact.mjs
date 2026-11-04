@@ -11,16 +11,19 @@ const distRoot = path.join(packageRoot, "dist");
 const distAppRoot = path.join(distRoot, "app");
 const outputRoot = path.join(packageRoot, "update-set");
 const scopedAppConfigPath = path.resolve(packageRoot, "..", "docsera-ui", "now.config.json");
+const globalKeysPath = path.join(packageRoot, "src", "fluent", "generated", "keys.ts");
 
 const constants = Object.freeze({
   buildType: "global",
   appVersion: "0.1.0",
-  artifactRevision: "global-base-metadata-safe-r2",
-  updateSetName: "Docsera Global Companion 0.1.0",
+  artifactRevision: "rr-074-global-consumer-candidate-r2",
+  updateSetName: "Docsera Global Companion Consumer Candidate 0.1.0",
   updateSetDescription:
     "Global companion update set for Docsera workspace provisioning and the authenticated docsera.do host.",
-  updateSetFileName: "sys_remote_update_set_docsera_global_companion_0_1_0.xml",
-  manifestFileName: "docsera-global-companion.update-set.json",
+  candidateDirectory: "candidates/rr-074-global-consumer-portability",
+  updateSetFileName: "sys_remote_update_set_docsera_global_companion_consumer_candidate_0_1_0.xml",
+  manifestFileName: "docsera-global-companion-consumer-candidate.update-set.json",
+  sourceSha: "16c5f95f4befa109277d1f67a50f8d977faebf17",
   remoteUpdateSetSource: "docsera-global-companion",
   recordedBy: "codex"
 });
@@ -39,10 +42,47 @@ function readScopedAppConfig() {
 
 const scopedAppConfig = readScopedAppConfig();
 
-const docseraMembershipBridge = Object.freeze({
-  name: "DocseraGlobalWorkspaceMembershipBridge",
-  sysId: "5bf5c028daaa417d88de36616e4c8300",
-  apiName: "global.DocseraGlobalWorkspaceMembershipBridge"
+function readGlobalAppConfig() {
+  const configPath = path.join(packageRoot, "now.config.json");
+  const rawConfig = JSON.parse(readText(configPath));
+  if (rawConfig.scope !== "global" || !rawConfig.scopeId || rawConfig.scopeId === "global") {
+    throw new Error(`Global companion config must declare a separately owned Global SDK identity: ${configPath}`);
+  }
+
+  return { scopeId: String(rawConfig.scopeId).trim() };
+}
+
+const globalAppConfig = readGlobalAppConfig();
+
+function resolveGeneratedIdentity(key) {
+  const content = readText(globalKeysPath);
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = content.match(
+    new RegExp(`'${escapedKey}':\\s*\\{\\s*table:\\s*'([^']+)'\\s*id:\\s*'([a-f0-9]{32})'`, "s")
+  );
+  if (!match) {
+    throw new Error(`Could not resolve generated identity ${key} from ${globalKeysPath}.`);
+  }
+
+  return Object.freeze({ table: match[1], sysId: match[2] });
+}
+
+const globalComponents = Object.freeze({
+  membershipBridge: Object.freeze({
+    ...resolveGeneratedIdentity("docsera-global-workspace-membership-bridge"),
+    name: "DocseraGlobalWorkspaceMembershipBridge",
+    apiName: "global.DocseraGlobalWorkspaceMembershipBridge"
+  }),
+  provisioningBridge: Object.freeze({
+    ...resolveGeneratedIdentity("docsera-global-workspace-provisioning-bridge"),
+    name: "DocseraGlobalWorkspaceProvisioningBridge"
+  })
+});
+
+const consumerGlobalOwnership = Object.freeze({
+  runtimeScope: "global",
+  ownershipSysId: "global",
+  ownershipDisplayValue: "Global"
 });
 
 const restrictedCallerAccessValues = Object.freeze({
@@ -67,7 +107,10 @@ function xmlEscape(value) {
 }
 
 function readText(filePath) {
-  return readFileSync(filePath, "utf8").replace(/^\uFEFF/, "");
+  // The SDK build can retain Windows line endings in its XML sources. The
+  // update-set serializer must be canonical: otherwise Git's text conversion
+  // rewrites embedded payload line endings when the candidate is committed.
+  return readFileSync(filePath, "utf8").replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
 }
 
 function requireMatch(content, pattern, description, filePath) {
@@ -120,6 +163,20 @@ function parseRecord(relativePath) {
     content = content.replace(targetScopePattern, `<target_scope>${scopedAppConfig.scopeId}</target_scope>`);
   }
 
+  // SDK output records use the separately owned development companion as
+  // sys_scope. A portable consumer update set must instead use the receiving
+  // instance's existing Global ownership record. It never transports that
+  // shared record itself.
+  const ownershipPattern = new RegExp(
+    `<sys_scope(?:\\s+[^>]*)?>${globalAppConfig.scopeId}</sys_scope>`,
+    "g"
+  );
+  content = content.replace(
+    ownershipPattern,
+    `<sys_scope display_value="${consumerGlobalOwnership.ownershipDisplayValue}">${consumerGlobalOwnership.ownershipSysId}</sys_scope>`
+  );
+  content = content.replaceAll(globalAppConfig.scopeId, consumerGlobalOwnership.ownershipSysId);
+
   const targetSysId = requireMatch(content, /<sys_id>([^<]+)<\/sys_id>/, "sys_id", absolutePath);
   const updateName = content.match(/<sys_update_name>([^<]+)<\/sys_update_name>/)?.[1] ?? `${tableName}_${targetSysId}`;
   const targetName =
@@ -134,7 +191,8 @@ function parseRecord(relativePath) {
     targetName,
     targetSysId,
     updateName,
-    updateXmlSysId: stableSysId(`sys_update_xml:${relativePath}`)
+    updateXmlSysId: stableSysId(`sys_update_xml:${relativePath}`),
+    action: content.match(new RegExp(`<${tableName}\\s+action="([^"]+)"`))?.[1] ?? "INSERT_OR_UPDATE"
   };
 }
 
@@ -162,7 +220,7 @@ function buildRecordUpdateXml(tableName, sysId, fields) {
 
 function buildRestrictedCallerAccessRecords() {
   const sysId = stableSysId(
-    `sys_restricted_caller_access:${scopedAppConfig.scopeId}:global:${docseraMembershipBridge.apiName}:execute`
+    `sys_restricted_caller_access:${scopedAppConfig.scopeId}:${consumerGlobalOwnership.ownershipSysId}:${globalComponents.membershipBridge.apiName}:execute`
   );
   const updateName = `sys_restricted_caller_access_${sysId}`;
   const relativePath = `synthetic/${updateName}.xml`;
@@ -183,22 +241,23 @@ function buildRestrictedCallerAccessRecords() {
         { name: "source_table", value: "sys_scope" },
         { name: "source_type", value: restrictedCallerAccessValues.sourceTypeScope },
         { name: "status", value: restrictedCallerAccessValues.statusAllowed },
-        { name: "sys_scope", value: "global", attributes: ' display_value="Global"' },
+        { name: "sys_scope", value: consumerGlobalOwnership.ownershipSysId, attributes: ' display_value="Global"' },
         {
           name: "target",
-          value: docseraMembershipBridge.sysId,
-          attributes: ` display_value="${xmlEscape(docseraMembershipBridge.name)}"`
+          value: globalComponents.membershipBridge.sysId,
+          attributes: ` display_value="${xmlEscape(globalComponents.membershipBridge.name)}"`
         },
-        { name: "target_scope", value: "global", attributes: ' display_value="Global"' },
+        { name: "target_scope", value: consumerGlobalOwnership.ownershipSysId, attributes: ' display_value="Global"' },
         { name: "target_table", value: "sys_script_include" },
         { name: "target_type", value: restrictedCallerAccessValues.targetTypeScriptInclude }
       ]),
       relativePath,
       tableName: "sys_restricted_caller_access",
-      targetName: docseraMembershipBridge.apiName,
+      targetName: globalComponents.membershipBridge.apiName,
       targetSysId: sysId,
       updateName,
-      updateXmlSysId: stableSysId(`sys_update_xml:${relativePath}`)
+      updateXmlSysId: stableSysId(`sys_update_xml:${relativePath}`),
+      action: "INSERT_OR_UPDATE"
     }
   ];
 }
@@ -217,7 +276,16 @@ function buildCompanionRecords() {
     return record.targetSysId !== retiredFriendlyUrlAclRoleId || record.relativePath.startsWith("author_elective_update/");
   });
 
-  const records = [...restrictedCallerAccessRecords, ...builtRecords];
+  // Import the target Script Include before its RCA authorization record.
+  const records = [...builtRecords, ...restrictedCallerAccessRecords];
+  const unexpectedDeletions = records.filter(
+    (record) =>
+      record.action === "DELETE" &&
+      !(record.tableName === "sys_security_acl_role" && record.targetSysId === retiredFriendlyUrlAclRoleId)
+  );
+  if (unexpectedDeletions.length > 0) {
+    throw new Error(`Refusing unexpected deletion metadata: ${unexpectedDeletions.map((record) => `${record.tableName}:${record.targetSysId}`).join(", ")}`);
+  }
   const unsafeSharedGlobalRecords = records.filter(
     (record) =>
       record.targetSysId === "global" &&
@@ -288,36 +356,48 @@ function main() {
     `${constants.updateSetName}:${constants.appVersion}:${constants.buildType}:${constants.artifactRevision}`
   );
 
-  mkdirSync(outputRoot, { recursive: true });
+  const candidateOutputRoot = path.join(outputRoot, constants.candidateDirectory);
+  mkdirSync(candidateOutputRoot, { recursive: true });
 
   const remoteUpdateSetXml = buildRemoteUpdateSetXml({
     remoteUpdateSetSysId,
     createdAt,
     records
   });
+  const artifactHash = createHash("sha256").update(remoteUpdateSetXml).digest("hex");
   const manifest = {
     name: constants.updateSetName,
     version: constants.appVersion,
     artifactRevision: constants.artifactRevision,
     buildType: constants.buildType,
+    candidate: true,
     generatedAt: createdAt,
     remoteUpdateSetSysId,
     sourceDistRoot: path.relative(packageRoot, distRoot).replaceAll("\\", "/"),
     artifactFile: constants.updateSetFileName,
+    artifactSha256: artifactHash,
+    // This is the frozen source baseline used as generator input, not the
+    // commit which later contains this generated artifact.
+    sourceSha: constants.sourceSha,
+    generatorRevision: constants.artifactRevision,
+    serialization: "UTF-8 with LF line endings",
+    consumerOwnership: consumerGlobalOwnership,
+    components: globalComponents,
     records: records.map((record) => ({
       sourceFile: record.relativePath,
       table: record.tableName,
       targetName: record.targetName,
       targetSysId: record.targetSysId,
-      updateName: record.updateName
+      updateName: record.updateName,
+      action: record.action
     }))
   };
 
-  writeFileSync(path.join(outputRoot, constants.updateSetFileName), remoteUpdateSetXml, "utf8");
-  writeFileSync(path.join(outputRoot, constants.manifestFileName), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  writeFileSync(path.join(candidateOutputRoot, constants.updateSetFileName), remoteUpdateSetXml, "utf8");
+  writeFileSync(path.join(candidateOutputRoot, constants.manifestFileName), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
-  console.log(`Generated ${path.join("update-set", constants.updateSetFileName)}`);
-  console.log(`Generated ${path.join("update-set", constants.manifestFileName)}`);
+  console.log(`Generated ${path.join("update-set", constants.candidateDirectory, constants.updateSetFileName)}`);
+  console.log(`Generated ${path.join("update-set", constants.candidateDirectory, constants.manifestFileName)}`);
   console.log(`Included ${records.length} records from ${path.join("dist", "app")}`);
 }
 

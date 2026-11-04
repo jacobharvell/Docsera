@@ -1,1 +1,3 @@
-app/docsera-ui/src/fluent/generated/keys.ts text eol=lf
+# The RR-074 candidate manifest hashes these release-like XML bytes. Keep the
+# checked-out representation identical to the committed blob on Windows.
+/app/docsera-global-bridge/update-set/candidates/rr-074-global-consumer-portability/sys_remote_update_set_docsera_global_companion_consumer_candidate_0_1_0.xml text eol=lf

@@ -1,42 +1,44 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const candidateRoot = path.join(root, "update-set", "candidates", "rr-074-global-consumer-portability");
+const candidateManifestPath = path.join(candidateRoot, "docsera-global-companion-consumer-candidate.update-set.json");
 
-test("normal Global companion includes exactly one production docsera host and no proof artifact path", () => {
-  const manifest = JSON.parse(readFileSync(path.join(root, "update-set", "docsera-global-companion.update-set.json"), "utf8"));
-  assert.equal(manifest.records.filter((record) => record.table === "sys_ui_page" && record.targetSysId === "de3b81474ba94c0a9296d12f9c6bd9cc").length, 1);
-  const retiredProofDirectory = path.join(root, "update-set", "friendly-url-proof");
-  assert.equal(existsSync(retiredProofDirectory) ? readdirSync(retiredProofDirectory).length : 0, 0);
-});
-
-test("Global companion never transports shared Global package, scope, or application identity", () => {
-  const manifest = JSON.parse(readFileSync(path.join(root, "update-set", "docsera-global-companion.update-set.json"), "utf8"));
-  assert.equal(manifest.records.length, 25);
+test("RR-074 consumer candidate is separately identified and preserves historical artifacts", () => {
+  const manifest = JSON.parse(readFileSync(candidateManifestPath, "utf8"));
+  assert.equal(manifest.candidate, true);
+  assert.ok(existsSync(path.join(root, "update-set", "docsera-global-companion.update-set.json")));
+  assert.ok(existsSync(path.join(root, "update-set", "sys_remote_update_set_docsera_global_companion_0_1_0.xml")));
+  assert.equal(manifest.records.filter((record) => record.table === "sys_ui_page").length, 1);
   const sharedGlobalIdentityRecords = manifest.records.filter(
     (record) => record.targetSysId === "global" && ["sys_package", "sys_scope", "sys_app"].includes(record.table)
   );
   assert.deepEqual(sharedGlobalIdentityRecords, []);
 
-  const artifact = readFileSync(path.join(root, "update-set", "sys_remote_update_set_docsera_global_companion_0_1_0.xml"), "utf8");
+  const artifactBytes = readFileSync(path.join(candidateRoot, manifest.artifactFile));
+  assert.equal(artifactBytes.includes(0x0d), false, "candidate XML must use canonical LF line endings");
+  assert.equal(createHash("sha256").update(artifactBytes).digest("hex"), manifest.artifactSha256);
+  assert.equal(manifest.serialization, "UTF-8 with LF line endings");
+  assert.equal(manifest.generatorRevision, manifest.artifactRevision);
+  assert.equal(manifest.sourceSha, "16c5f95f4befa109277d1f67a50f8d977faebf17");
+  const artifact = artifactBytes.toString("utf8");
   for (const table of ["sys_package", "sys_scope", "sys_app"]) {
     assert.doesNotMatch(artifact, new RegExp(`&lt;record_update table=&quot;${table}&quot;&gt;[\\s\\S]*?&lt;sys_id&gt;global&lt;/sys_id&gt;`));
   }
 });
 
-test("Global companion retains the required Docsera-owned bridge, worker, security, and host components", () => {
-  const manifest = JSON.parse(readFileSync(path.join(root, "update-set", "docsera-global-companion.update-set.json"), "utf8"));
+test("consumer candidate resolves current bridge identities from the SDK registry", () => {
+  const manifest = JSON.parse(readFileSync(candidateManifestPath, "utf8"));
   const identities = new Set(manifest.records.map((record) => `${record.table}:${record.targetSysId}`));
   for (const identity of [
-    "sys_script_include:5bf5c028daaa417d88de36616e4c8300",
-    "sys_script_include:abf83bf6db1e46dea88c97ec493153bc",
-    "sys_script:0d2f3146f31d4c439ea6b6cd50a105a2",
-    "sys_script:fa8109eeb6ed4c3e91c11238db780568",
-    "sys_restricted_caller_access:449a6d8fb9d6e5b6c84e14c4314d8ccb",
-    "sys_security_acl:879785c448564188a54416cb90d18c14",
-    "sys_ui_page:de3b81474ba94c0a9296d12f9c6bd9cc"
+    "sys_script_include:bb42e634e203492591a8d18e6953eae1",
+    "sys_script_include:010930ea12354689b678fc9b37ba0f88",
+    "sys_security_acl:b9d7e176310f447ea61072dc4a9fca11",
+    "sys_ui_page:4bb3dc32dcfc4441a57bfce97db77529"
   ]) {
     assert.ok(identities.has(identity), `missing required Global companion component ${identity}`);
   }

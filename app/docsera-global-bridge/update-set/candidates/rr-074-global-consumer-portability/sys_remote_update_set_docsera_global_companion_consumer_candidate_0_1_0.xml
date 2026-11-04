@@ -1,0 +1,2374 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<unload unload_date="2026-11-04 16:02:03" unload_version="1" syntax="glide">
+  <sys_remote_update_set action="INSERT_OR_UPDATE">
+    <sys_id>4445b2ab4cb38ddfed7eb063c7511239</sys_id>
+    <application display_value="Global">global</application>
+    <description>Global companion update set for Docsera workspace provisioning and the authenticated docsera.do host.</description>
+    <name>Docsera Global Companion Consumer Candidate 0.1.0</name>
+    <origin_sys_id>4445b2ab4cb38ddfed7eb063c7511239</origin_sys_id>
+    <remote_base_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_base_update_set>
+    <source>docsera-global-companion</source>
+    <state>loaded</state>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+  </sys_remote_update_set>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>b89b57f97cfefa68992a084bf2990f07</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_module_4a22dfafc6cc4b01a796c36fa2d7e6b6</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_module&quot;&gt;
+  &lt;sys_module action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;4a22dfafc6cc4b01a796c36fa2d7e6b6&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_module_4a22dfafc6cc4b01a796c36fa2d7e6b6&lt;/sys_update_name&gt;
+    &lt;content&gt;&lt;![CDATA[{
+  &quot;name&quot;: &quot;docsera-global-workspace-bridge&quot;,
+  &quot;version&quot;: &quot;0.1.0&quot;,
+  &quot;private&quot;: true,
+  &quot;description&quot;: &quot;Global ServiceNow bridge for constrained Docsera workspace group provisioning&quot;,
+  &quot;type&quot;: &quot;module&quot;,
+  &quot;engines&quot;: {
+    &quot;node&quot;: &quot;&gt;=22&quot;
+  },
+  &quot;scripts&quot;: {
+    &quot;build&quot;: &quot;now-sdk build&quot;,
+    &quot;generate:update-set&quot;: &quot;node ./scripts/generate-update-set-artifact.mjs&quot;,
+    &quot;preflight:friendly-url-host&quot;: &quot;node ./scripts/preflight-friendly-url-host.mjs&quot;,
+    &quot;test:friendly-url-host&quot;: &quot;node --test ./scripts/friendly-url-host-preflight-contract.test.mjs ./scripts/package-contents.test.mjs&quot;,
+    &quot;install:sdk&quot;: &quot;now-sdk install&quot;,
+    &quot;types:sdk&quot;: &quot;now-sdk dependencies&quot;,
+    &quot;verify:sdk&quot;: &quot;node ./scripts/verify-global-bridge.mjs&quot;,
+    &quot;verify:friendly-url-host&quot;: &quot;node ./scripts/verify-friendly-url-host-artifact.mjs&quot;,
+    &quot;verify:consumer-candidate&quot;: &quot;node ./scripts/verify-consumer-update-set-candidate.mjs&quot;,
+    &quot;validate&quot;: &quot;npm run build&quot;
+  },
+  &quot;devDependencies&quot;: {
+    &quot;@servicenow/sdk&quot;: &quot;4.8.1&quot;,
+    &quot;typescript&quot;: &quot;^5.6.3&quot;
+  }
+}]]&gt;&lt;/content&gt;
+    &lt;external_source&gt;false&lt;/external_source&gt;
+    &lt;path&gt;/global/docsera-global-workspace-bridge/0.1.0/package.json&lt;/path&gt;
+    &lt;sys_name&gt;/global/docsera-global-workspace-bridge/0.1.0/package.json&lt;/sys_name&gt;
+  &lt;/sys_module&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>/global/docsera-global-workspace-bridge/0.1.0/package.json</target_name>
+    <target_sys_id>4a22dfafc6cc4b01a796c36fa2d7e6b6</target_sys_id>
+    <type>sys_module</type>
+    <update_guid>5cc4286693d859d21fe003223eb47174</update_guid>
+    <update_guid_history>875c3b1a6636682a0a4d6f769a15e137</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>25818b270c69e2c461705e30528f53c7</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_module_582ab55688144454bc95080a6ce5885f</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_module&quot;&gt;
+  &lt;sys_module action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;582ab55688144454bc95080a6ce5885f&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_module_582ab55688144454bc95080a6ce5885f&lt;/sys_update_name&gt;
+    &lt;content&gt;&lt;![CDATA[var DocseraGlobalWorkspaceMembershipBridge = Class.create();
+
+DocseraGlobalWorkspaceMembershipBridge.prototype = {
+    initialize: function () {},
+
+    setWorkspaceMembership: function (adminGroupSysId, editorGroupSysId, userSysId, accessLevel) {
+        try {
+            var adminGroup = this._cleanSysId(adminGroupSysId);
+            var editorGroup = this._cleanSysId(editorGroupSysId);
+            var user = this._cleanSysId(userSysId);
+            var level = this._cleanText(accessLevel).toLowerCase();
+
+            this._validateInputs(adminGroup, editorGroup, user);
+            if (level !== &apos;admin&apos; &amp;&amp; level !== &apos;editor&apos;) {
+                throw new Error(&apos;Invalid workspace membership access level.&apos;);
+            }
+
+            this._validateWorkspaceGroupPair(adminGroup, editorGroup);
+
+            if (level === &apos;admin&apos;) {
+                this._addUserToGroup(adminGroup, user);
+                this._removeUserFromGroup(editorGroup, user);
+            } else {
+                this._addUserToGroup(editorGroup, user);
+                this._removeUserFromGroup(adminGroup, user);
+            }
+
+            return {
+                status: &apos;succeeded&apos;,
+            };
+        } catch (error) {
+            this._logError(&apos;setWorkspaceMembership&apos;, error);
+            return {
+                status: &apos;failed&apos;,
+                errorMessage: &apos;Workspace membership could not be updated.&apos;,
+            };
+        }
+    },
+
+    removeWorkspaceMembership: function (adminGroupSysId, editorGroupSysId, userSysId) {
+        try {
+            var adminGroup = this._cleanSysId(adminGroupSysId);
+            var editorGroup = this._cleanSysId(editorGroupSysId);
+            var user = this._cleanSysId(userSysId);
+
+            this._validateInputs(adminGroup, editorGroup, user);
+            this._validateWorkspaceGroupPair(adminGroup, editorGroup);
+            this._removeUserFromGroup(adminGroup, user);
+            this._removeUserFromGroup(editorGroup, user);
+
+            return {
+                status: &apos;succeeded&apos;,
+            };
+        } catch (error) {
+            this._logError(&apos;removeWorkspaceMembership&apos;, error);
+            return {
+                status: &apos;failed&apos;,
+                errorMessage: &apos;Workspace membership could not be removed.&apos;,
+            };
+        }
+    },
+
+    deleteWorkspaceGroups: function (adminGroupSysId, editorGroupSysId) {
+        try {
+            var adminGroup = this._cleanSysId(adminGroupSysId);
+            var editorGroup = this._cleanSysId(editorGroupSysId);
+
+            this._validateGroupPairInputs(adminGroup, editorGroup);
+            var targets = this._validateWorkspaceGroupDeletionTargets(adminGroup, editorGroup, true);
+            if (targets.editorGroup) {
+                targets.editorGroup.deleteRecord();
+            }
+            if (targets.adminGroup) {
+                targets.adminGroup.deleteRecord();
+            }
+
+            return {
+                status: &apos;succeeded&apos;,
+            };
+        } catch (error) {
+            this._logError(&apos;deleteWorkspaceGroups&apos;, error);
+            return {
+                status: &apos;failed&apos;,
+                errorMessage: &apos;Workspace access groups could not be deleted.&apos;,
+            };
+        }
+    },
+
+    validateWorkspaceGroupDeletionTargets: function (adminGroupSysId, editorGroupSysId) {
+        try {
+            var adminGroup = this._cleanSysId(adminGroupSysId);
+            var editorGroup = this._cleanSysId(editorGroupSysId);
+
+            this._validateGroupPairInputs(adminGroup, editorGroup);
+            this._validateWorkspaceGroupDeletionTargets(adminGroup, editorGroup, false);
+
+            return {
+                status: &apos;succeeded&apos;,
+            };
+        } catch (error) {
+            this._logError(&apos;validateWorkspaceGroupDeletionTargets&apos;, error);
+            return {
+                status: &apos;failed&apos;,
+                errorMessage: &apos;Workspace access groups could not be validated.&apos;,
+            };
+        }
+    },
+
+    _cleanText: function (value) {
+        return typeof value === &apos;string&apos; ? value.trim() : &apos;&apos;;
+    },
+
+    _cleanSysId: function (value) {
+        var text = this._cleanText(value);
+        return /^[0-9a-fA-F]{32}$/.test(text) ? text : &apos;&apos;;
+    },
+
+    _validateInputs: function (adminGroupSysId, editorGroupSysId, userSysId) {
+        this._validateGroupPairInputs(adminGroupSysId, editorGroupSysId);
+        if (!userSysId) {
+            throw new Error(&apos;Workspace membership mutation inputs were invalid.&apos;);
+        }
+    },
+
+    _validateGroupPairInputs: function (adminGroupSysId, editorGroupSysId) {
+        if (!adminGroupSysId || !editorGroupSysId) {
+            throw new Error(&apos;Workspace membership mutation inputs were invalid.&apos;);
+        }
+        if (adminGroupSysId === editorGroupSysId) {
+            throw new Error(&apos;Workspace Admin and Editor groups must be distinct.&apos;);
+        }
+    },
+
+    _validateWorkspaceGroupPair: function (adminGroupSysId, editorGroupSysId) {
+        var workspace = new GlideRecord(&apos;x_2300756_docsera_workspace&apos;);
+        workspace.addQuery(&apos;admin_group&apos;, adminGroupSysId);
+        workspace.addQuery(&apos;editor_group&apos;, editorGroupSysId);
+        workspace.setLimit(1);
+        workspace.query();
+
+        if (!workspace.next()) {
+            throw new Error(&apos;Workspace membership group pair is not owned by a Docsera workspace.&apos;);
+        }
+    },
+
+    _addUserToGroup: function (groupSysId, userSysId) {
+        var existing = new GlideRecord(&apos;sys_user_grmember&apos;);
+        existing.addQuery(&apos;group&apos;, groupSysId);
+        existing.addQuery(&apos;user&apos;, userSysId);
+        existing.setLimit(1);
+        existing.query();
+        if (existing.next()) {
+            return;
+        }
+
+        var membership = new GlideRecord(&apos;sys_user_grmember&apos;);
+        membership.initialize();
+        membership.setValue(&apos;group&apos;, groupSysId);
+        membership.setValue(&apos;user&apos;, userSysId);
+        if (!this._cleanText(membership.insert())) {
+            throw new Error(&apos;Workspace group membership could not be created.&apos;);
+        }
+    },
+
+    _removeUserFromGroup: function (groupSysId, userSysId) {
+        var memberships = new GlideRecord(&apos;sys_user_grmember&apos;);
+        memberships.addQuery(&apos;group&apos;, groupSysId);
+        memberships.addQuery(&apos;user&apos;, userSysId);
+        memberships.query();
+        while (memberships.next()) {
+            memberships.deleteRecord();
+        }
+    },
+
+    _validateWorkspaceGroupDeletionTargets: function (adminGroupSysId, editorGroupSysId, allowMissingTargets) {
+        this._validateWorkspaceGroupPair(adminGroupSysId, editorGroupSysId);
+        var adminGroup = this._loadGeneratedWorkspaceGroup(adminGroupSysId, &apos;Admins&apos;, allowMissingTargets);
+        var editorGroup = this._loadGeneratedWorkspaceGroup(editorGroupSysId, &apos;Editors&apos;, allowMissingTargets);
+        return {
+            adminGroup: adminGroup,
+            editorGroup: editorGroup,
+        };
+    },
+
+    _loadGeneratedWorkspaceGroup: function (groupSysId, suffix, allowMissingTarget) {
+        var group = new GlideRecord(&apos;sys_user_group&apos;);
+        if (!group.get(groupSysId)) {
+            if (allowMissingTarget) {
+                return null;
+            }
+            throw new Error(&apos;Workspace group deletion target could not be found.&apos;);
+        }
+        var actualName = this._cleanText(group.getValue(&apos;name&apos;));
+        var pattern = new RegExp(&apos;^Docsera_[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*_&apos; + suffix + &apos;$&apos;);
+        if (!pattern.test(actualName)) {
+            throw new Error(&apos;Workspace group deletion target was not a Docsera-owned workspace group.&apos;);
+        }
+        return group;
+    },
+
+    _logError: function (event, error) {
+        var message = error &amp;&amp; error.message ? error.message : String(error);
+        gs.error(&apos;[Docsera global workspace membership bridge] &apos; + event + &apos;: &apos; + message);
+    },
+
+    type: &apos;DocseraGlobalWorkspaceMembershipBridge&apos;,
+};
+]]&gt;&lt;/content&gt;
+    &lt;external_source&gt;false&lt;/external_source&gt;
+    &lt;path&gt;/global/docsera-global-workspace-bridge/0.1.0/src/server/script-includes/docsera-global-workspace-membership-bridge.js&lt;/path&gt;
+    &lt;sys_name&gt;/global/docsera-global-workspace-bridge/0.1.0/src/server/script-includes/docsera-global-workspace-membership-bridge.js&lt;/sys_name&gt;
+  &lt;/sys_module&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>/global/docsera-global-workspace-bridge/0.1.0/src/server/script-includes/docsera-global-workspace-membership-bridge.js</target_name>
+    <target_sys_id>582ab55688144454bc95080a6ce5885f</target_sys_id>
+    <type>sys_module</type>
+    <update_guid>c306b387e61ea8cb76cb4df879f01926</update_guid>
+    <update_guid_history>146585651cdd2d72457477ae5f8eb350</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>f956cbd2d4466200be55b95bc2d84020</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_module_582d44e43f714b8cb0ebbffe9b4fa991</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update&gt;
+  &lt;sys_module action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;582d44e43f714b8cb0ebbffe9b4fa991&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;path&gt;/global/docsera-global-workspace-bridge/0.1.0/bom.json&lt;/path&gt;
+    &lt;external_source&gt;false&lt;/external_source&gt;
+    &lt;content&gt;&lt;![CDATA[{
+  &quot;$schema&quot;: &quot;http://cyclonedx.org/schema/bom-1.6.schema.json&quot;,
+  &quot;bomFormat&quot;: &quot;CycloneDX&quot;,
+  &quot;specVersion&quot;: &quot;1.6&quot;,
+  &quot;version&quot;: 1,
+  &quot;serialNumber&quot;: &quot;urn:uuid:bdf86440-2b3f-433b-bb38-22951450c4bf&quot;,
+  &quot;metadata&quot;: {
+    &quot;timestamp&quot;: &quot;2026-11-04T16:01:25.709Z&quot;,
+    &quot;tools&quot;: {
+      &quot;components&quot;: [
+        {
+          &quot;type&quot;: &quot;library&quot;,
+          &quot;name&quot;: &quot;sdk-build-plugins&quot;,
+          &quot;group&quot;: &quot;@servicenow&quot;,
+          &quot;version&quot;: &quot;4.8.1&quot;,
+          &quot;author&quot;: &quot;ServiceNow&quot;
+        }
+      ]
+    },
+    &quot;component&quot;: {
+      &quot;type&quot;: &quot;application&quot;,
+      &quot;name&quot;: &quot;docsera-global-workspace-bridge&quot;,
+      &quot;version&quot;: &quot;0.1.0&quot;,
+      &quot;bom-ref&quot;: &quot;pkg:servicenow/docsera-global-workspace-bridge@0.1.0?sys_scope_id=global&quot;,
+      &quot;description&quot;: &quot;Global ServiceNow bridge for constrained Docsera workspace group provisioning&quot;,
+      &quot;purl&quot;: &quot;pkg:servicenow/docsera-global-workspace-bridge@0.1.0?sys_scope_id=global&quot;
+    }
+  },
+  &quot;components&quot;: [],
+  &quot;dependencies&quot;: [
+    {
+      &quot;ref&quot;: &quot;pkg:servicenow/docsera-global-workspace-bridge@0.1.0?sys_scope_id=global&quot;
+    }
+  ]
+}]]&gt;&lt;/content&gt;
+  &lt;/sys_module&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>sys_module_582d44e43f714b8cb0ebbffe9b4fa991</target_name>
+    <target_sys_id>582d44e43f714b8cb0ebbffe9b4fa991</target_sys_id>
+    <type>sys_module</type>
+    <update_guid>4244cfa0e1874c1f2b9f780a6bf02420</update_guid>
+    <update_guid_history>ff8293a9ee5ae6f77648694d230a3c42</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>dc7e78d6d6556fc7abfedfeac5980c76</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_module_94bc0de883764e819b01d8b0ae0d62ec</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_module&quot;&gt;
+  &lt;sys_module action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;94bc0de883764e819b01d8b0ae0d62ec&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_module_94bc0de883764e819b01d8b0ae0d62ec&lt;/sys_update_name&gt;
+    &lt;content&gt;&lt;![CDATA[(function executeRule(current) {
+    function cleanText(value) {
+        return typeof value === &apos;string&apos; ? value.trim() : &apos;&apos;;
+    }
+
+    function fail(message) {
+        current.setValue(&apos;state&apos;, &apos;failed&apos;);
+        current.setValue(&apos;error_message&apos;, cleanText(message) || &apos;Workspace membership mutation failed.&apos;);
+        current.update();
+    }
+
+    if (!current) {
+        return;
+    }
+
+    if (current.getValue(&apos;state&apos;) !== &apos;requested&apos;) {
+        return;
+    }
+
+    var workspaceSysId = cleanText(current.getValue(&apos;workspace&apos;));
+    var targetUserSysId = cleanText(current.getValue(&apos;target_user&apos;));
+    var mutationKind = cleanText(current.getValue(&apos;mutation_kind&apos;));
+    var accessLevel = cleanText(current.getValue(&apos;access_level&apos;));
+
+    var workspace = new GlideRecord(&apos;x_2300756_docsera_workspace&apos;);
+    if (!workspace.get(workspaceSysId)) {
+        fail(&apos;Workspace could not be found.&apos;);
+        return;
+    }
+
+    var adminGroupSysId = cleanText(workspace.getValue(&apos;admin_group&apos;));
+    var editorGroupSysId = cleanText(workspace.getValue(&apos;editor_group&apos;));
+    var bridge = new DocseraGlobalWorkspaceMembershipBridge();
+    var result;
+
+    if (mutationKind === &apos;validate_workspace_group_deletion&apos;) {
+        result = bridge.validateWorkspaceGroupDeletionTargets(adminGroupSysId, editorGroupSysId);
+    } else if (mutationKind === &apos;delete_workspace_groups&apos;) {
+        result = bridge.deleteWorkspaceGroups(adminGroupSysId, editorGroupSysId);
+    } else if (mutationKind === &apos;set&apos;) {
+        result = bridge.setWorkspaceMembership(adminGroupSysId, editorGroupSysId, targetUserSysId, accessLevel);
+    } else if (mutationKind === &apos;remove&apos;) {
+        result = bridge.removeWorkspaceMembership(adminGroupSysId, editorGroupSysId, targetUserSysId);
+    } else {
+        fail(&apos;Unsupported workspace membership mutation kind.&apos;);
+        return;
+    }
+
+    if (!result || result.status !== &apos;succeeded&apos;) {
+        fail(result &amp;&amp; result.errorMessage ? result.errorMessage : &apos;Workspace membership mutation failed.&apos;);
+        return;
+    }
+
+    current.setValue(&apos;state&apos;, &apos;succeeded&apos;);
+    current.setValue(&apos;error_message&apos;, &apos;&apos;);
+    current.update();
+})(current, previous);
+]]&gt;&lt;/content&gt;
+    &lt;external_source&gt;false&lt;/external_source&gt;
+    &lt;path&gt;/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-member-mutation-command.js&lt;/path&gt;
+    &lt;sys_name&gt;/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-member-mutation-command.js&lt;/sys_name&gt;
+  &lt;/sys_module&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-member-mutation-command.js</target_name>
+    <target_sys_id>94bc0de883764e819b01d8b0ae0d62ec</target_sys_id>
+    <type>sys_module</type>
+    <update_guid>fb829bb4b955689031d455072b1be8fb</update_guid>
+    <update_guid_history>bbafc3fc0bdea97c87acc520bffff303</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>1d1594b3cae459da2a982fa6fb77d8b3</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_module_d4a3dc19596e40aea9186c8eac8079b0</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_module&quot;&gt;
+  &lt;sys_module action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;d4a3dc19596e40aea9186c8eac8079b0&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_module_d4a3dc19596e40aea9186c8eac8079b0&lt;/sys_update_name&gt;
+    &lt;content&gt;&lt;![CDATA[var DocseraGlobalWorkspaceProvisioningBridge = Class.create();
+
+DocseraGlobalWorkspaceProvisioningBridge.prototype = {
+    initialize: function () {},
+
+    processRequest: function (requestSysId) {
+        var requestId = this._cleanText(requestSysId);
+        if (!requestId) {
+            return {
+                status: &apos;ignored&apos;,
+            };
+        }
+
+        var request = this._claimRequest(requestId);
+        if (!request) {
+            return {
+                status: &apos;ignored&apos;,
+            };
+        }
+
+        var createdGroupIds = [];
+        var workspaceSysId = &apos;&apos;;
+        var stage = &apos;validation&apos;;
+
+        try {
+            var payload = this._readRequestPayload(request);
+            this._validateRequestPayload(payload);
+
+            stage = &apos;create_admin_group&apos;;
+            var adminGroup = this._createGroup(
+                payload.adminGroupName,
+                &apos;Workspace admin group for &apos; + payload.workspaceName
+            );
+            createdGroupIds.push(adminGroup.sysId);
+
+            stage = &apos;create_editor_group&apos;;
+            var editorGroup = this._createGroup(
+                payload.editorGroupName,
+                &apos;Workspace editor group for &apos; + payload.workspaceName
+            );
+            createdGroupIds.push(editorGroup.sysId);
+
+            stage = &apos;assign_admin_role&apos;;
+            this._assignRoleToGroup(adminGroup.sysId, this._ROLE_NAMES.workspaceAdmin);
+
+            stage = &apos;assign_editor_role&apos;;
+            this._assignRoleToGroup(editorGroup.sysId, this._ROLE_NAMES.editor);
+
+            stage = &apos;create_workspace&apos;;
+            workspaceSysId = this._createWorkspaceRecord(payload, adminGroup.sysId, editorGroup.sysId);
+
+            stage = &apos;finalize_uploaded_icon&apos;;
+            this._finalizeUploadedIconAsset(request, payload, workspaceSysId);
+
+            stage = &apos;mark_succeeded&apos;;
+            this._markRequestSucceeded(requestId, workspaceSysId, adminGroup.sysId, editorGroup.sysId);
+
+            return {
+                status: &apos;succeeded&apos;,
+                workspaceSysId: workspaceSysId,
+            };
+        } catch (error) {
+            this._rollbackCreatedWorkspace(workspaceSysId);
+            this._restoreUploadedIconAssetClaim(requestId);
+            this._rollbackCreatedGroups(createdGroupIds);
+            this._markRequestFailed(requestId, this._errorCodeForStage(stage), this._safeMessageForStage(stage));
+            this._logError(&apos;processRequest.&apos; + stage, error);
+
+            return {
+                status: &apos;failed&apos;,
+            };
+        }
+    },
+
+    _DOCSERA_SCOPE: &apos;x_2300756_docsera&apos;,
+    _REQUEST_TABLE: &apos;x_2300756_docsera_workspace_provision_request&apos;,
+    _WORKSPACE_TABLE: &apos;x_2300756_docsera_workspace&apos;,
+    _WORKSPACE_ICON_ASSET_TABLE: &apos;x_2300756_docsera_workspace_icon_asset&apos;,
+
+    _ROLE_NAMES: {
+        workspaceAdmin: &apos;x_2300756_docsera.workspace_admin&apos;,
+        editor: &apos;x_2300756_docsera.editor&apos;,
+    },
+
+    _cleanText: function (value) {
+        return typeof value === &apos;string&apos; ? value.trim() : &apos;&apos;;
+    },
+
+    _normalizeBoolean: function (value) {
+        var normalized = String(value).toLowerCase();
+        return value === true || value === 1 || normalized === &apos;true&apos; || normalized === &apos;1&apos; || normalized === &apos;yes&apos;;
+    },
+
+    _serializeBoolean: function (value) {
+        return value ? &apos;true&apos; : &apos;false&apos;;
+    },
+
+    _claimRequest: function (requestSysId) {
+        var request = new GlideRecord(this._REQUEST_TABLE);
+        if (!request.get(requestSysId)) {
+            return null;
+        }
+
+        if (this._cleanText(request.getValue(&apos;state&apos;)) !== &apos;requested&apos;) {
+            return null;
+        }
+
+        request.setValue(&apos;state&apos;, &apos;processing&apos;);
+        request.setValue(&apos;error_code&apos;, &apos;&apos;);
+        request.setValue(&apos;error_message&apos;, &apos;&apos;);
+        request.update();
+
+        var claimed = new GlideRecord(this._REQUEST_TABLE);
+        if (!claimed.get(requestSysId)) {
+            return null;
+        }
+
+        return claimed;
+    },
+
+    _readRequestPayload: function (request) {
+        return {
+            adminGroupName: this._cleanText(request.getValue(&apos;admin_group_name&apos;)),
+            editorGroupName: this._cleanText(request.getValue(&apos;editor_group_name&apos;)),
+            iconAssetPath: this._cleanText(request.getValue(&apos;icon_asset_path&apos;)),
+            iconKey: this._cleanText(request.getValue(&apos;icon_key&apos;)),
+            iconLabel: this._cleanText(request.getValue(&apos;icon_label&apos;)),
+            iconType: this._cleanText(request.getValue(&apos;icon_type&apos;)) === &apos;uploaded&apos; ? &apos;uploaded&apos; : &apos;builtin&apos;,
+            pageWidth: this._cleanText(request.getValue(&apos;page_width&apos;)) === &apos;full&apos; ? &apos;full&apos; : &apos;readable&apos;,
+            requestedBySysId: this._cleanText(request.getValue(&apos;requested_by&apos;)),
+            shortDescription: this._cleanText(request.getValue(&apos;short_description&apos;)),
+            tocDefaultVisible: this._normalizeBoolean(request.getValue(&apos;toc_default_visible&apos;)),
+            workspaceGroupKey: this._cleanText(request.getValue(&apos;workspace_group_key&apos;)),
+            workspaceName: this._cleanText(request.getValue(&apos;name&apos;)),
+            workspaceSlug: this._cleanText(request.getValue(&apos;workspace_slug&apos;)),
+            workspaceStatus: this._cleanText(request.getValue(&apos;workspace_status&apos;)) === &apos;inactive&apos; ? &apos;inactive&apos; : &apos;active&apos;,
+        };
+    },
+
+    _validateRequestPayload: function (payload) {
+        if (!payload.requestedBySysId) {
+            throw new Error(&apos;Missing workspace creator.&apos;);
+        }
+
+        if (!payload.workspaceName || payload.workspaceName.length &gt; 160) {
+            throw new Error(&apos;Invalid workspace name.&apos;);
+        }
+
+        if (!payload.workspaceSlug || payload.workspaceSlug.length &gt; 160) {
+            throw new Error(&apos;Invalid workspace slug.&apos;);
+        }
+
+        if (!this._isValidWorkspaceGroupKey(payload.workspaceGroupKey)) {
+            throw new Error(&apos;Invalid workspace group key.&apos;);
+        }
+
+        var expectedNames = this._buildExpectedGroupNames(payload.workspaceGroupKey);
+        if (
+            payload.adminGroupName !== expectedNames.admin ||
+            payload.editorGroupName !== expectedNames.editor
+        ) {
+            throw new Error(&apos;Provisioning group names did not match the Docsera contract.&apos;);
+        }
+    },
+
+    _isValidWorkspaceGroupKey: function (value) {
+        return /^[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*$/.test(this._cleanText(value));
+    },
+
+    _buildExpectedGroupNames: function (workspaceGroupKey) {
+        return {
+            admin: &apos;Docsera_&apos; + workspaceGroupKey + &apos;_Admins&apos;,
+            editor: &apos;Docsera_&apos; + workspaceGroupKey + &apos;_Editors&apos;,
+        };
+    },
+
+    _createGroup: function (name, description) {
+        var existing = new GlideRecord(&apos;sys_user_group&apos;);
+        existing.addQuery(&apos;name&apos;, name);
+        existing.setLimit(1);
+        existing.query();
+        if (existing.next()) {
+            throw new Error(&apos;A required workspace access group already exists.&apos;);
+        }
+
+        var group = new GlideRecord(&apos;sys_user_group&apos;);
+        group.initialize();
+        group.setValue(&apos;name&apos;, name);
+        group.setValue(&apos;description&apos;, description);
+
+        var sysId = this._cleanText(group.insert());
+        if (!sysId) {
+            throw new Error(&apos;A required workspace access group could not be created.&apos;);
+        }
+
+        return {
+            sysId: sysId,
+            name: name,
+        };
+    },
+
+    _getRoleSysId: function (roleName) {
+        var role = new GlideRecord(&apos;sys_user_role&apos;);
+        role.addQuery(&apos;name&apos;, roleName);
+        role.setLimit(1);
+        role.query();
+
+        if (!role.next()) {
+            throw new Error(&apos;A required Docsera role is missing.&apos;);
+        }
+
+        return this._cleanText(role.getUniqueValue());
+    },
+
+    _assignRoleToGroup: function (groupSysId, roleName) {
+        var roleSysId = this._getRoleSysId(roleName);
+        var membership = new GlideRecord(&apos;sys_group_has_role&apos;);
+        membership.addQuery(&apos;group&apos;, groupSysId);
+        membership.addQuery(&apos;role&apos;, roleSysId);
+        membership.setLimit(1);
+        membership.query();
+
+        if (membership.next()) {
+            return;
+        }
+
+        membership.initialize();
+        membership.setValue(&apos;group&apos;, groupSysId);
+        membership.setValue(&apos;role&apos;, roleSysId);
+
+        if (!this._cleanText(membership.insert())) {
+            throw new Error(&apos;A required workspace role could not be assigned.&apos;);
+        }
+    },
+
+    _createWorkspaceRecord: function (payload, adminGroupSysId, editorGroupSysId) {
+        var workspace = new GlideRecord(this._WORKSPACE_TABLE);
+        workspace.initialize();
+        workspace.setValue(&apos;name&apos;, payload.workspaceName);
+        workspace.setValue(&apos;workspace_slug&apos;, payload.workspaceSlug);
+        workspace.setValue(&apos;short_description&apos;, payload.shortDescription || &apos;&apos;);
+        workspace.setValue(&apos;icon_type&apos;, payload.iconType);
+        workspace.setValue(&apos;icon_key&apos;, payload.iconKey);
+        workspace.setValue(&apos;icon_label&apos;, payload.iconLabel);
+        workspace.setValue(&apos;icon_asset_path&apos;, payload.iconAssetPath || &apos;&apos;);
+        workspace.setValue(&apos;status&apos;, payload.workspaceStatus);
+        workspace.setValue(&apos;admin_group&apos;, adminGroupSysId);
+        workspace.setValue(&apos;editor_group&apos;, editorGroupSysId);
+        workspace.setValue(&apos;creator&apos;, payload.requestedBySysId);
+        workspace.setValue(&apos;toc_default_visible&apos;, this._serializeBoolean(payload.tocDefaultVisible));
+        workspace.setValue(&apos;page_width&apos;, payload.pageWidth);
+
+        var workspaceSysId = this._cleanText(workspace.insert());
+        if (!workspaceSysId) {
+            throw new Error(&apos;The Docsera workspace record could not be created.&apos;);
+        }
+
+        return workspaceSysId;
+    },
+
+    _markRequestSucceeded: function (requestSysId, workspaceSysId, adminGroupSysId, editorGroupSysId) {
+        var request = new GlideRecord(this._REQUEST_TABLE);
+        if (!request.get(requestSysId)) {
+            return;
+        }
+
+        request.setValue(&apos;workspace&apos;, workspaceSysId);
+        request.setValue(&apos;admin_group&apos;, adminGroupSysId);
+        request.setValue(&apos;editor_group&apos;, editorGroupSysId);
+        request.setValue(&apos;error_code&apos;, &apos;&apos;);
+        request.setValue(&apos;error_message&apos;, &apos;&apos;);
+        request.setValue(&apos;state&apos;, &apos;succeeded&apos;);
+        request.update();
+    },
+
+    _finalizeUploadedIconAsset: function (request, payload, workspaceSysId) {
+        if (payload.iconType !== &apos;uploaded&apos;) {
+            return;
+        }
+        var assetKey = this._cleanText(payload.iconKey);
+        if (!assetKey) {
+            throw new Error(&apos;Uploaded workspace icon key was missing.&apos;);
+        }
+        var asset = new GlideRecord(this._WORKSPACE_ICON_ASSET_TABLE);
+        asset.addQuery(&apos;asset_key&apos;, assetKey);
+        asset.addQuery(&apos;state&apos;, &apos;claimed&apos;);
+        asset.addQuery(&apos;provision_request&apos;, this._cleanText(request.getUniqueValue()));
+        asset.addQuery(&apos;workspace&apos;, &apos;&apos;);
+        asset.setValue(&apos;workspace&apos;, workspaceSysId);
+        asset.setValue(&apos;provision_request&apos;, this._cleanText(request.getUniqueValue()));
+        asset.setValue(&apos;state&apos;, &apos;claimed&apos;);
+        asset.updateMultiple();
+
+        var verified = new GlideRecord(this._WORKSPACE_ICON_ASSET_TABLE);
+        verified.addQuery(&apos;asset_key&apos;, assetKey);
+        verified.setLimit(1);
+        verified.query();
+        if (
+            !verified.next() ||
+            this._cleanText(verified.getValue(&apos;state&apos;)) !== &apos;claimed&apos; ||
+            this._cleanText(verified.getValue(&apos;provision_request&apos;)) !== this._cleanText(request.getUniqueValue()) ||
+            this._cleanText(verified.getValue(&apos;workspace&apos;)) !== workspaceSysId
+        ) {
+            throw new Error(&apos;Uploaded workspace icon asset finalization could not be verified.&apos;);
+        }
+    },
+
+    _markRequestFailed: function (requestSysId, errorCode, errorMessage) {
+        var request = new GlideRecord(this._REQUEST_TABLE);
+        if (!request.get(requestSysId)) {
+            return;
+        }
+
+        request.setValue(&apos;state&apos;, &apos;failed&apos;);
+        request.setValue(&apos;error_code&apos;, errorCode);
+        request.setValue(&apos;error_message&apos;, this._truncateSafeMessage(errorMessage));
+        request.update();
+    },
+
+    _truncateSafeMessage: function (value) {
+        var message = this._cleanText(value) || &apos;Workspace provisioning failed.&apos;;
+        return message.length &gt; 255 ? message.substring(0, 255) : message;
+    },
+
+    _errorCodeForStage: function (stage) {
+        switch (stage) {
+            case &apos;validation&apos;:
+                return &apos;invalid_request&apos;;
+            case &apos;create_admin_group&apos;:
+            case &apos;create_editor_group&apos;:
+                return &apos;group_create_failed&apos;;
+            case &apos;assign_admin_role&apos;:
+            case &apos;assign_editor_role&apos;:
+                return &apos;role_assignment_failed&apos;;
+            case &apos;create_workspace&apos;:
+                return &apos;workspace_create_failed&apos;;
+            case &apos;finalize_uploaded_icon&apos;:
+                return &apos;workspace_icon_finalize_failed&apos;;
+            default:
+                return &apos;provisioning_failed&apos;;
+        }
+    },
+
+    _safeMessageForStage: function (stage) {
+        switch (stage) {
+            case &apos;validation&apos;:
+                return &apos;Workspace provisioning request was invalid.&apos;;
+            case &apos;create_admin_group&apos;:
+            case &apos;create_editor_group&apos;:
+                return &apos;Failed to create workspace access groups.&apos;;
+            case &apos;assign_admin_role&apos;:
+            case &apos;assign_editor_role&apos;:
+                return &apos;Failed to assign Docsera roles to workspace groups.&apos;;
+            case &apos;create_workspace&apos;:
+                return &apos;Failed to create the workspace record after provisioning access groups.&apos;;
+            case &apos;finalize_uploaded_icon&apos;:
+                return &apos;Failed to attach the uploaded workspace icon to the new workspace.&apos;;
+            default:
+                return &apos;Workspace provisioning failed.&apos;;
+        }
+    },
+
+    _rollbackCreatedWorkspace: function (workspaceSysId) {
+        var sysId = this._cleanText(workspaceSysId);
+        if (!sysId) {
+            return;
+        }
+
+        var workspace = new GlideRecord(this._WORKSPACE_TABLE);
+        if (workspace.get(sysId)) {
+            workspace.deleteRecord();
+        }
+    },
+
+    _restoreUploadedIconAssetClaim: function (requestSysId) {
+        var request = new GlideRecord(this._REQUEST_TABLE);
+        if (!request.get(requestSysId) || this._cleanText(request.getValue(&apos;icon_type&apos;)) !== &apos;uploaded&apos;) {
+            return;
+        }
+
+        var asset = new GlideRecord(this._WORKSPACE_ICON_ASSET_TABLE);
+        asset.addQuery(&apos;asset_key&apos;, this._cleanText(request.getValue(&apos;icon_key&apos;)));
+        asset.addQuery(&apos;state&apos;, &apos;claimed&apos;);
+        asset.addQuery(&apos;provision_request&apos;, this._cleanText(request.getUniqueValue()));
+        asset.setLimit(1);
+        asset.query();
+        if (!asset.next()) {
+            return;
+        }
+        asset.setValue(&apos;state&apos;, &apos;staged&apos;);
+        asset.setValue(&apos;provision_request&apos;, &apos;&apos;);
+        asset.setValue(&apos;workspace&apos;, &apos;&apos;);
+        asset.update();
+    },
+
+    _rollbackCreatedGroups: function (groupSysIds) {
+        for (var index = groupSysIds.length - 1; index &gt;= 0; index -= 1) {
+            this._deleteProvisionedGroup(groupSysIds[index]);
+        }
+    },
+
+    _deleteProvisionedGroup: function (groupSysId) {
+        var sysId = this._cleanText(groupSysId);
+        if (!sysId) {
+            return;
+        }
+
+        var group = new GlideRecord(&apos;sys_user_group&apos;);
+        if (!group.get(sysId)) {
+            return;
+        }
+
+        var actualName = this._cleanText(group.getValue(&apos;name&apos;));
+        if (!/^Docsera_[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*_(Admins|Editors)$/.test(actualName)) {
+            throw new Error(&apos;Rollback target was not a Docsera-owned workspace group.&apos;);
+        }
+
+        group.deleteRecord();
+    },
+
+    _logError: function (event, error) {
+        var message = error &amp;&amp; error.message ? error.message : String(error);
+        gs.error(&apos;[Docsera global workspace worker] &apos; + event + &apos;: &apos; + message);
+    },
+
+    type: &apos;DocseraGlobalWorkspaceProvisioningBridge&apos;,
+};
+]]&gt;&lt;/content&gt;
+    &lt;external_source&gt;false&lt;/external_source&gt;
+    &lt;path&gt;/global/docsera-global-workspace-bridge/0.1.0/src/server/script-includes/docsera-global-workspace-provisioning-bridge.js&lt;/path&gt;
+    &lt;sys_name&gt;/global/docsera-global-workspace-bridge/0.1.0/src/server/script-includes/docsera-global-workspace-provisioning-bridge.js&lt;/sys_name&gt;
+  &lt;/sys_module&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>/global/docsera-global-workspace-bridge/0.1.0/src/server/script-includes/docsera-global-workspace-provisioning-bridge.js</target_name>
+    <target_sys_id>d4a3dc19596e40aea9186c8eac8079b0</target_sys_id>
+    <type>sys_module</type>
+    <update_guid>fdd08081683eb05b579de69e49da3832</update_guid>
+    <update_guid_history>9cde0667c480dbd3f79c1e3ab8acd0dc</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>bb5b46992364e362d264d353937e7a04</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_module_f7a3b9131ef04ac5aebf403d2856e72c</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_module&quot;&gt;
+  &lt;sys_module action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;f7a3b9131ef04ac5aebf403d2856e72c&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_module_f7a3b9131ef04ac5aebf403d2856e72c&lt;/sys_update_name&gt;
+    &lt;content&gt;&lt;![CDATA[(function executeRule(current) {
+    if (!current) {
+        return;
+    }
+
+    if (current.getValue(&apos;state&apos;) !== &apos;requested&apos;) {
+        return;
+    }
+
+    var worker = new DocseraGlobalWorkspaceProvisioningBridge();
+    worker.processRequest(current.getUniqueValue());
+})(current, previous);
+]]&gt;&lt;/content&gt;
+    &lt;external_source&gt;false&lt;/external_source&gt;
+    &lt;path&gt;/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-provision-request.js&lt;/path&gt;
+    &lt;sys_name&gt;/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-provision-request.js&lt;/sys_name&gt;
+  &lt;/sys_module&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>/global/docsera-global-workspace-bridge/0.1.0/src/server/business-rules/process-workspace-provision-request.js</target_name>
+    <target_sys_id>f7a3b9131ef04ac5aebf403d2856e72c</target_sys_id>
+    <type>sys_module</type>
+    <update_guid>b6fcfbf6efb37c17ccded464aa5586cb</update_guid>
+    <update_guid_history>e7f7895b7abf0cdd6edd868289f93b94</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>02a05541dab73772746aefb6c479bd76</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_scope_privilege_020b66150c26442d80ec0a26b6f37099</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_scope_privilege&quot;&gt;
+  &lt;sys_scope_privilege action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;020b66150c26442d80ec0a26b6f37099&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_scope_privilege_020b66150c26442d80ec0a26b6f37099&lt;/sys_update_name&gt;
+    &lt;operation&gt;write&lt;/operation&gt;
+    &lt;source_scope&gt;global&lt;/source_scope&gt;
+    &lt;status&gt;allowed&lt;/status&gt;
+    &lt;target_name&gt;x_2300756_docsera_workspace_member_mutation_command&lt;/target_name&gt;
+    &lt;target_scope&gt;e6e43323accd4c7fb9271525a343850e&lt;/target_scope&gt;
+    &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
+  &lt;/sys_scope_privilege&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>sys_scope_privilege_020b66150c26442d80ec0a26b6f37099</target_name>
+    <target_sys_id>020b66150c26442d80ec0a26b6f37099</target_sys_id>
+    <type>sys_scope_privilege</type>
+    <update_guid>83297e75e532deb7ca1a0a3612442230</update_guid>
+    <update_guid_history>c848800331e25811cf27dda51899f1de</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>ffda9fdce734ab438563a6ac7b86107d</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_scope_privilege_2a575e9f2d314c9aa08c6e4fa60b545a</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_scope_privilege&quot;&gt;
+  &lt;sys_scope_privilege action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;2a575e9f2d314c9aa08c6e4fa60b545a&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_scope_privilege_2a575e9f2d314c9aa08c6e4fa60b545a&lt;/sys_update_name&gt;
+    &lt;operation&gt;read&lt;/operation&gt;
+    &lt;source_scope&gt;global&lt;/source_scope&gt;
+    &lt;status&gt;allowed&lt;/status&gt;
+    &lt;target_name&gt;x_2300756_docsera_workspace_provision_request&lt;/target_name&gt;
+    &lt;target_scope&gt;e6e43323accd4c7fb9271525a343850e&lt;/target_scope&gt;
+    &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
+  &lt;/sys_scope_privilege&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>sys_scope_privilege_2a575e9f2d314c9aa08c6e4fa60b545a</target_name>
+    <target_sys_id>2a575e9f2d314c9aa08c6e4fa60b545a</target_sys_id>
+    <type>sys_scope_privilege</type>
+    <update_guid>30dfb9e6d7320708003ceb5df7da0ed3</update_guid>
+    <update_guid_history>e20a587f523dd2390c77586585c1d379</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>cd4d788bf6b57f5339e0882f8db9fde9</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_scope_privilege_44a6377dac404a3885de4107e29aa707</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_scope_privilege&quot;&gt;
+  &lt;sys_scope_privilege action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;44a6377dac404a3885de4107e29aa707&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_scope_privilege_44a6377dac404a3885de4107e29aa707&lt;/sys_update_name&gt;
+    &lt;operation&gt;read&lt;/operation&gt;
+    &lt;source_scope&gt;global&lt;/source_scope&gt;
+    &lt;status&gt;allowed&lt;/status&gt;
+    &lt;target_name&gt;x_2300756_docsera_workspace_member_mutation_command&lt;/target_name&gt;
+    &lt;target_scope&gt;e6e43323accd4c7fb9271525a343850e&lt;/target_scope&gt;
+    &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
+  &lt;/sys_scope_privilege&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>sys_scope_privilege_44a6377dac404a3885de4107e29aa707</target_name>
+    <target_sys_id>44a6377dac404a3885de4107e29aa707</target_sys_id>
+    <type>sys_scope_privilege</type>
+    <update_guid>b9ec071e2c643ed548a11af63587f315</update_guid>
+    <update_guid_history>3d5f79fc521d9a7c455324b773f3324e</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>d0d5bab2bff9a15326679218eaa1024b</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_scope_privilege_8c73924ac3f34315a312d25c04beca68</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_scope_privilege&quot;&gt;
+  &lt;sys_scope_privilege action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;8c73924ac3f34315a312d25c04beca68&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_scope_privilege_8c73924ac3f34315a312d25c04beca68&lt;/sys_update_name&gt;
+    &lt;operation&gt;write&lt;/operation&gt;
+    &lt;source_scope&gt;global&lt;/source_scope&gt;
+    &lt;status&gt;allowed&lt;/status&gt;
+    &lt;target_name&gt;x_2300756_docsera_workspace_icon_asset&lt;/target_name&gt;
+    &lt;target_scope&gt;e6e43323accd4c7fb9271525a343850e&lt;/target_scope&gt;
+    &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
+  &lt;/sys_scope_privilege&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>sys_scope_privilege_8c73924ac3f34315a312d25c04beca68</target_name>
+    <target_sys_id>8c73924ac3f34315a312d25c04beca68</target_sys_id>
+    <type>sys_scope_privilege</type>
+    <update_guid>1482fa0a4d353a1edbcc327c040e1a22</update_guid>
+    <update_guid_history>6ac9c35c3f271abca0dcc7847c29c231</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>fcf258575c0a53e11b19eaa08cbb75e8</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_scope_privilege_a9463de9f8f24cc9be7296b8e1019ddc</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_scope_privilege&quot;&gt;
+  &lt;sys_scope_privilege action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;a9463de9f8f24cc9be7296b8e1019ddc&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_scope_privilege_a9463de9f8f24cc9be7296b8e1019ddc&lt;/sys_update_name&gt;
+    &lt;operation&gt;read&lt;/operation&gt;
+    &lt;source_scope&gt;global&lt;/source_scope&gt;
+    &lt;status&gt;allowed&lt;/status&gt;
+    &lt;target_name&gt;x_2300756_docsera_workspace_icon_asset&lt;/target_name&gt;
+    &lt;target_scope&gt;e6e43323accd4c7fb9271525a343850e&lt;/target_scope&gt;
+    &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
+  &lt;/sys_scope_privilege&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>sys_scope_privilege_a9463de9f8f24cc9be7296b8e1019ddc</target_name>
+    <target_sys_id>a9463de9f8f24cc9be7296b8e1019ddc</target_sys_id>
+    <type>sys_scope_privilege</type>
+    <update_guid>09acfc2422d3705ab4f242ae65ee2e6e</update_guid>
+    <update_guid_history>f5595a540229072d1b1f49d5af63aa29</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>084d5b31654781452f664c43d95b84a2</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_scope_privilege_d48779f205ab43da816d52079e0150c0</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_scope_privilege&quot;&gt;
+  &lt;sys_scope_privilege action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;d48779f205ab43da816d52079e0150c0&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_scope_privilege_d48779f205ab43da816d52079e0150c0&lt;/sys_update_name&gt;
+    &lt;operation&gt;write&lt;/operation&gt;
+    &lt;source_scope&gt;global&lt;/source_scope&gt;
+    &lt;status&gt;allowed&lt;/status&gt;
+    &lt;target_name&gt;x_2300756_docsera_workspace_provision_request&lt;/target_name&gt;
+    &lt;target_scope&gt;e6e43323accd4c7fb9271525a343850e&lt;/target_scope&gt;
+    &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
+  &lt;/sys_scope_privilege&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>sys_scope_privilege_d48779f205ab43da816d52079e0150c0</target_name>
+    <target_sys_id>d48779f205ab43da816d52079e0150c0</target_sys_id>
+    <type>sys_scope_privilege</type>
+    <update_guid>346901140397e73d0a2033a0edcb8544</update_guid>
+    <update_guid_history>f80b234cf00bea37fd3492ff689b4304</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>4ad681efc0a04cf3032156abd2f08053</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_scope_privilege_d4959e2588174efda0d5769c9861cc9b</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_scope_privilege&quot;&gt;
+  &lt;sys_scope_privilege action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;d4959e2588174efda0d5769c9861cc9b&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_scope_privilege_d4959e2588174efda0d5769c9861cc9b&lt;/sys_update_name&gt;
+    &lt;operation&gt;create&lt;/operation&gt;
+    &lt;source_scope&gt;global&lt;/source_scope&gt;
+    &lt;status&gt;allowed&lt;/status&gt;
+    &lt;target_name&gt;x_2300756_docsera_workspace&lt;/target_name&gt;
+    &lt;target_scope&gt;e6e43323accd4c7fb9271525a343850e&lt;/target_scope&gt;
+    &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
+  &lt;/sys_scope_privilege&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>sys_scope_privilege_d4959e2588174efda0d5769c9861cc9b</target_name>
+    <target_sys_id>d4959e2588174efda0d5769c9861cc9b</target_sys_id>
+    <type>sys_scope_privilege</type>
+    <update_guid>4212abc64d1dfd3614d512e32d82487b</update_guid>
+    <update_guid_history>5b4bd370705293df85f7f6d75bf74fb7</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>1ac697dc4ee6a1d189c1848cfc75657c</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_scope_privilege_d4f3ccc29a484d13b8aada2b3a015d34</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_scope_privilege&quot;&gt;
+  &lt;sys_scope_privilege action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;d4f3ccc29a484d13b8aada2b3a015d34&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_scope_privilege_d4f3ccc29a484d13b8aada2b3a015d34&lt;/sys_update_name&gt;
+    &lt;operation&gt;read&lt;/operation&gt;
+    &lt;source_scope&gt;global&lt;/source_scope&gt;
+    &lt;status&gt;allowed&lt;/status&gt;
+    &lt;target_name&gt;x_2300756_docsera_workspace&lt;/target_name&gt;
+    &lt;target_scope&gt;e6e43323accd4c7fb9271525a343850e&lt;/target_scope&gt;
+    &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
+  &lt;/sys_scope_privilege&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>sys_scope_privilege_d4f3ccc29a484d13b8aada2b3a015d34</target_name>
+    <target_sys_id>d4f3ccc29a484d13b8aada2b3a015d34</target_sys_id>
+    <type>sys_scope_privilege</type>
+    <update_guid>a093e9e9b9478694cfbe73c5cd6940c0</update_guid>
+    <update_guid_history>ae5b361767eb261d5ecfe041c94403d3</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>ab29e46ac152c4b40fc163dda99d1d23</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_scope_privilege_eaf188f8dcc240e896b30a140aa28dfa</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_scope_privilege&quot;&gt;
+  &lt;sys_scope_privilege action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;eaf188f8dcc240e896b30a140aa28dfa&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_scope_privilege_eaf188f8dcc240e896b30a140aa28dfa&lt;/sys_update_name&gt;
+    &lt;operation&gt;delete&lt;/operation&gt;
+    &lt;source_scope&gt;global&lt;/source_scope&gt;
+    &lt;status&gt;allowed&lt;/status&gt;
+    &lt;target_name&gt;x_2300756_docsera_workspace&lt;/target_name&gt;
+    &lt;target_scope&gt;e6e43323accd4c7fb9271525a343850e&lt;/target_scope&gt;
+    &lt;target_type&gt;sys_db_object&lt;/target_type&gt;
+  &lt;/sys_scope_privilege&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>sys_scope_privilege_eaf188f8dcc240e896b30a140aa28dfa</target_name>
+    <target_sys_id>eaf188f8dcc240e896b30a140aa28dfa</target_sys_id>
+    <type>sys_scope_privilege</type>
+    <update_guid>3f2003e14014adfbedbe56eb8815c9d3</update_guid>
+    <update_guid_history>42b9a54bbe45b284e8683995644b7334</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>9c474036b17c5d83b122ddc8eefc4a49</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_script_c7debb094bef4e5093645239504c84b6</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_script&quot;&gt;
+  &lt;sys_script action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;c7debb094bef4e5093645239504c84b6&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_script_c7debb094bef4e5093645239504c84b6&lt;/sys_update_name&gt;
+    &lt;abort_action&gt;false&lt;/abort_action&gt;
+    &lt;access&gt;package_private&lt;/access&gt;
+    &lt;action_delete&gt;false&lt;/action_delete&gt;
+    &lt;action_insert&gt;true&lt;/action_insert&gt;
+    &lt;action_query&gt;false&lt;/action_query&gt;
+    &lt;action_update&gt;false&lt;/action_update&gt;
+    &lt;active&gt;true&lt;/active&gt;
+    &lt;add_message&gt;false&lt;/add_message&gt;
+    &lt;advanced&gt;true&lt;/advanced&gt;
+    &lt;change_fields&gt;false&lt;/change_fields&gt;
+    &lt;client_callable&gt;false&lt;/client_callable&gt;
+    &lt;collection&gt;x_2300756_docsera_workspace_provision_request&lt;/collection&gt;
+    &lt;condition/&gt;
+    &lt;description/&gt;
+    &lt;execute_function&gt;false&lt;/execute_function&gt;
+    &lt;filter_condition&gt;state=requested&lt;/filter_condition&gt;
+    &lt;is_rest&gt;false&lt;/is_rest&gt;
+    &lt;message/&gt;
+    &lt;name&gt;Docsera Workspace Provision Request Worker&lt;/name&gt;
+    &lt;order&gt;100&lt;/order&gt;
+    &lt;priority&gt;100&lt;/priority&gt;
+    &lt;rest_method/&gt;
+    &lt;rest_method_text/&gt;
+    &lt;rest_service/&gt;
+    &lt;rest_service_text/&gt;
+    &lt;rest_variables/&gt;
+    &lt;role_conditions/&gt;
+    &lt;script&gt;&lt;![CDATA[(function executeRule(current) {
+    if (!current) {
+        return;
+    }
+
+    if (current.getValue(&apos;state&apos;) !== &apos;requested&apos;) {
+        return;
+    }
+
+    var worker = new DocseraGlobalWorkspaceProvisioningBridge();
+    worker.processRequest(current.getUniqueValue());
+})(current, previous);
+]]&gt;&lt;/script&gt;
+    &lt;sys_policy/&gt;
+    &lt;template/&gt;
+    &lt;when&gt;async_always&lt;/when&gt;
+  &lt;/sys_script&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>Docsera Workspace Provision Request Worker</target_name>
+    <target_sys_id>c7debb094bef4e5093645239504c84b6</target_sys_id>
+    <type>sys_script</type>
+    <update_guid>2bb855e6c4a0a55eabe2bbe749754d04</update_guid>
+    <update_guid_history>0a0dd62d945513a9f4eea07e1fd51a3f</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>a645a66c5058cae3e58f42542bc0f290</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_script_f91e7303f060417e97e9b6ea7d34efbe</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_script&quot;&gt;
+  &lt;sys_script action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;f91e7303f060417e97e9b6ea7d34efbe&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_script_f91e7303f060417e97e9b6ea7d34efbe&lt;/sys_update_name&gt;
+    &lt;abort_action&gt;false&lt;/abort_action&gt;
+    &lt;access&gt;package_private&lt;/access&gt;
+    &lt;action_delete&gt;false&lt;/action_delete&gt;
+    &lt;action_insert&gt;true&lt;/action_insert&gt;
+    &lt;action_query&gt;false&lt;/action_query&gt;
+    &lt;action_update&gt;false&lt;/action_update&gt;
+    &lt;active&gt;true&lt;/active&gt;
+    &lt;add_message&gt;false&lt;/add_message&gt;
+    &lt;advanced&gt;true&lt;/advanced&gt;
+    &lt;change_fields&gt;false&lt;/change_fields&gt;
+    &lt;client_callable&gt;false&lt;/client_callable&gt;
+    &lt;collection&gt;x_2300756_docsera_workspace_member_mutation_command&lt;/collection&gt;
+    &lt;condition/&gt;
+    &lt;description/&gt;
+    &lt;execute_function&gt;false&lt;/execute_function&gt;
+    &lt;filter_condition&gt;state=requested&lt;/filter_condition&gt;
+    &lt;is_rest&gt;false&lt;/is_rest&gt;
+    &lt;message/&gt;
+    &lt;name&gt;Docsera Workspace Member Mutation Command Worker&lt;/name&gt;
+    &lt;order&gt;100&lt;/order&gt;
+    &lt;priority&gt;100&lt;/priority&gt;
+    &lt;rest_method/&gt;
+    &lt;rest_method_text/&gt;
+    &lt;rest_service/&gt;
+    &lt;rest_service_text/&gt;
+    &lt;rest_variables/&gt;
+    &lt;role_conditions/&gt;
+    &lt;script&gt;&lt;![CDATA[(function executeRule(current) {
+    function cleanText(value) {
+        return typeof value === &apos;string&apos; ? value.trim() : &apos;&apos;;
+    }
+
+    function fail(message) {
+        current.setValue(&apos;state&apos;, &apos;failed&apos;);
+        current.setValue(&apos;error_message&apos;, cleanText(message) || &apos;Workspace membership mutation failed.&apos;);
+        current.update();
+    }
+
+    if (!current) {
+        return;
+    }
+
+    if (current.getValue(&apos;state&apos;) !== &apos;requested&apos;) {
+        return;
+    }
+
+    var workspaceSysId = cleanText(current.getValue(&apos;workspace&apos;));
+    var targetUserSysId = cleanText(current.getValue(&apos;target_user&apos;));
+    var mutationKind = cleanText(current.getValue(&apos;mutation_kind&apos;));
+    var accessLevel = cleanText(current.getValue(&apos;access_level&apos;));
+
+    var workspace = new GlideRecord(&apos;x_2300756_docsera_workspace&apos;);
+    if (!workspace.get(workspaceSysId)) {
+        fail(&apos;Workspace could not be found.&apos;);
+        return;
+    }
+
+    var adminGroupSysId = cleanText(workspace.getValue(&apos;admin_group&apos;));
+    var editorGroupSysId = cleanText(workspace.getValue(&apos;editor_group&apos;));
+    var bridge = new DocseraGlobalWorkspaceMembershipBridge();
+    var result;
+
+    if (mutationKind === &apos;validate_workspace_group_deletion&apos;) {
+        result = bridge.validateWorkspaceGroupDeletionTargets(adminGroupSysId, editorGroupSysId);
+    } else if (mutationKind === &apos;delete_workspace_groups&apos;) {
+        result = bridge.deleteWorkspaceGroups(adminGroupSysId, editorGroupSysId);
+    } else if (mutationKind === &apos;set&apos;) {
+        result = bridge.setWorkspaceMembership(adminGroupSysId, editorGroupSysId, targetUserSysId, accessLevel);
+    } else if (mutationKind === &apos;remove&apos;) {
+        result = bridge.removeWorkspaceMembership(adminGroupSysId, editorGroupSysId, targetUserSysId);
+    } else {
+        fail(&apos;Unsupported workspace membership mutation kind.&apos;);
+        return;
+    }
+
+    if (!result || result.status !== &apos;succeeded&apos;) {
+        fail(result &amp;&amp; result.errorMessage ? result.errorMessage : &apos;Workspace membership mutation failed.&apos;);
+        return;
+    }
+
+    current.setValue(&apos;state&apos;, &apos;succeeded&apos;);
+    current.setValue(&apos;error_message&apos;, &apos;&apos;);
+    current.update();
+})(current, previous);
+]]&gt;&lt;/script&gt;
+    &lt;sys_policy/&gt;
+    &lt;template/&gt;
+    &lt;when&gt;after&lt;/when&gt;
+  &lt;/sys_script&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>Docsera Workspace Member Mutation Command Worker</target_name>
+    <target_sys_id>f91e7303f060417e97e9b6ea7d34efbe</target_sys_id>
+    <type>sys_script</type>
+    <update_guid>0190d7b771af36d2474b7e50050213dc</update_guid>
+    <update_guid_history>4cc1d1cb5b515ceca9574ecdb1705b29</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>fefc2755277791f2be1a87a8d8424282</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_script_include_010930ea12354689b678fc9b37ba0f88</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_script_include&quot;&gt;
+  &lt;sys_script_include action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;010930ea12354689b678fc9b37ba0f88&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_script_include_010930ea12354689b678fc9b37ba0f88&lt;/sys_update_name&gt;
+    &lt;access&gt;package_private&lt;/access&gt;
+    &lt;active&gt;true&lt;/active&gt;
+    &lt;api_name&gt;global.DocseraGlobalWorkspaceProvisioningBridge&lt;/api_name&gt;
+    &lt;caller_access/&gt;
+    &lt;client_callable&gt;false&lt;/client_callable&gt;
+    &lt;description&gt;Global worker that provisions Docsera workspace groups from queued scoped requests.&lt;/description&gt;
+    &lt;mobile_callable&gt;false&lt;/mobile_callable&gt;
+    &lt;name&gt;DocseraGlobalWorkspaceProvisioningBridge&lt;/name&gt;
+    &lt;sandbox_callable&gt;false&lt;/sandbox_callable&gt;
+    &lt;script&gt;&lt;![CDATA[var DocseraGlobalWorkspaceProvisioningBridge = Class.create();
+
+DocseraGlobalWorkspaceProvisioningBridge.prototype = {
+    initialize: function () {},
+
+    processRequest: function (requestSysId) {
+        var requestId = this._cleanText(requestSysId);
+        if (!requestId) {
+            return {
+                status: &apos;ignored&apos;,
+            };
+        }
+
+        var request = this._claimRequest(requestId);
+        if (!request) {
+            return {
+                status: &apos;ignored&apos;,
+            };
+        }
+
+        var createdGroupIds = [];
+        var workspaceSysId = &apos;&apos;;
+        var stage = &apos;validation&apos;;
+
+        try {
+            var payload = this._readRequestPayload(request);
+            this._validateRequestPayload(payload);
+
+            stage = &apos;create_admin_group&apos;;
+            var adminGroup = this._createGroup(
+                payload.adminGroupName,
+                &apos;Workspace admin group for &apos; + payload.workspaceName
+            );
+            createdGroupIds.push(adminGroup.sysId);
+
+            stage = &apos;create_editor_group&apos;;
+            var editorGroup = this._createGroup(
+                payload.editorGroupName,
+                &apos;Workspace editor group for &apos; + payload.workspaceName
+            );
+            createdGroupIds.push(editorGroup.sysId);
+
+            stage = &apos;assign_admin_role&apos;;
+            this._assignRoleToGroup(adminGroup.sysId, this._ROLE_NAMES.workspaceAdmin);
+
+            stage = &apos;assign_editor_role&apos;;
+            this._assignRoleToGroup(editorGroup.sysId, this._ROLE_NAMES.editor);
+
+            stage = &apos;create_workspace&apos;;
+            workspaceSysId = this._createWorkspaceRecord(payload, adminGroup.sysId, editorGroup.sysId);
+
+            stage = &apos;finalize_uploaded_icon&apos;;
+            this._finalizeUploadedIconAsset(request, payload, workspaceSysId);
+
+            stage = &apos;mark_succeeded&apos;;
+            this._markRequestSucceeded(requestId, workspaceSysId, adminGroup.sysId, editorGroup.sysId);
+
+            return {
+                status: &apos;succeeded&apos;,
+                workspaceSysId: workspaceSysId,
+            };
+        } catch (error) {
+            this._rollbackCreatedWorkspace(workspaceSysId);
+            this._restoreUploadedIconAssetClaim(requestId);
+            this._rollbackCreatedGroups(createdGroupIds);
+            this._markRequestFailed(requestId, this._errorCodeForStage(stage), this._safeMessageForStage(stage));
+            this._logError(&apos;processRequest.&apos; + stage, error);
+
+            return {
+                status: &apos;failed&apos;,
+            };
+        }
+    },
+
+    _DOCSERA_SCOPE: &apos;x_2300756_docsera&apos;,
+    _REQUEST_TABLE: &apos;x_2300756_docsera_workspace_provision_request&apos;,
+    _WORKSPACE_TABLE: &apos;x_2300756_docsera_workspace&apos;,
+    _WORKSPACE_ICON_ASSET_TABLE: &apos;x_2300756_docsera_workspace_icon_asset&apos;,
+
+    _ROLE_NAMES: {
+        workspaceAdmin: &apos;x_2300756_docsera.workspace_admin&apos;,
+        editor: &apos;x_2300756_docsera.editor&apos;,
+    },
+
+    _cleanText: function (value) {
+        return typeof value === &apos;string&apos; ? value.trim() : &apos;&apos;;
+    },
+
+    _normalizeBoolean: function (value) {
+        var normalized = String(value).toLowerCase();
+        return value === true || value === 1 || normalized === &apos;true&apos; || normalized === &apos;1&apos; || normalized === &apos;yes&apos;;
+    },
+
+    _serializeBoolean: function (value) {
+        return value ? &apos;true&apos; : &apos;false&apos;;
+    },
+
+    _claimRequest: function (requestSysId) {
+        var request = new GlideRecord(this._REQUEST_TABLE);
+        if (!request.get(requestSysId)) {
+            return null;
+        }
+
+        if (this._cleanText(request.getValue(&apos;state&apos;)) !== &apos;requested&apos;) {
+            return null;
+        }
+
+        request.setValue(&apos;state&apos;, &apos;processing&apos;);
+        request.setValue(&apos;error_code&apos;, &apos;&apos;);
+        request.setValue(&apos;error_message&apos;, &apos;&apos;);
+        request.update();
+
+        var claimed = new GlideRecord(this._REQUEST_TABLE);
+        if (!claimed.get(requestSysId)) {
+            return null;
+        }
+
+        return claimed;
+    },
+
+    _readRequestPayload: function (request) {
+        return {
+            adminGroupName: this._cleanText(request.getValue(&apos;admin_group_name&apos;)),
+            editorGroupName: this._cleanText(request.getValue(&apos;editor_group_name&apos;)),
+            iconAssetPath: this._cleanText(request.getValue(&apos;icon_asset_path&apos;)),
+            iconKey: this._cleanText(request.getValue(&apos;icon_key&apos;)),
+            iconLabel: this._cleanText(request.getValue(&apos;icon_label&apos;)),
+            iconType: this._cleanText(request.getValue(&apos;icon_type&apos;)) === &apos;uploaded&apos; ? &apos;uploaded&apos; : &apos;builtin&apos;,
+            pageWidth: this._cleanText(request.getValue(&apos;page_width&apos;)) === &apos;full&apos; ? &apos;full&apos; : &apos;readable&apos;,
+            requestedBySysId: this._cleanText(request.getValue(&apos;requested_by&apos;)),
+            shortDescription: this._cleanText(request.getValue(&apos;short_description&apos;)),
+            tocDefaultVisible: this._normalizeBoolean(request.getValue(&apos;toc_default_visible&apos;)),
+            workspaceGroupKey: this._cleanText(request.getValue(&apos;workspace_group_key&apos;)),
+            workspaceName: this._cleanText(request.getValue(&apos;name&apos;)),
+            workspaceSlug: this._cleanText(request.getValue(&apos;workspace_slug&apos;)),
+            workspaceStatus: this._cleanText(request.getValue(&apos;workspace_status&apos;)) === &apos;inactive&apos; ? &apos;inactive&apos; : &apos;active&apos;,
+        };
+    },
+
+    _validateRequestPayload: function (payload) {
+        if (!payload.requestedBySysId) {
+            throw new Error(&apos;Missing workspace creator.&apos;);
+        }
+
+        if (!payload.workspaceName || payload.workspaceName.length &gt; 160) {
+            throw new Error(&apos;Invalid workspace name.&apos;);
+        }
+
+        if (!payload.workspaceSlug || payload.workspaceSlug.length &gt; 160) {
+            throw new Error(&apos;Invalid workspace slug.&apos;);
+        }
+
+        if (!this._isValidWorkspaceGroupKey(payload.workspaceGroupKey)) {
+            throw new Error(&apos;Invalid workspace group key.&apos;);
+        }
+
+        var expectedNames = this._buildExpectedGroupNames(payload.workspaceGroupKey);
+        if (
+            payload.adminGroupName !== expectedNames.admin ||
+            payload.editorGroupName !== expectedNames.editor
+        ) {
+            throw new Error(&apos;Provisioning group names did not match the Docsera contract.&apos;);
+        }
+    },
+
+    _isValidWorkspaceGroupKey: function (value) {
+        return /^[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*$/.test(this._cleanText(value));
+    },
+
+    _buildExpectedGroupNames: function (workspaceGroupKey) {
+        return {
+            admin: &apos;Docsera_&apos; + workspaceGroupKey + &apos;_Admins&apos;,
+            editor: &apos;Docsera_&apos; + workspaceGroupKey + &apos;_Editors&apos;,
+        };
+    },
+
+    _createGroup: function (name, description) {
+        var existing = new GlideRecord(&apos;sys_user_group&apos;);
+        existing.addQuery(&apos;name&apos;, name);
+        existing.setLimit(1);
+        existing.query();
+        if (existing.next()) {
+            throw new Error(&apos;A required workspace access group already exists.&apos;);
+        }
+
+        var group = new GlideRecord(&apos;sys_user_group&apos;);
+        group.initialize();
+        group.setValue(&apos;name&apos;, name);
+        group.setValue(&apos;description&apos;, description);
+
+        var sysId = this._cleanText(group.insert());
+        if (!sysId) {
+            throw new Error(&apos;A required workspace access group could not be created.&apos;);
+        }
+
+        return {
+            sysId: sysId,
+            name: name,
+        };
+    },
+
+    _getRoleSysId: function (roleName) {
+        var role = new GlideRecord(&apos;sys_user_role&apos;);
+        role.addQuery(&apos;name&apos;, roleName);
+        role.setLimit(1);
+        role.query();
+
+        if (!role.next()) {
+            throw new Error(&apos;A required Docsera role is missing.&apos;);
+        }
+
+        return this._cleanText(role.getUniqueValue());
+    },
+
+    _assignRoleToGroup: function (groupSysId, roleName) {
+        var roleSysId = this._getRoleSysId(roleName);
+        var membership = new GlideRecord(&apos;sys_group_has_role&apos;);
+        membership.addQuery(&apos;group&apos;, groupSysId);
+        membership.addQuery(&apos;role&apos;, roleSysId);
+        membership.setLimit(1);
+        membership.query();
+
+        if (membership.next()) {
+            return;
+        }
+
+        membership.initialize();
+        membership.setValue(&apos;group&apos;, groupSysId);
+        membership.setValue(&apos;role&apos;, roleSysId);
+
+        if (!this._cleanText(membership.insert())) {
+            throw new Error(&apos;A required workspace role could not be assigned.&apos;);
+        }
+    },
+
+    _createWorkspaceRecord: function (payload, adminGroupSysId, editorGroupSysId) {
+        var workspace = new GlideRecord(this._WORKSPACE_TABLE);
+        workspace.initialize();
+        workspace.setValue(&apos;name&apos;, payload.workspaceName);
+        workspace.setValue(&apos;workspace_slug&apos;, payload.workspaceSlug);
+        workspace.setValue(&apos;short_description&apos;, payload.shortDescription || &apos;&apos;);
+        workspace.setValue(&apos;icon_type&apos;, payload.iconType);
+        workspace.setValue(&apos;icon_key&apos;, payload.iconKey);
+        workspace.setValue(&apos;icon_label&apos;, payload.iconLabel);
+        workspace.setValue(&apos;icon_asset_path&apos;, payload.iconAssetPath || &apos;&apos;);
+        workspace.setValue(&apos;status&apos;, payload.workspaceStatus);
+        workspace.setValue(&apos;admin_group&apos;, adminGroupSysId);
+        workspace.setValue(&apos;editor_group&apos;, editorGroupSysId);
+        workspace.setValue(&apos;creator&apos;, payload.requestedBySysId);
+        workspace.setValue(&apos;toc_default_visible&apos;, this._serializeBoolean(payload.tocDefaultVisible));
+        workspace.setValue(&apos;page_width&apos;, payload.pageWidth);
+
+        var workspaceSysId = this._cleanText(workspace.insert());
+        if (!workspaceSysId) {
+            throw new Error(&apos;The Docsera workspace record could not be created.&apos;);
+        }
+
+        return workspaceSysId;
+    },
+
+    _markRequestSucceeded: function (requestSysId, workspaceSysId, adminGroupSysId, editorGroupSysId) {
+        var request = new GlideRecord(this._REQUEST_TABLE);
+        if (!request.get(requestSysId)) {
+            return;
+        }
+
+        request.setValue(&apos;workspace&apos;, workspaceSysId);
+        request.setValue(&apos;admin_group&apos;, adminGroupSysId);
+        request.setValue(&apos;editor_group&apos;, editorGroupSysId);
+        request.setValue(&apos;error_code&apos;, &apos;&apos;);
+        request.setValue(&apos;error_message&apos;, &apos;&apos;);
+        request.setValue(&apos;state&apos;, &apos;succeeded&apos;);
+        request.update();
+    },
+
+    _finalizeUploadedIconAsset: function (request, payload, workspaceSysId) {
+        if (payload.iconType !== &apos;uploaded&apos;) {
+            return;
+        }
+        var assetKey = this._cleanText(payload.iconKey);
+        if (!assetKey) {
+            throw new Error(&apos;Uploaded workspace icon key was missing.&apos;);
+        }
+        var asset = new GlideRecord(this._WORKSPACE_ICON_ASSET_TABLE);
+        asset.addQuery(&apos;asset_key&apos;, assetKey);
+        asset.addQuery(&apos;state&apos;, &apos;claimed&apos;);
+        asset.addQuery(&apos;provision_request&apos;, this._cleanText(request.getUniqueValue()));
+        asset.addQuery(&apos;workspace&apos;, &apos;&apos;);
+        asset.setValue(&apos;workspace&apos;, workspaceSysId);
+        asset.setValue(&apos;provision_request&apos;, this._cleanText(request.getUniqueValue()));
+        asset.setValue(&apos;state&apos;, &apos;claimed&apos;);
+        asset.updateMultiple();
+
+        var verified = new GlideRecord(this._WORKSPACE_ICON_ASSET_TABLE);
+        verified.addQuery(&apos;asset_key&apos;, assetKey);
+        verified.setLimit(1);
+        verified.query();
+        if (
+            !verified.next() ||
+            this._cleanText(verified.getValue(&apos;state&apos;)) !== &apos;claimed&apos; ||
+            this._cleanText(verified.getValue(&apos;provision_request&apos;)) !== this._cleanText(request.getUniqueValue()) ||
+            this._cleanText(verified.getValue(&apos;workspace&apos;)) !== workspaceSysId
+        ) {
+            throw new Error(&apos;Uploaded workspace icon asset finalization could not be verified.&apos;);
+        }
+    },
+
+    _markRequestFailed: function (requestSysId, errorCode, errorMessage) {
+        var request = new GlideRecord(this._REQUEST_TABLE);
+        if (!request.get(requestSysId)) {
+            return;
+        }
+
+        request.setValue(&apos;state&apos;, &apos;failed&apos;);
+        request.setValue(&apos;error_code&apos;, errorCode);
+        request.setValue(&apos;error_message&apos;, this._truncateSafeMessage(errorMessage));
+        request.update();
+    },
+
+    _truncateSafeMessage: function (value) {
+        var message = this._cleanText(value) || &apos;Workspace provisioning failed.&apos;;
+        return message.length &gt; 255 ? message.substring(0, 255) : message;
+    },
+
+    _errorCodeForStage: function (stage) {
+        switch (stage) {
+            case &apos;validation&apos;:
+                return &apos;invalid_request&apos;;
+            case &apos;create_admin_group&apos;:
+            case &apos;create_editor_group&apos;:
+                return &apos;group_create_failed&apos;;
+            case &apos;assign_admin_role&apos;:
+            case &apos;assign_editor_role&apos;:
+                return &apos;role_assignment_failed&apos;;
+            case &apos;create_workspace&apos;:
+                return &apos;workspace_create_failed&apos;;
+            case &apos;finalize_uploaded_icon&apos;:
+                return &apos;workspace_icon_finalize_failed&apos;;
+            default:
+                return &apos;provisioning_failed&apos;;
+        }
+    },
+
+    _safeMessageForStage: function (stage) {
+        switch (stage) {
+            case &apos;validation&apos;:
+                return &apos;Workspace provisioning request was invalid.&apos;;
+            case &apos;create_admin_group&apos;:
+            case &apos;create_editor_group&apos;:
+                return &apos;Failed to create workspace access groups.&apos;;
+            case &apos;assign_admin_role&apos;:
+            case &apos;assign_editor_role&apos;:
+                return &apos;Failed to assign Docsera roles to workspace groups.&apos;;
+            case &apos;create_workspace&apos;:
+                return &apos;Failed to create the workspace record after provisioning access groups.&apos;;
+            case &apos;finalize_uploaded_icon&apos;:
+                return &apos;Failed to attach the uploaded workspace icon to the new workspace.&apos;;
+            default:
+                return &apos;Workspace provisioning failed.&apos;;
+        }
+    },
+
+    _rollbackCreatedWorkspace: function (workspaceSysId) {
+        var sysId = this._cleanText(workspaceSysId);
+        if (!sysId) {
+            return;
+        }
+
+        var workspace = new GlideRecord(this._WORKSPACE_TABLE);
+        if (workspace.get(sysId)) {
+            workspace.deleteRecord();
+        }
+    },
+
+    _restoreUploadedIconAssetClaim: function (requestSysId) {
+        var request = new GlideRecord(this._REQUEST_TABLE);
+        if (!request.get(requestSysId) || this._cleanText(request.getValue(&apos;icon_type&apos;)) !== &apos;uploaded&apos;) {
+            return;
+        }
+
+        var asset = new GlideRecord(this._WORKSPACE_ICON_ASSET_TABLE);
+        asset.addQuery(&apos;asset_key&apos;, this._cleanText(request.getValue(&apos;icon_key&apos;)));
+        asset.addQuery(&apos;state&apos;, &apos;claimed&apos;);
+        asset.addQuery(&apos;provision_request&apos;, this._cleanText(request.getUniqueValue()));
+        asset.setLimit(1);
+        asset.query();
+        if (!asset.next()) {
+            return;
+        }
+        asset.setValue(&apos;state&apos;, &apos;staged&apos;);
+        asset.setValue(&apos;provision_request&apos;, &apos;&apos;);
+        asset.setValue(&apos;workspace&apos;, &apos;&apos;);
+        asset.update();
+    },
+
+    _rollbackCreatedGroups: function (groupSysIds) {
+        for (var index = groupSysIds.length - 1; index &gt;= 0; index -= 1) {
+            this._deleteProvisionedGroup(groupSysIds[index]);
+        }
+    },
+
+    _deleteProvisionedGroup: function (groupSysId) {
+        var sysId = this._cleanText(groupSysId);
+        if (!sysId) {
+            return;
+        }
+
+        var group = new GlideRecord(&apos;sys_user_group&apos;);
+        if (!group.get(sysId)) {
+            return;
+        }
+
+        var actualName = this._cleanText(group.getValue(&apos;name&apos;));
+        if (!/^Docsera_[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*_(Admins|Editors)$/.test(actualName)) {
+            throw new Error(&apos;Rollback target was not a Docsera-owned workspace group.&apos;);
+        }
+
+        group.deleteRecord();
+    },
+
+    _logError: function (event, error) {
+        var message = error &amp;&amp; error.message ? error.message : String(error);
+        gs.error(&apos;[Docsera global workspace worker] &apos; + event + &apos;: &apos; + message);
+    },
+
+    type: &apos;DocseraGlobalWorkspaceProvisioningBridge&apos;,
+};
+]]&gt;&lt;/script&gt;
+  &lt;/sys_script_include&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>DocseraGlobalWorkspaceProvisioningBridge</target_name>
+    <target_sys_id>010930ea12354689b678fc9b37ba0f88</target_sys_id>
+    <type>sys_script_include</type>
+    <update_guid>c2ff109626142f953215e3e377668490</update_guid>
+    <update_guid_history>0c8df2ef04ba2f82fc096ab68e56fa38</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>9d4dd89bde807e5cd14cd9461233336e</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_script_include_bb42e634e203492591a8d18e6953eae1</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_script_include&quot;&gt;
+  &lt;sys_script_include action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;bb42e634e203492591a8d18e6953eae1&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_script_include_bb42e634e203492591a8d18e6953eae1&lt;/sys_update_name&gt;
+    &lt;access&gt;public&lt;/access&gt;
+    &lt;active&gt;true&lt;/active&gt;
+    &lt;api_name&gt;global.DocseraGlobalWorkspaceMembershipBridge&lt;/api_name&gt;
+    &lt;caller_access&gt;2&lt;/caller_access&gt;
+    &lt;client_callable&gt;false&lt;/client_callable&gt;
+    &lt;description&gt;Restricted global bridge for Docsera workspace Admin and Editor native group membership mutations.&lt;/description&gt;
+    &lt;mobile_callable&gt;false&lt;/mobile_callable&gt;
+    &lt;name&gt;DocseraGlobalWorkspaceMembershipBridge&lt;/name&gt;
+    &lt;sandbox_callable&gt;false&lt;/sandbox_callable&gt;
+    &lt;script&gt;&lt;![CDATA[var DocseraGlobalWorkspaceMembershipBridge = Class.create();
+
+DocseraGlobalWorkspaceMembershipBridge.prototype = {
+    initialize: function () {},
+
+    setWorkspaceMembership: function (adminGroupSysId, editorGroupSysId, userSysId, accessLevel) {
+        try {
+            var adminGroup = this._cleanSysId(adminGroupSysId);
+            var editorGroup = this._cleanSysId(editorGroupSysId);
+            var user = this._cleanSysId(userSysId);
+            var level = this._cleanText(accessLevel).toLowerCase();
+
+            this._validateInputs(adminGroup, editorGroup, user);
+            if (level !== &apos;admin&apos; &amp;&amp; level !== &apos;editor&apos;) {
+                throw new Error(&apos;Invalid workspace membership access level.&apos;);
+            }
+
+            this._validateWorkspaceGroupPair(adminGroup, editorGroup);
+
+            if (level === &apos;admin&apos;) {
+                this._addUserToGroup(adminGroup, user);
+                this._removeUserFromGroup(editorGroup, user);
+            } else {
+                this._addUserToGroup(editorGroup, user);
+                this._removeUserFromGroup(adminGroup, user);
+            }
+
+            return {
+                status: &apos;succeeded&apos;,
+            };
+        } catch (error) {
+            this._logError(&apos;setWorkspaceMembership&apos;, error);
+            return {
+                status: &apos;failed&apos;,
+                errorMessage: &apos;Workspace membership could not be updated.&apos;,
+            };
+        }
+    },
+
+    removeWorkspaceMembership: function (adminGroupSysId, editorGroupSysId, userSysId) {
+        try {
+            var adminGroup = this._cleanSysId(adminGroupSysId);
+            var editorGroup = this._cleanSysId(editorGroupSysId);
+            var user = this._cleanSysId(userSysId);
+
+            this._validateInputs(adminGroup, editorGroup, user);
+            this._validateWorkspaceGroupPair(adminGroup, editorGroup);
+            this._removeUserFromGroup(adminGroup, user);
+            this._removeUserFromGroup(editorGroup, user);
+
+            return {
+                status: &apos;succeeded&apos;,
+            };
+        } catch (error) {
+            this._logError(&apos;removeWorkspaceMembership&apos;, error);
+            return {
+                status: &apos;failed&apos;,
+                errorMessage: &apos;Workspace membership could not be removed.&apos;,
+            };
+        }
+    },
+
+    deleteWorkspaceGroups: function (adminGroupSysId, editorGroupSysId) {
+        try {
+            var adminGroup = this._cleanSysId(adminGroupSysId);
+            var editorGroup = this._cleanSysId(editorGroupSysId);
+
+            this._validateGroupPairInputs(adminGroup, editorGroup);
+            var targets = this._validateWorkspaceGroupDeletionTargets(adminGroup, editorGroup, true);
+            if (targets.editorGroup) {
+                targets.editorGroup.deleteRecord();
+            }
+            if (targets.adminGroup) {
+                targets.adminGroup.deleteRecord();
+            }
+
+            return {
+                status: &apos;succeeded&apos;,
+            };
+        } catch (error) {
+            this._logError(&apos;deleteWorkspaceGroups&apos;, error);
+            return {
+                status: &apos;failed&apos;,
+                errorMessage: &apos;Workspace access groups could not be deleted.&apos;,
+            };
+        }
+    },
+
+    validateWorkspaceGroupDeletionTargets: function (adminGroupSysId, editorGroupSysId) {
+        try {
+            var adminGroup = this._cleanSysId(adminGroupSysId);
+            var editorGroup = this._cleanSysId(editorGroupSysId);
+
+            this._validateGroupPairInputs(adminGroup, editorGroup);
+            this._validateWorkspaceGroupDeletionTargets(adminGroup, editorGroup, false);
+
+            return {
+                status: &apos;succeeded&apos;,
+            };
+        } catch (error) {
+            this._logError(&apos;validateWorkspaceGroupDeletionTargets&apos;, error);
+            return {
+                status: &apos;failed&apos;,
+                errorMessage: &apos;Workspace access groups could not be validated.&apos;,
+            };
+        }
+    },
+
+    _cleanText: function (value) {
+        return typeof value === &apos;string&apos; ? value.trim() : &apos;&apos;;
+    },
+
+    _cleanSysId: function (value) {
+        var text = this._cleanText(value);
+        return /^[0-9a-fA-F]{32}$/.test(text) ? text : &apos;&apos;;
+    },
+
+    _validateInputs: function (adminGroupSysId, editorGroupSysId, userSysId) {
+        this._validateGroupPairInputs(adminGroupSysId, editorGroupSysId);
+        if (!userSysId) {
+            throw new Error(&apos;Workspace membership mutation inputs were invalid.&apos;);
+        }
+    },
+
+    _validateGroupPairInputs: function (adminGroupSysId, editorGroupSysId) {
+        if (!adminGroupSysId || !editorGroupSysId) {
+            throw new Error(&apos;Workspace membership mutation inputs were invalid.&apos;);
+        }
+        if (adminGroupSysId === editorGroupSysId) {
+            throw new Error(&apos;Workspace Admin and Editor groups must be distinct.&apos;);
+        }
+    },
+
+    _validateWorkspaceGroupPair: function (adminGroupSysId, editorGroupSysId) {
+        var workspace = new GlideRecord(&apos;x_2300756_docsera_workspace&apos;);
+        workspace.addQuery(&apos;admin_group&apos;, adminGroupSysId);
+        workspace.addQuery(&apos;editor_group&apos;, editorGroupSysId);
+        workspace.setLimit(1);
+        workspace.query();
+
+        if (!workspace.next()) {
+            throw new Error(&apos;Workspace membership group pair is not owned by a Docsera workspace.&apos;);
+        }
+    },
+
+    _addUserToGroup: function (groupSysId, userSysId) {
+        var existing = new GlideRecord(&apos;sys_user_grmember&apos;);
+        existing.addQuery(&apos;group&apos;, groupSysId);
+        existing.addQuery(&apos;user&apos;, userSysId);
+        existing.setLimit(1);
+        existing.query();
+        if (existing.next()) {
+            return;
+        }
+
+        var membership = new GlideRecord(&apos;sys_user_grmember&apos;);
+        membership.initialize();
+        membership.setValue(&apos;group&apos;, groupSysId);
+        membership.setValue(&apos;user&apos;, userSysId);
+        if (!this._cleanText(membership.insert())) {
+            throw new Error(&apos;Workspace group membership could not be created.&apos;);
+        }
+    },
+
+    _removeUserFromGroup: function (groupSysId, userSysId) {
+        var memberships = new GlideRecord(&apos;sys_user_grmember&apos;);
+        memberships.addQuery(&apos;group&apos;, groupSysId);
+        memberships.addQuery(&apos;user&apos;, userSysId);
+        memberships.query();
+        while (memberships.next()) {
+            memberships.deleteRecord();
+        }
+    },
+
+    _validateWorkspaceGroupDeletionTargets: function (adminGroupSysId, editorGroupSysId, allowMissingTargets) {
+        this._validateWorkspaceGroupPair(adminGroupSysId, editorGroupSysId);
+        var adminGroup = this._loadGeneratedWorkspaceGroup(adminGroupSysId, &apos;Admins&apos;, allowMissingTargets);
+        var editorGroup = this._loadGeneratedWorkspaceGroup(editorGroupSysId, &apos;Editors&apos;, allowMissingTargets);
+        return {
+            adminGroup: adminGroup,
+            editorGroup: editorGroup,
+        };
+    },
+
+    _loadGeneratedWorkspaceGroup: function (groupSysId, suffix, allowMissingTarget) {
+        var group = new GlideRecord(&apos;sys_user_group&apos;);
+        if (!group.get(groupSysId)) {
+            if (allowMissingTarget) {
+                return null;
+            }
+            throw new Error(&apos;Workspace group deletion target could not be found.&apos;);
+        }
+        var actualName = this._cleanText(group.getValue(&apos;name&apos;));
+        var pattern = new RegExp(&apos;^Docsera_[A-Za-z0-9]+(?:_[A-Za-z0-9]+)*_&apos; + suffix + &apos;$&apos;);
+        if (!pattern.test(actualName)) {
+            throw new Error(&apos;Workspace group deletion target was not a Docsera-owned workspace group.&apos;);
+        }
+        return group;
+    },
+
+    _logError: function (event, error) {
+        var message = error &amp;&amp; error.message ? error.message : String(error);
+        gs.error(&apos;[Docsera global workspace membership bridge] &apos; + event + &apos;: &apos; + message);
+    },
+
+    type: &apos;DocseraGlobalWorkspaceMembershipBridge&apos;,
+};
+]]&gt;&lt;/script&gt;
+  &lt;/sys_script_include&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>DocseraGlobalWorkspaceMembershipBridge</target_name>
+    <target_sys_id>bb42e634e203492591a8d18e6953eae1</target_sys_id>
+    <type>sys_script_include</type>
+    <update_guid>f4804923a441b93a8bdd295222cb046d</update_guid>
+    <update_guid_history>d7e8a37f7f0a3e448c97a3799a2983d8</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>8191f79544339af3906ae18b512a0036</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_security_acl_b9d7e176310f447ea61072dc4a9fca11</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_security_acl&quot;&gt;
+  &lt;sys_security_acl action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;b9d7e176310f447ea61072dc4a9fca11&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_security_acl_b9d7e176310f447ea61072dc4a9fca11&lt;/sys_update_name&gt;
+    &lt;active&gt;true&lt;/active&gt;
+    &lt;admin_overrides&gt;true&lt;/admin_overrides&gt;
+    &lt;advanced&gt;true&lt;/advanced&gt;
+    &lt;applies_to/&gt;
+    &lt;condition/&gt;
+    &lt;decision_type&gt;allow&lt;/decision_type&gt;
+    &lt;description&gt;Allow authenticated ServiceNow users to read the Docsera Global friendly URL host.&lt;/description&gt;
+    &lt;local_or_existing&gt;Local&lt;/local_or_existing&gt;
+    &lt;name&gt;docsera&lt;/name&gt;
+    &lt;operation&gt;read&lt;/operation&gt;
+    &lt;script&gt;&lt;![CDATA[answer = gs.isLoggedIn();]]&gt;&lt;/script&gt;
+    &lt;security_attribute/&gt;
+    &lt;type&gt;ui_page&lt;/type&gt;
+  &lt;/sys_security_acl&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>docsera</target_name>
+    <target_sys_id>b9d7e176310f447ea61072dc4a9fca11</target_sys_id>
+    <type>sys_security_acl</type>
+    <update_guid>89b4951bf3464cc85f6a4b370772de5a</update_guid>
+    <update_guid_history>2b3bbc8d5353b58b835100cbbb34e85f</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>0c354e75c0263911f6dea86e6aea1275</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_ui_page_4bb3dc32dcfc4441a57bfce97db77529</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_ui_page&quot;&gt;
+  &lt;sys_ui_page action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;4bb3dc32dcfc4441a57bfce97db77529&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_ui_page_4bb3dc32dcfc4441a57bfce97db77529&lt;/sys_update_name&gt;
+    &lt;name&gt;docsera&lt;/name&gt;
+    &lt;endpoint/&gt;
+    &lt;description&gt;Docsera production friendly URL host for the installed scoped runtime.&lt;/description&gt;
+    &lt;direct&gt;true&lt;/direct&gt;
+    &lt;category&gt;general&lt;/category&gt;
+    &lt;html&gt;&lt;![CDATA[
+&lt;!-- @fluent-import-html WARNING: This file was imported from the output of a static build. Modifications of any kind are likely to result in unintended behavior. In most cases, you should edit the source file of the HTML imported below. If you are absolutely certain you want to take control of this HTML, you can remove this comment to prevent the SDK from regenerating it. However, you will then be responsible for the management of this HTML in your Fluent file. --&gt;
+&lt;html lang=&quot;en&quot;&gt;
+  &lt;head&gt;
+    &lt;meta charset=&quot;utf-8&quot;&gt;&lt;/meta&gt;
+    &lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;&lt;/meta&gt;
+    &lt;title&gt;Docsera&lt;/title&gt;
+    &lt;!-- @sdk:now-ux-globals --&gt;
+    &lt;!-- Resolved from sdk:now-ux-globals tag at NowSDK build time to support earlier Glide releases --&gt;
+    &lt;script&gt;window.NOW = {};
+window.NOW.user = {};
+window.NOW.batch_glide_ajax_requests = false;
+window.NOW.isUsingPolaris = true;
+window.NOW.exclude_dark_theme = &quot;false&quot;;
+window.g_ck = &quot;$[gs.getSession().getSessionToken() || gs.getSessionToken()]&quot;;&lt;/script&gt;
+    &lt;!-- Include ServiceNow&apos;s required scripts --&gt;
+    &lt;g:requires name=&quot;scripts/doctype/functions_bootstrap14.js&quot;&gt;&lt;/g:requires&gt;
+    &lt;g:requires name=&quot;scripts/lib/prototype.js&quot;&gt;&lt;/g:requires&gt;
+    &lt;g:requires name=&quot;scripts/classes/ajax/GlideURL.js&quot;&gt;&lt;/g:requires&gt;
+    &lt;g:requires name=&quot;scripts/doctype/CustomEventManager.js&quot;&gt;&lt;/g:requires&gt;
+    &lt;g:requires name=&quot;scripts/classes/ajax/GlideAjax.js&quot;&gt;&lt;/g:requires&gt;
+    &lt;g:requires name=&quot;scripts/classes/GlideUser.js&quot;&gt;&lt;/g:requires&gt;
+    &lt;g2:client_script type=&quot;user&quot;&gt;&lt;/g2:client_script&gt;
+    &lt;link rel=&quot;preload&quot; href=&quot;/uxasset/set-cache-buster/$[UxFrameworkScriptables.getFlushTimestamp()].js&quot; as=&quot;script&quot;&gt;&lt;/link&gt;
+    &lt;g:requires name=&quot;scripts/polaris_theme_refresh_observer.js&quot;&gt;&lt;/g:requires&gt;
+    &lt;link data-source-id=&quot;glide-theme&quot; id=&quot;polarisberg_theme_variables&quot; rel=&quot;stylesheet&quot; href=&quot;/$uxappimmutables.do?sysparm_request_type=ux_theme$[AMP]sysparm_app_sys_id=c86a62e2c7022010099a308dc7c26022$[AMP]uxpcb=$[sn_ui.PolarisUI.getThemeVariableCssCacheKey()]&quot;&gt;&lt;/link&gt;
+    &lt;script type=&quot;module&quot; src=&quot;/uxasset/externals/@devsnc/library-uxf/index.jsdbx&quot;&gt;&lt;/script&gt;
+    &lt;!-- @sdk:now-ux-globals --&gt;
+    &lt;script&gt;window.DOCSERA_RUNTIME_CONFIG = {
+      backendPingPath: &quot;/api/x_2300756_docsera/docsera_runtime/ping&quot;,
+      pageCollectionPath: &quot;/api/x_2300756_docsera/docsera_runtime/pages&quot;,
+      workspaceCollectionPath: &quot;/api/x_2300756_docsera/docsera_runtime/workspaces&quot;,
+      workspaceProvisioningStatusPath: &quot;/api/x_2300756_docsera/docsera_runtime/workspace-provisioning-status&quot;
+    };&lt;/script&gt;
+    &lt;script src=&quot;/uxasset/externals/global/docsera-friendly-url-proof.jsdbx?uxpcb=$[UxFrameworkScriptables.getFlushTimestamp()]&quot; type=&quot;module&quot;&gt;&lt;/script&gt;
+  &lt;/head&gt;
+  &lt;body&gt;
+    &lt;div id=&quot;docsera-root&quot;&gt;&lt;/div&gt;
+  &lt;/body&gt;
+&lt;/html&gt;]]&gt;&lt;/html&gt;
+  &lt;/sys_ui_page&gt;
+  &lt;sn_glider_source_artifact_m2m action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;a1c736eb5611452da1b5d341cf34d77b&lt;/sys_id&gt;
+    &lt;application_file&gt;4bb3dc32dcfc4441a57bfce97db77529&lt;/application_file&gt;
+    &lt;source_artifact&gt;0e9aae1442c1423b879e5d4450aef278&lt;/source_artifact&gt;
+  &lt;/sn_glider_source_artifact_m2m&gt;
+  &lt;sn_glider_source_artifact action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;0e9aae1442c1423b879e5d4450aef278&lt;/sys_id&gt;
+    &lt;name&gt;docsera.do - BYOUI Files&lt;/name&gt;
+  &lt;/sn_glider_source_artifact&gt;
+  &lt;sys_attachment action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;4ce2add3a1b079c8ed2c62e4203c820b&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;table_sys_id&gt;0e9aae1442c1423b879e5d4450aef278&lt;/table_sys_id&gt;
+    &lt;table_name&gt;sn_glider_source_artifact&lt;/table_name&gt;
+    &lt;file_name&gt;docsera.do - BYOUI Files.zip&lt;/file_name&gt;
+    &lt;content_type&gt;application/zip&lt;/content_type&gt;
+    &lt;size_bytes&gt;945&lt;/size_bytes&gt;
+    &lt;size_compressed&gt;862&lt;/size_compressed&gt;
+    &lt;compressed&gt;true&lt;/compressed&gt;
+    &lt;chunk_size_bytes&gt;933336&lt;/chunk_size_bytes&gt;
+    &lt;hash&gt;5b4507c4e74b00a5c98b9a4b808149aed52497d6836db79ad2bf4ecb23b3a8e3&lt;/hash&gt;
+    &lt;average_image_color/&gt;
+    &lt;image_width/&gt;
+    &lt;image_height/&gt;
+  &lt;/sys_attachment&gt;
+  &lt;sys_attachment_doc action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;032dc0b6cb1a335aaac11e7e499a9912&lt;/sys_id&gt;
+    &lt;sys_attachment&gt;4ce2add3a1b079c8ed2c62e4203c820b&lt;/sys_attachment&gt;
+    &lt;position&gt;0&lt;/position&gt;
+    &lt;data&gt;UEsDBBQAAAAIAAAAIQQOYGF1bAEAAPICAAAqAAAAc3JjL2NsaWVudC9kb2NzZXJhLWZyaWVuZGx5LXVybC1wcm9vZi5odG1snZJLb9swDMfvA/YdCJ2rqNuwBzo7wJB2Qw9rgz7OhiIxMRFZMiQ6blD0u1exkzaHXtoTn/+fCJFFzY0Dp/2qFOjF9POnokZtswUoGmQNptYxIZei46X8JUAd1bxusBQbwr4NkQWY4Bl97u3Jcl1a3JBBOQQnQJ6YtJPJaIfllxcSEzucngeTMOpCjeFQSXZ95kMvuwe5cmGhXZoW6o3k2GwitTz4AD15G/rJ+fXs9uLmT3Vzf3V3+f+iml1f/b38ByU8jm0AC23W6O2c/GquuT4DoXRL6qH6+u309Of3H5Ud51J7W8XOMzWo2qwQJwdMq1c4C86hYQr+naSsTa+oPsR1arX5MO8F8BZ0HsOGUmbm8W9Zc5c+CJftEUmmASXG555+DwtRRxvZbwdSNKWYHKhyGSl/vtvKLrodMCwnnATwts1n1QTbORS7lR9AhdofZ7EIdjuSLW2AbCkOzEzhnSjnB8W+M0vzpWfnGVBLAwQUAAAACAAAACEEzWyEdqAAAAC/AAAAKAAAAHNyYy9jbGllbnQvZG9jc2VyYS1mcmllbmRseS11cmwtcHJvb2YudHNtzksKwjAUQNF5oXsI4kALNkVRB1J01JkTPyORkiaPGm0+5L3ULN8uwAVc7pHOIjGUzoO6REvawNmpOACr84yxGY9JIAJxSATBigF5atebqtpvd61yEiEIboS25RtVl44xednV88c9NUEY+LrwucqgPYluACx7oGaI+LpNHyRh/GL5nB3yLM9GpxXTxrtAC16w06gJVrq3LgAr+D/hcup+UEsBAhQAFAAAAAgAAAAhBA5gYXVsAQAA8gIAACoAAAAAAAAAAAAAAAAAAAAAAHNyYy9jbGllbnQvZG9jc2VyYS1mcmllbmRseS11cmwtcHJvb2YuaHRtbFBLAQIUABQAAAAIAAAAIQTNbIR2oAAAAL8AAAAoAAAAAAAAAAAAAAAAALQBAABzcmMvY2xpZW50L2RvY3NlcmEtZnJpZW5kbHktdXJsLXByb29mLnRzUEsFBgAAAAACAAIArgAAAJoCAAAAAA==&lt;/data&gt;
+  &lt;/sys_attachment_doc&gt;
+  &lt;sys_attachment action=&quot;delete_multiple&quot; query=&quot;table_sys_id=0e9aae1442c1423b879e5d4450aef278^sys_idNOT IN4ce2add3a1b079c8ed2c62e4203c820b&quot;/&gt;
+  &lt;sys_attachment_doc action=&quot;delete_multiple&quot; query=&quot;sys_attachment.table_sys_id=0e9aae1442c1423b879e5d4450aef278^sys_idNOT IN032dc0b6cb1a335aaac11e7e499a9912&quot;/&gt;
+  &lt;sn_glider_source_artifact_m2m action=&quot;delete_multiple&quot; query=&quot;source_artifact=0e9aae1442c1423b879e5d4450aef278^sys_idNOT INa1c736eb5611452da1b5d341cf34d77b,14d95e5997f24eec9d14440cc042d0f4,c2d43b9b6a74482e9e40de0221ce9822&quot;/&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>docsera</target_name>
+    <target_sys_id>4bb3dc32dcfc4441a57bfce97db77529</target_sys_id>
+    <type>sys_ui_page</type>
+    <update_guid>d2117b31c4c69a4ef986dca5f26b3cef</update_guid>
+    <update_guid_history>70761f45c0b72fbfd553745d2726cbd3</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>320a7706a6249a9552f30cae4b48751c</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_ux_lib_asset_377d32f160d24dafa9959f5d346c042d</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update&gt;
+  &lt;sys_ux_lib_asset action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;377d32f160d24dafa9959f5d346c042d&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_ux_lib_asset_377d32f160d24dafa9959f5d346c042d&lt;/sys_update_name&gt;
+    &lt;category&gt;source_map&lt;/category&gt;
+    &lt;checksum&gt;42ab65e780bf3cc47bdf1bd079b5a59a&lt;/checksum&gt;
+    &lt;content&gt;&lt;![CDATA[{&quot;version&quot;:3,&quot;file&quot;:&quot;docsera-friendly-url-proof.jsdbx&quot;,&quot;sources&quot;:[&quot;../../src/client/docsera-friendly-url-proof.ts&quot;],&quot;sourcesContent&quot;:[&quot;const scopedRuntimeModule =\r\n  \&quot;/uxasset/externals/x_2300756_docsera/main.jsdbx?uxpcb=$[UxFrameworkScriptables.getFlushTimestamp()]\&quot;;\r\n\r\nvoid import(/* @vite-ignore */ scopedRuntimeModule);\r\n&quot;],&quot;names&quot;:[],&quot;mappings&quot;:&quot;wCAGK,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAFH,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA,CAAA&quot;}]]&gt;&lt;/content&gt;
+    &lt;es_module&gt;false&lt;/es_module&gt;
+    &lt;is_attachment&gt;false&lt;/is_attachment&gt;
+    &lt;mime_type&gt;application/json&lt;/mime_type&gt;
+    &lt;name&gt;global/docsera-friendly-url-proof.js.map&lt;/name&gt;
+    &lt;sys_package&gt;global&lt;/sys_package&gt;
+  &lt;/sys_ux_lib_asset&gt;
+  &lt;sn_glider_source_artifact_m2m action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;c2d43b9b6a74482e9e40de0221ce9822&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sn_glider_source_artifact_m2m_c2d43b9b6a74482e9e40de0221ce9822&lt;/sys_update_name&gt;
+    &lt;application_file&gt;377d32f160d24dafa9959f5d346c042d&lt;/application_file&gt;
+    &lt;source_artifact&gt;0e9aae1442c1423b879e5d4450aef278&lt;/source_artifact&gt;
+  &lt;/sn_glider_source_artifact_m2m&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>global/docsera-friendly-url-proof.js.map</target_name>
+    <target_sys_id>377d32f160d24dafa9959f5d346c042d</target_sys_id>
+    <type>sys_ux_lib_asset</type>
+    <update_guid>138145a694ae610ca33afbe73a3167cd</update_guid>
+    <update_guid_history>7115f83cb24e21e45e21c7d34729fe04</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>3e48fff71566d879cb41e53685c2c2b4</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_ux_lib_asset_7c2ec161a0214744aa75f7d22e6edf59</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update&gt;
+  &lt;sys_ux_lib_asset action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;7c2ec161a0214744aa75f7d22e6edf59&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sys_ux_lib_asset_7c2ec161a0214744aa75f7d22e6edf59&lt;/sys_update_name&gt;
+    &lt;category&gt;component&lt;/category&gt;
+    &lt;checksum&gt;6947a3939fc8412fe9c2e870a7ed41fb&lt;/checksum&gt;
+    &lt;content&gt;&lt;![CDATA[/*__ESM_BODY_START__*/window.process={};import(&quot;/uxasset/externals/x_2300756_docsera/main.jsdbx?uxpcb=$[UxFrameworkScriptables.getFlushTimestamp()]&quot;);
+//# sourceMappingURL=docsera-friendly-url-proof.js.map.jsdbx
+]]&gt;&lt;/content&gt;
+    &lt;engine&gt;21&lt;/engine&gt;
+    &lt;es_module&gt;true&lt;/es_module&gt;
+    &lt;is_attachment&gt;false&lt;/is_attachment&gt;
+    &lt;mime_type&gt;application/javascript&lt;/mime_type&gt;
+    &lt;name&gt;global/docsera-friendly-url-proof&lt;/name&gt;
+    &lt;sys_package&gt;global&lt;/sys_package&gt;
+  &lt;/sys_ux_lib_asset&gt;
+  &lt;sn_glider_source_artifact_m2m action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;14d95e5997f24eec9d14440cc042d0f4&lt;/sys_id&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;sys_update_name&gt;sn_glider_source_artifact_m2m_14d95e5997f24eec9d14440cc042d0f4&lt;/sys_update_name&gt;
+    &lt;application_file&gt;7c2ec161a0214744aa75f7d22e6edf59&lt;/application_file&gt;
+    &lt;source_artifact&gt;0e9aae1442c1423b879e5d4450aef278&lt;/source_artifact&gt;
+  &lt;/sn_glider_source_artifact_m2m&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>global/docsera-friendly-url-proof</target_name>
+    <target_sys_id>7c2ec161a0214744aa75f7d22e6edf59</target_sys_id>
+    <type>sys_ux_lib_asset</type>
+    <update_guid>ddaab6f44e9a1252607acdb1bf632b2e</update_guid>
+    <update_guid_history>c20d0a9bc2040f2ccb3616bec94a3c9b</update_guid_history>
+  </sys_update_xml>
+  <sys_update_xml action="INSERT_OR_UPDATE">
+    <sys_id>4dc6c409b2e0807ec4356c3d076f2b7c</sys_id>
+    <action>INSERT_OR_UPDATE</action>
+    <application>global</application>
+    <category>customer</category>
+    <name>sys_restricted_caller_access_a0af46dbdca9f925ad8704425772c2d7</name>
+    <payload>&lt;?xml version=&quot;1.0&quot;?&gt;
+&lt;record_update table=&quot;sys_restricted_caller_access&quot;&gt;
+  &lt;sys_restricted_caller_access action=&quot;INSERT_OR_UPDATE&quot;&gt;
+    &lt;sys_id&gt;a0af46dbdca9f925ad8704425772c2d7&lt;/sys_id&gt;
+    &lt;description&gt;Allow the Docsera scoped app to execute the Global workspace membership bridge under Caller Restriction.&lt;/description&gt;
+    &lt;operation&gt;execute&lt;/operation&gt;
+    &lt;rca_type&gt;real_rca&lt;/rca_type&gt;
+    &lt;source display_value=&quot;x_2300756_docsera&quot;&gt;e6e43323accd4c7fb9271525a343850e&lt;/source&gt;
+    &lt;source_scope display_value=&quot;x_2300756_docsera&quot;&gt;e6e43323accd4c7fb9271525a343850e&lt;/source_scope&gt;
+    &lt;source_table&gt;sys_scope&lt;/source_table&gt;
+    &lt;source_type&gt;5&lt;/source_type&gt;
+    &lt;status&gt;2&lt;/status&gt;
+    &lt;sys_scope display_value=&quot;Global&quot;&gt;global&lt;/sys_scope&gt;
+    &lt;target display_value=&quot;DocseraGlobalWorkspaceMembershipBridge&quot;&gt;bb42e634e203492591a8d18e6953eae1&lt;/target&gt;
+    &lt;target_scope display_value=&quot;Global&quot;&gt;global&lt;/target_scope&gt;
+    &lt;target_table&gt;sys_script_include&lt;/target_table&gt;
+    &lt;target_type&gt;2&lt;/target_type&gt;
+  &lt;/sys_restricted_caller_access&gt;
+&lt;/record_update&gt;</payload>
+    <remote_update_set>4445b2ab4cb38ddfed7eb063c7511239</remote_update_set>
+    <replace_on_upgrade>false</replace_on_upgrade>
+    <source>docsera-global-companion</source>
+    <sys_created_by>codex</sys_created_by>
+    <sys_updated_by>codex</sys_updated_by>
+    <target_name>global.DocseraGlobalWorkspaceMembershipBridge</target_name>
+    <target_sys_id>a0af46dbdca9f925ad8704425772c2d7</target_sys_id>
+    <type>sys_restricted_caller_access</type>
+    <update_guid>bf80cfbd3feb3b67b909875da9d26d5a</update_guid>
+    <update_guid_history>6dd1f14395f3c10475c54757f042ecd4</update_guid_history>
+  </sys_update_xml>
+</unload>

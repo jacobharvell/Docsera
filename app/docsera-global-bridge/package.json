@@ -16,6 +16,7 @@
     "types:sdk": "now-sdk dependencies",
     "verify:sdk": "node ./scripts/verify-global-bridge.mjs",
     "verify:friendly-url-host": "node ./scripts/verify-friendly-url-host-artifact.mjs",
+    "verify:consumer-candidate": "node ./scripts/verify-consumer-update-set-candidate.mjs",
     "validate": "npm run build"
   },
   "devDependencies": {

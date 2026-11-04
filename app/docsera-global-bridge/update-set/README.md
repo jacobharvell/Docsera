@@ -3,6 +3,26 @@
 This folder contains the generated Global companion update set for Docsera's workspace
 provisioning bridge and the authenticated `docsera.do` production host.
 
+## RR-074 consumer candidate
+
+`candidates/rr-074-global-consumer-portability/` is a separately identified,
+**non-final** consumer-installation candidate. It is generated from the current
+Global SDK build but uses the receiving instance's existing `global` ownership
+reference for transported metadata. It does not transport `sys_package:global`,
+`sys_scope:global`, or `sys_app:global` records. The candidate's manifest
+records its source SHA, resolved component IDs, record inventory, and XML
+SHA-256. Generate and inspect it with:
+
+```powershell
+npm run build
+npm run generate:update-set
+npm run verify:consumer-candidate
+```
+
+The historical top-level update set remains preserved as accepted installation
+evidence. Neither artifact is authorization to import, preview, commit, or
+publish a package.
+
 Generate it after an SDK build:
 
 ```powershell
