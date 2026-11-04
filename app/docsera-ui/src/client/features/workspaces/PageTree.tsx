@@ -1,6 +1,6 @@
 import { useDropdownExitPresence } from "./useDropdownExitPresence";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties, RefObject } from "react";
+import type { CSSProperties, ReactNode, RefObject } from "react";
 import { createPortal } from "react-dom";
 import { DocseraIcon } from "../../shared/icons/DocseraIcon";
 import { docseraIcons } from "../../shared/icons/docseraIcons";
@@ -93,21 +93,17 @@ type PageTreeContextMenuState = {
   page: WorkspacePageView;
   x: number;
   y: number;
+  anchorX: number;
   anchorY: number;
   origin: HTMLElement;
   placement: "pointer" | "control";
 };
 
-type PageTreeMovementAction = "move-up" | "move-down" | "indent" | "outdent";
-type PageTreeContextMenuAction = "settings" | "rename" | "delete" | "add-child" | PageTreeMovementAction;
+type PageTreeContextMenuAction = "settings" | "rename" | "delete" | "add-child" | "move";
 
-type PageTreeMovementCommand = {
-  action: PageTreeMovementAction;
-  destination: PageTreeDropDestination;
-};
-
-type PendingPageTreeMovement = PageTreeMovementCommand & {
+type PendingPageTreeMovement = {
   focusOrigin: HTMLElement | null;
+  parentPageSysId: string | null;
   pageId: string;
   pageTitle: string;
 };
@@ -131,68 +127,38 @@ function PageTreeMenuIcon({ action }: { action: PageTreeContextMenuAction }) {
         ? docseraIcons.squarePen
         : action === "delete"
           ? docseraIcons.trash
-          : docseraIcons.plus;
+          : action === "move"
+            ? docseraIcons.folderKanban
+            : docseraIcons.plus;
   return <DocseraIcon icon={icon} size={14} />;
 }
 
-function pageTreeMovementLabel(action: PageTreeMovementAction): string {
-  return action === "move-up" ? "Move up" : action === "move-down" ? "Move down" : action === "indent" ? "Indent" : "Outdent";
+function pageContains(page: WorkspacePageView, pageId: string): boolean {
+  return page.id === pageId || Boolean(page.children?.some((child) => pageContains(child, pageId)));
 }
 
-function pageTreeMovementFeedback(pageTitle: string, action: PageTreeMovementAction): string {
-  return action === "move-up"
-    ? `${pageTitle} moved up.`
-    : action === "move-down"
-      ? `${pageTitle} moved down.`
-      : action === "indent"
-        ? `${pageTitle} indented.`
-        : `${pageTitle} outdented.`;
+function pageMatchesMovePicker(page: WorkspacePageView, query: string): boolean {
+  return (
+    !query ||
+    page.title.toLowerCase().includes(query) ||
+    page.slug.toLowerCase().includes(query) ||
+    Boolean(page.children?.some((child) => pageMatchesMovePicker(child, query)))
+  );
 }
 
-function resolvePageTreeMovementCommands(input: {
-  canMovePage: boolean;
-  filterText: string;
-  page: WorkspacePageView | null;
-  pagesById: ReadonlyMap<string, WorkspacePageView>;
-  pagesByParent: ReadonlyMap<string, WorkspacePageView[]>;
-}): PageTreeMovementCommand[] {
-  if (!input.canMovePage || input.filterText.trim() || !input.page) {
-    return [];
+function rootMoveDestination(source: WorkspacePageView, pagesByParent: ReadonlyMap<string, WorkspacePageView[]>): PageTreeDropDestination | null {
+  if (!source.parentPageSysId) {
+    return null;
   }
-
-  const page = input.page;
-  const siblings = input.pagesByParent.get(page.parentPageSysId ?? "") ?? [];
-  const index = siblings.findIndex((sibling) => sibling.id === page.id);
-  if (index < 0) {
-    return [];
-  }
-
-  const candidates: Array<{ action: PageTreeMovementAction; position: PageTreeDropDestination["position"]; targetPageId: string }> = [];
-  const precedingSibling = siblings[index - 1];
-  const followingSibling = siblings[index + 1];
-  if (precedingSibling) {
-    candidates.push(
-      { action: "move-up", position: "before", targetPageId: precedingSibling.id },
-      { action: "indent", position: "inside", targetPageId: precedingSibling.id }
-    );
-  }
-  if (followingSibling) {
-    candidates.push({ action: "move-down", position: "after", targetPageId: followingSibling.id });
-  }
-  if (page.parentPageSysId) {
-    candidates.push({ action: "outdent", position: "after", targetPageId: page.parentPageSysId });
-  }
-
-  return candidates.flatMap((candidate) => {
-    const destination = resolvePageTreeDropDestination({
-      draggedPageId: page.id,
-      pagesById: input.pagesById,
-      pagesByParent: input.pagesByParent,
-      position: candidate.position,
-      targetPageId: candidate.targetPageId
-    });
-    return destination ? [{ action: candidate.action, destination }] : [];
-  });
+  const rootPages = (pagesByParent.get("") ?? []).filter((page) => page.id !== source.id);
+  const lastOrder = rootPages[rootPages.length - 1]?.siblingOrder;
+  return {
+    pageSysId: source.id,
+    parentPageSysId: null,
+    position: "after",
+    siblingOrder: String((lastOrder ?? 0) + 1),
+    targetPageId: rootPages[rootPages.length - 1]?.id ?? ""
+  };
 }
 
 function ChevronIcon({ expanded }: { expanded: boolean }) {
@@ -264,7 +230,7 @@ function clampContextMenuCoordinate(value: number, size: number, viewportSize: n
 
 function resolveContextMenuViewportPosition(contextMenu: PageTreeContextMenuState, menuElement: HTMLElement): Pick<PageTreeContextMenuState, "x" | "y"> {
   const menuRect = menuElement.getBoundingClientRect();
-  const x = clampContextMenuCoordinate(contextMenu.x, menuRect.width, window.innerWidth);
+  const x = clampContextMenuCoordinate(contextMenu.anchorX, menuRect.width, window.innerWidth);
   const hasRoomBelow = contextMenu.anchorY + menuRect.height + CONTEXT_MENU_VIEWPORT_MARGIN <= window.innerHeight;
   const originRect = contextMenu.origin.getBoundingClientRect();
   const aboveY =
@@ -771,6 +737,7 @@ function PageTreeNode({
       page,
       x: input.clientX,
       y: input.clientY,
+      anchorX: input.clientX,
       anchorY: input.clientY
     });
   }
@@ -901,6 +868,7 @@ function PageTreeNode({
                         page,
                         x: rect.left,
                         y: rect.bottom + CONTEXT_MENU_CONTROL_OFFSET,
+                        anchorX: rect.left,
                         anchorY: rect.bottom + CONTEXT_MENU_CONTROL_OFFSET
                       });
                     }}
@@ -1016,10 +984,15 @@ export function PageTree({
   const [draggedPageId, setDraggedPageId] = useState("");
   const [dropPreview, setDropPreview] = useState<PageTreeDropPreviewState | null>(null);
   const [contextMenu, setContextMenu] = useState<PageTreeContextMenuState | null>(null);
+  const [isMovePickerOpen, setIsMovePickerOpen] = useState(false);
+  const [movePickerSearch, setMovePickerSearch] = useState("");
+  const [movePickerCollapsedPageIds, setMovePickerCollapsedPageIds] = useState<Set<string>>(() => new Set());
   const [pendingMovement, setPendingMovement] = useState<PendingPageTreeMovement | null>(null);
   const [movementFeedback, setMovementFeedback] = useState("");
   const contextMenuPresence = useDropdownExitPresence(contextMenu);
   const menuRef = useRef<HTMLDivElement>(null);
+  const movePickerSearchRef = useRef<HTMLInputElement>(null);
+  const focusedContextMenuRef = useRef<PageTreeContextMenuState | null>(null);
   const draggedPageIdRef = useRef("");
   const effectiveCollapsedPageIds = useMemo(() => new Set(collapsedPageIds), [collapsedPageIds]);
   const derived = useMemo(() => deriveTreeState(pages, filterText, selectedPageId), [pages, filterText, selectedPageId]);
@@ -1058,6 +1031,7 @@ export function PageTree({
   useEffect(() => {
     if (navigationCollapsed) {
       setContextMenu(null);
+      resetMovePicker();
     }
   }, [navigationCollapsed]);
 
@@ -1070,23 +1044,14 @@ export function PageTree({
     pagesByParent
   };
 
-  const movementCommands = useMemo(
-    () =>
-      resolvePageTreeMovementCommands({
-        canMovePage,
-        filterText,
-        page: contextMenu?.page ?? null,
-        pagesById,
-        pagesByParent
-      }),
-    [canMovePage, contextMenu?.page, filterText, pagesById, pagesByParent]
-  );
   const contextMenuActions = useMemo(() => {
     const actions: PageTreeContextMenuAction[] = [];
     if (canManagePageSettings) {
       actions.push("settings", "rename");
     }
-    actions.push(...movementCommands.map((command) => command.action));
+    if (canMovePage) {
+      actions.push("move");
+    }
     if (canCreatePage && !isCreatingPage) {
       actions.push("add-child");
     }
@@ -1094,7 +1059,7 @@ export function PageTree({
       actions.push("delete");
     }
     return actions;
-  }, [canCreatePage, canManagePageSettings, isCreatingPage, movementCommands]);
+  }, [canCreatePage, canManagePageSettings, canMovePage, isCreatingPage]);
 
   useEffect(() => {
     if (!pendingMovement) {
@@ -1102,24 +1067,12 @@ export function PageTree({
     }
 
     const movedPage = pagesById.get(pendingMovement.pageId);
-    const targetPage = pagesById.get(pendingMovement.destination.targetPageId);
-    if (!movedPage || !targetPage || movedPage.parentPageSysId !== pendingMovement.destination.parentPageSysId) {
-      return;
-    }
-
-    const siblings = pagesByParent.get(movedPage.parentPageSysId ?? "") ?? [];
-    const movedIndex = siblings.findIndex((page) => page.id === movedPage.id);
-    const targetIndex = siblings.findIndex((page) => page.id === targetPage.id);
-    const movementIsReflected =
-      pendingMovement.action === "indent" ||
-      (pendingMovement.action === "move-up" && movedIndex >= 0 && movedIndex < targetIndex) ||
-      ((pendingMovement.action === "move-down" || pendingMovement.action === "outdent") && movedIndex > targetIndex);
-    if (!movementIsReflected) {
+    if (!movedPage || movedPage.parentPageSysId !== pendingMovement.parentPageSysId) {
       return;
     }
 
     setPendingMovement(null);
-    setMovementFeedback(pageTreeMovementFeedback(pendingMovement.pageTitle, pendingMovement.action));
+    setMovementFeedback(`${pendingMovement.pageTitle} moved.`);
     window.setTimeout(() => {
       const activeElement = document.activeElement;
       if (activeElement !== document.body && activeElement !== pendingMovement.focusOrigin) {
@@ -1134,12 +1087,24 @@ export function PageTree({
 
   useEffect(() => {
     if (!contextMenu) {
+      focusedContextMenuRef.current = null;
+      return;
+    }
+
+    if (focusedContextMenuRef.current?.origin === contextMenu.origin) {
       return;
     }
 
     const firstItem = menuRef.current?.querySelector<HTMLButtonElement>("[role='menuitem']");
     firstItem?.focus();
+    focusedContextMenuRef.current = contextMenu;
   }, [contextMenu]);
+
+  useEffect(() => {
+    if (isMovePickerOpen) {
+      movePickerSearchRef.current?.focus();
+    }
+  }, [isMovePickerOpen]);
 
   useEffect(() => {
     if (!contextMenu) {
@@ -1152,6 +1117,7 @@ export function PageTree({
       }
 
       setContextMenu(null);
+      resetMovePicker();
     }
 
     window.addEventListener("pointerdown", handlePointerDown, true);
@@ -1169,11 +1135,25 @@ export function PageTree({
     }
 
     setContextMenu({ ...contextMenu, ...nextPosition });
-  }, [contextMenu]);
+  }, [contextMenu, isMovePickerOpen]);
+
+  function resetMovePicker() {
+    setIsMovePickerOpen(false);
+    setMovePickerSearch("");
+    setMovePickerCollapsedPageIds(new Set());
+  }
+
+  function returnToPageActions() {
+    resetMovePicker();
+    window.setTimeout(() => {
+      menuRef.current?.querySelector<HTMLButtonElement>("[data-docsera-page-tree-menu-action='move']")?.focus();
+    }, 0);
+  }
 
   function closeContextMenu(options: { restoreFocus?: boolean } = {}) {
     const origin = contextMenu?.origin ?? null;
     setContextMenu(null);
+    resetMovePicker();
     if (options.restoreFocus) {
       restoreContextMenuFocus(origin);
     }
@@ -1199,23 +1179,13 @@ export function PageTree({
       return;
     }
 
-    setContextMenu(null);
-    const movementCommand = movementCommands.find((command) => command.action === action);
-    if (movementCommand && onMovePage) {
-      restoreContextMenuFocus(focusOrigin);
-      void Promise.resolve(
-        onMovePage({
-          pageSysId: movementCommand.destination.pageSysId,
-          parentPageSysId: movementCommand.destination.parentPageSysId,
-          siblingOrder: movementCommand.destination.siblingOrder
-        })
-      ).then((moved) => {
-        if (moved) {
-          setPendingMovement({ ...movementCommand, focusOrigin, pageId: target.id, pageTitle: target.title });
-        }
-      });
+    if (action === "move") {
+      setIsMovePickerOpen(true);
+      setMovePickerSearch("");
+      setMovePickerCollapsedPageIds(new Set());
       return;
     }
+    setContextMenu(null);
     if (action === "add-child") {
       onShowChildPageCreate(target.sysId || target.id, target.title);
       return;
@@ -1229,6 +1199,32 @@ export function PageTree({
       return;
     }
     onRequestDeletePage(target.sysId || target.id);
+  }
+
+  function activateMoveDestination(destination: PageTreeDropDestination) {
+    const target = contextMenu?.page;
+    const focusOrigin = contextMenu?.origin ?? null;
+    if (!target || !onMovePage) {
+      return;
+    }
+    setContextMenu(null);
+    resetMovePicker();
+    restoreContextMenuFocus(focusOrigin);
+    void Promise.resolve(
+      onMovePage({
+        pageSysId: destination.pageSysId,
+        parentPageSysId: destination.parentPageSysId,
+        siblingOrder: destination.siblingOrder
+      })
+    ).then((moved) => {
+      if (moved) {
+        setPendingMovement({ focusOrigin, pageId: target.id, pageTitle: target.title, parentPageSysId: destination.parentPageSysId });
+      } else {
+        setMovementFeedback(`Unable to move ${target.title}.`);
+      }
+    }).catch(() => {
+      setMovementFeedback(`Unable to move ${target.title}.`);
+    });
   }
 
   function focusMenuItem(offset: number) {
@@ -1375,6 +1371,68 @@ export function PageTree({
     };
   }, [canMovePage, dragSurfaceRef, treeViewportRef]);
 
+  const movePickerSource = contextMenu?.page ?? null;
+  const normalizedMovePickerSearch = movePickerSearch.trim().toLowerCase();
+  function renderMovePickerPage(page: WorkspacePageView, depth: number): ReactNode {
+    if (!movePickerSource || !pageMatchesMovePicker(page, normalizedMovePickerSearch)) {
+      return null;
+    }
+    const hasChildren = Boolean(page.children?.length);
+    const expanded = Boolean(normalizedMovePickerSearch) || !movePickerCollapsedPageIds.has(page.id);
+    const isForbidden = page.id === movePickerSource.id || page.id === movePickerSource.parentPageSysId || pageContains(movePickerSource, page.id);
+    const resolvedDestination = resolvePageTreeDropDestination({
+      draggedPageId: movePickerSource.id,
+      pagesById,
+      pagesByParent,
+      position: "inside",
+      targetPageId: page.id
+    });
+    const destination = isForbidden ? null : resolvedDestination;
+    const disabledReason =
+      page.id === movePickerSource.id
+        ? "A page cannot be moved inside itself."
+        : page.id === movePickerSource.parentPageSysId
+          ? "This is the current parent."
+          : pageContains(movePickerSource, page.id)
+            ? "A page cannot be moved inside one of its descendants."
+            : "Moving here would exceed the six-level hierarchy limit.";
+    return (
+      <li key={page.id} className="docsera-page-tree__move-picker-node">
+        <div className="docsera-page-tree__move-picker-row" style={{ paddingLeft: `${8 + depth * 14}px` }}>
+          {hasChildren ? (
+            <button
+              type="button"
+              className="docsera-page-tree__move-picker-expand"
+              aria-label={`${expanded ? "Collapse" : "Expand"} ${page.title}`}
+              aria-expanded={expanded}
+              onClick={() => {
+                const next = new Set(movePickerCollapsedPageIds);
+                if (next.has(page.id)) next.delete(page.id);
+                else next.add(page.id);
+                setMovePickerCollapsedPageIds(next);
+              }}
+            >
+              <ChevronIcon expanded={expanded} />
+            </button>
+          ) : (
+            <span className="docsera-page-tree__move-picker-expand-spacer" aria-hidden="true" />
+          )}
+          <button
+            type="button"
+            role="menuitem"
+            className="docsera-page-tree__move-picker-destination"
+            disabled={!destination}
+            title={destination ? `Move inside ${page.title}` : disabledReason}
+            onClick={() => destination && activateMoveDestination(destination)}
+          >
+            {page.title}
+          </button>
+        </div>
+        {hasChildren && expanded ? <ul>{page.children?.map((child) => renderMovePickerPage(child, depth + 1))}</ul> : null}
+      </li>
+    );
+  }
+
   const contextMenuElement =
     contextMenuPresence.item && contextMenuActions.length > 0
       ? createPortal(
@@ -1391,30 +1449,31 @@ export function PageTree({
               if (event.key === "Escape") {
                 event.preventDefault();
                 event.stopPropagation();
-                closeContextMenu({ restoreFocus: true });
-              } else if (event.key === "ArrowDown") {
+                if (isMovePickerOpen) {
+                  returnToPageActions();
+                } else {
+                  closeContextMenu({ restoreFocus: true });
+                }
+              } else if (!isMovePickerOpen && event.key === "ArrowDown") {
                 event.preventDefault();
                 focusMenuItem(1);
-              } else if (event.key === "ArrowUp") {
+              } else if (!isMovePickerOpen && event.key === "ArrowUp") {
                 event.preventDefault();
                 focusMenuItem(-1);
-              } else if (event.key === "Home") {
+              } else if (!isMovePickerOpen && event.key === "Home") {
                 event.preventDefault();
                 focusMenuBoundary("first");
-              } else if (event.key === "End") {
+              } else if (!isMovePickerOpen && event.key === "End") {
                 event.preventDefault();
                 focusMenuBoundary("last");
-              } else if (event.key === "Enter" || event.key === " ") {
+              } else if (!isMovePickerOpen && (event.key === "Enter" || event.key === " ")) {
                 const action = event.target instanceof HTMLElement ? event.target.dataset.docseraPageTreeMenuAction : "";
                 if (
                   action === "add-child" ||
                   action === "settings" ||
                   action === "rename" ||
                   action === "delete" ||
-                  action === "move-up" ||
-                  action === "move-down" ||
-                  action === "indent" ||
-                  action === "outdent"
+                  action === "move"
                 ) {
                   event.preventDefault();
                   activateContextMenuAction(action);
@@ -1422,7 +1481,53 @@ export function PageTree({
               }
             }}
           >
-            {contextMenuActions.map((action) => (
+            {isMovePickerOpen ? (
+              <div className="docsera-page-tree__move-picker" aria-label={`Move ${contextMenuPresence.item.page.title}`}>
+                <div className="docsera-page-tree__move-picker-header">
+                  <button
+                    type="button"
+                    className="docsera-page-tree__move-picker-back"
+                    aria-label="Back to page actions"
+                    onClick={returnToPageActions}
+                  >
+                    <DocseraIcon icon={docseraIcons.chevronLeft} size={14} />
+                  </button>
+                  <span>Move to</span>
+                </div>
+                <div className="docsera-page-tree__move-picker-search-field">
+                  <span className="docsera-page-tree__move-picker-search-icon" aria-hidden="true">
+                    <DocseraIcon icon={docseraIcons.search} size={14} />
+                  </span>
+                  <input
+                    ref={movePickerSearchRef}
+                    className="docsera-page-tree__move-picker-search"
+                    type="search"
+                    value={movePickerSearch}
+                    onChange={(event) => setMovePickerSearch(event.target.value)}
+                    placeholder="Search pages"
+                    aria-label="Search move destinations"
+                  />
+                </div>
+                <ul className="docsera-page-tree__move-picker-list">
+                  <li className="docsera-page-tree__move-picker-node">
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="docsera-page-tree__move-picker-destination docsera-page-tree__move-picker-root"
+                      disabled={!movePickerSource || !rootMoveDestination(movePickerSource, pagesByParent)}
+                      onClick={() => {
+                        if (!movePickerSource) return;
+                        const destination = rootMoveDestination(movePickerSource, pagesByParent);
+                        if (destination) activateMoveDestination(destination);
+                      }}
+                    >
+                      Workspace root
+                    </button>
+                  </li>
+                  {pages.map((page) => renderMovePickerPage(page, 0))}
+                </ul>
+              </div>
+            ) : contextMenuActions.map((action) => (
               <button
                 key={action}
                 type="button"
@@ -1443,9 +1548,9 @@ export function PageTree({
                       ? "Rename"
                       : action === "delete"
                         ? "Delete"
-                        : action === "add-child"
-                          ? "Add child page"
-                          : pageTreeMovementLabel(action)}
+                          : action === "add-child"
+                            ? "Add child page"
+                            : "Move"}
                 </span>
               </button>
             ))}
@@ -1555,6 +1660,7 @@ export function PageTree({
               if (!contextMenuActions.length) {
                 return;
               }
+              resetMovePicker();
               setContextMenu(input);
             }}
             onToggleCollapsed={toggleCollapsed}

@@ -77,6 +77,12 @@ The ServiceNow client exposes `movePage(...)` and normalizes the returned succes
 
 The page tree uses native drag/drop in Edit mode when authoring is enabled. Root rows and recursive child rows forward the movement callback. Drop completion resolves to above, below, or inside placement from the pointer position, supporting root reorder, same-parent reorder, cross-parent movement, moving to root, and dropping inside eligible parents through the six-level hierarchy limit. Client-side validation rejects circular or over-depth placements before calling the runtime; the server remains authoritative and reconciliation always uses the returned Edit projection.
 
+## Compact destination picker
+
+The page actions dropdown now exposes one **Move** action. It transitions the same compact dropdown into a searchable, expandable workspace hierarchy and sends the existing move mutation only after a destination is selected. Page destinations mean “append inside this page”; Workspace root means append to the root list. The picker always reads the full hierarchy rather than the sidebar’s active search results, disables the source, its parent, descendants, and over-depth destinations, and keeps expand/collapse controls separate from destination controls. Picker state is reset on every new action-menu opening and outside dismissal. Its portal position is recalculated against its original anchor whenever the picker opens or closes, so its larger surface remains viewport-aware. Back or the first Escape returns focus to **Move**; the next Escape closes the dropdown and restores its trigger focus. Both a rejected movement and a `false` movement result announce failure; only `true` starts successful-movement reconciliation.
+
+The non-drag Move up, Move down, Indent, and Outdent commands were intentionally removed. This leaves sibling reordering available only through native drag-and-drop; it does not make drag operations completely accessible. A keyboard-accessible sibling-ordering interaction remains deferred.
+
 ## Regression Coverage
 
 Domain tests cover movement category transitions, Added parents, descendant non-duplication, stale/no-op handling, circular and invalid-parent rejection, removed-page rejection, excessive depth rejection, and Live/Edit separation.

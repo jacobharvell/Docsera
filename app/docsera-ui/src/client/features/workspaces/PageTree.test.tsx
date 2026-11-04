@@ -1088,172 +1088,154 @@ describe("PageTree row interaction", () => {
     await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
   });
 
-  it("restores the originating page focus while a keyboard movement is pending", async () => {
-    let resolveMovement: (moved: boolean) => void = () => undefined;
-    const onMovePage = vi.fn(
-      () =>
-        new Promise<boolean>((resolve) => {
-          resolveMovement = resolve;
-        })
-    );
-    const pages = [
-      page({ id: "page-a", title: "Page A", siblingOrder: 1 }),
-      page({ id: "page-b", title: "Page B", siblingOrder: 2 }),
-      page({ id: "page-c", title: "Page C", siblingOrder: 3 })
-    ];
-    mockDropResolver({
-      "page-a": {
-        before: { pageSysId: "page-b", parentPageSysId: null, position: "before", siblingOrder: "0", targetPageId: "page-a" },
-        inside: { pageSysId: "page-b", parentPageSysId: "page-a", position: "inside", siblingOrder: "1", targetPageId: "page-a" }
-      },
-      "page-c": {
-        after: { pageSysId: "page-b", parentPageSysId: null, position: "after", siblingOrder: "4", targetPageId: "page-c" }
-      }
-    });
-    renderTree(pages, { onMovePage });
-
-    const pageButton = screen.getByRole("button", { name: "Page B" });
-    pageButton.focus();
-    fireEvent.keyDown(pageButton, { key: "ContextMenu" });
-
-    const menu = await screen.findByRole("menu", { name: "Page actions for Page B" });
-    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "Page settings",
-      "Rename",
-      "Move up",
-      "Indent",
-      "Move down",
-      "Delete"
-    ]);
-    fireEvent.keyDown(within(menu).getByRole("menuitem", { name: "Move up" }), { key: "Enter" });
-
-    expect(onMovePage).toHaveBeenCalledWith({ pageSysId: "page-b", parentPageSysId: null, siblingOrder: "0" });
-    await waitFor(() => expect(pageButton).toHaveFocus());
-    expect(screen.getByRole("status")).toHaveTextContent("");
-
-    await act(async () => resolveMovement(false));
-  });
-
-  it("retains originating page focus without a success announcement when a keyboard movement is rejected", async () => {
-    const onMovePage = vi.fn(() => false);
-    const pages = [page({ id: "page-a", title: "Page A", siblingOrder: 1 }), page({ id: "page-b", title: "Page B", siblingOrder: 2 })];
-    mockDropResolver({
-      "page-a": {
-        before: { pageSysId: "page-b", parentPageSysId: null, position: "before", siblingOrder: "0", targetPageId: "page-a" }
-      }
-    });
-    renderTree(pages, { onMovePage });
-
-    const pageButton = screen.getByRole("button", { name: "Page B" });
-    pageButton.focus();
-    fireEvent.keyDown(pageButton, { key: "ContextMenu" });
-    fireEvent.keyDown(await screen.findByRole("menuitem", { name: "Move up" }), { key: "Enter" });
-
-    await waitFor(() => expect(pageButton).toHaveFocus());
-    expect(screen.getByRole("status")).toHaveTextContent("");
-  });
-
-  it("offers outdent only when the resolver accepts it and suppresses ambiguous or depth-invalid movement commands", async () => {
-    const nested = page({
-      id: "parent",
-      title: "Parent",
-      children: [page({ id: "child", parentPageSysId: "parent", title: "Child" })]
-    });
-    mockDropResolver({
-      parent: {
-        after: { pageSysId: "child", parentPageSysId: null, position: "after", siblingOrder: "2", targetPageId: "parent" }
-      }
-    });
-    const { rerender } = renderTree([nested], { onMovePage: vi.fn() });
-
-    fireEvent.contextMenu(row("Child"), { clientX: 20, clientY: 30 });
-    expect(await screen.findByRole("menuitem", { name: "Outdent" })).toBeInTheDocument();
-
-    fireEvent.pointerDown(document.body);
-    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
-    rerender(treeElement([nested], { filterText: "Child", onMovePage: vi.fn() }));
-    fireEvent.contextMenu(row("Child"), { clientX: 20, clientY: 30 });
-    expect(await screen.findByRole("menu")).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: /Move up|Move down|Indent|Outdent/ })).not.toBeInTheDocument();
-
-    fireEvent.pointerDown(document.body);
-    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
-    rerender(treeElement([nested], { filterText: "", onMovePage: vi.fn() }));
-    mockDropResolver({ parent: { after: null } });
-    fireEvent.contextMenu(row("Child"), { clientX: 20, clientY: 30 });
-    expect(await screen.findByRole("menu")).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Outdent" })).not.toBeInTheDocument();
-  });
-
-  it("does not offer Indent when nesting the page subtree would exceed six levels", async () => {
-    const levelSix = page({ id: "level-six", parentPageSysId: "level-five", title: "Level six" });
-    const source = page({
-      id: "source",
-      parentPageSysId: "level-five",
-      title: "Source",
-      siblingOrder: 2,
-      children: [page({ id: "source-child", parentPageSysId: "source", title: "Source child" })]
-    });
-    const levelOne = page({
-      id: "level-one",
-      title: "Level one",
-      children: [
-        page({
-          id: "level-two",
-          parentPageSysId: "level-one",
-          title: "Level two",
-          children: [
-            page({
-              id: "level-three",
-              parentPageSysId: "level-two",
-              title: "Level three",
-              children: [
-                page({
-                  id: "level-four",
-                  parentPageSysId: "level-three",
-                  title: "Level four",
-                  children: [page({ id: "level-five", parentPageSysId: "level-four", title: "Level five", children: [levelSix, source] })]
-                })
-              ]
-            })
-          ]
-        })
-      ]
-    });
-    mockDropResolver({ "level-six": { inside: null } });
-    renderTree([levelOne], { onMovePage: vi.fn() });
+  it("opens a searchable move picker from the compact menu and moves a page inside a destination", async () => {
+    const onMovePage = vi.fn(() => true);
+    const nested = page({ id: "parent", title: "Parent", children: [page({ id: "source", parentPageSysId: "parent", title: "Source" })] });
+    const target = page({ id: "target", title: "Target" });
+    mockDropResolver({ target: { inside: { pageSysId: "source", parentPageSysId: "target", position: "inside", siblingOrder: "1", targetPageId: "target" } } });
+    renderTree([nested, target], { filterText: "source", onMovePage });
 
     fireEvent.contextMenu(row("Source"), { clientX: 20, clientY: 30 });
-    expect(await screen.findByRole("menu")).toBeInTheDocument();
-    expect(screen.queryByRole("menuitem", { name: "Indent" })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move" }));
+    const search = screen.getByRole("searchbox", { name: "Search move destinations" });
+    expect(search).toHaveFocus();
+    expect(search.parentElement).toHaveClass("docsera-page-tree__move-picker-search-field");
+    expect(search.parentElement?.querySelector(".docsera-page-tree__move-picker-search-icon")).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("menuitem", { name: "Target" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Parent" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "Source" })).toBeDisabled();
+    fireEvent.change(search, { target: { value: "target" } });
+    await act(async () => fireEvent.click(screen.getByRole("menuitem", { name: "Target" })));
+    expect(onMovePage).toHaveBeenCalledWith({ pageSysId: "source", parentPageSysId: "target", siblingOrder: "1" });
   });
 
-  it("announces and restores focus after the authoritative hierarchy reflects a keyboard move", async () => {
+  it("uses the standard compact search styling for move destinations", () => {
+    const cwd = new Function("return process.cwd()")() as string;
+    const cssSource = readFileSync(join(cwd, "src/client/styles/runtime-shell.css"), "utf8").replace(/\r\n/g, "\n");
+
+    expect(cssSource).toContain(".docsera-page-tree__move-picker-search-field {\n  position: relative;\n  height: 30px;\n  margin-bottom: 6px;");
+    expect(cssSource).toContain(".docsera-page-tree__move-picker-search-icon {\n  position: absolute;\n  left: 8px;\n  top: 50%;\n  width: 14px;\n  height: 14px;\n  color: var(--docsera-text-soft);");
+    expect(cssSource).toContain(".docsera-page-tree__move-picker-search {\n  box-sizing: border-box;\n  width: 100%;\n  height: 100%;\n  padding: 6px 8px 6px 30px;\n  border: 1px solid var(--docsera-border);\n  border-radius: 4px;\n  background: var(--docsera-surface);\n  color: var(--docsera-text);\n  font-size: 0.75rem;\n  line-height: 1.3334;");
+    expect(cssSource).toContain(".docsera-page-tree__move-picker-search:focus {\n  outline: none;\n  border-color: var(--docsera-primary);");
+    expect(cssSource).not.toContain(".docsera-page-tree__move-picker-search:focus-visible {\n  outline: 2px solid");
+  });
+
+  it("keeps expansion separate, supports root moves, and backs out before restoring focus", async () => {
     const onMovePage = vi.fn(() => true);
-    const initialPages = [page({ id: "page-a", title: "Page A", siblingOrder: 1 }), page({ id: "page-b", title: "Page B", siblingOrder: 2 })];
+    const nested = page({ id: "parent", title: "Parent", children: [page({ id: "source", parentPageSysId: "parent", title: "Source" })] });
+    renderTree([nested], { onMovePage });
+    const sourceButton = screen.getByRole("button", { name: "Source" });
+    sourceButton.focus();
+    fireEvent.keyDown(sourceButton, { key: "ContextMenu" });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move" }));
+    fireEvent.click(screen.getByRole("button", { name: "Collapse Parent" }));
+    expect(screen.queryByRole("menuitem", { name: "Source" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Back to page actions" }));
+    const moveItem = screen.getByRole("menuitem", { name: "Move" });
+    await waitFor(() => expect(moveItem).toHaveFocus());
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Delete" }), { key: "ArrowUp" });
+    expect(moveItem).toHaveFocus();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Move" }));
+    await act(async () => fireEvent.click(screen.getByRole("menuitem", { name: "Workspace root" })));
+    expect(onMovePage).toHaveBeenCalledWith({ pageSysId: "source", parentPageSysId: null, siblingOrder: "2" });
+    await waitFor(() => expect(sourceButton).toHaveFocus());
+  });
+
+  it("disables hierarchy-invalid destinations and announces a rejected persistence failure", async () => {
+    const onMovePage = vi.fn(() => Promise.reject(new Error("stale workspace")));
+    const source = page({ id: "source", title: "Source" });
+    const depthLimited = page({ id: "depth-limited", title: "Depth limited" });
+    const failureTarget = page({ id: "failure-target", title: "Failure target" });
     mockDropResolver({
-      "page-a": {
-        before: { pageSysId: "page-b", parentPageSysId: null, position: "before", siblingOrder: "0", targetPageId: "page-a" }
-      }
+      "depth-limited": { inside: null },
+      "failure-target": { inside: { pageSysId: "source", parentPageSysId: "failure-target", position: "inside", siblingOrder: "1", targetPageId: "failure-target" } },
+      source: { inside: null }
     });
-    const { rerender } = renderTree(initialPages, { onMovePage });
+    renderTree([source, depthLimited, failureTarget], { onMovePage });
 
-    const pageButton = screen.getByRole("button", { name: "Page B" });
-    pageButton.focus();
-    fireEvent.keyDown(pageButton, { key: "ContextMenu" });
-    fireEvent.keyDown(await screen.findByRole("menuitem", { name: "Move up" }), { key: "Enter" });
-    expect(onMovePage).toHaveBeenCalledWith({ pageSysId: "page-b", parentPageSysId: null, siblingOrder: "0" });
-    expect(screen.getByRole("status")).toHaveTextContent("");
-    await waitFor(() => expect(pageButton).toHaveFocus());
+    fireEvent.contextMenu(row("Source"), { clientX: 20, clientY: 30 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move" }));
+    expect(screen.getByRole("menuitem", { name: "Source" })).toBeDisabled();
+    expect(screen.getByRole("menuitem", { name: "Depth limited" })).toBeDisabled();
 
-    rerender(
-      treeElement([page({ id: "page-b", title: "Page B", siblingOrder: 0 }), page({ id: "page-a", title: "Page A", siblingOrder: 1 })], {
-        onMovePage
-      })
-    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Failure target" }));
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Unable to move Source."));
+  });
 
-    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Page B moved up."));
-    await waitFor(() => expect(screen.getByRole("button", { name: "Page B" })).toHaveFocus());
+  it("announces a false movement result as well as a rejected movement", async () => {
+    const onMovePage = vi.fn(() => false);
+    const source = page({ id: "source", title: "Source" });
+    const target = page({ id: "target", title: "Target" });
+    mockDropResolver({
+      target: { inside: { pageSysId: "source", parentPageSysId: "target", position: "inside", siblingOrder: "1", targetPageId: "target" } }
+    });
+    renderTree([source, target], { onMovePage });
+
+    fireEvent.contextMenu(row("Source"), { clientX: 20, clientY: 30 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Target" }));
+
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Unable to move Source."));
+  });
+
+  it("resets the picker after outside dismissal before opening actions for another page", async () => {
+    const onMovePage = vi.fn();
+    renderTree([page({ id: "source", title: "Source" }), page({ id: "other", title: "Other" })], { onMovePage });
+
+    fireEvent.contextMenu(row("Source"), { clientX: 20, clientY: 30 });
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Move" }));
+    expect(screen.getByRole("searchbox", { name: "Search move destinations" })).toBeInTheDocument();
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(screen.queryByRole("menu")).not.toBeInTheDocument());
+
+    fireEvent.contextMenu(row("Other"), { clientX: 40, clientY: 50 });
+    expect(await screen.findByRole("menuitem", { name: "Move" })).toBeInTheDocument();
+    expect(screen.queryByRole("searchbox", { name: "Search move destinations" })).not.toBeInTheDocument();
+  });
+
+  it("repositions the menu when the move picker expands near the viewport edges", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 400 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 400 });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function getBoundingClientRect(this: HTMLElement) {
+      if (this.getAttribute("role") === "menu") {
+        return viewportRect(this.querySelector(".docsera-page-tree__move-picker")
+          ? { left: 0, top: 0, width: 300, height: 300 }
+          : { left: 0, top: 0, width: 180, height: 160 });
+      }
+      return viewportRect({ left: 0, top: 0, width: 0, height: 0 });
+    });
+    renderTree([page({ id: "source", title: "Source" }), page({ id: "target", title: "Target" })], { onMovePage: vi.fn() });
+
+    fireEvent.contextMenu(row("Source"), { clientX: 390, clientY: 390 });
+    const menu = await screen.findByRole("menu", { name: "Page actions for Source" });
+    expect(menu).toHaveStyle({ left: "212px", top: "230px" });
+    fireEvent.click(screen.getByRole("menuitem", { name: "Move" }));
+    await waitFor(() => expect(menu).toHaveStyle({ left: "92px", top: "90px" }));
+    expect(screen.getByRole("searchbox", { name: "Search move destinations" })).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "Escape" });
+    await waitFor(() => expect(screen.getByRole("menuitem", { name: "Move" })).toHaveFocus());
+    await waitFor(() => expect(menu).toHaveStyle({ left: "212px", top: "230px" }));
+  });
+
+  it("returns Escape from the picker to Move so keyboard menu navigation can continue", async () => {
+    renderTree([page({ id: "source", title: "Source" }), page({ id: "target", title: "Target" })], { onMovePage: vi.fn() });
+    const sourceButton = screen.getByRole("button", { name: "Source" });
+    sourceButton.focus();
+    fireEvent.keyDown(sourceButton, { key: "ContextMenu" });
+    await waitFor(() => expect(screen.getByRole("menuitem", { name: "Page settings" })).toHaveFocus());
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Move" }), { key: "Enter" });
+    expect(screen.getByRole("searchbox", { name: "Search move destinations" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    const moveItem = screen.getByRole("menuitem", { name: "Move" });
+    await waitFor(() => expect(moveItem).toHaveFocus());
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "ArrowDown" });
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() => expect(sourceButton).toHaveFocus());
   });
 
   it("styles Delete through the Docsera error token without replacing the destructive foreground on hover or focus", async () => {
