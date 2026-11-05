@@ -4,3 +4,7 @@
 
 # Preserve the native ServiceNow RR-077 XML download byte-for-byte.
 /app/docsera-ui/update-set/candidates/rr-077-controlled-scoped-export/docsera-scoped-v0.1.0-rr-077-diagnostic.xml -text
+
+# Preserve the consumer release artifacts exactly as packaged.
+/releases/0.1.0/docsera_application_0.1.0.xml -text
+/releases/0.1.0/docsera_global_companion_0.1.0.xml text eol=lf
