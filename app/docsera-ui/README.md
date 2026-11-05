@@ -16,7 +16,6 @@ The runtime does not depend on a deployed `sys_ux_theme_asset` for `runtime-shel
 - Keep `src/client/main.tsx` thin.
 - Keep ServiceNow-specific URL and session assumptions in `src/client/platform/servicenow/`.
 - Keep seed/demo data explicit and separate from future live persistence.
-- Treat `app/docsera-shell/` as historical migration material, not the active runtime entry point.
 
 ## Local Commands
 
@@ -86,6 +85,3 @@ With the explicit `--browser` opt-in, it additionally checks browser bundle load
 
 The verifier also waits through bounded `uxpcb` propagation after install and fails clearly if stale JS is still being served.
 
-## Historical Fallback
-
-`npm run package:direct-ui-page` remains only as a historical manual packaging path for investigation or rollback comparison.

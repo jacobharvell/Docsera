@@ -9,20 +9,22 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const packageRoot = path.resolve(scriptDir, "..");
 const distRoot = path.join(packageRoot, "dist");
 const distAppRoot = path.join(distRoot, "app");
-const outputRoot = path.join(packageRoot, "update-set");
+// Generated artifacts are release-engineering inputs, not repository releases.
+// Keep them under the ignored package output directory so a local build cannot
+// be mistaken for the frozen consumer package.
+const outputRoot = path.join(packageRoot, "output", "update-set");
 const scopedAppConfigPath = path.resolve(packageRoot, "..", "docsera-ui", "now.config.json");
 const globalKeysPath = path.join(packageRoot, "src", "fluent", "generated", "keys.ts");
 
 const constants = Object.freeze({
   buildType: "global",
   appVersion: "0.1.0",
-  artifactRevision: "rr-074-global-consumer-candidate-r2",
-  updateSetName: "Docsera Global Companion Consumer Candidate 0.1.0",
+  artifactRevision: "generated-global-companion-v1",
+  updateSetName: "Docsera Global Companion Generated 0.1.0",
   updateSetDescription:
     "Global companion update set for Docsera workspace provisioning and the authenticated docsera.do host.",
-  candidateDirectory: "candidates/rr-074-global-consumer-portability",
-  updateSetFileName: "sys_remote_update_set_docsera_global_companion_consumer_candidate_0_1_0.xml",
-  manifestFileName: "docsera-global-companion-consumer-candidate.update-set.json",
+  updateSetFileName: "docsera-global-companion.update-set.xml",
+  manifestFileName: "docsera-global-companion.update-set.json",
   sourceSha: "16c5f95f4befa109277d1f67a50f8d977faebf17",
   remoteUpdateSetSource: "docsera-global-companion",
   recordedBy: "codex"
@@ -109,7 +111,7 @@ function xmlEscape(value) {
 function readText(filePath) {
   // The SDK build can retain Windows line endings in its XML sources. The
   // update-set serializer must be canonical: otherwise Git's text conversion
-  // rewrites embedded payload line endings when the candidate is committed.
+  // rewrites embedded payload line endings when generated output is inspected.
   return readFileSync(filePath, "utf8").replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
 }
 
@@ -356,8 +358,7 @@ function main() {
     `${constants.updateSetName}:${constants.appVersion}:${constants.buildType}:${constants.artifactRevision}`
   );
 
-  const candidateOutputRoot = path.join(outputRoot, constants.candidateDirectory);
-  mkdirSync(candidateOutputRoot, { recursive: true });
+  mkdirSync(outputRoot, { recursive: true });
 
   const remoteUpdateSetXml = buildRemoteUpdateSetXml({
     remoteUpdateSetSysId,
@@ -370,7 +371,7 @@ function main() {
     version: constants.appVersion,
     artifactRevision: constants.artifactRevision,
     buildType: constants.buildType,
-    candidate: true,
+    generated: true,
     generatedAt: createdAt,
     remoteUpdateSetSysId,
     sourceDistRoot: path.relative(packageRoot, distRoot).replaceAll("\\", "/"),
@@ -393,11 +394,11 @@ function main() {
     }))
   };
 
-  writeFileSync(path.join(candidateOutputRoot, constants.updateSetFileName), remoteUpdateSetXml, "utf8");
-  writeFileSync(path.join(candidateOutputRoot, constants.manifestFileName), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
+  writeFileSync(path.join(outputRoot, constants.updateSetFileName), remoteUpdateSetXml, "utf8");
+  writeFileSync(path.join(outputRoot, constants.manifestFileName), `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 
-  console.log(`Generated ${path.join("update-set", constants.candidateDirectory, constants.updateSetFileName)}`);
-  console.log(`Generated ${path.join("update-set", constants.candidateDirectory, constants.manifestFileName)}`);
+  console.log(`Generated ${path.join("output", "update-set", constants.updateSetFileName)}`);
+  console.log(`Generated ${path.join("output", "update-set", constants.manifestFileName)}`);
   console.log(`Included ${records.length} records from ${path.join("dist", "app")}`);
 }
 

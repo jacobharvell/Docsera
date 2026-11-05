@@ -10,7 +10,6 @@ Spike note for E5-T2A. This records the repository and platform contract for Doc
 - Accepted implementation map in `C:\Users\jacob\OneDrive\Documents\Obsidian Vault\Docsera\MVP Implementation Plan.md`
 - Current repo at `main` / `91f8c006f74305588d85079c490b5f86e8233d5f`
 - Current Docsera editor schema and reader code in `app/docsera-ui`
-- Legacy shell image normalization in `app/docsera-shell/src/pages/page-editor.js`
 - TipTap `@tiptap/extension-image@3.27.3` source from the npm tarball
 - Official ServiceNow docs:
   - [Attachment API](https://www.servicenow.com/docs/r/api-reference/rest-apis/c_AttachmentAPI.html)

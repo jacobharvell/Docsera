@@ -7,9 +7,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const candidateRoot = path.join(packageRoot, "update-set", "candidates", "rr-074-global-consumer-portability");
-const manifest = JSON.parse(readFileSync(path.join(candidateRoot, "docsera-global-companion-consumer-candidate.update-set.json"), "utf8"));
-const artifact = readFileSync(path.join(candidateRoot, manifest.artifactFile), "utf8");
+const generatedRoot = path.join(packageRoot, "output", "update-set");
+const manifest = JSON.parse(readFileSync(path.join(generatedRoot, "docsera-global-companion.update-set.json"), "utf8"));
+const artifact = readFileSync(path.join(generatedRoot, manifest.artifactFile), "utf8");
 const scopedIdentity = { scope: "x_2300756_docsera", sysId: "e6e43323accd4c7fb9271525a343850e" };
 const stale = ["5bf5c028daaa417d88de36616e4c8300", "x_82900_docsera", "6997f092c3fd8310c569bf0d0501314d", "2698dffadc844c00a9f20d67fca177d5"];
 
@@ -23,7 +23,7 @@ const updates = [...artifact.matchAll(/<sys_update_xml action="INSERT_OR_UPDATE"
   return { table: field("type"), targetSysId: field("target_sys_id"), payload: decodeXml(field("payload")) };
 });
 
-assert.equal(manifest.candidate, true, "candidate manifest marker is required");
+assert.equal(manifest.generated, true, "generated manifest marker is required");
 assert.equal(manifest.buildType, "global");
 assert.equal(manifest.artifactSha256, createHash("sha256").update(artifact).digest("hex"));
 assert.equal(manifest.consumerOwnership.ownershipSysId, "global");
@@ -63,4 +63,4 @@ for (const [field, value] of Object.entries({
 }
 const membershipIndex = updates.findIndex(({ table, targetSysId }) => table === "sys_script_include" && targetSysId === manifest.components.membershipBridge.sysId);
 assert.ok(membershipIndex >= 0 && membershipIndex < updates.indexOf(rca), "RCA must follow its membership Script Include");
-console.log(`Consumer candidate verified: ${updates.length} records, ${manifest.artifactSha256}`);
+console.log(`Generated Global companion verified: ${updates.length} records, ${manifest.artifactSha256}`);

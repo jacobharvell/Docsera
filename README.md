@@ -1,72 +1,37 @@
 # Docsera
 
-Docsera is a ServiceNow-scoped documentation platform focused on a polished reader experience and a block-based authoring workflow.
+Docsera is an open-source, ServiceNow-native documentation application for creating and reading focused product and API documentation. It is a standalone scoped app with a Direct UI Page host, a React and TypeScript client, ServiceNow records for persisted state, and a custom block-oriented editor foundation built around Tiptap/ProseMirror.
 
-## Repo surface
+The frozen 0.1.0 package has been exercised on a receiving ServiceNow PDI for workspace creation, page authoring and saving, publishing and Live mode, discarding changes, refresh/navigation, and workspace administration. That evidence is limited to the documented receiving-instance sequence; it does not establish general ServiceNow compatibility, upgrade safety, uninstall behavior, or complete release qualification.
 
-- `docs/decisions/` contains public architectural decisions and rationale.
-- `app/docsera-ui/` is the active ServiceNow SDK-native runtime package for the standalone Direct UI Page host.
-- `app/docsera-shell/` is the historical shell scaffold and reusable product/domain logic retained for migration into the accepted runtime direction.
-- `docs/process/Docsera Agent and Tooling Map.md` is the shortest path for agents choosing the active SDK workflow versus historical references.
-- `docs/process/Requirements Source Map.md` records the Obsidian requirement source map.
-- `docs/process/Implementation Notes - SDK Native UI Page Runtime Pipeline.md` records the preferred SDK-native build and install path for the active runtime.
-- `docs/process/Implementation Notes - React Vite Direct UI Page Packaging Baseline.md` records the older manual packaging fallback that is now historical.
-- `docs/process/Implementation Notes - Workspace Data Model and Group Provisioning.md` records the workspace foundation contract.
-- `docs/process/Implementation Notes - Workspace Capability Checks.md` records the workspace access contract.
-- `docs/process/Implementation Notes - Page Data Model and Slug Rules.md` records the page foundation contract.
-- `docs/process/Implementation Notes - Editor Host Contract.md` records the durable editor-host boundary for future ProseMirror/TipTap integration.
-- `docs/process/Implementation Notes - Live Edit Editor Host Boundary.md` records the productized page-level Live/Edit shell boundary and child editor host scaffold.
-- `docs/decisions/ADR-0002-direct-ui-page-host.md` records the preferred runtime host decision.
-- `docs/decisions/ADR-0003-frontend-stack.md` records the preferred frontend source/build stack decision.
-- `poc/tiptap-component/` is a closed historical PoC reference and should not be renamed into the product shell.
+## Install Docsera 0.1.0
 
-## Internal working material
+For a consumer installation, use only the frozen artifacts in [releases/0.1.0/](releases/0.1.0/). The package contains two ServiceNow update sets and their SHA-256 checksums:
 
-The following paths are intentionally excluded from the public repo and are used only for local development and validation:
+1. Import, preview, and commit the **scoped Docsera application** update set first.
+2. Import, preview, and commit the **Global companion** update set second.
 
-- `AGENTS.md`
-- `internal/`
-- `poc/`
+The scoped-first, Global-second order is required because the scoped application authorizes and uses the companion boundary. See the [0.1.0 package instructions](releases/0.1.0/README.md) for the exact artifact names and checksums, and [releases/README.md](releases/README.md) for the consumer-release index.
 
-## Current direction
+Do not install locally generated update-set output from `app/`; it is release-engineering material, not a distributable consumer artifact.
 
-- ServiceNow-native scoped app
-- Standalone scoped Direct UI Page host
-- React + TypeScript frontend source compiled through ServiceNow SDK / Fluent
-- Historical UI Builder / Next Experience scaffolding retained only as reference evidence
-- Scoped ServiceNow-hosted assets and same-origin backend calls
-- Workspace data model and native group provisioning
-- Page data model, hierarchy, and slug rules
-- Tiptap / ProseMirror-oriented editor foundation
-- Block-based authoring with Markdown/source support
+## Source layout
 
-## Validation
+This repository is a ServiceNow source-and-artifact project, not an npm package for general installation.
 
-From the repository root:
+- [app/docsera-ui/](app/docsera-ui/) is the active ServiceNow SDK source for the scoped Direct UI Page runtime.
+- [app/docsera-global-bridge/](app/docsera-global-bridge/) is the source for the narrowly scoped Global companion used by the release workflow; it is not a standalone Docsera app.
+- [docs/decisions/](docs/decisions/) contains the active architectural decisions. Relevant implementation context includes the [SDK-native runtime pipeline](docs/process/Implementation%20Notes%20-%20SDK%20Native%20UI%20Page%20Runtime%20Pipeline.md), [workspace data model](docs/process/Implementation%20Notes%20-%20Workspace%20Data%20Model%20and%20Group%20Provisioning.md), and [page model](docs/process/Implementation%20Notes%20-%20Page%20Data%20Model%20and%20Slug%20Rules.md).
+- [docs/process/](docs/process/README.md) indexes current engineering contracts, validation guidance, and retained release evidence. It is not consumer installation documentation.
 
-```powershell
-npm run validate
-```
+## For contributors
 
-Additional commands:
+Contributor work targets the active source packages above and requires a ServiceNow development environment and SDK configuration. Start with [app/docsera-ui/README.md](app/docsera-ui/README.md), then use the scoped package's focused test or validation commands as appropriate. Do not treat the frozen XML package as an SDK installation, and do not use historical shell procedures as the active deployment path.
 
-- `npm run validate:frontend`
-- `npm run validate:shell`
-- `npm run validate:docs`
-- `npm run build:sdk-ui-page`
-- `npm run types:sdk-ui-page`
-- `npm run install:sdk-ui-page`
+See [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites, active source boundaries, local validation, and pull-request expectations. For installation help, defects, and feature proposals, see [SUPPORT.md](SUPPORT.md). Report security concerns only through the private route described in [SECURITY.md](SECURITY.md), never in a public issue or pull request.
 
-Explicit alias-based SDK install from `app/docsera-ui/`:
+Current architecture decisions are [ADR-0001](docs/decisions/ADR-0001-editor-architecture.md), [ADR-0002](docs/decisions/ADR-0002-direct-ui-page-host.md), and [ADR-0003](docs/decisions/ADR-0003-frontend-stack.md).
 
-- `npx @servicenow/sdk --help`
-- `npx @servicenow/sdk explain <topic> --peek --format=raw`
-- `npx @servicenow/sdk transform --auth <alias>`
-- `npx @servicenow/sdk install --auth <alias>`
+## License
 
-Historical fallback:
-
-- `npm run package:direct-ui-page`
-
-The active runtime package README lives at `app/docsera-ui/README.md`.
-The historical shell package README at `app/docsera-shell/README.md` documents the retained migration scaffold.
+Docsera is available under the [MIT License](LICENSE).

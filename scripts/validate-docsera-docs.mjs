@@ -20,45 +20,60 @@ function mustContain(text, needles, fileLabel) {
 }
 
 const readme = readText('README.md');
-mustContain(readme, ['app/docsera-shell/', 'poc/', 'Requirements Source Map.md'], 'README.md');
-
-const shellReadme = readText('app/docsera-shell/README.md');
 mustContain(
-	shellReadme,
+	readme,
 	[
-		'Requirements Source Map.md',
-		'Implementation Notes - Workspace Data Model and Group Provisioning.md',
-		'Implementation Notes - Workspace Capability Checks.md',
-		'Implementation Notes - My Workspaces Launcher.md',
-		'Implementation Notes - Page Data Model and Slug Rules.md'
+		'releases/0.1.0/',
+		'releases/README.md',
+		'scoped-first, Global-second',
+		'app/docsera-ui/',
+		'app/docsera-global-bridge/',
+		'MIT License'
 	],
-	'app/docsera-shell/README.md'
+	'README.md'
 );
 
-const baseline = readText('docs/process/Docsera Repo, SDK, and Deployment Baseline.md');
+const rootPackage = JSON.parse(readText('package.json'));
+const rootValidate = rootPackage.scripts?.validate;
+if (
+	typeof rootValidate !== 'string' ||
+	!rootValidate.includes('validate:frontend') ||
+	!rootValidate.includes('validate:docs') ||
+	rootValidate.includes('validate:shell')
+) {
+	throw new Error('Root validate must run active frontend and documentation validation without the archived shell.');
+}
+
+for (const obsoleteScript of ['validate:shell', 'package:direct-ui-page']) {
+	if (obsoleteScript in (rootPackage.scripts ?? {})) {
+		throw new Error(`Obsolete root script must not remain: ${obsoleteScript}`);
+	}
+}
+
+const releasesReadme = readText('releases/README.md');
 mustContain(
-	baseline,
+	releasesReadme,
 	[
-		'app/docsera-shell',
-		'npm run validate',
-		'poc/tiptap-component',
-		'src/workspaces/workspace-domain.js',
-		'Requirements Source Map.md'
+		'0.1.0/docsera_application_0.1.0.xml',
+		'0.1.0/docsera_global_companion_0.1.0.xml',
+		'scoped first, then Global',
+		'sole frozen consumer release pair',
+		'No other XML in this repository is a supported consumer installation artifact.'
 	],
-	'docs/process/Docsera Repo, SDK, and Deployment Baseline.md'
+	'releases/README.md'
 );
 
-const runtimeCleanupNote = readText('docs/process/Implementation Notes - UI Builder Runtime Baggage Cleanup.md');
+const processReadme = readText('docs/process/README.md');
 mustContain(
-	runtimeCleanupNote,
+	processReadme,
 	[
-		'ADR-0002-direct-ui-page-host.md',
-		'ADR-0003-frontend-stack.md',
-		'app/docsera-shell/historical/ui-builder/now-ui.json',
-		'React + TypeScript + Vite',
-		'Validation results'
+		'Current implementation contracts',
+		'Editor Runtime Interaction Contract',
+		'Release, security, and historical evidence',
+		'frozen 0.1.0 release',
+		'not current installation instructions'
 	],
-	'docs/process/Implementation Notes - UI Builder Runtime Baggage Cleanup.md'
+	'docs/process/README.md'
 );
 
 const requirementsSourceMap = readText('docs/process/Requirements Source Map.md');
@@ -90,7 +105,7 @@ mustContain(
 		'workspace group key is separate',
 		'hr-docs-2',
 		'Docsera default icon',
-		'npm run validate:shell'
+		'npm run validate'
 	],
 	'docs/process/Implementation Notes - Workspace Data Model and Group Provisioning.md'
 );

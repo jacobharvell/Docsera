@@ -4,33 +4,23 @@
 - Date: July 2, 2026
 
 ## Decision
-Docsera's preferred runtime host is a standalone scoped Direct UI Page in the `x_82900_docsera` application scope.
+At the time of this decision, Docsera's preferred runtime host was a standalone scoped Direct UI Page. The decision's original proof environment used the historical `x_82900_docsera` application scope.
 
-The Direct UI Page owns the document shell, layout, and browser entry point. UI Builder / Next Experience custom-component hosting is paused and is not the preferred runtime architecture.
+The Direct UI Page owns the document shell, layout, and browser entry point. UI Builder / Next Experience custom-component hosting is not the preferred runtime architecture.
+
+The currently implemented runtime is the scoped `x_2300756_docsera` application defined in [`app/docsera-ui/now.config.json`](../../app/docsera-ui/now.config.json).
 
 ## Context
-Two manual PDI spikes established that:
-
-- the standalone Direct UI Page rendered full-page Docsera-owned content at `https://dev295482.service-now.com/x_82900_docsera_docsera_standalone_host_spike.do`
-- the page did not load `macroponent-root`, `sn-polaris-layout`, `now-appshell`, or the UI Builder transformed bundle path
-- scoped UI Script JavaScript loaded successfully
-- attachment-backed CSS loaded successfully
-- same-origin Scripted REST access worked from the page
-- the earlier UI Builder host path showed runtime interference before Docsera content owned the shell
-
-Those spikes are documented in:
-
-- `docs/process/Implementation Notes - Standalone Scoped UI Page Host Spike.md`
-- `docs/process/Implementation Notes - Direct UI Page Assets and Backend Ping Spike.md`
+The initial host investigation established that a standalone Direct UI Page can own the full Docsera shell without the UI Builder/native frame runtime. The abandoned proof-only implementation notes are intentionally not retained as operational guidance; the current repository contracts are the [Direct UI Page host architecture baseline](../process/Implementation%20Notes%20-%20Direct%20UI%20Page%20Host%20Architecture%20Baseline.md) and [SDK-native runtime pipeline](../process/Implementation%20Notes%20-%20SDK%20Native%20UI%20Page%20Runtime%20Pipeline.md).
 
 ## Durable Packaging Direction
-The runtime host stays a Direct UI Page. The first durable packaging shape is:
+The runtime host stays a Direct UI Page. The current durable packaging shape is:
 
-- JavaScript in scoped UI Script(s)
-- CSS in instance-hosted assets such as attachment-backed styles until a better same-origin asset record is proven
+- JavaScript and runtime CSS in the SDK-generated `main.jsdbx` bundle
+- one injected, Docsera-owned runtime stylesheet before React mounts
 - backend calls through scoped Scripted REST APIs
 
-The UI Builder component package may remain as paused historical scaffolding until a later cleanup task removes or repurposes it.
+The former UI Builder component package has been removed; it is not part of the current runtime or packaging shape.
 
 ## Consequences
 ### Positive
@@ -45,5 +35,4 @@ The UI Builder component package may remain as paused historical scaffolding unt
 - Security, ACLs, and auth behavior must be documented and verified separately.
 
 ## Follow-up
-- Do not start UI Builder cleanup/removal work until this ADR and the runtime host proof notes are the documented baseline.
-- Keep the UI Builder component path paused unless the Direct UI Page direction is later disproven.
+- Keep the Direct UI Page architecture and its current runtime contracts under review only if this hosting direction is later disproven.

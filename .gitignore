@@ -1,5 +1,6 @@
 # Internal workspace guidance
 # Internal docs and PoC workspace
+/AGENTS.md
 internal/
 poc/
 

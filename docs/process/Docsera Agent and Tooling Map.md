@@ -25,14 +25,6 @@ This short map points agents to the current source of truth for ServiceNow SDK w
 - `npm --prefix app/docsera-ui run build` and `npm --prefix app/docsera-ui run verify:sdk-runtime` are the active runtime checks.
 - `docs/process/Implementation Notes - SDK Native UI Page Runtime Pipeline.md` records the preferred SDK-native runtime pipeline.
 
-## Historical References
-
-- `app/docsera-shell/` is retained as historical shell scaffolding and migration source material.
-- `internal/runbooks/PDI_UI_COMPONENT_DEPLOYMENT.md` is a historical PoC deployment runbook.
-- `docs/process/Implementation Notes - React Vite Direct UI Page Packaging Baseline.md` documents the older manual packaging fallback.
-- `docs/process/Docsera Repo, SDK, and Deployment Baseline.md` is a historical discovery snapshot.
-
 ## Guardrails
 
 - Do not treat `snc`-based deployment guidance as the preferred path for the active runtime.
-- Do not move or rename the historical artifacts unless a cleanup task explicitly targets them.

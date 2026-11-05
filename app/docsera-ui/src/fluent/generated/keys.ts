@@ -2908,13 +2908,6 @@ declare global {
                         }
                     },
                     {
-                        table: 'sys_ux_lib_asset'
-                        id: 'a03da8513bc94a398b3a3dafcca17dc8'
-                        key: {
-                            name: 'x_2300756_docsera/mountEditorRuntimeSpike.js.map'
-                        }
-                    },
-                    {
                         table: 'sys_dictionary'
                         id: 'a04114f026b14810bc9a2e2c08402e67'
                         key: {
@@ -3452,13 +3445,6 @@ declare global {
                             name: 'x_2300756_docsera_workspace_change_set'
                             element: 'lifecycle_state'
                             value: 'active'
-                        }
-                    },
-                    {
-                        table: 'sys_ux_lib_asset'
-                        id: 'c58dabe08ad142cca3f1909a68b0a713'
-                        key: {
-                            name: 'x_2300756_docsera/mountEditorRuntimeSpike'
                         }
                     },
                     {

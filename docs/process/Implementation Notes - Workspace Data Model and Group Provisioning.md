@@ -150,9 +150,7 @@ Automated validation currently covers:
 
 Validation is local/unit-level for this task because live PDI install and runtime verification still depend on SDK auth plus on-instance metadata installation.
 
-Repository-level follow-up validation reference:
-
-- `npm run validate:shell`
+Repository-level follow-up validation reference: `npm run validate`.
 
 ## Manual Verification
 

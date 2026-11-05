@@ -4,7 +4,7 @@ Status: implementation note
 
 ## Purpose
 
-This note records the Docsera page contract that now exists in the app shell package.
+This note records the Docsera page contract implemented by the scoped application.
 
 It summarizes repo-side implementation behavior only. Accepted product requirements live in the Obsidian vault; see `docs/process/Requirements Source Map.md`.
 
@@ -12,7 +12,7 @@ It summarizes repo-side implementation behavior only. Accepted product requireme
 
 Docsera pages are workspace-owned documentation records.
 
-The current canonical page model is represented in `app/docsera-shell/src/pages/page-domain.js`.
+The current canonical page model is represented by the scoped application's shared document contracts and server page APIs.
 
 Required page ownership and identity fields:
 
@@ -122,9 +122,7 @@ Content contract notes:
 
 ## Persistence Model
 
-The current code establishes the domain contract in `app/docsera-shell/src/pages/page-domain.js`.
-
-The module currently treats page persistence as a platform-backed record with:
+The scoped application treats page persistence as a platform-backed record with:
 
 - workspace ownership
 - optional parent reference
@@ -165,7 +163,6 @@ Implemented shell-side behaviors:
 - authoring-tree visibility for draft pages
 - flat route target updates using `/docsera/:workspaceSlug/:pageSlug`
 - Page Settings overlay edits draft title and slug values in the same workspace shell model
-- editor/autosave behavior is documented separately in `Implementation Notes - Editor Shell and Autosave.md`
 - publishing workflow behavior is documented separately in `Implementation Notes - Publishing Workflow.md`
 
 ## Local Validation
@@ -173,7 +170,6 @@ Implemented shell-side behaviors:
 From `C:\Dev\Docsera`:
 
 ```powershell
-npm run validate:shell
 npm run validate
 ```
 

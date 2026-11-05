@@ -24,11 +24,9 @@
     "test:sdk-identity-conversion": "node --test scripts/convert-sdk-identity.test.mjs",
     "test:developer-instance-identity-setup": "node --test scripts/setup-developer-instance-identity.test.mjs",
     "test:task-worktree-guard": "node --test scripts/ensure-task-worktree.test.mjs",
-    "validate": "npm run validate:frontend && npm run validate:shell && npm run validate:docs",
+    "validate": "npm run validate:frontend && npm run validate:docs",
     "validate:frontend": "npm --prefix app/docsera-ui run validate",
-    "validate:shell": "npm --prefix app/docsera-shell run verify",
     "validate:docs": "node scripts/validate-docsera-docs.mjs",
-    "package:direct-ui-page": "node scripts/package-direct-ui-page-assets.mjs",
     "verify": "npm run validate"
   }
 }
