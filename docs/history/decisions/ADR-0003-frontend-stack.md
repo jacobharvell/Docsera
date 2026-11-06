@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: July 2, 2026
 
+> Historical status: This record preserves the architectural rationale at the time of its decision. It is not a current implementation specification; use the current documentation index for implemented behavior.
+
 ## Decision
 Docsera's preferred frontend source stack is React + TypeScript + Vite.
 

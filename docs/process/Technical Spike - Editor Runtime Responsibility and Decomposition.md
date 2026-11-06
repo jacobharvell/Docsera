@@ -132,7 +132,7 @@ E4-T2B remains the next production behavior task after this spike.
 
 The spike conclusion is grounded in these repo-side sources and tests:
 
-- `docs/decisions/ADR-0001-editor-architecture.md`
+- `docs/history/decisions/ADR-0001-editor-architecture.md`
 - `docs/process/Implementation Notes - Editor Host Contract.md`
 - `docs/process/Implementation Notes - Editor Shell and Autosave.md`
 - `docs/process/Implementation Notes - Revision-Safe Page Body Autosave.md`

@@ -25,7 +25,7 @@ Do not promote temporary diagnostics, failed hypotheses, or one-off test scaffol
 The contract below was consolidated from:
 
 - `AGENTS.md`
-- `docs/decisions/ADR-0001-editor-architecture.md`
+- `docs/history/decisions/ADR-0001-editor-architecture.md`
 - `docs/process/Technical Spike - Editor Runtime Responsibility and Decomposition.md`
 - `docs/process/Implementation Notes - Editor Host Contract.md`
 - `docs/process/Implementation Notes - Editor Shell and Autosave.md`
@@ -166,6 +166,6 @@ This contract should be read together with:
 - `docs/process/Implementation Notes - E4-T1B2 Direct Block Actions Menu.md`
 - `docs/process/Implementation Notes - E4-T2A Single-Block Drag and Canonical Drop Boundaries.md`
 - `docs/process/Implementation Notes - E4-T2B Gutter Multi-Block Selection and Range Delete.md`
-- `docs/decisions/ADR-0001-editor-architecture.md`
+- `docs/history/decisions/ADR-0001-editor-architecture.md`
 
 The technical spike remains historical context. This contract is the durable repo-side summary future editor interaction work should consult first.

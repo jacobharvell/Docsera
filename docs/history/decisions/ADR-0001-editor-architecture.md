@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: May 26, 2026
 
+> Historical status: This Gate 2 ProseMirror-first decision is preserved as historical rationale. It was superseded by the active TipTap implementation; use the current documentation index for implemented behavior.
+
 ## Decision
 Use a ProseMirror-first editor implementation as the Gate 2 continuation baseline.
 

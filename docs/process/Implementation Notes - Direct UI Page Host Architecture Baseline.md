@@ -16,7 +16,7 @@ This note summarizes repository behavior only. Accepted product requirements rem
 - Scope prefix: `x_82900_docsera`
 - Proven host URL: `https://dev295482.service-now.com/x_82900_docsera_docsera_standalone_host_spike.do`
 - Historical UI Builder component host: paused, retain only as comparison/fallback until the cleanup task lands
-- Preferred frontend source stack: React + TypeScript + Vite, documented in `docs/decisions/ADR-0003-frontend-stack.md`
+- Preferred frontend source stack: React + TypeScript + Vite, documented in `docs/history/decisions/ADR-0003-frontend-stack.md`
 
 ## Durable Packaging Direction
 

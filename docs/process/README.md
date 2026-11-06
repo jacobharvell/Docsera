@@ -1,17 +1,17 @@
-# Engineering and release documentation
+# Legacy engineering and release documentation
 
-This directory is contributor-facing engineering documentation. It is not consumer installation guidance and does not replace accepted product requirements, which remain in the Docsera Obsidian requirements vault.
+For current, source-grounded implementation documentation, start at the public [Docsera documentation index](../README.md). This directory retains legacy engineering notes and historical evidence pending disposition. It is not consumer installation guidance and does not replace accepted product requirements, which remain in the Docsera Obsidian requirements vault. Historical ADRs and implementation notes do not supersede the current references.
 
-## Start here
+## Retained navigation
 
-- [Architecture decisions](../decisions/) define the current editor, Direct UI Page, and frontend-stack decisions.
+- [Architecture decisions](../history/decisions/) preserve dated architectural decisions and their rationale; they are not necessarily current implementation authority. In particular, ADR-0001's ProseMirror-first baseline was superseded by the active TipTap implementation.
 - [Editor Runtime Interaction Contract](Editor%20Runtime%20Interaction%20Contract.md) is required reading before changing editor pointer, selection, gutter, drag, overlay, focus, or transient-selection behavior.
 - [Test Strategy and Validation Areas](Test%20Strategy%20and%20Validation%20Areas.md) defines the proportional validation approach and named test suites.
 - [Docsera Agent and Tooling Map](Docsera%20Agent%20and%20Tooling%20Map.md) and [Managed Frontend Validation Lifecycle](Implementation%20Notes%20-%20Managed%20Frontend%20Validation%20Lifecycle.md) cover local task workflow.
 
 ## Current implementation contracts
 
-The implementation notes describe durable repository behavior. Begin with the note closest to the change, then follow its referenced contracts:
+Legacy implementation notes may provide useful historical detail, but begin with the current, source-grounded documentation at the public [Docsera documentation index](../README.md) when understanding implemented behavior. Then use the retained note closest to the change and its referenced contracts for applicable historical detail:
 
 - Runtime and platform: [Direct UI Page Host Architecture Baseline](Implementation%20Notes%20-%20Direct%20UI%20Page%20Host%20Architecture%20Baseline.md), [SDK Native UI Page Runtime Pipeline](Implementation%20Notes%20-%20SDK%20Native%20UI%20Page%20Runtime%20Pipeline.md), and [Frontend ServiceNow Runtime Communication](Implementation%20Notes%20-%20Frontend%20ServiceNow%20Runtime%20Communication.md).
 - Workspace and page authority: [Workspace Data Model and Group Provisioning](Implementation%20Notes%20-%20Workspace%20Data%20Model%20and%20Group%20Provisioning.md), [Page Data Model and Slug Rules](Implementation%20Notes%20-%20Page%20Data%20Model%20and%20Slug%20Rules.md), [Workspace Mutation Coordination](Implementation%20Notes%20-%20Workspace%20Mutation%20Coordination.md), and [Publishing Workflow](Implementation%20Notes%20-%20Publishing%20Workflow.md).
