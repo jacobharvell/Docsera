@@ -70,19 +70,19 @@ Creating groups, assigning the scoped roles to those groups, and changing native
 | --- | --- |
 | `app/docsera-ui/` | Active scoped application source: Fluent declarations, client, shared contracts, server services, tests, and SDK scripts. |
 | `app/docsera-global-bridge/` | Separately owned Global companion: narrow bridge modules, Global host, package verification, and update-set generation. |
-| `docs/` | Contributor documentation, implementation notes, decision history, and verification evidence. |
+| `docs/` | Contributor documentation, implementation notes, and verification guidance. |
 | `releases/0.1.0/` | Immutable consumer update-set pair and its release instructions. |
 | `scripts/` | Repository-level identity and documentation/worktree validation utilities. |
 
 ## Installation architecture
 
-The repository supports two different installation paths. **SDK/source installation** is for contributors and controlled development instances: it builds the source packages after instance-owned identity setup and installs the scoped application and Global companion separately. **Frozen update-set installation** is for consumers of the immutable 0.1.0 release: it imports the scoped update set first and the Global companion second.
+The repository supports two different installation paths. **SDK/source installation** is for contributors and controlled development instances: it builds the source packages after instance-owned identity setup and installs the scoped application and Global companion separately. **0.1.0 update-set installation** is for consumers of the immutable 0.1.0 release: it imports the scoped update set first and the Global companion second.
 
-These paths have different inputs, ownership rules, and verification steps. Follow [Installing Docsera](../guides/installing-docsera.md), [development setup](../guides/development-setup.md), or [the frozen update-set guide](../guides/update-set-installation.md) rather than treating generated source output as a consumer release artifact.
+These paths have different inputs, ownership rules, and verification steps. Follow [Installing Docsera](../guides/installing-docsera.md), [development setup](../guides/development-setup.md), or [the 0.1.0 update-set guide](../guides/update-set-installation.md) rather than treating generated source output as a consumer release artifact.
 
 ## Reading this overview
 
-This overview intentionally describes boundaries and component interaction, not every API route, table, or editor extension. Use current source and focused tests as implementation truth; retained ADRs and process notes provide supporting historical context only.
+This overview intentionally describes boundaries and component interaction, not every API route, table, or editor extension. Use current source and focused tests as implementation truth.
 
 For the implemented workspace record, capability, provisioning, membership, and lifecycle contract, see the [workspace domain reference](../reference/workspace-domain.md).
 

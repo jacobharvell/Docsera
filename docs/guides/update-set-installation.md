@@ -1,15 +1,15 @@
-# Install the frozen 0.1.0 release
+# Install Docsera 0.1.0
 
 Use this route to install the published Docsera 0.1.0 consumer package on a receiving ServiceNow instance. Do not use it for SDK development work; use [development setup](development-setup.md) when building from source.
 
-## Frozen artifacts and integrity
+## Release artifacts and integrity
 
 The only supported consumer artifact pair is immutable and lives in [releases/0.1.0/](../../releases/0.1.0/):
 
 - docsera_application_0.1.0.xml — the scoped Docsera application
 - docsera_global_companion_0.1.0.xml — the narrow Global companion
 
-Before importing either file, compute its SHA-256 hash with a trusted local tool and compare it with the authoritative values in the frozen [0.1.0 release README](../../releases/0.1.0/README.md). That README is the single authoritative checksum location; this guide intentionally does not duplicate the values.
+Before importing either file, compute its SHA-256 hash with a trusted local tool and compare it with the authoritative values in the [0.1.0 release README](../../releases/0.1.0/README.md). That README is the single authoritative checksum location; this guide intentionally does not duplicate the values.
 
 For example, in PowerShell from the repository root:
 
@@ -42,13 +42,13 @@ After both commits, sign in as an authorized ServiceNow user and verify:
 - a user with the appropriate Docsera access can create a workspace, author and save a page, publish it, view Live mode, discard pending changes, and navigate or refresh without losing the documented state;
 - workspace administration is available to the appropriate administrator.
 
-These checks mirror the receiving-instance scenarios exercised for the frozen package. Record any preview conflict, commit error, or failed check rather than attempting ad hoc changes to the update-set XML or platform-wide security settings.
+These checks mirror the receiving-instance scenarios exercised for the 0.1.0 package. Record any preview conflict, commit error, or failed check rather than attempting ad hoc changes to the update-set XML or platform-wide security settings.
 
 ## Qualification and compatibility limits
 
-The frozen package has been exercised through the documented receiving-instance sequence. That evidence does **not** establish general ServiceNow compatibility, upgrade safety, uninstall behavior, or complete release qualification. It also does not authorize changing OOTB application access, ACLs, roles, or Global platform records to bypass an installation problem.
+The 0.1.0 package has been exercised through the documented receiving-instance sequence. That evidence does **not** establish general ServiceNow compatibility, upgrade safety, uninstall behavior, or complete release qualification. It also does not authorize changing OOTB application access, ACLs, roles, or Global platform records to bypass an installation problem.
 
 The Global companion is intentionally constrained: it provides the required Global boundary and authenticated host while the scoped application remains authoritative for Docsera runtime behavior and authorization. Do not import any other XML in this repository as a consumer installation artifact.
 
-See the [consumer release index](../../releases/README.md) for the available frozen release pair.
+See the [consumer release index](../../releases/README.md) for the available 0.1.0 release pair.
 

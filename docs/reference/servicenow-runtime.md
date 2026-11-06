@@ -1,6 +1,6 @@
 # ServiceNow runtime reference
 
-This reference describes Docsera's implemented ServiceNow application composition and runtime boundary. It is an architectural reference, not a setup guide, API schema, or release-qualification claim. For workspace access, group ownership, provisioning, and membership rules, see the [access and provisioning reference](access-and-provisioning.md). For the executable source-install procedure, see [development setup](../guides/development-setup.md); for the immutable consumer package, see [frozen update-set installation](../guides/update-set-installation.md).
+This reference describes Docsera's implemented ServiceNow application composition and runtime boundary. It is an architectural reference, not a setup guide, API schema, or release-qualification claim. For workspace access, group ownership, provisioning, and membership rules, see the [access and provisioning reference](access-and-provisioning.md). For the executable source-install procedure, see [development setup](../guides/development-setup.md); for the immutable consumer package, see [0.1.0 update-set installation](../guides/update-set-installation.md).
 
 ## Application composition
 
@@ -70,7 +70,7 @@ Docsera supports two distinct routes.
 
 **SDK/source development installation** uses instance-owned identities, builds both packages, installs the scoped application before the Global companion, and runs their installed-runtime verifiers. The Global installation procedure includes a friendly-URL ownership preflight so an existing non-Docsera `docsera.do` page is not overwritten. Scoped verification covers the generated/local runtime and installed UI Page plus authenticated REST ping; Global verification covers bridge records, cross-scope privileges, and Global runtime modules.
 
-**Frozen consumer update-set installation** uses the immutable 0.1.0 scoped and Global companion update sets. It verifies the published artifact hashes and imports, previews, and commits the scoped artifact before the companion artifact. It is separate from SDK-generated `app/` build output, which is not a qualified consumer release input. The frozen [release README](../../releases/0.1.0/README.md) remains the source for the exact artifact sequence.
+**Docsera 0.1.0 consumer update-set installation** uses the immutable 0.1.0 scoped and Global companion update sets. It verifies the published artifact hashes and imports, previews, and commits the scoped artifact before the companion artifact. It is separate from SDK-generated `app/` build output, which is not a qualified consumer release input. The [0.1.0 release README](../../releases/0.1.0/README.md) remains the source for the exact artifact sequence.
 
 Local tests and build verification establish source and packaging contracts. Installed-instance verification establishes that the expected artifacts, service boundary, and bridge are present on the target instance. Live user acceptance is still required for browser interaction and visual behavior; neither a local build nor an installed verifier establishes that acceptance. Existing evidence does not claim general compatibility, upgrade safety, or uninstall qualification.
 

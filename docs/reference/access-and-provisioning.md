@@ -58,7 +58,7 @@ Deleting a workspace requires effective workspace-admin capability. Before the s
 
 If cleanup fails after the inactive commit, the supported outcome is committed-but-incomplete; later cleanup can retry against the inactive tombstone. Finalization clears deleted references while preserving the slug so a prior route is not silently reused.
 
-Native groups and `sys_user_grmember` rows are ServiceNow group/membership data. They are not SDK application ownership records. The scoped application and the Global companion are separately installed, separately owned application identities; neither identity is a Docsera user role or a workspace membership. Follow the existing [source installation guide](../guides/development-setup.md) or [frozen update-set installation guide](../guides/update-set-installation.md) for their tested procedures.
+Native groups and `sys_user_grmember` rows are ServiceNow group/membership data. They are not SDK application ownership records. The scoped application and the Global companion are separately installed, separately owned application identities; neither identity is a Docsera user role or a workspace membership. Follow the existing [source installation guide](../guides/development-setup.md) or [0.1.0 update-set installation guide](../guides/update-set-installation.md) for their tested procedures.
 
 ## Enforcement boundaries and limitations
 

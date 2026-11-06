@@ -2,7 +2,7 @@
 
 This source package can generate a temporary Global companion update set for
 release engineering. It is not a consumer installation artifact. The only
-supported consumer import pair is frozen in
+supported consumer import pair is provided in
 [`releases/0.1.0/`](../../../releases/0.1.0/).
 
 Generate a temporary artifact after an SDK build:

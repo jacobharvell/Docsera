@@ -1,15 +1,11 @@
 # Docsera documentation
 
-This is the public starting point for Docsera documentation. It links to the current, source-grounded references for installation, development, architecture, and operation. Approved historical evidence remains available in [the history archive](history/), but does not replace the references below.
-
-For dated architectural rationale that does not define current implementation behavior, see the [historical architecture decisions](history/decisions/README.md). Dated [release](history/release/README.md), [security, accessibility, and compatibility](history/security/README.md), and [platform feasibility](history/platform-and-installation/README.md) evidence is retained separately and does not define current behavior.
-
-The [historical generated evidence](history/evidence/README.md) preserves three immutable JSON/XML artifacts for their dated evidence purpose only; their superseded task narratives remain in Git history.
+This is the public starting point for Docsera documentation. It links to the current, source-grounded references for installation, development, architecture, and operation.
 
 ## Installation
 
-- [Installing Docsera](guides/installing-docsera.md) helps choose the correct route: contributor/source development or the frozen consumer package.
-- [Frozen 0.1.0 update-set installation](guides/update-set-installation.md) covers the qualified consumer import route. It is distinct from SDK/source development and does not establish universal compatibility, upgrade or uninstall safety, or public-release approval.
+- [Installing Docsera](guides/installing-docsera.md) helps choose the correct route: contributor/source development or the 0.1.0 consumer package.
+- [Docsera 0.1.0 update-set installation](guides/update-set-installation.md) covers the qualified consumer import route. It is distinct from SDK/source development and does not establish universal compatibility, upgrade or uninstall safety, or public-release approval.
 - [Development setup](guides/development-setup.md) covers the SDK/source route for a contributor-controlled ServiceNow development instance.
 
 ## Architecture
@@ -39,8 +35,7 @@ The [historical generated evidence](history/evidence/README.md) preserves three 
 ## Release evidence
 
 - [Release qualification](release/qualification.md) states the demonstrated 0.1.0 release evidence and its limits.
-- [Immutable consumer release instructions](../releases/0.1.0/README.md) are the authority for the frozen update-set pair, checksums, and import order.
-- [Historical release evidence](history/release/README.md) preserves the dated construction, inspection, and receiving-instance qualification reports; it does not define current installation instructions or release approval.
+- [Docsera 0.1.0 release instructions](../releases/0.1.0/README.md) are the authority for the 0.1.0 update-set pair, checksums, and import order.
 
 ## Contributing and support
 

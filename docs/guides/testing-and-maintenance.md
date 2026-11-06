@@ -100,7 +100,7 @@ For SDK source installation, the verified order, the Global friendly-URL ownersh
 
 Local tests and builds do not install Docsera or prove live ServiceNow behavior. The scoped runtime verifier checks local build output, the installed UI Page and bundle freshness, and an authenticated REST ping. The Global verifier checks installed bridge records, cross-scope privileges, and Global runtime modules. These checks are stronger packaging and boundary evidence, but cannot replace live PDI validation of authorization, scoped/Global interaction, or browser-specific rendering and interaction.
 
-Documentation-only work normally needs Markdown-link and documentation validation, not application builds, installation, or PDI verification. The documentation validator verifies the current public documentation structure, frozen consumer-release references, and local Markdown links; it is not application validation.
+Documentation-only work normally needs Markdown-link and documentation validation, not application builds, installation, or PDI verification. The documentation validator verifies the current public documentation structure, 0.1.0 consumer-release references, and local Markdown links; it is not application validation.
 
 ## Regression and maintenance expectations
 
@@ -108,6 +108,6 @@ Coded behavior changes require new or appropriately updated regression coverage.
 
 In an implementation handoff, state the tests added or updated, the commands run, the evidence those commands establish, and any intentionally omitted validation. Keep test assignments synchronized with the manifest, preserve SDK-generated module identity and build contracts, and keep tests and documentation aligned with accepted implementation behavior.
 
-Use isolated task worktrees and preserve a clean, reviewable working state. Keep frozen consumer-release artifacts separate from development-generated output. Treat verification output as potentially sensitive: do not commit credentials, tokens, instance-specific information, or private data.
+Use isolated task worktrees and preserve a clean, reviewable working state. Keep immutable consumer-release artifacts separate from development-generated output. Treat verification output as potentially sensitive: do not commit credentials, tokens, instance-specific information, or private data.
 
 For the underlying runtime, deployment boundaries, and scoped/Global distinction, see the [ServiceNow runtime reference](../reference/servicenow-runtime.md). For source installation and authenticated verification prerequisites, return to [development setup](development-setup.md).

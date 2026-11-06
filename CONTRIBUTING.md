@@ -10,13 +10,13 @@ Contributor work on the active application requires:
 - npm.
 - A contributor-owned ServiceNow development environment and SDK authentication configured for that environment when work needs installation or runtime verification.
 
-Do not use the frozen `releases/0.1.0` XML files as an SDK development installation. They are consumer update-set artifacts; follow [their installation instructions](releases/0.1.0/README.md) only when installing the published release.
+Do not use the `releases/0.1.0` XML files as an SDK development installation. They are 0.1.0 consumer update-set artifacts; follow [their installation instructions](releases/0.1.0/README.md) only when installing that release.
 
 ## Active source boundaries
 
 - `app/docsera-ui/` is the active scoped-app Direct UI Page runtime and the usual contribution target.
 - `app/docsera-global-bridge/` is release and maintenance source for the narrow Global companion; it is not a standalone app.
-- `releases/0.1.0/` is frozen consumer-release material. Do not alter it as part of ordinary source contributions.
+- `releases/0.1.0/` contains immutable 0.1.0 release artifacts. Do not alter it as part of ordinary source contributions.
 
 `AGENTS.md` is local workspace guidance. Public contributors should rely on the checked-in README files, package scripts, and relevant documentation.
 
@@ -44,4 +44,4 @@ Keep pull requests focused. Include:
 - Documentation updates when durable behavior, contracts, or setup expectations change.
 - Manual ServiceNow verification steps when the change affects runtime behavior or visual interaction.
 
-Do not modify frozen release artifacts or make platform/security-setting changes unless the work is explicitly scoped for that purpose.
+Do not modify immutable release artifacts or make platform/security-setting changes unless the work is explicitly scoped for that purpose.

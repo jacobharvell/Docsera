@@ -1,6 +1,6 @@
 # Development setup from source
 
-Use this route for Docsera contributors and controlled deployment to a ServiceNow development instance you own. For a consumer installation of the published package, use [the frozen update-set route](update-set-installation.md) instead.
+Use this route for Docsera contributors and controlled deployment to a ServiceNow development instance you own. For a consumer installation of the published package, use [the 0.1.0 update-set route](update-set-installation.md) instead.
 
 ## What this route installs
 

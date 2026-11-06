@@ -8,12 +8,12 @@ Docsera has two distinct installation paths.
 
 | Path | Intended use | Inputs and boundary |
 | --- | --- | --- |
-| Consumer installation | Install the immutable 0.1.0 package on a receiving ServiceNow instance. | Install the scoped application update set first and the Global companion update set second from the frozen [consumer release pair](../../releases/README.md). The [0.1.0 release README](../../releases/0.1.0/README.md) is the authority for artifact identities, checksums, and the exact import sequence. |
+| Consumer installation | Install the immutable 0.1.0 package on a receiving ServiceNow instance. | Install the scoped application update set first and the Global companion update set second from the [0.1.0 consumer release pair](../../releases/README.md). The [0.1.0 release README](../../releases/0.1.0/README.md) is the authority for artifact identities, checksums, and the exact import sequence. |
 | Contributor/source installation | Develop or perform a controlled deployment to an instance the contributor owns. | Establish SDK-owned identities, build and install the scoped application and separately owned Global companion in order, then perform their installed-runtime verification. Follow [development setup](../guides/development-setup.md) and the [ServiceNow runtime reference](../reference/servicenow-runtime.md). |
 
-The routes are not interchangeable. Generated SDK output, historical exports, and diagnostic candidate XML are evidence or development inputs, not supported consumer artifacts. For a consumer install, use [the frozen update-set guide](../guides/update-set-installation.md); for the route-selection boundary, see [Installing Docsera](../guides/installing-docsera.md).
+The routes are not interchangeable. Generated SDK output, historical exports, and diagnostic candidate XML are evidence or development inputs, not supported consumer artifacts. For a consumer install, use [the 0.1.0 update-set guide](../guides/update-set-installation.md); for the route-selection boundary, see [Installing Docsera](../guides/installing-docsera.md).
 
-A frozen repository package is also not, by itself, a completed public-release announcement, an approved ServiceNow compatibility matrix, or G8 publication acceptance.
+An immutable repository package is also not, by itself, a completed public-release announcement, an approved ServiceNow compatibility matrix, or G8 publication acceptance.
 
 ## Artifact provenance
 
@@ -21,16 +21,16 @@ The accepted scoped source application is `Docsera`, scope `x_2300756_docsera`, 
 
 | Evidence | What it establishes | Limit |
 | --- | --- | --- |
-| [RR-077](../history/release/RR-077%20Controlled%20Scoped%20Export%20and%20Artifact%20Inspection.md) | A native scoped export was inspected as 564 `INSERT_OR_UPDATE` payloads. Its decoded inventory reconciled application/schema/runtime metadata, current identity, and the absence of obsolete or unrelated domain/attachment payloads. | It was a diagnostic candidate, not public-release approval or receiving-instance/lifecycle proof. |
-| [RR-074](../history/release/RR-074%20Global%20Consumer%20Artifact%20Portability%20Candidate.md) | A 24-update Global consumer candidate was constructed with Global-owned consumer metadata, a restricted-caller authorization, and no dependency on the SDK development companion identity. | Its initial result was offline composition and integrity evidence only. |
-| [RR-078](../history/release/RR-078%20Global%20Companion%20Consumer%20Artifact%20Qualification.md) | Independent inspection reconciled the two candidate artifacts, their ordered dependency, non-overlapping targets, update actions, integrity, and the Global-to-scoped authorization boundary. | Matching inventories, versions, or record counts do not establish byte identity, platform preview, or commit behavior. |
-| [Frozen 0.1.0 release README](../../releases/0.1.0/README.md) | The immutable consumer pair preserves the qualified RR-077 scoped and RR-074 Global payloads, with consumer-facing outer update-set display names. It is the checksum authority. | It does not transform the package into a completed public release. |
+| Scoped artifact provenance | A native scoped export was inspected as 564 `INSERT_OR_UPDATE` payloads. Its decoded inventory reconciled application/schema/runtime metadata, current identity, and the absence of obsolete or unrelated domain/attachment payloads. | It was a diagnostic candidate, not public-release approval or receiving-instance/lifecycle proof. |
+| Global artifact provenance | A 24-update Global consumer candidate was constructed with Global-owned consumer metadata, a restricted-caller authorization, and no dependency on the SDK development companion identity. | Its initial result was offline composition and integrity evidence only. |
+| Paired-artifact inspection | Independent inspection reconciled the two candidate artifacts, their ordered dependency, non-overlapping targets, update actions, integrity, and the Global-to-scoped authorization boundary. | Matching inventories, versions, or record counts do not establish byte identity, platform preview, or commit behavior. |
+| [Docsera 0.1.0 release README](../../releases/0.1.0/README.md) | The immutable consumer pair preserves the qualified scoped and Global payloads, with consumer-facing outer update-set display names. It is the checksum authority. | It does not transform the package into a completed public release. |
 
-These categories must remain distinct: source commits describe reviewed source; generated candidates describe build or export outputs; native exported artifacts describe an exported payload; frozen release files are the immutable consumer inputs; and installed records describe one instance's result. The documented consumer packaging transformation changes the outer update-set display names; it must not be described as inferred byte-for-byte identity from a shared version or count.
+These categories must remain distinct: source commits describe reviewed source; generated candidates describe build or export outputs; native exported artifacts describe an exported payload; 0.1.0 release files are the immutable consumer inputs; and installed records describe one instance's result. The documented consumer packaging transformation changes the outer update-set display names; it must not be described as inferred byte-for-byte identity from a shared version or count.
 
 ## Receiving-instance qualification
 
-The strongest installation evidence is the scoped-first, Global-second sequence recorded in [RR-079](../history/release/RR-079%20Clean%20Receiving-Instance%20Scoped%20Import%20and%20Preview.md) and [RR-080](../history/release/RR-080%20Global%20Companion%20Installation%20and%20Functional%20Acceptance.md).
+The strongest installation evidence is the documented scoped-first, Global-second receiving-instance sequence.
 
 For the scoped candidate, Jacob reported native import, preview without reported problems or collisions, and successful commit on a clean receiving instance. Independently inspected retrieved-update-set XML then established a `committed` state, 564 inserts, zero updates, deletes, and collisions, plus the installed allowed scoped bridge privilege. The native PDI observations beyond that XML inspection remain Jacob-reported observations.
 
@@ -48,16 +48,16 @@ The post-commit Global retrieved-update-set XML was not independently inspected.
 
 Together, this evidence demonstrates that the paired qualified candidates installed in the documented order and supported the listed core smoke on that receiving-instance sequence. It does not establish a general platform guarantee, all authorization paths, all schema/index behavior, an upgrade path, uninstall behavior, or public-release approval.
 
-## Historical and platform evidence index
+## Prior evidence and platform limitations
 
-Historical evidence remains useful only within its stated identity, instance, artifact, and date boundary.
+Prior evidence is bounded by its stated identity, instance, artifact, and date boundary.
 
 | Evidence group | Bounded finding | Do not infer |
 | --- | --- | --- |
-| [RR-031](../history/security/RR-031%20Current-Family%20Platform%20Compatibility%20Baseline.md) through [RR-033](../history/security/RR-033%20G3%20Compatibility%20Evidence%20Reconciliation.md) | Australia Patch 2 runtime/HTTP and metadata observations, including the Global-host dependency chain. The reports identify development-PDI drift and untested interaction, execution, and least-privilege areas. | A supported family/patch matrix, interactive compatibility, upgrade qualification, or current-identity installation proof. |
-| [RR-036](../history/release/RR-036%20Brazil%20Clean%20Scoped%20Staging%20Installation.md) through [RR-040](../history/release/RR-040%20Clean-Target%20First%20Workspace%20Provisioning%20Verification.md) | Earlier Brazil/clean-target installation, metadata, first-use, and functional observations under the historical application identity. | That those observations qualify the current pair or erase their historical identity boundary. |
-| [RR-039D](../history/release/RR-039D%20Clean-Target%20Unique%20Enforcement%20Probe.md) | Duplicate rejection for the one historical installed `workspace_icon_asset.asset_key` unique field. | Physical unique-index visibility, all ten declared unique fields, or enforcement on the current receiving instance. |
-| [RR-030](../history/security/RR-030%20G2%20Accessibility%20Closeout.md) | Accepted focused accessibility work and a four-state automated audit, with known limitations stated in the report. | Comprehensive accessibility testing or WCAG conformance. |
+| Australia Patch 2 observations | Runtime/HTTP and metadata observations, including the Global-host dependency chain, identified development-PDI drift and untested interaction, execution, and least-privilege areas. | A supported family/patch matrix, interactive compatibility, upgrade qualification, or current-identity installation proof. |
+| Earlier Brazil and clean-target observations | Earlier installation, metadata, first-use, and functional observations used the historical application identity. | That those observations qualify the current pair or erase their historical identity boundary. |
+| Earlier unique-field probe | Duplicate rejection was observed for the historical installed `workspace_icon_asset.asset_key` unique field. | Physical unique-index visibility, all ten declared unique fields, or enforcement on the current receiving instance. |
+| Focused accessibility evidence | Accepted focused accessibility work and a four-state automated audit had known limitations. | Comprehensive accessibility testing or WCAG conformance. |
 | [Authorization boundaries](../security/authorization-boundaries.md) and [testing and maintenance](../guides/testing-and-maintenance.md) | Source, focused tests, and selected installed/user-context evidence support the described security and reliability boundaries. | Comprehensive security certification, full penetration-test coverage, or universal effective-access behavior. |
 
 ## Qualification snapshot

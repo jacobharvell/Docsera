@@ -30,9 +30,19 @@ function markdownFiles(relativeDirectory) {
 	});
 }
 
+const documentationMarkdown = [
+	resolve(root, 'README.md'),
+	resolve(root, 'CONTRIBUTING.md'),
+	resolve(root, 'SUPPORT.md'),
+	resolve(root, 'SECURITY.md'),
+	...markdownFiles('docs'),
+	...markdownFiles('releases'),
+	resolve(root, 'app/docsera-global-bridge/update-set/README.md')
+];
+
 function assertLocalMarkdownLinksResolve() {
 	const brokenLinks = [];
-	for (const absolutePath of [resolve(root, 'README.md'), ...markdownFiles('docs')]) {
+	for (const absolutePath of documentationMarkdown) {
 		const text = readFileSync(absolutePath, 'utf8');
 		const linkPattern = /!?\[[^\]]*\]\(([^)]+)\)/g;
 		for (const match of text.matchAll(linkPattern)) {
@@ -51,6 +61,21 @@ function assertLocalMarkdownLinksResolve() {
 	}
 }
 
+function assertCurrentReleaseTerminology() {
+	const obsoleteTerminology = [];
+	for (const absolutePath of documentationMarkdown) {
+		const text = readFileSync(absolutePath, 'utf8');
+		if (/frozen/i.test(text)) {
+			obsoleteTerminology.push(relative(root, absolutePath));
+		}
+	}
+	if (obsoleteTerminology.length > 0) {
+		throw new Error(
+			`Obsolete frozen release terminology in:\n${obsoleteTerminology.join('\n')}`
+		);
+	}
+}
+
 const readme = readText('README.md');
 mustContain(
 	readme,
@@ -60,7 +85,6 @@ mustContain(
 		'scoped-first, Global-second',
 		'app/docsera-ui/',
 		'app/docsera-global-bridge/',
-		'docs/history/',
 		'MIT License'
 	],
 	'README.md'
@@ -90,7 +114,7 @@ mustContain(
 		'0.1.0/docsera_application_0.1.0.xml',
 		'0.1.0/docsera_global_companion_0.1.0.xml',
 		'scoped first, then Global',
-		'sole frozen consumer release pair',
+		'sole consumer release pair',
 		'No other XML in this repository is a supported consumer installation artifact.'
 	],
 	'releases/README.md'
@@ -106,7 +130,7 @@ mustContain(
 		'Security',
 		'Testing and maintenance',
 		'Release evidence',
-		'history archive'
+		'Docsera 0.1.0 release instructions'
 	],
 	'docs/README.md'
 );
@@ -127,16 +151,12 @@ for (const currentReference of [
 	'docs/reference/editor/markdown-and-source.md',
 	'docs/reference/editor/media.md',
 	'docs/release/qualification.md',
-	'docs/security/authorization-boundaries.md',
-	'docs/history/decisions/README.md',
-	'docs/history/evidence/README.md',
-	'docs/history/platform-and-installation/README.md',
-	'docs/history/release/README.md',
-	'docs/history/security/README.md'
+	'docs/security/authorization-boundaries.md'
 ]) {
 	readText(currentReference);
 }
 
 assertLocalMarkdownLinksResolve();
+assertCurrentReleaseTerminology();
 
 console.log('Docsera doc validation passed.');
