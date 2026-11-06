@@ -21,6 +21,7 @@
     "verify:sdk-module-keys": "node ./scripts/verify-sdk-module-keys.mjs",
     "verify:sdk-module-keys:checkpoint": "node ./scripts/verify-sdk-module-keys.mjs --checkpoint",
     "verify:sdk-bundle-serialization": "node ./scripts/verify-sdk-bundle-serialization.mjs",
+    "verify:retired-editor-spike-assets": "node ./scripts/verify-retired-editor-spike-assets.mjs",
     "verify:editor-runtime-boundary": "node ./scripts/verify-editor-runtime-boundary.mjs",
     "verify:inline-runtime-css-build": "node ./scripts/verify-inline-runtime-css-build.mjs",
     "verify:sdk-runtime": "node ./scripts/verify-sdk-runtime.mjs",
