@@ -22,7 +22,7 @@ This repository is a ServiceNow source-and-artifact project, not an npm package 
 - [app/docsera-ui/](app/docsera-ui/) is the active ServiceNow SDK source for the scoped Direct UI Page runtime.
 - [app/docsera-global-bridge/](app/docsera-global-bridge/) is the source for the narrowly scoped Global companion used by the release workflow; it is not a standalone Docsera app.
 - [docs/README.md](docs/README.md) is the current documentation index, including the runtime overview and contributor guidance. [docs/history/decisions/](docs/history/decisions/) retains architectural history; verify it against current source and the overview before treating it as current behavior.
-- [docs/process/](docs/process/README.md) retains legacy engineering notes and historical evidence. It is not consumer installation documentation or the current implementation reference index.
+- [docs/history/](docs/history/) retains narrowly approved historical decisions and evidence. It is not consumer installation documentation or the current implementation reference index.
 
 ## For contributors
 

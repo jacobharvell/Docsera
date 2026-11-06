@@ -97,4 +97,4 @@ The principal current sources are:
 
 Focused verification evidence includes `app/docsera-ui/test/workspaceDomain.test.ts`, `workspaceProvisioningTrigger.test.ts`, `globalWorkspaceProvisioningBridge.test.ts`, `globalWorkspaceMembershipBridge.test.ts`, and `globalWorkspaceMembershipWorker.test.ts`, plus the focused server tests for catalog, members, settings, and deletion under `app/docsera-ui/src/server/workspaces/`.
 
-Implementation notes under `docs/process/` provide extraction context, but this reference is grounded in the current declarations, services, and tests above. In particular, it does not treat historical page-level locking or earlier editor-host arrangements as current architecture.
+This reference is grounded in the current declarations, services, and tests above. It does not treat historical page-level locking or earlier editor-host arrangements as current architecture.

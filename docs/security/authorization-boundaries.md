@@ -110,7 +110,7 @@ Current evidence for this reference includes:
 - Fluent role, ACL, table-access, and cross-scope declarations under `app/docsera-ui/src/fluent/` and `app/docsera-global-bridge/src/fluent/`;
 - scoped capability, workspace, page, lease, publishing, membership, icon, media, and deletion services and their API handlers;
 - focused authorization, negative-path, ownership, lease, mutation, Global bridge/worker, canonical document, paste, link, and reader tests; and
-- the read-only installed-instance observations in `docs/process/RR-007` through `RR-012`, used only as historical supporting evidence.
+- the read-only installed-instance observations in `docs/history/security/RR-007` through `RR-012`, used only as historical supporting evidence.
 
 The current source identity is `x_2300756_docsera`. Historical RR material can mention the superseded `x_82900_docsera` identity and does not establish present installed-instance ACL parity. Neither that historical evidence nor source-focused tests establish arbitrary-instance compatibility, a comprehensive penetration test, complete protection against every integration path, or universal security guarantees. Findings or defense-in-depth ideas from historical reviews are not treated here as confirmed vulnerabilities or as implementation work.
 

@@ -100,4 +100,4 @@ The principal runtime modules are:
 | Paste and structured blocks | `pasteSanitizer.ts`, `PageEditorHostRuntime.tsx` | `pasteSanitizer.test.ts`, `PageEditorHostRuntime.accordion.test.tsx`, `PageEditorHostRuntime.callout.test.tsx`, `PageEditorHostRuntime.columns.test.tsx` |
 | Images | `PageEditorHostRuntime.tsx` | `PageEditorHostRuntime.imageControls.test.tsx`, `PageEditorHostRuntime.imageMedia.test.tsx` |
 
-For reusable Shadow DOM, pointer ownership, geometry, overlay, and validation rules, see the repository's [Editor Runtime Interaction Contract](../process/Editor%20Runtime%20Interaction%20Contract.md).
+This reference is the current repository contract for Shadow DOM, pointer ownership, geometry, overlays, and validation rules.

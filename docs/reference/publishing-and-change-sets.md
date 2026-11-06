@@ -95,4 +95,4 @@ Current implementation sources include:
 
 Focused verification evidence is in `app/docsera-ui/src/server/workspaces/workspaceChangeSetDomain.test.ts`, `serviceNowWorkspaceChangeSetPersistence.test.ts`, `app/docsera-ui/src/server/api/docsera-runtime-mutation-routes.test.ts`, `app/docsera-ui/src/server/workspace-leases/workspaceEditLeaseService.test.ts`, and `app/docsera-ui/src/client/app/App.publishingChanges.test.tsx`.
 
-The implementation notes under `docs/process/` provide historical extraction context. This reference is grounded in the current source and focused tests listed above.
+This reference is grounded in the current source and focused tests listed above.

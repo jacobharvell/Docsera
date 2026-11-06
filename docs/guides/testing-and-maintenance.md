@@ -100,7 +100,7 @@ For SDK source installation, the verified order, the Global friendly-URL ownersh
 
 Local tests and builds do not install Docsera or prove live ServiceNow behavior. The scoped runtime verifier checks local build output, the installed UI Page and bundle freshness, and an authenticated REST ping. The Global verifier checks installed bridge records, cross-scope privileges, and Global runtime modules. These checks are stronger packaging and boundary evidence, but cannot replace live PDI validation of authorization, scoped/Global interaction, or browser-specific rendering and interaction.
 
-Documentation-only work normally needs Markdown-link and documentation validation, not application builds, installation, or PDI verification. The current docs validator has intentional hardcoded dependencies on historical `docs/process/` files, including `Requirements Source Map.md`. This is a known rationalization constraint, not permission to change the validator; any future removal requiring non-Markdown script changes needs separate approval.
+Documentation-only work normally needs Markdown-link and documentation validation, not application builds, installation, or PDI verification. The documentation validator verifies the current public documentation structure, frozen consumer-release references, and local Markdown links; it is not application validation.
 
 ## Regression and maintenance expectations
 

@@ -1,5 +1,5 @@
-import {readFileSync, existsSync} from 'node:fs';
-import {resolve} from 'node:path';
+import {existsSync, readdirSync, readFileSync} from 'node:fs';
+import {dirname, extname, relative, resolve} from 'node:path';
 
 const root = resolve(process.cwd());
 
@@ -19,6 +19,38 @@ function mustContain(text, needles, fileLabel) {
 	}
 }
 
+function markdownFiles(relativeDirectory) {
+	const absoluteDirectory = resolve(root, relativeDirectory);
+	return readdirSync(absoluteDirectory, {withFileTypes: true}).flatMap((entry) => {
+		const child = resolve(absoluteDirectory, entry.name);
+		if (entry.isDirectory()) {
+			return markdownFiles(relative(root, child));
+		}
+		return extname(entry.name).toLowerCase() === '.md' ? [child] : [];
+	});
+}
+
+function assertLocalMarkdownLinksResolve() {
+	const brokenLinks = [];
+	for (const absolutePath of [resolve(root, 'README.md'), ...markdownFiles('docs')]) {
+		const text = readFileSync(absolutePath, 'utf8');
+		const linkPattern = /!?\[[^\]]*\]\(([^)]+)\)/g;
+		for (const match of text.matchAll(linkPattern)) {
+			const target = match[1].trim().replace(/^<|>$/g, '');
+			if (!target || target.startsWith('#') || /^[a-z][a-z0-9+.-]*:/i.test(target)) {
+				continue;
+			}
+			const targetPath = decodeURIComponent(target.split(/[?#]/, 1)[0]);
+			if (!targetPath || !existsSync(resolve(dirname(absolutePath), targetPath))) {
+				brokenLinks.push(`${relative(root, absolutePath)} -> ${target}`);
+			}
+		}
+	}
+	if (brokenLinks.length > 0) {
+		throw new Error(`Broken local Markdown links:\n${brokenLinks.join('\n')}`);
+	}
+}
+
 const readme = readText('README.md');
 mustContain(
 	readme,
@@ -28,6 +60,7 @@ mustContain(
 		'scoped-first, Global-second',
 		'app/docsera-ui/',
 		'app/docsera-global-bridge/',
+		'docs/history/',
 		'MIT License'
 	],
 	'README.md'
@@ -63,89 +96,47 @@ mustContain(
 	'releases/README.md'
 );
 
-const processReadme = readText('docs/process/README.md');
+const docsReadme = readText('docs/README.md');
 mustContain(
-	processReadme,
+	docsReadme,
 	[
-		'Current implementation contracts',
-		'Editor Runtime Interaction Contract',
-		'Release, security, and historical evidence',
-		'frozen 0.1.0 release',
-		'not current installation instructions'
+		'Installation',
+		'Architecture',
+		'Editor',
+		'Security',
+		'Testing and maintenance',
+		'Release evidence',
+		'history archive'
 	],
-	'docs/process/README.md'
+	'docs/README.md'
 );
 
-const requirementsSourceMap = readText('docs/process/Requirements Source Map.md');
-mustContain(
-	requirementsSourceMap,
-	[
-		'Accepted product requirements live in the Obsidian vault',
-		'does not supersede those requirements',
-		'Local Obsidian paths',
-		'10 Roles, Workspace Membership, and Access Workflows.md',
-		'20 My Workspaces.md',
-		'21 Workspace Model.md',
-		'22 Workspace Shell.md',
-		'30 Page Model.md',
-		'31 Page Settings.md',
-		'41 Publishing Model.md',
-		'60 Design System.md',
-		'C:\\Users\\jacob\\OneDrive\\Documents\\Obsidian Vault\\Attachments'
-	],
-	'docs/process/Requirements Source Map.md'
-);
+for (const currentReference of [
+	'docs/architecture/overview.md',
+	'docs/guides/development-setup.md',
+	'docs/guides/installing-docsera.md',
+	'docs/guides/testing-and-maintenance.md',
+	'docs/guides/update-set-installation.md',
+	'docs/reference/access-and-provisioning.md',
+	'docs/reference/editor-interactions.md',
+	'docs/reference/page-state-and-hierarchy.md',
+	'docs/reference/publishing-and-change-sets.md',
+	'docs/reference/servicenow-runtime.md',
+	'docs/reference/workspace-domain.md',
+	'docs/reference/editor/document-model-and-blocks.md',
+	'docs/reference/editor/markdown-and-source.md',
+	'docs/reference/editor/media.md',
+	'docs/release/qualification.md',
+	'docs/security/authorization-boundaries.md',
+	'docs/history/decisions/README.md',
+	'docs/history/evidence/README.md',
+	'docs/history/platform-and-installation/README.md',
+	'docs/history/release/README.md',
+	'docs/history/security/README.md'
+]) {
+	readText(currentReference);
+}
 
-const workspaceDoc = readText('docs/process/Implementation Notes - Workspace Data Model and Group Provisioning.md');
-mustContain(
-	workspaceDoc,
-	[
-		'workspaceSlug',
-		'Docsera_<Workspace_Key>_Admins',
-		'workspace group key is separate',
-		'hr-docs-2',
-		'Docsera default icon',
-		'npm run validate'
-	],
-	'docs/process/Implementation Notes - Workspace Data Model and Group Provisioning.md'
-);
-
-const pageDoc = readText('docs/process/Implementation Notes - Page Data Model and Slug Rules.md');
-mustContain(
-	pageDoc,
-	[
-		'workspaceSysId',
-		'parentPageSysId',
-		'siblingOrder',
-		'benefits-1',
-		'published_with_unpublished_changes',
-		'/docsera/:workspaceSlug/:pageSlug',
-		'reader shell now uses the flat route model'
-	],
-	'docs/process/Implementation Notes - Page Data Model and Slug Rules.md'
-);
-
-const capabilityDoc = readText('docs/process/Implementation Notes - Workspace Capability Checks.md');
-mustContain(
-	capabilityDoc,
-	[
-		'Workspace Admin',
-		'Workspace Editor',
-		'hasRole(roleName)',
-		'isMemberOfGroup(groupSysId)',
-		'workspace capability contract'
-	],
-	'docs/process/Implementation Notes - Workspace Capability Checks.md'
-);
-
-const myWorkspacesDoc = readText('docs/process/Implementation Notes - My Workspaces Launcher.md');
-mustContain(
-	myWorkspacesDoc,
-	[
-		'Full reader-mode shell behavior now lives in the product shell',
-		'launcher entry surface'
-	],
-	'docs/process/Implementation Notes - My Workspaces Launcher.md'
-);
+assertLocalMarkdownLinksResolve();
 
 console.log('Docsera doc validation passed.');

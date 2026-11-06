@@ -1,8 +1,10 @@
 # Docsera documentation
 
-This is the public starting point for Docsera documentation. It links to the current, source-grounded references for installation, development, architecture, and operation. Historical engineering notes remain available in [the legacy process index](process/README.md), but do not replace the references below.
+This is the public starting point for Docsera documentation. It links to the current, source-grounded references for installation, development, architecture, and operation. Approved historical evidence remains available in [the history archive](history/), but does not replace the references below.
 
-For dated architectural rationale that does not define current implementation behavior, see the [historical architecture decisions](history/decisions/README.md).
+For dated architectural rationale that does not define current implementation behavior, see the [historical architecture decisions](history/decisions/README.md). Dated [release](history/release/README.md), [security, accessibility, and compatibility](history/security/README.md), and [platform feasibility](history/platform-and-installation/README.md) evidence is retained separately and does not define current behavior.
+
+The [historical generated evidence](history/evidence/README.md) preserves three immutable JSON/XML artifacts for their dated evidence purpose only; their superseded task narratives remain in Git history.
 
 ## Installation
 

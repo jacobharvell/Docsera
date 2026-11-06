@@ -13,7 +13,7 @@ The Direct UI Page owns the document shell, layout, and browser entry point. UI 
 The currently implemented runtime is the scoped `x_2300756_docsera` application defined in [`app/docsera-ui/now.config.json`](../../../app/docsera-ui/now.config.json).
 
 ## Context
-The initial host investigation established that a standalone Direct UI Page can own the full Docsera shell without the UI Builder/native frame runtime. The abandoned proof-only implementation notes are intentionally not retained as operational guidance; the current repository contracts are the [Direct UI Page host architecture baseline](../../process/Implementation%20Notes%20-%20Direct%20UI%20Page%20Host%20Architecture%20Baseline.md) and [SDK-native runtime pipeline](../../process/Implementation%20Notes%20-%20SDK%20Native%20UI%20Page%20Runtime%20Pipeline.md).
+The initial host investigation established that a standalone Direct UI Page can own the full Docsera shell without the UI Builder/native frame runtime. The abandoned proof-only implementation notes are intentionally not retained as operational guidance; see the current [runtime overview](../../architecture/overview.md) and [ServiceNow runtime reference](../../reference/servicenow-runtime.md) for the implemented host and SDK pipeline.
 
 ## Durable Packaging Direction
 The runtime host stays a Direct UI Page. The current durable packaging shape is:
