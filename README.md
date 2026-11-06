@@ -19,7 +19,7 @@ This repository is a ServiceNow source-and-artifact project, not an npm package 
 
 - [app/docsera-ui/](app/docsera-ui/) is the active ServiceNow SDK source for the scoped Direct UI Page runtime.
 - [app/docsera-global-bridge/](app/docsera-global-bridge/) is the source for the narrowly scoped Global companion used by the release workflow; it is not a standalone Docsera app.
-- [docs/decisions/](docs/decisions/) contains the active architectural decisions. Relevant implementation context includes the [SDK-native runtime pipeline](docs/process/Implementation%20Notes%20-%20SDK%20Native%20UI%20Page%20Runtime%20Pipeline.md), [workspace data model](docs/process/Implementation%20Notes%20-%20Workspace%20Data%20Model%20and%20Group%20Provisioning.md), and [page model](docs/process/Implementation%20Notes%20-%20Page%20Data%20Model%20and%20Slug%20Rules.md).
+- [docs/architecture/overview.md](docs/architecture/overview.md) describes the current runtime shape and responsibility boundaries. [docs/decisions/](docs/decisions/) retains architectural history; verify it against current source and the overview before treating it as current behavior.
 - [docs/process/](docs/process/README.md) indexes current engineering contracts, validation guidance, and retained release evidence. It is not consumer installation documentation.
 
 ## For contributors
@@ -28,7 +28,7 @@ Contributor work targets the active source packages above and requires a Service
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites, active source boundaries, local validation, and pull-request expectations. For installation help, defects, and feature proposals, see [SUPPORT.md](SUPPORT.md). Report security concerns only through the private route described in [SECURITY.md](SECURITY.md), never in a public issue or pull request.
 
-Current architecture decisions are [ADR-0001](docs/decisions/ADR-0001-editor-architecture.md), [ADR-0002](docs/decisions/ADR-0002-direct-ui-page-host.md), and [ADR-0003](docs/decisions/ADR-0003-frontend-stack.md).
+For the current implementation overview, start with [the architecture overview](docs/architecture/overview.md). ADRs are retained as historical decision records, not the current architectural authority.
 
 ## License
 
