@@ -20,6 +20,16 @@ Get-FileHash -Algorithm SHA256 releases\0.1.0\docsera_global_companion_0.1.0.xml
 
 Stop if either hash differs. Do not substitute generated XML from app/; it is release-engineering output, not a supported consumer artifact.
 
+## Custom Tables and Subscription Mapping
+
+Docsera creates **13 application-owned tables** in your ServiceNow instance.
+
+Subscription mapping is not required for installation in non-production environments, including Personal Developer Instances (PDIs). However, ServiceNow may identify the application as unmapped in Subscription Management.
+
+For production deployments, review your organization's custom table entitlements and map Docsera to an appropriate product subscription. Not all application tables necessarily consume billable custom table entitlements; applicable exemptions and licensing requirements depend on your ServiceNow agreement.
+
+See [ServiceNow's subscription mapping documentation](https://www.servicenow.com/docs/r/platform-administration/map-custom-applications-v2.html) for details.
+
 ## Import in the required order
 
 Install the two update sets separately through the ServiceNow update-set import workflow:
