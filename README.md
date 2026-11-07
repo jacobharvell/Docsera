@@ -2,7 +2,7 @@
 
 Docsera is an open-source, ServiceNow-native documentation application for creating and reading focused product and API documentation. It is a standalone scoped app with a Direct UI Page host, a React and TypeScript client, ServiceNow records for persisted state, and a custom block-oriented editor foundation built around Tiptap/ProseMirror.
 
-The Docsera 0.1.0 installation package has been exercised on a receiving ServiceNow PDI for workspace creation, page authoring and saving, publishing and Live mode, discarding changes, refresh/navigation, and workspace administration. That evidence is limited to the documented receiving-instance sequence; it does not establish general ServiceNow compatibility, upgrade safety, uninstall behavior, or complete release qualification.
+The earlier scoped package and unchanged Global companion were exercised on a receiving ServiceNow PDI for workspace creation, page authoring and saving, publishing and Live mode, discarding changes, refresh/navigation, and workspace administration. The accepted RR-096 scoped candidate incorporates the main-runtime refresh that removed the diagnostic query path and updated runtime assets, followed by two targeted retired-asset deletion updates. Jacob accepted the corrected candidate without a repeat import, reinstall, or installation smoke. This remains bounded evidence, not general ServiceNow compatibility, upgrade safety, uninstall behavior, or complete release qualification.
 
 Start with the [Docsera documentation index](docs/README.md) for current public references.
 

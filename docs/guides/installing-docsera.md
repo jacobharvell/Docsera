@@ -4,12 +4,12 @@ Docsera has two supported installation routes. Choose one before beginning; they
 
 | Route | Use it when | Result |
 | --- | --- | --- |
-| [Install Docsera 0.1.0](update-set-installation.md) | You want the published consumer package on a receiving ServiceNow instance. | Imports the immutable scoped-app and Global-companion update sets. |
+| [Install Docsera 0.1.0](update-set-installation.md) | You want the 0.1.0 consumer package on a receiving ServiceNow instance. | Imports the immutable scoped-app and Global-companion update sets. |
 | [Set up development from source](development-setup.md) | You are contributing to Docsera or controlling an SDK-based deployment to your own development instance. | Builds and installs source with identities owned by that instance. |
 
 ## Choose the release route for a consumer installation
 
-The Docsera 0.1.0 release route is the only route for the published 0.1.0 package. It imports the artifacts in releases/0.1.0/ in a required order: the scoped Docsera application first, then the Global companion. Verify the artifact hashes from the immutable [0.1.0 release README](../../releases/0.1.0/README.md) before importing them.
+The Docsera 0.1.0 release route is the only route for the 0.1.0 consumer package. It imports the artifacts in releases/0.1.0/ in a required order: the scoped Docsera application first, then the Global companion. Verify the artifact hashes from the immutable [0.1.0 release README](../../releases/0.1.0/README.md) before importing them. Repository presence is not itself a public-release announcement.
 
 Do not use XML generated under app/ as a consumer installation artifact. That output is for release engineering and is not a qualified distribution.
 

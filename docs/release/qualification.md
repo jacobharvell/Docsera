@@ -21,10 +21,10 @@ The accepted scoped source application is `Docsera`, scope `x_2300756_docsera`, 
 
 | Evidence | What it establishes | Limit |
 | --- | --- | --- |
-| Scoped artifact provenance | A native scoped export was inspected as 564 `INSERT_OR_UPDATE` payloads. Its decoded inventory reconciled application/schema/runtime metadata, current identity, and the absence of obsolete or unrelated domain/attachment payloads. | It was a diagnostic candidate, not public-release approval or receiving-instance/lifecycle proof. |
+| Scoped artifact provenance | The RR-096 corrected native scoped export contains the main-runtime refresh that removed the diagnostic query path and updated runtime assets, followed by two targeted diagnostic-asset `DELETE` updates; its 564 updates comprise 562 `INSERT_OR_UPDATE` and two `DELETE` updates. Its decoded inventory reconciled application/schema/runtime metadata, current identity, and the absence of obsolete or unrelated domain/attachment payloads. | It is the accepted `0.1.0` candidate artifact, not public-release approval or receiving-instance/lifecycle proof. |
 | Global artifact provenance | A 24-update Global consumer candidate was constructed with Global-owned consumer metadata, a restricted-caller authorization, and no dependency on the SDK development companion identity. | Its initial result was offline composition and integrity evidence only. |
 | Paired-artifact inspection | Independent inspection reconciled the two candidate artifacts, their ordered dependency, non-overlapping targets, update actions, integrity, and the Global-to-scoped authorization boundary. | Matching inventories, versions, or record counts do not establish byte identity, platform preview, or commit behavior. |
-| [Docsera 0.1.0 release README](../../releases/0.1.0/README.md) | The immutable consumer pair preserves the qualified scoped and Global payloads, with consumer-facing outer update-set display names. It is the checksum authority. | It does not transform the package into a completed public release. |
+| [Docsera 0.1.0 release README](../../releases/0.1.0/README.md) | The immutable consumer pair preserves the RR-096 corrected scoped artifact and unchanged Global payload, with consumer-facing outer update-set display names. It is the checksum authority. | It does not transform the package into a completed public release or receiving-instance qualification of the corrected scoped artifact. |
 
 These categories must remain distinct: source commits describe reviewed source; generated candidates describe build or export outputs; native exported artifacts describe an exported payload; 0.1.0 release files are the immutable consumer inputs; and installed records describe one instance's result. The documented consumer packaging transformation changes the outer update-set display names; it must not be described as inferred byte-for-byte identity from a shared version or count.
 
@@ -32,7 +32,7 @@ These categories must remain distinct: source commits describe reviewed source; 
 
 The strongest installation evidence is the documented scoped-first, Global-second receiving-instance sequence.
 
-For the scoped candidate, Jacob reported native import, preview without reported problems or collisions, and successful commit on a clean receiving instance. Independently inspected retrieved-update-set XML then established a `committed` state, 564 inserts, zero updates, deletes, and collisions, plus the installed allowed scoped bridge privilege. The native PDI observations beyond that XML inspection remain Jacob-reported observations.
+For the earlier scoped artifact, Jacob reported native import, preview without reported problems or collisions, and successful commit on a clean receiving instance. Independently inspected retrieved-update-set XML then established a `committed` state, 564 inserts, zero updates, deletes, and collisions, plus the installed allowed scoped bridge privilege. The native PDI observations beyond that XML inspection remain Jacob-reported observations.
 
 For the Global companion, installation followed the scoped commit. Independently inspected preview XML established a `previewed` state, 24 inserts, and zero updates, deletes, and collisions. Jacob then reported successful Global commit and accepted the following functional smoke:
 
@@ -46,7 +46,7 @@ For the Global companion, installation followed the scoped commit. Independently
 
 The post-commit Global retrieved-update-set XML was not independently inspected. Therefore, the Global commit's final XML state, counts, and collision state are not XML-verified claims.
 
-Together, this evidence demonstrates that the paired qualified candidates installed in the documented order and supported the listed core smoke on that receiving-instance sequence. It does not establish a general platform guarantee, all authorization paths, all schema/index behavior, an upgrade path, uninstall behavior, or public-release approval.
+Together, RR-079/RR-080 demonstrate that the earlier scoped artifact and unchanged Global artifact installed in the documented order and supported the listed core smoke on that receiving-instance sequence. The RR-096 corrected scoped artifact is the accepted `0.1.0` candidate: it incorporates the main-runtime refresh that removed the diagnostic query path and updated runtime assets, followed by two targeted retired-asset deletion updates. Jacob accepted that no repeat import, reinstall, or installation smoke is required for the corrected candidate. Do not extend this decision into a general platform guarantee, all authorization paths, all schema/index behavior, an upgrade path, uninstall behavior, or public-release approval.
 
 ## Prior evidence and platform limitations
 
@@ -66,14 +66,14 @@ This is a concise status snapshot from the accepted Release Readiness Plan and R
 
 | Gate | Current qualification state |
 | --- | --- |
-| G0 — scope and release candidate | Open: final candidate scope and freeze remain pending. |
-| G1 — security and reliability | Open pending final reconciliation: source, focused tests, and selected installed/user-context evidence exist; remaining effective-access and gate-wide evidence is not complete. |
+| G0 — scope and release candidate | Ready pending Jacob's publication decision: candidate claims are reconciled and no repeat import, reinstall, or installation smoke is required for the RR-096 correction. |
+| G1 — security and reliability | Open: accepted source, focused tests, and selected installed/user-context evidence exist; initial-admin/effective-access acceptance remains. |
 | G2 — accessibility | Accepted with documented limitations: focused audit and remediation are accepted, while broader keyboard-only, screen-reader, contrast, zoom/reflow, reduced-motion, and full-surface qualification remain unperformed or unqualified. |
-| G3 — platform compatibility | Open: Australia Patch 2 observations and Brazil clean-instance evidence are bounded checkpoints, not a supported compatibility matrix. |
-| G4 — distribution | Open with substantial evidence: a two-artifact ordered installation is demonstrated, while final distribution/lifecycle and enforcement qualification remain. |
-| G5 — fresh install, update, recovery | Open with functional smoke passed: the receiving-instance smoke is demonstrated; upgrade/data preservation, uninstall/recovery, and remaining role/ACL, media, and index evidence are pending. |
-| G6 — public repository | Open: repository/publication readiness is not a consequence of package qualification. |
-| G7 — documentation and support | Open: public documentation and support readiness require their own acceptance. |
+| G3 — platform compatibility | Open: record the receiving instance's exact family/patch/build and accept only a narrow statement; existing Australia/Brazil evidence is bounded. |
+| G4 — distribution | Open: the immutable pair and instructions are reconciled; physical unique-index enforcement remains to be observed. |
+| G5 — fresh install, update, recovery | Open: initial-admin/effective-access and unique-index checks remain. No upgrade/data-preservation, uninstall, or recovery promise is made. |
+| G6 — public repository | Ready pending repository-owner activation of GitHub private vulnerability reporting; the final source/history and documentation review found no material repository blocker. |
+| G7 — documentation and support | Open: screenshots and newcomer consumer-install/first-use acceptance remain manual actions. |
 | G8 — publication | Open: final release execution, publication, and post-release confirmation are still required. |
 
 ## Claims not established

@@ -1,6 +1,6 @@
 # Install Docsera 0.1.0
 
-Use this route to install the published Docsera 0.1.0 consumer package on a receiving ServiceNow instance. Do not use it for SDK development work; use [development setup](development-setup.md) when building from source.
+Use this route to install the Docsera 0.1.0 consumer package on a receiving ServiceNow instance. Do not use it for SDK development work; use [development setup](development-setup.md) when building from source. The package remains a release candidate until a GitHub Release is published.
 
 ## Release artifacts and integrity
 
@@ -42,7 +42,7 @@ After both commits, sign in as an authorized ServiceNow user and verify:
 - a user with the appropriate Docsera access can create a workspace, author and save a page, publish it, view Live mode, discard pending changes, and navigate or refresh without losing the documented state;
 - workspace administration is available to the appropriate administrator.
 
-These checks mirror the receiving-instance scenarios exercised for the 0.1.0 package. Record any preview conflict, commit error, or failed check rather than attempting ad hoc changes to the update-set XML or platform-wide security settings.
+These checks mirror the receiving-instance scenarios exercised for the earlier scoped package and unchanged Global companion. The accepted RR-096 scoped candidate incorporates the main-runtime refresh that removed the diagnostic query path and updated runtime assets, followed by two targeted retired-asset deletion updates. Jacob accepted the corrected candidate without a repeat import, reinstall, or installation smoke; this is not a general compatibility or lifecycle guarantee. Record any preview conflict, commit error, or failed check rather than attempting ad hoc changes to the update-set XML or platform-wide security settings.
 
 ## Qualification and compatibility limits
 
