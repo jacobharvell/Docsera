@@ -4,7 +4,7 @@ Docsera's public support workflow is intentionally lightweight.
 
 ## Installation help
 
-For installation help, first follow the [Docsera 0.1.0 package instructions](releases/0.1.0/README.md), including the stated artifact order and checksum verification. If the issue remains, open a public GitHub issue with the ServiceNow release/version, the artifact name, the installation step that failed, and non-sensitive error details.
+For installation help, first follow the [Docsera 0.1.0 package instructions](releases/0.1.0/README.md), including the stated artifact order. Optional checksum verification is described in the [consumer installation guide](docs/guides/update-set-installation.md). If the issue remains, open a public GitHub issue with the ServiceNow release/version, the artifact name, the installation step that failed, and non-sensitive error details.
 
 ## Defects
 

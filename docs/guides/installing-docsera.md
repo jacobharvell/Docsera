@@ -1,32 +1,20 @@
 # Installing Docsera
 
-Docsera has two supported installation routes. Choose one before beginning; they serve different purposes and are not interchangeable.
+Choose the route that matches your goal. The routes are separate and are not interchangeable.
 
-| Route | Use it when | Result |
+| Route | Use it when | Start here |
 | --- | --- | --- |
-| [Install Docsera 0.1.0](update-set-installation.md) | You want the 0.1.0 consumer package on a receiving ServiceNow instance. | Imports the immutable scoped-app and Global-companion update sets. |
-| [Set up development from source](development-setup.md) | You are contributing to Docsera or controlling an SDK-based deployment to your own development instance. | Builds and installs source with identities owned by that instance. |
+| Release installation | You are installing a versioned Docsera package on a receiving ServiceNow instance. | [Update-set installation](update-set-installation.md) |
+| Source development | You are contributing to Docsera or installing source into a development instance you control. | [Development setup](development-setup.md) |
 
-## Choose the release route for a consumer installation
+## Release installation
 
-The Docsera 0.1.0 release route is the only route for the 0.1.0 consumer package. It imports the artifacts in releases/0.1.0/ in a required order: the scoped Docsera application first, then the Global companion. Verify the artifact hashes from the immutable [0.1.0 release README](../../releases/0.1.0/README.md) before importing them. Repository presence is not itself a public-release announcement.
+Install the official versioned update-set pair when its assets are available through [GitHub Releases](https://github.com/jacobharvell/Docsera/releases). Import the scoped Docsera application first and the Global companion second. The [update-set installation guide](update-set-installation.md) covers ServiceNow access prerequisites, the import and preview sequence, post-install checks, and optional SHA-256 verification. Package filenames and checksums are maintained in the [0.1.0 package README](../../releases/0.1.0/README.md).
 
-Do not use XML generated under app/ as a consumer installation artifact. That output is for release engineering and is not a qualified distribution.
+The versioned package is intended for a new installation; it does not establish an upgrade, migration, rollback, or uninstall procedure.
 
-## Choose the SDK route for source work
+## Source development
 
-The source route is for contributors and controlled development deployments. It requires Node.js, the pinned ServiceNow SDK dependencies, an SDK authentication alias for an instance you control, and a clean checkout for one-time contributor identity setup. It is not an npm package installation, and it is not a substitute for importing the 0.1.0 release package.
+Build and install source packages only into a contributor-controlled ServiceNow development instance. [Development setup](development-setup.md) covers contributor-owned identities, SDK authentication, package order, collision protection, installation, and installed-runtime verification.
 
-The SDK route manages two source packages:
-
-- app/docsera-ui/ is the scoped Direct UI Page application and runtime.
-- app/docsera-global-bridge/ is the narrow Global companion that supplies the required Global boundary; it is not a standalone Docsera application.
-
-Follow [development setup](development-setup.md) for the identity, build, install, and verification sequence.
-
-## Important limits
-
-The Docsera 0.1.0 package has receiving-instance evidence for its documented sequence, but it does not establish general ServiceNow compatibility, upgrade safety, uninstall behavior, or complete release qualification. The SDK route likewise requires instance-specific authorization and verification; a local build does not prove that an instance installation is correct.
-
-For the release index, see [consumer releases](../../releases/README.md).
-
+For end-user product guidance, visit the [published Docsera documentation](https://docsera.mintlify.site/).

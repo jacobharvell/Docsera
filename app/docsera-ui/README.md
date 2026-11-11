@@ -63,7 +63,7 @@ instance's alias explicitly, for example `npm run install:sdk -- --auth
 docsera-dev123456`. Do not run the canonical deployment command against a
 contributor identity.
 
-Browser proof is separate and requires Jacob's explicit authorization. Run the verifier entrypoint directly when it is authorized:
+Browser proof is separate and requires an authorized development instance. Run the verifier entrypoint directly when it is appropriate:
 
 ```powershell
 node app/docsera-ui/scripts/verify-sdk-runtime.mjs --browser

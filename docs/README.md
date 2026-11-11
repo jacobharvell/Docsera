@@ -1,44 +1,44 @@
-# Docsera documentation
+# Docsera repository documentation
 
-This is the public starting point for Docsera documentation. It links to the current, source-grounded references for installation, development, architecture, and operation.
+The [published Docsera documentation](https://docsera.mintlify.site/) is the primary user-facing documentation. This repository documents source development, architecture, technical contracts, installation and package references, and release-validation details.
 
 ## Installation
 
-- [Installing Docsera](guides/installing-docsera.md) helps choose the correct route: contributor/source development or the 0.1.0 consumer package.
-- [Docsera 0.1.0 update-set installation](guides/update-set-installation.md) covers the qualified consumer import route. It is distinct from SDK/source development and does not establish universal compatibility, upgrade or uninstall safety, or public-release approval.
-- [Development setup](guides/development-setup.md) covers the SDK/source route for a contributor-controlled ServiceNow development instance.
+- [Installing Docsera](guides/installing-docsera.md) helps choose a versioned release installation or source development.
+- [Docsera 0.1.0 update-set installation](guides/update-set-installation.md) is the repository guide for the versioned consumer package.
+- [Development setup](guides/development-setup.md) covers contributor-controlled SDK source installation.
 
 ## Architecture
 
-- [Runtime overview](architecture/overview.md) describes the active packages, runtime shape, and authority boundaries.
-- [Workspace domain](reference/workspace-domain.md) covers workspaces, membership, capabilities, and ownership.
-- [Page state and hierarchy](reference/page-state-and-hierarchy.md) covers page identity, tree structure, drafts, settings, and recovery.
-- [Publishing and change sets](reference/publishing-and-change-sets.md) describes workspace changes, publishing, discard, undo, and concurrency boundaries.
-- [Access and provisioning](reference/access-and-provisioning.md) documents authorization, group provisioning, and the narrow Global boundary.
-- [ServiceNow runtime](reference/servicenow-runtime.md) covers Direct UI Page assets, SDK identities, server modules, and the Global companion.
+- [Runtime overview](architecture/overview.md)
+- [Workspace domain](reference/workspace-domain.md)
+- [Page state and hierarchy](reference/page-state-and-hierarchy.md)
+- [Publishing and change sets](reference/publishing-and-change-sets.md)
+- [Access and provisioning](reference/access-and-provisioning.md)
+- [ServiceNow runtime](reference/servicenow-runtime.md)
 
 ## Editor
 
-- [Document model and blocks](reference/editor/document-model-and-blocks.md) describes the canonical document envelope, block model, and reader/editor behavior.
-- [Markdown and source](reference/editor/markdown-and-source.md) covers conversion and source-mode handoff.
-- [Media](reference/editor/media.md) documents authorized media persistence and lifecycle behavior.
-- [Editor interactions](reference/editor-interactions.md) covers gutters, selection, drag and drop, overlays, focus, keyboard behavior, and scrolling.
+- [Document model and blocks](reference/editor/document-model-and-blocks.md)
+- [Markdown and source](reference/editor/markdown-and-source.md)
+- [Media](reference/editor/media.md)
+- [Editor interactions](reference/editor-interactions.md)
 
 ## Security
 
-- [Authorization boundaries](security/authorization-boundaries.md) explains roles, workspace capability checks, server authority, and protected workflow data.
+- [Authorization boundaries](security/authorization-boundaries.md)
 
 ## Testing and maintenance
 
-- [Testing and maintenance](guides/testing-and-maintenance.md) provides current contributor validation guidance and managed test-suite selection.
+- [Testing and maintenance](guides/testing-and-maintenance.md) explains maintained test suites and verification boundaries.
 
 ## Release evidence
 
-- [Release qualification](release/qualification.md) states the demonstrated 0.1.0 release evidence and its limits.
-- [Docsera 0.1.0 release instructions](../releases/0.1.0/README.md) are the authority for the 0.1.0 update-set pair, checksums, and import order.
+- [Release Validation and Compatibility](release/qualification.md) describes the available evidence and its limits.
+- [Docsera 0.1.0 release instructions](../releases/0.1.0/README.md) are authoritative for package filenames, checksums, and import order.
 
 ## Contributing and support
 
-- [Contributing](../CONTRIBUTING.md) explains contributor prerequisites and pull-request expectations.
-- [Support](../SUPPORT.md) explains installation help, defects, and feature requests.
-- [Security reporting](../SECURITY.md) describes the private vulnerability-reporting route and its activation boundary.
+- [Contributing](../CONTRIBUTING.md)
+- [Support](../SUPPORT.md)
+- [Security reporting](../SECURITY.md)

@@ -55,8 +55,6 @@ npm run setup:developer-instance -- -- --instance https://<instance>.service-now
 
 The command validates the alias and target, creates SDK-owned scoped and Global identities, converts the local projects, regenerates their generated keys during builds, and applies the resulting local files to that clone. It does **not** install to ServiceNow. It refuses a dirty or already-converted checkout. Treat its changes as local instance configuration: do not commit them to the canonical source branch or use them to replace another contributor's identity.
 
-If this is the canonical development instance with its canonical identity, do not run contributor identity setup. Use only its established, reviewable deployment workflow; do not repurpose it for a different instance.
-
 ## Build, install, and verify
 
 Run these commands from the repository root after identity setup. Replace <sdk-auth-alias> with the alias for the development instance.
@@ -93,7 +91,7 @@ The Global verifier checks the installed bridge records, cross-scope privileges,
 
 - Keep credentials, aliases, passwords, and instance-specific identity files out of commits and documentation.
 - Do not use npm run deploy:sdk-ui-page for a contributor-owned identity; that command is intentionally bound to the canonical development identity.
-- Do not treat app/ update-set output as a consumer release. It requires a separately authorized release qualification.
+- SDK-generated artifacts are intended for development. Use the official versioned release files for consumer installations.
 - Do not treat local tests, builds, or SDK generation as proof of installed runtime behavior. Run the instance verifiers after installation.
 - The currently documented release evidence does not establish general compatibility, upgrade safety, uninstall behavior, or complete qualification for arbitrary ServiceNow instances.
 

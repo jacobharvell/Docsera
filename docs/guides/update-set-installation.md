@@ -1,6 +1,6 @@
 # Install Docsera 0.1.0
 
-Use this route to install the Docsera 0.1.0 consumer package on a receiving ServiceNow instance. Do not use it for SDK development work; use [development setup](development-setup.md) when building from source. The package remains a release candidate until a GitHub Release is published.
+Use this route to install the Docsera 0.1.0 consumer package on a receiving ServiceNow instance. Do not use it for SDK development work; use [development setup](development-setup.md) when building from source. Obtain versioned release assets from [GitHub Releases](https://github.com/jacobharvell/Docsera/releases) when they are available.
 
 ## Release artifacts and integrity
 
@@ -9,16 +9,16 @@ The only supported consumer artifact pair is immutable and lives in [releases/0.
 - docsera_application_0.1.0.xml — the scoped Docsera application
 - docsera_global_companion_0.1.0.xml — the narrow Global companion
 
-Before importing either file, compute its SHA-256 hash with a trusted local tool and compare it with the authoritative values in the [0.1.0 release README](../../releases/0.1.0/README.md). That README is the single authoritative checksum location; this guide intentionally does not duplicate the values.
+Optional integrity verification: compute the SHA-256 hash of a downloaded file with a trusted local tool and compare it with the authoritative values in the [0.1.0 release README](../../releases/0.1.0/README.md). That README is the single authoritative checksum location; this guide intentionally does not duplicate the values. A matching checksum confirms file integrity against that published value; it does not by itself establish publisher authenticity or platform compatibility.
 
-For example, in PowerShell from the repository root:
+For example, in PowerShell from the directory that contains the downloaded XML files:
 
 ~~~powershell
-Get-FileHash -Algorithm SHA256 releases\0.1.0\docsera_application_0.1.0.xml
-Get-FileHash -Algorithm SHA256 releases\0.1.0\docsera_global_companion_0.1.0.xml
+Get-FileHash -Algorithm SHA256 -LiteralPath .\docsera_application_0.1.0.xml
+Get-FileHash -Algorithm SHA256 -LiteralPath .\docsera_global_companion_0.1.0.xml
 ~~~
 
-Stop if either hash differs. Do not substitute generated XML from app/; it is release-engineering output, not a supported consumer artifact.
+If a hash differs, do not import that file. Do not substitute generated XML from app/; it is development output, not a supported consumer artifact.
 
 ## Custom Tables and Subscription Mapping
 
@@ -43,20 +43,25 @@ Install the two update sets separately through the ServiceNow update-set import 
 
 Scoped-first, Global-second is required. The scoped application owns the Docsera runtime and authorizes the companion's narrow Global boundary; do not reverse the sequence or import them as an undifferentiated bundle.
 
+## Initial Docsera Admin access
+
+Workspace creation requires effective `x_2300756_docsera.admin` access. This Docsera role is distinct from the unrestricted ServiceNow platform `admin` role. Before post-install checks, an authorized ServiceNow administrator must arrange this Docsera role through the instance's approved access-management process. Importing the update sets does not automatically grant the role, and Docsera does not provide an in-app first-admin assignment screen.
+
 ## Post-install checks
 
-After both commits, sign in as an authorized ServiceNow user and verify:
+After both commits, sign in as an authorized ServiceNow user and verify the ordinary workflow for your role:
 
 - the authenticated Docsera host is available at docsera.do;
 - the Docsera application and its scoped records are present;
-- a user with the appropriate Docsera access can create a workspace, author and save a page, publish it, view Live mode, discard pending changes, and navigate or refresh without losing the documented state;
+- effective Docsera Admin access can create or access a workspace and its page tree;
+- an authorized editor can author and save page content, publish saved pending workspace changes through the Changes Center, verify the content in Live, and discard pending changes where appropriate;
 - workspace administration is available to the appropriate administrator.
 
-These checks mirror the receiving-instance scenarios exercised for the earlier scoped package and unchanged Global companion. The accepted RR-096 scoped candidate incorporates the main-runtime refresh that removed the diagnostic query path and updated runtime assets, followed by two targeted retired-asset deletion updates. Jacob accepted the corrected candidate without a repeat import, reinstall, or installation smoke; this is not a general compatibility or lifecycle guarantee. Record any preview conflict, commit error, or failed check rather than attempting ad hoc changes to the update-set XML or platform-wide security settings.
+Record any preview conflict, commit error, or failed check rather than attempting ad hoc changes to the update-set XML or platform-wide security settings.
 
 ## Qualification and compatibility limits
 
-The 0.1.0 package has been exercised through the documented receiving-instance sequence. That evidence does **not** establish general ServiceNow compatibility, upgrade safety, uninstall behavior, or complete release qualification. It also does not authorize changing OOTB application access, ACLs, roles, or Global platform records to bypass an installation problem.
+The 0.1.0 package has receiving-instance installation evidence, with the validation boundary described in [Release Validation and Compatibility](../release/qualification.md). It does **not** establish general ServiceNow compatibility, upgrade safety, uninstall behavior, or complete qualification. It also does not authorize changing OOTB application access, ACLs, roles, or Global platform records to bypass an installation problem.
 
 The Global companion is intentionally constrained: it provides the required Global boundary and authenticated host while the scoped application remains authoritative for Docsera runtime behavior and authorization. Do not import any other XML in this repository as a consumer installation artifact.
 

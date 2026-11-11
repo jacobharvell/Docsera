@@ -1,35 +1,34 @@
 # Docsera
 
-Docsera is an open-source, ServiceNow-native documentation application for creating and reading focused product and API documentation. It is a standalone scoped app with a Direct UI Page host, a React and TypeScript client, ServiceNow records for persisted state, and a custom block-oriented editor foundation built around Tiptap/ProseMirror.
+Docsera is an open-source documentation platform built natively for ServiceNow. Create and organize pages in workspaces, edit content visually or with Markdown, and publish changes through a workspace-wide review workflow—all within your ServiceNow instance.
 
-The earlier scoped package and unchanged Global companion were exercised on a receiving ServiceNow PDI for workspace creation, page authoring and saving, publishing and Live mode, discarding changes, refresh/navigation, and workspace administration. The accepted RR-096 scoped candidate incorporates the main-runtime refresh that removed the diagnostic query path and updated runtime assets, followed by two targeted retired-asset deletion updates. Jacob accepted the corrected candidate without a repeat import, reinstall, or installation smoke. This remains bounded evidence, not general ServiceNow compatibility, upgrade safety, uninstall behavior, or complete release qualification.
+**[Read the published Docsera documentation](https://docsera.mintlify.site/)** for end-user guidance and product documentation.
 
-Start with the [Docsera documentation index](docs/README.md) for current public references.
+## Features
+
+- ServiceNow-native workspaces and hierarchical page trees.
+- Visual editing and Markdown Source for page content.
+- Rich content blocks, including text, lists, links, code, tables, media, and layout-oriented blocks.
+- Workspace-level Live and Edit views, with publishing, discard, and change-management workflows.
+- ServiceNow-native authorization and workspace membership controls.
+
+## Documentation
+
+The [published Docsera documentation](https://docsera.mintlify.site/) is the primary destination for using Docsera. Repository documentation supplies technical references, installation-package details, and contributor workflows in the [documentation index](docs/README.md).
 
 ## Install Docsera
 
-Docsera has two valid, distinct installation methods:
+Use the versioned scoped application and Global companion update-set pair for a consumer installation. The required order is **scoped-first, Global-second**. Availability of a versioned package is determined by the [GitHub Releases page](https://github.com/jacobharvell/Docsera/releases); see the [installation guide](docs/guides/update-set-installation.md), [0.1.0 package README](releases/0.1.0/README.md), and [consumer release index](releases/README.md) for the required order, prerequisites, and optional integrity checks.
 
-- **Consumer installation:** import the Docsera 0.1.0 update-set pair. Follow [the update-set installation guide](docs/guides/update-set-installation.md). The required order is **scoped-first, Global-second**; verify the published hashes in the immutable [0.1.0 package instructions](releases/0.1.0/README.md).
-- **Source development:** build and install the SDK source to a development instance you control. Follow [the development setup guide](docs/guides/development-setup.md) for prerequisites, contributor-owned identities, and instance verification.
+For a contributor-controlled ServiceNow development instance, use the separate [source development setup](docs/guides/development-setup.md). The release package is intended for a new installation; it does not establish an upgrade path.
 
-Start at [Installing Docsera](docs/guides/installing-docsera.md) to choose the right route. The [consumer release index](releases/README.md) lists the 0.1.0 release package. Do not install locally generated update-set output from `app/`; it is release-engineering material, not a distributable consumer artifact.
+## Development and contributing
 
-## Source layout
+Docsera has a scoped application source package at [app/docsera-ui/](app/docsera-ui/) and a narrowly scoped Global companion at [app/docsera-global-bridge/](app/docsera-global-bridge/). Start with the [development setup](docs/guides/development-setup.md), [architecture overview](docs/architecture/overview.md), and [contribution guide](CONTRIBUTING.md).
 
-This repository is a ServiceNow source-and-artifact project, not an npm package for general installation.
+## Support and security
 
-- [app/docsera-ui/](app/docsera-ui/) is the active ServiceNow SDK source for the scoped Direct UI Page runtime.
-- [app/docsera-global-bridge/](app/docsera-global-bridge/) is the source for the narrowly scoped Global companion used by the release workflow; it is not a standalone Docsera app.
-- [docs/README.md](docs/README.md) is the current documentation index, including the runtime overview and contributor guidance.
-
-## For contributors
-
-Contributor work targets the active source packages above and requires a ServiceNow development environment and SDK configuration. Start with [the development setup guide](docs/guides/development-setup.md), then use the scoped package's focused test or validation commands as appropriate. See [testing and maintenance](docs/guides/testing-and-maintenance.md) for managed suites, validation boundaries, and contributor checkpoints. Do not treat the 0.1.0 XML package as an SDK installation.
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for prerequisites, active source boundaries, local validation, and pull-request expectations. For installation help, defects, and feature proposals, see [SUPPORT.md](SUPPORT.md). Report security concerns only through the private route described in [SECURITY.md](SECURITY.md), never in a public issue or pull request.
-
-For the current implementation overview, start with [the architecture overview](docs/architecture/overview.md).
+For installation help, defects, and feature requests, see [SUPPORT.md](SUPPORT.md). For private vulnerability-reporting boundaries, see [SECURITY.md](SECURITY.md); do not disclose vulnerabilities in public issues or pull requests.
 
 ## License
 

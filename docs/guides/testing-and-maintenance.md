@@ -6,11 +6,11 @@ This guide describes the current contributor checks for the active scoped runtim
 
 Start with the smallest focused test file or named suite that covers the behavior changed. Add adjacent suites when a change crosses a contract boundary: for example, a page-tree move can also affect page-model and workspace-state behavior. Use the full local validation command as a broader checkpoint, not as the only development loop.
 
-Local tests cover isolated client, shared-contract, and server-contract behavior. The SDK build checks packaging and generated-module contracts. Installed-instance scripts check the installed artifact and service boundary. Live PDI testing establishes interactive behavior and visual acceptance. No one of these checks establishes general instance compatibility, upgrade safety, or release qualification.
+Local tests cover isolated client, shared-contract, and server-contract behavior. The SDK build checks packaging and generated-module contracts. Installed-instance scripts check the installed artifact and service boundary. Manual verification on an authorized ServiceNow development instance may be appropriate for runtime, authorization, or UI changes. No one of these checks establishes general instance compatibility, upgrade safety, or release qualification.
 
-Codex should select and run proportionate automated checks for implementation work, add or update regression coverage, and report what was intentionally omitted. Jacob performs live PDI/browser acceptance when runtime behavior, authorization, or visual interaction needs confirmation. Interactive browser automation is not a default contributor requirement.
+Contributors should run proportionate automated checks, add or update regression coverage where appropriate, and report both checks performed and checks intentionally omitted. Interactive browser automation is optional; use it when it provides relevant evidence rather than as a default requirement.
 
-The historical validation-area identifiers in process notes are planning categories, not executable suite names. Use the maintained suite manifest and package scripts below.
+Use the maintained suite manifest and package scripts below.
 
 ## Managed Vitest suites
 
