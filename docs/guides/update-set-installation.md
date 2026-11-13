@@ -61,7 +61,7 @@ Record any preview conflict, commit error, or failed check rather than attemptin
 
 ## Qualification and compatibility limits
 
-The 0.1.0 package has receiving-instance installation evidence, with the validation boundary described in [Release Validation and Compatibility](../release/qualification.md). It does **not** establish general ServiceNow compatibility, upgrade safety, uninstall behavior, or complete qualification. It also does not authorize changing OOTB application access, ACLs, roles, or Global platform records to bypass an installation problem.
+The final 0.1.0 package was installed on a separate ServiceNow Brazil instance. [Release Validation and Compatibility](../release/qualification.md) describes the installation evidence and its limits. The release is intended for new installations. General ServiceNow compatibility, upgrade safety, and uninstall behavior remain unverified. Keep OOTB application access, ACLs, roles, and Global platform records intact when investigating an installation problem.
 
 The Global companion is intentionally constrained: it provides the required Global boundary and authenticated host while the scoped application remains authoritative for Docsera runtime behavior and authorization. Do not import any other XML in this repository as a consumer installation artifact.
 

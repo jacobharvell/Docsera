@@ -19,11 +19,11 @@ The package artifacts were inspected for their distinct ownership, ordered depen
 
 An earlier scoped artifact and the unchanged Global companion were installed on a clean receiving ServiceNow instance in the required scoped-first, Global-second sequence. The scoped import was previewed and committed; the companion was previewed after the scoped commit and then committed. Available retrieved-update-set evidence recorded the scoped installation as committed with 564 inserts and no updates, deletes, or collisions. The companion preview recorded 24 inserts and no updates, deletes, or collisions.
 
-The final scoped artifact includes subsequent reviewed runtime and retired-asset corrections. It was not separately reimported and smoke-tested on a receiving instance after those corrections. Consequently, the earlier receiving-instance test supports the documented sequence and the unchanged Global companion, but it is not evidence that the final corrected scoped artifact completed a separate receiving-instance test.
+The final scoped artifact includes subsequent reviewed runtime and retired-asset corrections. Jacob Harvell confirmed that he installed the final Docsera 0.1.0 release package on a separate ServiceNow Brazil instance.
 
 ## Functional scenarios exercised
 
-The receiving-instance sequence exercised these functional scenarios:
+The earlier receiving-instance installation exercised these functional scenarios:
 
 - Opening the authenticated Docsera host and My Workspaces.
 - Creating a workspace and provisioning its Admins and Editors groups.
