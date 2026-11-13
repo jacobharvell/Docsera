@@ -17,4 +17,4 @@ The versioned package is intended for a new installation; it does not establish 
 
 Build and install source packages only into a contributor-controlled ServiceNow development instance. [Development setup](development-setup.md) covers contributor-owned identities, SDK authentication, package order, collision protection, installation, and installed-runtime verification.
 
-For end-user product guidance, visit the [published Docsera documentation](https://docsera.mintlify.site/).
+For end-user product guidance, visit the [Docsera documentation](https://docsera.mintlify.site/).

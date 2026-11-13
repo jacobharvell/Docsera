@@ -1,6 +1,6 @@
 # Docsera repository documentation
 
-The [published Docsera documentation](https://docsera.mintlify.site/) is the primary user-facing documentation. This repository documents source development, architecture, technical contracts, installation and package references, and release-validation details.
+The [Docsera documentation](https://docsera.mintlify.site/) is the primary user-facing documentation. This repository documents source development, architecture, technical contracts, installation and package references, and release-validation details.
 
 ## Installation
 
